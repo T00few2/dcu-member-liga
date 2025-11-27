@@ -5,40 +5,68 @@ import { useEffect, useState } from 'react';
 export default function StatsPage() {
   const [stats, setStats] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [manualLicense, setManualLicense] = useState('');
+
+  const fetchStats = async (license: string) => {
+    setLoading(true);
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+      const res = await fetch(`${apiUrl}/stats?eLicense=${license}`);
+      if (res.ok) {
+        const data = await res.json();
+        setStats(data.stats);
+      } else {
+        // Fallback/Error
+        setStats([
+            { platform: 'Error', message: 'Could not fetch stats' }
+        ]);
+      }
+    } catch (e) {
+         setStats([
+            { platform: 'Error', message: 'Network error' }
+        ]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    // Mock fetch or real fetch
-    const fetchStats = async () => {
-      try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-        const res = await fetch(`${apiUrl}/stats`);
-        if (res.ok) {
-          const data = await res.json();
-          setStats(data.stats);
-        } else {
-          // Fallback mock data if backend isn't running
-          setStats([
-            { platform: 'Zwift', ftp: 280, level: 42 },
-            { platform: 'ZwiftPower', category: 'A' },
-            { platform: 'Strava', kmsThisYear: 6500 }
-          ]);
-        }
-      } catch (e) {
-         // Fallback mock data
-         setStats([
-            { platform: 'Zwift', ftp: 280, level: 42 },
-            { platform: 'ZwiftPower', category: 'A' },
-            { platform: 'Strava', kmsThisYear: 6500 }
-          ]);
-      } finally {
+    const storedLicense = localStorage.getItem('dcu_elicense');
+    if (storedLicense) {
+        fetchStats(storedLicense);
+    } else {
         setLoading(false);
-      }
-    };
-
-    fetchStats();
+    }
   }, []);
 
+  const handleManualSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (manualLicense) {
+        localStorage.setItem('dcu_elicense', manualLicense);
+        fetchStats(manualLicense);
+    }
+  };
+
   if (loading) return <div className="p-8 text-center">Loading stats...</div>;
+
+  if (stats.length === 0) {
+      return (
+        <div className="max-w-md mx-auto mt-10 p-6 bg-white rounded shadow">
+            <h1 className="text-xl font-bold mb-4">Enter E-License</h1>
+            <p className="mb-4 text-slate-600">We couldn't find your saved license. Please enter it to view stats.</p>
+            <form onSubmit={handleManualSubmit} className="flex gap-2">
+                <input 
+                    type="text" 
+                    value={manualLicense}
+                    onChange={(e) => setManualLicense(e.target.value)}
+                    placeholder="e.g. 12345678"
+                    className="flex-1 p-2 border rounded"
+                />
+                <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded">View</button>
+            </form>
+        </div>
+      );
+  }
 
   return (
     <div className="max-w-4xl mx-auto mt-8">
@@ -65,4 +93,3 @@ export default function StatsPage() {
     </div>
   );
 }
-
