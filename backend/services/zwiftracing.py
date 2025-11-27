@@ -25,6 +25,8 @@ class ZwiftRacingService:
         if not rider_id:
             return None
             
-        url = f"{self.base_url}/public/riders/{rider_id}"
+        # Ensure no double slashes if base_url ends with /
+        base = self.base_url.rstrip('/')
+        url = f"{base}/public/riders/{rider_id}"
         return self.fetch_json(url)
 

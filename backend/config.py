@@ -11,7 +11,7 @@ ZWIFT_USERNAME = os.getenv('ZWIFT_USERNAME')
 ZWIFT_PASSWORD = os.getenv('ZWIFT_PASSWORD')
 
 ZR_AUTH_KEY = os.getenv('ZR_AUTH_KEY')
-ZR_BASE_URL = os.getenv('ZR_BASE_URL', 'https://www.zwiftracing.app/api')
+ZR_BASE_URL = os.getenv('ZR_BASE_URL', 'https://api.zwiftracing.app')
 
 # Validate essential config
 if not STRAVA_CLIENT_ID or not STRAVA_CLIENT_SECRET:
