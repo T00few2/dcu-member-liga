@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 
-export default function SignupPage() {
+function SignupContent() {
   const searchParams = useSearchParams();
   const stravaConnected = searchParams.get('strava') === 'connected';
 
@@ -16,7 +16,6 @@ export default function SignupPage() {
     stravaConnected ? 'Strava connected successfully!' : ''
   );
 
-  // Store eLicense in localStorage to remember it after Strava redirect
   useEffect(() => {
     if (stravaConnected) {
        // In a real app, recover the user session here
@@ -156,5 +155,13 @@ export default function SignupPage() {
         </form>
       )}
     </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center">Loading...</div>}>
+      <SignupContent />
+    </Suspense>
   );
 }
