@@ -2,8 +2,6 @@ import requests
 from bs4 import BeautifulSoup
 from collections import defaultdict
 import html
-from datetime import datetime
-import pytz
 
 class ZwiftPowerService:
     """
@@ -50,7 +48,10 @@ class ZwiftPowerService:
         soup = BeautifulSoup(resp2.text, 'html.parser')
         form = soup.find('form', id='form')
         if not form or not form.get('action'):
-            raise RuntimeError("Zwift login form not found or invalid.")
+            # Try finding form by other attributes if id='form' fails
+            form = soup.find('form', attrs={'method': 'post'})
+            if not form or not form.get('action'):
+                raise RuntimeError(f"Zwift login form not found or invalid. Page title: {soup.title.string if soup.title else 'No Title'}")
 
         action_url = form['action']  # the POST target
         payload = {
@@ -78,39 +79,6 @@ class ZwiftPowerService:
             raise RuntimeError(
                 f"ZwiftPower final login redirect failed (status={resp4.status_code})"
             )
-
-    def _format_timestamp(self, timestamp):
-        """
-        Convert Unix timestamp to YYYY-MM-DD HH:MM format in CEST/CET timezone
-        """
-        # Convert timestamp to datetime in UTC
-        utc_dt = datetime.fromtimestamp(timestamp, tz=pytz.UTC)
-        
-        # Convert to Europe/Copenhagen timezone (CEST/CET)
-        copenhagen_tz = pytz.timezone('Europe/Copenhagen')
-        local_dt = utc_dt.astimezone(copenhagen_tz)
-        
-        # Format the date and time
-        return local_dt.strftime('%Y-%m-%d %H:%M')
-
-    def _format_time(self, seconds_float):
-        """
-        Convert seconds.milliseconds to hh:mm:ss.ms format
-        """
-        if seconds_float is None:
-            return "N/A"
-            
-        # Split into seconds and milliseconds
-        seconds = int(seconds_float)
-        milliseconds = int((seconds_float - seconds) * 1000)
-        
-        # Calculate hours, minutes, and remaining seconds
-        hours = seconds // 3600
-        minutes = (seconds % 3600) // 60
-        remaining_seconds = seconds % 60
-        
-        # Format with leading zeros and milliseconds
-        return f"{hours:02d}:{minutes:02d}:{remaining_seconds:02d}.{milliseconds:03d}"
 
     def get_rider_data_json(self, rider_id: int) -> dict:
         """

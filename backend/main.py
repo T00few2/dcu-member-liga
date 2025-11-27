@@ -24,9 +24,37 @@ except Exception as e:
     print(f"Warning: Firebase could not be initialized. Database operations will fail. Error: {e}")
     db = None
 
+import time
+
 # Initialize Services
 strava_service = StravaService(db)
-zp_service = ZwiftPowerService(ZWIFT_USERNAME, ZWIFT_PASSWORD)
+
+# Global cache for ZwiftPower service
+_zp_service_instance = None
+_zp_service_timestamp = 0
+SESSION_VALIDITY = 3000 # 50 minutes (less than typical 1h expiry)
+
+def get_zp_service():
+    global _zp_service_instance, _zp_service_timestamp
+    now = time.time()
+    
+    if _zp_service_instance and (now - _zp_service_timestamp < SESSION_VALIDITY):
+        print("Using cached ZwiftPower session.")
+        return _zp_service_instance
+
+    print("Creating new ZwiftPower session.")
+    service = ZwiftPowerService(ZWIFT_USERNAME, ZWIFT_PASSWORD)
+    # Attempt login immediately to prime the session
+    try:
+        service.login()
+        _zp_service_instance = service
+        _zp_service_timestamp = now
+        return service
+    except Exception as e:
+        print(f"Failed to initialize ZwiftPower session: {e}")
+        # Return a fresh instance anyway so the caller can try/fail gracefully per request
+        return service
+
 zr_service = ZwiftRacingService()
 
 @functions_framework.http
@@ -117,8 +145,12 @@ def dcu_api(request):
                     zwift_id = user_data.get('zwiftId')
                     if zwift_id:
                         try:
-                            zp_service.login()
-                            zp_json = zp_service.get_rider_data_json(int(zwift_id))
+                            zp = get_zp_service()
+                            # Note: login() is called inside get_zp_service() for new sessions,
+                            # or skipped if cached. We can call it again here if we want to be sure,
+                            # but let's trust the cache logic first.
+                            
+                            zp_json = zp.get_rider_data_json(int(zwift_id))
                             if zp_json and 'data' in zp_json and len(zp_json['data']) > 0:
                                 rider_info = zp_json['data'][0] # Assuming first element has summary
                                 zp_data = {
