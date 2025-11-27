@@ -6,6 +6,7 @@ from firebase_admin import firestore
 import os
 import requests
 from dotenv import load_dotenv
+import time
 
 # Load environment variables from .env (for local dev)
 load_dotenv()
@@ -13,9 +14,6 @@ load_dotenv()
 # Configuration
 STRAVA_CLIENT_ID = os.getenv('STRAVA_CLIENT_ID')
 STRAVA_CLIENT_SECRET = os.getenv('STRAVA_CLIENT_SECRET')
-# Dynamically set redirect URI based on environment
-# In production, this should be your Cloud Function URL.
-# Locally, it might be http://localhost:8080/strava/callback
 BACKEND_URL = os.getenv('BACKEND_URL', 'https://us-central1-dcu-member-liga-479507.cloudfunctions.net/dcu_api') 
 
 # Initialize Firebase Admin
@@ -35,7 +33,6 @@ except Exception as e:
 
 @functions_framework.http
 def dcu_api(request):
-    # CORS Headers
     headers = {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -51,14 +48,12 @@ def dcu_api(request):
     # --- STRAVA AUTH ROUTES ---
 
     if path == '/strava/login' and request.method == 'GET':
-        # Redirect user to Strava Authorization Page
-        # We need to pass a 'state' parameter (e.g., user's eLicense) to link the account later
         e_license = request.args.get('eLicense')
         if not e_license:
              return (jsonify({'message': 'Missing eLicense param'}), 400, headers)
 
         redirect_uri = f"{BACKEND_URL}/strava/callback"
-        scope = "read,activity:read_all" # Request permissions
+        scope = "read,activity:read_all" 
         
         strava_url = (
             f"https://www.strava.com/oauth/authorize"
@@ -72,9 +67,8 @@ def dcu_api(request):
         return redirect(strava_url)
 
     if path == '/strava/callback' and request.method == 'GET':
-        # Handle callback from Strava
         code = request.args.get('code')
-        e_license = request.args.get('state') # We get back the eLicense we sent
+        e_license = request.args.get('state')
         error = request.args.get('error')
 
         if error:
@@ -83,7 +77,6 @@ def dcu_api(request):
         if not code or not e_license:
              return (jsonify({'message': 'Missing code or state'}), 400, headers)
 
-        # Exchange code for tokens
         token_url = "https://www.strava.com/oauth/token"
         payload = {
             'client_id': STRAVA_CLIENT_ID,
@@ -99,7 +92,6 @@ def dcu_api(request):
             if res.status_code != 200:
                  return (jsonify({'message': 'Failed to get tokens', 'details': data}), 500, headers)
             
-            # Save tokens to Firestore user document
             if db:
                 user_ref = db.collection('users').document(str(e_license))
                 user_ref.update({
@@ -111,8 +103,6 @@ def dcu_api(request):
                     }
                 })
             
-            # Redirect back to frontend success page
-            # Hardcoded for POC, should be env var
             return redirect(f"https://dcu-member-liga.vercel.app/signup?strava=connected")
 
         except Exception as e:
@@ -139,7 +129,7 @@ def dcu_api(request):
                     'eLicense': e_license,
                     'verified': True,
                     'createdAt': firestore.SERVER_TIMESTAMP
-                }, merge=True) # Use merge to not overwrite existing data
+                }, merge=True)
             
             return (jsonify({
                 'message': 'Signup successful',
@@ -150,11 +140,43 @@ def dcu_api(request):
             return (jsonify({'message': str(e)}), 500, headers)
 
     if path == '/stats' and request.method == 'GET':
+        # Accept eLicense param to fetch specific user stats
+        e_license = request.args.get('eLicense')
+        
+        strava_kms = "Not Connected"
+        
+        if e_license and db:
+            try:
+                user_doc = db.collection('users').document(str(e_license)).get()
+                if user_doc.exists:
+                    user_data = user_doc.to_dict()
+                    strava_auth = user_data.get('strava')
+                    
+                    if strava_auth:
+                        access_token = strava_auth.get('access_token')
+                        # TODO: Check expiry and refresh if needed
+                        
+                        # Fetch activities from Strava
+                        # (Simple calc: sum distance of last 30 activities)
+                        acts_res = requests.get(
+                            "https://www.strava.com/api/v3/athlete/activities?per_page=30",
+                            headers={'Authorization': f"Bearer {access_token}"}
+                        )
+                        
+                        if acts_res.status_code == 200:
+                            activities = acts_res.json()
+                            total_meters = sum(a['distance'] for a in activities)
+                            strava_kms = f"{round(total_meters / 1000, 1)} km (Last 30 acts)"
+                        else:
+                            strava_kms = "Error fetching"
+            except Exception as e:
+                print(f"Error fetching strava stats: {e}")
+        
         stats_data = {
             'stats': [
                 {'platform': 'Zwift (Backend)', 'ftp': 300, 'level': 50},
                 {'platform': 'ZwiftPower', 'category': 'A+'},
-                {'platform': 'Strava', 'kmsThisYear': 9999}
+                {'platform': 'Strava', 'kms': strava_kms}
             ]
         }
         return (jsonify(stats_data), 200, headers)
