@@ -9,6 +9,7 @@ function SignupContent() {
 
   const [eLicense, setELicense] = useState('');
   const [name, setName] = useState('');
+  const [zwiftId, setZwiftId] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>(
     stravaConnected ? 'success' : 'idle'
   );
@@ -34,7 +35,7 @@ function SignupContent() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ eLicense, name }),
+        body: JSON.stringify({ eLicense, name, zwiftId }),
       });
 
       const data = await res.json();
@@ -96,7 +97,8 @@ function SignupContent() {
             onClick={() => { 
                 setStatus('idle'); 
                 setELicense(''); 
-                setName(''); 
+                setName('');
+                setZwiftId(''); 
                 window.history.replaceState(null, '', '/signup'); // Clear URL params
             }}
             className="mt-6 text-sm text-slate-500 underline hover:text-slate-700 block mx-auto"
@@ -136,6 +138,23 @@ function SignupContent() {
             />
             <p className="text-xs text-slate-500 mt-1">
               Your DCU E-License is required for verification.
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="zwiftId" className="block text-sm font-medium text-slate-700 mb-1">
+              Zwift ID
+            </label>
+            <input
+              type="text"
+              id="zwiftId"
+              value={zwiftId}
+              onChange={(e) => setZwiftId(e.target.value)}
+              className="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-900"
+              placeholder="e.g. 123456"
+            />
+            <p className="text-xs text-slate-500 mt-1">
+              Optional: Enter your Zwift ID to fetch ZwiftPower stats.
             </p>
           </div>
 

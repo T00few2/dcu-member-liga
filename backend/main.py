@@ -60,32 +60,6 @@ def dcu_api(request):
              return (jsonify({'message': error_msg}), status, headers)
         return redirect(url)
 
-    # --- ZWIFTPOWER ROUTES ---
-
-    if path == '/zwiftpower/team_analysis' and request.method == 'GET':
-        club_id = request.args.get('club_id')
-        search = request.args.get('search', '') # Optional search filter
-        
-        if not club_id:
-            return (jsonify({'message': 'Missing club_id'}), 400, headers)
-            
-        try:
-            # Login on demand
-            zp_service.login()
-            
-            if search:
-                # Use the filter function if search term provided
-                results = zp_service.filter_events_by_title(int(club_id), search)
-                return (jsonify(results), 200, headers)
-            else:
-                # Just return raw team results if no search query
-                # (Since analyze_team_results was removed)
-                results = zp_service.get_team_results(int(club_id))
-                return (jsonify(results), 200, headers)
-                
-        except Exception as e:
-            return (jsonify({'message': f'ZwiftPower Error: {str(e)}'}), 500, headers)
-
     # --- CORE ROUTES ---
 
     if path == '/signup' and request.method == 'POST':
@@ -96,6 +70,7 @@ def dcu_api(request):
             
             e_license = request_json.get('eLicense')
             name = request_json.get('name')
+            zwift_id = request_json.get('zwiftId')
             
             if not e_license or not name:
                 return (jsonify({'message': 'Missing eLicense or name'}), 400, headers)
@@ -105,6 +80,7 @@ def dcu_api(request):
                 doc_ref.set({
                     'name': name,
                     'eLicense': e_license,
+                    'zwiftId': zwift_id, # Save optional Zwift ID
                     'verified': True,
                     'createdAt': firestore.SERVER_TIMESTAMP
                 }, merge=True)
@@ -112,7 +88,7 @@ def dcu_api(request):
             return (jsonify({
                 'message': 'Signup successful',
                 'verified': True,
-                'user': {'name': name, 'eLicense': e_license}
+                'user': {'name': name, 'eLicense': e_license, 'zwiftId': zwift_id}
             }), 200, headers)
         except Exception as e:
             return (jsonify({'message': str(e)}), 500, headers)
@@ -120,17 +96,52 @@ def dcu_api(request):
     if path == '/stats' and request.method == 'GET':
         e_license = request.args.get('eLicense')
         
-        # Fetch stats from services
-        strava_data = strava_service.get_activities(e_license)
+        # Default values
+        strava_data = {'kms': 'Not Connected', 'activities': []}
+        zp_data = {'category': 'N/A', 'ftp': 'N/A'}
+        
+        if e_license and db:
+            try:
+                user_doc = db.collection('users').document(str(e_license)).get()
+                if user_doc.exists:
+                    user_data = user_doc.to_dict()
+                    
+                    # 1. Fetch Strava Stats (if connected)
+                    if user_data.get('strava'):
+                        strava_data = strava_service.get_activities(e_license)
+                    
+                    # 2. Fetch ZwiftPower Stats (if ID exists)
+                    zwift_id = user_data.get('zwiftId')
+                    if zwift_id:
+                        try:
+                            zp_service.login()
+                            zp_json = zp_service.get_rider_data_json(int(zwift_id))
+                            if zp_json and 'data' in zp_json and len(zp_json['data']) > 0:
+                                rider_info = zp_json['data'][0] # Assuming first element has summary
+                                zp_data = {
+                                    'category': rider_info.get('category', 'N/A'),
+                                    'ftp': rider_info.get('ftp', 'N/A'),
+                                    # Add other relevant fields from rider_info here
+                                }
+                        except Exception as zp_e:
+                            print(f"ZwiftPower fetch error: {zp_e}")
+                            zp_data['error'] = "Fetch Failed"
+
+            except Exception as e:
+                print(f"Error fetching stats: {e}")
         
         stats_data = {
             'stats': [
-                {'platform': 'Zwift (Backend)', 'ftp': 300, 'level': 50},
-                {'platform': 'ZwiftPower', 'category': 'A+'},
+                {'platform': 'Zwift (Backend)', 'ftp': 300, 'level': 50}, # Mock Zwift API data
+                {
+                    'platform': 'ZwiftPower', 
+                    'category': zp_data.get('category', 'N/A'),
+                    'ftp': zp_data.get('ftp', 'N/A')
+                },
                 {
                     'platform': 'Strava', 
-                    'kms': strava_data['kms'],
-                    'activities': strava_data['activities']
+                    'kms': strava_data.get('kms', 'N/A'),
+                    'activities': strava_data.get('activities', [])
                 }
             ]
         }

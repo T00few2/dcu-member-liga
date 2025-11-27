@@ -79,26 +79,6 @@ class ZwiftPowerService:
                 f"ZwiftPower final login redirect failed (status={resp4.status_code})"
             )
 
-    def get_team_riders(self, club_id: int) -> dict:
-        """
-        Fetch JSON data about the riders in a given team/club ID.
-        Returns the parsed JSON as a dictionary.
-        """
-        url = f"https://zwiftpower.com/api3.php?do=team_riders&id={club_id}"
-        resp = self.session.get(url)
-        resp.raise_for_status()  # Raise an exception for non-200
-        return resp.json()
-
-    def get_team_results(self, club_id: int) -> dict:
-        """
-        Fetch JSON data about the team's results for a given team/club ID.
-        Returns the parsed JSON as a dictionary.
-        """
-        url = f"https://zwiftpower.com/api3.php?do=team_results&id={club_id}"
-        resp = self.session.get(url)
-        resp.raise_for_status()
-        return resp.json()
-
     def _format_timestamp(self, timestamp):
         """
         Convert Unix timestamp to YYYY-MM-DD HH:MM format in CEST/CET timezone
@@ -132,51 +112,6 @@ class ZwiftPowerService:
         # Format with leading zeros and milliseconds
         return f"{hours:02d}:{minutes:02d}:{remaining_seconds:02d}.{milliseconds:03d}"
 
-    def filter_events_by_title(self, club_id: int, search_string: str) -> dict:
-        """
-        Filter team results to only include events whose titles match the given pattern.
-        """
-        # Get all team results
-        team_results = self.get_team_results(club_id)
-        events = team_results["events"]
-        rows = team_results["data"]
-        filtered_results = {}
-        
-        # First find matching events by title
-        for zid, event_info in events.items():
-            title = event_info.get("title", "")
-            if search_string.lower() in title.lower():
-                # Initialize event data with simplified event info
-                filtered_results[zid] = {
-                    "event_info": {
-                        "title": event_info.get("title", ""),
-                        "date": self._format_timestamp(event_info.get("date", 0))
-                    },
-                    "riders": []
-                }
-        
-        # Now collect rider data for each matching event
-        for row in rows:
-            zid = row.get("zid")
-            if zid in filtered_results:
-                # Clean up rider name
-                rider_name = html.unescape(row.get("name", ""))
-                
-                # Create rider data dictionary
-                rider_data = {
-                    "name": rider_name,
-                    "category": row.get("category"),
-                    "time": self._format_time(row.get("time", [None])[0]),
-                    "position_in_cat": row.get("position_in_cat"),
-                    "20m wkg": row.get("wkg1200", [None])[0],  # 20-min power
-                    "5m wkg": row.get("wkg300", [None])[0],    # 5-min power
-                    "1m wkg": row.get("wkg60", [None])[0]      # 1-min power
-                }
-                
-                filtered_results[zid]["riders"].append(rider_data)
-        
-        return filtered_results
-
     def get_rider_data_json(self, rider_id: int) -> dict:
         """
         Fetch the rider's JSON from the "cache3/profile" endpoint.
@@ -187,23 +122,3 @@ class ZwiftPowerService:
             return resp.json()
         else:
             return {}
-
-    def get_rider_zrs(self, rider_id: int) -> str:
-        """
-        Fetch the Zwift Racing Score by scraping the HTML on
-        /profile.php?z=<rider_id>.
-        """
-        url = f"https://zwiftpower.com/profile.php?z={rider_id}"
-        resp = self.session.get(url)
-        if resp.status_code != 200:
-            return None
-
-        soup = BeautifulSoup(resp.text, "html.parser")
-
-        # Locate the <th> with "Zwift Racing Score", then get next <td> <b>
-        racing_score_th = soup.find("th", string=lambda x: x and "Zwift Racing Score" in x)
-        if racing_score_th:
-            score_td = racing_score_th.find_next("td")
-            if score_td and score_td.find("b"):
-                return score_td.find("b").get_text(strip=True)
-        return None
