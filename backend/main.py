@@ -196,7 +196,22 @@ def dcu_api(request):
                             zr_json = zr_service.get_rider_data(str(zwift_id))
                             print(f"ZR Response Keys: {zr_json.keys() if zr_json else 'None'}") # Debug
                             
-                            if zr_json and zr_json.get('success') and 'data' in zr_json:
+                            # Handle direct object response (no 'data' wrapper)
+                            if zr_json and 'race' in zr_json:
+                                data = zr_json # The response IS the data
+                                race = data.get('race', {})
+                                zr_data = {
+                                    'currentRating': race.get('current', {}).get('rating', 'N/A'),
+                                    'max30Rating': race.get('max30', {}).get('rating', 'N/A'),
+                                    'max90Rating': race.get('max90', {}).get('rating', 'N/A'),
+                                    'phenotype': data.get('phenotype', {}).get('value', 'N/A'),
+                                    'finishes': race.get('finishes', 0),
+                                    'wins': race.get('wins', 0),
+                                    'podiums': race.get('podiums', 0),
+                                    'dnfs': race.get('dnfs', 0)
+                                }
+                            # Handle wrapped response (fallback)
+                            elif zr_json and 'data' in zr_json:
                                 data = zr_json['data']
                                 race = data.get('race', {})
                                 zr_data = {
@@ -210,7 +225,7 @@ def dcu_api(request):
                                     'dnfs': race.get('dnfs', 0)
                                 }
                             else:
-                                print(f"ZR Data Invalid Structure. Success: {zr_json.get('success')}, Data key present: {'data' in zr_json}")
+                                print(f"ZR Data Invalid Structure. Keys: {zr_json.keys() if zr_json else 'None'}")
                         except Exception as zr_e:
                             print(f"ZwiftRacing fetch error: {zr_e}")
                             zr_data['error'] = "Fetch Failed"
