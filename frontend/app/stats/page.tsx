@@ -18,17 +18,17 @@ export default function StatsPage() {
         } else {
           // Fallback mock data if backend isn't running
           setStats([
-            { platform: 'Zwift (Offline)', ftp: 280, level: 42 },
-            { platform: 'ZwiftPower (Offline)', category: 'A' },
-            { platform: 'Strava (Offline)', kmsThisYear: 6500 }
+            { platform: 'Zwift', ftp: 280, level: 42 },
+            { platform: 'ZwiftPower', category: 'A' },
+            { platform: 'Strava', kmsThisYear: 6500 }
           ]);
         }
       } catch (e) {
          // Fallback mock data
          setStats([
-            { platform: 'Zwift (Offline)', ftp: 280, level: 42 },
-            { platform: 'ZwiftPower (Offline)', category: 'A' },
-            { platform: 'Strava (Offline)', kmsThisYear: 6500 }
+            { platform: 'Zwift', ftp: 280, level: 42 },
+            { platform: 'ZwiftPower', category: 'A' },
+            { platform: 'Strava', kmsThisYear: 6500 }
           ]);
       } finally {
         setLoading(false);
