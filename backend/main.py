@@ -5,6 +5,8 @@ from firebase_admin import credentials
 from firebase_admin import firestore
 import os
 from services.strava import StravaService
+from services.zwiftpower import ZwiftPowerService
+from config import ZWIFT_USERNAME, ZWIFT_PASSWORD
 
 # Initialize Firebase Admin
 try:
@@ -23,6 +25,7 @@ except Exception as e:
 
 # Initialize Services
 strava_service = StravaService(db)
+zp_service = ZwiftPowerService(ZWIFT_USERNAME, ZWIFT_PASSWORD)
 
 @functions_framework.http
 def dcu_api(request):
@@ -56,6 +59,32 @@ def dcu_api(request):
         if error_msg:
              return (jsonify({'message': error_msg}), status, headers)
         return redirect(url)
+
+    # --- ZWIFTPOWER ROUTES ---
+
+    if path == '/zwiftpower/team_analysis' and request.method == 'GET':
+        club_id = request.args.get('club_id')
+        search = request.args.get('search', '') # Optional search filter
+        
+        if not club_id:
+            return (jsonify({'message': 'Missing club_id'}), 400, headers)
+            
+        try:
+            # Login on demand
+            zp_service.login()
+            
+            if search:
+                # Use the filter function if search term provided
+                results = zp_service.filter_events_by_title(int(club_id), search)
+                return (jsonify(results), 200, headers)
+            else:
+                # Just return raw team results if no search query
+                # (Since analyze_team_results was removed)
+                results = zp_service.get_team_results(int(club_id))
+                return (jsonify(results), 200, headers)
+                
+        except Exception as e:
+            return (jsonify({'message': f'ZwiftPower Error: {str(e)}'}), 500, headers)
 
     # --- CORE ROUTES ---
 
