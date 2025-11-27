@@ -7,6 +7,7 @@ import os
 from services.strava import StravaService
 from services.zwiftpower import ZwiftPowerService
 from services.zwiftracing import ZwiftRacingService
+from services.zwift import ZwiftService
 from config import ZWIFT_USERNAME, ZWIFT_PASSWORD
 
 # Initialize Firebase Admin
@@ -34,6 +35,10 @@ _zp_service_instance = None
 _zp_service_timestamp = 0
 SESSION_VALIDITY = 3000 # 50 minutes (less than typical 1h expiry)
 
+# Global cache for Zwift service
+_zwift_service_instance = None
+_zwift_service_timestamp = 0
+
 def get_zp_service():
     global _zp_service_instance, _zp_service_timestamp
     now = time.time()
@@ -53,6 +58,29 @@ def get_zp_service():
     except Exception as e:
         print(f"Failed to initialize ZwiftPower session: {e}")
         # Return a fresh instance anyway so the caller can try/fail gracefully per request
+        return service
+
+def get_zwift_service():
+    global _zwift_service_instance, _zwift_service_timestamp
+    now = time.time()
+    
+    if _zwift_service_instance and (now - _zwift_service_timestamp < SESSION_VALIDITY):
+        # Check token valid internally
+        try:
+            _zwift_service_instance.ensure_valid_token()
+            return _zwift_service_instance
+        except:
+            pass # Re-create if token refresh fails
+
+    print("Creating new Zwift service session.")
+    service = ZwiftService(ZWIFT_USERNAME, ZWIFT_PASSWORD)
+    try:
+        service.authenticate()
+        _zwift_service_instance = service
+        _zwift_service_timestamp = now
+        return service
+    except Exception as e:
+        print(f"Failed to initialize Zwift session: {e}")
         return service
 
 zr_service = ZwiftRacingService()
@@ -130,6 +158,7 @@ def dcu_api(request):
         strava_data = {'kms': 'Not Connected', 'activities': []}
         zp_data = {'category': 'N/A', 'ftp': 'N/A'}
         zr_data = {}
+        zwift_data = {}
         
         if e_license and db:
             try:
@@ -182,12 +211,32 @@ def dcu_api(request):
                             print(f"ZwiftRacing fetch error: {zr_e}")
                             zr_data['error'] = "Fetch Failed"
 
+                        # 4. Fetch Zwift API Stats
+                        try:
+                            zwift_service = get_zwift_service()
+                            profile = zwift_service.get_profile(int(zwift_id))
+                            if profile:
+                                zwift_data = {
+                                    'ftp': profile.get('ftp', 'N/A'),
+                                    'weight': f"{round(profile.get('weight', 0) / 1000, 1)} kg" if profile.get('weight') else 'N/A',
+                                    'height': f"{round(profile.get('height', 0) / 10, 0)} cm" if profile.get('height') else 'N/A',
+                                    'totalDistance': f"{int(profile.get('totalDistance', 0) / 1000)} km" if profile.get('totalDistance') else 'N/A',
+                                    'totalTime': f"{int(profile.get('totalTimeInMinutes', 0) / 60)} hrs" if profile.get('totalTimeInMinutes') else 'N/A',
+                                    'level': int(profile.get('level', 0))
+                                }
+                        except Exception as z_e:
+                            print(f"Zwift API fetch error: {z_e}")
+                            zwift_data['error'] = "Fetch Failed"
+
             except Exception as e:
                 print(f"Error fetching stats: {e}")
         
         stats_data = {
             'stats': [
-                {'platform': 'Zwift (Backend)', 'ftp': 300, 'level': 50}, # Mock Zwift API data
+                {
+                    'platform': 'Zwift',
+                    **zwift_data
+                },
                 {
                     'platform': 'ZwiftPower', 
                     'category': zp_data.get('category', 'N/A'),
