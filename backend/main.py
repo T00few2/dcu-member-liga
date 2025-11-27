@@ -140,10 +140,10 @@ def dcu_api(request):
             return (jsonify({'message': str(e)}), 500, headers)
 
     if path == '/stats' and request.method == 'GET':
-        # Accept eLicense param to fetch specific user stats
         e_license = request.args.get('eLicense')
         
         strava_kms = "Not Connected"
+        recent_activities = []
         
         if e_license and db:
             try:
@@ -154,19 +154,27 @@ def dcu_api(request):
                     
                     if strava_auth:
                         access_token = strava_auth.get('access_token')
-                        # TODO: Check expiry and refresh if needed
                         
-                        # Fetch activities from Strava
-                        # (Simple calc: sum distance of last 30 activities)
+                        # Fetch last 10 activities
                         acts_res = requests.get(
-                            "https://www.strava.com/api/v3/athlete/activities?per_page=30",
+                            "https://www.strava.com/api/v3/athlete/activities?per_page=10",
                             headers={'Authorization': f"Bearer {access_token}"}
                         )
                         
                         if acts_res.status_code == 200:
                             activities = acts_res.json()
+                            # Calculate total from these 10 (just as example, typically you want total stats API)
                             total_meters = sum(a['distance'] for a in activities)
-                            strava_kms = f"{round(total_meters / 1000, 1)} km (Last 30 acts)"
+                            strava_kms = f"{round(total_meters / 1000, 1)} km (Last 10 rides)"
+                            
+                            # Format activities for frontend
+                            for a in activities:
+                                recent_activities.append({
+                                    'name': a['name'],
+                                    'distance': f"{round(a['distance'] / 1000, 2)} km",
+                                    'date': a['start_date_local'][:10], # YYYY-MM-DD
+                                    'moving_time': f"{round(a['moving_time'] / 60)} min"
+                                })
                         else:
                             strava_kms = "Error fetching"
             except Exception as e:
@@ -176,7 +184,12 @@ def dcu_api(request):
             'stats': [
                 {'platform': 'Zwift (Backend)', 'ftp': 300, 'level': 50},
                 {'platform': 'ZwiftPower', 'category': 'A+'},
-                {'platform': 'Strava', 'kms': strava_kms}
+                {
+                    'platform': 'Strava', 
+                    'kms': strava_kms,
+                    # We embed the list here so frontend can render it
+                    'activities': recent_activities 
+                }
             ]
         }
         return (jsonify(stats_data), 200, headers)
