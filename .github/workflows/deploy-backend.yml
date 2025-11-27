@@ -18,13 +18,17 @@ jobs:
         with:
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
 
-      - name: Deploy to Cloud Functions
-        uses: google-github-actions/deploy-cloud-functions@v2
-        with:
-          name: dcu_api
-          runtime: python311
-          source_dir: backend
-          entry_point: dcu_api
-          region: us-central1
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
-          gen2: true
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Cloud Functions (Gen 2)
+        run: |
+          gcloud functions deploy dcu_api \
+            --gen2 \
+            --runtime=python311 \
+            --region=us-central1 \
+            --source=./backend \
+            --entry-point=dcu_api \
+            --trigger-http \
+            --allow-unauthenticated \
+            --project=${{ secrets.GCP_PROJECT_ID }}
