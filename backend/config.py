@@ -19,3 +19,6 @@ if not STRAVA_CLIENT_ID or not STRAVA_CLIENT_SECRET:
 
 if not ZWIFT_USERNAME or not ZWIFT_PASSWORD:
     print("Warning: ZWIFT_USERNAME or ZWIFT_PASSWORD is missing.")
+
+if not ZR_AUTH_KEY:
+    print("Warning: ZR_AUTH_KEY is missing. ZwiftRacing integration will fail.")
