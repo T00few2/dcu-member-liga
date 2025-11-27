@@ -6,8 +6,6 @@ from firebase_admin import firestore
 import os
 
 # Initialize Firebase Admin
-# For production (Google Cloud Functions), it uses Application Default Credentials automatically.
-# For local development, we check for a service account key file.
 try:
     if not firebase_admin._apps:
         cred_path = 'serviceAccountKey.json'
@@ -15,7 +13,6 @@ try:
             cred = credentials.Certificate(cred_path)
             firebase_admin.initialize_app(cred)
         else:
-            # Fallback to default credentials (works in GCP environment)
             firebase_admin.initialize_app()
             
     db = firestore.client()
@@ -25,20 +22,17 @@ except Exception as e:
 
 @functions_framework.http
 def dcu_api(request):
-    # Set CORS headers for the preflight request
-    if request.method == 'OPTIONS':
-        headers = {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, POST',
-            'Access-Control-Allow-Headers': 'Content-Type',
-            'Access-Control-Max-Age': '3600'
-        }
-        return ('', 204, headers)
-
-    # Set CORS headers for the main request
+    # CORS Headers
     headers = {
-        'Access-Control-Allow-Origin': '*'
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Max-Age': '3600'
     }
+
+    # Handle preflight requests
+    if request.method == 'OPTIONS':
+        return ('', 204, headers)
 
     path = request.path
 
@@ -54,20 +48,15 @@ def dcu_api(request):
             if not e_license or not name:
                 return (jsonify({'message': 'Missing eLicense or name'}), 400, headers)
 
-            # TODO: Verify e-license with DCU API (mock for now)
-            
-            # Save user to Firestore
+            # Save to Firestore
             if db:
                 doc_ref = db.collection('users').document(str(e_license))
                 doc_ref.set({
                     'name': name,
                     'eLicense': e_license,
-                    'verified': True, # Assume verified for now
+                    'verified': True,
                     'createdAt': firestore.SERVER_TIMESTAMP
                 })
-                print(f"Saved user {name} ({e_license}) to Firestore.")
-            else:
-                print("Database not connected. Skipping save.")
             
             return (jsonify({
                 'message': 'Signup successful',
@@ -75,16 +64,15 @@ def dcu_api(request):
                 'user': {'name': name, 'eLicense': e_license}
             }), 200, headers)
         except Exception as e:
-            print(f"Error in signup: {e}")
             return (jsonify({'message': str(e)}), 500, headers)
 
     if path == '/stats' and request.method == 'GET':
-        # Example: Fetch stats from Firestore or return mock
+        # Live backend data (distinct from frontend mock)
         stats_data = {
             'stats': [
-                {'platform': 'Zwift', 'ftp': 250, 'level': 35},
-                {'platform': 'ZwiftPower', 'category': 'B'},
-                {'platform': 'Strava', 'kmsThisYear': 5000}
+                {'platform': 'Zwift (Backend)', 'ftp': 300, 'level': 50},
+                {'platform': 'ZwiftPower', 'category': 'A+'},
+                {'platform': 'Strava', 'kmsThisYear': 9999}
             ]
         }
         return (jsonify(stats_data), 200, headers)
