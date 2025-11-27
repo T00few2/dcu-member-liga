@@ -1,9 +1,22 @@
 import functions_framework
-from flask import jsonify
+from flask import jsonify, redirect, request
 import firebase_admin
 from firebase_admin import credentials
 from firebase_admin import firestore
 import os
+import requests
+from dotenv import load_dotenv
+
+# Load environment variables from .env (for local dev)
+load_dotenv()
+
+# Configuration
+STRAVA_CLIENT_ID = os.getenv('STRAVA_CLIENT_ID')
+STRAVA_CLIENT_SECRET = os.getenv('STRAVA_CLIENT_SECRET')
+# Dynamically set redirect URI based on environment
+# In production, this should be your Cloud Function URL.
+# Locally, it might be http://localhost:8080/strava/callback
+BACKEND_URL = os.getenv('BACKEND_URL', 'https://us-central1-dcu-member-liga-479507.cloudfunctions.net/dcu_api') 
 
 # Initialize Firebase Admin
 try:
@@ -30,11 +43,82 @@ def dcu_api(request):
         'Access-Control-Max-Age': '3600'
     }
 
-    # Handle preflight requests
     if request.method == 'OPTIONS':
         return ('', 204, headers)
 
     path = request.path
+
+    # --- STRAVA AUTH ROUTES ---
+
+    if path == '/strava/login' and request.method == 'GET':
+        # Redirect user to Strava Authorization Page
+        # We need to pass a 'state' parameter (e.g., user's eLicense) to link the account later
+        e_license = request.args.get('eLicense')
+        if not e_license:
+             return (jsonify({'message': 'Missing eLicense param'}), 400, headers)
+
+        redirect_uri = f"{BACKEND_URL}/strava/callback"
+        scope = "read,activity:read_all" # Request permissions
+        
+        strava_url = (
+            f"https://www.strava.com/oauth/authorize"
+            f"?client_id={STRAVA_CLIENT_ID}"
+            f"&response_type=code"
+            f"&redirect_uri={redirect_uri}"
+            f"&approval_prompt=force"
+            f"&scope={scope}"
+            f"&state={e_license}" 
+        )
+        return redirect(strava_url)
+
+    if path == '/strava/callback' and request.method == 'GET':
+        # Handle callback from Strava
+        code = request.args.get('code')
+        e_license = request.args.get('state') # We get back the eLicense we sent
+        error = request.args.get('error')
+
+        if error:
+            return (jsonify({'message': f'Strava Error: {error}'}), 400, headers)
+        
+        if not code or not e_license:
+             return (jsonify({'message': 'Missing code or state'}), 400, headers)
+
+        # Exchange code for tokens
+        token_url = "https://www.strava.com/oauth/token"
+        payload = {
+            'client_id': STRAVA_CLIENT_ID,
+            'client_secret': STRAVA_CLIENT_SECRET,
+            'code': code,
+            'grant_type': 'authorization_code'
+        }
+        
+        try:
+            res = requests.post(token_url, data=payload)
+            data = res.json()
+            
+            if res.status_code != 200:
+                 return (jsonify({'message': 'Failed to get tokens', 'details': data}), 500, headers)
+            
+            # Save tokens to Firestore user document
+            if db:
+                user_ref = db.collection('users').document(str(e_license))
+                user_ref.update({
+                    'strava': {
+                        'athlete_id': data['athlete']['id'],
+                        'access_token': data['access_token'],
+                        'refresh_token': data['refresh_token'],
+                        'expires_at': data['expires_at']
+                    }
+                })
+            
+            # Redirect back to frontend success page
+            # Hardcoded for POC, should be env var
+            return redirect(f"https://dcu-member-liga.vercel.app/signup?strava=connected")
+
+        except Exception as e:
+             return (jsonify({'message': str(e)}), 500, headers)
+
+    # --- EXISTING ROUTES ---
 
     if path == '/signup' and request.method == 'POST':
         try:
@@ -48,7 +132,6 @@ def dcu_api(request):
             if not e_license or not name:
                 return (jsonify({'message': 'Missing eLicense or name'}), 400, headers)
 
-            # Save to Firestore
             if db:
                 doc_ref = db.collection('users').document(str(e_license))
                 doc_ref.set({
@@ -56,7 +139,7 @@ def dcu_api(request):
                     'eLicense': e_license,
                     'verified': True,
                     'createdAt': firestore.SERVER_TIMESTAMP
-                })
+                }, merge=True) # Use merge to not overwrite existing data
             
             return (jsonify({
                 'message': 'Signup successful',
@@ -67,7 +150,6 @@ def dcu_api(request):
             return (jsonify({'message': str(e)}), 500, headers)
 
     if path == '/stats' and request.method == 'GET':
-        # Live backend data (distinct from frontend mock)
         stats_data = {
             'stats': [
                 {'platform': 'Zwift (Backend)', 'ftp': 300, 'level': 50},

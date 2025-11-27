@@ -1,5 +1,5 @@
 functions-framework==3.*
 flask==3.*
 firebase-admin==6.*
-
-# Trigger deploy 2nd gen again again again again
+requests==2.*
+python-dotenv==1.*
