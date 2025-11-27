@@ -3,7 +3,7 @@ export default function ResultsPage() {
   const races = [
     { id: 1, name: 'League Opener - Watopia Flat', date: '2023-10-01', winner: 'J. Doe' },
     { id: 2, name: 'Mountain Challenge - Alpe du Zwift', date: '2023-10-08', winner: 'A. Smith' },
-    { id: 3, name: 'Sprint Series - Crit City ', date: '2023-10-15', winner: 'B. Johnson' },
+    { id: 3, name: 'Sprint Series - Crit City', date: '2023-10-15', winner: 'B. Johnson' },
   ];
 
   return (
