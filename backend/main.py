@@ -194,6 +194,8 @@ def dcu_api(request):
                         # 3. Fetch ZwiftRacing Stats
                         try:
                             zr_json = zr_service.get_rider_data(str(zwift_id))
+                            print(f"ZR Response Keys: {zr_json.keys() if zr_json else 'None'}") # Debug
+                            
                             if zr_json and zr_json.get('success') and 'data' in zr_json:
                                 data = zr_json['data']
                                 race = data.get('race', {})
@@ -207,6 +209,8 @@ def dcu_api(request):
                                     'podiums': race.get('podiums', 0),
                                     'dnfs': race.get('dnfs', 0)
                                 }
+                            else:
+                                print(f"ZR Data Invalid Structure. Success: {zr_json.get('success')}, Data key present: {'data' in zr_json}")
                         except Exception as zr_e:
                             print(f"ZwiftRacing fetch error: {zr_e}")
                             zr_data['error'] = "Fetch Failed"

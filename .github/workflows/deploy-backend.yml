@@ -31,5 +31,5 @@ jobs:
             --entry-point=dcu_api \
             --trigger-http \
             --allow-unauthenticated \
-            --set-env-vars STRAVA_CLIENT_ID=${{ secrets.STRAVA_CLIENT_ID }},STRAVA_CLIENT_SECRET=${{ secrets.STRAVA_CLIENT_SECRET }},BACKEND_URL=${{ secrets.BACKEND_URL }},ZWIFT_USERNAME=${{ secrets.ZWIFT_USERNAME }},ZWIFT_PASSWORD=${{ secrets.ZWIFT_PASSWORD }},ZR_AUTH_KEY=${{ secrets.ZR_AUTH_KEY }} \
+            --set-env-vars STRAVA_CLIENT_ID=${{ secrets.STRAVA_CLIENT_ID }},STRAVA_CLIENT_SECRET=${{ secrets.STRAVA_CLIENT_SECRET }},BACKEND_URL=${{ secrets.BACKEND_URL }},ZWIFT_USERNAME=${{ secrets.ZWIFT_USERNAME }},ZWIFT_PASSWORD=${{ secrets.ZWIFT_PASSWORD }},ZR_AUTH_KEY=${{ secrets.ZR_AUTH_KEY }},ZR_BASE_URL=${{ secrets.ZR_BASE_URL }} \
             --project=${{ secrets.GCP_PROJECT_ID }}
