@@ -1,0 +1,32 @@
+name: Deploy Backend to Google Cloud Functions
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+
+jobs:
+  deploy_backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+
+      - name: Deploy to Cloud Functions
+        uses: google-github-actions/deploy-cloud-functions@v2
+        with:
+          name: dcu_api
+          runtime: python311
+          source_dir: backend
+          entry_point: dcu_api
+          region: us-central1 # Change if you prefer europe-west1, etc.
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          # Ensure the function allows unauthenticated access for the frontend to call it
+          # (Or handle authentication via Firebase Auth tokens later)
+
