@@ -6,6 +6,7 @@ from firebase_admin import firestore
 import os
 from services.strava import StravaService
 from services.zwiftpower import ZwiftPowerService
+from services.zwiftracing import ZwiftRacingService
 from config import ZWIFT_USERNAME, ZWIFT_PASSWORD
 
 # Initialize Firebase Admin
@@ -26,6 +27,7 @@ except Exception as e:
 # Initialize Services
 strava_service = StravaService(db)
 zp_service = ZwiftPowerService(ZWIFT_USERNAME, ZWIFT_PASSWORD)
+zr_service = ZwiftRacingService()
 
 @functions_framework.http
 def dcu_api(request):
@@ -99,6 +101,7 @@ def dcu_api(request):
         # Default values
         strava_data = {'kms': 'Not Connected', 'activities': []}
         zp_data = {'category': 'N/A', 'ftp': 'N/A'}
+        zr_data = {}
         
         if e_license and db:
             try:
@@ -127,6 +130,26 @@ def dcu_api(request):
                             print(f"ZwiftPower fetch error: {zp_e}")
                             zp_data['error'] = "Fetch Failed"
 
+                        # 3. Fetch ZwiftRacing Stats
+                        try:
+                            zr_json = zr_service.get_rider_data(str(zwift_id))
+                            if zr_json and zr_json.get('success') and 'data' in zr_json:
+                                data = zr_json['data']
+                                race = data.get('race', {})
+                                zr_data = {
+                                    'currentRating': race.get('current', {}).get('rating', 'N/A'),
+                                    'max30Rating': race.get('max30', {}).get('rating', 'N/A'),
+                                    'max90Rating': race.get('max90', {}).get('rating', 'N/A'),
+                                    'phenotype': data.get('phenotype', {}).get('value', 'N/A'),
+                                    'finishes': race.get('finishes', 0),
+                                    'wins': race.get('wins', 0),
+                                    'podiums': race.get('podiums', 0),
+                                    'dnfs': race.get('dnfs', 0)
+                                }
+                        except Exception as zr_e:
+                            print(f"ZwiftRacing fetch error: {zr_e}")
+                            zr_data['error'] = "Fetch Failed"
+
             except Exception as e:
                 print(f"Error fetching stats: {e}")
         
@@ -137,6 +160,10 @@ def dcu_api(request):
                     'platform': 'ZwiftPower', 
                     'category': zp_data.get('category', 'N/A'),
                     'ftp': zp_data.get('ftp', 'N/A')
+                },
+                {
+                    'platform': 'ZwiftRacing',
+                    **zr_data
                 },
                 {
                     'platform': 'Strava', 
