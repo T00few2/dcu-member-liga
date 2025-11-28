@@ -175,10 +175,60 @@ def dcu_api(request):
 
     path = request.path
 
-    # --- ADMIN: ZWIFT ROUTES ---
+    # --- ADMIN: ZWIFT ROUTES & SEGMENTS ---
     if path == '/routes' and request.method == 'GET':
         routes = _zwift_game_service.get_routes()
         return (jsonify({'routes': routes}), 200, headers)
+
+    if path == '/segments' and request.method == 'GET':
+        route_id = request.args.get('routeId')
+        laps = request.args.get('laps', 1)
+        if not route_id:
+            return (jsonify({'message': 'Missing routeId'}), 400, headers)
+        
+        segments = _zwift_game_service.get_event_segments(route_id, laps=int(laps))
+        return (jsonify({'segments': segments}), 200, headers)
+
+    # --- ADMIN: LEAGUE SETTINGS (Points Schemes) ---
+    if path == '/league/settings' and request.method == 'GET':
+        if not db:
+             return (jsonify({'error': 'DB not available'}), 500, headers)
+        try:
+            doc = db.collection('league').document('settings').get()
+            settings = doc.to_dict() if doc.exists else {}
+            return (jsonify({'settings': settings}), 200, headers)
+        except Exception as e:
+            return (jsonify({'message': str(e)}), 500, headers)
+
+    if path == '/league/settings' and request.method == 'POST':
+        # Verify Admin
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+             return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        try:
+             id_token = auth_header.split('Bearer ')[1]
+             auth.verify_id_token(id_token)
+        except:
+             return (jsonify({'message': 'Unauthorized'}), 401, headers)
+
+        if not db:
+             return (jsonify({'error': 'DB not available'}), 500, headers)
+        
+        try:
+            data = request.get_json()
+            # Validate schemes are lists of numbers
+            finish_points = data.get('finishPoints', [])
+            sprint_points = data.get('sprintPoints', [])
+            
+            db.collection('league').document('settings').set({
+                'finishPoints': finish_points,
+                'sprintPoints': sprint_points,
+                'updatedAt': firestore.SERVER_TIMESTAMP
+            }, merge=True)
+            
+            return (jsonify({'message': 'Settings saved'}), 200, headers)
+        except Exception as e:
+            return (jsonify({'message': str(e)}), 500, headers)
 
     # --- ADMIN: RACES CRUD ---
     if path == '/races' and request.method == 'GET':
