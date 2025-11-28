@@ -36,6 +36,7 @@ interface Race {
   laps: number;
   totalDistance: number;
   totalElevation: number;
+  eventId?: string; // Added Event ID
   selectedSegments?: string[]; // List of segment unique keys (id_count) - KEPT FOR BACKWARDS COMPAT
   sprints?: SelectedSegment[]; // Full segment objects
 }
@@ -62,6 +63,7 @@ export default function AdminPage() {
   const [editingRaceId, setEditingRaceId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [date, setDate] = useState('');
+  const [eventId, setEventId] = useState('');
   const [selectedMap, setSelectedMap] = useState('');
   const [selectedRouteId, setSelectedRouteId] = useState('');
   const [laps, setLaps] = useState(1);
@@ -177,6 +179,7 @@ export default function AdminPage() {
       setEditingRaceId(race.id);
       setName(race.name);
       setDate(race.date);
+      setEventId(race.eventId || '');
       setSelectedMap(race.map);
       setSelectedRouteId(race.routeId);
       setLaps(race.laps);
@@ -197,6 +200,7 @@ export default function AdminPage() {
       setEditingRaceId(null);
       setName('');
       setDate('');
+      setEventId('');
       setSelectedMap('');
       setSelectedRouteId('');
       setLaps(1);
@@ -297,6 +301,7 @@ export default function AdminPage() {
         const raceData = {
             name,
             date,
+            eventId, // Include Event ID
             routeId: selectedRoute.id,
             routeName: selectedRoute.name,
             map: selectedRoute.map,
@@ -610,6 +615,18 @@ export default function AdminPage() {
                               </div>
                           </div>
 
+                          <div className="mb-4">
+                              <label className="block text-sm font-medium text-muted-foreground mb-1">ZwiftPower Event ID (Optional)</label>
+                              <input 
+                                type="text" 
+                                value={eventId}
+                                onChange={e => setEventId(e.target.value)}
+                                className="w-full p-2 border border-input rounded bg-background text-foreground"
+                                placeholder="e.g. 123456"
+                              />
+                              <p className="text-xs text-muted-foreground mt-1">Used to fetch race results automatically.</p>
+                          </div>
+
                           {/* Segment Selection */}
                           <div className="border-t border-border pt-4">
                               <label className="block font-medium text-card-foreground mb-3">Sprint Segments (Scoring)</label>
@@ -700,6 +717,7 @@ export default function AdminPage() {
                                 <td className="px-6 py-4 text-muted-foreground">
                                     <div className="font-medium text-card-foreground">{r.map}</div>
                                     <div className="text-xs">{r.routeName} ({r.laps} laps)</div>
+                                    {r.eventId && <div className="text-xs text-primary/70">Event ID: {r.eventId}</div>}
                                 </td>
                                 <td className="px-6 py-4 text-muted-foreground">
                                     {r.sprints ? r.sprints.length : (r.selectedSegments ? r.selectedSegments.length : 0)} selected
