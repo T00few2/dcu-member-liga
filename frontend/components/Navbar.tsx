@@ -22,6 +22,7 @@ export default function Navbar() {
                   {isRegistered && (
                     <>
                       <Link href="/participants" className="hover:text-slate-300 hidden md:block">Participants</Link>
+                      <Link href="/schedule" className="hover:text-slate-300 hidden md:block">Schedule</Link>
                       <Link href="/results" className="hover:text-slate-300 hidden md:block">Results</Link>
                     </>
                   )}

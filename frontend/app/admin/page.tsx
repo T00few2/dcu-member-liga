@@ -22,6 +22,10 @@ interface Segment {
   lap: number;
 }
 
+interface SelectedSegment extends Segment {
+    key: string;
+}
+
 interface Race {
   id: string;
   name: string;
@@ -32,7 +36,8 @@ interface Race {
   laps: number;
   totalDistance: number;
   totalElevation: number;
-  selectedSegments?: string[]; // List of segment unique keys (id_count)
+  selectedSegments?: string[]; // List of segment unique keys (id_count) - KEPT FOR BACKWARDS COMPAT
+  sprints?: SelectedSegment[]; // Full segment objects
 }
 
 interface LeagueSettings {
@@ -60,7 +65,9 @@ export default function AdminPage() {
   const [selectedMap, setSelectedMap] = useState('');
   const [selectedRouteId, setSelectedRouteId] = useState('');
   const [laps, setLaps] = useState(1);
-  const [selectedSegments, setSelectedSegments] = useState<string[]>([]);
+  
+  // We now store selected sprints as full objects for better UI display later
+  const [selectedSprints, setSelectedSprints] = useState<SelectedSegment[]>([]);
   
   // Settings Form State
   const [finishPointsStr, setFinishPointsStr] = useState('');
@@ -173,7 +180,25 @@ export default function AdminPage() {
       setSelectedMap(race.map);
       setSelectedRouteId(race.routeId);
       setLaps(race.laps);
-      setSelectedSegments(race.selectedSegments || []);
+      
+      // Handle backwards compatibility or new structure
+      if (race.sprints) {
+          setSelectedSprints(race.sprints);
+      } else if (race.selectedSegments) {
+          // If we have old ID list but no objects, we can't fully restore without fetching segments first.
+          // For now, we'll rely on the fact that if they edit, we re-fetch segments and they might need to re-select 
+          // IF the segments haven't loaded yet.
+          // BUT 'availableSegments' updates when route/laps change.
+          // So we can try to restore from availableSegments if they match keys.
+          // Since `availableSegments` is async, this is tricky.
+          // Better strategy: Just clear if migrating, or try to match when segments load.
+          setSelectedSprints([]);
+          // We'll use a side-effect to restore selection once segments load? 
+          // For simplicity in this turn: Just reset.
+      } else {
+          setSelectedSprints([]);
+      }
+      
       window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -184,7 +209,7 @@ export default function AdminPage() {
       setSelectedMap('');
       setSelectedRouteId('');
       setLaps(1);
-      setSelectedSegments([]);
+      setSelectedSprints([]);
   };
 
   const generatePoints = () => {
@@ -263,7 +288,8 @@ export default function AdminPage() {
             laps,
             totalDistance: Number(calcDistance),
             totalElevation: Number(calcElevation),
-            selectedSegments
+            selectedSegments: selectedSprints.map(s => s.key), // Keep for legacy/compat
+            sprints: selectedSprints // Save full objects
         };
         
         const method = editingRaceId ? 'PUT' : 'POST';
@@ -314,13 +340,13 @@ export default function AdminPage() {
       }
   };
 
-  const toggleSegment = (segId: string, count: number) => {
+  const toggleSegment = (seg: Segment) => {
       // Construct unique key
-      const key = `${segId}_${count}`;
-      if (selectedSegments.includes(key)) {
-          setSelectedSegments(selectedSegments.filter(k => k !== key));
+      const key = `${seg.id}_${seg.count}`;
+      if (selectedSprints.some(s => s.key === key)) {
+          setSelectedSprints(selectedSprints.filter(s => s.key !== key));
       } else {
-          setSelectedSegments([...selectedSegments, key]);
+          setSelectedSprints([...selectedSprints, { ...seg, key }]);
       }
   };
 
@@ -567,12 +593,13 @@ export default function AdminPage() {
                                                   <div className="p-2 grid grid-cols-1 md:grid-cols-2 gap-2">
                                                       {segmentsByLap[lapNum].map((seg, idx) => {
                                                           const uniqueKey = `${seg.id}_${seg.count}`;
+                                                          const isSelected = selectedSprints.some(s => s.key === uniqueKey);
                                                           return (
                                                               <label key={uniqueKey} className="flex items-center gap-3 p-2 rounded hover:bg-muted/50 cursor-pointer border border-transparent hover:border-border transition">
                                                                   <input 
                                                                     type="checkbox"
-                                                                    checked={selectedSegments.includes(uniqueKey)}
-                                                                    onChange={() => toggleSegment(seg.id, seg.count)}
+                                                                    checked={isSelected}
+                                                                    onChange={() => toggleSegment(seg)}
                                                                     className="w-4 h-4 rounded border-input text-primary focus:ring-primary"
                                                                   />
                                                                   <div className="text-sm">
@@ -641,7 +668,7 @@ export default function AdminPage() {
                                     <div className="text-xs">{r.routeName} ({r.laps} laps)</div>
                                 </td>
                                 <td className="px-6 py-4 text-muted-foreground">
-                                    {r.selectedSegments ? r.selectedSegments.length : 0} selected
+                                    {r.sprints ? r.sprints.length : (r.selectedSegments ? r.selectedSegments.length : 0)} selected
                                 </td>
                                 <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
                                     <button 

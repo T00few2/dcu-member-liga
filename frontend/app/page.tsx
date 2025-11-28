@@ -2,12 +2,50 @@
 
 import { useAuth } from "@/lib/auth-context";
 import Link from "next/link";
+import { useEffect, useState } from "react";
+
+interface Race {
+  id: string;
+  name: string;
+  date: string;
+  routeId: string;
+  routeName: string;
+  map: string;
+}
 
 export default function Home() {
-  const { user, signInWithGoogle } = useAuth();
+  const { user, signInWithGoogle, isRegistered } = useAuth();
+  const [nextRace, setNextRace] = useState<Race | null>(null);
+
+  useEffect(() => {
+      const fetchNextRace = async () => {
+          if (!user || !isRegistered) return;
+          try {
+              const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+              const token = await user.getIdToken();
+              const res = await fetch(`${apiUrl}/races`, {
+                  headers: { 'Authorization': `Bearer ${token}` }
+              });
+              if (res.ok) {
+                  const data = await res.json();
+                  const now = new Date();
+                  const upcoming = (data.races || [])
+                      .filter((r: Race) => new Date(r.date) > now)
+                      .sort((a: Race, b: Race) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                  
+                  if (upcoming.length > 0) {
+                      setNextRace(upcoming[0]);
+                  }
+              }
+          } catch (e) {
+              console.error('Error fetching next race', e);
+          }
+      };
+      fetchNextRace();
+  }, [user, isRegistered]);
 
   return (
-    <div className="flex flex-col items-center justify-center py-20 text-center">
+    <div className="flex flex-col items-center justify-center py-20 text-center px-4">
       <h1 className="text-4xl font-bold mb-4 text-foreground">Welcome to DCU Member League</h1>
       <p className="text-xl mb-8 max-w-2xl text-foreground opacity-80">
         The official e-cycling league for DCU members. Join the competition, view participants, and track race results.
@@ -31,23 +69,45 @@ export default function Home() {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl">
-          <Link href="/participants" className="p-6 border border-border rounded-lg shadow-sm hover:shadow-md transition bg-card text-card-foreground group text-left">
-            <h2 className="text-2xl font-semibold mb-2 group-hover:text-primary">Participants &rarr;</h2>
-            <p className="text-muted-foreground">
-              Check out the competition.
-            </p>
-          </Link>
-          
-          <Link href="/results" className="p-6 border border-border rounded-lg shadow-sm hover:shadow-md transition bg-card text-card-foreground group text-left">
-            <h2 className="text-2xl font-semibold mb-2 group-hover:text-primary">Results &rarr;</h2>
-            <p className="text-muted-foreground">
-              View race results and league standings.
-            </p>
-          </Link>
+        <div className="w-full max-w-4xl space-y-8">
+            {nextRace && (
+                <div className="bg-primary/10 border border-primary/20 p-6 rounded-lg text-left flex flex-col md:flex-row justify-between items-center gap-4">
+                    <div>
+                        <div className="text-primary text-sm font-bold uppercase tracking-wider mb-1">Next Race</div>
+                        <h2 className="text-2xl font-bold text-foreground">{nextRace.name}</h2>
+                        <div className="text-foreground/80 mt-1">
+                            {new Date(nextRace.date).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                        <div className="text-sm text-muted-foreground mt-1">
+                            {nextRace.map} • {nextRace.routeName}
+                        </div>
+                    </div>
+                    <Link 
+                        href="/schedule" 
+                        className="bg-primary text-primary-foreground px-6 py-2 rounded-md font-medium hover:opacity-90 transition whitespace-nowrap"
+                    >
+                        View Schedule
+                    </Link>
+                </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Link href="/participants" className="p-6 border border-border rounded-lg shadow-sm hover:shadow-md transition bg-card text-card-foreground group text-left">
+                    <h2 className="text-2xl font-semibold mb-2 group-hover:text-primary">Participants &rarr;</h2>
+                    <p className="text-muted-foreground">
+                    Check out the competition.
+                    </p>
+                </Link>
+                
+                <Link href="/results" className="p-6 border border-border rounded-lg shadow-sm hover:shadow-md transition bg-card text-card-foreground group text-left">
+                    <h2 className="text-2xl font-semibold mb-2 group-hover:text-primary">Results &rarr;</h2>
+                    <p className="text-muted-foreground">
+                    View race results and league standings.
+                    </p>
+                </Link>
+            </div>
         </div>
       )}
     </div>
   );
 }
-
