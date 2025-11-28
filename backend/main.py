@@ -314,6 +314,7 @@ def dcu_api(request):
                 participants.append({
                     'name': data.get('name'),
                     'eLicense': data.get('eLicense'),
+                    'zwiftId': data.get('zwiftId'),
                     'category': zp.get('category', 'N/A'),
                     'ftp': zp.get('ftp', 'N/A'),
                     'rating': zr.get('currentRating', 'N/A'),

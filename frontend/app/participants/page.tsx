@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth-context';
 interface Participant {
   name: string;
   eLicense: string;
+  zwiftId?: string;
   category: string;
   ftp: number | string;
   rating: number | string;
@@ -60,19 +61,20 @@ export default function ParticipantsPage() {
               <tr>
                 <th className="px-6 py-3 font-bold">Name</th>
                 <th className="px-6 py-3 font-bold">Cat</th>
-                <th className="px-6 py-3 font-bold">Score</th>
-                <th className="px-6 py-3 font-bold">Rating</th>
-                <th className="px-6 py-3 font-bold hidden md:table-cell">Max30</th>
-                <th className="px-6 py-3 font-bold hidden md:table-cell">Max90</th>
+                <th className="px-6 py-3 font-bold">ZRS</th>
+                <th className="px-6 py-3 font-bold">vELO</th>
+                <th className="px-6 py-3 font-bold hidden md:table-cell">vELO max30</th>
+                <th className="px-6 py-3 font-bold hidden md:table-cell">vELO max90</th>
                 <th className="px-6 py-3 font-bold hidden lg:table-cell">Phenotype</th>
                 <th className="px-6 py-3 font-bold hidden lg:table-cell">Strava (10 rides)</th>
+                <th className="px-6 py-3 font-bold hidden xl:table-cell">Links</th>
                 <th className="px-6 py-3 font-bold text-right">E-License</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {participants.length === 0 ? (
                   <tr>
-                      <td colSpan={8} className="px-6 py-8 text-center text-slate-500">
+                      <td colSpan={9} className="px-6 py-8 text-center text-slate-500">
                           No participants found yet.
                       </td>
                   </tr>
@@ -110,6 +112,14 @@ export default function ParticipantsPage() {
                                   <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7 13.828h4.169"/></svg>
                                   {p.stravaKms}
                               </span>
+                          ) : '-'}
+                      </td>
+                      <td className="px-6 py-4 hidden xl:table-cell flex gap-2">
+                          {p.zwiftId ? (
+                              <>
+                                <a href={`https://zwiftpower.com/profile.php?z=${p.zwiftId}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 text-xs border border-blue-200 px-2 py-1 rounded bg-blue-50">ZP</a>
+                                <a href={`https://www.zwiftracing.app/riders/${p.zwiftId}`} target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:text-purple-800 text-xs border border-purple-200 px-2 py-1 rounded bg-purple-50">ZR</a>
+                              </>
                           ) : '-'}
                       </td>
                       <td className="px-6 py-4 text-slate-400 text-right font-mono">{p.eLicense}</td>
