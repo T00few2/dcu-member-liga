@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { useRouter } from 'next/navigation';
 
 interface Participant {
   name: string;
@@ -18,12 +19,26 @@ interface Participant {
 }
 
 export default function ParticipantsPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, isRegistered } = useAuth();
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
+    if (!authLoading && !user) {
+        router.push('/');
+        return;
+    }
+    if (!authLoading && user && !isRegistered) {
+        router.push('/register');
+        return;
+    }
+  }, [user, authLoading, isRegistered, router]);
+
+  useEffect(() => {
+    if (!user || !isRegistered) return;
+
     const fetchParticipants = async () => {
       try {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -43,9 +58,9 @@ export default function ParticipantsPage() {
     };
 
     fetchParticipants();
-  }, []);
+  }, [user, isRegistered]);
 
-  if (loading) return <div className="p-8 text-center">Loading participants...</div>;
+  if (authLoading || loading) return <div className="p-8 text-center text-muted-foreground">Loading participants...</div>;
 
   if (error) return <div className="p-8 text-center text-red-600">{error}</div>;
 

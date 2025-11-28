@@ -1,4 +1,26 @@
+'use client';
+
+import { useEffect } from 'react';
+import { useAuth } from '@/lib/auth-context';
+import { useRouter } from 'next/navigation';
+
 export default function ResultsPage() {
+  const { user, loading: authLoading, isRegistered } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+        router.push('/');
+        return;
+    }
+    if (!authLoading && user && !isRegistered) {
+        router.push('/register');
+        return;
+    }
+  }, [user, authLoading, isRegistered, router]);
+
+  if (authLoading) return <div className="p-8 text-center text-muted-foreground">Loading...</div>;
+
   // Mock data for results
   const races = [
     { id: 1, name: 'League Opener - Watopia Flat', date: '2023-10-01', winner: 'J. Doe' },
@@ -37,4 +59,3 @@ export default function ResultsPage() {
     </div>
   );
 }
-

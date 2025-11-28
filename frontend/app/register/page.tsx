@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 
 function RegisterContent() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, refreshProfile } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const stravaStatusParam = searchParams.get('strava');
@@ -81,14 +81,7 @@ function RegisterContent() {
         setError("Please enter your E-License first.");
         return;
     }
-    // We save the state momentarily to localStorage or rely on the user remembering 
-    // but technically the backend needs the eLicense to link.
-    // Since we haven't saved the user yet, we pass eLicense to the Strava login URL.
-    // Note: This assumes the user will come back and finish the form.
-    // Ideally, we should save the partial form data? 
-    // For now, let's assume simple flow: User types E-License -> Connects Strava -> Returns -> Types Zwift ID -> Submits.
     
-    // We need to persist the current inputs because the redirect will refresh the page
     localStorage.setItem('temp_reg_elicense', eLicense);
     localStorage.setItem('temp_reg_name', name);
     localStorage.setItem('temp_reg_zwiftid', zwiftId);
@@ -145,6 +138,10 @@ function RegisterContent() {
 
         setIsRegistered(true);
         setMessage(isRegistered ? 'Profile updated!' : 'Registration complete!');
+        
+        // Important: Refresh context so Navbar/Protection updates immediately
+        await refreshProfile();
+        
     } catch (err: any) {
         setError(err.message);
     } finally {
@@ -166,7 +163,7 @@ function RegisterContent() {
   return (
     <div className="max-w-2xl mx-auto mt-10 p-8 bg-card rounded-lg shadow-md border border-border">
       <h1 className="text-3xl font-bold mb-2 text-card-foreground">
-          {isRegistered ? 'My Profile' : 'League Registration'}
+          {isRegistered ? 'Rider Profile' : 'Rider Registration'}
       </h1>
       <p className="text-muted-foreground mb-8">
           {isRegistered 

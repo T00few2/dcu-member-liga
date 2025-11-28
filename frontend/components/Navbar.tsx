@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useState } from "react";
 
 export default function Navbar() {
-  const { user, signInWithGoogle, logOut, loading } = useAuth();
+  const { user, signInWithGoogle, logOut, loading, isRegistered } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   return (
@@ -18,9 +18,13 @@ export default function Navbar() {
             <>
               {user ? (
                 <div className="flex items-center gap-4">
-                  {/* Navigation Links for Authenticated Users */}
-                  <Link href="/participants" className="hover:text-slate-300 hidden md:block">Participants</Link>
-                  <Link href="/results" className="hover:text-slate-300 hidden md:block">Results</Link>
+                  {/* Navigation Links for Authenticated Users (Only if registered) */}
+                  {isRegistered && (
+                    <>
+                      <Link href="/participants" className="hover:text-slate-300 hidden md:block">Participants</Link>
+                      <Link href="/results" className="hover:text-slate-300 hidden md:block">Results</Link>
+                    </>
+                  )}
                   
                   {/* User Menu */}
                   <div className="relative">
@@ -81,4 +85,3 @@ export default function Navbar() {
     </nav>
   );
 }
-
