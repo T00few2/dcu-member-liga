@@ -64,11 +64,11 @@ export default function ParticipantsPage() {
                 <th className="px-6 py-3 font-bold">FTP (ZP)</th>
                 <th className="px-6 py-3 font-bold">ZRS</th>
                 <th className="px-6 py-3 font-bold">vELO</th>
-                <th className="px-6 py-3 font-bold hidden md:table-cell">vELO max30</th>
-                <th className="px-6 py-3 font-bold hidden md:table-cell">vELO max90</th>
-                <th className="px-6 py-3 font-bold hidden lg:table-cell">Phenotype</th>
-              <th className="px-6 py-3 font-bold hidden lg:table-cell">Strava (10 rides)</th>
-              <th className="px-6 py-3 font-bold hidden xl:table-cell">Profile Links</th>
+                <th className="px-6 py-3 font-bold">vELO max30</th>
+                <th className="px-6 py-3 font-bold">vELO max90</th>
+                <th className="px-6 py-3 font-bold">Phenotype</th>
+              <th className="px-6 py-3 font-bold">Strava (10 rides)</th>
+              <th className="px-6 py-3 font-bold">Profile Links</th>
               <th className="px-6 py-3 font-bold text-right">E-License</th>
               </tr>
             </thead>
@@ -99,16 +99,16 @@ export default function ParticipantsPage() {
                       <td className="px-6 py-4 font-mono font-medium text-card-foreground">
                           {p.rating !== 'N/A' ? Math.round(Number(p.rating)) : '-'}
                       </td>
-                      <td className="px-6 py-4 font-mono text-muted-foreground hidden md:table-cell">
+                      <td className="px-6 py-4 font-mono text-muted-foreground">
                           {p.max30Rating !== 'N/A' ? Math.round(Number(p.max30Rating)) : '-'}
                       </td>
-                      <td className="px-6 py-4 font-mono text-muted-foreground hidden md:table-cell">
+                      <td className="px-6 py-4 font-mono text-muted-foreground">
                           {p.max90Rating !== 'N/A' ? Math.round(Number(p.max90Rating)) : '-'}
                       </td>
-                      <td className="px-6 py-4 hidden lg:table-cell">
+                      <td className="px-6 py-4">
                           {p.phenotype !== 'N/A' ? p.phenotype : '-'}
                       </td>
-                      <td className="px-6 py-4 hidden lg:table-cell">
+                      <td className="px-6 py-4">
                           {p.stravaKms !== '-' ? (
                               <span className="text-orange-600 flex items-center gap-1">
                                   <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7 13.828h4.169"/></svg>
@@ -116,7 +116,7 @@ export default function ParticipantsPage() {
                               </span>
                           ) : '-'}
                       </td>
-                      <td className="px-6 py-4 hidden xl:table-cell">
+                      <td className="px-6 py-4">
                           {p.zwiftId ? (
                               <div className="flex items-center gap-3">
                                 <a 
