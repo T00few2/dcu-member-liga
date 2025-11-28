@@ -4,6 +4,15 @@ import { useAuth } from "@/lib/auth-context";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+interface Segment {
+  id: string;
+  name: string;
+  count: number;
+  direction: string;
+  lap: number;
+  key?: string;
+}
+
 interface Race {
   id: string;
   name: string;
@@ -11,7 +20,22 @@ interface Race {
   routeId: string;
   routeName: string;
   map: string;
+  laps: number;
+  totalDistance: number;
+  totalElevation: number;
+  sprints?: Segment[];
 }
+
+const getZwiftInsiderUrl = (routeName: string) => {
+    if (!routeName) return '#';
+    const slug = routeName.toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^\w\-]+/g, '')
+        .replace(/\-\-+/g, '-')
+        .replace(/^-+/, '')
+        .replace(/-+$/, '');
+    return `https://zwiftinsider.com/route/${slug}/`;
+};
 
 export default function Home() {
   const { user, signInWithGoogle, isRegistered } = useAuth();
@@ -71,23 +95,89 @@ export default function Home() {
       ) : (
         <div className="w-full max-w-4xl space-y-8">
             {nextRace && (
-                <div className="bg-primary/10 border border-primary/20 p-6 rounded-lg text-left flex flex-col md:flex-row justify-between items-center gap-4">
-                    <div>
-                        <div className="text-primary text-sm font-bold uppercase tracking-wider mb-1">Next Race</div>
-                        <h2 className="text-2xl font-bold text-foreground">{nextRace.name}</h2>
-                        <div className="text-foreground/80 mt-1">
-                            {new Date(nextRace.date).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                        </div>
-                        <div className="text-sm text-muted-foreground mt-1">
-                            {nextRace.map} • {nextRace.routeName}
-                        </div>
+                <div>
+                    <div className="flex justify-between items-end mb-2">
+                        <div className="text-primary text-sm font-bold uppercase tracking-wider">Next Race</div>
+                        <Link 
+                            href="/schedule" 
+                            className="text-sm text-primary hover:underline"
+                        >
+                            View Full Schedule &rarr;
+                        </Link>
                     </div>
-                    <Link 
-                        href="/schedule" 
-                        className="bg-primary text-primary-foreground px-6 py-2 rounded-md font-medium hover:opacity-90 transition whitespace-nowrap"
-                    >
-                        View Schedule
-                    </Link>
+                    <div className="bg-card border border-border rounded-lg shadow-sm overflow-hidden p-6 text-left">
+                        <div className="flex flex-col md:flex-row justify-between md:items-start gap-4 mb-4">
+                            <div>
+                                <div className="text-sm font-medium text-primary mb-1">
+                                    {new Date(nextRace.date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                                </div>
+                                <h3 className="text-2xl font-bold text-card-foreground">{nextRace.name}</h3>
+                                <div className="text-muted-foreground text-sm mt-1">
+                                    Start: {new Date(nextRace.date).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                                </div>
+                            </div>
+                            <div className="bg-muted/30 px-4 py-2 rounded-lg text-right">
+                                <div className="font-semibold text-card-foreground">{nextRace.map}</div>
+                                <div className="text-sm text-muted-foreground flex items-center justify-end gap-1">
+                                    {nextRace.routeName}
+                                    <a 
+                                        href={getZwiftInsiderUrl(nextRace.routeName)} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="text-xs text-primary hover:underline"
+                                        title="View on ZwiftInsider"
+                                    >
+                                        (Info ↗)
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-4 mb-6 text-sm">
+                            <div className="bg-muted/20 p-3 rounded text-center">
+                                <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Distance</div>
+                                <div className="font-semibold text-card-foreground">{nextRace.totalDistance} km</div>
+                            </div>
+                            <div className="bg-muted/20 p-3 rounded text-center">
+                                <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Elevation</div>
+                                <div className="font-semibold text-card-foreground">{nextRace.totalElevation} m</div>
+                            </div>
+                            <div className="bg-muted/20 p-3 rounded text-center">
+                                <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Laps</div>
+                                <div className="font-semibold text-card-foreground">{nextRace.laps}</div>
+                            </div>
+                        </div>
+
+                        {nextRace.sprints && nextRace.sprints.length > 0 && (
+                            <div className="border-t border-border pt-4">
+                                <h4 className="text-sm font-semibold text-card-foreground mb-3">Points Sprints</h4>
+                                <div className="space-y-3">
+                                    {/* Group by lap for display */}
+                                    {Object.entries(
+                                        nextRace.sprints.reduce((acc, seg) => {
+                                            const lap = seg.lap || 1;
+                                            if (!acc[lap]) acc[lap] = [];
+                                            acc[lap].push(seg);
+                                            return acc;
+                                        }, {} as Record<number, Segment[]>)
+                                    )
+                                    .sort(([a], [b]) => parseInt(a) - parseInt(b))
+                                    .map(([lapKey, segments]) => (
+                                        <div key={lapKey} className="flex flex-col sm:flex-row gap-2 sm:gap-8 text-sm">
+                                            <div className="w-16 font-medium text-muted-foreground shrink-0">Lap {lapKey}</div>
+                                            <div className="flex-1 flex flex-wrap gap-2">
+                                                {segments.sort((a, b) => a.count - b.count).map((seg, idx) => (
+                                                    <span key={idx} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                                                        {seg.name}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
 

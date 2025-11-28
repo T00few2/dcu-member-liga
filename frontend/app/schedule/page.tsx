@@ -26,6 +26,17 @@ interface Race {
   sprints?: Segment[];
 }
 
+const getZwiftInsiderUrl = (routeName: string) => {
+    if (!routeName) return '#';
+    const slug = routeName.toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^\w\-]+/g, '')
+        .replace(/\-\-+/g, '-')
+        .replace(/^-+/, '')
+        .replace(/-+$/, '');
+    return `https://zwiftinsider.com/route/${slug}/`;
+};
+
 export default function SchedulePage() {
   const { user, loading: authLoading, isRegistered } = useAuth();
   const router = useRouter();
@@ -106,7 +117,18 @@ export default function SchedulePage() {
                       </div>
                       <div className="bg-muted/30 px-4 py-2 rounded-lg text-right">
                           <div className="font-semibold text-card-foreground">{race.map}</div>
-                          <div className="text-sm text-muted-foreground">{race.routeName}</div>
+                          <div className="text-sm text-muted-foreground flex items-center justify-end gap-1">
+                              {race.routeName}
+                              <a 
+                                href={getZwiftInsiderUrl(race.routeName)} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-xs text-primary hover:underline"
+                                title="View on ZwiftInsider"
+                              >
+                                  (Info ↗)
+                              </a>
+                          </div>
                       </div>
                   </div>
 
@@ -188,4 +210,3 @@ export default function SchedulePage() {
     </div>
   );
 }
-
