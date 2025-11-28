@@ -9,6 +9,7 @@ from services.strava import StravaService
 from services.zwiftpower import ZwiftPowerService
 from services.zwiftracing import ZwiftRacingService
 from services.zwift import ZwiftService
+from services.zwift_game import ZwiftGameService
 from config import ZWIFT_USERNAME, ZWIFT_PASSWORD
 
 # Initialize Firebase Admin
@@ -39,6 +40,9 @@ SESSION_VALIDITY = 3000 # 50 minutes (less than typical 1h expiry)
 # Global cache for Zwift service
 _zwift_service_instance = None
 _zwift_service_timestamp = 0
+
+# Global cache for Zwift Game service
+_zwift_game_service = ZwiftGameService()
 
 def get_zp_service():
     global _zp_service_instance, _zp_service_timestamp
@@ -161,7 +165,7 @@ def update_rider_stats(e_license, zwift_id):
 def dcu_api(request):
     headers = {
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
         'Access-Control-Max-Age': '3600'
     }
@@ -170,6 +174,80 @@ def dcu_api(request):
         return ('', 204, headers)
 
     path = request.path
+
+    # --- ADMIN: ZWIFT ROUTES ---
+    if path == '/routes' and request.method == 'GET':
+        routes = _zwift_game_service.get_routes()
+        return (jsonify({'routes': routes}), 200, headers)
+
+    # --- ADMIN: RACES CRUD ---
+    if path == '/races' and request.method == 'GET':
+        if not db:
+             return (jsonify({'error': 'DB not available'}), 500, headers)
+        try:
+            # Fetch races ordered by date
+            races_ref = db.collection('races').order_by('date')
+            docs = races_ref.stream()
+            races = []
+            for doc in docs:
+                r = doc.to_dict()
+                r['id'] = doc.id
+                races.append(r)
+            return (jsonify({'races': races}), 200, headers)
+        except Exception as e:
+            return (jsonify({'message': str(e)}), 500, headers)
+
+    if path == '/races' and request.method == 'POST':
+        # Verify Admin Auth (Basic check: Must be logged in. Should be stricter in prod)
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+             return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        
+        try:
+             # Verify token valid
+             id_token = auth_header.split('Bearer ')[1]
+             auth.verify_id_token(id_token)
+             # TODO: Check if user is admin
+        except Exception as e:
+             return (jsonify({'message': 'Unauthorized'}), 401, headers)
+
+        if not db:
+             return (jsonify({'error': 'DB not available'}), 500, headers)
+             
+        try:
+            data = request.get_json()
+            # Basic validation
+            if not data.get('name') or not data.get('date'):
+                 return (jsonify({'message': 'Missing required fields'}), 400, headers)
+                 
+            # Create race
+            _, doc_ref = db.collection('races').add(data)
+            return (jsonify({'message': 'Race created', 'id': doc_ref.id}), 201, headers)
+        except Exception as e:
+            return (jsonify({'message': str(e)}), 500, headers)
+
+    # Handle DELETE /races/<id>
+    if path.startswith('/races/') and request.method == 'DELETE':
+         # Verify Admin Auth
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+             return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        try:
+             id_token = auth_header.split('Bearer ')[1]
+             auth.verify_id_token(id_token)
+        except:
+             return (jsonify({'message': 'Unauthorized'}), 401, headers)
+
+        race_id = path.split('/')[-1]
+        if not db:
+             return (jsonify({'error': 'DB not available'}), 500, headers)
+        
+        try:
+            db.collection('races').document(race_id).delete()
+            return (jsonify({'message': 'Race deleted'}), 200, headers)
+        except Exception as e:
+            return (jsonify({'message': str(e)}), 500, headers)
+
 
     # --- STRAVA ROUTES ---
 
@@ -362,42 +440,12 @@ def dcu_api(request):
                 if user_doc.exists:
                     user_data = user_doc.to_dict()
                     
-                    # 1. Use STORED stats if available (fast!)
-                    # But user requested "Fetch on signup", so /stats might be used to "refresh" or show live details?
-                    # For now, let's keep /stats fetching LIVE data (detailed view) but maybe update the DB too?
-                    # Let's stick to the original plan: /stats fetches live data for the detail view.
-                    
                     # 1. Fetch Strava Stats
                     if user_data.get('strava'):
                         strava_data = strava_service.get_activities(e_license)
                     
                     zwift_id = user_data.get('zwiftId')
                     if zwift_id:
-                        # ... (Existing live fetch logic) ...
-                        # Note: We could optimize this by returning stored data if live fetch fails, 
-                        # or update stored data here too.
-                        
-                        # To keep this response short, I'll just trigger the update helper 
-                        # in the background or synchronously if we want to keep data fresh.
-                        # Let's update storage whenever they view their own stats.
-                        updates = update_rider_stats(e_license, zwift_id)
-                        
-                        if updates:
-                             zp = updates.get('zwiftPower', {})
-                             zr = updates.get('zwiftRacing', {})
-                             zpro = updates.get('zwiftProfile', {})
-                             
-                             zp_data = {'category': zp.get('category'), 'ftp': zp.get('ftp')}
-                             zr_data = {'currentRating': zr.get('currentRating'), 'phenotype': zr.get('phenotype')}
-                             # Add more detailed fields if needed, but the helper only extracts summary for now.
-                             # We might need to expand the helper if we want FULL stats stored.
-                             # For now, let's fall back to the manual fetch below for the FULL details 
-                             # (like finishes, wins, podiums which aren't in the helper yet)
-                             
-                             # actually, let's just rely on the live fetch code below for the FULL detail view
-                             # to ensure nothing breaks from my refactor.
-                             pass
-
                         # --- ORIGINAL LIVE FETCH LOGIC (Preserved for detailed fields) ---
                         try:
                             zp = get_zp_service()
@@ -409,7 +457,7 @@ def dcu_api(request):
                                     'ftp': rider_info.get('ftp', 'N/A'),
                                 }
                         except Exception as zp_e:
-                             print(f"ZwiftPower fetch error: {zp_e}")
+                                print(f"ZwiftPower fetch error: {zp_e}")
 
                         try:
                             zr_json = zr_service.get_rider_data(str(zwift_id))
@@ -439,10 +487,11 @@ def dcu_api(request):
                                     'height': f"{round(profile.get('height', 0) / 10, 0)} cm" if profile.get('height') else 'N/A',
                                     'totalDistance': f"{int(profile.get('totalDistance', 0) / 1000)} km" if profile.get('totalDistance') else 'N/A',
                                     'totalTime': f"{int(profile.get('totalTimeInMinutes', 0) / 60)} hrs" if profile.get('totalTimeInMinutes') else 'N/A',
-                                    'level': int(profile.get('level', 0))
+                                    'level': int(profile.get('level', 0)),
+                                    'racingScore': profile.get('competitionMetrics', {}).get('racingScore', 'N/A')
                                 }
                         except Exception as z_e:
-                             print(f"Zwift API fetch error: {z_e}")
+                                print(f"Zwift API fetch error: {z_e}")
 
             except Exception as e:
                 print(f"Error fetching stats: {e}")
