@@ -3,13 +3,13 @@ import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBytONfVKtjkskfektK3ekFdcb8Mv1nhDg",
-  authDomain: "dcu-member-liga-479507.firebaseapp.com",
-  projectId: "dcu-member-liga-479507",
-  storageBucket: "dcu-member-liga-479507.firebasestorage.app",
-  messagingSenderId: "85378712824",
-  appId: "1:85378712824:web:44bb6ae3c989852ae2e70d",
-  measurementId: "G-SE29VER7SX"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 };
 
 // Initialize Firebase only once
@@ -18,4 +18,3 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 export { app, auth, db };
-
