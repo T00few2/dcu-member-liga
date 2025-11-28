@@ -12,14 +12,16 @@ class ResultsProcessor:
         self.zwift = zwift_service
         self.game = game_service
 
-    def process_race_results(self, race_id):
+    def process_race_results(self, race_id, fetch_mode='finishers', filter_registered=True):
         """
         Main entry point to process results for a given race ID (Firestore ID).
+        fetch_mode: 'finishers' (default), 'joined', 'signed_up'
+        filter_registered: boolean, if True only include users in DB
         """
         if not self.db:
             raise Exception("Database not available")
 
-        print(f"Processing results for race: {race_id}")
+        print(f"Processing results for race: {race_id} with mode: {fetch_mode}, filter: {filter_registered}")
 
         # 1. Fetch Race Config
         race_doc = self.db.collection('races').document(race_id).get()
@@ -77,41 +79,82 @@ class ResultsProcessor:
                 logger.error(f"Time parse error for {category_label}: {e}")
                 continue
 
-            # A. Fetch Finish Results
-            finish_results_raw = self.zwift.get_event_results(subgroup_id)
-            print(f"  Fetched {len(finish_results_raw)} raw finish results.")
-            
-            # Filter to only registered riders
+            # A. Fetch Finish Results or Participants based on fetch_mode
             finishers = []
-            for entry in finish_results_raw:
-                profile = entry.get('profileData', {})
-                zid = str(profile.get('id') or entry.get('profileId'))
+            
+            if fetch_mode == 'finishers':
+                finish_results_raw = self.zwift.get_event_results(subgroup_id)
+                print(f"  Fetched {len(finish_results_raw)} raw finish results.")
                 
-                # Only process if rider is registered in our league
-                if zid in registered_riders:
-                    finishers.append({
-                        'zwiftId': zid,
-                        'time': entry.get('activityData', {}).get('durationInMilliseconds', 0),
-                        'name': registered_riders[zid].get('name'),
-                        'info': registered_riders[zid]
-                    })
-            
-            print(f"  Matched {len(finishers)} registered finishers.")
-            
-            # Sort by time
-            finishers.sort(key=lambda x: x['time'])
+                # Filter to only registered riders
+                for entry in finish_results_raw:
+                    profile = entry.get('profileData', {})
+                    zid = str(profile.get('id') or entry.get('profileId'))
+                    
+                    # Only process if rider is registered in our league OR if we are not filtering
+                    if zid in registered_riders:
+                        finishers.append({
+                            'zwiftId': zid,
+                            'time': entry.get('activityData', {}).get('durationInMilliseconds', 0),
+                            'name': registered_riders[zid].get('name'),
+                            'info': registered_riders[zid]
+                        })
+                    elif not filter_registered:
+                         finishers.append({
+                            'zwiftId': zid,
+                            'time': entry.get('activityData', {}).get('durationInMilliseconds', 0),
+                            'name': f"{profile.get('firstName', '')} {profile.get('lastName', '')}".strip(),
+                            'info': {}
+                        })
 
-            # Assign Finish Points
+                # Sort by time
+                finishers.sort(key=lambda x: x['time'])
+                
+            else:
+                # 'joined' or 'signed_up'
+                is_joined = (fetch_mode == 'joined')
+                participants_raw = self.zwift.get_event_participants(subgroup_id, joined=is_joined)
+                print(f"  Fetched {len(participants_raw)} raw participants (joined={is_joined}).")
+                
+                for p in participants_raw:
+                    zid = str(p.get('id'))
+                    if zid in registered_riders:
+                        finishers.append({
+                            'zwiftId': zid,
+                            'time': 0, # No time for participants list
+                            'name': registered_riders[zid].get('name'),
+                            'info': registered_riders[zid]
+                        })
+                    elif not filter_registered:
+                        finishers.append({
+                            'zwiftId': zid,
+                            'time': 0, 
+                            'name': f"{p.get('firstName', '')} {p.get('lastName', '')}".strip(),
+                            'info': {}
+                        })
+                        
+                # Sort alphabetically since no time
+                finishers.sort(key=lambda x: x['name'])
+            
+            print(f"  Matched {len(finishers)} riders (Filtered: {filter_registered}).")
+
+            # Assign Finish Points (Only for finishers mode)
             processed_riders = {} # zid -> result_obj
             
             for rank, rider in enumerate(finishers):
-                points = finish_points_scheme[rank] if rank < len(finish_points_scheme) else 0
+                # Only award finish points if we are in finishers mode and they have a time
+                if fetch_mode == 'finishers' and rider['time'] > 0:
+                     points = finish_points_scheme[rank] if rank < len(finish_points_scheme) else 0
+                     finish_rank = rank + 1
+                else:
+                     points = 0
+                     finish_rank = 0
                 
                 res = {
                     'zwiftId': rider['zwiftId'],
                     'name': rider['name'],
                     'finishTime': rider['time'],
-                    'finishRank': rank + 1,
+                    'finishRank': finish_rank,
                     'finishPoints': points,
                     'sprintPoints': 0,
                     'totalPoints': points,
@@ -119,11 +162,14 @@ class ResultsProcessor:
                 }
                 processed_riders[rider['zwiftId']] = res
 
-            # B. Calculate Sprint Points
-            # Identify which segments are "in play" for this race
-            selected_sprints = race_data.get('sprints', []) # list of full segment objects
+            # B. Calculate Sprint Points 
+            # Calculate for 'finishers' AND 'joined' (for live updates)
+            # Only skip for 'signed_up' as they haven't ridden yet
             
-            if selected_sprints:
+            if fetch_mode in ['finishers', 'joined']:
+                selected_sprints = race_data.get('sprints', []) # list of full segment objects
+                
+                if selected_sprints:
                 # We need to fetch raw segment results for EACH unique segment ID used
                 unique_segment_ids = set(s['id'] for s in selected_sprints)
                 

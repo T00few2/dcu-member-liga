@@ -361,9 +361,14 @@ def dcu_api(request):
             zwift_service = get_zwift_service()
             processor = ResultsProcessor(db, zwift_service, _zwift_game_service)
             
-            results = processor.process_race_results(race_id)
+            # Parse fetch mode from request body
+            req_data = request.get_json(silent=True) or {}
+            fetch_mode = req_data.get('source', 'finishers')
+            filter_registered = req_data.get('filterRegistered', True)
             
-            return (jsonify({'message': 'Results calculated', 'results': results}), 200, headers)
+            results = processor.process_race_results(race_id, fetch_mode=fetch_mode, filter_registered=filter_registered)
+            
+            return (jsonify({'message': f'Results calculated (Mode: {fetch_mode}, Filtered: {filter_registered})', 'results': results}), 200, headers)
         except Exception as e:
             print(f"Results Processing Error: {e}")
             return (jsonify({'message': str(e)}), 500, headers)

@@ -84,6 +84,10 @@ export default function AdminPage() {
   const [status, setStatus] = useState<'idle' | 'loading' | 'saving' | 'seeding' | 'refreshing'>('idle');
   const [error, setError] = useState('');
 
+  // Results Fetch Mode (Data Source)
+  const [resultSource, setResultSource] = useState<'finishers' | 'joined' | 'signed_up'>('finishers');
+  const [filterRegistered, setFilterRegistered] = useState(true);
+
   // Access Control
   useEffect(() => {
     if (!authLoading && !user) {
@@ -296,7 +300,14 @@ export default function AdminPage() {
           const token = await user.getIdToken();
           const res = await fetch(`${apiUrl}/races/${raceId}/results/refresh`, {
               method: 'POST',
-              headers: { 'Authorization': `Bearer ${token}` }
+              headers: { 
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ 
+                  source: resultSource,
+                  filterRegistered: filterRegistered
+              })
           });
           
           if (res.ok) {
@@ -721,7 +732,32 @@ export default function AdminPage() {
 
           {/* Existing Races List */}
           <div className="bg-card rounded-lg shadow overflow-hidden border border-border">
-              <h2 className="text-xl font-semibold p-6 border-b border-border text-card-foreground">Scheduled Races</h2>
+              <div className="flex justify-between items-center p-6 border-b border-border">
+                  <h2 className="text-xl font-semibold text-card-foreground">Scheduled Races</h2>
+                  <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2">
+                          <label className="text-sm text-muted-foreground font-medium">Source:</label>
+                          <select 
+                              value={resultSource}
+                              onChange={(e) => setResultSource(e.target.value as any)}
+                              className="bg-background border border-input rounded px-2 py-1 text-sm font-medium text-foreground focus:ring-1 focus:ring-primary"
+                          >
+                              <option value="finishers">Finishers</option>
+                              <option value="joined">Joined</option>
+                              <option value="signed_up">Signed Up</option>
+                          </select>
+                      </div>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                          <input 
+                              type="checkbox"
+                              checked={filterRegistered}
+                              onChange={(e) => setFilterRegistered(e.target.checked)}
+                              className="w-4 h-4 rounded border-input text-primary focus:ring-primary"
+                          />
+                          <span className="text-sm text-muted-foreground select-none">Filter Registered</span>
+                      </label>
+                  </div>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
                     <thead className="bg-muted/50 text-muted-foreground">
