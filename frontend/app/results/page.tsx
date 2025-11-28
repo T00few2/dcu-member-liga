@@ -15,6 +15,16 @@ interface Race {
   eventId?: string;
   results?: Record<string, ResultEntry[]>; // Keyed by category 'A', 'B', etc.
   resultsUpdatedAt?: string;
+  sprints?: Sprint[];
+}
+
+interface Sprint {
+    id: string;
+    name: string;
+    count: number;
+    direction: string;
+    lap: number;
+    key: string;
 }
 
 interface ResultEntry {
@@ -153,6 +163,35 @@ export default function ResultsPage() {
       : standingsCategory;
   const currentStandings = standings[displayStandingsCategory] || [];
 
+  // Extract all unique sprint keys (if any) from the results to build dynamic columns
+  const allSprintKeys = new Set<string>();
+  if (raceResults.length > 0) {
+      raceResults.forEach(r => {
+          if (r.sprintDetails) {
+              Object.keys(r.sprintDetails).forEach(k => allSprintKeys.add(k));
+          }
+      });
+  }
+  // Sort keys naturally if possible, or alphabetically
+  const sprintColumns = Array.from(allSprintKeys).sort();
+
+  const getSprintHeader = (key: string) => {
+      if (!selectedRace?.sprints) return key.replace(/_/g, ' ');
+      const sprint = selectedRace.sprints.find(s => s.key === key || `${s.id}_${s.count}` === key);
+      if (sprint) {
+          return `${sprint.name} #${sprint.count}`;
+      }
+      // Fallback: try to look up by ID/Count parsing if key format is ID_COUNT
+      const parts = key.split('_');
+      if (parts.length >= 2) {
+          const id = parts[0];
+          const count = parseInt(parts[1]);
+          const match = selectedRace.sprints.find(s => s.id == id && s.count == count);
+          if (match) return `${match.name} #${match.count}`;
+      }
+      return key.replace(/_/g, ' ');
+  };
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-8 text-foreground">Results & Standings</h1>
@@ -178,12 +217,12 @@ export default function ResultsPage() {
           <div className="space-y-6">
               <div className="flex justify-between items-center mb-4">
                   <h2 className="text-xl font-semibold text-card-foreground">Leaderboard</h2>
-                  <div className="flex gap-2 bg-muted/20 rounded p-1">
+                  <div className="flex gap-2 bg-muted/20 rounded p-1 overflow-x-auto">
                       {availableStandingsCategories.map(cat => (
                           <button
                               key={cat}
                               onClick={() => setStandingsCategory(cat)}
-                              className={`px-3 py-1 text-sm rounded transition-colors ${
+                              className={`px-3 py-1 text-sm rounded transition-colors whitespace-nowrap ${
                                   displayStandingsCategory === cat 
                                   ? 'bg-primary text-primary-foreground shadow-sm' 
                                   : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
@@ -198,7 +237,7 @@ export default function ResultsPage() {
               <div className="bg-card border border-border rounded-lg overflow-hidden shadow-sm">
                   {currentStandings.length > 0 ? (
                       <div className="overflow-x-auto">
-                          <table className="w-full text-left text-sm">
+                          <table className="w-full text-left text-sm whitespace-nowrap">
                               <thead className="bg-muted/50 text-muted-foreground">
                                   <tr>
                                       <th className="px-4 py-3 w-12 text-center">Rank</th>
@@ -265,7 +304,7 @@ export default function ResultsPage() {
                       <button
                           key={cat}
                           onClick={() => setSelectedCategory(cat)}
-                          className={`px-4 py-2 rounded-t-md font-bold text-sm transition-colors ${
+                          className={`px-4 py-2 rounded-t-md font-bold text-sm transition-colors whitespace-nowrap ${
                               displayRaceCategory === cat 
                               ? 'bg-primary text-primary-foreground' 
                               : 'bg-muted/30 text-muted-foreground hover:bg-muted/50 hover:text-foreground'
@@ -280,14 +319,19 @@ export default function ResultsPage() {
               <div className="bg-card border border-border rounded-lg overflow-hidden shadow-sm">
                   {raceResults.length > 0 ? (
                       <div className="overflow-x-auto">
-                        <table className="w-full text-left text-sm">
+                        <table className="w-full text-left text-sm whitespace-nowrap">
                             <thead className="bg-muted/50 text-muted-foreground">
                                 <tr>
                                     <th className="px-4 py-3 w-12 text-center">Pos</th>
                                     <th className="px-4 py-3">Rider</th>
                                     <th className="px-4 py-3 text-right">Time</th>
-                                    <th className="px-4 py-3 text-right text-muted-foreground/70 hidden sm:table-cell">Finish Pts</th>
-                                    <th className="px-4 py-3 text-right text-muted-foreground/70 hidden sm:table-cell">Sprint Pts</th>
+                                    {/* Dynamic Sprint Columns */}
+                                    {sprintColumns.map(sprintKey => (
+                                        <th key={sprintKey} className="px-4 py-3 text-center text-xs uppercase tracking-wider text-muted-foreground/70 whitespace-nowrap">
+                                            {getSprintHeader(sprintKey)}
+                                        </th>
+                                    ))}
+                                    <th className="px-4 py-3 text-right text-muted-foreground/70">Finish Pts</th>
                                     <th className="px-4 py-3 text-right font-bold text-primary">Total Pts</th>
                                 </tr>
                             </thead>
@@ -297,8 +341,13 @@ export default function ResultsPage() {
                                         <td className="px-4 py-3 text-center font-medium text-muted-foreground">{idx + 1}</td>
                                         <td className="px-4 py-3 font-medium text-card-foreground">{rider.name}</td>
                                         <td className="px-4 py-3 text-right font-mono text-muted-foreground">{formatTime(rider.finishTime)}</td>
-                                        <td className="px-4 py-3 text-right text-muted-foreground hidden sm:table-cell">{rider.finishPoints}</td>
-                                        <td className="px-4 py-3 text-right text-muted-foreground hidden sm:table-cell">{rider.sprintPoints}</td>
+                                        {/* Dynamic Sprint Data */}
+                                        {sprintColumns.map(sprintKey => (
+                                            <td key={sprintKey} className="px-4 py-3 text-center text-muted-foreground">
+                                                {rider.sprintDetails?.[sprintKey] || '-'}
+                                            </td>
+                                        ))}
+                                        <td className="px-4 py-3 text-right text-muted-foreground font-medium">{rider.finishPoints}</td>
                                         <td className="px-4 py-3 text-right font-bold text-foreground">{rider.totalPoints}</td>
                                     </tr>
                                 ))}
