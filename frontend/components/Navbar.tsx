@@ -51,7 +51,7 @@ export default function Navbar() {
                           className="block px-4 py-2 text-sm hover:bg-slate-50"
                           onClick={() => setIsMenuOpen(false)}
                         >
-                          League Registration
+                          My Profile
                         </Link>
                         <button 
                           onClick={() => {

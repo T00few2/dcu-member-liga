@@ -119,6 +119,48 @@ def dcu_api(request):
              return (jsonify({'message': error_msg}), status, headers)
         return redirect(url)
 
+    # --- PROFILE ROUTE ---
+    if path == '/profile' and request.method == 'GET':
+        try:
+            # Verify ID Token
+            auth_header = request.headers.get('Authorization')
+            if not auth_header or not auth_header.startswith('Bearer '):
+                return (jsonify({'message': 'Missing or invalid Authorization header'}), 401, headers)
+            
+            id_token = auth_header.split('Bearer ')[1]
+            decoded_token = auth.verify_id_token(id_token)
+            uid = decoded_token['uid']
+
+            if not db:
+                 return (jsonify({'message': 'Database not available'}), 500, headers)
+
+            # 1. Look up E-License from Auth Mapping
+            mapping_doc = db.collection('auth_mappings').document(uid).get()
+            if not mapping_doc.exists:
+                # User exists in Auth but hasn't registered/linked a profile yet
+                return (jsonify({'registered': False}), 200, headers)
+            
+            e_license = mapping_doc.to_dict().get('eLicense')
+            
+            # 2. Fetch User Details
+            user_doc = db.collection('users').document(str(e_license)).get()
+            if not user_doc.exists:
+                return (jsonify({'registered': False}), 200, headers)
+            
+            user_data = user_doc.to_dict()
+            
+            return (jsonify({
+                'registered': True,
+                'eLicense': user_data.get('eLicense'),
+                'name': user_data.get('name'),
+                'zwiftId': user_data.get('zwiftId'),
+                'stravaConnected': bool(user_data.get('strava_access_token')) or bool(user_data.get('strava')) # Check if strava tokens exist
+            }), 200, headers)
+
+        except Exception as e:
+            print(f"Profile Error: {e}")
+            return (jsonify({'message': str(e)}), 500, headers)
+
     # --- CORE ROUTES ---
 
     if path == '/signup' and request.method == 'POST':
