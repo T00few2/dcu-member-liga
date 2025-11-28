@@ -164,11 +164,11 @@ function RegisterContent() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto mt-10 p-8 bg-white rounded-lg shadow-md">
-      <h1 className="text-3xl font-bold mb-2 text-slate-800">
+    <div className="max-w-2xl mx-auto mt-10 p-8 bg-card rounded-lg shadow-md border border-border">
+      <h1 className="text-3xl font-bold mb-2 text-card-foreground">
           {isRegistered ? 'My Profile' : 'League Registration'}
       </h1>
-      <p className="text-slate-600 mb-8">
+      <p className="text-muted-foreground mb-8">
           {isRegistered 
             ? 'Update your details and connections.' 
             : 'Complete the steps below to join the league.'}
@@ -189,55 +189,51 @@ function RegisterContent() {
       <div className="space-y-6">
         
         {/* Step 0: Name (Always required) */}
-        <div className="p-4 border rounded-lg bg-slate-50">
-            <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
+        <div className="p-4 border border-border rounded-lg bg-secondary/50">
+            <label className="block text-sm font-medium text-secondary-foreground mb-1">Full Name</label>
             <input 
                 type="text" 
                 value={name} 
                 onChange={e => setName(e.target.value)}
-                className="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-slate-800 bg-white placeholder-slate-400"
+                className="w-full p-3 border border-input rounded-lg focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all text-foreground bg-background placeholder-muted-foreground"
                 placeholder="Your Name"
             />
         </div>
 
         {/* Step 1: E-License */}
-        <div className={`p-4 border rounded-lg transition-colors ${step1Complete ? 'bg-green-50 border-green-200' : 'bg-white'}`}>
+        <div className={`p-4 border rounded-lg transition-colors ${step1Complete ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' : 'bg-card border-border'}`}>
             <div className="flex items-start gap-3">
-                <div className={`mt-1 w-6 h-6 rounded-full flex items-center justify-center text-xs text-white font-bold ${step1Complete ? 'bg-green-500' : 'bg-slate-400'}`}>
+                <div className={`mt-1 w-6 h-6 rounded-full flex items-center justify-center text-xs text-white font-bold ${step1Complete ? 'bg-green-500' : 'bg-muted-foreground'}`}>
                     1
                 </div>
                 <div className="flex-1">
-                    <label className="block font-semibold text-slate-800 mb-1">DCU E-License</label>
-                    <p className="text-sm text-slate-500 mb-2">Enter your valid DCU E-License number.</p>
+                    <label className="block font-semibold text-card-foreground mb-1">DCU E-License</label>
+                    <p className="text-sm text-muted-foreground mb-2">Enter your valid DCU E-License number.</p>
                     <input 
                         type="text" 
                         value={eLicense} 
                         onChange={e => setELicense(e.target.value)}
-                        className="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-slate-800 bg-white placeholder-slate-400"
+                        className="w-full p-3 border border-input rounded-lg focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all text-foreground bg-background placeholder-muted-foreground"
                         placeholder="e.g. 100123456"
                     />
                 </div>
-                {step1Complete && <span className="text-green-600 text-xl">✓</span>}
+                {step1Complete && <span className="text-green-600 dark:text-green-400 text-xl">✓</span>}
             </div>
         </div>
 
-        {/* Step 2: Strava (Reordered as requested: E-License -> Strava -> Zwift?) 
-            Wait, user said: "e-license, zwift id and strava link should be in place before you can registrer"
-            Strava needs E-license to link. So Strava MUST be after E-License.
-        */}
-        <div className={`p-4 border rounded-lg transition-colors ${step3Complete ? 'bg-green-50 border-green-200' : 'bg-white'}`}>
+        {/* Step 2: Strava */}
+        <div className={`p-4 border rounded-lg transition-colors ${step3Complete ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' : 'bg-card border-border'}`}>
             <div className="flex items-start gap-3">
-                <div className={`mt-1 w-6 h-6 rounded-full flex items-center justify-center text-xs text-white font-bold ${step3Complete ? 'bg-green-500' : 'bg-slate-400'}`}>
+                <div className={`mt-1 w-6 h-6 rounded-full flex items-center justify-center text-xs text-white font-bold ${step3Complete ? 'bg-green-500' : 'bg-muted-foreground'}`}>
                     2
                 </div>
                 <div className="flex-1">
-                    <label className="block font-semibold text-slate-800 mb-1">Connect Strava</label>
-                    <p className="text-sm text-slate-500 mb-2">Link your account to track activities.</p>
+                    <label className="block font-semibold text-card-foreground mb-1">Connect Strava</label>
+                    <p className="text-sm text-muted-foreground mb-2">Link your account to track activities.</p>
                     
                     {stravaConnected ? (
-                        <div className="text-green-700 font-medium flex items-center gap-2">
+                        <div className="text-green-700 dark:text-green-400 font-medium flex items-center gap-2">
                             <span>Connected</span>
-                            {/* Optional: Add Disconnect button in future */}
                         </div>
                     ) : (
                         <button
@@ -246,34 +242,34 @@ function RegisterContent() {
                             className={`px-4 py-2 rounded font-medium text-sm flex items-center gap-2 transition
                                 ${step1Complete 
                                     ? 'bg-[#FC4C02] text-white hover:bg-[#E34402]' 
-                                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+                                    : 'bg-secondary text-muted-foreground cursor-not-allowed'}`}
                         >
                            Connect with Strava
                         </button>
                     )}
                 </div>
-                {step3Complete && <span className="text-green-600 text-xl">✓</span>}
+                {step3Complete && <span className="text-green-600 dark:text-green-400 text-xl">✓</span>}
             </div>
         </div>
 
         {/* Step 3: Zwift ID */}
-        <div className={`p-4 border rounded-lg transition-colors ${step2Complete ? 'bg-green-50 border-green-200' : 'bg-white'}`}>
+        <div className={`p-4 border rounded-lg transition-colors ${step2Complete ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' : 'bg-card border-border'}`}>
             <div className="flex items-start gap-3">
-                 <div className={`mt-1 w-6 h-6 rounded-full flex items-center justify-center text-xs text-white font-bold ${step2Complete ? 'bg-green-500' : 'bg-slate-400'}`}>
+                 <div className={`mt-1 w-6 h-6 rounded-full flex items-center justify-center text-xs text-white font-bold ${step2Complete ? 'bg-green-500' : 'bg-muted-foreground'}`}>
                     3
                 </div>
                 <div className="flex-1">
-                    <label className="block font-semibold text-slate-800 mb-1">Zwift ID</label>
-                    <p className="text-sm text-slate-500 mb-2">Your Zwift ID is required for race results.</p>
+                    <label className="block font-semibold text-card-foreground mb-1">Zwift ID</label>
+                    <p className="text-sm text-muted-foreground mb-2">Your Zwift ID is required for race results.</p>
                     <input 
                         type="text" 
                         value={zwiftId} 
                         onChange={e => setZwiftId(e.target.value)}
-                        className="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-slate-800 bg-white placeholder-slate-400"
+                        className="w-full p-3 border border-input rounded-lg focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all text-foreground bg-background placeholder-muted-foreground"
                         placeholder="e.g. 123456"
                     />
                 </div>
-                {step2Complete && <span className="text-green-600 text-xl">✓</span>}
+                {step2Complete && <span className="text-green-600 dark:text-green-400 text-xl">✓</span>}
             </div>
         </div>
 
@@ -284,15 +280,15 @@ function RegisterContent() {
                 disabled={!canSubmit || submitting}
                 className={`w-full py-3 rounded-lg font-bold text-lg transition shadow-md
                     ${canSubmit 
-                        ? 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-lg transform hover:-translate-y-0.5' 
-                        : 'bg-slate-300 text-slate-500 cursor-not-allowed'}`}
+                        ? 'bg-primary text-primary-foreground hover:opacity-90 hover:shadow-lg transform hover:-translate-y-0.5' 
+                        : 'bg-secondary text-muted-foreground cursor-not-allowed'}`}
             >
                 {submitting 
                     ? 'Saving...' 
                     : (isRegistered ? 'Update Profile' : 'Complete Registration')}
             </button>
             {!canSubmit && (
-                <p className="text-center text-sm text-slate-500 mt-2">
+                <p className="text-center text-sm text-muted-foreground mt-2">
                     Please complete all steps above to continue.
                 </p>
             )}

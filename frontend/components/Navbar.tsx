@@ -11,7 +11,7 @@ export default function Navbar() {
   return (
     <nav className="bg-slate-900 text-white p-4">
       <div className="container mx-auto flex justify-between items-center">
-        <Link href="/" className="text-xl font-bold">DCU League</Link>
+        <Link href="/" className="text-xl font-bold">DCU Member League</Link>
         
         <div className="flex items-center gap-4">
           {!loading && (

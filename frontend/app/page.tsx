@@ -14,12 +14,12 @@ export default function Home() {
       </p>
       
       {!user ? (
-        <div className="bg-white dark:bg-slate-800 p-8 rounded-lg shadow-md border border-slate-200 dark:border-slate-700 max-w-md w-full">
-          <h2 className="text-2xl font-semibold mb-4 text-slate-900 dark:text-white">Join the League</h2>
-          <p className="text-slate-600 dark:text-slate-300 mb-6">Sign in to register your license and view your stats.</p>
+        <div className="bg-card text-card-foreground p-8 rounded-lg shadow-md border border-border max-w-md w-full">
+          <h2 className="text-2xl font-semibold mb-4">Join the League</h2>
+          <p className="text-muted-foreground mb-6">Sign in to register your license and view your stats.</p>
           <button 
             onClick={signInWithGoogle}
-            className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+            className="w-full bg-primary text-primary-foreground py-3 px-4 rounded-lg font-medium hover:opacity-90 transition-colors flex items-center justify-center gap-2"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24">
               <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -32,16 +32,16 @@ export default function Home() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl">
-          <Link href="/participants" className="p-6 border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm hover:shadow-md transition bg-white dark:bg-slate-800 group text-left">
-            <h2 className="text-2xl font-semibold mb-2 text-slate-900 dark:text-white group-hover:text-blue-600">Participants &rarr;</h2>
-            <p className="text-slate-600 dark:text-slate-300">
+          <Link href="/participants" className="p-6 border border-border rounded-lg shadow-sm hover:shadow-md transition bg-card text-card-foreground group text-left">
+            <h2 className="text-2xl font-semibold mb-2 group-hover:text-primary">Participants &rarr;</h2>
+            <p className="text-muted-foreground">
               Check out the competition.
             </p>
           </Link>
           
-          <Link href="/results" className="p-6 border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm hover:shadow-md transition bg-white dark:bg-slate-800 group text-left">
-            <h2 className="text-2xl font-semibold mb-2 text-slate-900 dark:text-white group-hover:text-blue-600">Results &rarr;</h2>
-            <p className="text-slate-600 dark:text-slate-300">
+          <Link href="/results" className="p-6 border border-border rounded-lg shadow-sm hover:shadow-md transition bg-card text-card-foreground group text-left">
+            <h2 className="text-2xl font-semibold mb-2 group-hover:text-primary">Results &rarr;</h2>
+            <p className="text-muted-foreground">
               View race results and league standings.
             </p>
           </Link>
