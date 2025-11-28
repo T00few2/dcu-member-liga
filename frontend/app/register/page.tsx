@@ -195,7 +195,7 @@ function RegisterContent() {
                 type="text" 
                 value={name} 
                 onChange={e => setName(e.target.value)}
-                className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-slate-800 bg-white placeholder-slate-400"
                 placeholder="Your Name"
             />
         </div>
@@ -213,7 +213,7 @@ function RegisterContent() {
                         type="text" 
                         value={eLicense} 
                         onChange={e => setELicense(e.target.value)}
-                        className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                        className="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-slate-800 bg-white placeholder-slate-400"
                         placeholder="e.g. 100123456"
                     />
                 </div>
@@ -269,7 +269,7 @@ function RegisterContent() {
                         type="text" 
                         value={zwiftId} 
                         onChange={e => setZwiftId(e.target.value)}
-                        className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                        className="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-slate-800 bg-white placeholder-slate-400"
                         placeholder="e.g. 123456"
                     />
                 </div>
