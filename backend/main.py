@@ -3,6 +3,7 @@ from flask import jsonify, redirect, request
 import firebase_admin
 from firebase_admin import credentials
 from firebase_admin import firestore
+from firebase_admin import auth
 import os
 from services.strava import StravaService
 from services.zwiftpower import ZwiftPowerService
@@ -129,7 +130,7 @@ def dcu_api(request):
             
             id_token = auth_header.split('Bearer ')[1]
             try:
-                decoded_token = firebase_admin.auth.verify_id_token(id_token)
+                decoded_token = auth.verify_id_token(id_token)
                 uid = decoded_token['uid']
             except Exception as auth_error:
                 print(f"Auth Error: {auth_error}")
@@ -183,7 +184,7 @@ def dcu_api(request):
             if auth_header and auth_header.startswith('Bearer '):
                 try:
                     id_token = auth_header.split('Bearer ')[1]
-                    decoded_token = firebase_admin.auth.verify_id_token(id_token)
+                    decoded_token = auth.verify_id_token(id_token)
                     uid = decoded_token['uid']
                     
                     # Look up eLicense from auth_mappings
