@@ -89,7 +89,7 @@ class StravaService:
                     }
                 })
             
-            return f"https://dcu-member-liga.vercel.app/signup?strava=connected", None, 302
+            return f"https://dcu-member-liga.vercel.app/register?strava=connected", None, 302
 
         except Exception as e:
              return None, str(e), 500
