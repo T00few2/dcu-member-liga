@@ -289,16 +289,10 @@ class ZwiftGameService:
             segment_counts[seg_id] += 1
             seg["count"] = segment_counts[seg_id]
 
-        # Deduplicate segments by (lap, id, direction) to avoid showing same segment twice if route wraps slightly
-        unique_segments = {}
-        for seg in all_found_segments:
-            key = (seg.get("lap"), seg.get("id"), seg.get("direction"))
-            if key not in unique_segments:
-                unique_segments[key] = seg
-            else:
-                unique_segments[key]["count"] = max(unique_segments[key]["count"], seg["count"])
+        # We used to deduplicate here, but if a segment appears multiple times in a lap (e.g. figure 8)
+        # we want to be able to select each occurrence individually.
+        # The 'count' field makes them unique occurrences.
         
-        all_found_segments = list(unique_segments.values())
         # Sort by appearance order
         all_found_segments.sort(key=lambda s: s.get("order", 0))
 

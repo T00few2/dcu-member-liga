@@ -79,7 +79,7 @@ export default function AdminPage() {
   const [genStep, setGenStep] = useState(1);
   const [genTarget, setGenTarget] = useState<'finish' | 'sprint'>('finish');
 
-  const [status, setStatus] = useState<'idle' | 'loading' | 'saving'>('idle');
+  const [status, setStatus] = useState<'idle' | 'loading' | 'saving' | 'seeding'>('idle');
   const [error, setError] = useState('');
 
   // Access Control
@@ -185,16 +185,7 @@ export default function AdminPage() {
       if (race.sprints) {
           setSelectedSprints(race.sprints);
       } else if (race.selectedSegments) {
-          // If we have old ID list but no objects, we can't fully restore without fetching segments first.
-          // For now, we'll rely on the fact that if they edit, we re-fetch segments and they might need to re-select 
-          // IF the segments haven't loaded yet.
-          // BUT 'availableSegments' updates when route/laps change.
-          // So we can try to restore from availableSegments if they match keys.
-          // Since `availableSegments` is async, this is tricky.
-          // Better strategy: Just clear if migrating, or try to match when segments load.
           setSelectedSprints([]);
-          // We'll use a side-effect to restore selection once segments load? 
-          // For simplicity in this turn: Just reset.
       } else {
           setSelectedSprints([]);
       }
@@ -262,6 +253,30 @@ export default function AdminPage() {
           }
       } catch (e) {
           alert('Error saving settings');
+      } finally {
+          setStatus('idle');
+      }
+  };
+  
+  const handleSeedData = async () => {
+      if (!user || !confirm('This will generate 20 fake users with random data. Continue?')) return;
+      setStatus('seeding');
+      try {
+          const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+          const token = await user.getIdToken();
+          const res = await fetch(`${apiUrl}/admin/seed`, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${token}` }
+          });
+          
+          if (res.ok) {
+              alert('Test data generated successfully! Check the Participants page.');
+          } else {
+              const data = await res.json();
+              alert(`Failed: ${data.message}`);
+          }
+      } catch (e) {
+          alert('Error generating data');
       } finally {
           setStatus('idle');
       }
@@ -373,37 +388,56 @@ export default function AdminPage() {
 
       {activeTab === 'settings' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 bg-card p-6 rounded-lg shadow border border-border">
-                <h2 className="text-xl font-semibold mb-6 text-card-foreground">Scoring Rules</h2>
-                <form onSubmit={handleSaveSettings} className="space-y-6">
-                    <div>
-                        <label className="block font-medium text-card-foreground mb-2">Finish Points (1st, 2nd, 3rd...)</label>
-                        <p className="text-xs text-muted-foreground mb-2">Comma-separated list of points awarded by position.</p>
-                        <textarea 
-                            value={finishPointsStr}
-                            onChange={e => setFinishPointsStr(e.target.value)}
-                            className="w-full p-3 border border-input rounded-lg bg-background text-foreground h-24 font-mono text-sm"
-                            placeholder="e.g. 100, 95, 90, 85, 80..."
-                        />
-                    </div>
-                    <div>
-                        <label className="block font-medium text-card-foreground mb-2">Sprint Points (1st, 2nd, 3rd...)</label>
-                        <p className="text-xs text-muted-foreground mb-2">Points awarded for intermediate sprints.</p>
-                        <textarea 
-                            value={sprintPointsStr}
-                            onChange={e => setSprintPointsStr(e.target.value)}
-                            className="w-full p-3 border border-input rounded-lg bg-background text-foreground h-24 font-mono text-sm"
-                            placeholder="e.g. 10, 9, 8, 7, 6..."
-                        />
-                    </div>
-                    <button 
-                        type="submit"
-                        disabled={status === 'saving'}
-                        className="bg-primary text-primary-foreground px-6 py-2 rounded hover:opacity-90 font-medium"
+            <div className="lg:col-span-2 space-y-8">
+                <div className="bg-card p-6 rounded-lg shadow border border-border">
+                    <h2 className="text-xl font-semibold mb-6 text-card-foreground">Scoring Rules</h2>
+                    <form onSubmit={handleSaveSettings} className="space-y-6">
+                        <div>
+                            <label className="block font-medium text-card-foreground mb-2">Finish Points (1st, 2nd, 3rd...)</label>
+                            <p className="text-xs text-muted-foreground mb-2">Comma-separated list of points awarded by position.</p>
+                            <textarea 
+                                value={finishPointsStr}
+                                onChange={e => setFinishPointsStr(e.target.value)}
+                                className="w-full p-3 border border-input rounded-lg bg-background text-foreground h-24 font-mono text-sm"
+                                placeholder="e.g. 100, 95, 90, 85, 80..."
+                            />
+                        </div>
+                        <div>
+                            <label className="block font-medium text-card-foreground mb-2">Sprint Points (1st, 2nd, 3rd...)</label>
+                            <p className="text-xs text-muted-foreground mb-2">Points awarded for intermediate sprints.</p>
+                            <textarea 
+                                value={sprintPointsStr}
+                                onChange={e => setSprintPointsStr(e.target.value)}
+                                className="w-full p-3 border border-input rounded-lg bg-background text-foreground h-24 font-mono text-sm"
+                                placeholder="e.g. 10, 9, 8, 7, 6..."
+                            />
+                        </div>
+                        <button 
+                            type="submit"
+                            disabled={status === 'saving'}
+                            className="bg-primary text-primary-foreground px-6 py-2 rounded hover:opacity-90 font-medium"
+                        >
+                            {status === 'saving' ? 'Saving...' : 'Save Settings'}
+                        </button>
+                    </form>
+                </div>
+
+                {/* Test Data Generation */}
+                <div className="bg-card p-6 rounded-lg shadow border border-border border-dashed border-slate-300 dark:border-slate-700">
+                    <h3 className="text-lg font-semibold mb-2 text-card-foreground">Development Tools</h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                        Need to test the layout with multiple users but limited by Strava API restrictions? 
+                        Generate fake participants here.
+                    </p>
+                    <button
+                        type="button"
+                        onClick={handleSeedData}
+                        disabled={status === 'seeding'}
+                        className="bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-700 text-sm font-medium disabled:opacity-50"
                     >
-                        {status === 'saving' ? 'Saving...' : 'Save Settings'}
+                        {status === 'seeding' ? 'Generating...' : 'Generate 20 Test Participants'}
                     </button>
-                </form>
+                </div>
             </div>
 
             {/* Points Generator Tool */}

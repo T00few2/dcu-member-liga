@@ -152,9 +152,10 @@ function RegisterContent() {
   // Validation
   const step1Complete = eLicense.length > 0; // Basic check
   const step2Complete = zwiftId.length > 0;
-  const step3Complete = stravaConnected;
+  // Strava is now optional but recommended
+  const step3Complete = stravaConnected; 
   
-  const canSubmit = step1Complete && step2Complete && step3Complete;
+  const canSubmit = step1Complete && step2Complete; // Strava not strictly required
 
   if (authLoading || fetchingProfile) {
     return <div className="p-8 text-center">Loading profile...</div>;
@@ -218,14 +219,17 @@ function RegisterContent() {
             </div>
         </div>
 
-        {/* Step 2: Strava */}
+        {/* Step 2: Strava (OPTIONAL) */}
         <div className={`p-4 border rounded-lg transition-colors ${step3Complete ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' : 'bg-card border-border'}`}>
             <div className="flex items-start gap-3">
                 <div className={`mt-1 w-6 h-6 rounded-full flex items-center justify-center text-xs text-white font-bold ${step3Complete ? 'bg-green-500' : 'bg-muted-foreground'}`}>
                     2
                 </div>
                 <div className="flex-1">
-                    <label className="block font-semibold text-card-foreground mb-1">Connect Strava</label>
+                    <div className="flex justify-between items-center mb-1">
+                        <label className="block font-semibold text-card-foreground">Connect Strava (Optional)</label>
+                        {!stravaConnected && <span className="text-xs bg-secondary text-secondary-foreground px-2 py-1 rounded-full">Optional</span>}
+                    </div>
                     <p className="text-sm text-muted-foreground mb-2">Link your account to track activities.</p>
                     
                     {stravaConnected ? (
@@ -286,7 +290,7 @@ function RegisterContent() {
             </button>
             {!canSubmit && (
                 <p className="text-center text-sm text-muted-foreground mt-2">
-                    Please complete all steps above to continue.
+                    Please complete all required steps above to continue.
                 </p>
             )}
         </div>
