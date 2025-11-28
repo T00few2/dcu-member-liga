@@ -81,7 +81,7 @@ export default function AdminPage() {
   const [genStep, setGenStep] = useState(1);
   const [genTarget, setGenTarget] = useState<'finish' | 'sprint'>('finish');
 
-  const [status, setStatus] = useState<'idle' | 'loading' | 'saving' | 'seeding'>('idle');
+  const [status, setStatus] = useState<'idle' | 'loading' | 'saving' | 'seeding' | 'refreshing'>('idle');
   const [error, setError] = useState('');
 
   // Access Control
@@ -281,6 +281,32 @@ export default function AdminPage() {
           }
       } catch (e) {
           alert('Error generating data');
+      } finally {
+          setStatus('idle');
+      }
+  };
+
+  const handleRefreshResults = async (raceId: string) => {
+      if (!user) return;
+      if (!confirm('Calculate results? This may take a few seconds.')) return;
+      
+      setStatus('refreshing');
+      try {
+          const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+          const token = await user.getIdToken();
+          const res = await fetch(`${apiUrl}/races/${raceId}/results/refresh`, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${token}` }
+          });
+          
+          if (res.ok) {
+              alert('Results updated successfully!');
+          } else {
+              const data = await res.json();
+              alert(`Failed: ${data.message}`);
+          }
+      } catch (e) {
+          alert('Error updating results');
       } finally {
           setStatus('idle');
       }
@@ -723,6 +749,15 @@ export default function AdminPage() {
                                     {r.sprints ? r.sprints.length : (r.selectedSegments ? r.selectedSegments.length : 0)} selected
                                 </td>
                                 <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
+                                    {r.eventId && (
+                                        <button 
+                                            onClick={() => handleRefreshResults(r.id)}
+                                            disabled={status === 'refreshing'}
+                                            className="text-green-600 hover:text-green-700 dark:text-green-400 font-medium px-2 py-1"
+                                        >
+                                            Results
+                                        </button>
+                                    )}
                                     <button 
                                         onClick={() => handleEdit(r)}
                                         className="text-primary hover:text-primary/80 font-medium px-2 py-1"

@@ -13,6 +13,19 @@ interface Race {
   map: string;
   laps: number;
   eventId?: string;
+  results?: Record<string, ResultEntry[]>; // Keyed by category 'A', 'B', etc.
+  resultsUpdatedAt?: string;
+}
+
+interface ResultEntry {
+    zwiftId: string;
+    name: string;
+    finishTime: number;
+    finishRank: number;
+    finishPoints: number;
+    sprintPoints: number;
+    totalPoints: number;
+    sprintDetails: Record<string, number>;
 }
 
 export default function ResultsPage() {
@@ -51,7 +64,7 @@ export default function ResultsPage() {
             if (res.ok) {
                 const data = await res.json();
                 const sorted = (data.races || []).sort((a: Race, b: Race) => 
-                    new Date(b.date).getTime() - new Date(a.date).getTime() // Newest first
+                    new Date(a.date).getTime() - new Date(b.date).getTime()
                 );
                 setRaces(sorted);
                 if (sorted.length > 0) {
@@ -70,9 +83,27 @@ export default function ResultsPage() {
     }
   }, [user, isRegistered]);
 
+  const formatTime = (ms: number) => {
+      if (!ms) return '-';
+      const totalSeconds = Math.floor(ms / 1000);
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+      const millis = ms % 1000;
+      
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      const padMs = (n: number) => n.toString().padStart(3, '0');
+      
+      if (hours > 0) {
+          return `${hours}:${pad(minutes)}:${pad(seconds)}.${padMs(millis)}`;
+      }
+      return `${pad(minutes)}:${pad(seconds)}.${padMs(millis)}`;
+  };
+
   if (authLoading || loading) return <div className="p-8 text-center text-muted-foreground">Loading results...</div>;
 
   const selectedRace = races.find(r => r.id === selectedRaceId);
+  const raceResults = selectedRace?.results?.[selectedCategory] || [];
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
@@ -119,7 +150,7 @@ export default function ResultsPage() {
                       >
                           {races.map(r => (
                               <option key={r.id} value={r.id}>
-                                  {new Date(r.date).toLocaleDateString()} - {r.name}
+                                  {new Date(r.date).toLocaleDateString('da-DK', { day: '2-digit', month: '2-digit', year: 'numeric' })} - {r.name}
                               </option>
                           ))}
                           {races.length === 0 && <option>No races found</option>}
@@ -151,50 +182,51 @@ export default function ResultsPage() {
                   ))}
               </div>
 
-              {/* Results Table Placeholder */}
+              {/* Results Table */}
               <div className="bg-card border border-border rounded-lg overflow-hidden shadow-sm">
-                  <div className="p-8 text-center">
-                      <p className="text-muted-foreground mb-4">
-                          Results for <span className="font-semibold text-foreground">{selectedRace?.name}</span> (Category {selectedCategory})
-                      </p>
-                      {selectedRace?.eventId ? (
-                          <div className="inline-block px-4 py-2 bg-green-500/10 text-green-600 dark:text-green-400 rounded text-sm">
-                              Event ID linked: {selectedRace.eventId}. Processing pending.
-                          </div>
-                      ) : (
-                          <div className="inline-block px-4 py-2 bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 rounded text-sm">
-                              No Event ID linked for this race.
-                          </div>
-                      )}
-                  </div>
-                  
-                  {/* Example Table Header (for layout preview) */}
-                  <div className="overflow-x-auto opacity-50 pointer-events-none blur-[1px]">
-                    <table className="w-full text-left text-sm">
-                        <thead className="bg-muted/50 text-muted-foreground">
-                            <tr>
-                                <th className="px-4 py-3">Pos</th>
-                                <th className="px-4 py-3">Rider</th>
-                                <th className="px-4 py-3 text-right">Time</th>
-                                <th className="px-4 py-3 text-right">Finish Pts</th>
-                                <th className="px-4 py-3 text-right">Sprint Pts</th>
-                                <th className="px-4 py-3 text-right font-bold">Total</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {[1,2,3].map(i => (
-                                <tr key={i} className="border-t border-border">
-                                    <td className="px-4 py-3">{i}</td>
-                                    <td className="px-4 py-3">Rider Name</td>
-                                    <td className="px-4 py-3 text-right">45:00</td>
-                                    <td className="px-4 py-3 text-right">100</td>
-                                    <td className="px-4 py-3 text-right">20</td>
-                                    <td className="px-4 py-3 text-right font-bold">120</td>
+                  {raceResults.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-muted/50 text-muted-foreground">
+                                <tr>
+                                    <th className="px-4 py-3 w-12 text-center">Pos</th>
+                                    <th className="px-4 py-3">Rider</th>
+                                    <th className="px-4 py-3 text-right">Time</th>
+                                    <th className="px-4 py-3 text-right text-muted-foreground/70 hidden sm:table-cell">Finish Pts</th>
+                                    <th className="px-4 py-3 text-right text-muted-foreground/70 hidden sm:table-cell">Sprint Pts</th>
+                                    <th className="px-4 py-3 text-right font-bold text-primary">Total Pts</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                  </div>
+                            </thead>
+                            <tbody className="divide-y divide-border">
+                                {raceResults.map((rider, idx) => (
+                                    <tr key={rider.zwiftId} className="hover:bg-muted/20 transition">
+                                        <td className="px-4 py-3 text-center font-medium text-muted-foreground">{idx + 1}</td>
+                                        <td className="px-4 py-3 font-medium text-card-foreground">{rider.name}</td>
+                                        <td className="px-4 py-3 text-right font-mono text-muted-foreground">{formatTime(rider.finishTime)}</td>
+                                        <td className="px-4 py-3 text-right text-muted-foreground hidden sm:table-cell">{rider.finishPoints}</td>
+                                        <td className="px-4 py-3 text-right text-muted-foreground hidden sm:table-cell">{rider.sprintPoints}</td>
+                                        <td className="px-4 py-3 text-right font-bold text-foreground">{rider.totalPoints}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                      </div>
+                  ) : (
+                      <div className="p-12 text-center">
+                          <p className="text-muted-foreground mb-4">
+                              No results available for <span className="font-semibold text-foreground">{selectedRace?.name}</span> (Category {selectedCategory})
+                          </p>
+                          {selectedRace?.eventId ? (
+                              <div className="inline-block px-4 py-2 bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded text-sm">
+                                  Results processing is pending or incomplete. Check back later.
+                              </div>
+                          ) : (
+                              <div className="inline-block px-4 py-2 bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 rounded text-sm">
+                                  Event ID not yet linked. Results cannot be fetched.
+                              </div>
+                          )}
+                      </div>
+                  )}
               </div>
           </div>
       )}

@@ -10,6 +10,7 @@ from services.zwiftpower import ZwiftPowerService
 from services.zwiftracing import ZwiftRacingService
 from services.zwift import ZwiftService
 from services.zwift_game import ZwiftGameService
+from services.results_processor import ResultsProcessor
 from config import ZWIFT_USERNAME, ZWIFT_PASSWORD
 
 # Initialize Firebase Admin
@@ -324,6 +325,36 @@ def dcu_api(request):
         except Exception as e:
             return (jsonify({'message': str(e)}), 500, headers)
 
+    # Handle POST /races/<id>/results/refresh (Trigger Calculation)
+    if path.startswith('/races/') and path.endswith('/results/refresh') and request.method == 'POST':
+         # Verify Admin Auth
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+             return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        try:
+             id_token = auth_header.split('Bearer ')[1]
+             auth.verify_id_token(id_token)
+        except:
+             return (jsonify({'message': 'Unauthorized'}), 401, headers)
+
+        parts = path.split('/')
+        # /races/<id>/results/refresh -> id is index 2
+        race_id = parts[2]
+        
+        if not db:
+             return (jsonify({'error': 'DB not available'}), 500, headers)
+        
+        try:
+            # Initialize Processor with fresh Zwift Service
+            zwift_service = get_zwift_service()
+            processor = ResultsProcessor(db, zwift_service, _zwift_game_service)
+            
+            results = processor.process_race_results(race_id)
+            
+            return (jsonify({'message': 'Results calculated', 'results': results}), 200, headers)
+        except Exception as e:
+            print(f"Results Processing Error: {e}")
+            return (jsonify({'message': str(e)}), 500, headers)
 
     # --- STRAVA ROUTES ---
 
