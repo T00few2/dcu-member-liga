@@ -61,6 +61,7 @@ export default function ParticipantsPage() {
               <tr>
                 <th className="px-6 py-3 font-bold">Name</th>
                 <th className="px-6 py-3 font-bold">Cat</th>
+                <th className="px-6 py-3 font-bold">FTP (ZP)</th>
                 <th className="px-6 py-3 font-bold">ZRS</th>
                 <th className="px-6 py-3 font-bold">vELO</th>
                 <th className="px-6 py-3 font-bold hidden md:table-cell">vELO max30</th>
@@ -91,6 +92,7 @@ export default function ParticipantsPage() {
                               {p.category}
                           </span>
                       </td>
+                      <td className="px-6 py-4">{p.ftp !== 'N/A' ? `${p.ftp} W` : '-'}</td>
                       <td className="px-6 py-4 font-mono font-medium text-slate-900">
                           {p.racingScore !== 'N/A' && p.racingScore ? Math.round(Number(p.racingScore)) : '-'}
                       </td>
