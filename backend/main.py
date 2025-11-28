@@ -122,6 +122,19 @@ def dcu_api(request):
 
     if path == '/signup' and request.method == 'POST':
         try:
+            # Verify ID Token
+            auth_header = request.headers.get('Authorization')
+            if not auth_header or not auth_header.startswith('Bearer '):
+                return (jsonify({'message': 'Missing or invalid Authorization header'}), 401, headers)
+            
+            id_token = auth_header.split('Bearer ')[1]
+            try:
+                decoded_token = firebase_admin.auth.verify_id_token(id_token)
+                uid = decoded_token['uid']
+            except Exception as auth_error:
+                print(f"Auth Error: {auth_error}")
+                return (jsonify({'message': 'Invalid session token'}), 401, headers)
+
             request_json = request.get_json(silent=True)
             if not request_json:
                  return (jsonify({'message': 'Invalid JSON'}), 400, headers)
@@ -134,13 +147,23 @@ def dcu_api(request):
                 return (jsonify({'message': 'Missing eLicense or name'}), 400, headers)
 
             if db:
+                # 1. Save User Profile (by E-License)
                 doc_ref = db.collection('users').document(str(e_license))
                 doc_ref.set({
                     'name': name,
                     'eLicense': e_license,
-                    'zwiftId': zwift_id, # Save optional Zwift ID
+                    'zwiftId': zwift_id, 
                     'verified': True,
-                    'createdAt': firestore.SERVER_TIMESTAMP
+                    'authUid': uid, # Link to Auth UID
+                    'updatedAt': firestore.SERVER_TIMESTAMP
+                }, merge=True)
+
+                # 2. Create/Update a mapping from Auth UID to E-License 
+                # (So we can look up the user's license when they log in)
+                auth_map_ref = db.collection('auth_mappings').document(uid)
+                auth_map_ref.set({
+                    'eLicense': e_license,
+                    'lastLogin': firestore.SERVER_TIMESTAMP
                 }, merge=True)
             
             return (jsonify({
@@ -153,6 +176,23 @@ def dcu_api(request):
 
     if path == '/stats' and request.method == 'GET':
         e_license = request.args.get('eLicense')
+        
+        # If no eLicense provided, check for Auth Token
+        if not e_license:
+            auth_header = request.headers.get('Authorization')
+            if auth_header and auth_header.startswith('Bearer '):
+                try:
+                    id_token = auth_header.split('Bearer ')[1]
+                    decoded_token = firebase_admin.auth.verify_id_token(id_token)
+                    uid = decoded_token['uid']
+                    
+                    # Look up eLicense from auth_mappings
+                    if db:
+                        mapping_doc = db.collection('auth_mappings').document(uid).get()
+                        if mapping_doc.exists:
+                            e_license = mapping_doc.to_dict().get('eLicense')
+                except Exception as e:
+                    print(f"Token verification failed in stats: {e}")
         
         # Default values
         strava_data = {'kms': 'Not Connected', 'activities': []}

@@ -1,76 +1,104 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useAuth } from '@/lib/auth-context';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 export default function StatsPage() {
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
   const [stats, setStats] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [manualLicense, setManualLicense] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
-  const fetchStats = async (license: string) => {
-    setLoading(true);
-    try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-      const res = await fetch(`${apiUrl}/stats?eLicense=${license}`);
-      if (res.ok) {
-        const data = await res.json();
-        setStats(data.stats);
-      } else {
-        // Fallback/Error
-        setStats([
-            { platform: 'Error', message: 'Could not fetch stats' }
-        ]);
-      }
-    } catch (e) {
-         setStats([
-            { platform: 'Error', message: 'Network error' }
-        ]);
-    } finally {
-      setLoading(false);
+  // Redirect if not logged in
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/');
     }
-  };
+  }, [user, authLoading, router]);
 
   useEffect(() => {
-    const storedLicense = localStorage.getItem('dcu_elicense');
-    if (storedLicense) {
-        fetchStats(storedLicense);
-    } else {
+    const fetchStats = async () => {
+      if (!user) return;
+      
+      setLoading(true);
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+        const idToken = await user.getIdToken();
+        
+        // Fetch user profile first to get eLicense
+        // Note: We need a dedicated endpoint to get "my profile" based on token,
+        // OR we assume we can look up by auth mapping.
+        // Currently, we don't have a /me endpoint.
+        // So for now, we rely on the fact that we can pass eLicense if we know it,
+        // OR we update the backend /stats to accept an Authorization header and look up the user itself.
+        
+        // Update to send Authorization header
+        const res = await fetch(`${apiUrl}/stats`, {
+            headers: {
+                'Authorization': `Bearer ${idToken}`
+            }
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          setStats(data.stats);
+        } else {
+          // Fallback to stored license if auth lookup fails (or just error)
+          const storedLicense = localStorage.getItem('dcu_elicense');
+          if (storedLicense) {
+             const fallbackRes = await fetch(`${apiUrl}/stats?eLicense=${storedLicense}`);
+             if (fallbackRes.ok) {
+                const data = await fallbackRes.json();
+                setStats(data.stats);
+                return;
+             }
+          }
+          setError('Could not fetch stats');
+        }
+      } catch (e) {
+         setError('Network error');
+      } finally {
         setLoading(false);
-    }
-  }, []);
+      }
+    };
 
-  const handleManualSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (manualLicense) {
-        localStorage.setItem('dcu_elicense', manualLicense);
-        fetchStats(manualLicense);
+    if (user && !authLoading) {
+        fetchStats();
     }
-  };
+  }, [user, authLoading]);
+
+  if (authLoading) return <div className="p-8 text-center">Loading...</div>;
+
+  if (!user) return null; // Will redirect
 
   if (loading) return <div className="p-8 text-center">Loading stats...</div>;
 
-  if (stats.length === 0) {
+  if (stats.length === 0 && !loading) {
       return (
-        <div className="max-w-md mx-auto mt-10 p-6 bg-white rounded shadow">
-            <h1 className="text-xl font-bold mb-4">Enter E-License</h1>
-            <p className="mb-4 text-slate-600">We couldn't find your saved license. Please enter it to view stats.</p>
-            <form onSubmit={handleManualSubmit} className="flex gap-2">
-                <input 
-                    type="text" 
-                    value={manualLicense}
-                    onChange={(e) => setManualLicense(e.target.value)}
-                    placeholder="e.g. 12345678"
-                    className="flex-1 p-2 border rounded"
-                />
-                <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded">View</button>
-            </form>
+        <div className="max-w-md mx-auto mt-10 p-6 bg-white rounded shadow text-center">
+            <h1 className="text-xl font-bold mb-4">No Stats Found</h1>
+            <p className="mb-4 text-slate-600">
+                We couldn't find any stats for your account. 
+                Make sure you have registered for the league.
+            </p>
+            <Link href="/register" className="inline-block bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+                Go to Registration
+            </Link>
         </div>
       );
   }
 
   return (
     <div className="max-w-4xl mx-auto mt-8">
-      <h1 className="text-3xl font-bold mb-8 text-slate-800">Rider Statistics</h1>
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-bold text-slate-800">Rider Statistics</h1>
+        <div className="text-sm text-slate-500">
+            Logged in as {user.displayName || user.email}
+        </div>
+      </div>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         {stats.map((stat, idx) => (
