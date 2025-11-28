@@ -248,6 +248,32 @@ def dcu_api(request):
         except Exception as e:
             return (jsonify({'message': str(e)}), 500, headers)
 
+    # Handle PUT /races/<id> (Update)
+    if path.startswith('/races/') and request.method == 'PUT':
+         # Verify Admin Auth
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+             return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        try:
+             id_token = auth_header.split('Bearer ')[1]
+             auth.verify_id_token(id_token)
+        except:
+             return (jsonify({'message': 'Unauthorized'}), 401, headers)
+
+        race_id = path.split('/')[-1]
+        if not db:
+             return (jsonify({'error': 'DB not available'}), 500, headers)
+        
+        try:
+            data = request.get_json()
+            if not data.get('name') or not data.get('date'):
+                 return (jsonify({'message': 'Missing required fields'}), 400, headers)
+
+            db.collection('races').document(race_id).update(data)
+            return (jsonify({'message': 'Race updated'}), 200, headers)
+        except Exception as e:
+            return (jsonify({'message': str(e)}), 500, headers)
+
 
     # --- STRAVA ROUTES ---
 
