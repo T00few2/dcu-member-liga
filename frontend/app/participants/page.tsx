@@ -9,6 +9,11 @@ interface Participant {
   category: string;
   ftp: number | string;
   rating: number | string;
+  max30Rating: number | string;
+  max90Rating: number | string;
+  phenotype: string;
+  racingScore: number | string;
+  stravaKms: string;
 }
 
 export default function ParticipantsPage() {
@@ -44,7 +49,7 @@ export default function ParticipantsPage() {
   if (error) return <div className="p-8 text-center text-red-600">{error}</div>;
 
   return (
-    <div className="max-w-6xl mx-auto mt-8 px-4">
+    <div className="max-w-7xl mx-auto mt-8 px-4">
       <h1 className="text-3xl font-bold mb-2 text-slate-800">Participants</h1>
       <p className="text-slate-600 mb-8">All registered riders in the league.</p>
       
@@ -54,16 +59,20 @@ export default function ParticipantsPage() {
             <thead className="bg-slate-50 text-xs uppercase text-slate-700 border-b border-slate-200">
               <tr>
                 <th className="px-6 py-3 font-bold">Name</th>
-                <th className="px-6 py-3 font-bold">Category</th>
-                <th className="px-6 py-3 font-bold">FTP</th>
-                <th className="px-6 py-3 font-bold">Rating (ZR)</th>
-                <th className="px-6 py-3 font-bold">E-License</th>
+                <th className="px-6 py-3 font-bold">Cat</th>
+                <th className="px-6 py-3 font-bold">Score</th>
+                <th className="px-6 py-3 font-bold">Rating</th>
+                <th className="px-6 py-3 font-bold hidden md:table-cell">Max30</th>
+                <th className="px-6 py-3 font-bold hidden md:table-cell">Max90</th>
+                <th className="px-6 py-3 font-bold hidden lg:table-cell">Phenotype</th>
+                <th className="px-6 py-3 font-bold hidden lg:table-cell">Strava (10 rides)</th>
+                <th className="px-6 py-3 font-bold text-right">E-License</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {participants.length === 0 ? (
                   <tr>
-                      <td colSpan={5} className="px-6 py-8 text-center text-slate-500">
+                      <td colSpan={8} className="px-6 py-8 text-center text-slate-500">
                           No participants found yet.
                       </td>
                   </tr>
@@ -80,9 +89,30 @@ export default function ParticipantsPage() {
                               {p.category}
                           </span>
                       </td>
-                      <td className="px-6 py-4">{p.ftp !== 'N/A' ? `${p.ftp} W` : '-'}</td>
-                      <td className="px-6 py-4 font-mono">{p.rating !== 'N/A' ? Math.round(Number(p.rating)) : '-'}</td>
-                      <td className="px-6 py-4 text-slate-400">{p.eLicense}</td>
+                      <td className="px-6 py-4 font-mono font-medium text-slate-900">
+                          {p.racingScore !== 'N/A' && p.racingScore ? Math.round(Number(p.racingScore)) : '-'}
+                      </td>
+                      <td className="px-6 py-4 font-mono font-medium text-slate-900">
+                          {p.rating !== 'N/A' ? Math.round(Number(p.rating)) : '-'}
+                      </td>
+                      <td className="px-6 py-4 font-mono text-slate-500 hidden md:table-cell">
+                          {p.max30Rating !== 'N/A' ? Math.round(Number(p.max30Rating)) : '-'}
+                      </td>
+                      <td className="px-6 py-4 font-mono text-slate-500 hidden md:table-cell">
+                          {p.max90Rating !== 'N/A' ? Math.round(Number(p.max90Rating)) : '-'}
+                      </td>
+                      <td className="px-6 py-4 hidden lg:table-cell">
+                          {p.phenotype !== 'N/A' ? p.phenotype : '-'}
+                      </td>
+                      <td className="px-6 py-4 hidden lg:table-cell">
+                          {p.stravaKms !== '-' ? (
+                              <span className="text-orange-600 flex items-center gap-1">
+                                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7 13.828h4.169"/></svg>
+                                  {p.stravaKms}
+                              </span>
+                          ) : '-'}
+                      </td>
+                      <td className="px-6 py-4 text-slate-400 text-right font-mono">{p.eLicense}</td>
                     </tr>
                   ))
               )}
@@ -93,4 +123,3 @@ export default function ParticipantsPage() {
     </div>
   );
 }
-

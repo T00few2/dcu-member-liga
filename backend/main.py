@@ -118,6 +118,8 @@ def update_rider_stats(e_license, zwift_id):
             race = data.get('race', {})
             updates['zwiftRacing'] = {
                 'currentRating': race.get('current', {}).get('rating', 'N/A'),
+                'max30Rating': race.get('max30', {}).get('rating', 'N/A'),
+                'max90Rating': race.get('max90', {}).get('rating', 'N/A'),
                 'phenotype': data.get('phenotype', {}).get('value', 'N/A'),
                 'updatedAt': firestore.SERVER_TIMESTAMP
             }
@@ -133,10 +135,22 @@ def update_rider_stats(e_license, zwift_id):
                 'ftp': profile.get('ftp'),
                 'weight': profile.get('weight'),
                 'height': profile.get('height'),
+                'racingScore': profile.get('competitionMetrics', {}).get('racingScore'),
                 'updatedAt': firestore.SERVER_TIMESTAMP
              }
     except Exception as e:
          print(f"Zwift Fetch Error: {e}")
+         
+    # 4. Strava (Summary only)
+    try:
+        strava_data = strava_service.get_activities(e_license)
+        if strava_data and 'kms' in strava_data:
+            updates['stravaSummary'] = {
+                'kms': strava_data.get('kms', 'N/A'),
+                'updatedAt': firestore.SERVER_TIMESTAMP
+            }
+    except Exception as e:
+        print(f"Strava Fetch Error: {e}")
          
     if updates:
         db.collection('users').document(str(e_license)).set(updates, merge=True)
@@ -294,13 +308,20 @@ def dcu_api(request):
                 # Extract summary stats from stored data
                 zp = data.get('zwiftPower', {})
                 zr = data.get('zwiftRacing', {})
+                zpro = data.get('zwiftProfile', {})
+                strava = data.get('stravaSummary', {})
                 
                 participants.append({
                     'name': data.get('name'),
                     'eLicense': data.get('eLicense'),
                     'category': zp.get('category', 'N/A'),
                     'ftp': zp.get('ftp', 'N/A'),
-                    'rating': zr.get('currentRating', 'N/A')
+                    'rating': zr.get('currentRating', 'N/A'),
+                    'max30Rating': zr.get('max30Rating', 'N/A'),
+                    'max90Rating': zr.get('max90Rating', 'N/A'),
+                    'phenotype': zr.get('phenotype', 'N/A'),
+                    'racingScore': zpro.get('racingScore', 'N/A'),
+                    'stravaKms': strava.get('kms', '-')
                 })
             
             return (jsonify({'participants': participants}), 200, headers)
