@@ -231,6 +231,18 @@ def dcu_api(request):
         except Exception as e:
             return (jsonify({'message': str(e)}), 500, headers)
 
+    # --- LEAGUE STANDINGS ---
+    if path == '/league/standings' and request.method == 'GET':
+        if not db:
+             return (jsonify({'error': 'DB not available'}), 500, headers)
+        try:
+            # Reuse ResultsProcessor logic for aggregation
+            processor = ResultsProcessor(db, None, None) # Services not needed for aggregation
+            standings = processor.calculate_league_standings()
+            return (jsonify({'standings': standings}), 200, headers)
+        except Exception as e:
+            return (jsonify({'message': str(e)}), 500, headers)
+
     # --- ADMIN: RACES CRUD ---
     if path == '/races' and request.method == 'GET':
         if not db:

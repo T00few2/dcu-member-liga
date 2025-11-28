@@ -28,17 +28,29 @@ interface ResultEntry {
     sprintDetails: Record<string, number>;
 }
 
+interface StandingEntry {
+    zwiftId: string;
+    name: string;
+    totalPoints: number;
+    raceCount: number;
+    results: { raceId: string, points: number }[];
+}
+
 export default function ResultsPage() {
   const { user, loading: authLoading, isRegistered } = useAuth();
   const router = useRouter();
   
   const [races, setRaces] = useState<Race[]>([]);
+  const [standings, setStandings] = useState<Record<string, StandingEntry[]>>({});
   const [loading, setLoading] = useState(true);
   
   // UI State
   const [activeTab, setActiveTab] = useState<'standings' | 'results'>('standings');
   const [selectedRaceId, setSelectedRaceId] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('A');
+  
+  // Standings UI State
+  const [standingsCategory, setStandingsCategory] = useState<string>('A');
 
   // Access Control
   useEffect(() => {
@@ -51,18 +63,26 @@ export default function ResultsPage() {
     }
   }, [user, authLoading, isRegistered, router]);
 
-  // Fetch Races
+  // Fetch Data
   useEffect(() => {
-    const fetchRaces = async () => {
+    const fetchData = async () => {
         if (!user) return;
         try {
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
             const token = await user.getIdToken();
-            const res = await fetch(`${apiUrl}/races`, {
+            
+            // Fetch Races
+            const racesRes = await fetch(`${apiUrl}/races`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
-            if (res.ok) {
-                const data = await res.json();
+            
+            // Fetch Standings
+            const standingsRes = await fetch(`${apiUrl}/league/standings`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (racesRes.ok) {
+                const data = await racesRes.json();
                 const sorted = (data.races || []).sort((a: Race, b: Race) => 
                     new Date(a.date).getTime() - new Date(b.date).getTime()
                 );
@@ -71,15 +91,25 @@ export default function ResultsPage() {
                     setSelectedRaceId(sorted[0].id);
                 }
             }
+            
+            if (standingsRes.ok) {
+                const data = await standingsRes.json();
+                setStandings(data.standings || {});
+                // Set initial standings category if available
+                const cats = Object.keys(data.standings || {});
+                if (cats.length > 0 && !cats.includes(standingsCategory)) {
+                    setStandingsCategory(cats.sort()[0]);
+                }
+            }
         } catch (e) {
-            console.error('Error fetching races', e);
+            console.error('Error fetching data', e);
         } finally {
             setLoading(false);
         }
     };
 
     if (user && isRegistered) {
-        fetchRaces();
+        fetchData();
     }
   }, [user, isRegistered]);
 
@@ -102,8 +132,26 @@ export default function ResultsPage() {
 
   if (authLoading || loading) return <div className="p-8 text-center text-muted-foreground">Loading results...</div>;
 
+  // --- Derived Data ---
+  
+  // Race Results Data
   const selectedRace = races.find(r => r.id === selectedRaceId);
-  const raceResults = selectedRace?.results?.[selectedCategory] || [];
+  const availableRaceCategories = selectedRace?.results 
+      ? Object.keys(selectedRace.results).sort() 
+      : ['A', 'B', 'C', 'D', 'E'];
+  const displayRaceCategory = (selectedRace?.results && !availableRaceCategories.includes(selectedCategory) && availableRaceCategories.length > 0)
+      ? availableRaceCategories[0]
+      : selectedCategory;
+  const raceResults = selectedRace?.results?.[displayRaceCategory] || [];
+
+  // Standings Data
+  const availableStandingsCategories = Object.keys(standings).length > 0 
+      ? Object.keys(standings).sort() 
+      : ['A', 'B', 'C', 'D', 'E'];
+  const displayStandingsCategory = (Object.keys(standings).length > 0 && !availableStandingsCategories.includes(standingsCategory))
+      ? availableStandingsCategories[0]
+      : standingsCategory;
+  const currentStandings = standings[displayStandingsCategory] || [];
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
@@ -127,11 +175,57 @@ export default function ResultsPage() {
 
       {/* LEAGUE STANDINGS TAB */}
       {activeTab === 'standings' && (
-          <div className="bg-card border border-border rounded-lg p-8 text-center shadow-sm">
-              <div className="max-w-md mx-auto">
-                  <h2 className="text-xl font-semibold text-card-foreground mb-2">Overall Standings</h2>
-                  <p className="text-muted-foreground">League standings will be calculated once race results are available.</p>
-                  {/* Placeholder for Standings Table */}
+          <div className="space-y-6">
+              <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-semibold text-card-foreground">Leaderboard</h2>
+                  <div className="flex gap-2 bg-muted/20 rounded p-1">
+                      {availableStandingsCategories.map(cat => (
+                          <button
+                              key={cat}
+                              onClick={() => setStandingsCategory(cat)}
+                              className={`px-3 py-1 text-sm rounded transition-colors ${
+                                  displayStandingsCategory === cat 
+                                  ? 'bg-primary text-primary-foreground shadow-sm' 
+                                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                              }`}
+                          >
+                              Cat {cat}
+                          </button>
+                      ))}
+                  </div>
+              </div>
+
+              <div className="bg-card border border-border rounded-lg overflow-hidden shadow-sm">
+                  {currentStandings.length > 0 ? (
+                      <div className="overflow-x-auto">
+                          <table className="w-full text-left text-sm">
+                              <thead className="bg-muted/50 text-muted-foreground">
+                                  <tr>
+                                      <th className="px-4 py-3 w-12 text-center">Rank</th>
+                                      <th className="px-4 py-3">Rider</th>
+                                      <th className="px-4 py-3 text-center">Races</th>
+                                      <th className="px-4 py-3 text-right font-bold text-primary">Total Points</th>
+                                  </tr>
+                              </thead>
+                              <tbody className="divide-y divide-border">
+                                  {currentStandings.map((rider, idx) => (
+                                      <tr key={rider.zwiftId} className="hover:bg-muted/20 transition">
+                                          <td className="px-4 py-3 text-center font-medium text-muted-foreground">
+                                              {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
+                                          </td>
+                                          <td className="px-4 py-3 font-medium text-card-foreground">{rider.name}</td>
+                                          <td className="px-4 py-3 text-center text-muted-foreground">{rider.raceCount}</td>
+                                          <td className="px-4 py-3 text-right font-bold text-foreground text-lg">{rider.totalPoints}</td>
+                                      </tr>
+                                  ))}
+                              </tbody>
+                          </table>
+                      </div>
+                  ) : (
+                      <div className="p-12 text-center text-muted-foreground">
+                          No standings available yet.
+                      </div>
+                  )}
               </div>
           </div>
       )}
@@ -167,12 +261,12 @@ export default function ResultsPage() {
 
               {/* Category Tabs */}
               <div className="flex gap-2 border-b border-border pb-1 overflow-x-auto">
-                  {['A', 'B', 'C', 'D', 'E'].map(cat => (
+                  {availableRaceCategories.map(cat => (
                       <button
                           key={cat}
                           onClick={() => setSelectedCategory(cat)}
                           className={`px-4 py-2 rounded-t-md font-bold text-sm transition-colors ${
-                              selectedCategory === cat 
+                              displayRaceCategory === cat 
                               ? 'bg-primary text-primary-foreground' 
                               : 'bg-muted/30 text-muted-foreground hover:bg-muted/50 hover:text-foreground'
                           }`}
@@ -214,7 +308,7 @@ export default function ResultsPage() {
                   ) : (
                       <div className="p-12 text-center">
                           <p className="text-muted-foreground mb-4">
-                              No results available for <span className="font-semibold text-foreground">{selectedRace?.name}</span> (Category {selectedCategory})
+                              No results available for <span className="font-semibold text-foreground">{selectedRace?.name}</span> (Category {displayRaceCategory})
                           </p>
                           {selectedRace?.eventId ? (
                               <div className="inline-block px-4 py-2 bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded text-sm">

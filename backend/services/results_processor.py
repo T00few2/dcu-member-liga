@@ -19,6 +19,8 @@ class ResultsProcessor:
         if not self.db:
             raise Exception("Database not available")
 
+        print(f"Processing results for race: {race_id}")
+
         # 1. Fetch Race Config
         race_doc = self.db.collection('races').document(race_id).get()
         if not race_doc.exists:
@@ -37,7 +39,6 @@ class ResultsProcessor:
         sprint_points_scheme = settings.get('sprintPoints', [])
 
         # 3. Fetch Registered Participants (to map ZwiftID -> Name/Team)
-        # We fetch ALL users to create a lookup map
         users_ref = self.db.collection('users')
         users_docs = users_ref.stream()
         registered_riders = {} # zwiftId -> {name, id, ...}
@@ -46,6 +47,8 @@ class ResultsProcessor:
             zid = data.get('zwiftId')
             if zid:
                 registered_riders[str(zid)] = data
+        
+        print(f"Found {len(registered_riders)} registered riders in database.")
 
         # 4. Fetch Event Info from Zwift
         try:
@@ -55,6 +58,7 @@ class ResultsProcessor:
 
         # 5. Identify Subgroups (Categories)
         subgroups = self._extract_subgroups(event_info)
+        print(f"Found {len(subgroups)} subgroups in event.")
         
         all_results = {} # category -> results_list
 
@@ -63,11 +67,10 @@ class ResultsProcessor:
             subgroup_id = subgroup['id']
             start_time_str = subgroup['eventSubgroupStart']
             
+            print(f"Processing Subgroup {category_label} (ID: {subgroup_id})")
+            
             # Parse start time
-            # Format usually: '2023-10-25T18:00:00.000+0000'
-            # Simplified parsing:
             try:
-                # Handle potential Z or +0000 suffix
                 clean_time = start_time_str.replace('Z', '+0000')
                 start_time = datetime.strptime(clean_time, '%Y-%m-%dT%H:%M:%S.%f%z')
             except Exception as e:
@@ -76,6 +79,7 @@ class ResultsProcessor:
 
             # A. Fetch Finish Results
             finish_results_raw = self.zwift.get_event_results(subgroup_id)
+            print(f"  Fetched {len(finish_results_raw)} raw finish results.")
             
             # Filter to only registered riders
             finishers = []
@@ -91,6 +95,8 @@ class ResultsProcessor:
                         'name': registered_riders[zid].get('name'),
                         'info': registered_riders[zid]
                     })
+            
+            print(f"  Matched {len(finishers)} registered finishers.")
             
             # Sort by time
             finishers.sort(key=lambda x: x['time'])
@@ -134,8 +140,11 @@ class ResultsProcessor:
                 # They are processed in order, but point allocation depends on specific occurrences
                 
                 # Prepare participant list for filter function
-                # We need to pass the registered riders in the format expected by filterSegmentResults
-                participants_list = [{'id': int(zid), 'firstName': d.get('name'), 'lastName': ''} for zid, d in registered_riders.items()]
+                # CRITICAL FIX: Only include riders in the CURRENT subgroup/category
+                participants_list = [
+                    {'id': int(zid), 'firstName': processed_riders[zid]['name'], 'lastName': ''} 
+                    for zid in processed_riders.keys()
+                ]
                 
                 # Group selected sprints by Segment ID to determine max count needed
                 sprints_by_id = defaultdict(list)
@@ -148,12 +157,6 @@ class ResultsProcessor:
                         continue
                         
                     # Use the ported logic to filter/rank
-                    # We reuse the logic: filterSegmentResults returns { count: { rank: {name, id} } }
-                    
-                    # "count" here means "Occurrence number".
-                    # If the race config says "Sprint A (id=123) - Occurrence 1" is enabled,
-                    # we look at table[1].
-                    
                     ranked_table = self._filter_segment_results(raw_res, sprints, participants_list)
                     
                     # Award points
@@ -164,7 +167,6 @@ class ResultsProcessor:
                             rankings = ranked_table[occ_idx] # { 1: {name, id}, 2: ... }
                             
                             # Award points based on Sprint Scheme
-                            # Iterate 0..N of scheme
                             for p_idx, points in enumerate(sprint_points_scheme):
                                 rank = p_idx + 1
                                 if rank in rankings:
@@ -184,20 +186,77 @@ class ResultsProcessor:
             final_list = list(processed_riders.values())
             final_list.sort(key=lambda x: x['totalPoints'], reverse=True)
             
-            all_results[category_label] = final_list
+            if final_list:
+                all_results[category_label] = final_list
+                print(f"  Saved {len(final_list)} results for Category {category_label}.")
+            else:
+                print(f"  No registered finishers for Category {category_label}.")
 
         # 6. Save Results to Firestore
-        # We'll save it as a subcollection 'results' under the race
-        # OR a single document if we want simpler fetching. 
-        # Let's do: races/{id} -> field 'results': { 'A': [...], 'B': [...] }
-        # This is easier for the frontend to fetch in one go.
-        
         self.db.collection('races').document(race_id).update({
             'results': all_results,
             'resultsUpdatedAt': datetime.now()
         })
         
         return all_results
+
+    def calculate_league_standings(self):
+        """
+        Aggregates results from all races to produce a league table per category.
+        Returns: { 'A': [ {name, zwiftId, totalPoints, raceCount, ...} ], 'B': ... }
+        """
+        if not self.db:
+            return {}
+
+        print("Calculating league standings...")
+        races_ref = self.db.collection('races')
+        docs = races_ref.stream()
+        
+        league_table = {} # { category: { zwiftId: { ... } } }
+        race_count = 0
+
+        for doc in docs:
+            race_data = doc.to_dict()
+            results = race_data.get('results', {}) # { 'A': [...], 'B': [...] }
+            if not results:
+                continue
+            
+            race_count += 1
+            for category, riders in results.items():
+                if category not in league_table:
+                    league_table[category] = {}
+                
+                for rider in riders:
+                    zid = rider['zwiftId']
+                    points = rider['totalPoints']
+                    
+                    if zid not in league_table[category]:
+                        league_table[category][zid] = {
+                            'zwiftId': zid,
+                            'name': rider['name'],
+                            'totalPoints': 0,
+                            'raceCount': 0,
+                            'results': [] 
+                        }
+                    
+                    entry = league_table[category][zid]
+                    entry['totalPoints'] += points
+                    entry['raceCount'] += 1
+                    entry['results'].append({
+                        'raceId': doc.id,
+                        'points': points
+                    })
+
+        print(f"Processed {race_count} races for standings.")
+
+        # Convert to sorted lists
+        final_standings = {}
+        for category, riders_dict in league_table.items():
+            sorted_riders = list(riders_dict.values())
+            sorted_riders.sort(key=lambda x: x['totalPoints'], reverse=True)
+            final_standings[category] = sorted_riders
+            
+        return final_standings
 
     def _extract_subgroups(self, event_info):
         result = []
@@ -216,8 +275,6 @@ class ResultsProcessor:
     def _filter_segment_results(self, segment_results, event_sub_id_segments, participants, sort_by="worldTime"):
         """
         Ported from Qt App logic.
-        filters segment results for known participants, groups by attempt count,
-        and ranks them.
         """
         # Filter IDs (integers)
         filter_ids = [p['id'] for p in participants]
@@ -279,4 +336,3 @@ class ResultsProcessor:
             }
 
         return table
-
