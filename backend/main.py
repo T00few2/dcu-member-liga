@@ -133,7 +133,7 @@ def dcu_api(request):
                 uid = decoded_token['uid']
             except Exception as auth_error:
                 print(f"Auth Error: {auth_error}")
-                return (jsonify({'message': 'Invalid session token'}), 401, headers)
+                return (jsonify({'message': f'Invalid session token: {str(auth_error)}'}), 401, headers)
 
             request_json = request.get_json(silent=True)
             if not request_json:
