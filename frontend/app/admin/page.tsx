@@ -32,7 +32,7 @@ interface Race {
   laps: number;
   totalDistance: number;
   totalElevation: number;
-  selectedSegments?: string[]; // List of segment IDs
+  selectedSegments?: string[]; // List of segment unique keys (id_count)
 }
 
 interface LeagueSettings {
@@ -65,6 +65,12 @@ export default function AdminPage() {
   // Settings Form State
   const [finishPointsStr, setFinishPointsStr] = useState('');
   const [sprintPointsStr, setSprintPointsStr] = useState('');
+  
+  // Generator State
+  const [genStart, setGenStart] = useState(130);
+  const [genEnd, setGenEnd] = useState(1);
+  const [genStep, setGenStep] = useState(1);
+  const [genTarget, setGenTarget] = useState<'finish' | 'sprint'>('finish');
 
   const [status, setStatus] = useState<'idle' | 'loading' | 'saving'>('idle');
   const [error, setError] = useState('');
@@ -150,6 +156,14 @@ export default function AdminPage() {
   const filteredRoutes = selectedMap ? routes.filter(r => r.map === selectedMap) : [];
   const selectedRoute = routes.find(r => r.id === selectedRouteId);
 
+  // Group segments by lap
+  const segmentsByLap = availableSegments.reduce((acc, seg) => {
+      const lap = seg.lap || 1;
+      if (!acc[lap]) acc[lap] = [];
+      acc[lap].push(seg);
+      return acc;
+  }, {} as Record<number, Segment[]>);
+
   // --- Handlers ---
 
   const handleEdit = (race: Race) => {
@@ -171,6 +185,27 @@ export default function AdminPage() {
       setSelectedRouteId('');
       setLaps(1);
       setSelectedSegments([]);
+  };
+
+  const generatePoints = () => {
+      const points = [];
+      if (genStart > genEnd) {
+          // Decreasing
+          for (let i = genStart; i >= genEnd; i -= genStep) {
+              points.push(i);
+          }
+      } else {
+          // Increasing
+          for (let i = genStart; i <= genEnd; i += genStep) {
+              points.push(i);
+          }
+      }
+      const str = points.join(', ');
+      if (genTarget === 'finish') {
+          setFinishPointsStr(str);
+      } else {
+          setSprintPointsStr(str);
+      }
   };
 
   const handleSaveSettings = async (e: React.FormEvent) => {
@@ -279,11 +314,13 @@ export default function AdminPage() {
       }
   };
 
-  const toggleSegment = (segId: string) => {
-      if (selectedSegments.includes(segId)) {
-          setSelectedSegments(selectedSegments.filter(id => id !== segId));
+  const toggleSegment = (segId: string, count: number) => {
+      // Construct unique key
+      const key = `${segId}_${count}`;
+      if (selectedSegments.includes(key)) {
+          setSelectedSegments(selectedSegments.filter(k => k !== key));
       } else {
-          setSelectedSegments([...selectedSegments, segId]);
+          setSelectedSegments([...selectedSegments, key]);
       }
   };
 
@@ -309,39 +346,101 @@ export default function AdminPage() {
       </div>
 
       {activeTab === 'settings' && (
-          <div className="bg-card p-6 rounded-lg shadow border border-border max-w-2xl">
-              <h2 className="text-xl font-semibold mb-6 text-card-foreground">Scoring Rules</h2>
-              <form onSubmit={handleSaveSettings} className="space-y-6">
-                  <div>
-                      <label className="block font-medium text-card-foreground mb-2">Finish Points (1st, 2nd, 3rd...)</label>
-                      <p className="text-xs text-muted-foreground mb-2">Comma-separated list of points awarded by position.</p>
-                      <input 
-                        type="text" 
-                        value={finishPointsStr}
-                        onChange={e => setFinishPointsStr(e.target.value)}
-                        className="w-full p-3 border border-input rounded-lg bg-background text-foreground"
-                        placeholder="e.g. 100, 95, 90, 85, 80..."
-                      />
-                  </div>
-                  <div>
-                      <label className="block font-medium text-card-foreground mb-2">Sprint Points (1st, 2nd, 3rd...)</label>
-                      <p className="text-xs text-muted-foreground mb-2">Points awarded for intermediate sprints.</p>
-                      <input 
-                        type="text" 
-                        value={sprintPointsStr}
-                        onChange={e => setSprintPointsStr(e.target.value)}
-                        className="w-full p-3 border border-input rounded-lg bg-background text-foreground"
-                        placeholder="e.g. 10, 9, 8, 7, 6..."
-                      />
-                  </div>
-                  <button 
-                    type="submit"
-                    disabled={status === 'saving'}
-                    className="bg-primary text-primary-foreground px-6 py-2 rounded hover:opacity-90 font-medium"
-                  >
-                      {status === 'saving' ? 'Saving...' : 'Save Settings'}
-                  </button>
-              </form>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 bg-card p-6 rounded-lg shadow border border-border">
+                <h2 className="text-xl font-semibold mb-6 text-card-foreground">Scoring Rules</h2>
+                <form onSubmit={handleSaveSettings} className="space-y-6">
+                    <div>
+                        <label className="block font-medium text-card-foreground mb-2">Finish Points (1st, 2nd, 3rd...)</label>
+                        <p className="text-xs text-muted-foreground mb-2">Comma-separated list of points awarded by position.</p>
+                        <textarea 
+                            value={finishPointsStr}
+                            onChange={e => setFinishPointsStr(e.target.value)}
+                            className="w-full p-3 border border-input rounded-lg bg-background text-foreground h-24 font-mono text-sm"
+                            placeholder="e.g. 100, 95, 90, 85, 80..."
+                        />
+                    </div>
+                    <div>
+                        <label className="block font-medium text-card-foreground mb-2">Sprint Points (1st, 2nd, 3rd...)</label>
+                        <p className="text-xs text-muted-foreground mb-2">Points awarded for intermediate sprints.</p>
+                        <textarea 
+                            value={sprintPointsStr}
+                            onChange={e => setSprintPointsStr(e.target.value)}
+                            className="w-full p-3 border border-input rounded-lg bg-background text-foreground h-24 font-mono text-sm"
+                            placeholder="e.g. 10, 9, 8, 7, 6..."
+                        />
+                    </div>
+                    <button 
+                        type="submit"
+                        disabled={status === 'saving'}
+                        className="bg-primary text-primary-foreground px-6 py-2 rounded hover:opacity-90 font-medium"
+                    >
+                        {status === 'saving' ? 'Saving...' : 'Save Settings'}
+                    </button>
+                </form>
+            </div>
+
+            {/* Points Generator Tool */}
+            <div className="bg-card p-6 rounded-lg shadow border border-border h-fit">
+                <h3 className="text-lg font-semibold mb-4 text-card-foreground">Points Generator</h3>
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-xs font-medium text-muted-foreground mb-1">Target Field</label>
+                        <div className="flex gap-2">
+                            <button 
+                                type="button"
+                                onClick={() => setGenTarget('finish')}
+                                className={`flex-1 py-1 px-2 text-sm rounded border ${genTarget === 'finish' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-input'}`}
+                            >
+                                Finish
+                            </button>
+                            <button 
+                                type="button"
+                                onClick={() => setGenTarget('sprint')}
+                                className={`flex-1 py-1 px-2 text-sm rounded border ${genTarget === 'sprint' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-input'}`}
+                            >
+                                Sprint
+                            </button>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                        <div>
+                            <label className="block text-xs font-medium text-muted-foreground mb-1">Start</label>
+                            <input 
+                                type="number" 
+                                value={genStart}
+                                onChange={e => setGenStart(parseInt(e.target.value))}
+                                className="w-full p-2 border border-input rounded bg-background text-foreground text-sm"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-muted-foreground mb-1">End</label>
+                            <input 
+                                type="number" 
+                                value={genEnd}
+                                onChange={e => setGenEnd(parseInt(e.target.value))}
+                                className="w-full p-2 border border-input rounded bg-background text-foreground text-sm"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-muted-foreground mb-1">Step</label>
+                            <input 
+                                type="number" 
+                                value={genStep}
+                                onChange={e => setGenStep(parseInt(e.target.value))}
+                                className="w-full p-2 border border-input rounded bg-background text-foreground text-sm"
+                            />
+                        </div>
+                    </div>
+                    <button 
+                        type="button"
+                        onClick={generatePoints}
+                        className="w-full bg-secondary text-secondary-foreground py-2 rounded hover:opacity-90 font-medium text-sm"
+                    >
+                        Generate & Fill
+                    </button>
+                </div>
+            </div>
           </div>
       )}
 
@@ -457,23 +556,38 @@ export default function AdminPage() {
                               {availableSegments.length === 0 ? (
                                   <p className="text-sm text-muted-foreground italic">No known segments on this route.</p>
                               ) : (
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-60 overflow-y-auto">
-                                      {availableSegments.map((seg, idx) => (
-                                          <label key={`${seg.id}-${idx}`} className="flex items-center gap-3 p-2 rounded hover:bg-muted/50 cursor-pointer border border-transparent hover:border-border transition">
-                                              <input 
-                                                type="checkbox"
-                                                checked={selectedSegments.includes(seg.id)}
-                                                onChange={() => toggleSegment(seg.id)}
-                                                className="w-4 h-4 rounded border-input text-primary focus:ring-primary"
-                                              />
-                                              <div className="text-sm">
-                                                  <div className="font-medium text-foreground">{seg.name}</div>
-                                                  <div className="text-xs text-muted-foreground">
-                                                      Lap {seg.lap} • {seg.direction} • #{seg.count}
+                                  <div className="space-y-4 max-h-96 overflow-y-auto">
+                                      {Object.keys(segmentsByLap).sort((a,b) => parseInt(a)-parseInt(b)).map(lapKey => {
+                                          const lapNum = parseInt(lapKey);
+                                          return (
+                                              <div key={lapNum} className="border border-border rounded-md overflow-hidden">
+                                                  <div className="bg-muted/30 px-3 py-2 text-sm font-semibold text-muted-foreground border-b border-border">
+                                                      Lap {lapNum}
+                                                  </div>
+                                                  <div className="p-2 grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                      {segmentsByLap[lapNum].map((seg, idx) => {
+                                                          const uniqueKey = `${seg.id}_${seg.count}`;
+                                                          return (
+                                                              <label key={uniqueKey} className="flex items-center gap-3 p-2 rounded hover:bg-muted/50 cursor-pointer border border-transparent hover:border-border transition">
+                                                                  <input 
+                                                                    type="checkbox"
+                                                                    checked={selectedSegments.includes(uniqueKey)}
+                                                                    onChange={() => toggleSegment(seg.id, seg.count)}
+                                                                    className="w-4 h-4 rounded border-input text-primary focus:ring-primary"
+                                                                  />
+                                                                  <div className="text-sm">
+                                                                      <div className="font-medium text-foreground">{seg.name}</div>
+                                                                      <div className="text-xs text-muted-foreground">
+                                                                          {seg.direction} • Occurrence #{seg.count}
+                                                                      </div>
+                                                                  </div>
+                                                              </label>
+                                                          );
+                                                      })}
                                                   </div>
                                               </div>
-                                          </label>
-                                      ))}
+                                          );
+                                      })}
                                   </div>
                               )}
                           </div>
