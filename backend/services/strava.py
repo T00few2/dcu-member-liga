@@ -80,14 +80,15 @@ class StravaService:
             
             if self.db:
                 user_ref = self.db.collection('users').document(str(e_license))
-                user_ref.update({
+                user_ref.set({
                     'strava': {
                         'athlete_id': data['athlete']['id'],
                         'access_token': data['access_token'],
                         'refresh_token': data['refresh_token'],
                         'expires_at': data['expires_at']
-                    }
-                })
+                    },
+                    'updatedAt': firestore.SERVER_TIMESTAMP
+                }, merge=True)
             
             return f"https://dcu-member-liga.vercel.app/register?strava=connected", None, 302
 
