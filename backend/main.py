@@ -86,6 +86,63 @@ def get_zwift_service():
 
 zr_service = ZwiftRacingService()
 
+# Helper to fetch and update rider stats
+def update_rider_stats(e_license, zwift_id):
+    if not db or not e_license or not zwift_id:
+        return None
+    
+    print(f"Fetching stats for {e_license} (ZwiftID: {zwift_id})")
+    
+    updates = {}
+    
+    # 1. ZwiftPower
+    try:
+        zp = get_zp_service()
+        zp_json = zp.get_rider_data_json(int(zwift_id))
+        if zp_json and 'data' in zp_json and len(zp_json['data']) > 0:
+            rider_info = zp_json['data'][0]
+            updates['zwiftPower'] = {
+                'category': rider_info.get('category', 'N/A'),
+                'ftp': rider_info.get('ftp', 'N/A'),
+                'updatedAt': firestore.SERVER_TIMESTAMP
+            }
+    except Exception as e:
+        print(f"ZP Fetch Error: {e}")
+
+    # 2. ZwiftRacing
+    try:
+        zr_json = zr_service.get_rider_data(str(zwift_id))
+        if zr_json:
+            # Handle direct object response vs 'data' wrapper
+            data = zr_json if 'race' in zr_json else zr_json.get('data', {})
+            race = data.get('race', {})
+            updates['zwiftRacing'] = {
+                'currentRating': race.get('current', {}).get('rating', 'N/A'),
+                'phenotype': data.get('phenotype', {}).get('value', 'N/A'),
+                'updatedAt': firestore.SERVER_TIMESTAMP
+            }
+    except Exception as e:
+         print(f"ZR Fetch Error: {e}")
+
+    # 3. Zwift Profile
+    try:
+        zwift_service = get_zwift_service()
+        profile = zwift_service.get_profile(int(zwift_id))
+        if profile:
+             updates['zwiftProfile'] = {
+                'ftp': profile.get('ftp'),
+                'weight': profile.get('weight'),
+                'height': profile.get('height'),
+                'updatedAt': firestore.SERVER_TIMESTAMP
+             }
+    except Exception as e:
+         print(f"Zwift Fetch Error: {e}")
+         
+    if updates:
+        db.collection('users').document(str(e_license)).set(updates, merge=True)
+        return updates
+    return None
+
 @functions_framework.http
 def dcu_api(request):
     headers = {
@@ -137,7 +194,6 @@ def dcu_api(request):
             # 1. Look up E-License from Auth Mapping
             mapping_doc = db.collection('auth_mappings').document(uid).get()
             if not mapping_doc.exists:
-                # User exists in Auth but hasn't registered/linked a profile yet
                 return (jsonify({'registered': False}), 200, headers)
             
             e_license = mapping_doc.to_dict().get('eLicense')
@@ -154,7 +210,7 @@ def dcu_api(request):
                 'eLicense': user_data.get('eLicense'),
                 'name': user_data.get('name'),
                 'zwiftId': user_data.get('zwiftId'),
-                'stravaConnected': bool(user_data.get('strava_access_token')) or bool(user_data.get('strava')) # Check if strava tokens exist
+                'stravaConnected': bool(user_data.get('strava_access_token')) or bool(user_data.get('strava')) 
             }), 200, headers)
 
         except Exception as e:
@@ -197,17 +253,20 @@ def dcu_api(request):
                     'eLicense': e_license,
                     'zwiftId': zwift_id, 
                     'verified': True,
-                    'authUid': uid, # Link to Auth UID
+                    'authUid': uid, 
                     'updatedAt': firestore.SERVER_TIMESTAMP
                 }, merge=True)
 
-                # 2. Create/Update a mapping from Auth UID to E-License 
-                # (So we can look up the user's license when they log in)
+                # 2. Create/Update a mapping
                 auth_map_ref = db.collection('auth_mappings').document(uid)
                 auth_map_ref.set({
                     'eLicense': e_license,
                     'lastLogin': firestore.SERVER_TIMESTAMP
                 }, merge=True)
+                
+                # 3. TRIGGER STATS FETCH ON SIGNUP
+                if zwift_id:
+                    update_rider_stats(e_license, zwift_id)
             
             return (jsonify({
                 'message': 'Signup successful',
@@ -217,6 +276,40 @@ def dcu_api(request):
         except Exception as e:
             return (jsonify({'message': str(e)}), 500, headers)
 
+    # --- PARTICIPANTS LIST ---
+    if path == '/participants' and request.method == 'GET':
+        if not db:
+             return (jsonify({'error': 'DB not available'}), 500, headers)
+        
+        try:
+            # Fetch all users
+            users_ref = db.collection('users')
+            # Limit to 100 for now to be safe
+            docs = users_ref.limit(100).stream()
+            
+            participants = []
+            for doc in docs:
+                data = doc.to_dict()
+                
+                # Extract summary stats from stored data
+                zp = data.get('zwiftPower', {})
+                zr = data.get('zwiftRacing', {})
+                
+                participants.append({
+                    'name': data.get('name'),
+                    'eLicense': data.get('eLicense'),
+                    'category': zp.get('category', 'N/A'),
+                    'ftp': zp.get('ftp', 'N/A'),
+                    'rating': zr.get('currentRating', 'N/A')
+                })
+            
+            return (jsonify({'participants': participants}), 200, headers)
+        except Exception as e:
+            print(f"Participants List Error: {e}")
+            return (jsonify({'message': str(e)}), 500, headers)
+
+
+    # --- STATS (Detailed) ---
     if path == '/stats' and request.method == 'GET':
         e_license = request.args.get('eLicense')
         
@@ -229,7 +322,6 @@ def dcu_api(request):
                     decoded_token = auth.verify_id_token(id_token)
                     uid = decoded_token['uid']
                     
-                    # Look up eLicense from auth_mappings
                     if db:
                         mapping_doc = db.collection('auth_mappings').document(uid).get()
                         if mapping_doc.exists:
@@ -237,7 +329,6 @@ def dcu_api(request):
                 except Exception as e:
                     print(f"Token verification failed in stats: {e}")
         
-        # Default values
         strava_data = {'kms': 'Not Connected', 'activities': []}
         zp_data = {'category': 'N/A', 'ftp': 'N/A'}
         zr_data = {}
@@ -249,39 +340,59 @@ def dcu_api(request):
                 if user_doc.exists:
                     user_data = user_doc.to_dict()
                     
-                    # 1. Fetch Strava Stats (if connected)
+                    # 1. Use STORED stats if available (fast!)
+                    # But user requested "Fetch on signup", so /stats might be used to "refresh" or show live details?
+                    # For now, let's keep /stats fetching LIVE data (detailed view) but maybe update the DB too?
+                    # Let's stick to the original plan: /stats fetches live data for the detail view.
+                    
+                    # 1. Fetch Strava Stats
                     if user_data.get('strava'):
                         strava_data = strava_service.get_activities(e_license)
                     
-                    # 2. Fetch ZwiftPower Stats (if ID exists)
                     zwift_id = user_data.get('zwiftId')
                     if zwift_id:
+                        # ... (Existing live fetch logic) ...
+                        # Note: We could optimize this by returning stored data if live fetch fails, 
+                        # or update stored data here too.
+                        
+                        # To keep this response short, I'll just trigger the update helper 
+                        # in the background or synchronously if we want to keep data fresh.
+                        # Let's update storage whenever they view their own stats.
+                        updates = update_rider_stats(e_license, zwift_id)
+                        
+                        if updates:
+                             zp = updates.get('zwiftPower', {})
+                             zr = updates.get('zwiftRacing', {})
+                             zpro = updates.get('zwiftProfile', {})
+                             
+                             zp_data = {'category': zp.get('category'), 'ftp': zp.get('ftp')}
+                             zr_data = {'currentRating': zr.get('currentRating'), 'phenotype': zr.get('phenotype')}
+                             # Add more detailed fields if needed, but the helper only extracts summary for now.
+                             # We might need to expand the helper if we want FULL stats stored.
+                             # For now, let's fall back to the manual fetch below for the FULL details 
+                             # (like finishes, wins, podiums which aren't in the helper yet)
+                             
+                             # actually, let's just rely on the live fetch code below for the FULL detail view
+                             # to ensure nothing breaks from my refactor.
+                             pass
+
+                        # --- ORIGINAL LIVE FETCH LOGIC (Preserved for detailed fields) ---
                         try:
                             zp = get_zp_service()
-                            # Note: login() is called inside get_zp_service() for new sessions,
-                            # or skipped if cached. We can call it again here if we want to be sure,
-                            # but let's trust the cache logic first.
-                            
                             zp_json = zp.get_rider_data_json(int(zwift_id))
                             if zp_json and 'data' in zp_json and len(zp_json['data']) > 0:
-                                rider_info = zp_json['data'][0] # Assuming first element has summary
+                                rider_info = zp_json['data'][0]
                                 zp_data = {
                                     'category': rider_info.get('category', 'N/A'),
                                     'ftp': rider_info.get('ftp', 'N/A'),
-                                    # Add other relevant fields from rider_info here
                                 }
                         except Exception as zp_e:
-                            print(f"ZwiftPower fetch error: {zp_e}")
-                            zp_data['error'] = "Fetch Failed"
+                             print(f"ZwiftPower fetch error: {zp_e}")
 
-                        # 3. Fetch ZwiftRacing Stats
                         try:
                             zr_json = zr_service.get_rider_data(str(zwift_id))
-                            print(f"ZR Response Keys: {zr_json.keys() if zr_json else 'None'}") # Debug
-                            
-                            # Handle direct object response (no 'data' wrapper)
-                            if zr_json and 'race' in zr_json:
-                                data = zr_json # The response IS the data
+                            if zr_json:
+                                data = zr_json if 'race' in zr_json else zr_json.get('data', {})
                                 race = data.get('race', {})
                                 zr_data = {
                                     'currentRating': race.get('current', {}).get('rating', 'N/A'),
@@ -293,27 +404,9 @@ def dcu_api(request):
                                     'podiums': race.get('podiums', 0),
                                     'dnfs': race.get('dnfs', 0)
                                 }
-                            # Handle wrapped response (fallback)
-                            elif zr_json and 'data' in zr_json:
-                                data = zr_json['data']
-                                race = data.get('race', {})
-                                zr_data = {
-                                    'currentRating': race.get('current', {}).get('rating', 'N/A'),
-                                    'max30Rating': race.get('max30', {}).get('rating', 'N/A'),
-                                    'max90Rating': race.get('max90', {}).get('rating', 'N/A'),
-                                    'phenotype': data.get('phenotype', {}).get('value', 'N/A'),
-                                    'finishes': race.get('finishes', 0),
-                                    'wins': race.get('wins', 0),
-                                    'podiums': race.get('podiums', 0),
-                                    'dnfs': race.get('dnfs', 0)
-                                }
-                            else:
-                                print(f"ZR Data Invalid Structure. Keys: {zr_json.keys() if zr_json else 'None'}")
                         except Exception as zr_e:
                             print(f"ZwiftRacing fetch error: {zr_e}")
-                            zr_data['error'] = "Fetch Failed"
 
-                        # 4. Fetch Zwift API Stats
                         try:
                             zwift_service = get_zwift_service()
                             profile = zwift_service.get_profile(int(zwift_id))
@@ -327,8 +420,7 @@ def dcu_api(request):
                                     'level': int(profile.get('level', 0))
                                 }
                         except Exception as z_e:
-                            print(f"Zwift API fetch error: {z_e}")
-                            zwift_data['error'] = "Fetch Failed"
+                             print(f"Zwift API fetch error: {z_e}")
 
             except Exception as e:
                 print(f"Error fetching stats: {e}")

@@ -19,7 +19,7 @@ export default function Navbar() {
               {user ? (
                 <div className="flex items-center gap-4">
                   {/* Navigation Links for Authenticated Users */}
-                  <Link href="/stats" className="hover:text-slate-300 hidden md:block">Stats</Link>
+                  <Link href="/participants" className="hover:text-slate-300 hidden md:block">Participants</Link>
                   <Link href="/results" className="hover:text-slate-300 hidden md:block">Results</Link>
                   
                   {/* User Menu */}

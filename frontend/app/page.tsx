@@ -8,15 +8,15 @@ export default function Home() {
 
   return (
     <div className="flex flex-col items-center justify-center py-20 text-center">
-      <h1 className="text-4xl font-bold text-slate-900 mb-4">Welcome to DCU Member League</h1>
-      <p className="text-xl text-slate-600 mb-8 max-w-2xl">
-        The official e-cycling league for DCU members. Sign up, track your stats, and compete in races on Zwift.
+      <h1 className="text-4xl font-bold mb-4 text-foreground">Welcome to DCU Member League</h1>
+      <p className="text-xl mb-8 max-w-2xl text-foreground opacity-80">
+        The official e-cycling league for DCU members. Join the competition, view participants, and track race results.
       </p>
       
       {!user ? (
-        <div className="bg-white p-8 rounded-lg shadow-md border border-slate-200 max-w-md w-full">
-          <h2 className="text-2xl font-semibold mb-4">Join the League</h2>
-          <p className="text-slate-600 mb-6">Sign in to register your license and view your stats.</p>
+        <div className="bg-white dark:bg-slate-800 p-8 rounded-lg shadow-md border border-slate-200 dark:border-slate-700 max-w-md w-full">
+          <h2 className="text-2xl font-semibold mb-4 text-slate-900 dark:text-white">Join the League</h2>
+          <p className="text-slate-600 dark:text-slate-300 mb-6">Sign in to register your license and view your stats.</p>
           <button 
             onClick={signInWithGoogle}
             className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
@@ -32,17 +32,17 @@ export default function Home() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl">
-          <Link href="/register" className="p-6 border rounded-lg shadow-sm hover:shadow-md transition bg-white group">
-            <h2 className="text-2xl font-semibold mb-2 group-hover:text-blue-600">League Registration &rarr;</h2>
-            <p className="text-slate-600">
-              Link your E-License, Zwift ID, and Strava to participate.
+          <Link href="/participants" className="p-6 border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm hover:shadow-md transition bg-white dark:bg-slate-800 group text-left">
+            <h2 className="text-2xl font-semibold mb-2 text-slate-900 dark:text-white group-hover:text-blue-600">Participants &rarr;</h2>
+            <p className="text-slate-600 dark:text-slate-300">
+              Check out the competition.
             </p>
           </Link>
           
-          <Link href="/stats" className="p-6 border rounded-lg shadow-sm hover:shadow-md transition bg-white group">
-            <h2 className="text-2xl font-semibold mb-2 group-hover:text-blue-600">View Stats &rarr;</h2>
-            <p className="text-slate-600">
-              Check your performance across all connected platforms.
+          <Link href="/results" className="p-6 border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm hover:shadow-md transition bg-white dark:bg-slate-800 group text-left">
+            <h2 className="text-2xl font-semibold mb-2 text-slate-900 dark:text-white group-hover:text-blue-600">Results &rarr;</h2>
+            <p className="text-slate-600 dark:text-slate-300">
+              View race results and league standings.
             </p>
           </Link>
         </div>
