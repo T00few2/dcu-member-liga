@@ -16,6 +16,16 @@ function RegisterContent() {
   const [zwiftId, setZwiftId] = useState('');
   const [stravaConnected, setStravaConnected] = useState(false);
 
+  // Verification State
+  const [initialData, setInitialData] = useState<{eLicense?: string, zwiftId?: string}>({});
+  const [zwiftVerified, setZwiftVerified] = useState(false);
+  const [verifyingZwift, setVerifyingZwift] = useState(false);
+  const [zwiftName, setZwiftName] = useState('');
+  
+  const [checkingLicense, setCheckingLicense] = useState(false);
+  const [licenseAvailable, setLicenseAvailable] = useState(true);
+  const [licenseCheckMessage, setLicenseCheckMessage] = useState('');
+
   // UI State
   const [isRegistered, setIsRegistered] = useState(false);
   const [fetchingProfile, setFetchingProfile] = useState(true);
@@ -51,6 +61,10 @@ function RegisterContent() {
                 setELicense(data.eLicense || '');
                 setZwiftId(data.zwiftId || '');
                 setStravaConnected(data.stravaConnected || false);
+                
+                setInitialData({ eLicense: data.eLicense, zwiftId: data.zwiftId });
+                // Assume existing profile is verified
+                if (data.zwiftId) setZwiftVerified(true);
             } else {
                 // Not registered, but maybe prefill name
                  if (user.displayName) setName(user.displayName);
@@ -109,8 +123,97 @@ function RegisterContent() {
   }, [stravaStatusParam]);
 
 
+  // --- VERIFICATION LOGIC ---
+
+  const checkLicense = async () => {
+      if (!eLicense || eLicense === initialData.eLicense) {
+          setLicenseAvailable(true);
+          setLicenseCheckMessage('');
+          return;
+      }
+
+      setCheckingLicense(true);
+      setLicenseCheckMessage('Checking availability...');
+      
+      try {
+          const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+          const res = await fetch(`${apiUrl}/verify/elicense/${eLicense}`);
+          const data = await res.json();
+          
+          if (res.ok) {
+              setLicenseAvailable(data.available);
+              if (!data.available) {
+                  setLicenseCheckMessage('This E-License is already registered.');
+              } else {
+                  setLicenseCheckMessage('');
+              }
+          } else {
+              // If error, default to allowing but warn? Or fail?
+              // Let's fail safe for now but log it
+              console.error("License check failed", data);
+          }
+      } catch (err) {
+          console.error("License check error", err);
+      } finally {
+          setCheckingLicense(false);
+      }
+  };
+
+  const verifyZwiftId = async () => {
+      if (!zwiftId) return;
+      
+      // Reset
+      setZwiftVerified(false);
+      setZwiftName('');
+      setVerifyingZwift(true);
+      setError('');
+
+      try {
+          const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+          const res = await fetch(`${apiUrl}/verify/zwift/${zwiftId}`);
+          
+          if (res.ok) {
+              const data = await res.json();
+              const fullName = `${data.firstName} ${data.lastName}`;
+              setZwiftName(fullName);
+              // We don't set zwiftVerified to true yet; user must confirm
+          } else {
+              const data = await res.json();
+              setError(data.message || 'Could not verify Zwift ID. Please check it is correct.');
+          }
+      } catch (err) {
+          setError('Failed to connect to verification service.');
+      } finally {
+          setVerifyingZwift(false);
+      }
+  };
+
+  const confirmZwiftIdentity = () => {
+      setZwiftVerified(true);
+      setZwiftName(''); // Clear name display to clean up UI
+  };
+
+  // Reset verification if ID changes
+  useEffect(() => {
+      if (zwiftId !== initialData.zwiftId && zwiftVerified) {
+          setZwiftVerified(false);
+      }
+  }, [zwiftId, initialData.zwiftId]);
+
+
   const handleSubmit = async () => {
     if (!user) return;
+
+    // Final validation
+    if (!licenseAvailable) {
+        setError("E-License is already in use.");
+        return;
+    }
+    if (!zwiftVerified) {
+        setError("Please verify your Zwift ID.");
+        return;
+    }
+
     setSubmitting(true);
     setError('');
     setMessage('');
@@ -139,6 +242,9 @@ function RegisterContent() {
         setIsRegistered(true);
         setMessage(isRegistered ? 'Profile updated!' : 'Registration complete!');
         
+        // Update initial data so we don't prompt to re-verify immediately
+        setInitialData({ eLicense, zwiftId });
+
         // Important: Refresh context so Navbar/Protection updates immediately
         await refreshProfile();
         
@@ -150,8 +256,8 @@ function RegisterContent() {
   };
 
   // Validation
-  const step1Complete = eLicense.length > 0; // Basic check
-  const step2Complete = zwiftId.length > 0;
+  const step1Complete = eLicense.length > 0 && licenseAvailable; 
+  const step2Complete = zwiftVerified && zwiftId.length > 0;
   // Strava is now optional but recommended
   const step3Complete = stravaConnected; 
   
@@ -211,9 +317,14 @@ function RegisterContent() {
                         type="text" 
                         value={eLicense} 
                         onChange={e => setELicense(e.target.value)}
-                        className="w-full p-3 border border-input rounded-lg focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all text-foreground bg-background placeholder-muted-foreground"
+                        onBlur={checkLicense}
+                        className={`w-full p-3 border rounded-lg focus:ring-2 outline-none transition-all text-foreground bg-background placeholder-muted-foreground
+                            ${!licenseAvailable ? 'border-red-500 focus:ring-red-200' : 'border-input focus:ring-ring focus:border-ring'}`}
                         placeholder="e.g. 100123456"
                     />
+                    {checkingLicense && <p className="text-xs text-muted-foreground mt-1">Checking availability...</p>}
+                    {!licenseAvailable && <p className="text-xs text-red-600 mt-1">This E-License is already registered.</p>}
+                    {licenseAvailable && eLicense && !checkingLicense && <p className="text-xs text-green-600 mt-1">License available</p>}
                 </div>
                 {step1Complete && <span className="text-green-600 dark:text-green-400 text-xl">✓</span>}
             </div>
@@ -239,9 +350,9 @@ function RegisterContent() {
                     ) : (
                         <button
                             onClick={handleConnectStrava}
-                            disabled={!step1Complete}
+                            disabled={!eLicense} // Relaxed dependency on verified license for strava connection flow
                             className={`px-4 py-2 rounded font-medium text-sm flex items-center gap-2 transition
-                                ${step1Complete 
+                                ${eLicense 
                                     ? 'bg-[#FC4C02] text-white hover:bg-[#E34402]' 
                                     : 'bg-secondary text-muted-foreground cursor-not-allowed'}`}
                         >
@@ -262,13 +373,45 @@ function RegisterContent() {
                 <div className="flex-1">
                     <label className="block font-semibold text-card-foreground mb-1">Zwift ID</label>
                     <p className="text-sm text-muted-foreground mb-2">Your Zwift ID is required for race results.</p>
-                    <input 
-                        type="text" 
-                        value={zwiftId} 
-                        onChange={e => setZwiftId(e.target.value)}
-                        className="w-full p-3 border border-input rounded-lg focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all text-foreground bg-background placeholder-muted-foreground"
-                        placeholder="e.g. 123456"
-                    />
+                    <div className="flex gap-2">
+                        <input 
+                            type="text" 
+                            value={zwiftId} 
+                            onChange={e => setZwiftId(e.target.value)}
+                            className="flex-1 p-3 border border-input rounded-lg focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all text-foreground bg-background placeholder-muted-foreground"
+                            placeholder="e.g. 123456"
+                        />
+                        <button
+                            onClick={verifyZwiftId}
+                            disabled={verifyingZwift || !zwiftId}
+                            className="px-4 py-2 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 disabled:opacity-50"
+                        >
+                            {verifyingZwift ? '...' : 'Verify'}
+                        </button>
+                    </div>
+                    
+                    {zwiftName && (
+                        <div className="mt-3 p-3 bg-secondary/30 rounded border border-border">
+                            <p className="text-sm mb-2">Found rider: <strong>{zwiftName}</strong></p>
+                            <div className="flex gap-2">
+                                <button 
+                                    onClick={confirmZwiftIdentity}
+                                    className="text-xs px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                                >
+                                    Yes, that's me
+                                </button>
+                                <button 
+                                    onClick={() => setZwiftName('')}
+                                    className="text-xs px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200"
+                                >
+                                    No
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                    {zwiftVerified && !zwiftName && (
+                         <p className="text-xs text-green-600 mt-2">✓ Zwift ID Verified</p>
+                    )}
                 </div>
                 {step2Complete && <span className="text-green-600 dark:text-green-400 text-xl">✓</span>}
             </div>
@@ -290,7 +433,7 @@ function RegisterContent() {
             </button>
             {!canSubmit && (
                 <p className="text-center text-sm text-muted-foreground mt-2">
-                    Please complete all required steps above to continue.
+                    Please complete and verify all required steps.
                 </p>
             )}
         </div>

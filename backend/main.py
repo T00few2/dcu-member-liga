@@ -439,6 +439,37 @@ def dcu_api(request):
             print(f"Profile Error: {e}")
             return (jsonify({'message': str(e)}), 500, headers)
 
+    # --- VERIFICATION ROUTES ---
+    
+    if path.startswith('/verify/zwift/') and request.method == 'GET':
+        zwift_id = path.split('/')[-1]
+        try:
+            zwift_service = get_zwift_service()
+            profile = zwift_service.get_profile(int(zwift_id))
+            
+            if not profile:
+                return (jsonify({'message': 'Rider not found'}), 404, headers)
+            
+            return (jsonify({
+                'firstName': profile.get('firstName'),
+                'lastName': profile.get('lastName'),
+                'id': profile.get('id')
+            }), 200, headers)
+        except Exception as e:
+            return (jsonify({'message': str(e)}), 500, headers)
+
+    if path.startswith('/verify/elicense/') and request.method == 'GET':
+        e_license = path.split('/')[-1]
+        if not db:
+             return (jsonify({'error': 'DB not available'}), 500, headers)
+        
+        try:
+            # Check if document exists
+            doc = db.collection('users').document(str(e_license)).get()
+            return (jsonify({'available': not doc.exists}), 200, headers)
+        except Exception as e:
+            return (jsonify({'message': str(e)}), 500, headers)
+
     # --- CORE ROUTES ---
 
     if path == '/signup' and request.method == 'POST':
