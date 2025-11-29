@@ -327,7 +327,10 @@ export default function ResultsPage() {
                                     <th className="px-4 py-3 text-right">Time</th>
                                     {/* Dynamic Sprint Columns */}
                                     {sprintColumns.map(sprintKey => (
-                                        <th key={sprintKey} className="px-4 py-3 text-center text-xs uppercase tracking-wider text-muted-foreground/70 whitespace-nowrap">
+                                        <th 
+                                            key={sprintKey} 
+                                            className="px-2 py-3 text-center text-xs uppercase tracking-wider text-muted-foreground/70 whitespace-normal sm:max-w-[120px] min-w-[80px]"
+                                        >
                                             {getSprintHeader(sprintKey)}
                                         </th>
                                     ))}

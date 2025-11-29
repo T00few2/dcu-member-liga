@@ -734,42 +734,48 @@ export default function AdminPage() {
 
           {/* Existing Races List */}
           <div className="bg-card rounded-lg shadow overflow-hidden border border-border">
-              <div className="flex justify-between items-center p-6 border-b border-border">
-                  <h2 className="text-xl font-semibold text-card-foreground">Scheduled Races</h2>
-                  <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-2">
-                          <label className="text-sm text-muted-foreground font-medium">Category:</label>
-                          <select 
-                              value={categoryFilter}
-                              onChange={(e) => setCategoryFilter(e.target.value)}
-                              className="bg-background border border-input rounded px-2 py-1 text-sm font-medium text-foreground focus:ring-1 focus:ring-primary"
-                          >
-                              {['All', 'A', 'B', 'C', 'D', 'E'].map(cat => (
-                                  <option key={cat} value={cat}>{cat}</option>
-                              ))}
-                          </select>
+              <div className="flex flex-col gap-4 p-6 border-b border-border">
+                  <div className="flex justify-between items-end">
+                      <h2 className="text-xl font-semibold text-card-foreground">Scheduled Races</h2>
+                      
+                      <div className="flex flex-col gap-2 items-end">
+                          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Results Fetch Options</span>
+                          <div className="flex items-center gap-4 p-2 bg-muted/30 rounded-lg border border-border/50">
+                              <div className="flex items-center gap-2">
+                                  <label className="text-sm text-muted-foreground font-medium">Category:</label>
+                                  <select 
+                                      value={categoryFilter}
+                                      onChange={(e) => setCategoryFilter(e.target.value)}
+                                      className="bg-background border border-input rounded px-2 py-1 text-sm font-medium text-foreground focus:ring-1 focus:ring-primary"
+                                  >
+                                      {['All', 'A', 'B', 'C', 'D', 'E'].map(cat => (
+                                          <option key={cat} value={cat}>{cat}</option>
+                                      ))}
+                                  </select>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                  <label className="text-sm text-muted-foreground font-medium">Source:</label>
+                                  <select 
+                                      value={resultSource}
+                                      onChange={(e) => setResultSource(e.target.value as any)}
+                                      className="bg-background border border-input rounded px-2 py-1 text-sm font-medium text-foreground focus:ring-1 focus:ring-primary"
+                                  >
+                                      <option value="finishers">Finishers</option>
+                                      <option value="joined">Joined</option>
+                                      <option value="signed_up">Signed Up</option>
+                                  </select>
+                              </div>
+                              <label className="flex items-center gap-2 cursor-pointer border-l border-border pl-4">
+                                  <input 
+                                      type="checkbox"
+                                      checked={filterRegistered}
+                                      onChange={(e) => setFilterRegistered(e.target.checked)}
+                                      className="w-4 h-4 rounded border-input text-primary focus:ring-primary"
+                                  />
+                                  <span className="text-sm text-muted-foreground select-none">Filter Registered</span>
+                              </label>
+                          </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                          <label className="text-sm text-muted-foreground font-medium">Source:</label>
-                          <select 
-                              value={resultSource}
-                              onChange={(e) => setResultSource(e.target.value as any)}
-                              className="bg-background border border-input rounded px-2 py-1 text-sm font-medium text-foreground focus:ring-1 focus:ring-primary"
-                          >
-                              <option value="finishers">Finishers</option>
-                              <option value="joined">Joined</option>
-                              <option value="signed_up">Signed Up</option>
-                          </select>
-                      </div>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                          <input 
-                              type="checkbox"
-                              checked={filterRegistered}
-                              onChange={(e) => setFilterRegistered(e.target.checked)}
-                              className="w-4 h-4 rounded border-input text-primary focus:ring-primary"
-                          />
-                          <span className="text-sm text-muted-foreground select-none">Filter Registered</span>
-                      </label>
                   </div>
               </div>
               <div className="overflow-x-auto">
