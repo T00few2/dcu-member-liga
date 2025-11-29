@@ -12,16 +12,17 @@ class ResultsProcessor:
         self.zwift = zwift_service
         self.game = game_service
 
-    def process_race_results(self, race_id, fetch_mode='finishers', filter_registered=True):
+    def process_race_results(self, race_id, fetch_mode='finishers', filter_registered=True, category_filter=None):
         """
         Main entry point to process results for a given race ID (Firestore ID).
         fetch_mode: 'finishers' (default), 'joined', 'signed_up'
         filter_registered: boolean, if True only include users in DB
+        category_filter: string, e.g. 'A', 'B' or None/'All'
         """
         if not self.db:
             raise Exception("Database not available")
 
-        print(f"Processing results for race: {race_id} with mode: {fetch_mode}, filter: {filter_registered}")
+        print(f"Processing results for race: {race_id} (Mode: {fetch_mode}, Filter: {filter_registered}, Cat: {category_filter})")
 
         # 1. Fetch Race Config
         race_doc = self.db.collection('races').document(race_id).get()
@@ -62,10 +63,18 @@ class ResultsProcessor:
         subgroups = self._extract_subgroups(event_info)
         print(f"Found {len(subgroups)} subgroups in event.")
         
-        all_results = {} # category -> results_list
+        # Preserve existing results if only updating one category
+        all_results = race_data.get('results', {})
+        if not all_results:
+            all_results = {} # Ensure it's a dict
 
         for subgroup in subgroups:
             category_label = subgroup['subgroupLabel'] # e.g. "A", "B"
+            
+            # Filter by Category if requested
+            if category_filter and category_filter != 'All' and category_label != category_filter:
+                continue
+
             subgroup_id = subgroup['id']
             start_time_str = subgroup['eventSubgroupStart']
             
@@ -170,63 +179,63 @@ class ResultsProcessor:
                 selected_sprints = race_data.get('sprints', []) # list of full segment objects
                 
                 if selected_sprints:
-                # We need to fetch raw segment results for EACH unique segment ID used
-                unique_segment_ids = set(s['id'] for s in selected_sprints)
-                
-                # Define time window for segment hits (Start to Start + 3h usually safe)
-                end_time = start_time + timedelta(hours=3)
-                
-                segment_data_cache = {} # seg_id -> raw_results
-                
-                for seg_id in unique_segment_ids:
-                    raw = self.zwift.get_segment_results(seg_id, from_date=start_time, to_date=end_time)
-                    segment_data_cache[seg_id] = raw
-
-                # Process each selected sprint (Sprint A Lap 1, Sprint A Lap 2...)
-                # They are processed in order, but point allocation depends on specific occurrences
-                
-                # Prepare participant list for filter function
-                # CRITICAL FIX: Only include riders in the CURRENT subgroup/category
-                participants_list = [
-                    {'id': int(zid), 'firstName': processed_riders[zid]['name'], 'lastName': ''} 
-                    for zid in processed_riders.keys()
-                ]
-                
-                # Group selected sprints by Segment ID to determine max count needed
-                sprints_by_id = defaultdict(list)
-                for s in selected_sprints:
-                    sprints_by_id[s['id']].append(s)
-                
-                for seg_id, sprints in sprints_by_id.items():
-                    raw_res = segment_data_cache.get(seg_id)
-                    if not raw_res:
-                        continue
-                        
-                    # Use the ported logic to filter/rank
-                    ranked_table = self._filter_segment_results(raw_res, sprints, participants_list)
+                    # We need to fetch raw segment results for EACH unique segment ID used
+                    unique_segment_ids = set(s['id'] for s in selected_sprints)
                     
-                    # Award points
-                    for sprint_config in sprints:
-                        occ_idx = sprint_config['count'] # 1-based occurrence
-                        
-                        if occ_idx in ranked_table:
-                            rankings = ranked_table[occ_idx] # { 1: {name, id}, 2: ... }
+                    # Define time window for segment hits (Start to Start + 3h usually safe)
+                    end_time = start_time + timedelta(hours=3)
+                    
+                    segment_data_cache = {} # seg_id -> raw_results
+                    
+                    for seg_id in unique_segment_ids:
+                        raw = self.zwift.get_segment_results(seg_id, from_date=start_time, to_date=end_time)
+                        segment_data_cache[seg_id] = raw
+
+                    # Process each selected sprint (Sprint A Lap 1, Sprint A Lap 2...)
+                    # They are processed in order, but point allocation depends on specific occurrences
+                    
+                    # Prepare participant list for filter function
+                    # CRITICAL FIX: Only include riders in the CURRENT subgroup/category
+                    participants_list = [
+                        {'id': int(zid), 'firstName': processed_riders[zid]['name'], 'lastName': ''} 
+                        for zid in processed_riders.keys()
+                    ]
+                    
+                    # Group selected sprints by Segment ID to determine max count needed
+                    sprints_by_id = defaultdict(list)
+                    for s in selected_sprints:
+                        sprints_by_id[s['id']].append(s)
+                    
+                    for seg_id, sprints in sprints_by_id.items():
+                        raw_res = segment_data_cache.get(seg_id)
+                        if not raw_res:
+                            continue
                             
-                            # Award points based on Sprint Scheme
-                            for p_idx, points in enumerate(sprint_points_scheme):
-                                rank = p_idx + 1
-                                if rank in rankings:
-                                    winner_entry = rankings[rank]
-                                    w_zid = str(winner_entry['id'])
-                                    
-                                    if w_zid in processed_riders:
-                                        rider_data = processed_riders[w_zid]
-                                        rider_data['sprintPoints'] += points
-                                        rider_data['totalPoints'] += points
+                        # Use the ported logic to filter/rank
+                        ranked_table = self._filter_segment_results(raw_res, sprints, participants_list)
+                        
+                        # Award points
+                        for sprint_config in sprints:
+                            occ_idx = sprint_config['count'] # 1-based occurrence
+                            
+                            if occ_idx in ranked_table:
+                                rankings = ranked_table[occ_idx] # { 1: {name, id}, 2: ... }
+                                
+                                # Award points based on Sprint Scheme
+                                for p_idx, points in enumerate(sprint_points_scheme):
+                                    rank = p_idx + 1
+                                    if rank in rankings:
+                                        winner_entry = rankings[rank]
+                                        w_zid = str(winner_entry['id'])
                                         
-                                        # Log detail
-                                        sprint_key = sprint_config.get('key') or f"{sprint_config['id']}_{sprint_config['count']}"
-                                        rider_data['sprintDetails'][sprint_key] = points
+                                        if w_zid in processed_riders:
+                                            rider_data = processed_riders[w_zid]
+                                            rider_data['sprintPoints'] += points
+                                            rider_data['totalPoints'] += points
+                                            
+                                            # Log detail
+                                            sprint_key = sprint_config.get('key') or f"{sprint_config['id']}_{sprint_config['count']}"
+                                            rider_data['sprintDetails'][sprint_key] = points
 
             # Final sorting by Total Points for this category
             final_list = list(processed_riders.values())

@@ -87,6 +87,7 @@ export default function AdminPage() {
   // Results Fetch Mode (Data Source)
   const [resultSource, setResultSource] = useState<'finishers' | 'joined' | 'signed_up'>('finishers');
   const [filterRegistered, setFilterRegistered] = useState(true);
+  const [categoryFilter, setCategoryFilter] = useState('All');
 
   // Access Control
   useEffect(() => {
@@ -306,7 +307,8 @@ export default function AdminPage() {
               },
               body: JSON.stringify({ 
                   source: resultSource,
-                  filterRegistered: filterRegistered
+                  filterRegistered: filterRegistered,
+                  categoryFilter: categoryFilter
               })
           });
           
@@ -735,6 +737,18 @@ export default function AdminPage() {
               <div className="flex justify-between items-center p-6 border-b border-border">
                   <h2 className="text-xl font-semibold text-card-foreground">Scheduled Races</h2>
                   <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2">
+                          <label className="text-sm text-muted-foreground font-medium">Category:</label>
+                          <select 
+                              value={categoryFilter}
+                              onChange={(e) => setCategoryFilter(e.target.value)}
+                              className="bg-background border border-input rounded px-2 py-1 text-sm font-medium text-foreground focus:ring-1 focus:ring-primary"
+                          >
+                              {['All', 'A', 'B', 'C', 'D', 'E'].map(cat => (
+                                  <option key={cat} value={cat}>{cat}</option>
+                              ))}
+                          </select>
+                      </div>
                       <div className="flex items-center gap-2">
                           <label className="text-sm text-muted-foreground font-medium">Source:</label>
                           <select 

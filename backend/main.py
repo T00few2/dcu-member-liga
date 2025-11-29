@@ -365,10 +365,16 @@ def dcu_api(request):
             req_data = request.get_json(silent=True) or {}
             fetch_mode = req_data.get('source', 'finishers')
             filter_registered = req_data.get('filterRegistered', True)
+            category_filter = req_data.get('categoryFilter', 'All')
             
-            results = processor.process_race_results(race_id, fetch_mode=fetch_mode, filter_registered=filter_registered)
+            results = processor.process_race_results(
+                race_id, 
+                fetch_mode=fetch_mode, 
+                filter_registered=filter_registered,
+                category_filter=category_filter
+            )
             
-            return (jsonify({'message': f'Results calculated (Mode: {fetch_mode}, Filtered: {filter_registered})', 'results': results}), 200, headers)
+            return (jsonify({'message': f'Results calculated (Mode: {fetch_mode}, Cat: {category_filter})', 'results': results}), 200, headers)
         except Exception as e:
             print(f"Results Processing Error: {e}")
             return (jsonify({'message': str(e)}), 500, headers)
