@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { 
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
-    ComposedChart, Bar, Area, LabelList
+    ComposedChart, Bar, Area, LabelList, Brush
 } from 'recharts';
 
 interface Participant {
@@ -182,7 +182,7 @@ export default function VerificationDashboard() {
     
     // 1. Weight & Height Graph Data (All History)
     const weightHeightData = zpData.map(d => ({
-        date: new Date(d.date * 1000).toLocaleDateString(),
+        date: new Date(d.date * 1000).toISOString().split('T')[0], // YYYY-MM-DD
         timestamp: d.date,
         weight: d.weight > 0 ? d.weight : null, // Filter out 0s
         height: d.height > 0 ? d.height : null  // Filter out 0s
@@ -199,7 +199,7 @@ export default function VerificationDashboard() {
         }
 
         return {
-            date: new Date(d.date * 1000).toLocaleDateString(),
+            date: new Date(d.date * 1000).toISOString().split('T')[0], // YYYY-MM-DD
             timestamp: d.date,
             power: powerVal,
             hr: d.avg_hr,
@@ -298,18 +298,34 @@ export default function VerificationDashboard() {
 
     const selectedStravaActivityDetails = stravaData.find(a => a.id === selectedStravaActivityId);
 
-    // Format Date tick to prevent overlap (show DD/MM only, skip some)
-    const renderDateTick = (tickProps: any) => {
-        const { x, y, payload, index } = tickProps;
-        // Show every 3rd label roughly, or based on width
-        if (index % 2 !== 0) return null;
-
-        return (
-            <text x={x} y={y + 10} textAnchor="middle" fill="var(--muted-foreground)" fontSize={10}>
-                {payload.value.split('/').slice(0,2).join('/')}
-            </text>
-        );
+    // Helper to get ~5 equidistant ticks for X-axis
+    const getAxisTicks = (data: any[]) => {
+        if (!data || data.length === 0) return [];
+        if (data.length <= 5) return data.map(d => d.date);
+        
+        const step = Math.floor(data.length / 4);
+        const ticks = [];
+        for (let i = 0; i < data.length; i += step) {
+            ticks.push(data[i].date);
+        }
+        // Ensure last one is included if not close
+        if (ticks[ticks.length-1] !== data[data.length-1].date) {
+            ticks.push(data[data.length-1].date);
+        }
+        return ticks;
     };
+
+    // Formatter for X-axis date labels (YYYY-MM-DD -> MM-YY)
+    const formatDateTick = (dateStr: string) => {
+        if (!dateStr) return '';
+        const parts = dateStr.split('-');
+        if (parts.length < 3) return dateStr;
+        // parts[0] = YYYY, parts[1] = MM, parts[2] = DD
+        return `${parts[1]}-${parts[0].slice(2)}`;
+    };
+
+    const weightHeightTicks = getAxisTicks(weightHeightData);
+    const powerTicks = getAxisTicks(powerData);
 
     return (
         <div className="max-w-6xl mx-auto pb-12">
@@ -482,13 +498,8 @@ export default function VerificationDashboard() {
                                                 <XAxis 
                                                     dataKey="date" 
                                                     tick={{fontSize: 10, fill: 'var(--muted-foreground)'}} 
-                                                    tickFormatter={(val, idx) => {
-                                                        // Show roughly 5 ticks max
-                                                        const total = weightHeightData.length;
-                                                        const interval = Math.ceil(total / 5);
-                                                        return idx % interval === 0 ? val.split('/').slice(0,2).join('/') : '';
-                                                    }}
-                                                    interval={0} // Allow us to control visibility via formatter
+                                                    ticks={weightHeightTicks}
+                                                    tickFormatter={formatDateTick}
                                                 />
                                                 <YAxis 
                                                     yAxisId="left" 
@@ -526,6 +537,7 @@ export default function VerificationDashboard() {
                                                     dot={false}
                                                     strokeWidth={2}
                                                 />
+                                                <Brush dataKey="date" height={30} stroke="#8884d8" tickFormatter={formatDateTick} />
                                             </ComposedChart>
                                         </ResponsiveContainer>
                                     </div>
@@ -556,13 +568,8 @@ export default function VerificationDashboard() {
                                                 <XAxis 
                                                     dataKey="date" 
                                                     tick={{fontSize: 10, fill: 'var(--muted-foreground)'}}
-                                                    tickFormatter={(val, idx) => {
-                                                        // Show roughly 5 ticks max
-                                                        const total = powerData.length;
-                                                        const interval = Math.ceil(total / 5);
-                                                        return idx % interval === 0 ? val.split('/').slice(0,2).join('/') : '';
-                                                    }}
-                                                    interval={0}
+                                                    ticks={powerTicks}
+                                                    tickFormatter={formatDateTick}
                                                 />
                                                 <YAxis 
                                                     label={{ value: 'Watts', angle: -90, position: 'insideLeft', style: {textAnchor: 'middle', fill: '#ff7300', fontSize: 12} }}
@@ -599,6 +606,7 @@ export default function VerificationDashboard() {
                                                     opacity={0.6}
                                                     dot={false}
                                                 />
+                                                <Brush dataKey="date" height={30} stroke="#ff7300" tickFormatter={formatDateTick} />
                                             </LineChart>
                                         </ResponsiveContainer>
                                     </div>
@@ -675,6 +683,7 @@ export default function VerificationDashboard() {
                                                         strokeWidth={1.5}
                                                         opacity={0.7}
                                                     />
+                                                    <Brush dataKey="timeLabel" height={30} stroke="#FC4C02" />
                                                 </LineChart>
                                             </ResponsiveContainer>
                                         </div>
