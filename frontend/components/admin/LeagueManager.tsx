@@ -856,6 +856,7 @@ export default function LeagueManager() {
                             <th className="px-6 py-3">Name</th>
                             <th className="px-6 py-3">Route</th>
                             <th className="px-6 py-3">Sprints</th>
+                            <th className="px-6 py-3 text-right">Results</th>
                             <th className="px-6 py-3 text-right">Actions</th>
                         </tr>
                     </thead>
@@ -892,6 +893,8 @@ export default function LeagueManager() {
                                             </button>
                                         </>
                                     )}
+                                </td>
+                                <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
                                     <button 
                                         onClick={() => handleEdit(r)}
                                         className="text-primary hover:text-primary/80 font-medium px-2 py-1"
@@ -909,7 +912,7 @@ export default function LeagueManager() {
                         ))}
                         {races.length === 0 && (
                             <tr>
-                                <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">No races scheduled.</td>
+                                <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">No races scheduled.</td>
                             </tr>
                         )}
                     </tbody>
