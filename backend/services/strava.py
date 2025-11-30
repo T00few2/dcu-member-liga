@@ -151,7 +151,7 @@ class StravaService:
                             'name': a['name'],
                             'distance': f"{round(a['distance'] / 1000, 2)} km",
                             'date': a['start_date_local'][:10], 
-                            'moving_time': f"{round(a['moving_time'] / 60)} min",
+                            'moving_time': f"{round(a['moving_time'] / 60)} min" if a['moving_time'] else "0 min",
                             'average_watts': a.get('average_watts'),
                             'average_heartrate': a.get('average_heartrate'),
                             'suffer_score': a.get('suffer_score')
