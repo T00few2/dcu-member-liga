@@ -313,10 +313,20 @@ export default function VerificationDashboard() {
                                                 <Legend 
                                                     verticalAlign="top" 
                                                     height={36}
-                                                    payload={[
-                                                        { value: 'Best (90d)', type: 'line', color: '#8884d8' },
-                                                        { value: 'Selected Race', type: 'line', color: '#ff7300' }
-                                                    ].filter(item => item.value !== 'Selected Race' || selectedRaceDate) as any[]}
+                                                    content={() => (
+                                                        <div className="flex justify-center gap-4 text-sm text-muted-foreground">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="block w-3 h-[2px] bg-[#8884d8]"></span>
+                                                                <span>Best (90d)</span>
+                                                            </div>
+                                                            {selectedRaceDate && (
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="block w-3 h-[2px] bg-[#ff7300]"></span>
+                                                                    <span>Selected Race</span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                 />
                                                 
                                                 {/* Render faint lines for EVERY race in the last 90 days */}
