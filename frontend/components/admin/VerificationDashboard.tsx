@@ -2,6 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { 
+    LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
+    ComposedChart, Bar, Area 
+} from 'recharts';
 
 interface Participant {
     name: string;
@@ -14,12 +18,14 @@ interface Participant {
 }
 
 interface ZwiftPowerResult {
-    date: string;
+    date: number; // Unix timestamp
     event_title: string;
     avg_watts: number;
     avg_hr: number;
     wkg: number;
     category: string;
+    weight: number;
+    height: number;
 }
 
 interface StravaActivity {
@@ -47,6 +53,9 @@ export default function VerificationDashboard() {
     const [riderProfile, setRiderProfile] = useState<any>(null);
     const [error, setError] = useState('');
 
+    // Graph State
+    const [selectedRaceDate, setSelectedRaceDate] = useState<number | null>(null);
+
     // Fetch brief list of all participants for the search dropdown
     useEffect(() => {
         const fetchParticipants = async () => {
@@ -73,6 +82,7 @@ export default function VerificationDashboard() {
         setZpData([]);
         setStravaData([]);
         setRiderProfile(null);
+        setSelectedRaceDate(null);
 
         if (!user) return;
 
@@ -86,7 +96,11 @@ export default function VerificationDashboard() {
             
             if (res.ok) {
                 const data = await res.json();
-                setZpData(data.zwiftPowerHistory || []);
+                
+                // Ensure data is sorted by date ascending for graphs
+                const history = (data.zwiftPowerHistory || []).sort((a: any, b: any) => a.date - b.date);
+                setZpData(history);
+                
                 setStravaData(data.stravaActivities || []);
                 setRiderProfile(data.profile || {});
             } else {
@@ -106,8 +120,49 @@ export default function VerificationDashboard() {
         p.eLicense.includes(search)
     );
 
+    // --- Graph Data Preparation ---
+    
+    // 1. Weight & Height Graph Data (All History)
+    const weightHeightData = zpData.map(d => ({
+        date: new Date(d.date * 1000).toLocaleDateString(),
+        timestamp: d.date,
+        weight: d.weight > 0 ? d.weight : null, // Filter out 0s
+        height: d.height > 0 ? d.height : null  // Filter out 0s
+    })).filter(d => d.weight || d.height);
+
+    // 2. Power Graph Data (Last 90 Days)
+    const ninetyDaysAgo = Date.now() / 1000 - (90 * 24 * 60 * 60);
+    const powerData = zpData.filter(d => d.date > ninetyDaysAgo).map(d => ({
+        date: new Date(d.date * 1000).toLocaleDateString(),
+        timestamp: d.date,
+        power: d.avg_watts,
+        hr: d.avg_hr,
+        title: d.event_title
+    }));
+
+    const CustomTooltip = ({ active, payload, label }: any) => {
+        if (active && payload && payload.length) {
+            return (
+                <div className="bg-card p-2 border border-border rounded shadow text-sm">
+                    <p className="font-bold mb-1">{label}</p>
+                    {payload.map((p: any) => (
+                        <p key={p.name} style={{ color: p.color }}>
+                            {p.name}: {p.value} {p.unit}
+                        </p>
+                    ))}
+                    {payload[0]?.payload?.title && (
+                        <p className="text-xs text-muted-foreground mt-1 max-w-[200px] truncate">
+                            {payload[0].payload.title}
+                        </p>
+                    )}
+                </div>
+            );
+        }
+        return null;
+    };
+
     return (
-        <div className="max-w-6xl mx-auto">
+        <div className="max-w-6xl mx-auto pb-12">
             {/* 1. Search / Selector */}
             <div className="bg-card p-6 rounded-lg shadow border border-border mb-8">
                 <h2 className="text-xl font-semibold mb-4 text-card-foreground">Rider Selection</h2>
@@ -149,7 +204,7 @@ export default function VerificationDashboard() {
 
             {/* 2. Dashboard Grid */}
             {selectedRider && (
-                <div className="space-y-6">
+                <div className="space-y-8">
                     <div className="flex items-center justify-between">
                         <h2 className="text-2xl font-bold text-foreground">
                             Analysis: {selectedRider.name} 
@@ -175,134 +230,211 @@ export default function VerificationDashboard() {
                     {loadingDetails ? (
                         <div className="p-12 text-center text-muted-foreground">Fetching performance data...</div>
                     ) : (
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                            
-                            {/* Col 1: Profile & Physical */}
-                            <div className="space-y-6">
-                                <div className="bg-card rounded-lg shadow border border-border overflow-hidden">
-                                    <div className="bg-muted/50 p-3 border-b border-border font-semibold text-card-foreground">
-                                        Physical Profile
-                                    </div>
-                                    <div className="p-4 space-y-3">
-                                        <div className="flex justify-between border-b border-border/50 pb-2">
-                                            <span className="text-muted-foreground">Zwift ID</span>
-                                            <span className="font-mono">{selectedRider.zwiftId}</span>
-                                        </div>
-                                        <div className="flex justify-between border-b border-border/50 pb-2">
-                                            <span className="text-muted-foreground">Height</span>
-                                            <span>{riderProfile?.height || 'N/A'} cm</span>
-                                        </div>
-                                        <div className="flex justify-between border-b border-border/50 pb-2">
-                                            <span className="text-muted-foreground">Weight</span>
-                                            <span>{riderProfile?.weight || 'N/A'} kg</span>
-                                        </div>
-                                        <div className="flex justify-between pb-2">
-                                            <span className="text-muted-foreground">Avg HR Max (Est)</span>
-                                            <span>{riderProfile?.maxHr || 'N/A'} bpm</span>
-                                        </div>
+                        <>
+                            {/* --- GRAPH SECTION --- */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                {/* Graph 1: Weight & Height */}
+                                <div className="bg-card p-4 rounded-lg shadow border border-border">
+                                    <h3 className="text-lg font-semibold mb-4 text-card-foreground">Physical Profile History</h3>
+                                    <div className="h-[300px] w-full">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <ComposedChart data={weightHeightData}>
+                                                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.3} />
+                                                <XAxis 
+                                                    dataKey="date" 
+                                                    tick={{fontSize: 10, fill: 'var(--muted-foreground)'}} 
+                                                    tickFormatter={(val, idx) => idx % 3 === 0 ? val : ''} // Show fewer labels
+                                                />
+                                                <YAxis 
+                                                    yAxisId="left" 
+                                                    orientation="left" 
+                                                    domain={['dataMin - 5', 'dataMax + 5']} 
+                                                    label={{ value: 'Height (cm)', angle: -90, position: 'insideLeft', style: {textAnchor: 'middle', fill: '#8884d8', fontSize: 12} }}
+                                                    tick={{fontSize: 10, fill: 'var(--muted-foreground)'}}
+                                                />
+                                                <YAxis 
+                                                    yAxisId="right" 
+                                                    orientation="right" 
+                                                    domain={['dataMin - 2', 'dataMax + 2']} 
+                                                    label={{ value: 'Weight (kg)', angle: 90, position: 'insideRight', style: {textAnchor: 'middle', fill: '#82ca9d', fontSize: 12} }}
+                                                    tick={{fontSize: 10, fill: 'var(--muted-foreground)'}}
+                                                />
+                                                <Tooltip content={<CustomTooltip />} />
+                                                <Legend />
+                                                <Line 
+                                                    yAxisId="left"
+                                                    type="monotone" 
+                                                    dataKey="height" 
+                                                    stroke="#8884d8" 
+                                                    name="Height" 
+                                                    unit="cm"
+                                                    dot={false}
+                                                    strokeWidth={2}
+                                                />
+                                                <Line 
+                                                    yAxisId="right"
+                                                    type="stepAfter" 
+                                                    dataKey="weight" 
+                                                    stroke="#82ca9d" 
+                                                    name="Weight" 
+                                                    unit="kg"
+                                                    dot={false}
+                                                    strokeWidth={2}
+                                                />
+                                            </ComposedChart>
+                                        </ResponsiveContainer>
                                     </div>
                                 </div>
 
-                                <div className="bg-card rounded-lg shadow border border-border overflow-hidden">
-                                    <div className="bg-muted/50 p-3 border-b border-border font-semibold text-card-foreground">
-                                        League Status
-                                    </div>
-                                    <div className="p-4 space-y-3">
-                                        <div className="flex justify-between">
-                                            <span className="text-muted-foreground">Category</span>
-                                            <span className="font-bold">{selectedRider.category}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-muted-foreground">Rating</span>
-                                            <span>{selectedRider.rating}</span>
-                                        </div>
+                                {/* Graph 2: Power (90 Days) */}
+                                <div className="bg-card p-4 rounded-lg shadow border border-border">
+                                    <h3 className="text-lg font-semibold mb-4 text-card-foreground">Race Power (Last 90 Days)</h3>
+                                    <div className="h-[300px] w-full">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <LineChart data={powerData}>
+                                                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.3} />
+                                                <XAxis 
+                                                    dataKey="date" 
+                                                    tick={{fontSize: 10, fill: 'var(--muted-foreground)'}}
+                                                    tickFormatter={(val, idx) => idx % 2 === 0 ? val : ''}
+                                                />
+                                                <YAxis 
+                                                    label={{ value: 'Watts', angle: -90, position: 'insideLeft', style: {textAnchor: 'middle', fill: '#ff7300', fontSize: 12} }}
+                                                    tick={{fontSize: 10, fill: 'var(--muted-foreground)'}}
+                                                />
+                                                <Tooltip content={<CustomTooltip />} />
+                                                <Legend />
+                                                
+                                                {/* Reference Line for Highlighted Race */}
+                                                {/* We simulate highlight by rendering a Dot on the active point */}
+                                                <Line 
+                                                    type="monotone" 
+                                                    dataKey="power" 
+                                                    stroke="#ff7300" 
+                                                    name="Avg Power" 
+                                                    unit="W"
+                                                    strokeWidth={2}
+                                                    activeDot={{ r: 8 }}
+                                                    dot={(props: any) => {
+                                                        // Highlight selected race if timestamp matches
+                                                        if (selectedRaceDate && props.payload.timestamp === selectedRaceDate) {
+                                                            return <circle cx={props.cx} cy={props.cy} r={6} fill="#ff0000" stroke="none" />;
+                                                        }
+                                                        return <circle cx={props.cx} cy={props.cy} r={0} />; // Invisible dots normally
+                                                    }}
+                                                />
+                                                <Line 
+                                                    type="monotone" 
+                                                    dataKey="hr" 
+                                                    stroke="#ff0000" 
+                                                    name="Avg HR" 
+                                                    unit="bpm"
+                                                    strokeWidth={1}
+                                                    strokeDasharray="5 5"
+                                                    opacity={0.6}
+                                                    dot={false}
+                                                />
+                                            </LineChart>
+                                        </ResponsiveContainer>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Col 2: ZwiftPower History */}
-                            <div className="bg-card rounded-lg shadow border border-border overflow-hidden lg:col-span-1">
-                                <div className="bg-[#FC6719]/10 p-3 border-b border-[#FC6719]/20 font-semibold text-[#FC6719] flex justify-between items-center">
-                                    <span>ZwiftPower History</span>
-                                    <span className="text-xs bg-[#FC6719] text-white px-2 py-0.5 rounded-full">Last 5 Races</span>
+
+                            {/* --- DATA TABLES --- */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                
+                                {/* Col 1: ZwiftPower Table (Clickable) */}
+                                <div className="bg-card rounded-lg shadow border border-border overflow-hidden lg:col-span-1">
+                                    <div className="bg-[#FC6719]/10 p-3 border-b border-[#FC6719]/20 font-semibold text-[#FC6719] flex justify-between items-center">
+                                        <span>ZwiftPower Feed</span>
+                                        <span className="text-xs bg-[#FC6719] text-white px-2 py-0.5 rounded-full">Last 10 Races</span>
+                                    </div>
+                                    <div className="divide-y divide-border max-h-[500px] overflow-y-auto">
+                                        {zpData.length === 0 ? (
+                                            <div className="p-6 text-center text-muted-foreground italic">No recent race data found.</div>
+                                        ) : (
+                                            // Show last 10 reversed (newest first)
+                                            [...zpData].reverse().slice(0, 10).map((race, idx) => {
+                                                const isSelected = selectedRaceDate === race.date;
+                                                return (
+                                                    <div 
+                                                        key={idx} 
+                                                        onClick={() => setSelectedRaceDate(race.date)}
+                                                        className={`p-4 transition cursor-pointer border-l-4 ${isSelected ? 'bg-muted/50 border-primary' : 'hover:bg-muted/30 border-transparent'}`}
+                                                    >
+                                                        <div className="font-medium text-sm text-card-foreground truncate mb-1">{race.event_title}</div>
+                                                        <div className="text-xs text-muted-foreground mb-2">{new Date(race.date * 1000).toLocaleDateString()}</div>
+                                                        
+                                                        <div className="grid grid-cols-3 gap-2 text-center text-sm">
+                                                            <div className="bg-secondary/50 rounded p-1">
+                                                                <div className="text-xs text-muted-foreground">Power</div>
+                                                                <div className="font-mono font-bold">{race.avg_watts}w</div>
+                                                            </div>
+                                                            <div className="bg-secondary/50 rounded p-1">
+                                                                <div className="text-xs text-muted-foreground">W/Kg</div>
+                                                                <div className="font-mono font-bold">{race.wkg.toFixed(2)}</div>
+                                                            </div>
+                                                            <div className="bg-secondary/50 rounded p-1">
+                                                                <div className="text-xs text-muted-foreground">HR</div>
+                                                                <div className={`font-mono font-bold ${race.avg_hr === 0 ? 'text-red-500' : ''}`}>
+                                                                    {race.avg_hr > 0 ? race.avg_hr : 'MISSING'}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </div>
                                 </div>
-                                <div className="divide-y divide-border">
-                                    {zpData.length === 0 ? (
-                                        <div className="p-6 text-center text-muted-foreground italic">No recent race data found.</div>
-                                    ) : (
-                                        zpData.map((race, idx) => (
-                                            <div key={idx} className="p-4 hover:bg-muted/30 transition">
-                                                <div className="font-medium text-sm text-card-foreground truncate mb-1">{race.event_title}</div>
-                                                <div className="text-xs text-muted-foreground mb-2">{new Date(race.date).toLocaleDateString()}</div>
-                                                
-                                                <div className="grid grid-cols-3 gap-2 text-center text-sm">
-                                                    <div className="bg-secondary/50 rounded p-1">
-                                                        <div className="text-xs text-muted-foreground">Power</div>
-                                                        <div className="font-mono font-bold">{race.avg_watts}w</div>
+
+                                {/* Col 3: Strava Activities */}
+                                <div className="bg-card rounded-lg shadow border border-border overflow-hidden lg:col-span-1">
+                                    <div className="bg-[#FC4C02]/10 p-3 border-b border-[#FC4C02]/20 font-semibold text-[#FC4C02] flex justify-between items-center">
+                                        <span>Strava Feed</span>
+                                        <span className="text-xs bg-[#FC4C02] text-white px-2 py-0.5 rounded-full">Recent</span>
+                                    </div>
+                                    <div className="divide-y divide-border max-h-[500px] overflow-y-auto">
+                                        {stravaData.length === 0 ? (
+                                            <div className="p-6 text-center text-muted-foreground italic">
+                                                No connected Strava account or activities found.
+                                            </div>
+                                        ) : (
+                                            stravaData.map((act) => (
+                                                <div key={act.id} className="p-4 hover:bg-muted/30 transition">
+                                                    <div className="font-medium text-sm text-card-foreground truncate mb-1">
+                                                        <a href={`https://www.strava.com/activities/${act.id}`} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                                                            {act.name} ↗
+                                                        </a>
                                                     </div>
-                                                    <div className="bg-secondary/50 rounded p-1">
-                                                        <div className="text-xs text-muted-foreground">W/Kg</div>
-                                                        <div className="font-mono font-bold">{race.wkg.toFixed(2)}</div>
-                                                    </div>
-                                                    <div className="bg-secondary/50 rounded p-1">
-                                                        <div className="text-xs text-muted-foreground">HR</div>
-                                                        <div className={`font-mono font-bold ${race.avg_hr === 0 ? 'text-red-500' : ''}`}>
-                                                            {race.avg_hr > 0 ? race.avg_hr : 'MISSING'}
+                                                    <div className="text-xs text-muted-foreground mb-2">{new Date(act.date).toLocaleDateString()} • {(act.moving_time / 60).toFixed(0)} min</div>
+                                                    
+                                                    <div className="grid grid-cols-3 gap-2 text-center text-sm">
+                                                        <div className="bg-secondary/50 rounded p-1">
+                                                            <div className="text-xs text-muted-foreground">Avg Power</div>
+                                                            <div className="font-mono">{act.average_watts ? `${act.average_watts}w` : '-'}</div>
+                                                        </div>
+                                                        <div className="bg-secondary/50 rounded p-1">
+                                                            <div className="text-xs text-muted-foreground">Avg HR</div>
+                                                            <div className="font-mono">{act.average_heartrate ? Math.round(act.average_heartrate) : '-'}</div>
+                                                        </div>
+                                                        <div className="bg-secondary/50 rounded p-1">
+                                                            <div className="text-xs text-muted-foreground">Suffer</div>
+                                                            <div className="font-mono">{act.suffer_score || '-'}</div>
                                                         </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        ))
-                                    )}
+                                            ))
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
 
-                            {/* Col 3: Strava Activities */}
-                            <div className="bg-card rounded-lg shadow border border-border overflow-hidden lg:col-span-1">
-                                <div className="bg-[#FC4C02]/10 p-3 border-b border-[#FC4C02]/20 font-semibold text-[#FC4C02] flex justify-between items-center">
-                                    <span>Strava Feed</span>
-                                    <span className="text-xs bg-[#FC4C02] text-white px-2 py-0.5 rounded-full">Recent</span>
-                                </div>
-                                <div className="divide-y divide-border">
-                                    {stravaData.length === 0 ? (
-                                        <div className="p-6 text-center text-muted-foreground italic">
-                                            No connected Strava account or activities found.
-                                        </div>
-                                    ) : (
-                                        stravaData.map((act) => (
-                                            <div key={act.id} className="p-4 hover:bg-muted/30 transition">
-                                                <div className="font-medium text-sm text-card-foreground truncate mb-1">
-                                                    <a href={`https://www.strava.com/activities/${act.id}`} target="_blank" rel="noopener noreferrer" className="hover:underline">
-                                                        {act.name} ↗
-                                                    </a>
-                                                </div>
-                                                <div className="text-xs text-muted-foreground mb-2">{new Date(act.date).toLocaleDateString()} • {(act.moving_time / 60).toFixed(0)} min</div>
-                                                
-                                                <div className="grid grid-cols-3 gap-2 text-center text-sm">
-                                                    <div className="bg-secondary/50 rounded p-1">
-                                                        <div className="text-xs text-muted-foreground">Avg Power</div>
-                                                        <div className="font-mono">{act.average_watts ? `${act.average_watts}w` : '-'}</div>
-                                                    </div>
-                                                    <div className="bg-secondary/50 rounded p-1">
-                                                        <div className="text-xs text-muted-foreground">Avg HR</div>
-                                                        <div className="font-mono">{act.average_heartrate ? Math.round(act.average_heartrate) : '-'}</div>
-                                                    </div>
-                                                    <div className="bg-secondary/50 rounded p-1">
-                                                        <div className="text-xs text-muted-foreground">Suffer</div>
-                                                        <div className="font-mono">{act.suffer_score || '-'}</div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
                             </div>
-
-                        </div>
+                        </>
                     )}
                 </div>
             )}
         </div>
     );
 }
-

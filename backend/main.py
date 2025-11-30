@@ -230,30 +230,60 @@ def dcu_api(request):
             if zwift_id:
                 try:
                     zp = get_zp_service()
-                    # ZwiftPower profile returns recent results in the 'data' array usually
-                    # But we need the specific history endpoint or parse the profile deeply
-                    # The 'get_rider_data_json' usually returns profile info + latest results
-                    
-                    # Let's try to get a more detailed history if possible, otherwise use profile
-                    # Actually, ZP 'profile' endpoint returns a list of recent activities in the 'data' field
-                    # if we use the right URL. 
-                    
-                    # Let's assume get_rider_data_json returns what we need for now
                     zp_json = zp.get_rider_data_json(int(zwift_id))
                     
-                    # Depending on the ZP API response structure (it varies), we parse:
-                    # Usually it returns { data: [ { date, event_title, avg_watts, wkg, ... } ] }
                     if zp_json and 'data' in zp_json:
                         history = []
-                        for entry in zp_json['data'][:5]: # Last 5
+                        # Parse ALL historical data for graphs
+                        for entry in zp_json['data']:
+                            # Parse weight: can be ["75.0", 1] or "75.0"
+                            weight_val = entry.get('weight')
+                            if isinstance(weight_val, list) and len(weight_val) > 0:
+                                weight_val = float(weight_val[0])
+                            else:
+                                weight_val = float(weight_val) if weight_val else 0
+
+                            # Parse height: can be [182, 1] or 182
+                            height_val = entry.get('height')
+                            if isinstance(height_val, list) and len(height_val) > 0:
+                                height_val = float(height_val[0])
+                            else:
+                                height_val = float(height_val) if height_val else 0
+                            
+                            # Parse Avg Power: can be [250, 0] or 250
+                            avg_pwr = entry.get('avg_power')
+                            if isinstance(avg_pwr, list) and len(avg_pwr) > 0:
+                                avg_pwr = float(avg_pwr[0])
+                            else:
+                                avg_pwr = float(avg_pwr) if avg_pwr else 0
+                            
+                            # Parse Avg HR
+                            avg_hr = entry.get('avg_hr')
+                            if isinstance(avg_hr, list) and len(avg_hr) > 0:
+                                avg_hr = float(avg_hr[0])
+                            else:
+                                avg_hr = float(avg_hr) if avg_hr else 0
+                            
+                            # Parse WKG
+                            wkg = entry.get('avg_wkg')
+                            if isinstance(wkg, list) and len(wkg) > 0:
+                                wkg_val = float(wkg[0]) if wkg[0] else 0
+                            else:
+                                wkg_val = float(wkg) if wkg else 0
+
                             history.append({
-                                'date': entry.get('date') or entry.get('event_date', 'N/A'), # Timestamp or string
+                                'date': entry.get('event_date', 0), # Unix Timestamp
                                 'event_title': entry.get('event_title', 'Unknown Event'),
-                                'avg_watts': entry.get('avg_watts', 0),
-                                'avg_hr': entry.get('avg_hr', 0),
-                                'wkg': entry.get('wkg', 0),
-                                'category': entry.get('category', '')
+                                'avg_watts': avg_pwr,
+                                'avg_hr': avg_hr,
+                                'wkg': wkg_val,
+                                'category': entry.get('category', ''),
+                                'weight': weight_val,
+                                'height': height_val
                             })
+                        
+                        # Sort by date descending
+                        history.sort(key=lambda x: x['date'], reverse=True)
                         response_data['zwiftPowerHistory'] = history
                         
                 except Exception as e:
