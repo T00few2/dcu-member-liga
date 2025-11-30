@@ -271,6 +271,25 @@ def dcu_api(request):
                             else:
                                 wkg_val = float(wkg) if wkg else 0
 
+                            # --- CP CURVE PARSING ---
+                            # Fields: w5, w15, w30, w60, w120, w300, w1200
+                            # These are often stored as [val, 0] or val
+                            
+                            cp_curve = {}
+                            for duration in ['w5', 'w15', 'w30', 'w60', 'w120', 'w300', 'w1200']:
+                                val = entry.get(duration)
+                                if isinstance(val, list) and len(val) > 0:
+                                    # Sometimes values are strings inside lists
+                                    try:
+                                        cp_curve[duration] = int(float(val[0])) if val[0] else 0
+                                    except:
+                                        cp_curve[duration] = 0
+                                else:
+                                    try:
+                                        cp_curve[duration] = int(float(val)) if val else 0
+                                    except:
+                                        cp_curve[duration] = 0
+
                             history.append({
                                 'date': entry.get('event_date', 0), # Unix Timestamp
                                 'event_title': entry.get('event_title', 'Unknown Event'),
@@ -279,7 +298,8 @@ def dcu_api(request):
                                 'wkg': wkg_val,
                                 'category': entry.get('category', ''),
                                 'weight': weight_val,
-                                'height': height_val
+                                'height': height_val,
+                                'cp_curve': cp_curve
                             })
                         
                         # Sort by date descending

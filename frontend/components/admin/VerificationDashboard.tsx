@@ -26,6 +26,7 @@ interface ZwiftPowerResult {
     category: string;
     weight: number;
     height: number;
+    cp_curve: { [key: string]: number }; // w5, w15, etc.
 }
 
 interface StravaActivity {
@@ -140,6 +141,44 @@ export default function VerificationDashboard() {
         title: d.event_title
     }));
 
+    // 3. CP Curve Data (Last 90 Days)
+    // We need to transform this from time-series to category-series (duration)
+    // We want: { duration: '5s', maxPower: 1200, highlightedPower: 1100 }
+    
+    const cpDurations = [
+        { key: 'w5', label: '5s' },
+        { key: 'w15', label: '15s' },
+        { key: 'w30', label: '30s' },
+        { key: 'w60', label: '1m' },
+        { key: 'w120', label: '2m' },
+        { key: 'w300', label: '5m' },
+        { key: 'w1200', label: '20m' }
+    ];
+
+    const recentRaces = zpData.filter(d => d.date > ninetyDaysAgo);
+    
+    // Calculate "Best of 90 Days" curve
+    const bestCurve: {[key: string]: number} = {};
+    cpDurations.forEach(dur => {
+        bestCurve[dur.key] = 0;
+        recentRaces.forEach(race => {
+            const val = race.cp_curve ? race.cp_curve[dur.key] : 0;
+            if (val > bestCurve[dur.key]) bestCurve[dur.key] = val;
+        });
+    });
+
+    // Get Highlighted Race Curve
+    const highlightedRace = selectedRaceDate 
+        ? zpData.find(d => d.date === selectedRaceDate) 
+        : null;
+
+    const cpCurveData = cpDurations.map(dur => ({
+        name: dur.label,
+        maxPower: bestCurve[dur.key],
+        highlightedPower: highlightedRace && highlightedRace.cp_curve ? highlightedRace.cp_curve[dur.key] : null
+    }));
+
+
     const CustomTooltip = ({ active, payload, label }: any) => {
         if (active && payload && payload.length) {
             return (
@@ -232,10 +271,52 @@ export default function VerificationDashboard() {
                     ) : (
                         <>
                             {/* --- GRAPH SECTION --- */}
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                {/* Graph 1: Weight & Height */}
-                                <div className="bg-card p-4 rounded-lg shadow border border-border">
-                                    <h3 className="text-lg font-semibold mb-4 text-card-foreground">Physical Profile History</h3>
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                {/* Graph 1: Power Curve (90 Days) */}
+                                <div className="bg-card p-4 rounded-lg shadow border border-border lg:col-span-1">
+                                    <h3 className="text-lg font-semibold mb-4 text-card-foreground">90 Day Power Curve</h3>
+                                    <div className="h-[300px] w-full">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <LineChart data={cpCurveData}>
+                                                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.3} />
+                                                <XAxis 
+                                                    dataKey="name" 
+                                                    tick={{fontSize: 10, fill: 'var(--muted-foreground)'}}
+                                                />
+                                                <YAxis 
+                                                    label={{ value: 'Watts', angle: -90, position: 'insideLeft', style: {textAnchor: 'middle', fill: '#8884d8', fontSize: 12} }}
+                                                    tick={{fontSize: 10, fill: 'var(--muted-foreground)'}}
+                                                />
+                                                <Tooltip content={<CustomTooltip />} />
+                                                <Legend verticalAlign="top" height={36}/>
+                                                <Line 
+                                                    type="monotone" 
+                                                    dataKey="maxPower" 
+                                                    stroke="#8884d8" 
+                                                    name="Best (90d)" 
+                                                    unit="W"
+                                                    strokeWidth={2}
+                                                    dot={{ r: 3 }}
+                                                />
+                                                {selectedRaceDate && (
+                                                    <Line 
+                                                        type="monotone" 
+                                                        dataKey="highlightedPower" 
+                                                        stroke="#ff7300" 
+                                                        name="Selected Race" 
+                                                        unit="W"
+                                                        strokeWidth={2}
+                                                        dot={{ r: 4 }}
+                                                    />
+                                                )}
+                                            </LineChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+
+                                {/* Graph 2: Weight & Height */}
+                                <div className="bg-card p-4 rounded-lg shadow border border-border lg:col-span-1">
+                                    <h3 className="text-lg font-semibold mb-4 text-card-foreground">Physical Profile</h3>
                                     <div className="h-[300px] w-full">
                                         <ResponsiveContainer width="100%" height="100%">
                                             <ComposedChart data={weightHeightData}>
@@ -260,7 +341,7 @@ export default function VerificationDashboard() {
                                                     tick={{fontSize: 10, fill: 'var(--muted-foreground)'}}
                                                 />
                                                 <Tooltip content={<CustomTooltip />} />
-                                                <Legend />
+                                                <Legend verticalAlign="top" height={36}/>
                                                 <Line 
                                                     yAxisId="left"
                                                     type="monotone" 
@@ -286,9 +367,9 @@ export default function VerificationDashboard() {
                                     </div>
                                 </div>
 
-                                {/* Graph 2: Power (90 Days) */}
-                                <div className="bg-card p-4 rounded-lg shadow border border-border">
-                                    <h3 className="text-lg font-semibold mb-4 text-card-foreground">Race Power (Last 90 Days)</h3>
+                                {/* Graph 3: Power Trend (90 Days) */}
+                                <div className="bg-card p-4 rounded-lg shadow border border-border lg:col-span-1">
+                                    <h3 className="text-lg font-semibold mb-4 text-card-foreground">Race Power Trend</h3>
                                     <div className="h-[300px] w-full">
                                         <ResponsiveContainer width="100%" height="100%">
                                             <LineChart data={powerData}>
@@ -303,10 +384,9 @@ export default function VerificationDashboard() {
                                                     tick={{fontSize: 10, fill: 'var(--muted-foreground)'}}
                                                 />
                                                 <Tooltip content={<CustomTooltip />} />
-                                                <Legend />
+                                                <Legend verticalAlign="top" height={36}/>
                                                 
                                                 {/* Reference Line for Highlighted Race */}
-                                                {/* We simulate highlight by rendering a Dot on the active point */}
                                                 <Line 
                                                     type="monotone" 
                                                     dataKey="power" 
@@ -389,7 +469,7 @@ export default function VerificationDashboard() {
                                     </div>
                                 </div>
 
-                                {/* Col 3: Strava Activities */}
+                                {/* Col 2: Strava Activities */}
                                 <div className="bg-card rounded-lg shadow border border-border overflow-hidden lg:col-span-1">
                                     <div className="bg-[#FC4C02]/10 p-3 border-b border-[#FC4C02]/20 font-semibold text-[#FC4C02] flex justify-between items-center">
                                         <span>Strava Feed</span>
