@@ -106,14 +106,18 @@ class ResultsProcessor:
                             'zwiftId': zid,
                             'time': entry.get('activityData', {}).get('durationInMilliseconds', 0),
                             'name': registered_riders[zid].get('name'),
-                            'info': registered_riders[zid]
+                            'info': registered_riders[zid],
+                            'flaggedCheating': entry.get('flaggedCheating', False),
+                            'flaggedSandbagging': entry.get('flaggedSandbagging', False)
                         })
                     elif not filter_registered:
                          finishers.append({
                             'zwiftId': zid,
                             'time': entry.get('activityData', {}).get('durationInMilliseconds', 0),
                             'name': f"{profile.get('firstName', '')} {profile.get('lastName', '')}".strip(),
-                            'info': {}
+                            'info': {},
+                            'flaggedCheating': entry.get('flaggedCheating', False),
+                            'flaggedSandbagging': entry.get('flaggedSandbagging', False)
                         })
 
                 # Sort by time
@@ -167,7 +171,9 @@ class ResultsProcessor:
                     'finishPoints': points,
                     'sprintPoints': 0,
                     'totalPoints': points,
-                    'sprintDetails': {} # segment_key -> points
+                    'sprintDetails': {}, # segment_key -> points
+                    'flaggedCheating': rider.get('flaggedCheating', False),
+                    'flaggedSandbagging': rider.get('flaggedSandbagging', False)
                 }
                 processed_riders[rider['zwiftId']] = res
 

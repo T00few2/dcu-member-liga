@@ -38,6 +38,7 @@ interface Race {
   eventId?: string; // Added Event ID
   selectedSegments?: string[]; // List of segment unique keys (id_count) - KEPT FOR BACKWARDS COMPAT
   sprints?: SelectedSegment[]; // Full segment objects
+  results?: Record<string, any[]>; // Store results by category
 }
 
 interface LeagueSettings {
@@ -56,6 +57,9 @@ export default function LeagueManager() {
   
   // Tabs
   const [activeTab, setActiveTab] = useState<'races' | 'settings'>('races');
+
+  // Results View State
+  const [viewingResultsId, setViewingResultsId] = useState<string | null>(null);
 
   // Race Form State
   const [editingRaceId, setEditingRaceId] = useState<string | null>(null);
@@ -721,6 +725,83 @@ export default function LeagueManager() {
               </form>
           </div>
 
+          {/* Results Modal */}
+          {viewingResultsId && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                  <div className="bg-card w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-lg shadow-2xl border border-border flex flex-col">
+                      <div className="p-4 border-b border-border flex justify-between items-center bg-muted/30">
+                          <h3 className="text-lg font-bold text-card-foreground">
+                              Results: {races.find(r => r.id === viewingResultsId)?.name}
+                          </h3>
+                          <button 
+                              onClick={() => setViewingResultsId(null)}
+                              className="text-muted-foreground hover:text-foreground p-1"
+                          >
+                              ✕
+                          </button>
+                      </div>
+                      <div className="overflow-y-auto p-4 space-y-6">
+                          {(() => {
+                              const race = races.find(r => r.id === viewingResultsId);
+                              const results = race?.results || {};
+                              const categories = Object.keys(results).sort();
+                              
+                              if (categories.length === 0) {
+                                  return <div className="text-center text-muted-foreground p-8">No results calculated yet.</div>;
+                              }
+
+                              return categories.map(cat => (
+                                  <div key={cat} className="border border-border rounded-lg overflow-hidden">
+                                      <div className="bg-secondary/50 px-4 py-2 font-semibold text-sm border-b border-border">
+                                          Category {cat}
+                                      </div>
+                                      <table className="w-full text-left text-sm">
+                                          <thead className="bg-muted/20 text-xs text-muted-foreground">
+                                              <tr>
+                                                  <th className="px-4 py-2 w-12">Pos</th>
+                                                  <th className="px-4 py-2">Rider</th>
+                                                  <th className="px-4 py-2 text-right">Time</th>
+                                                  <th className="px-4 py-2 text-right">Pts</th>
+                                                  <th className="px-4 py-2 text-center w-20">Flags</th>
+                                              </tr>
+                                          </thead>
+                                          <tbody className="divide-y divide-border">
+                                              {results[cat].map((rider: any, idx: number) => {
+                                                  const isFlagged = rider.flaggedCheating || rider.flaggedSandbagging;
+                                                  return (
+                                                      <tr key={rider.zwiftId} className={`hover:bg-muted/10 ${isFlagged ? 'bg-red-50 dark:bg-red-950/20' : ''}`}>
+                                                          <td className="px-4 py-2 text-muted-foreground">{idx + 1}</td>
+                                                          <td className="px-4 py-2 font-medium">
+                                                              {rider.name}
+                                                              {isFlagged && (
+                                                                  <div className="text-[10px] text-red-600 font-bold mt-0.5">
+                                                                      {rider.flaggedCheating ? 'CHEATING ' : ''}
+                                                                      {rider.flaggedSandbagging ? 'SANDBAGGING' : ''}
+                                                                  </div>
+                                                              )}
+                                                          </td>
+                                                          <td className="px-4 py-2 text-right font-mono text-muted-foreground">
+                                                              {rider.finishTime > 0 ? new Date(rider.finishTime).toISOString().substr(11, 8) : '-'}
+                                                          </td>
+                                                          <td className="px-4 py-2 text-right font-bold text-primary">
+                                                              {rider.totalPoints}
+                                                          </td>
+                                                          <td className="px-4 py-2 text-center">
+                                                              {isFlagged && <span className="text-xl" title="Flagged">🚩</span>}
+                                                          </td>
+                                                      </tr>
+                                                  );
+                                              })}
+                                          </tbody>
+                                      </table>
+                                  </div>
+                              ));
+                          })()}
+                      </div>
+                  </div>
+              </div>
+          )}
+
           {/* Existing Races List */}
           <div className="bg-card rounded-lg shadow overflow-hidden border border-border">
               <div className="flex flex-col gap-4 p-6 border-b border-border">
@@ -795,13 +876,21 @@ export default function LeagueManager() {
                                 </td>
                                 <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
                                     {r.eventId && (
-                                        <button 
-                                            onClick={() => handleRefreshResults(r.id)}
-                                            disabled={status === 'refreshing'}
-                                            className="text-green-600 hover:text-green-700 dark:text-green-400 font-medium px-2 py-1"
-                                        >
-                                            Results
-                                        </button>
+                                        <>
+                                            <button 
+                                                onClick={() => handleRefreshResults(r.id)}
+                                                disabled={status === 'refreshing'}
+                                                className="text-green-600 hover:text-green-700 dark:text-green-400 font-medium px-2 py-1"
+                                            >
+                                                Calc
+                                            </button>
+                                            <button 
+                                                onClick={() => setViewingResultsId(r.id)}
+                                                className="text-blue-600 hover:text-blue-700 dark:text-blue-400 font-medium px-2 py-1"
+                                            >
+                                                View
+                                            </button>
+                                        </>
                                     )}
                                     <button 
                                         onClick={() => handleEdit(r)}
