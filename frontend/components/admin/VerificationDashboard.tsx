@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { 
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
-    ComposedChart, Bar, Area 
+    ComposedChart, Bar, Area, LabelList
 } from 'recharts';
 
 interface Participant {
@@ -56,6 +56,7 @@ export default function VerificationDashboard() {
 
     // Graph State
     const [selectedRaceDate, setSelectedRaceDate] = useState<number | null>(null);
+    const [powerTrendStat, setPowerTrendStat] = useState<'avg' | 'w5' | 'w15' | 'w30' | 'w60' | 'w120' | 'w300' | 'w1200'>('avg');
     
     // Strava Detail State
     const [selectedStravaActivityId, setSelectedStravaActivityId] = useState<number | null>(null);
@@ -91,6 +92,7 @@ export default function VerificationDashboard() {
         setSelectedRaceDate(null);
         setSelectedStravaActivityId(null);
         setStravaStreams([]);
+        setPowerTrendStat('avg');
 
         if (!user) return;
 
@@ -186,13 +188,22 @@ export default function VerificationDashboard() {
 
     // 2. Power Graph Data (Last 90 Days)
     const ninetyDaysAgo = Date.now() / 1000 - (90 * 24 * 60 * 60);
-    const powerData = zpData.filter(d => d.date > ninetyDaysAgo).map(d => ({
-        date: new Date(d.date * 1000).toLocaleDateString(),
-        timestamp: d.date,
-        power: d.avg_watts,
-        hr: d.avg_hr,
-        title: d.event_title
-    }));
+    const powerData = zpData.filter(d => d.date > ninetyDaysAgo).map(d => {
+        // Determine power metric based on selection
+        let powerVal = d.avg_watts;
+        if (powerTrendStat !== 'avg') {
+            // w5, w15 etc stored in cp_curve
+            powerVal = d.cp_curve ? d.cp_curve[powerTrendStat] : 0;
+        }
+
+        return {
+            date: new Date(d.date * 1000).toLocaleDateString(),
+            timestamp: d.date,
+            power: powerVal,
+            hr: d.avg_hr,
+            title: d.event_title
+        };
+    });
 
     // 3. CP Curve Data (Last 90 Days)
     // We transform this so each 'duration' (5s, 15s...) is an entry
@@ -252,13 +263,15 @@ export default function VerificationDashboard() {
             // Filter out the background race lines from tooltip to avoid clutter
             const visiblePayload = payload.filter((p: any) => 
                 p.dataKey === 'maxPower' || p.dataKey === 'highlightedPower' ||
-                p.dataKey === 'watts' || p.dataKey === 'cadence'
+                p.dataKey === 'watts' || p.dataKey === 'cadence' ||
+                p.dataKey === 'power' || p.dataKey === 'hr' ||
+                p.dataKey === 'weight' || p.dataKey === 'height'
             );
 
             if (visiblePayload.length === 0) return null;
 
             return (
-                <div className="bg-card p-2 border border-border rounded shadow text-sm">
+                <div className="bg-card p-2 border border-border rounded shadow text-sm z-50">
                     <p className="font-bold mb-1">{label}</p>
                     {visiblePayload.map((p: any) => (
                         <p key={p.name} style={{ color: p.color }}>
@@ -277,6 +290,19 @@ export default function VerificationDashboard() {
     };
 
     const selectedStravaActivityDetails = stravaData.find(a => a.id === selectedStravaActivityId);
+
+    // Format Date tick to prevent overlap (show DD/MM only, skip some)
+    const renderDateTick = (tickProps: any) => {
+        const { x, y, payload, index } = tickProps;
+        // Show every 3rd label roughly, or based on width
+        if (index % 2 !== 0) return null;
+
+        return (
+            <text x={x} y={y + 10} textAnchor="middle" fill="var(--muted-foreground)" fontSize={10}>
+                {payload.value.split('/').slice(0,2).join('/')}
+            </text>
+        );
+    };
 
     return (
         <div className="max-w-6xl mx-auto pb-12">
@@ -434,7 +460,7 @@ export default function VerificationDashboard() {
                                                 <XAxis 
                                                     dataKey="date" 
                                                     tick={{fontSize: 10, fill: 'var(--muted-foreground)'}} 
-                                                    tickFormatter={(val, idx) => idx % 3 === 0 ? val : ''} // Show fewer labels
+                                                    interval={2} // Show fewer labels
                                                 />
                                                 <YAxis 
                                                     yAxisId="left" 
@@ -461,7 +487,9 @@ export default function VerificationDashboard() {
                                                     unit="cm"
                                                     dot={false}
                                                     strokeWidth={2}
-                                                />
+                                                >
+                                                     <LabelList dataKey="height" position="top" offset={10} fontSize={10} fill="#8884d8" />
+                                                </Line>
                                                 <Line 
                                                     yAxisId="right"
                                                     type="stepAfter" 
@@ -471,15 +499,32 @@ export default function VerificationDashboard() {
                                                     unit="kg"
                                                     dot={false}
                                                     strokeWidth={2}
-                                                />
+                                                >
+                                                    <LabelList dataKey="weight" position="top" offset={10} fontSize={10} fill="#82ca9d" />
+                                                </Line>
                                             </ComposedChart>
                                         </ResponsiveContainer>
                                     </div>
                                 </div>
 
                                 {/* Graph 3: Power Trend (90 Days) */}
-                                <div className="bg-card p-4 rounded-lg shadow border border-border lg:col-span-1">
-                                    <h3 className="text-lg font-semibold mb-4 text-card-foreground">Race Power Trend</h3>
+                                <div className="bg-card p-4 rounded-lg shadow border border-border lg:col-span-1 flex flex-col">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <h3 className="text-lg font-semibold text-card-foreground">Race Power Trend</h3>
+                                        <select 
+                                            className="text-xs bg-background border border-input rounded px-2 py-1"
+                                            value={powerTrendStat}
+                                            onChange={(e) => setPowerTrendStat(e.target.value as any)}
+                                        >
+                                            <option value="avg">Avg Power</option>
+                                            <option value="w5">5s Power</option>
+                                            <option value="w15">15s Power</option>
+                                            <option value="w30">30s Power</option>
+                                            <option value="w60">1m Power</option>
+                                            <option value="w300">5m Power</option>
+                                            <option value="w1200">20m Power</option>
+                                        </select>
+                                    </div>
                                     <div className="h-[300px] w-full">
                                         <ResponsiveContainer width="100%" height="100%">
                                             <LineChart data={powerData}>
@@ -487,7 +532,7 @@ export default function VerificationDashboard() {
                                                 <XAxis 
                                                     dataKey="date" 
                                                     tick={{fontSize: 10, fill: 'var(--muted-foreground)'}}
-                                                    tickFormatter={(val, idx) => idx % 2 === 0 ? val : ''}
+                                                    interval={1} // Skipping labels
                                                 />
                                                 <YAxis 
                                                     label={{ value: 'Watts', angle: -90, position: 'insideLeft', style: {textAnchor: 'middle', fill: '#ff7300', fontSize: 12} }}
@@ -501,7 +546,7 @@ export default function VerificationDashboard() {
                                                     type="monotone" 
                                                     dataKey="power" 
                                                     stroke="#ff7300" 
-                                                    name="Avg Power" 
+                                                    name={powerTrendStat === 'avg' ? 'Avg Power' : `${powerTrendStat} Power`}
                                                     unit="W"
                                                     strokeWidth={2}
                                                     activeDot={{ r: 8 }}
@@ -512,7 +557,9 @@ export default function VerificationDashboard() {
                                                         }
                                                         return <circle cx={props.cx} cy={props.cy} r={0} />; // Invisible dots normally
                                                     }}
-                                                />
+                                                >
+                                                     <LabelList dataKey="power" position="top" offset={10} fontSize={10} fill="#ff7300" />
+                                                </Line>
                                                 <Line 
                                                     type="monotone" 
                                                     dataKey="hr" 
