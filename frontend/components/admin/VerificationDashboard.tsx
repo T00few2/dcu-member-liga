@@ -57,6 +57,7 @@ export default function VerificationDashboard() {
     // Graph State
     const [selectedRaceDate, setSelectedRaceDate] = useState<number | null>(null);
     const [powerTrendStat, setPowerTrendStat] = useState<'avg' | 'w5' | 'w15' | 'w30' | 'w60' | 'w120' | 'w300' | 'w1200'>('avg');
+    const [curveTimeRange, setCurveTimeRange] = useState<number>(90); // 90 days default, 0 for all time
     
     // Strava Detail State
     const [selectedStravaActivityId, setSelectedStravaActivityId] = useState<number | null>(null);
@@ -93,6 +94,7 @@ export default function VerificationDashboard() {
         setSelectedStravaActivityId(null);
         setStravaStreams([]);
         setPowerTrendStat('avg');
+        setCurveTimeRange(90);
 
         if (!user) return;
 
@@ -205,7 +207,7 @@ export default function VerificationDashboard() {
         };
     });
 
-    // 3. CP Curve Data (Last 90 Days)
+    // 3. CP Curve Data (Configurable Timespan)
     // We transform this so each 'duration' (5s, 15s...) is an entry
     // and it has power values for ALL races in recent history.
     
@@ -219,13 +221,18 @@ export default function VerificationDashboard() {
         { key: 'w1200', label: '20m' }
     ];
 
-    const recentRaces = zpData.filter(d => d.date > ninetyDaysAgo);
+    // Calculate cutoff date for CP curve
+    const curveCutoff = curveTimeRange === 0 
+        ? 0 
+        : Date.now() / 1000 - (curveTimeRange * 24 * 60 * 60);
+
+    const curveRaces = zpData.filter(d => d.date > curveCutoff);
     
-    // Calculate "Best of 90 Days" curve
+    // Calculate "Best of X Days" curve
     const bestCurve: {[key: string]: number} = {};
     cpDurations.forEach(dur => {
         bestCurve[dur.key] = 0;
-        recentRaces.forEach(race => {
+        curveRaces.forEach(race => {
             const val = race.cp_curve ? race.cp_curve[dur.key] : 0;
             if (val > bestCurve[dur.key]) bestCurve[dur.key] = val;
         });
@@ -246,7 +253,7 @@ export default function VerificationDashboard() {
         };
 
         // Add every other race as a separate key
-        recentRaces.forEach(race => {
+        curveRaces.forEach(race => {
             // Only add if not the highlighted one (to avoid overlap/redundancy in rendering if desired, 
             // though standard practice is just render all and layer highlight on top)
             if (race.cp_curve) {
@@ -377,8 +384,23 @@ export default function VerificationDashboard() {
                             {/* --- GRAPH SECTION --- */}
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                                 {/* Graph 1: Power Curve (90 Days) */}
-                                <div className="bg-card p-4 rounded-lg shadow border border-border lg:col-span-1">
-                                    <h3 className="text-lg font-semibold mb-4 text-card-foreground">90 Day Power Curve</h3>
+                                <div className="bg-card p-4 rounded-lg shadow border border-border lg:col-span-1 flex flex-col">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <h3 className="text-lg font-semibold text-card-foreground">
+                                            {curveTimeRange === 0 ? 'All Time' : `${curveTimeRange} Day`} Power Curve
+                                        </h3>
+                                        <select 
+                                            className="text-xs bg-background border border-input rounded px-2 py-1"
+                                            value={curveTimeRange}
+                                            onChange={(e) => setCurveTimeRange(Number(e.target.value))}
+                                        >
+                                            <option value={30}>30 Days</option>
+                                            <option value={90}>90 Days</option>
+                                            <option value={180}>180 Days</option>
+                                            <option value={360}>360 Days</option>
+                                            <option value={0}>All Time</option>
+                                        </select>
+                                    </div>
                                     <div className="h-[300px] w-full">
                                         <ResponsiveContainer width="100%" height="100%">
                                             <LineChart data={cpCurveData}>
@@ -399,7 +421,7 @@ export default function VerificationDashboard() {
                                                         <div className="flex justify-center gap-4 text-sm text-muted-foreground">
                                                             <div className="flex items-center gap-2">
                                                                 <span className="block w-3 h-[2px] bg-[#8884d8]"></span>
-                                                                <span>Best (90d)</span>
+                                                                <span>Best ({curveTimeRange === 0 ? 'All' : `${curveTimeRange}d`})</span>
                                                             </div>
                                                             {selectedRaceDate && (
                                                                 <div className="flex items-center gap-2">
@@ -411,8 +433,8 @@ export default function VerificationDashboard() {
                                                     )}
                                                 />
                                                 
-                                                {/* Render faint lines for EVERY race in the last 90 days */}
-                                                {recentRaces.map((race) => (
+                                                {/* Render faint lines for EVERY race in the selected period */}
+                                                {curveRaces.map((race) => (
                                                     <Line
                                                         key={race.date}
                                                         type="monotone"
@@ -429,7 +451,7 @@ export default function VerificationDashboard() {
                                                     type="monotone" 
                                                     dataKey="maxPower" 
                                                     stroke="#8884d8" 
-                                                    name="Best (90d)" 
+                                                    name={`Best (${curveTimeRange === 0 ? 'All' : `${curveTimeRange}d`})`}
                                                     unit="W"
                                                     strokeWidth={2}
                                                     dot={{ r: 3 }}
@@ -460,7 +482,13 @@ export default function VerificationDashboard() {
                                                 <XAxis 
                                                     dataKey="date" 
                                                     tick={{fontSize: 10, fill: 'var(--muted-foreground)'}} 
-                                                    interval={2} // Show fewer labels
+                                                    tickFormatter={(val, idx) => {
+                                                        // Show roughly 5 ticks max
+                                                        const total = weightHeightData.length;
+                                                        const interval = Math.ceil(total / 5);
+                                                        return idx % interval === 0 ? val.split('/').slice(0,2).join('/') : '';
+                                                    }}
+                                                    interval={0} // Allow us to control visibility via formatter
                                                 />
                                                 <YAxis 
                                                     yAxisId="left" 
@@ -487,9 +515,7 @@ export default function VerificationDashboard() {
                                                     unit="cm"
                                                     dot={false}
                                                     strokeWidth={2}
-                                                >
-                                                     <LabelList dataKey="height" position="top" offset={10} fontSize={10} fill="#8884d8" />
-                                                </Line>
+                                                />
                                                 <Line 
                                                     yAxisId="right"
                                                     type="stepAfter" 
@@ -499,9 +525,7 @@ export default function VerificationDashboard() {
                                                     unit="kg"
                                                     dot={false}
                                                     strokeWidth={2}
-                                                >
-                                                    <LabelList dataKey="weight" position="top" offset={10} fontSize={10} fill="#82ca9d" />
-                                                </Line>
+                                                />
                                             </ComposedChart>
                                         </ResponsiveContainer>
                                     </div>
@@ -532,7 +556,13 @@ export default function VerificationDashboard() {
                                                 <XAxis 
                                                     dataKey="date" 
                                                     tick={{fontSize: 10, fill: 'var(--muted-foreground)'}}
-                                                    interval={1} // Skipping labels
+                                                    tickFormatter={(val, idx) => {
+                                                        // Show roughly 5 ticks max
+                                                        const total = powerData.length;
+                                                        const interval = Math.ceil(total / 5);
+                                                        return idx % interval === 0 ? val.split('/').slice(0,2).join('/') : '';
+                                                    }}
+                                                    interval={0}
                                                 />
                                                 <YAxis 
                                                     label={{ value: 'Watts', angle: -90, position: 'insideLeft', style: {textAnchor: 'middle', fill: '#ff7300', fontSize: 12} }}
@@ -557,9 +587,7 @@ export default function VerificationDashboard() {
                                                         }
                                                         return <circle cx={props.cx} cy={props.cy} r={0} />; // Invisible dots normally
                                                     }}
-                                                >
-                                                     <LabelList dataKey="power" position="top" offset={10} fontSize={10} fill="#ff7300" />
-                                                </Line>
+                                                />
                                                 <Line 
                                                     type="monotone" 
                                                     dataKey="hr" 
