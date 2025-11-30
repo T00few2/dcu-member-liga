@@ -316,7 +316,7 @@ export default function VerificationDashboard() {
                                                     payload={[
                                                         { value: 'Best (90d)', type: 'line', color: '#8884d8' },
                                                         { value: 'Selected Race', type: 'line', color: '#ff7300' }
-                                                    ].filter(item => item.value !== 'Selected Race' || selectedRaceDate)}
+                                                    ].filter(item => item.value !== 'Selected Race' || selectedRaceDate) as any[]}
                                                 />
                                                 
                                                 {/* Render faint lines for EVERY race in the last 90 days */}
