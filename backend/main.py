@@ -176,6 +176,94 @@ def dcu_api(request):
 
     path = request.path
 
+    # --- ADMIN: VERIFICATION ENDPOINT ---
+    if path.startswith('/admin/verification/rider/') and request.method == 'GET':
+        # Check Admin Auth
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+             return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        try:
+             id_token = auth_header.split('Bearer ')[1]
+             auth.verify_id_token(id_token)
+        except:
+             return (jsonify({'message': 'Unauthorized'}), 401, headers)
+
+        e_license = path.split('/')[-1]
+        if not db:
+             return (jsonify({'error': 'DB not available'}), 500, headers)
+
+        try:
+            # 1. Get Rider Meta
+            user_doc = db.collection('users').document(str(e_license)).get()
+            if not user_doc.exists:
+                return (jsonify({'message': 'User not found'}), 404, headers)
+            
+            user_data = user_doc.to_dict()
+            zwift_id = user_data.get('zwiftId')
+            
+            response_data = {'profile': {}, 'stravaActivities': [], 'zwiftPowerHistory': []}
+
+            # 2. Fetch Profile (Live from Zwift)
+            if zwift_id:
+                try:
+                    zwift_service = get_zwift_service()
+                    profile = zwift_service.get_profile(int(zwift_id))
+                    if profile:
+                        response_data['profile'] = {
+                            'weight': round(profile.get('weight', 0) / 1000, 1) if profile.get('weight') else None,
+                            'height': round(profile.get('height', 0) / 10, 0) if profile.get('height') else None,
+                            'maxHr': profile.get('heartRateMax', 0)
+                        }
+                except Exception as e:
+                    print(f"Zwift Profile Fetch Error: {e}")
+
+            # 3. Fetch Strava Activities
+            try:
+                strava_raw = strava_service.get_activities(e_license)
+                if strava_raw and 'activities' in strava_raw:
+                    # Map simple format for verification UI
+                    response_data['stravaActivities'] = strava_raw['activities'] 
+            except Exception as e:
+                print(f"Strava Verification Fetch Error: {e}")
+
+            # 4. Fetch ZwiftPower History
+            if zwift_id:
+                try:
+                    zp = get_zp_service()
+                    # ZwiftPower profile returns recent results in the 'data' array usually
+                    # But we need the specific history endpoint or parse the profile deeply
+                    # The 'get_rider_data_json' usually returns profile info + latest results
+                    
+                    # Let's try to get a more detailed history if possible, otherwise use profile
+                    # Actually, ZP 'profile' endpoint returns a list of recent activities in the 'data' field
+                    # if we use the right URL. 
+                    
+                    # Let's assume get_rider_data_json returns what we need for now
+                    zp_json = zp.get_rider_data_json(int(zwift_id))
+                    
+                    # Depending on the ZP API response structure (it varies), we parse:
+                    # Usually it returns { data: [ { date, event_title, avg_watts, wkg, ... } ] }
+                    if zp_json and 'data' in zp_json:
+                        history = []
+                        for entry in zp_json['data'][:5]: # Last 5
+                            history.append({
+                                'date': entry.get('date') or entry.get('event_date', 'N/A'), # Timestamp or string
+                                'event_title': entry.get('event_title', 'Unknown Event'),
+                                'avg_watts': entry.get('avg_watts', 0),
+                                'avg_hr': entry.get('avg_hr', 0),
+                                'wkg': entry.get('wkg', 0),
+                                'category': entry.get('category', '')
+                            })
+                        response_data['zwiftPowerHistory'] = history
+                        
+                except Exception as e:
+                    print(f"ZP Verification Fetch Error: {e}")
+
+            return (jsonify(response_data), 200, headers)
+        except Exception as e:
+             return (jsonify({'message': str(e)}), 500, headers)
+
+
     # --- ADMIN: ZWIFT ROUTES & SEGMENTS ---
     if path == '/routes' and request.method == 'GET':
         routes = _zwift_game_service.get_routes()
