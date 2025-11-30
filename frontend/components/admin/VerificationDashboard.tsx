@@ -310,7 +310,14 @@ export default function VerificationDashboard() {
                                                     tick={{fontSize: 10, fill: 'var(--muted-foreground)'}}
                                                 />
                                                 <Tooltip content={<CustomTooltip />} />
-                                                <Legend verticalAlign="top" height={36}/>
+                                                <Legend 
+                                                    verticalAlign="top" 
+                                                    height={36}
+                                                    payload={[
+                                                        { value: 'Best (90d)', type: 'line', color: '#8884d8' },
+                                                        { value: 'Selected Race', type: 'line', color: '#ff7300' }
+                                                    ].filter(item => item.value !== 'Selected Race' || selectedRaceDate)}
+                                                />
                                                 
                                                 {/* Render faint lines for EVERY race in the last 90 days */}
                                                 {recentRaces.map((race) => (
