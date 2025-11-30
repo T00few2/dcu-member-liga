@@ -56,6 +56,11 @@ export default function VerificationDashboard() {
 
     // Graph State
     const [selectedRaceDate, setSelectedRaceDate] = useState<number | null>(null);
+    
+    // Strava Detail State
+    const [selectedStravaActivityId, setSelectedStravaActivityId] = useState<number | null>(null);
+    const [stravaStreams, setStravaStreams] = useState<any[]>([]);
+    const [loadingStreams, setLoadingStreams] = useState(false);
 
     // Fetch brief list of all participants for the search dropdown
     useEffect(() => {
@@ -84,6 +89,8 @@ export default function VerificationDashboard() {
         setStravaData([]);
         setRiderProfile(null);
         setSelectedRaceDate(null);
+        setSelectedStravaActivityId(null);
+        setStravaStreams([]);
 
         if (!user) return;
 
@@ -113,6 +120,52 @@ export default function VerificationDashboard() {
             console.error(e);
         } finally {
             setLoadingDetails(false);
+        }
+    };
+
+    const handleSelectStravaActivity = async (activity: StravaActivity) => {
+        if (activity.id === selectedStravaActivityId) return; // Already selected
+        
+        setSelectedStravaActivityId(activity.id);
+        setLoadingStreams(true);
+        setStravaStreams([]);
+
+        if (!user || !selectedRider) return;
+
+        try {
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+            const token = await user.getIdToken();
+            
+            const res = await fetch(`${apiUrl}/admin/verification/strava/streams/${activity.id}?eLicense=${selectedRider.eLicense}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                const streams = data.streams;
+                
+                // Parse Streams
+                // Expected format: [{type: 'time', data: [...]}, {type: 'watts', data: [...]}, ...]
+                const timeStream = streams.find((s: any) => s.type === 'time')?.data || [];
+                const wattsStream = streams.find((s: any) => s.type === 'watts')?.data || [];
+                const cadenceStream = streams.find((s: any) => s.type === 'cadence')?.data || [];
+                
+                // Zip data
+                const zipped = timeStream.map((t: number, i: number) => ({
+                    time: t,
+                    timeLabel: new Date(t * 1000).toISOString().substr(11, 8), // HH:MM:SS
+                    watts: wattsStream[i] || 0,
+                    cadence: cadenceStream[i] || 0
+                }));
+                
+                setStravaStreams(zipped);
+            } else {
+                console.error("Failed to load streams");
+            }
+        } catch (e) {
+            console.error("Error fetching streams", e);
+        } finally {
+            setLoadingStreams(false);
         }
     };
 
@@ -198,7 +251,8 @@ export default function VerificationDashboard() {
         if (active && payload && payload.length) {
             // Filter out the background race lines from tooltip to avoid clutter
             const visiblePayload = payload.filter((p: any) => 
-                p.dataKey === 'maxPower' || p.dataKey === 'highlightedPower'
+                p.dataKey === 'maxPower' || p.dataKey === 'highlightedPower' ||
+                p.dataKey === 'watts' || p.dataKey === 'cadence'
             );
 
             if (visiblePayload.length === 0) return null;
@@ -221,6 +275,8 @@ export default function VerificationDashboard() {
         }
         return null;
     };
+
+    const selectedStravaActivityDetails = stravaData.find(a => a.id === selectedStravaActivityId);
 
     return (
         <div className="max-w-6xl mx-auto pb-12">
@@ -474,9 +530,75 @@ export default function VerificationDashboard() {
                                 </div>
                             </div>
 
+                            {/* --- STRAVA DETAIL GRAPH --- */}
+                            {selectedStravaActivityId && (
+                                <div className="bg-card p-4 rounded-lg shadow border border-border mt-6">
+                                    <h3 className="text-lg font-semibold mb-4 text-card-foreground">
+                                        Strava Analysis: {selectedStravaActivityDetails?.name}
+                                    </h3>
+                                    
+                                    {loadingStreams ? (
+                                        <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                                            Loading stream data...
+                                        </div>
+                                    ) : stravaStreams.length > 0 ? (
+                                        <div className="h-[300px] w-full">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <LineChart data={stravaStreams}>
+                                                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.3} />
+                                                    <XAxis 
+                                                        dataKey="timeLabel" 
+                                                        tick={{fontSize: 10, fill: 'var(--muted-foreground)'}}
+                                                        minTickGap={50}
+                                                    />
+                                                    <YAxis 
+                                                        yAxisId="left"
+                                                        label={{ value: 'Power (W)', angle: -90, position: 'insideLeft', style: {textAnchor: 'middle', fill: '#FC4C02', fontSize: 12} }}
+                                                        tick={{fontSize: 10, fill: 'var(--muted-foreground)'}}
+                                                    />
+                                                    <YAxis 
+                                                        yAxisId="right"
+                                                        orientation="right"
+                                                        label={{ value: 'Cadence (rpm)', angle: 90, position: 'insideRight', style: {textAnchor: 'middle', fill: '#82ca9d', fontSize: 12} }}
+                                                        tick={{fontSize: 10, fill: 'var(--muted-foreground)'}}
+                                                    />
+                                                    <Tooltip content={<CustomTooltip />} />
+                                                    <Legend verticalAlign="top" height={36}/>
+                                                    <Line 
+                                                        yAxisId="left"
+                                                        type="monotone" 
+                                                        dataKey="watts" 
+                                                        stroke="#FC4C02" 
+                                                        name="Power" 
+                                                        unit="W"
+                                                        dot={false}
+                                                        strokeWidth={1.5}
+                                                    />
+                                                    <Line 
+                                                        yAxisId="right"
+                                                        type="monotone" 
+                                                        dataKey="cadence" 
+                                                        stroke="#82ca9d" 
+                                                        name="Cadence" 
+                                                        unit="rpm"
+                                                        dot={false}
+                                                        strokeWidth={1.5}
+                                                        opacity={0.7}
+                                                    />
+                                                </LineChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    ) : (
+                                        <div className="h-[300px] flex items-center justify-center text-muted-foreground italic">
+                                            No stream data available for this activity.
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
 
                             {/* --- DATA TABLES --- */}
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
                                 
                                 {/* Col 1: ZwiftPower Table (Clickable) */}
                                 <div className="bg-card rounded-lg shadow border border-border overflow-hidden lg:col-span-1">
@@ -535,31 +657,39 @@ export default function VerificationDashboard() {
                                                 No connected Strava account or activities found.
                                             </div>
                                         ) : (
-                                            stravaData.map((act) => (
-                                                <div key={act.id} className="p-4 hover:bg-muted/30 transition">
-                                                    <div className="font-medium text-sm text-card-foreground truncate mb-1">
-                                                        <a href={`https://www.strava.com/activities/${act.id}`} target="_blank" rel="noopener noreferrer" className="hover:underline">
-                                                            {act.name} ↗
-                                                        </a>
+                                            stravaData.map((act) => {
+                                                const isSelected = selectedStravaActivityId === act.id;
+                                                return (
+                                                    <div 
+                                                        key={act.id} 
+                                                        onClick={() => handleSelectStravaActivity(act)}
+                                                        className={`p-4 transition cursor-pointer border-l-4 ${isSelected ? 'bg-muted/50 border-[#FC4C02]' : 'hover:bg-muted/30 border-transparent'}`}
+                                                    >
+                                                        <div className="font-medium text-sm text-card-foreground truncate mb-1 flex justify-between items-center">
+                                                            <span>{act.name}</span>
+                                                            <a href={`https://www.strava.com/activities/${act.id}`} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline" onClick={(e) => e.stopPropagation()}>
+                                                                Link ↗
+                                                            </a>
+                                                        </div>
+                                                        <div className="text-xs text-muted-foreground mb-2">{new Date(act.date).toLocaleDateString()} • {(act.moving_time / 60).toFixed(0)} min</div>
+                                                        
+                                                        <div className="grid grid-cols-3 gap-2 text-center text-sm">
+                                                            <div className="bg-secondary/50 rounded p-1">
+                                                                <div className="text-xs text-muted-foreground">Avg Power</div>
+                                                                <div className="font-mono">{act.average_watts ? `${act.average_watts}w` : '-'}</div>
+                                                            </div>
+                                                            <div className="bg-secondary/50 rounded p-1">
+                                                                <div className="text-xs text-muted-foreground">Avg HR</div>
+                                                                <div className="font-mono">{act.average_heartrate ? Math.round(act.average_heartrate) : '-'}</div>
+                                                            </div>
+                                                            <div className="bg-secondary/50 rounded p-1">
+                                                                <div className="text-xs text-muted-foreground">Suffer</div>
+                                                                <div className="font-mono">{act.suffer_score || '-'}</div>
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                    <div className="text-xs text-muted-foreground mb-2">{new Date(act.date).toLocaleDateString()} • {(act.moving_time / 60).toFixed(0)} min</div>
-                                                    
-                                                    <div className="grid grid-cols-3 gap-2 text-center text-sm">
-                                                        <div className="bg-secondary/50 rounded p-1">
-                                                            <div className="text-xs text-muted-foreground">Avg Power</div>
-                                                            <div className="font-mono">{act.average_watts ? `${act.average_watts}w` : '-'}</div>
-                                                        </div>
-                                                        <div className="bg-secondary/50 rounded p-1">
-                                                            <div className="text-xs text-muted-foreground">Avg HR</div>
-                                                            <div className="font-mono">{act.average_heartrate ? Math.round(act.average_heartrate) : '-'}</div>
-                                                        </div>
-                                                        <div className="bg-secondary/50 rounded p-1">
-                                                            <div className="text-xs text-muted-foreground">Suffer</div>
-                                                            <div className="font-mono">{act.suffer_score || '-'}</div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))
+                                                );
+                                            })
                                         )}
                                     </div>
                                 </div>

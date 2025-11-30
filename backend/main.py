@@ -313,6 +313,33 @@ def dcu_api(request):
         except Exception as e:
              return (jsonify({'message': str(e)}), 500, headers)
 
+    # --- ADMIN: STRAVA STREAMS ENDPOINT ---
+    if path.startswith('/admin/verification/strava/streams/') and request.method == 'GET':
+         # Check Admin Auth
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+             return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        try:
+             id_token = auth_header.split('Bearer ')[1]
+             auth.verify_id_token(id_token)
+        except:
+             return (jsonify({'message': 'Unauthorized'}), 401, headers)
+
+        activity_id = path.split('/')[-1]
+        e_license = request.args.get('eLicense')
+        
+        if not e_license:
+             return (jsonify({'message': 'Missing eLicense'}), 400, headers)
+
+        try:
+            streams = strava_service.get_activity_streams(e_license, activity_id)
+            if streams:
+                return (jsonify({'streams': streams}), 200, headers)
+            else:
+                return (jsonify({'message': 'Failed to fetch streams'}), 404, headers)
+        except Exception as e:
+            return (jsonify({'message': str(e)}), 500, headers)
+
 
     # --- ADMIN: ZWIFT ROUTES & SEGMENTS ---
     if path == '/routes' and request.method == 'GET':

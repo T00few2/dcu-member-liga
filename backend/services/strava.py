@@ -95,50 +95,69 @@ class StravaService:
         except Exception as e:
              return None, str(e), 500
 
+    def _get_valid_token(self, e_license):
+        if not e_license or not self.db:
+            return None
+            
+        try:
+            user_doc = self.db.collection('users').document(str(e_license)).get()
+            if not user_doc.exists:
+                return None
+                
+            user_data = user_doc.to_dict()
+            strava_auth = user_data.get('strava')
+            
+            if not strava_auth:
+                return None
+                
+            access_token = strava_auth.get('access_token')
+            refresh_token = strava_auth.get('refresh_token')
+            expires_at = strava_auth.get('expires_at')
+            
+            # Check expiry (add buffer of 5 minutes)
+            if expires_at and time.time() > (expires_at - 300):
+                print(f"Token expired for {e_license}, refreshing...")
+                new_token = self._refresh_token(e_license, refresh_token)
+                if new_token:
+                    return new_token
+                return None
+            
+            return access_token
+        except Exception as e:
+            print(f"Error getting valid token: {e}")
+            return None
+
     def get_activities(self, e_license):
         strava_kms = "Not Connected"
         recent_activities = []
         
-        if e_license and self.db:
+        access_token = self._get_valid_token(e_license)
+        
+        if access_token:
             try:
-                user_doc = self.db.collection('users').document(str(e_license)).get()
-                if user_doc.exists:
-                    user_data = user_doc.to_dict()
-                    strava_auth = user_data.get('strava')
+                acts_res = requests.get(
+                    "https://www.strava.com/api/v3/athlete/activities?per_page=10",
+                    headers={'Authorization': f"Bearer {access_token}"}
+                )
+                
+                if acts_res.status_code == 200:
+                    activities = acts_res.json()
+                    total_meters = sum(a['distance'] for a in activities)
+                    strava_kms = f"{round(total_meters / 1000, 1)} km (Last 10 rides)"
                     
-                    if strava_auth:
-                        access_token = strava_auth.get('access_token')
-                        refresh_token = strava_auth.get('refresh_token')
-                        expires_at = strava_auth.get('expires_at')
-                        
-                        # Check expiry (add buffer of 5 minutes)
-                        if expires_at and time.time() > (expires_at - 300):
-                            print(f"Token expired for {e_license}, refreshing...")
-                            new_token = self._refresh_token(e_license, refresh_token)
-                            if new_token:
-                                access_token = new_token
-                            else:
-                                return {'kms': 'Token Expired (Re-login)', 'activities': []}
-                        
-                        acts_res = requests.get(
-                            "https://www.strava.com/api/v3/athlete/activities?per_page=10",
-                            headers={'Authorization': f"Bearer {access_token}"}
-                        )
-                        
-                        if acts_res.status_code == 200:
-                            activities = acts_res.json()
-                            total_meters = sum(a['distance'] for a in activities)
-                            strava_kms = f"{round(total_meters / 1000, 1)} km (Last 10 rides)"
-                            
-                            for a in activities:
-                                recent_activities.append({
-                                    'name': a['name'],
-                                    'distance': f"{round(a['distance'] / 1000, 2)} km",
-                                    'date': a['start_date_local'][:10], 
-                                    'moving_time': f"{round(a['moving_time'] / 60)} min"
-                                })
-                        else:
-                            strava_kms = "Error fetching"
+                    for a in activities:
+                        recent_activities.append({
+                            'id': a['id'],
+                            'name': a['name'],
+                            'distance': f"{round(a['distance'] / 1000, 2)} km",
+                            'date': a['start_date_local'][:10], 
+                            'moving_time': f"{round(a['moving_time'] / 60)} min",
+                            'average_watts': a.get('average_watts'),
+                            'average_heartrate': a.get('average_heartrate'),
+                            'suffer_score': a.get('suffer_score')
+                        })
+                else:
+                    strava_kms = "Error fetching"
             except Exception as e:
                 print(f"Error fetching strava stats: {e}")
                 
@@ -147,3 +166,21 @@ class StravaService:
             'activities': recent_activities
         }
 
+    def get_activity_streams(self, e_license, activity_id):
+        access_token = self._get_valid_token(e_license)
+        if not access_token:
+            return None
+            
+        try:
+            # Fetch streams: time, watts, cadence, heartrate
+            url = f"https://www.strava.com/api/v3/activities/{activity_id}/streams?keys=time,watts,cadence,heartrate&key_by_type=true"
+            res = requests.get(url, headers={'Authorization': f"Bearer {access_token}"})
+            
+            if res.status_code == 200:
+                return res.json()
+            else:
+                print(f"Error fetching streams: {res.status_code} {res.text}")
+                return None
+        except Exception as e:
+            print(f"Error fetching streams: {e}")
+            return None
