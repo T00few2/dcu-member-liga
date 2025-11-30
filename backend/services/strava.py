@@ -173,7 +173,9 @@ class StravaService:
             
         try:
             # Fetch streams: time, watts, cadence, heartrate
-            url = f"https://www.strava.com/api/v3/activities/{activity_id}/streams?keys=time,watts,cadence,heartrate&key_by_type=true"
+            # We deliberately do NOT use key_by_type=true, so we get the standard array format
+            # that the frontend expects: [{type: 'time', data: ...}, {type: 'watts', data: ...}]
+            url = f"https://www.strava.com/api/v3/activities/{activity_id}/streams?keys=time,watts,cadence,heartrate"
             res = requests.get(url, headers={'Authorization': f"Bearer {access_token}"})
             
             if res.status_code == 200:

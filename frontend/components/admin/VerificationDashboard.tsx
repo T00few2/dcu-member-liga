@@ -532,10 +532,25 @@ export default function VerificationDashboard() {
 
                             {/* --- STRAVA DETAIL GRAPH --- */}
                             {selectedStravaActivityId && (
-                                <div className="bg-card p-4 rounded-lg shadow border border-border mt-6">
-                                    <h3 className="text-lg font-semibold mb-4 text-card-foreground">
-                                        Strava Analysis: {selectedStravaActivityDetails?.name}
-                                    </h3>
+                                <div className="bg-card p-4 rounded-lg shadow border border-border mt-6 relative">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h3 className="text-lg font-semibold text-card-foreground">
+                                            Strava Analysis: {selectedStravaActivityDetails?.name}
+                                        </h3>
+                                        <button 
+                                            onClick={() => {
+                                                setSelectedStravaActivityId(null);
+                                                setStravaStreams([]);
+                                            }}
+                                            className="p-1 hover:bg-muted rounded-full transition"
+                                            title="Close Analysis"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
+                                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                                            </svg>
+                                        </button>
+                                    </div>
                                     
                                     {loadingStreams ? (
                                         <div className="h-[300px] flex items-center justify-center text-muted-foreground">
