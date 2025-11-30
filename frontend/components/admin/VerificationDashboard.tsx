@@ -142,8 +142,8 @@ export default function VerificationDashboard() {
     }));
 
     // 3. CP Curve Data (Last 90 Days)
-    // We need to transform this from time-series to category-series (duration)
-    // We want: { duration: '5s', maxPower: 1200, highlightedPower: 1100 }
+    // We transform this so each 'duration' (5s, 15s...) is an entry
+    // and it has power values for ALL races in recent history.
     
     const cpDurations = [
         { key: 'w5', label: '5s' },
@@ -172,26 +172,48 @@ export default function VerificationDashboard() {
         ? zpData.find(d => d.date === selectedRaceDate) 
         : null;
 
-    const cpCurveData = cpDurations.map(dur => ({
-        name: dur.label,
-        maxPower: bestCurve[dur.key],
-        highlightedPower: highlightedRace && highlightedRace.cp_curve ? highlightedRace.cp_curve[dur.key] : null
-    }));
+    // Construct the dataset for the chart.
+    // Structure: { name: '5s', maxPower: 1200, highlightedPower: 1100, race_12345: 900, race_67890: 950... }
+    const cpCurveData = cpDurations.map(dur => {
+        const point: any = {
+            name: dur.label,
+            maxPower: bestCurve[dur.key],
+            highlightedPower: highlightedRace && highlightedRace.cp_curve ? highlightedRace.cp_curve[dur.key] : null
+        };
+
+        // Add every other race as a separate key
+        recentRaces.forEach(race => {
+            // Only add if not the highlighted one (to avoid overlap/redundancy in rendering if desired, 
+            // though standard practice is just render all and layer highlight on top)
+            if (race.cp_curve) {
+                point[`race_${race.date}`] = race.cp_curve[dur.key] || null;
+            }
+        });
+
+        return point;
+    });
 
 
     const CustomTooltip = ({ active, payload, label }: any) => {
         if (active && payload && payload.length) {
+            // Filter out the background race lines from tooltip to avoid clutter
+            const visiblePayload = payload.filter((p: any) => 
+                p.dataKey === 'maxPower' || p.dataKey === 'highlightedPower'
+            );
+
+            if (visiblePayload.length === 0) return null;
+
             return (
                 <div className="bg-card p-2 border border-border rounded shadow text-sm">
                     <p className="font-bold mb-1">{label}</p>
-                    {payload.map((p: any) => (
+                    {visiblePayload.map((p: any) => (
                         <p key={p.name} style={{ color: p.color }}>
                             {p.name}: {p.value} {p.unit}
                         </p>
                     ))}
-                    {payload[0]?.payload?.title && (
+                    {visiblePayload[0]?.payload?.title && (
                         <p className="text-xs text-muted-foreground mt-1 max-w-[200px] truncate">
-                            {payload[0].payload.title}
+                            {visiblePayload[0].payload.title}
                         </p>
                     )}
                 </div>
@@ -289,6 +311,21 @@ export default function VerificationDashboard() {
                                                 />
                                                 <Tooltip content={<CustomTooltip />} />
                                                 <Legend verticalAlign="top" height={36}/>
+                                                
+                                                {/* Render faint lines for EVERY race in the last 90 days */}
+                                                {recentRaces.map((race) => (
+                                                    <Line
+                                                        key={race.date}
+                                                        type="monotone"
+                                                        dataKey={`race_${race.date}`}
+                                                        stroke="#8884d8"
+                                                        strokeOpacity={0.15} // Very faint
+                                                        strokeWidth={1}
+                                                        dot={false}
+                                                        isAnimationActive={false} // Disable animation for performance with many lines
+                                                    />
+                                                ))}
+
                                                 <Line 
                                                     type="monotone" 
                                                     dataKey="maxPower" 
