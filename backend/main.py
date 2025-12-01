@@ -671,6 +671,7 @@ def dcu_api(request):
                     'eLicense': e_license,
                     'zwiftId': zwift_id, 
                     'verified': True,
+                    'acceptedCoC': request_json.get('acceptedCoC', False),
                     'authUid': uid, 
                     'updatedAt': firestore.SERVER_TIMESTAMP
                 }, merge=True)
