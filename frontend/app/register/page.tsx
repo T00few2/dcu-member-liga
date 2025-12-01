@@ -16,6 +16,7 @@ function RegisterContent() {
     const [zwiftId, setZwiftId] = useState('');
     const [stravaConnected, setStravaConnected] = useState(false);
     const [acceptedCoC, setAcceptedCoC] = useState(false);
+    const [showCoCModal, setShowCoCModal] = useState(false);
 
     // Verification State
     const [initialData, setInitialData] = useState<{ eLicense?: string, zwiftId?: string }>({});
@@ -437,19 +438,71 @@ function RegisterContent() {
                                 Please read and agree to the <a href="https://docs.google.com/document/d/1lQE0w8ylJLoBscj6rgWZ4nGYqKbCsoin9HR4wBiF3V4/edit?usp=sharing" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">League Code of Conduct</a>.
                             </p>
 
-                            <label className="flex items-center gap-3 cursor-pointer p-2 rounded hover:bg-secondary/50 transition">
-                                <input
-                                    type="checkbox"
-                                    checked={acceptedCoC}
-                                    onChange={e => setAcceptedCoC(e.target.checked)}
-                                    className="w-5 h-5 rounded border-input text-primary focus:ring-primary"
-                                />
-                                <span className="text-sm font-medium">I have read and agree to the Code of Conduct</span>
-                            </label>
+                            <div className="space-y-3">
+                                {!acceptedCoC ? (
+                                    <button
+                                        onClick={() => setShowCoCModal(true)}
+                                        className="w-full py-2 px-4 bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-lg font-medium transition flex items-center justify-center gap-2"
+                                    >
+                                        <span>📄 Read Code of Conduct</span>
+                                    </button>
+                                ) : (
+                                    <div className="flex items-center gap-3 p-2 bg-green-50 dark:bg-green-900/20 rounded border border-green-200 dark:border-green-800">
+                                        <span className="text-green-600 dark:text-green-400 font-bold">✓ Agreed</span>
+                                        <button
+                                            onClick={() => setShowCoCModal(true)}
+                                            className="text-xs text-muted-foreground hover:underline"
+                                        >
+                                            (View again)
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                         {step4Complete && <span className="text-green-600 dark:text-green-400 text-xl">✓</span>}
                     </div>
                 </div>
+
+                {/* CoC Modal */}
+                {showCoCModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                        <div className="bg-card w-full max-w-4xl h-[80vh] flex flex-col rounded-lg shadow-2xl border border-border overflow-hidden">
+                            <div className="p-4 border-b border-border flex justify-between items-center bg-muted/30">
+                                <h3 className="text-lg font-bold text-card-foreground">League Code of Conduct</h3>
+                                <button
+                                    onClick={() => setShowCoCModal(false)}
+                                    className="text-muted-foreground hover:text-foreground p-1"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                            <div className="flex-1 bg-white">
+                                <iframe
+                                    src="https://docs.google.com/document/d/1lQE0w8ylJLoBscj6rgWZ4nGYqKbCsoin9HR4wBiF3V4/preview"
+                                    className="w-full h-full border-0"
+                                    title="Code of Conduct"
+                                />
+                            </div>
+                            <div className="p-4 border-t border-border bg-muted/30 flex justify-end gap-3">
+                                <button
+                                    onClick={() => setShowCoCModal(false)}
+                                    className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setAcceptedCoC(true);
+                                        setShowCoCModal(false);
+                                    }}
+                                    className="px-6 py-2 bg-primary text-primary-foreground rounded hover:opacity-90 font-bold shadow-sm"
+                                >
+                                    I Agree
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Submit Button */}
                 <div className="pt-4">
