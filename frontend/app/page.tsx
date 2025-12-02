@@ -195,6 +195,13 @@ export default function Home() {
                     View race results and league standings.
                     </p>
                 </Link>
+
+                <Link href="/stats" className="p-6 border border-border rounded-lg shadow-sm hover:shadow-md transition bg-card text-card-foreground group text-left md:col-span-2">
+                    <h2 className="text-2xl font-semibold mb-2 group-hover:text-primary">My Stats &rarr;</h2>
+                    <p className="text-muted-foreground">
+                    Compare your performance against other riders.
+                    </p>
+                </Link>
             </div>
         </div>
       )}
