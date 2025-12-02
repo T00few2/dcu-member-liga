@@ -108,7 +108,8 @@ class ResultsProcessor:
                             'name': registered_riders[zid].get('name'),
                             'info': registered_riders[zid],
                             'flaggedCheating': entry.get('flaggedCheating', False),
-                            'flaggedSandbagging': entry.get('flaggedSandbagging', False)
+                            'flaggedSandbagging': entry.get('flaggedSandbagging', False),
+                            'criticalP': entry.get('criticalP', {})
                         })
                     elif not filter_registered:
                          finishers.append({
@@ -117,7 +118,8 @@ class ResultsProcessor:
                             'name': f"{profile.get('firstName', '')} {profile.get('lastName', '')}".strip(),
                             'info': {},
                             'flaggedCheating': entry.get('flaggedCheating', False),
-                            'flaggedSandbagging': entry.get('flaggedSandbagging', False)
+                            'flaggedSandbagging': entry.get('flaggedSandbagging', False),
+                            'criticalP': entry.get('criticalP', {})
                         })
 
                 # Sort by time
@@ -172,8 +174,10 @@ class ResultsProcessor:
                     'sprintPoints': 0,
                     'totalPoints': points,
                     'sprintDetails': {}, # segment_key -> points
+                    'sprintData': {}, # segment_key -> {avgPower, time, ...}
                     'flaggedCheating': rider.get('flaggedCheating', False),
-                    'flaggedSandbagging': rider.get('flaggedSandbagging', False)
+                    'flaggedSandbagging': rider.get('flaggedSandbagging', False),
+                    'criticalP': rider.get('criticalP', {})
                 }
                 processed_riders[rider['zwiftId']] = res
 
@@ -227,6 +231,22 @@ class ResultsProcessor:
                             if occ_idx in ranked_table:
                                 rankings = ranked_table[occ_idx] # { 1: {name, id}, 2: ... }
                                 
+                                # Save performance data for all riders in this sprint
+                                for s_rank, s_data in rankings.items():
+                                    s_zid = str(s_data['id'])
+                                    if s_zid in processed_riders:
+                                        r_data = processed_riders[s_zid]
+                                        sprint_key = sprint_config.get('key') or f"{sprint_config['id']}_{sprint_config['count']}"
+                                        # Initialize sprintData if needed (though we did it above)
+                                        if 'sprintData' not in r_data:
+                                            r_data['sprintData'] = {}
+                                            
+                                        r_data['sprintData'][sprint_key] = {
+                                            'avgPower': s_data.get('avgPower'),
+                                            'time': s_data.get('time'),
+                                            'rank': s_rank
+                                        }
+
                                 # Award points based on Sprint Scheme
                                 for p_idx, points in enumerate(sprint_points_scheme):
                                     rank = p_idx + 1
@@ -352,7 +372,8 @@ class ResultsProcessor:
             athlete_id = entry['athleteId']
             results_by_athlete.setdefault(athlete_id, []).append({
                 'worldTime': entry.get('worldTime'),
-                'elapsed': entry.get('elapsed')
+                'elapsed': entry.get('elapsed'),
+                'avgPower': entry.get('avgPower')
             })
 
         # Sort by worldTime (lowest best) to determine occurrence order
@@ -379,7 +400,8 @@ class ResultsProcessor:
                 entries_by_count.setdefault(count, []).append({
                     'athleteId': athlete_id,
                     'worldTime': int(entry.get('worldTime', 99999999)),
-                    'elapsed': int(entry.get('elapsed', 99999999))
+                    'elapsed': int(entry.get('elapsed', 99999999)),
+                    'avgPower': entry.get('avgPower')
                 })
 
         table = {}
@@ -387,11 +409,13 @@ class ResultsProcessor:
             # Sort by the chosen metric (default worldTime)
             sorted_entries = sorted(entries_by_count[count], key=lambda x: x[sort_by])
             
-            # Build rank map: 1 -> {name, id}
+            # Build rank map: 1 -> {name, id, ...}
             table[count] = {
                 rank + 1: {
                     "name": participant_lookup.get(entry['athleteId']),
-                    "id": entry['athleteId']
+                    "id": entry['athleteId'],
+                    "avgPower": entry['avgPower'],
+                    "time": entry['elapsed']
                 }
                 for rank, entry in enumerate(sorted_entries)
             }
