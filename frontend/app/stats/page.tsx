@@ -37,6 +37,7 @@ interface ResultEntry {
     finishPoints: number;
     sprintPoints: number;
     totalPoints: number;
+    sprintDetails?: Record<string, number>;
     // Newly added fields
     sprintData?: Record<string, SprintPerformance>;
     criticalP?: CriticalPower;
