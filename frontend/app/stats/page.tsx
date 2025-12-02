@@ -219,8 +219,91 @@ export default function MyStatsPage() {
 
             {!userResult ? null : (
                 <div className="space-y-12">
+
+                    {/* 2. Power Curve Analysis */}
+                    <section>
+                        <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+                            <span>💪 Power Curve Comparison</span>
+                        </h2>
+                        
+                        <div className="bg-card border border-border p-6 rounded-lg shadow-sm">
+                            <div className="h-[400px] w-full">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart>
+                                        <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                                        <XAxis 
+                                            dataKey="name" 
+                                            type="category" 
+                                            allowDuplicatedCategory={false}
+                                            tick={{fontSize: 12}}
+                                        />
+                                        <YAxis 
+                                            label={{ value: 'Watts', angle: -90, position: 'insideLeft' }}
+                                            tick={{fontSize: 12}}
+                                        />
+                                        <Tooltip 
+                                            content={({ active, payload, label }) => {
+                                                if (active && payload && payload.length) {
+                                                    // Filter to only show "Me"
+                                                    const myPayload = payload.find(p => p.name === "Me");
+                                                    if (!myPayload) return null;
+
+                                                    return (
+                                                        <div className="bg-background border border-border p-2 rounded shadow text-sm">
+                                                            <p className="font-bold mb-1">{label}</p>
+                                                            <p style={{ color: myPayload.color }}>
+                                                                My Power: {myPayload.value}w
+                                                            </p>
+                                                        </div>
+                                                    );
+                                                }
+                                                return null;
+                                            }}
+                                        />
+                                        <Legend 
+                                            verticalAlign="top" 
+                                            align="right" 
+                                            payload={[{ value: 'Me', type: 'line', color: '#ff0000' }]}
+                                        />
+                                        
+                                        {/* Render Lines for ALL riders in category */}
+                                        {categoryRiders.map((rider) => {
+                                            if (!rider.criticalP) return null;
+                                            
+                                            const isMe = rider.zwiftId === currentUserZwiftId;
+                                            const data = [
+                                                { name: '15s', value: rider.criticalP.criticalP15Seconds },
+                                                { name: '1m', value: rider.criticalP.criticalP1Minute },
+                                                { name: '5m', value: rider.criticalP.criticalP5Minutes },
+                                                { name: '20m', value: rider.criticalP.criticalP20Minutes },
+                                            ];
+
+                                            return (
+                                                <Line
+                                                    key={rider.zwiftId}
+                                                    data={data}
+                                                    type="monotone"
+                                                    dataKey="value"
+                                                    stroke={isMe ? '#ff0000' : '#8884d8'}
+                                                    strokeWidth={isMe ? 3 : 1}
+                                                    strokeOpacity={isMe ? 1 : 0.15} // Low opacity for others
+                                                    dot={isMe} // Only show dots for user
+                                                    activeDot={{ r: 6 }}
+                                                    name={isMe ? "Me" : undefined} // Only name "Me" line for safety, Legend is custom anyway
+                                                    isAnimationActive={false} // Improve performance with many lines
+                                                />
+                                            );
+                                        })}
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
+                            <p className="text-sm text-muted-foreground text-center mt-4">
+                                Comparing your Critical Power (15s, 1m, 5m, 20m) against all other riders in Category {userCategory}.
+                            </p>
+                        </div>
+                    </section>
                     
-                    {/* 2. Sprint Analysis */}
+                    {/* 3. Sprint Analysis */}
                     <section>
                         <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
                             <span>⚡ Sprint Analysis</span>
@@ -343,67 +426,6 @@ export default function MyStatsPage() {
                                     );
                                 })}
                             </div>
-                        </div>
-                    </section>
-
-                    {/* 3. Power Curve Analysis */}
-                    <section>
-                        <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-                            <span>💪 Power Curve Comparison</span>
-                        </h2>
-                        
-                        <div className="bg-card border border-border p-6 rounded-lg shadow-sm">
-                            <div className="h-[400px] w-full">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart>
-                                        <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                                        <XAxis 
-                                            dataKey="name" 
-                                            type="category" 
-                                            allowDuplicatedCategory={false}
-                                            tick={{fontSize: 12}}
-                                        />
-                                        <YAxis 
-                                            label={{ value: 'Watts', angle: -90, position: 'insideLeft' }}
-                                            tick={{fontSize: 12}}
-                                        />
-                                        <Tooltip />
-                                        <Legend />
-                                        
-                                        {/* Render Lines for ALL riders in category */}
-                                        {categoryRiders.map((rider) => {
-                                            if (!rider.criticalP) return null;
-                                            
-                                            const isMe = rider.zwiftId === currentUserZwiftId;
-                                            const data = [
-                                                { name: '15s', value: rider.criticalP.criticalP15Seconds },
-                                                { name: '1m', value: rider.criticalP.criticalP1Minute },
-                                                { name: '5m', value: rider.criticalP.criticalP5Minutes },
-                                                { name: '20m', value: rider.criticalP.criticalP20Minutes },
-                                            ];
-
-                                            return (
-                                                <Line
-                                                    key={rider.zwiftId}
-                                                    data={data}
-                                                    type="monotone"
-                                                    dataKey="value"
-                                                    stroke={isMe ? '#ff0000' : '#8884d8'}
-                                                    strokeWidth={isMe ? 3 : 1}
-                                                    strokeOpacity={isMe ? 1 : 0.15} // Low opacity for others
-                                                    dot={isMe} // Only show dots for user
-                                                    activeDot={{ r: 6 }}
-                                                    name={isMe ? "Me" : "Others"}
-                                                    isAnimationActive={false} // Improve performance with many lines
-                                                />
-                                            );
-                                        })}
-                                    </LineChart>
-                                </ResponsiveContainer>
-                            </div>
-                            <p className="text-sm text-muted-foreground text-center mt-4">
-                                Comparing your Critical Power (15s, 1m, 5m, 20m) against all other riders in Category {userCategory}.
-                            </p>
                         </div>
                     </section>
 
