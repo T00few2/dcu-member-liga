@@ -153,13 +153,15 @@ export default function VerificationDashboard() {
                 const timeStream = streams.find((s: any) => s.type === 'time')?.data || [];
                 const wattsStream = streams.find((s: any) => s.type === 'watts')?.data || [];
                 const cadenceStream = streams.find((s: any) => s.type === 'cadence')?.data || [];
+                const altitudeStream = streams.find((s: any) => s.type === 'altitude')?.data || [];
                 
                 // Zip data
                 const zipped = timeStream.map((t: number, i: number) => ({
                     time: t,
                     timeLabel: new Date(t * 1000).toISOString().substr(11, 8), // HH:MM:SS
                     watts: wattsStream[i] || 0,
-                    cadence: cadenceStream[i] || 0
+                    cadence: cadenceStream[i] || 0,
+                    altitude: altitudeStream[i] || 0
                 }));
                 
                 setStravaStreams(zipped);
@@ -272,7 +274,8 @@ export default function VerificationDashboard() {
                 p.dataKey === 'maxPower' || p.dataKey === 'highlightedPower' ||
                 p.dataKey === 'watts' || p.dataKey === 'cadence' ||
                 p.dataKey === 'power' || p.dataKey === 'hr' ||
-                p.dataKey === 'weight' || p.dataKey === 'height'
+                p.dataKey === 'weight' || p.dataKey === 'height' ||
+                p.dataKey === 'altitude'
             );
 
             if (visiblePayload.length === 0) return null;
@@ -642,7 +645,7 @@ export default function VerificationDashboard() {
                                     ) : stravaStreams.length > 0 ? (
                                         <div className="h-[300px] w-full">
                                             <ResponsiveContainer width="100%" height="100%">
-                                                <LineChart data={stravaStreams}>
+                                                <ComposedChart data={stravaStreams}>
                                                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.3} />
                                                     <XAxis 
                                                         dataKey="timeLabel" 
@@ -660,8 +663,25 @@ export default function VerificationDashboard() {
                                                         label={{ value: 'Cadence (rpm)', angle: 90, position: 'insideRight', style: {textAnchor: 'middle', fill: '#82ca9d', fontSize: 12} }}
                                                         tick={{fontSize: 10, fill: 'var(--muted-foreground)'}}
                                                     />
+                                                    <YAxis 
+                                                        yAxisId="elevation"
+                                                        orientation="right"
+                                                        hide={true} 
+                                                        domain={['dataMin', 'dataMax']}
+                                                    />
                                                     <Tooltip content={<CustomTooltip />} />
                                                     <Legend verticalAlign="top" height={36}/>
+                                                    <Area
+                                                        yAxisId="elevation"
+                                                        type="monotone"
+                                                        dataKey="altitude"
+                                                        fill="#888888"
+                                                        stroke="#888888"
+                                                        fillOpacity={0.15}
+                                                        strokeOpacity={0.3}
+                                                        name="Elevation"
+                                                        unit="m"
+                                                    />
                                                     <Line 
                                                         yAxisId="left"
                                                         type="monotone" 
@@ -684,7 +704,7 @@ export default function VerificationDashboard() {
                                                         opacity={0.7}
                                                     />
                                                     <Brush dataKey="timeLabel" height={30} stroke="#FC4C02" />
-                                                </LineChart>
+                                                </ComposedChart>
                                             </ResponsiveContainer>
                                         </div>
                                     ) : (
