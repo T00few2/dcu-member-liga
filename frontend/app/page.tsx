@@ -23,6 +23,8 @@ interface Race {
   laps: number;
   totalDistance: number;
   totalElevation: number;
+  eventId?: string;
+  eventSecret?: string;
   sprints?: Segment[];
 }
 
@@ -149,7 +151,7 @@ export default function Home() {
                         </div>
 
                         {nextRace.sprints && nextRace.sprints.length > 0 && (
-                            <div className="border-t border-border pt-4">
+                            <div className="border-t border-border pt-4 mb-6">
                                 <h4 className="text-sm font-semibold text-card-foreground mb-3">Points Sprints</h4>
                                 <div className="space-y-3">
                                     {/* Group by lap for display */}
@@ -176,6 +178,22 @@ export default function Home() {
                                     ))}
                                 </div>
                             </div>
+                        )}
+
+                        {nextRace.eventId && (
+                            <a 
+                                href={`https://www.zwift.com/eu/events/view/${nextRace.eventId}${nextRace.eventSecret ? `?eventSecret=${nextRace.eventSecret}` : ''}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="block w-full bg-[#fc6719] hover:bg-[#d9530e] text-white font-bold py-3 px-4 rounded-lg text-center transition shadow-md flex items-center justify-center gap-2"
+                            >
+                                <span>Race Pass</span>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                                    <polyline points="15 3 21 3 21 9"></polyline>
+                                    <line x1="10" y1="14" x2="21" y2="3"></line>
+                                </svg>
+                            </a>
                         )}
                     </div>
                 </div>

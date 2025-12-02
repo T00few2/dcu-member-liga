@@ -36,6 +36,7 @@ interface Race {
   totalDistance: number;
   totalElevation: number;
   eventId?: string; // Added Event ID
+  eventSecret?: string; // Added Event Secret
   selectedSegments?: string[]; // List of segment unique keys (id_count) - KEPT FOR BACKWARDS COMPAT
   sprints?: SelectedSegment[]; // Full segment objects
   results?: Record<string, any[]>; // Store results by category
@@ -66,6 +67,7 @@ export default function LeagueManager() {
   const [name, setName] = useState('');
   const [date, setDate] = useState('');
   const [eventId, setEventId] = useState('');
+  const [eventSecret, setEventSecret] = useState('');
   const [selectedMap, setSelectedMap] = useState('');
   const [selectedRouteId, setSelectedRouteId] = useState('');
   const [laps, setLaps] = useState(1);
@@ -180,6 +182,7 @@ export default function LeagueManager() {
       setName(race.name);
       setDate(race.date);
       setEventId(race.eventId || '');
+      setEventSecret(race.eventSecret || '');
       setSelectedMap(race.map);
       setSelectedRouteId(race.routeId);
       setLaps(race.laps);
@@ -201,6 +204,7 @@ export default function LeagueManager() {
       setName('');
       setDate('');
       setEventId('');
+      setEventSecret('');
       setSelectedMap('');
       setSelectedRouteId('');
       setLaps(1);
@@ -336,6 +340,7 @@ export default function LeagueManager() {
             name,
             date,
             eventId, // Include Event ID
+            eventSecret, // Include Event Secret
             routeId: selectedRoute.id,
             routeName: selectedRoute.name,
             map: selectedRoute.map,
@@ -647,16 +652,29 @@ export default function LeagueManager() {
                               </div>
                           </div>
 
-                          <div className="mb-4">
-                              <label className="block text-sm font-medium text-muted-foreground mb-1">ZwiftPower Event ID (Optional)</label>
-                              <input 
-                                type="text" 
-                                value={eventId}
-                                onChange={e => setEventId(e.target.value)}
-                                className="w-full p-2 border border-input rounded bg-background text-foreground"
-                                placeholder="e.g. 123456"
-                              />
-                              <p className="text-xs text-muted-foreground mt-1">Used to fetch race results automatically.</p>
+                          <div className="mb-4 grid grid-cols-2 gap-4">
+                              <div>
+                                  <label className="block text-sm font-medium text-muted-foreground mb-1">Zwift Event ID (Optional)</label>
+                                  <input 
+                                    type="text" 
+                                    value={eventId}
+                                    onChange={e => setEventId(e.target.value)}
+                                    className="w-full p-2 border border-input rounded bg-background text-foreground"
+                                    placeholder="e.g. 123456"
+                                  />
+                                  <p className="text-xs text-muted-foreground mt-1">Used to fetch race results automatically.</p>
+                              </div>
+                              <div>
+                                  <label className="block text-sm font-medium text-muted-foreground mb-1">Event Secret (Optional)</label>
+                                  <input 
+                                    type="text" 
+                                    value={eventSecret}
+                                    onChange={e => setEventSecret(e.target.value)}
+                                    className="w-full p-2 border border-input rounded bg-background text-foreground"
+                                    placeholder="e.g. abc123xyz"
+                                  />
+                                  <p className="text-xs text-muted-foreground mt-1">Required for private events.</p>
+                              </div>
                           </div>
 
                           {/* Segment Selection */}

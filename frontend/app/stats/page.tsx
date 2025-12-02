@@ -263,7 +263,6 @@ export default function MyStatsPage() {
                                         <Legend 
                                             verticalAlign="top" 
                                             align="right" 
-                                            payload={[{ value: 'Me', type: 'line', color: '#ff0000' }]}
                                         />
                                         
                                         {/* Render Lines for ALL riders in category */}
@@ -289,7 +288,8 @@ export default function MyStatsPage() {
                                                     strokeOpacity={isMe ? 1 : 0.15} // Low opacity for others
                                                     dot={isMe} // Only show dots for user
                                                     activeDot={{ r: 6 }}
-                                                    name={isMe ? "Me" : undefined} // Only name "Me" line for safety, Legend is custom anyway
+                                                    name={isMe ? "Me" : "Others"}
+                                                    legendType={isMe ? 'line' : 'none'} // Hide others from legend
                                                     isAnimationActive={false} // Improve performance with many lines
                                                 />
                                             );
