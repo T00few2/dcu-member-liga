@@ -64,6 +64,9 @@ export default function MyStatsPage() {
     const [loading, setLoading] = useState(true);
     const [selectedRaceId, setSelectedRaceId] = useState<string>('');
     const [currentUserZwiftId, setCurrentUserZwiftId] = useState<string | null>(null);
+    
+    // Graph State
+    const [sprintXAxis, setSprintXAxis] = useState<'rank' | 'time'>('rank');
 
     // --- 1. Access Control & Fetch User Details ---
     useEffect(() => {
@@ -305,9 +308,26 @@ export default function MyStatsPage() {
                     
                     {/* 3. Sprint Analysis */}
                     <section>
-                        <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-                            <span>⚡ Sprint Analysis</span>
-                        </h2>
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-2xl font-bold flex items-center gap-2">
+                                <span>⚡ Sprint Analysis</span>
+                            </h2>
+                            
+                            <div className="bg-muted/30 p-1 rounded-lg flex text-xs font-medium">
+                                <button 
+                                    onClick={() => setSprintXAxis('rank')}
+                                    className={`px-3 py-1 rounded transition-colors ${sprintXAxis === 'rank' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                                >
+                                    By Rank
+                                </button>
+                                <button 
+                                    onClick={() => setSprintXAxis('time')}
+                                    className={`px-3 py-1 rounded transition-colors ${sprintXAxis === 'time' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                                >
+                                    By Time
+                                </button>
+                            </div>
+                        </div>
                         
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                             {/* A. Sprint Table */}
@@ -367,6 +387,7 @@ export default function MyStatsPage() {
                                                 id: rider.zwiftId,
                                                 name: rider.name,
                                                 time: sData.time / 1000, // seconds
+                                                rank: sData.rank,
                                                 power: sData.avgPower,
                                                 isMe,
                                                 color: isMe ? '#ff0000' : '#8884d8',
@@ -386,11 +407,12 @@ export default function MyStatsPage() {
                                                     <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
                                                     <XAxis 
                                                         type="number" 
-                                                        dataKey="time" 
-                                                        name="Time" 
-                                                        unit="s" 
+                                                        dataKey={sprintXAxis === 'rank' ? 'rank' : 'time'} 
+                                                        name={sprintXAxis === 'rank' ? 'Rank' : 'Time'} 
+                                                        unit={sprintXAxis === 'rank' ? '' : 's'}
                                                         domain={['auto', 'auto']}
                                                         tick={{fontSize: 10}}
+                                                        label={{ value: sprintXAxis === 'rank' ? 'Rank' : 'Time (s)', position: 'insideBottom', offset: -5, fontSize: 10 }}
                                                     />
                                                     <YAxis 
                                                         type="number" 
@@ -398,6 +420,7 @@ export default function MyStatsPage() {
                                                         name="Power" 
                                                         unit="w"
                                                         tick={{fontSize: 10}} 
+                                                        label={{ value: 'Power (w)', angle: -90, position: 'insideLeft', style: {textAnchor: 'middle'}, fontSize: 10 }}
                                                     />
                                                     <Tooltip 
                                                         cursor={{ strokeDasharray: '3 3' }}
@@ -407,6 +430,7 @@ export default function MyStatsPage() {
                                                                 return (
                                                                     <div className="bg-background border border-border p-2 rounded shadow text-xs">
                                                                         <p className="font-bold">{data.name}</p>
+                                                                        <p>Rank: {data.rank}</p>
                                                                         <p>Time: {data.time.toFixed(2)}s</p>
                                                                         <p>Power: {data.power}w</p>
                                                                     </div>
@@ -434,4 +458,3 @@ export default function MyStatsPage() {
         </div>
     );
 }
-
