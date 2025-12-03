@@ -243,6 +243,11 @@ export default function ResultsPage() {
                                       <th className="px-4 py-3 w-12 text-center">Rank</th>
                                       <th className="px-4 py-3">Rider</th>
                                       <th className="px-4 py-3 text-center">Races</th>
+                                      {races.map((race) => (
+                                          <th key={race.id} className="px-2 py-3 text-center text-xs font-medium text-muted-foreground whitespace-normal min-w-[60px]" title={race.name}>
+                                              {new Date(race.date).toLocaleDateString('da-DK', { day: '2-digit', month: '2-digit' })}
+                                          </th>
+                                      ))}
                                       <th className="px-4 py-3 text-right font-bold text-primary">Total Points</th>
                                   </tr>
                               </thead>
@@ -254,6 +259,14 @@ export default function ResultsPage() {
                                           </td>
                                           <td className="px-4 py-3 font-medium text-card-foreground">{rider.name}</td>
                                           <td className="px-4 py-3 text-center text-muted-foreground">{rider.raceCount}</td>
+                                          {races.map(race => {
+                                              const result = rider.results.find(r => r.raceId === race.id);
+                                              return (
+                                                  <td key={race.id} className="px-2 py-3 text-center text-sm text-muted-foreground">
+                                                      {result ? result.points : '-'}
+                                                  </td>
+                                              );
+                                          })}
                                           <td className="px-4 py-3 text-right font-bold text-foreground text-lg">{rider.totalPoints}</td>
                                       </tr>
                                   ))}
