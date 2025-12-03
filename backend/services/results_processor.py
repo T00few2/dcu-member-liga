@@ -31,6 +31,7 @@ class ResultsProcessor:
         
         race_data = race_doc.to_dict()
         event_id = race_data.get('eventId')
+        event_secret = race_data.get('eventSecret')
         
         if not event_id:
             raise Exception("No Zwift Event ID linked to this race")
@@ -55,7 +56,7 @@ class ResultsProcessor:
 
         # 4. Fetch Event Info from Zwift
         try:
-            event_info = self.zwift.get_event_info(event_id)
+            event_info = self.zwift.get_event_info(event_id, event_secret)
         except Exception as e:
             raise Exception(f"Failed to fetch event info from Zwift: {e}")
 
@@ -92,7 +93,7 @@ class ResultsProcessor:
             finishers = []
             
             if fetch_mode == 'finishers':
-                finish_results_raw = self.zwift.get_event_results(subgroup_id)
+                finish_results_raw = self.zwift.get_event_results(subgroup_id, event_secret=event_secret)
                 print(f"  Fetched {len(finish_results_raw)} raw finish results.")
                 
                 # Filter to only registered riders

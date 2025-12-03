@@ -129,7 +129,7 @@ class ZwiftService:
             url += f'?eventSecret={event_secret}'
         return self.fetch_json_with_retry(url, headers=headers)
 
-    def get_event_results(self, event_sub_id, limit=50):
+    def get_event_results(self, event_sub_id, limit=50, event_secret=None):
         self.ensure_valid_token()
         headers = {
             'Authorization': f"Bearer {self.auth_token['access_token']}",
@@ -146,6 +146,9 @@ class ZwiftService:
                 'start': start,
                 'limit': limit,
             }
+            if event_secret:
+                params['eventSecret'] = event_secret
+
             try:
                 data = self.fetch_json_with_retry(results_url, headers, params)
                 if 'entries' in data:
