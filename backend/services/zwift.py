@@ -167,6 +167,49 @@ class ZwiftService:
                 
         return all_results
 
+    def get_event_participants(self, event_sub_id, joined=False, limit=50):
+        """Fetch all participants for a specific event subgroup, with pagination and JSON retry."""
+        self.ensure_valid_token()
+        
+        headers = {
+            'Authorization': f"Bearer {self.auth_token['access_token']}",
+            'Content-Type': 'application/json'
+        }
+        
+        participants_url = f'https://us-or-rly101.zwift.com/api/events/subgroups/entrants/{event_sub_id}'
+        start = 0
+        all_participants = []
+
+        while True:
+            params = {
+                'type': 'all',
+                'participation': 'registered' if joined else 'signed_up',
+                'start': start,
+                'limit': limit,
+            }
+
+            try:
+                data = self.fetch_json_with_retry(participants_url, headers, params)
+                all_participants.extend(data)
+                print(f"Fetched {len(data)} participants, total so far: {len(all_participants)}.")
+
+                # Stop if fewer than limit participants are returned, indicating end of pages
+                if len(data) < limit:
+                    break
+                start += len(data)  # Move to the next page
+                
+                time.sleep(1) # Gentle backoff
+            
+            except RequestException as e:
+                print(f"Request error: {e}")
+                break  # Exit loop on request error
+            
+            except ValueError as e:
+                print("JSON parsing error, despite retries:", e)
+                break  # Exit loop on persistent JSON parsing errors
+
+        return all_participants
+
     def get_segment_results(self, segment_id, from_date=None, to_date=None):
         self.ensure_valid_token()
         headers = {
