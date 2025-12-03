@@ -244,8 +244,8 @@ export default function ResultsPage() {
                                       <th className="px-4 py-3">Rider</th>
                                       <th className="px-4 py-3 text-center">Races</th>
                                       {races.map((race) => (
-                                          <th key={race.id} className="px-2 py-3 text-center text-xs font-medium text-muted-foreground whitespace-normal min-w-[60px]" title={race.name}>
-                                              {new Date(race.date).toLocaleDateString('da-DK', { day: '2-digit', month: '2-digit' })}
+                                          <th key={race.id} className="px-2 py-3 text-center text-xs font-medium text-muted-foreground whitespace-normal min-w-[60px]" title={new Date(race.date).toLocaleDateString('da-DK', { day: '2-digit', month: '2-digit', year: 'numeric' })}>
+                                              {race.name}
                                           </th>
                                       ))}
                                       <th className="px-4 py-3 text-right font-bold text-primary">Total Points</th>
