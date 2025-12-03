@@ -292,16 +292,13 @@ export default function LeagueManager() {
 
   const handleRefreshResults = async (raceId: string) => {
       if (!user) return;
-      const race = races.find(r => r.id === raceId);
       if (!confirm('Calculate results? This may take a few seconds.')) return;
       
       setStatus('refreshing');
       try {
           const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
           const token = await user.getIdToken();
-          const secretParam = race?.eventSecret ? `?eventSecret=${encodeURIComponent(race.eventSecret)}` : '';
-          const refreshUrl = `${apiUrl}/races/${raceId}/results/refresh${secretParam}`;
-          const res = await fetch(refreshUrl, {
+          const res = await fetch(`${apiUrl}/races/${raceId}/results/refresh`, {
               method: 'POST',
               headers: { 
                   'Authorization': `Bearer ${token}`,

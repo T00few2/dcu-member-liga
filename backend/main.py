@@ -531,14 +531,12 @@ def dcu_api(request):
             fetch_mode = req_data.get('source', 'finishers')
             filter_registered = req_data.get('filterRegistered', True)
             category_filter = req_data.get('categoryFilter', 'All')
-            event_secret_override = request.args.get('eventSecret') or None
             
             results = processor.process_race_results(
                 race_id, 
                 fetch_mode=fetch_mode, 
                 filter_registered=filter_registered,
-                category_filter=category_filter,
-                event_secret_override=event_secret_override
+                category_filter=category_filter
             )
             
             return (jsonify({'message': f'Results calculated (Mode: {fetch_mode}, Cat: {category_filter})', 'results': results}), 200, headers)
