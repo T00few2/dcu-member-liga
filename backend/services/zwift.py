@@ -117,7 +117,7 @@ class ZwiftService:
             print(f"Zwift API Request Error: {e}")
             return None
 
-    def get_event_info(self, event_id):
+    def get_event_info(self, event_id, event_secret=None):
         self.ensure_valid_token()
         headers = {
             'Authorization': f"Bearer {self.auth_token['access_token']}",
@@ -125,6 +125,8 @@ class ZwiftService:
             'Accept': 'application/json',
         }
         url = f'https://us-or-rly101.zwift.com/api/events/{event_id}'
+        if event_secret:
+            url += f'?eventSecret={event_secret}'
         return self.fetch_json_with_retry(url, headers=headers)
 
     def get_event_results(self, event_sub_id, limit=50):

@@ -12,12 +12,20 @@ class ResultsProcessor:
         self.zwift = zwift_service
         self.game = game_service
 
-    def process_race_results(self, race_id, fetch_mode='finishers', filter_registered=True, category_filter=None):
+    def process_race_results(
+        self,
+        race_id,
+        fetch_mode='finishers',
+        filter_registered=True,
+        category_filter=None,
+        event_secret_override=None
+    ):
         """
         Main entry point to process results for a given race ID (Firestore ID).
         fetch_mode: 'finishers' (default), 'joined', 'signed_up'
         filter_registered: boolean, if True only include users in DB
         category_filter: string, e.g. 'A', 'B' or None/'All'
+        event_secret_override: optional string supplied via request query parameters
         """
         if not self.db:
             raise Exception("Database not available")
@@ -31,6 +39,7 @@ class ResultsProcessor:
         
         race_data = race_doc.to_dict()
         event_id = race_data.get('eventId')
+        event_secret = event_secret_override or race_data.get('eventSecret')
         
         if not event_id:
             raise Exception("No Zwift Event ID linked to this race")
@@ -55,7 +64,7 @@ class ResultsProcessor:
 
         # 4. Fetch Event Info from Zwift
         try:
-            event_info = self.zwift.get_event_info(event_id)
+            event_info = self.zwift.get_event_info(event_id, event_secret=event_secret)
         except Exception as e:
             raise Exception(f"Failed to fetch event info from Zwift: {e}")
 
