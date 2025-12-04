@@ -167,7 +167,7 @@ class ZwiftService:
                 
         return all_results
 
-    def get_event_participants(self, event_sub_id, joined=False, limit=50):
+    def get_event_participants(self, event_sub_id, joined=False, limit=50, event_secret=None):
         """Fetch all participants for a specific event subgroup, with pagination and JSON retry."""
         self.ensure_valid_token()
         
@@ -187,6 +187,8 @@ class ZwiftService:
                 'start': start,
                 'limit': limit,
             }
+            if event_secret:
+                params['eventSecret'] = event_secret
 
             try:
                 data = self.fetch_json_with_retry(participants_url, headers, params)

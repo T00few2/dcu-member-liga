@@ -129,7 +129,7 @@ class ResultsProcessor:
             else:
                 # 'joined' or 'signed_up'
                 is_joined = (fetch_mode == 'joined')
-                participants_raw = self.zwift.get_event_participants(subgroup_id, joined=is_joined)
+                participants_raw = self.zwift.get_event_participants(subgroup_id, joined=is_joined, event_secret=event_secret)
                 print(f"  Fetched {len(participants_raw)} raw participants (joined={is_joined}).")
                 
                 for p in participants_raw:
