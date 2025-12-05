@@ -11,6 +11,8 @@ export default function Navbar() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const pathname = usePathname();
 
+  if (pathname?.startsWith('/live')) return null;
+
   // Close drawer when route changes
   useEffect(() => {
       setIsDrawerOpen(false);
