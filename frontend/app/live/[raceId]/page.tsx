@@ -37,8 +37,8 @@ export default function LiveResultsPage() {
 
     // Configuration from URL
     const category = searchParams.get('cat') || 'A';
-    const isTransparent = searchParams.get('transparent') === 'true';
-    const limit = parseInt(searchParams.get('limit') || '50');
+    const isTransparent = searchParams.get('transparent') !== 'false'; // Default true
+    const limit = parseInt(searchParams.get('limit') || '10'); // Default 10
     const autoScroll = searchParams.get('scroll') === 'true';
     const showSprints = searchParams.get('sprints') !== 'false'; // Default true
 
