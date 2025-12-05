@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { db } from '@/lib/firebase';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, where, getDocs } from 'firebase/firestore';
 import { useParams, useSearchParams } from 'next/navigation';
 
 // Types (Simplified for display)
@@ -52,25 +52,60 @@ export default function LiveResultsPage() {
     useEffect(() => {
         if (!raceId) return;
 
-        const unsubscribe = onSnapshot(
-            doc(db, 'races', raceId),
-            (docSnap) => {
-                if (docSnap.exists()) {
-                    setRace(docSnap.data() as Race);
-                    setLoading(false);
+        const setupSubscription = async () => {
+            let docRef;
+            
+            // Query for the race doc with this eventId
+            try {
+                // Note: raceId is a string from the URL, and eventId is likely stored as a string in Firestore.
+                const q = query(collection(db, 'races'), where('eventId', '==', raceId));
+                const snapshot = await getDocs(q);
+                
+                if (!snapshot.empty) {
+                    // Use the first matching document's ID
+                    docRef = doc(db, 'races', snapshot.docs[0].id);
                 } else {
-                    setError('Race not found');
+                    setError(`No race found with Event ID: ${raceId}`);
+                    setLoading(false);
+                    return;
+                }
+            } catch (err: any) {
+                console.error("Query error:", err);
+                setError(`Query Error: ${err.message}`);
+                setLoading(false);
+                return;
+            }
+
+            const unsubscribe = onSnapshot(
+                docRef,
+                (docSnap) => {
+                    if (docSnap.exists()) {
+                        setRace(docSnap.data() as Race);
+                        setLoading(false);
+                    } else {
+                        setError('Race not found');
+                        setLoading(false);
+                    }
+                },
+                (err) => {
+                    console.error("Firestore error:", err);
+                    setError(`Error: ${err.message} (${err.code})`);
                     setLoading(false);
                 }
-            },
-            (err) => {
-                console.error("Firestore error:", err);
-                setError('Error connecting to live feed');
-                setLoading(false);
-            }
-        );
+            );
 
-        return () => unsubscribe();
+            return unsubscribe;
+        };
+
+        // Handle the async setup
+        let unsubscribeFn: (() => void) | undefined;
+        setupSubscription().then(unsub => {
+            unsubscribeFn = unsub;
+        });
+
+        return () => {
+            if (unsubscribeFn) unsubscribeFn();
+        };
     }, [raceId]);
 
     // Auto-scroll effect
@@ -153,60 +188,29 @@ export default function LiveResultsPage() {
                 ref={containerRef}
                 className={`h-full w-full overflow-auto ${autoScroll ? 'scrollbar-hide' : ''}`}
             >
-                <div className="p-4">
-                    {/* Header */}
-                    <div className="flex justify-between items-center mb-4 border-b border-slate-600 pb-2">
-                        <div>
-                            <h1 className="text-2xl font-bold text-white tracking-tight uppercase">
-                                {race.name}
-                            </h1>
-                            <div className="flex gap-2 items-center">
-                                <span className="bg-blue-600 text-white text-xs font-bold px-2 py-0.5 rounded">
-                                    CAT {category}
-                                </span>
-                                <span className="text-slate-400 text-sm uppercase font-semibold animate-pulse">
-                                    ● Live
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-
+                <div className="p-0">
                     {/* Table */}
-                    <table className="w-full text-left border-collapse">
+                    <table className="w-full text-left border-collapse table-fixed">
                         <thead>
-                            <tr className="text-slate-400 text-xs uppercase tracking-wider border-b border-slate-700">
-                                <th className="py-2 px-2 w-12 text-center">Pos</th>
-                                <th className="py-2 px-2">Rider</th>
-                                <th className="py-2 px-2 text-right">Time</th>
-                                {sprintColumns.map(key => (
-                                    <th key={key} className="py-2 px-1 text-center w-10" title={key}>
-                                        {getSprintHeader(key)}
-                                    </th>
-                                ))}
-                                <th className="py-2 px-2 text-right text-blue-400">Total</th>
+                            <tr className="text-slate-400 text-lg uppercase tracking-wider border-b-2 border-slate-600 bg-slate-800/80">
+                                <th className="py-1 px-2 w-[10%] text-center">#</th>
+                                <th className="py-1 px-2 w-[65%]">Rider</th>
+                                <th className="py-1 px-2 w-[25%] text-right text-blue-400 font-bold">Pts</th>
                             </tr>
                         </thead>
-                        <tbody className="text-white font-medium text-lg">
+                        <tbody className="text-white font-bold text-3xl">
                             {displayResults.map((rider, idx) => (
                                 <tr 
                                     key={rider.zwiftId} 
-                                    className="border-b border-slate-800/50 even:bg-slate-800/20"
+                                    className="border-b border-slate-700/50 even:bg-slate-800/40"
                                 >
                                     <td className="py-2 px-2 text-center font-bold text-slate-300">
                                         {idx + 1}
                                     </td>
-                                    <td className="py-2 px-2 truncate max-w-[200px]">
+                                    <td className="py-2 px-2 truncate">
                                         {rider.name}
                                     </td>
-                                    <td className="py-2 px-2 text-right font-mono text-slate-300 text-base">
-                                        {formatTime(rider.finishTime)}
-                                    </td>
-                                    {sprintColumns.map(key => (
-                                        <td key={key} className="py-2 px-1 text-center text-sm text-slate-400">
-                                            {rider.sprintDetails?.[key] || '-'}
-                                        </td>
-                                    ))}
-                                    <td className="py-2 px-2 text-right font-bold text-blue-400 text-xl">
+                                    <td className="py-2 px-2 text-right font-extrabold text-blue-400">
                                         {rider.totalPoints}
                                     </td>
                                 </tr>
@@ -214,7 +218,7 @@ export default function LiveResultsPage() {
                             
                             {displayResults.length === 0 && (
                                 <tr>
-                                    <td colSpan={4 + sprintColumns.length} className="py-8 text-center text-slate-500 italic">
+                                    <td colSpan={3} className="py-8 text-center text-slate-500 text-xl italic">
                                         Waiting for results...
                                     </td>
                                 </tr>
