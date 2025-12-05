@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
+import { db } from '@/lib/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
 
 interface Race {
   id: string;
@@ -122,6 +124,25 @@ export default function ResultsPage() {
         fetchData();
     }
   }, [user, isRegistered]);
+
+  // Live Updates for Selected Race
+  useEffect(() => {
+      if (!selectedRaceId || activeTab !== 'results') return;
+
+      // Subscribe to the race document for real-time updates
+      const unsubscribe = onSnapshot(doc(db, 'races', selectedRaceId), (docSnapshot) => {
+          if (docSnapshot.exists()) {
+              const updatedData = docSnapshot.data();
+              const updatedRace = { ...updatedData, id: docSnapshot.id } as Race;
+              
+              setRaces(prev => prev.map(r => r.id === updatedRace.id ? { ...r, ...updatedRace } : r));
+          }
+      }, (error) => {
+          console.error("Error listening to race updates:", error);
+      });
+
+      return () => unsubscribe();
+  }, [selectedRaceId, activeTab]);
 
   const formatTime = (ms: number) => {
       if (!ms) return '-';
