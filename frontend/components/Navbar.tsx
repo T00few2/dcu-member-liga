@@ -35,7 +35,7 @@ export default function Navbar() {
     { href: '/participants', label: 'Participants' },
     { href: '/schedule', label: 'Schedule' },
     { href: '/results', label: 'Results' },
-    { href: '/stats', label: 'My Stats' },
+    { href: '/stats', label: 'Stats' },
   ];
 
   return (

@@ -68,6 +68,10 @@ export default function MyStatsPage() {
     // Graph State
     const [sprintXAxis, setSprintXAxis] = useState<'rank' | 'time'>('rank');
 
+    // Club Stats State
+    const [statsMode, setStatsMode] = useState<'all' | 'club'>('all');
+    const [teammates, setTeammates] = useState<string[]>([]);
+
     // --- 1. Access Control & Fetch User Details ---
     useEffect(() => {
         if (!authLoading) {
@@ -156,6 +160,49 @@ export default function MyStatsPage() {
         return selectedRace.results[userCategory];
     }, [selectedRace, userCategory]);
 
+    // Get flat list of all riders with category for Club Stats
+    const allRiders = useMemo(() => {
+        if (!selectedRace?.results) return [];
+        const all: (ResultEntry & { category: string })[] = [];
+        Object.entries(selectedRace.results).forEach(([cat, riders]) => {
+            riders.forEach(r => all.push({ ...r, category: cat }));
+        });
+        return all;
+    }, [selectedRace]);
+
+    // Generate random teammates when switching to Club Stats
+    useEffect(() => {
+        if (statsMode === 'club' && allRiders.length > 0) {
+            // Filter out self
+            const potentialTeammates = allRiders.filter(r => r.zwiftId !== currentUserZwiftId);
+            // Shuffle and pick ~20
+            const shuffled = [...potentialTeammates].sort(() => 0.5 - Math.random());
+            const selected = shuffled.slice(0, Math.min(20, Math.max(5, shuffled.length))); // Pick between 5 and 20
+            setTeammates(selected.map(r => r.zwiftId));
+        }
+    }, [statsMode, allRiders, currentUserZwiftId]);
+
+    // Determine which riders to show on graphs
+    const displayRiders = useMemo(() => {
+        let riders: (ResultEntry & { category: string })[] = [];
+        
+        if (statsMode === 'all') {
+             if (!userCategory || !selectedRace?.results) return [];
+             riders = selectedRace.results[userCategory].map(r => ({...r, category: userCategory}));
+        } else if (statsMode === 'club') {
+            riders = allRiders.filter(r => 
+                r.zwiftId === currentUserZwiftId || teammates.includes(r.zwiftId)
+            );
+        }
+
+        // Sort so current user is last (rendered on top)
+        return riders.sort((a, b) => {
+            if (a.zwiftId === currentUserZwiftId) return 1;
+            if (b.zwiftId === currentUserZwiftId) return -1;
+            return 0;
+        });
+    }, [statsMode, selectedRace, userCategory, allRiders, currentUserZwiftId, teammates]);
+
 
     // --- Helper: Format Time ---
     const formatTime = (ms: number) => {
@@ -181,7 +228,23 @@ export default function MyStatsPage() {
 
     return (
         <div className="max-w-6xl mx-auto px-4 py-8 pb-24">
-            <h1 className="text-3xl font-bold mb-8">My Stats</h1>
+            <h1 className="text-3xl font-bold mb-8 text-foreground">Stats</h1>
+            
+            {/* Main Tabs */}
+            <div className="flex gap-4 mb-8 border-b border-border">
+                <button 
+                    onClick={() => setStatsMode('all')}
+                    className={`pb-2 px-4 font-medium transition ${statsMode === 'all' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                >
+                    My Stats
+                </button>
+                <button 
+                    onClick={() => setStatsMode('club')}
+                    className={`pb-2 px-4 font-medium transition ${statsMode === 'club' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                >
+                    Club Stats
+                </button>
+            </div>
 
             {/* 1. Race Selector */}
             <div className="bg-card border border-border p-6 rounded-lg shadow-sm mb-8">
@@ -268,11 +331,50 @@ export default function MyStatsPage() {
                                             align="right" 
                                         />
                                         
-                                        {/* Render Lines for ALL riders in category */}
-                                        {categoryRiders.map((rider) => {
+                                        {/* Render Lines for displayRiders */}
+                                        {displayRiders.map((rider) => {
                                             if (!rider.criticalP) return null;
                                             
                                             const isMe = rider.zwiftId === currentUserZwiftId;
+                                            const isTeammate = teammates.includes(rider.zwiftId);
+                                            
+                                            // Dynamic styling
+                                            let strokeColor = '#8884d8'; // Default (Others)
+                                            let strokeWidth = 1;
+                                            let opacity = 0.15;
+                                            let name = "Others";
+
+                                            if (statsMode === 'club') {
+                                                if (isMe) {
+                                                    strokeColor = '#ff0000';
+                                                    strokeWidth = 5; // Increased to 5
+                                                    opacity = 1;
+                                                    name = "Me";
+                                                } else if (isTeammate) {
+                                                    // Color based on category
+                                                    const catColors: Record<string, string> = {
+                                                        'A': '#ef4444', // Red
+                                                        'B': '#22c55e', // Green
+                                                        'C': '#3b82f6', // Blue
+                                                        'D': '#eab308', // Yellow
+                                                        'E': '#a855f7'  // Purple
+                                                    };
+                                                    strokeColor = catColors[rider.category] || '#8884d8';
+                                                    
+                                                    strokeWidth = 2;
+                                                    opacity = 0.4; 
+                                                    name = `${rider.name} (Cat ${rider.category})`; 
+                                                }
+                                            } else {
+                                                // 'all' mode
+                                                if (isMe) {
+                                                    strokeColor = '#ff0000';
+                                                    strokeWidth = 5; // Increased to 5
+                                                    opacity = 1;
+                                                    name = "Me";
+                                                }
+                                            }
+
                                             const data = [
                                                 { name: '15s', value: rider.criticalP.criticalP15Seconds },
                                                 { name: '1m', value: rider.criticalP.criticalP1Minute },
@@ -286,22 +388,44 @@ export default function MyStatsPage() {
                                                     data={data}
                                                     type="monotone"
                                                     dataKey="value"
-                                                    stroke={isMe ? '#ff0000' : '#8884d8'}
-                                                    strokeWidth={isMe ? 3 : 1}
-                                                    strokeOpacity={isMe ? 1 : 0.15} // Low opacity for others
-                                                    dot={isMe} // Only show dots for user
+                                                    stroke={strokeColor}
+                                                    strokeWidth={strokeWidth}
+                                                    strokeOpacity={opacity}
+                                                    dot={isMe || (statsMode === 'club' && isTeammate)}
                                                     activeDot={{ r: 6 }}
-                                                    name={isMe ? "Me" : "Others"}
-                                                    legendType={isMe ? 'line' : 'none'} // Hide others from legend
-                                                    isAnimationActive={false} // Improve performance with many lines
+                                                    name={name}
+                                                    // Only show Me in legend for 'all', or Me+Teammate for 'club'
+                                                    // But Recharts legend logic is tricky with many lines. 
+                                                    // Simple hack: Only label the first instance of each type? 
+                                                    // For now, let's just rely on color coding or simplified legend.
+                                                    legendType="none" 
+                                                    isAnimationActive={false}
                                                 />
                                             );
                                         })}
+                                        {/* Custom Legend to fix "Many Lines" issue */}
+                                        {statsMode === 'all' ? (
+                                            <text x="85%" y={10} textAnchor="end" dominantBaseline="middle" fill="#666" fontSize="12">
+                                                🔴 Me  🟣 Others
+                                            </text>
+                                        ) : (
+                                            <g>
+                                                <text x="95%" y={10} textAnchor="end" fontSize="11" fill="#666">🔴 Me</text>
+                                                <text x="95%" y={25} textAnchor="end" fontSize="11" fill="#ef4444">Cat A</text>
+                                                <text x="95%" y={40} textAnchor="end" fontSize="11" fill="#22c55e">Cat B</text>
+                                                <text x="95%" y={55} textAnchor="end" fontSize="11" fill="#3b82f6">Cat C</text>
+                                                <text x="95%" y={70} textAnchor="end" fontSize="11" fill="#eab308">Cat D</text>
+                                                <text x="95%" y={85} textAnchor="end" fontSize="11" fill="#a855f7">Cat E</text>
+                                            </g>
+                                        )}
                                     </LineChart>
                                 </ResponsiveContainer>
                             </div>
                             <p className="text-sm text-muted-foreground text-center mt-4">
-                                Comparing your Critical Power (15s, 1m, 5m, 20m) against all other riders in Category {userCategory}.
+                                {statsMode === 'club' 
+                                    ? `Comparing your Critical Power against teammates.`
+                                    : `Comparing your Critical Power (15s, 1m, 5m, 20m) against all other riders in Category ${userCategory}.`
+                                }
                             </p>
                         </div>
                     </section>
@@ -378,11 +502,43 @@ export default function MyStatsPage() {
                                     if (!myData) return null;
 
                                     // Prepare Scatter Data
-                                    const scatterData = categoryRiders
+                                    const scatterData = displayRiders
                                         .map(rider => {
                                             const sData = rider.sprintData?.[sprintKey];
                                             if (!sData) return null;
                                             const isMe = rider.zwiftId === currentUserZwiftId;
+                                            const isTeammate = teammates.includes(rider.zwiftId);
+                                            
+                                            let color = '#8884d8';
+                                            let opacity = 0.3;
+                                            let size = 40;
+
+                                            if (statsMode === 'club') {
+                                                if (isMe) {
+                                                    color = '#ff0000';
+                                                    opacity = 1;
+                                                    size = 100;
+                                                } else if (isTeammate) {
+                                                    const catColors: Record<string, string> = {
+                                                        'A': '#ef4444',
+                                                        'B': '#22c55e',
+                                                        'C': '#3b82f6',
+                                                        'D': '#eab308',
+                                                        'E': '#a855f7'
+                                                    };
+                                                    color = catColors[rider.category] || '#8884d8';
+                                                    
+                                                    opacity = 0.4;
+                                                    size = 80;
+                                                }
+                                            } else {
+                                                if (isMe) {
+                                                    color = '#ff0000';
+                                                    opacity = 1;
+                                                    size = 100;
+                                                }
+                                            }
+
                                             return {
                                                 id: rider.zwiftId,
                                                 name: rider.name,
@@ -390,9 +546,9 @@ export default function MyStatsPage() {
                                                 rank: sData.rank,
                                                 power: sData.avgPower,
                                                 isMe,
-                                                color: isMe ? '#ff0000' : '#8884d8',
-                                                opacity: isMe ? 1 : 0.3,
-                                                size: isMe ? 100 : 40
+                                                color,
+                                                opacity,
+                                                size
                                             };
                                         })
                                         .filter(Boolean);
@@ -429,7 +585,7 @@ export default function MyStatsPage() {
                                                                 const data = payload[0].payload;
                                                                 return (
                                                                     <div className="bg-background border border-border p-2 rounded shadow text-xs">
-                                                                        <p className="font-bold">{data.name}</p>
+                                                                        <p className="font-bold" style={{ color: data.color }}>{data.name}</p>
                                                                         <p>Rank: {data.rank}</p>
                                                                         <p>Time: {data.time.toFixed(2)}s</p>
                                                                         <p>Power: {data.power}w</p>
@@ -439,11 +595,17 @@ export default function MyStatsPage() {
                                                             return null;
                                                         }}
                                                     />
-                                                    <Scatter name="Riders" data={scatterData} fill="#8884d8">
+                                                    <Scatter name="Riders" data={scatterData}>
                                                         {scatterData.map((entry, index) => (
-                                                            <Cell key={`cell-${index}`} fill={entry!.isMe ? '#ff0000' : '#8884d8'} fillOpacity={entry!.opacity} />
+                                                            <Cell key={`cell-${index}`} fill={entry!.color} fillOpacity={entry!.opacity} />
                                                         ))}
                                                     </Scatter>
+                                                    {/* Legend for Scatter Chart in Club Mode */}
+                                                    {statsMode === 'club' && (
+                                                        <text x="95%" y={20} textAnchor="end" fontSize="10" fill="#666">
+                                                            🔴 Me  |  Colors = Categories
+                                                        </text>
+                                                    )}
                                                 </ScatterChart>
                                             </ResponsiveContainer>
                                         </div>
