@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { db } from '@/lib/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
 
 interface Route {
   id: string;
@@ -161,6 +163,23 @@ export default function LeagueManager() {
       };
       fetchSegments();
   }, [selectedRouteId, laps]);
+
+  // Real-time listener for viewing results
+  useEffect(() => {
+      if (!viewingResultsId) return;
+
+      const unsubscribe = onSnapshot(doc(db, 'races', viewingResultsId), (docSnapshot) => {
+          if (docSnapshot.exists()) {
+              const updatedData = docSnapshot.data();
+              // Update local state for immediate feedback
+              setRaces(prev => prev.map(r => r.id === viewingResultsId ? { ...r, ...updatedData } as Race : r));
+          }
+      }, (error) => {
+          console.error("Error listening to race updates:", error);
+      });
+
+      return () => unsubscribe();
+  }, [viewingResultsId]);
 
   // --- Derived Data ---
   const maps = Array.from(new Set(routes.map(r => r.map))).sort();
