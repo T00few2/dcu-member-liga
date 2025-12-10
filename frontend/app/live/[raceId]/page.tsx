@@ -166,7 +166,7 @@ export default function LiveResultsPage() {
         const sortedSprints = [...race.sprints].sort((a, b) => b.count - a.count);
         
         for (const s of sortedSprints) {
-             const possibleKeys = [s.key, `${s.id}_${s.count}`];
+             const possibleKeys = [s.key, `${s.id}_${s.count}`, `${s.id}`];
              const foundKey = possibleKeys.find(k => allSprintKeys.has(k));
              if (foundKey) {
                  lastSprintKey = foundKey;
@@ -191,8 +191,8 @@ export default function LiveResultsPage() {
 
     const getSprintHeader = (key: string) => {
         if (!race.sprints) return key;
-        // Try matching key or ID_COUNT
-        const sprint = race.sprints.find(s => s.key === key || `${s.id}_${s.count}` === key);
+        // Try matching key, ID_COUNT, or just ID if count is not available
+        const sprint = race.sprints.find(s => s.key === key || `${s.id}_${s.count}` === key || s.id === key);
         if (sprint) return `${sprint.name} #${sprint.count}`;
         return key;
     };
@@ -226,7 +226,7 @@ export default function LiveResultsPage() {
                             <tr className="text-slate-400 text-lg uppercase tracking-wider border-b-2 border-slate-600 bg-slate-800/80">
                                 <th className="py-1 px-2 w-[10%] text-center">#</th>
                                 <th className="py-1 px-2 w-[55%]">Rider</th>
-                                <th className={`py-1 px-2 w-[35%] text-right font-bold truncate ${lastSprintKey ? 'text-yellow-400' : 'text-blue-400'}`}>
+                                <th className={`py-1 px-2 w-[35%] text-right font-bold break-words ${lastSprintKey ? 'text-yellow-400' : 'text-blue-400'}`}>
                                     {lastSprintKey ? getSprintHeader(lastSprintKey) : 'Pts'}
                                 </th>
                             </tr>
@@ -243,7 +243,7 @@ export default function LiveResultsPage() {
                                     <td className="py-2 px-2 truncate">
                                         {rider.name}
                                     </td>
-                                    <td className={`py-2 px-2 text-right font-extrabold ${lastSprintKey ? 'text-yellow-400' : 'text-blue-400'}`}>
+                                    <td className={`py-2 px-2 text-right font-extrabold text-blue-400`}>
                                         {lastSprintKey 
                                             ? (rider.sprintDetails?.[lastSprintKey] || '-') 
                                             : rider.totalPoints}
