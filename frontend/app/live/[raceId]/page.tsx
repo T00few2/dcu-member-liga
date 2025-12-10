@@ -146,7 +146,6 @@ export default function LiveResultsPage() {
 
     // Filter Results
     const results = race.results?.[category] || [];
-    const displayResults = results.slice(0, limit);
 
     // Determine Sprint Columns
     const allSprintKeys = new Set<string>();
@@ -176,11 +175,25 @@ export default function LiveResultsPage() {
         }
     }
 
+    // Sort and Prepare Display Results
+    let finalResults = [...results];
+    
+    if (lastSprintKey) {
+        // Sort by last sprint points
+        finalResults.sort((a, b) => {
+            const valA = a.sprintDetails?.[lastSprintKey] || 0;
+            const valB = b.sprintDetails?.[lastSprintKey] || 0;
+            return valB - valA;
+        });
+    }
+    
+    const displayResults = finalResults.slice(0, limit);
+
     const getSprintHeader = (key: string) => {
         if (!race.sprints) return key;
         // Try matching key or ID_COUNT
         const sprint = race.sprints.find(s => s.key === key || `${s.id}_${s.count}` === key);
-        if (sprint) return `#${sprint.count}`; // Compact header for OBS
+        if (sprint) return `${sprint.name} #${sprint.count}`;
         return key;
     };
 
@@ -212,13 +225,10 @@ export default function LiveResultsPage() {
                         <thead>
                             <tr className="text-slate-400 text-lg uppercase tracking-wider border-b-2 border-slate-600 bg-slate-800/80">
                                 <th className="py-1 px-2 w-[10%] text-center">#</th>
-                                <th className={`py-1 px-2 ${lastSprintKey ? 'w-[50%]' : 'w-[65%]'}`}>Rider</th>
-                                {lastSprintKey && (
-                                    <th className="py-1 px-2 w-[15%] text-center text-yellow-400">
-                                        {getSprintHeader(lastSprintKey)}
-                                    </th>
-                                )}
-                                <th className="py-1 px-2 w-[25%] text-right text-blue-400 font-bold">Pts</th>
+                                <th className="py-1 px-2 w-[55%]">Rider</th>
+                                <th className={`py-1 px-2 w-[35%] text-right font-bold truncate ${lastSprintKey ? 'text-yellow-400' : 'text-blue-400'}`}>
+                                    {lastSprintKey ? getSprintHeader(lastSprintKey) : 'Pts'}
+                                </th>
                             </tr>
                         </thead>
                         <tbody className="text-white font-bold text-3xl">
@@ -233,13 +243,10 @@ export default function LiveResultsPage() {
                                     <td className="py-2 px-2 truncate">
                                         {rider.name}
                                     </td>
-                                    {lastSprintKey && (
-                                        <td className="py-2 px-2 text-center text-yellow-400 font-bold text-2xl">
-                                            {rider.sprintDetails?.[lastSprintKey] || '-'}
-                                        </td>
-                                    )}
-                                    <td className="py-2 px-2 text-right font-extrabold text-blue-400">
-                                        {rider.totalPoints}
+                                    <td className={`py-2 px-2 text-right font-extrabold ${lastSprintKey ? 'text-yellow-400' : 'text-blue-400'}`}>
+                                        {lastSprintKey 
+                                            ? (rider.sprintDetails?.[lastSprintKey] || '-') 
+                                            : rider.totalPoints}
                                     </td>
                                 </tr>
                             ))}
