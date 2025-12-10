@@ -41,6 +41,7 @@ export default function LiveResultsPage() {
     const limit = parseInt(searchParams.get('limit') || '10'); // Default 10
     const autoScroll = searchParams.get('scroll') === 'true';
     const showSprints = searchParams.get('sprints') !== 'false'; // Default true
+    const showLastSprint = searchParams.get('lastSprint') === 'true';
 
     const [race, setRace] = useState<Race | null>(null);
     const [loading, setLoading] = useState(true);
@@ -149,14 +150,31 @@ export default function LiveResultsPage() {
 
     // Determine Sprint Columns
     const allSprintKeys = new Set<string>();
-    if (showSprints) {
-        displayResults.forEach(r => {
+    // Look through ALL results (not just displayed) to find active sprints
+    if (showSprints || showLastSprint) {
+        results.forEach(r => {
             if (r.sprintDetails) {
                 Object.keys(r.sprintDetails).forEach(k => allSprintKeys.add(k));
             }
         });
     }
     const sprintColumns = Array.from(allSprintKeys).sort();
+
+    // Determine Last Sprint Key
+    let lastSprintKey: string | null = null;
+    if (showLastSprint && race.sprints && allSprintKeys.size > 0) {
+        // Sort sprints by count descending
+        const sortedSprints = [...race.sprints].sort((a, b) => b.count - a.count);
+        
+        for (const s of sortedSprints) {
+             const possibleKeys = [s.key, `${s.id}_${s.count}`];
+             const foundKey = possibleKeys.find(k => allSprintKeys.has(k));
+             if (foundKey) {
+                 lastSprintKey = foundKey;
+                 break;
+             }
+        }
+    }
 
     const getSprintHeader = (key: string) => {
         if (!race.sprints) return key;
@@ -194,7 +212,12 @@ export default function LiveResultsPage() {
                         <thead>
                             <tr className="text-slate-400 text-lg uppercase tracking-wider border-b-2 border-slate-600 bg-slate-800/80">
                                 <th className="py-1 px-2 w-[10%] text-center">#</th>
-                                <th className="py-1 px-2 w-[65%]">Rider</th>
+                                <th className={`py-1 px-2 ${lastSprintKey ? 'w-[50%]' : 'w-[65%]'}`}>Rider</th>
+                                {lastSprintKey && (
+                                    <th className="py-1 px-2 w-[15%] text-center text-yellow-400">
+                                        {getSprintHeader(lastSprintKey)}
+                                    </th>
+                                )}
                                 <th className="py-1 px-2 w-[25%] text-right text-blue-400 font-bold">Pts</th>
                             </tr>
                         </thead>
@@ -210,6 +233,11 @@ export default function LiveResultsPage() {
                                     <td className="py-2 px-2 truncate">
                                         {rider.name}
                                     </td>
+                                    {lastSprintKey && (
+                                        <td className="py-2 px-2 text-center text-yellow-400 font-bold text-2xl">
+                                            {rider.sprintDetails?.[lastSprintKey] || '-'}
+                                        </td>
+                                    )}
                                     <td className="py-2 px-2 text-right font-extrabold text-blue-400">
                                         {rider.totalPoints}
                                     </td>
