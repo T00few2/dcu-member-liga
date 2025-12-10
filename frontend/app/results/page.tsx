@@ -18,6 +18,7 @@ interface Race {
   results?: Record<string, ResultEntry[]>; // Keyed by category 'A', 'B', etc.
   resultsUpdatedAt?: string;
   sprints?: Sprint[];
+  sprintData?: Sprint[];
 }
 
 interface Sprint {
@@ -193,12 +194,43 @@ export default function ResultsPage() {
           }
       });
   }
-  // Sort keys naturally if possible, or alphabetically
-  const sprintColumns = Array.from(allSprintKeys).sort();
+
+  // Sort keys: prefer chronological order from sprintData, fallback to alphabetical
+  let sprintColumns: string[] = [];
+  
+  if (selectedRace) {
+      // Use sprintData if available as it has the correct order
+      const orderedSprints = selectedRace.sprintData || selectedRace.sprints || [];
+      
+      if (orderedSprints.length > 0) {
+          // Iterate through defined sprints in order and pick those that have results
+          orderedSprints.forEach(s => {
+              // Check potential keys for this sprint
+              const potentialKeys = [s.key, `${s.id}_${s.count}`, `${s.id}`];
+              
+              // Find the one that actually exists in our results
+              const foundKey = potentialKeys.find(k => allSprintKeys.has(k));
+              
+              if (foundKey) {
+                  sprintColumns.push(foundKey);
+                  // Remove from set to track what's left
+                  allSprintKeys.delete(foundKey);
+              }
+          });
+      }
+  }
+
+  // Append any remaining keys that weren't in the ordered list (sorted alphabetically)
+  if (allSprintKeys.size > 0) {
+      const remaining = Array.from(allSprintKeys).sort();
+      sprintColumns = [...sprintColumns, ...remaining];
+  }
 
   const getSprintHeader = (key: string) => {
       if (!selectedRace?.sprints) return key.replace(/_/g, ' ');
-      const sprint = selectedRace.sprints.find(s => s.key === key || `${s.id}_${s.count}` === key);
+      // Try matching key, ID_COUNT, or just ID
+      const sprint = selectedRace.sprints.find(s => s.key === key || `${s.id}_${s.count}` === key || s.id === key);
+      
       if (sprint) {
           return `${sprint.name} #${sprint.count}`;
       }
