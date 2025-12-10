@@ -10,6 +10,7 @@ interface Race {
     name: string;
     results?: Record<string, ResultEntry[]>;
     sprints?: Sprint[];
+    sprintData?: Sprint[]; // User specified field for correct ordering
     // We might add 'status' or 'laps' later
 }
 
@@ -161,17 +162,22 @@ export default function LiveResultsPage() {
 
     // Determine Last Sprint Key
     let lastSprintKey: string | null = null;
-    if (showLastSprint && race.sprints && allSprintKeys.size > 0) {
-        // Sort sprints by count descending
-        const sortedSprints = [...race.sprints].sort((a, b) => b.count - a.count);
-        
-        for (const s of sortedSprints) {
-             const possibleKeys = [s.key, `${s.id}_${s.count}`, `${s.id}`];
-             const foundKey = possibleKeys.find(k => allSprintKeys.has(k));
-             if (foundKey) {
-                 lastSprintKey = foundKey;
-                 break;
-             }
+    
+    // Use sprintData if available as it has the correct order (chronological), otherwise fallback to sprints
+    // We assume the array in DB is ordered [First, Second, ... Last]
+    const sourceSprints = race.sprintData || race.sprints || [];
+    
+    if (showLastSprint && sourceSprints.length > 0 && allSprintKeys.size > 0) {
+        // Iterate backwards to find the last sprint that has data
+        for (let i = sourceSprints.length - 1; i >= 0; i--) {
+            const s = sourceSprints[i];
+            const possibleKeys = [s.key, `${s.id}_${s.count}`, `${s.id}`];
+            const foundKey = possibleKeys.find(k => allSprintKeys.has(k));
+            
+            if (foundKey) {
+                lastSprintKey = foundKey;
+                break;
+            }
         }
     }
 
@@ -226,7 +232,7 @@ export default function LiveResultsPage() {
                             <tr className="text-slate-400 text-lg uppercase tracking-wider border-b-2 border-slate-600 bg-slate-800/80">
                                 <th className="py-1 px-2 w-[10%] text-center">#</th>
                                 <th className="py-1 px-2 w-[55%]">Rider</th>
-                                <th className={`py-1 px-2 w-[35%] text-right font-bold break-words ${lastSprintKey ? 'text-yellow-400' : 'text-blue-400'}`}>
+                                <th className={`py-1 px-2 w-[35%] text-right font-bold break-words text-blue-400`}>
                                     {lastSprintKey ? getSprintHeader(lastSprintKey) : 'Pts'}
                                 </th>
                             </tr>
