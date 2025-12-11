@@ -26,6 +26,15 @@ function RegisterContent() {
     const [clubSearchTerm, setClubSearchTerm] = useState('');
     const [showClubDropdown, setShowClubDropdown] = useState(false);
 
+    // Trainer State
+    const [trainer, setTrainer] = useState('');
+    const [trainers, setTrainers] = useState<{ id: string; name: string; status: string; dualRecordingRequired: boolean }[]>([]);
+    const [loadingTrainers, setLoadingTrainers] = useState(true);
+    const [trainersError, setTrainersError] = useState('');
+    const [showRequestTrainerModal, setShowRequestTrainerModal] = useState(false);
+    const [requestedTrainerName, setRequestedTrainerName] = useState('');
+    const [submittingTrainerRequest, setSubmittingTrainerRequest] = useState(false);
+
     // Verification State
     const [initialData, setInitialData] = useState<{ eLicense?: string, zwiftId?: string }>({});
     const [zwiftVerified, setZwiftVerified] = useState(false);
@@ -76,6 +85,30 @@ function RegisterContent() {
         fetchClubs();
     }, []);
 
+    // Fetch Trainers List
+    useEffect(() => {
+        const fetchTrainers = async () => {
+            try {
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+                const res = await fetch(`${apiUrl}/trainers`);
+                
+                if (res.ok) {
+                    const data = await res.json();
+                    setTrainers(data.trainers || []);
+                } else {
+                    setTrainersError('Failed to load trainers list');
+                }
+            } catch (err) {
+                console.error("Error fetching trainers:", err);
+                setTrainersError('Failed to load trainers list');
+            } finally {
+                setLoadingTrainers(false);
+            }
+        };
+
+        fetchTrainers();
+    }, []);
+
     // Fetch Profile on Load
     useEffect(() => {
         const fetchProfile = async () => {
@@ -110,6 +143,7 @@ function RegisterContent() {
                         setELicense(data.eLicense || '');
                         setZwiftId(data.zwiftId || '');
                         setClub(data.club || '');
+                        setTrainer(data.trainer || '');
                         setStravaConnected(data.stravaConnected || false);
                         setAcceptedCoC(data.acceptedCoC || false);
                         setMessage('Welcome back! Your progress has been restored. Complete the remaining steps to finish registration.');
@@ -148,6 +182,7 @@ function RegisterContent() {
         localStorage.setItem('temp_reg_name', name);
         localStorage.setItem('temp_reg_zwiftid', zwiftId);
         localStorage.setItem('temp_reg_club', club);
+        localStorage.setItem('temp_reg_trainer', trainer);
 
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
         window.location.href = `${apiUrl}/strava/login?eLicense=${eLicense}`;
@@ -160,17 +195,20 @@ function RegisterContent() {
             const tempELicense = localStorage.getItem('temp_reg_elicense');
             const tempZwiftId = localStorage.getItem('temp_reg_zwiftid');
             const tempClub = localStorage.getItem('temp_reg_club');
+            const tempTrainer = localStorage.getItem('temp_reg_trainer');
 
             if (tempName) setName(tempName);
             if (tempELicense) setELicense(tempELicense);
             if (tempZwiftId) setZwiftId(tempZwiftId);
             if (tempClub) setClub(tempClub);
+            if (tempTrainer) setTrainer(tempTrainer);
 
             // Cleanup
             localStorage.removeItem('temp_reg_name');
             localStorage.removeItem('temp_reg_elicense');
             localStorage.removeItem('temp_reg_zwiftid');
             localStorage.removeItem('temp_reg_club');
+            localStorage.removeItem('temp_reg_trainer');
         }
     }, [stravaStatusParam]);
 
@@ -266,6 +304,41 @@ function RegisterContent() {
     }, [showClubDropdown]);
 
 
+    const handleRequestTrainer = async () => {
+        if (!user || !requestedTrainerName.trim()) return;
+
+        setSubmittingTrainerRequest(true);
+        setError('');
+
+        try {
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+            const idToken = await user.getIdToken();
+
+            const res = await fetch(`${apiUrl}/trainers/request`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${idToken}`
+                },
+                body: JSON.stringify({
+                    trainerName: requestedTrainerName,
+                    requesterName: name
+                }),
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Failed to submit request');
+
+            setMessage('Trainer approval request submitted! We\'ll review it shortly.');
+            setShowRequestTrainerModal(false);
+            setRequestedTrainerName('');
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setSubmittingTrainerRequest(false);
+        }
+    };
+
     const handleSaveProgress = async () => {
         if (!user) return;
 
@@ -288,6 +361,7 @@ function RegisterContent() {
                     name: name || null,
                     zwiftId: zwiftId || null,
                     club: club || null,
+                    trainer: trainer || null,
                     acceptedCoC,
                     uid: user.uid,
                     draft: true  // Mark as incomplete/draft
@@ -325,6 +399,10 @@ function RegisterContent() {
             setError("Please select your club.");
             return;
         }
+        if (!trainer) {
+            setError("Please select your trainer/powermeter.");
+            return;
+        }
         if (!acceptedCoC) {
             setError("You must accept the Code of Conduct.");
             return;
@@ -349,6 +427,7 @@ function RegisterContent() {
                     name,
                     zwiftId,
                     club,
+                    trainer,
                     acceptedCoC,
                     uid: user.uid,
                     draft: false  // Mark as complete
@@ -375,14 +454,16 @@ function RegisterContent() {
     };
 
     // Validation
+    const step0Complete = name.length > 0;
+    const clubComplete = club.length > 0;
+    const trainerComplete = trainer.length > 0;
     const step1Complete = eLicense.length > 0 && licenseAvailable;
     const step2Complete = zwiftVerified && zwiftId.length > 0;
     // Strava is now optional but recommended
     const step3Complete = stravaConnected;
     const step4Complete = acceptedCoC;
-    const clubSelected = club.length > 0;
 
-    const canSubmit = step1Complete && step2Complete && step4Complete && clubSelected;
+    const canSubmit = step0Complete && clubComplete && trainerComplete && step1Complete && step2Complete && step4Complete;
 
     if (authLoading || fetchingProfile) {
         return <div className="p-8 text-center">Loading profile...</div>;
@@ -416,22 +497,35 @@ function RegisterContent() {
             <div className="space-y-6">
 
                 {/* Step 0: Name (Always required) */}
-                <div className="p-4 border border-border rounded-lg bg-secondary/50">
-                    <label className="block text-sm font-medium text-secondary-foreground mb-1">Full Name</label>
-                    <input
-                        type="text"
-                        value={name}
-                        onChange={e => setName(e.target.value)}
-                        className="w-full p-3 border border-input rounded-lg focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all text-foreground bg-background placeholder-muted-foreground"
-                        placeholder="Your Name"
-                    />
+                <div className={`p-4 border rounded-lg transition-colors ${step0Complete ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' : 'bg-card border-border'}`}>
+                    <div className="flex items-start gap-3">
+                        <div className={`mt-1 w-6 h-6 rounded-full flex items-center justify-center text-xs text-white font-bold ${step0Complete ? 'bg-green-500' : 'bg-muted-foreground'}`}>
+                            1
+                        </div>
+                        <div className="flex-1">
+                            <label className="block font-semibold text-card-foreground mb-1">Full Name</label>
+                            <p className="text-sm text-muted-foreground mb-2">Enter your full name.</p>
+                            <input
+                                type="text"
+                                value={name}
+                                onChange={e => setName(e.target.value)}
+                                className="w-full p-3 border border-input rounded-lg focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all text-foreground bg-background placeholder-muted-foreground"
+                                placeholder="Your Name"
+                            />
+                        </div>
+                        {step0Complete && <span className="text-green-600 dark:text-green-400 text-xl">✓</span>}
+                    </div>
                 </div>
 
-                {/* Club Selection with Search */}
-                <div className={`p-4 border rounded-lg transition-colors ${clubSelected ? 'bg-secondary/50 border-border' : 'bg-card border-border'}`}>
-                    <label className="block text-sm font-medium text-secondary-foreground mb-1">
-                        DCU Club <span className="text-red-500">*</span>
-                    </label>
+                {/* Step 1: Club Selection with Search */}
+                <div className={`p-4 border rounded-lg transition-colors ${clubComplete ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' : 'bg-card border-border'}`}>
+                    <div className="flex items-start gap-3">
+                        <div className={`mt-1 w-6 h-6 rounded-full flex items-center justify-center text-xs text-white font-bold ${clubComplete ? 'bg-green-500' : 'bg-muted-foreground'}`}>
+                            2
+                        </div>
+                        <div className="flex-1">
+                            <label className="block font-semibold text-card-foreground mb-1">DCU Club</label>
+                            <p className="text-sm text-muted-foreground mb-2">Select your DCU cycling club or "None" if you don't have one.</p>
                     {loadingClubs ? (
                         <p className="text-sm text-muted-foreground">Loading clubs...</p>
                     ) : clubsError ? (
@@ -440,7 +534,7 @@ function RegisterContent() {
                             <select
                                 value={club}
                                 onChange={e => setClub(e.target.value)}
-                                className={`w-full p-3 border rounded-lg focus:ring-2 outline-none transition-all text-foreground bg-background ${!club ? 'border-red-300' : 'border-input focus:ring-ring focus:border-ring'}`}
+                                className="w-full p-3 border border-input rounded-lg focus:ring-2 outline-none transition-all text-foreground bg-background"
                             >
                                 <option value="">Select your club</option>
                                 <option value="None">None</option>
@@ -458,7 +552,7 @@ function RegisterContent() {
                                 }}
                                 onFocus={() => setShowClubDropdown(true)}
                                 placeholder="Search for your club..."
-                                className={`w-full p-3 border rounded-lg focus:ring-2 outline-none transition-all text-foreground bg-background placeholder-muted-foreground ${!club ? 'border-red-300' : 'border-input focus:ring-ring focus:border-ring'}`}
+                                        className="w-full p-3 border border-input rounded-lg focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all text-foreground bg-background placeholder-muted-foreground"
                             />
                             
                             {showClubDropdown && (
@@ -542,16 +636,79 @@ function RegisterContent() {
                             )}
                         </div>
                     )}
-                    <p className="text-xs text-muted-foreground mt-1">
-                        Search and select your DCU cycling club or "None" if you don't have one
-                    </p>
+                        </div>
+                        {clubComplete && <span className="text-green-600 dark:text-green-400 text-xl">✓</span>}
+                    </div>
                 </div>
 
-                {/* Step 1: E-License */}
+                {/* Step 2: Trainer/Powermeter Selection */}
+                <div className={`p-4 border rounded-lg transition-colors ${trainerComplete ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' : 'bg-card border-border'}`}>
+                    <div className="flex items-start gap-3">
+                        <div className={`mt-1 w-6 h-6 rounded-full flex items-center justify-center text-xs text-white font-bold ${trainerComplete ? 'bg-green-500' : 'bg-muted-foreground'}`}>
+                            3
+                        </div>
+                        <div className="flex-1">
+                            <label className="block font-semibold text-card-foreground mb-1">Trainer / Powermeter</label>
+                            <p className="text-sm text-muted-foreground mb-2">Select your trainer or powermeter device.</p>
+                            
+                            {loadingTrainers ? (
+                                <p className="text-sm text-muted-foreground">Loading trainers...</p>
+                            ) : trainersError ? (
+                                <p className="text-sm text-red-600">{trainersError}</p>
+                            ) : (
+                                <div className="space-y-3">
+                                    <select
+                                        value={trainer}
+                                        onChange={e => setTrainer(e.target.value)}
+                                        className="w-full p-3 border border-input rounded-lg focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all text-foreground bg-background"
+                                    >
+                                        <option value="">Select trainer/powermeter</option>
+                                        <optgroup label="✓ Approved Trainers">
+                                            {trainers
+                                                .filter(t => t.status === 'approved')
+                                                .map((t) => (
+                                                    <option key={t.id} value={t.name}>
+                                                        {t.name} {t.dualRecordingRequired ? '(Dual Recording Required)' : ''}
+                                                    </option>
+                                                ))}
+                                        </optgroup>
+                                        <optgroup label="✗ Not Approved" disabled>
+                                            {trainers
+                                                .filter(t => t.status === 'not_approved')
+                                                .map((t) => (
+                                                    <option key={t.id} value="" disabled>
+                                                        {t.name} - NOT APPROVED
+                                                    </option>
+                                                ))}
+                                        </optgroup>
+                                    </select>
+                                    
+                                    {trainer && trainers.find(t => t.name === trainer)?.dualRecordingRequired && (
+                                        <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                                            <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                                                ⚠️ <strong>Dual Recording Required:</strong> You must record your activities with a second device (e.g., head unit, phone) as verification.
+                                            </p>
+                                        </div>
+                                    )}
+                                    
+                                    <button
+                                        onClick={() => setShowRequestTrainerModal(true)}
+                                        className="text-sm text-primary hover:underline"
+                                    >
+                                        Don't see your trainer? Request approval →
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                        {trainerComplete && <span className="text-green-600 dark:text-green-400 text-xl">✓</span>}
+                    </div>
+                </div>
+
+                {/* Step 3: E-License */}
                 <div className={`p-4 border rounded-lg transition-colors ${step1Complete ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' : 'bg-card border-border'}`}>
                     <div className="flex items-start gap-3">
                         <div className={`mt-1 w-6 h-6 rounded-full flex items-center justify-center text-xs text-white font-bold ${step1Complete ? 'bg-green-500' : 'bg-muted-foreground'}`}>
-                            1
+                            4
                         </div>
                         <div className="flex-1">
                             <label className="block font-semibold text-card-foreground mb-1">DCU E-License</label>
@@ -573,11 +730,11 @@ function RegisterContent() {
                     </div>
                 </div>
 
-                {/* Step 2: Strava (OPTIONAL) */}
+                {/* Step 4: Strava (OPTIONAL) */}
                 <div className={`p-4 border rounded-lg transition-colors ${step3Complete ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' : 'bg-card border-border'}`}>
                     <div className="flex items-start gap-3">
                         <div className={`mt-1 w-6 h-6 rounded-full flex items-center justify-center text-xs text-white font-bold ${step3Complete ? 'bg-green-500' : 'bg-muted-foreground'}`}>
-                            2
+                            5
                         </div>
                         <div className="flex-1">
                             <div className="flex justify-between items-center mb-1">
@@ -607,11 +764,11 @@ function RegisterContent() {
                     </div>
                 </div>
 
-                {/* Step 3: Zwift ID */}
+                {/* Step 5: Zwift ID */}
                 <div className={`p-4 border rounded-lg transition-colors ${step2Complete ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' : 'bg-card border-border'}`}>
                     <div className="flex items-start gap-3">
                         <div className={`mt-1 w-6 h-6 rounded-full flex items-center justify-center text-xs text-white font-bold ${step2Complete ? 'bg-green-500' : 'bg-muted-foreground'}`}>
-                            3
+                            6
                         </div>
                         <div className="flex-1">
                             <label className="block font-semibold text-card-foreground mb-1">Zwift ID</label>
@@ -660,11 +817,11 @@ function RegisterContent() {
                     </div>
                 </div>
 
-                {/* Step 4: Code of Conduct */}
+                {/* Step 6: Code of Conduct */}
                 <div className={`p-4 border rounded-lg transition-colors ${step4Complete ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' : 'bg-card border-border'}`}>
                     <div className="flex items-start gap-3">
                         <div className={`mt-1 w-6 h-6 rounded-full flex items-center justify-center text-xs text-white font-bold ${step4Complete ? 'bg-green-500' : 'bg-muted-foreground'}`}>
-                            4
+                            7
                         </div>
                         <div className="flex-1">
                             <label className="block font-semibold text-card-foreground mb-1">Code of Conduct</label>
@@ -696,6 +853,48 @@ function RegisterContent() {
                         {step4Complete && <span className="text-green-600 dark:text-green-400 text-xl">✓</span>}
                     </div>
                 </div>
+
+                {/* Request Trainer Modal */}
+                {showRequestTrainerModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                        <div className="bg-card w-full max-w-md rounded-lg shadow-2xl border border-border overflow-hidden">
+                            <div className="p-4 border-b border-border bg-muted/30">
+                                <h3 className="text-lg font-bold text-card-foreground">Request Trainer Approval</h3>
+                            </div>
+                            <div className="p-6">
+                                <p className="text-sm text-muted-foreground mb-4">
+                                    Enter the name of your trainer or powermeter. Admins will review your request and approve it if it meets the league requirements.
+                                </p>
+                                <input
+                                    type="text"
+                                    value={requestedTrainerName}
+                                    onChange={e => setRequestedTrainerName(e.target.value)}
+                                    placeholder="e.g., Wahoo KICKR V6"
+                                    className="w-full p-3 border border-input rounded-lg focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all text-foreground bg-background placeholder-muted-foreground"
+                                />
+                            </div>
+                            <div className="p-4 border-t border-border bg-muted/30 flex justify-end gap-3">
+                                <button
+                                    onClick={() => {
+                                        setShowRequestTrainerModal(false);
+                                        setRequestedTrainerName('');
+                                    }}
+                                    disabled={submittingTrainerRequest}
+                                    className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground disabled:opacity-50"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleRequestTrainer}
+                                    disabled={submittingTrainerRequest || !requestedTrainerName.trim()}
+                                    className="px-6 py-2 bg-primary text-primary-foreground rounded hover:opacity-90 font-bold shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {submittingTrainerRequest ? 'Submitting...' : 'Submit Request'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* CoC Modal */}
                 {showCoCModal && (

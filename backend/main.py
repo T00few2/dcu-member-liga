@@ -606,6 +606,7 @@ def dcu_api(request):
                 'name': user_data.get('name', ''),
                 'zwiftId': user_data.get('zwiftId', ''),
                 'club': user_data.get('club', ''),
+                'trainer': user_data.get('trainer', ''),
                 'stravaConnected': bool(user_data.get('strava_access_token')) or bool(user_data.get('strava')),
                 'acceptedCoC': user_data.get('acceptedCoC', False)
             }), 200, headers)
@@ -670,6 +671,7 @@ def dcu_api(request):
             name = request_json.get('name')
             zwift_id = request_json.get('zwiftId')
             club = request_json.get('club', '')
+            trainer = request_json.get('trainer', '')
             is_draft = request_json.get('draft', False)
             
             # For draft saves, only require basic info
@@ -698,6 +700,8 @@ def dcu_api(request):
                     user_data['zwiftId'] = zwift_id
                 if club:
                     user_data['club'] = club
+                if trainer:
+                    user_data['trainer'] = trainer
                 
                 user_data['acceptedCoC'] = request_json.get('acceptedCoC', False)
                 
@@ -732,6 +736,266 @@ def dcu_api(request):
                 'draft': is_draft,
                 'user': {'name': name, 'eLicense': e_license, 'zwiftId': zwift_id}
             }), 200, headers)
+        except Exception as e:
+            return (jsonify({'message': str(e)}), 500, headers)
+
+    # --- TRAINERS/POWERMETERS MANAGEMENT ---
+    
+    # GET /trainers - Get all trainers (approved + not approved)
+    if path == '/trainers' and request.method == 'GET':
+        if not db:
+            return (jsonify({'error': 'DB not available'}), 500, headers)
+        
+        try:
+            trainers_ref = db.collection('trainers').order_by('name')
+            docs = trainers_ref.stream()
+            
+            trainers = []
+            for doc in docs:
+                trainer_data = doc.to_dict()
+                trainer_data['id'] = doc.id
+                trainers.append(trainer_data)
+            
+            return (jsonify({'trainers': trainers}), 200, headers)
+        except Exception as e:
+            print(f"Error fetching trainers: {e}")
+            return (jsonify({'message': str(e)}), 500, headers)
+    
+    # POST /trainers - Create new trainer (Admin only)
+    if path == '/trainers' and request.method == 'POST':
+        # Verify Admin Auth
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        try:
+            id_token = auth_header.split('Bearer ')[1]
+            auth.verify_id_token(id_token)
+        except:
+            return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        
+        if not db:
+            return (jsonify({'error': 'DB not available'}), 500, headers)
+        
+        try:
+            data = request.get_json()
+            name = data.get('name')
+            status = data.get('status', 'approved')  # approved, not_approved, pending
+            dual_recording_required = data.get('dualRecordingRequired', False)
+            
+            if not name:
+                return (jsonify({'message': 'Trainer name is required'}), 400, headers)
+            
+            trainer_data = {
+                'name': name,
+                'status': status,
+                'dualRecordingRequired': dual_recording_required,
+                'createdAt': firestore.SERVER_TIMESTAMP,
+                'updatedAt': firestore.SERVER_TIMESTAMP
+            }
+            
+            _, doc_ref = db.collection('trainers').add(trainer_data)
+            return (jsonify({'message': 'Trainer created', 'id': doc_ref.id}), 201, headers)
+        except Exception as e:
+            return (jsonify({'message': str(e)}), 500, headers)
+    
+    # PUT /trainers/<id> - Update trainer (Admin only)
+    if path.startswith('/trainers/') and request.method == 'PUT':
+        # Verify Admin Auth
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        try:
+            id_token = auth_header.split('Bearer ')[1]
+            auth.verify_id_token(id_token)
+        except:
+            return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        
+        trainer_id = path.split('/')[-1]
+        if not db:
+            return (jsonify({'error': 'DB not available'}), 500, headers)
+        
+        try:
+            data = request.get_json()
+            update_data = {
+                'updatedAt': firestore.SERVER_TIMESTAMP
+            }
+            
+            if 'name' in data:
+                update_data['name'] = data['name']
+            if 'status' in data:
+                update_data['status'] = data['status']
+            if 'dualRecordingRequired' in data:
+                update_data['dualRecordingRequired'] = data['dualRecordingRequired']
+            
+            db.collection('trainers').document(trainer_id).update(update_data)
+            return (jsonify({'message': 'Trainer updated'}), 200, headers)
+        except Exception as e:
+            return (jsonify({'message': str(e)}), 500, headers)
+    
+    # DELETE /trainers/<id> - Delete trainer (Admin only)
+    if path.startswith('/trainers/') and request.method == 'DELETE':
+        # Verify Admin Auth
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        try:
+            id_token = auth_header.split('Bearer ')[1]
+            auth.verify_id_token(id_token)
+        except:
+            return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        
+        trainer_id = path.split('/')[-1]
+        if not db:
+            return (jsonify({'error': 'DB not available'}), 500, headers)
+        
+        try:
+            db.collection('trainers').document(trainer_id).delete()
+            return (jsonify({'message': 'Trainer deleted'}), 200, headers)
+        except Exception as e:
+            return (jsonify({'message': str(e)}), 500, headers)
+    
+    # POST /trainers/request - Request trainer approval (User)
+    if path == '/trainers/request' and request.method == 'POST':
+        # Verify Auth
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        try:
+            id_token = auth_header.split('Bearer ')[1]
+            decoded_token = auth.verify_id_token(id_token)
+            uid = decoded_token['uid']
+        except:
+            return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        
+        if not db:
+            return (jsonify({'error': 'DB not available'}), 500, headers)
+        
+        try:
+            data = request.get_json()
+            trainer_name = data.get('trainerName')
+            requester_name = data.get('requesterName', '')
+            
+            if not trainer_name:
+                return (jsonify({'message': 'Trainer name is required'}), 400, headers)
+            
+            request_data = {
+                'trainerName': trainer_name,
+                'requesterName': requester_name,
+                'requesterUid': uid,
+                'status': 'pending',
+                'createdAt': firestore.SERVER_TIMESTAMP
+            }
+            
+            _, doc_ref = db.collection('trainer_requests').add(request_data)
+            return (jsonify({'message': 'Trainer approval request submitted', 'id': doc_ref.id}), 201, headers)
+        except Exception as e:
+            return (jsonify({'message': str(e)}), 500, headers)
+    
+    # GET /trainers/requests - Get all trainer requests (Admin only)
+    if path == '/trainers/requests' and request.method == 'GET':
+        # Verify Admin Auth
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        try:
+            id_token = auth_header.split('Bearer ')[1]
+            auth.verify_id_token(id_token)
+        except:
+            return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        
+        if not db:
+            return (jsonify({'error': 'DB not available'}), 500, headers)
+        
+        try:
+            requests_ref = db.collection('trainer_requests').order_by('createdAt', direction=firestore.Query.DESCENDING)
+            docs = requests_ref.stream()
+            
+            requests = []
+            for doc in docs:
+                request_data = doc.to_dict()
+                request_data['id'] = doc.id
+                # Convert timestamp to milliseconds
+                if 'createdAt' in request_data and request_data['createdAt']:
+                    request_data['createdAt'] = int(request_data['createdAt'].timestamp() * 1000)
+                requests.append(request_data)
+            
+            return (jsonify({'requests': requests}), 200, headers)
+        except Exception as e:
+            print(f"Error fetching trainer requests: {e}")
+            return (jsonify({'message': str(e)}), 500, headers)
+    
+    # POST /trainers/requests/<id>/approve - Approve trainer request (Admin only)
+    if path.startswith('/trainers/requests/') and path.endswith('/approve') and request.method == 'POST':
+        # Verify Admin Auth
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        try:
+            id_token = auth_header.split('Bearer ')[1]
+            auth.verify_id_token(id_token)
+        except:
+            return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        
+        request_id = path.split('/')[-2]
+        if not db:
+            return (jsonify({'error': 'DB not available'}), 500, headers)
+        
+        try:
+            data = request.get_json()
+            dual_recording_required = data.get('dualRecordingRequired', False)
+            
+            # Get the request
+            request_doc = db.collection('trainer_requests').document(request_id).get()
+            if not request_doc.exists:
+                return (jsonify({'message': 'Request not found'}), 404, headers)
+            
+            request_data = request_doc.to_dict()
+            trainer_name = request_data.get('trainerName')
+            
+            # Create the trainer as approved
+            trainer_data = {
+                'name': trainer_name,
+                'status': 'approved',
+                'dualRecordingRequired': dual_recording_required,
+                'createdAt': firestore.SERVER_TIMESTAMP,
+                'updatedAt': firestore.SERVER_TIMESTAMP
+            }
+            db.collection('trainers').add(trainer_data)
+            
+            # Update request status
+            db.collection('trainer_requests').document(request_id).update({
+                'status': 'approved',
+                'approvedAt': firestore.SERVER_TIMESTAMP
+            })
+            
+            return (jsonify({'message': 'Trainer approved and added'}), 200, headers)
+        except Exception as e:
+            return (jsonify({'message': str(e)}), 500, headers)
+    
+    # POST /trainers/requests/<id>/reject - Reject trainer request (Admin only)
+    if path.startswith('/trainers/requests/') and path.endswith('/reject') and request.method == 'POST':
+        # Verify Admin Auth
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        try:
+            id_token = auth_header.split('Bearer ')[1]
+            auth.verify_id_token(id_token)
+        except:
+            return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        
+        request_id = path.split('/')[-2]
+        if not db:
+            return (jsonify({'error': 'DB not available'}), 500, headers)
+        
+        try:
+            # Update request status
+            db.collection('trainer_requests').document(request_id).update({
+                'status': 'rejected',
+                'rejectedAt': firestore.SERVER_TIMESTAMP
+            })
+            
+            return (jsonify({'message': 'Trainer request rejected'}), 200, headers)
         except Exception as e:
             return (jsonify({'message': str(e)}), 500, headers)
 
