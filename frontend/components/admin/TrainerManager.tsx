@@ -273,35 +273,58 @@ export default function TrainerManager() {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {approvedTrainers.map(trainer => (
-            <div key={trainer.id} className="border border-border rounded-lg p-4 bg-card">
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <h3 className="font-bold text-lg">{trainer.name}</h3>
-                  {trainer.dualRecordingRequired && (
-                    <span className="text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 px-2 py-1 rounded mt-1 inline-block">
-                      ⚠️ Dual Recording Required
-                    </span>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleOpenEditModal(trainer)}
-                    className="px-3 py-1 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 text-sm"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => handleDeleteTrainer(trainer.id)}
-                    className="px-3 py-1 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/50 text-sm"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
+        <div className="border border-border rounded-lg overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-muted/50">
+              <tr>
+                <th className="text-left p-3 font-semibold text-sm">Trainer Name</th>
+                <th className="text-left p-3 font-semibold text-sm">Dual Recording</th>
+                <th className="text-right p-3 font-semibold text-sm">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {approvedTrainers.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="text-center p-8 text-muted-foreground">
+                    No approved trainers yet. Click "+ Add Trainer" to add one.
+                  </td>
+                </tr>
+              ) : (
+                approvedTrainers.map((trainer, index) => (
+                  <tr key={trainer.id} className={`border-t border-border ${index % 2 === 0 ? 'bg-background' : 'bg-muted/20'}`}>
+                    <td className="p-3">
+                      <span className="font-medium">{trainer.name}</span>
+                    </td>
+                    <td className="p-3">
+                      {trainer.dualRecordingRequired ? (
+                        <span className="text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 px-2 py-1 rounded inline-flex items-center gap-1">
+                          ⚠️ Required
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Not Required</span>
+                      )}
+                    </td>
+                    <td className="p-3 text-right">
+                      <div className="flex gap-2 justify-end">
+                        <button
+                          onClick={() => handleOpenEditModal(trainer)}
+                          className="px-3 py-1 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 text-sm"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteTrainer(trainer.id)}
+                          className="px-3 py-1 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/50 text-sm"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -309,33 +332,46 @@ export default function TrainerManager() {
       {notApprovedTrainers.length > 0 && (
         <div>
           <h2 className="text-2xl font-bold mb-4">✗ Not Approved Trainers ({notApprovedTrainers.length})</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {notApprovedTrainers.map(trainer => (
-              <div key={trainer.id} className="border border-red-200 dark:border-red-800 rounded-lg p-4 bg-red-50 dark:bg-red-900/20">
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <h3 className="font-bold text-lg">{trainer.name}</h3>
-                    <span className="text-xs bg-red-200 dark:bg-red-900/50 text-red-800 dark:text-red-200 px-2 py-1 rounded mt-1 inline-block">
-                      NOT APPROVED
-                    </span>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleOpenEditModal(trainer)}
-                      className="px-3 py-1 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 text-sm"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDeleteTrainer(trainer.id)}
-                      className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
+          <div className="border border-red-200 dark:border-red-800 rounded-lg overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-red-100 dark:bg-red-900/30">
+                <tr>
+                  <th className="text-left p-3 font-semibold text-sm">Trainer Name</th>
+                  <th className="text-left p-3 font-semibold text-sm">Status</th>
+                  <th className="text-right p-3 font-semibold text-sm">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {notApprovedTrainers.map((trainer, index) => (
+                  <tr key={trainer.id} className={`border-t border-red-200 dark:border-red-800 ${index % 2 === 0 ? 'bg-red-50 dark:bg-red-900/20' : 'bg-red-100 dark:bg-red-900/30'}`}>
+                    <td className="p-3">
+                      <span className="font-medium">{trainer.name}</span>
+                    </td>
+                    <td className="p-3">
+                      <span className="text-xs bg-red-200 dark:bg-red-900/50 text-red-800 dark:text-red-200 px-2 py-1 rounded inline-flex items-center gap-1">
+                        ✗ NOT APPROVED
+                      </span>
+                    </td>
+                    <td className="p-3 text-right">
+                      <div className="flex gap-2 justify-end">
+                        <button
+                          onClick={() => handleOpenEditModal(trainer)}
+                          className="px-3 py-1 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 text-sm"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteTrainer(trainer.id)}
+                          className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
