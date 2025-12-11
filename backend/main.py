@@ -580,23 +580,31 @@ def dcu_api(request):
 
             # 1. Look up E-License from Auth Mapping
             mapping_doc = db.collection('auth_mappings').document(uid).get()
-            if not mapping_doc.exists:
-                return (jsonify({'registered': False}), 200, headers)
             
-            e_license = mapping_doc.to_dict().get('eLicense')
+            # Check if user has a mapping
+            if mapping_doc.exists:
+                e_license = mapping_doc.to_dict().get('eLicense')
+                user_doc = db.collection('users').document(str(e_license)).get()
+            else:
+                # Check if there's a draft saved under uid
+                user_doc = db.collection('users').document(uid).get()
+                e_license = None
             
             # 2. Fetch User Details
-            user_doc = db.collection('users').document(str(e_license)).get()
             if not user_doc.exists:
                 return (jsonify({'registered': False}), 200, headers)
             
             user_data = user_doc.to_dict()
             
+            # Check if registration is complete
+            registration_complete = user_data.get('registrationComplete', user_data.get('verified', False))
+            
             return (jsonify({
-                'registered': True,
-                'eLicense': user_data.get('eLicense'),
-                'name': user_data.get('name'),
-                'zwiftId': user_data.get('zwiftId'),
+                'registered': registration_complete,
+                'hasDraft': not registration_complete and user_data.get('name'),  # Has partial data
+                'eLicense': user_data.get('eLicense', ''),
+                'name': user_data.get('name', ''),
+                'zwiftId': user_data.get('zwiftId', ''),
                 'club': user_data.get('club', ''),
                 'stravaConnected': bool(user_data.get('strava_access_token')) or bool(user_data.get('strava')),
                 'acceptedCoC': user_data.get('acceptedCoC', False)
@@ -662,38 +670,66 @@ def dcu_api(request):
             name = request_json.get('name')
             zwift_id = request_json.get('zwiftId')
             club = request_json.get('club', '')
+            is_draft = request_json.get('draft', False)
             
-            if not e_license or not name:
-                return (jsonify({'message': 'Missing eLicense or name'}), 400, headers)
+            # For draft saves, only require basic info
+            if is_draft:
+                # Draft save - minimal requirements
+                if not name:
+                    return (jsonify({'message': 'At least a name is required to save progress'}), 400, headers)
+            else:
+                # Full registration - require all fields
+                if not e_license or not name:
+                    return (jsonify({'message': 'Missing eLicense or name'}), 400, headers)
 
             if db:
-                # 1. Save User Profile (by E-License)
-                doc_ref = db.collection('users').document(str(e_license))
-                doc_ref.set({
-                    'name': name,
-                    'eLicense': e_license,
-                    'zwiftId': zwift_id,
-                    'club': club,
-                    'verified': True,
-                    'acceptedCoC': request_json.get('acceptedCoC', False),
-                    'authUid': uid, 
+                # Prepare data to save
+                user_data = {
+                    'authUid': uid,
                     'updatedAt': firestore.SERVER_TIMESTAMP
-                }, merge=True)
-
-                # 2. Create/Update a mapping
-                auth_map_ref = db.collection('auth_mappings').document(uid)
-                auth_map_ref.set({
-                    'eLicense': e_license,
-                    'lastLogin': firestore.SERVER_TIMESTAMP
-                }, merge=True)
+                }
                 
-                # 3. TRIGGER STATS FETCH ON SIGNUP
+                # Add fields that are provided
+                if name:
+                    user_data['name'] = name
+                if e_license:
+                    user_data['eLicense'] = e_license
                 if zwift_id:
+                    user_data['zwiftId'] = zwift_id
+                if club:
+                    user_data['club'] = club
+                
+                user_data['acceptedCoC'] = request_json.get('acceptedCoC', False)
+                
+                # Set registration status
+                if is_draft:
+                    user_data['registrationComplete'] = False
+                else:
+                    user_data['verified'] = True
+                    user_data['registrationComplete'] = True
+                
+                # 1. Save User Profile
+                # Use e_license as document ID if available, otherwise use uid temporarily
+                doc_id = str(e_license) if e_license else uid
+                doc_ref = db.collection('users').document(doc_id)
+                doc_ref.set(user_data, merge=True)
+
+                # 2. Create/Update auth mapping (only if e_license is provided)
+                if e_license:
+                    auth_map_ref = db.collection('auth_mappings').document(uid)
+                    auth_map_ref.set({
+                        'eLicense': e_license,
+                        'lastLogin': firestore.SERVER_TIMESTAMP
+                    }, merge=True)
+                
+                # 3. TRIGGER STATS FETCH ON COMPLETE SIGNUP (not draft)
+                if not is_draft and zwift_id and e_license:
                     update_rider_stats(e_license, zwift_id)
             
             return (jsonify({
-                'message': 'Signup successful',
-                'verified': True,
+                'message': 'Progress saved' if is_draft else 'Signup successful',
+                'verified': not is_draft,
+                'draft': is_draft,
                 'user': {'name': name, 'eLicense': e_license, 'zwiftId': zwift_id}
             }), 200, headers)
         except Exception as e:

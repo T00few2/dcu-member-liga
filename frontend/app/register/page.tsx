@@ -23,6 +23,8 @@ function RegisterContent() {
     const [clubs, setClubs] = useState<{ name: string; district: string; type: string }[]>([]);
     const [loadingClubs, setLoadingClubs] = useState(true);
     const [clubsError, setClubsError] = useState('');
+    const [clubSearchTerm, setClubSearchTerm] = useState('');
+    const [showClubDropdown, setShowClubDropdown] = useState(false);
 
     // Verification State
     const [initialData, setInitialData] = useState<{ eLicense?: string, zwiftId?: string }>({});
@@ -36,8 +38,10 @@ function RegisterContent() {
 
     // UI State
     const [isRegistered, setIsRegistered] = useState(false);
+    const [hasDraft, setHasDraft] = useState(false);
     const [fetchingProfile, setFetchingProfile] = useState(true);
     const [submitting, setSubmitting] = useState(false);
+    const [savingProgress, setSavingProgress] = useState(false);
     const [message, setMessage] = useState('');
     const [error, setError] = useState('');
 
@@ -99,6 +103,16 @@ function RegisterContent() {
                         setInitialData({ eLicense: data.eLicense, zwiftId: data.zwiftId });
                         // Assume existing profile is verified
                         if (data.zwiftId) setZwiftVerified(true);
+                    } else if (data.hasDraft) {
+                        // User has saved progress
+                        setHasDraft(true);
+                        setName(data.name || '');
+                        setELicense(data.eLicense || '');
+                        setZwiftId(data.zwiftId || '');
+                        setClub(data.club || '');
+                        setStravaConnected(data.stravaConnected || false);
+                        setAcceptedCoC(data.acceptedCoC || false);
+                        setMessage('Welcome back! Your progress has been restored. Complete the remaining steps to finish registration.');
                     } else {
                         // Not registered, but maybe prefill name
                         if (user.displayName) setName(user.displayName);
@@ -238,17 +252,77 @@ function RegisterContent() {
         }
     }, [zwiftId, initialData.zwiftId]);
 
+    // Close club dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            const target = event.target as HTMLElement;
+            if (showClubDropdown && !target.closest('.club-search-container')) {
+                setShowClubDropdown(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [showClubDropdown]);
+
+
+    const handleSaveProgress = async () => {
+        if (!user) return;
+
+        setSavingProgress(true);
+        setError('');
+        setMessage('');
+
+        try {
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+            const idToken = await user.getIdToken();
+
+            const res = await fetch(`${apiUrl}/signup`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${idToken}`
+                },
+                body: JSON.stringify({
+                    eLicense: eLicense || null,
+                    name: name || null,
+                    zwiftId: zwiftId || null,
+                    club: club || null,
+                    acceptedCoC,
+                    uid: user.uid,
+                    draft: true  // Mark as incomplete/draft
+                }),
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Failed to save progress');
+
+            setMessage('Progress saved! You can return later to complete registration.');
+
+            // Update initial data
+            setInitialData({ eLicense, zwiftId });
+
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setSavingProgress(false);
+        }
+    };
 
     const handleSubmit = async () => {
         if (!user) return;
 
-        // Final validation
+        // Final validation for complete registration
         if (!licenseAvailable) {
             setError("E-License is already in use.");
             return;
         }
         if (!zwiftVerified) {
             setError("Please verify your Zwift ID.");
+            return;
+        }
+        if (!club) {
+            setError("Please select your club.");
             return;
         }
         if (!acceptedCoC) {
@@ -276,7 +350,8 @@ function RegisterContent() {
                     zwiftId,
                     club,
                     acceptedCoC,
-                    uid: user.uid
+                    uid: user.uid,
+                    draft: false  // Mark as complete
                 }),
             });
 
@@ -305,8 +380,9 @@ function RegisterContent() {
     // Strava is now optional but recommended
     const step3Complete = stravaConnected;
     const step4Complete = acceptedCoC;
+    const clubSelected = club.length > 0;
 
-    const canSubmit = step1Complete && step2Complete && step4Complete;
+    const canSubmit = step1Complete && step2Complete && step4Complete && clubSelected;
 
     if (authLoading || fetchingProfile) {
         return <div className="p-8 text-center">Loading profile...</div>;
@@ -315,12 +391,14 @@ function RegisterContent() {
     return (
         <div className="max-w-2xl mx-auto mt-10 p-8 bg-card rounded-lg shadow-md border border-border">
             <h1 className="text-3xl font-bold mb-2 text-card-foreground">
-                {isRegistered ? 'Rider Profile' : 'Rider Registration'}
+                {isRegistered ? 'Rider Profile' : hasDraft ? 'Continue Registration' : 'Rider Registration'}
             </h1>
             <p className="text-muted-foreground mb-8">
                 {isRegistered
                     ? 'Update your details and connections.'
-                    : 'Complete the steps below to join the league.'}
+                    : hasDraft
+                        ? 'Complete the remaining steps to finish your registration.'
+                        : 'Complete the steps below to join the league.'}
             </p>
 
             {message && (
@@ -349,29 +427,123 @@ function RegisterContent() {
                     />
                 </div>
 
-                {/* Club Selection */}
-                <div className="p-4 border border-border rounded-lg bg-secondary/50">
-                    <label className="block text-sm font-medium text-secondary-foreground mb-1">DCU Club</label>
+                {/* Club Selection with Search */}
+                <div className={`p-4 border rounded-lg transition-colors ${clubSelected ? 'bg-secondary/50 border-border' : 'bg-card border-border'}`}>
+                    <label className="block text-sm font-medium text-secondary-foreground mb-1">
+                        DCU Club <span className="text-red-500">*</span>
+                    </label>
                     {loadingClubs ? (
                         <p className="text-sm text-muted-foreground">Loading clubs...</p>
                     ) : clubsError ? (
-                        <p className="text-sm text-red-600">{clubsError}</p>
+                        <div>
+                            <p className="text-sm text-red-600 mb-2">{clubsError}</p>
+                            <select
+                                value={club}
+                                onChange={e => setClub(e.target.value)}
+                                className={`w-full p-3 border rounded-lg focus:ring-2 outline-none transition-all text-foreground bg-background ${!club ? 'border-red-300' : 'border-input focus:ring-ring focus:border-ring'}`}
+                            >
+                                <option value="">Select your club</option>
+                                <option value="None">None</option>
+                            </select>
+                        </div>
                     ) : (
-                        <select
-                            value={club}
-                            onChange={e => setClub(e.target.value)}
-                            className="w-full p-3 border border-input rounded-lg focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all text-foreground bg-background"
-                        >
-                            <option value="">Select your club</option>
-                            {clubs.map((c, idx) => (
-                                <option key={idx} value={c.name}>
-                                    {c.name} ({c.type})
-                                </option>
-                            ))}
-                        </select>
+                        <div className="relative club-search-container">
+                            <input
+                                type="text"
+                                value={club || clubSearchTerm}
+                                onChange={(e) => {
+                                    setClubSearchTerm(e.target.value);
+                                    setClub('');
+                                    setShowClubDropdown(true);
+                                }}
+                                onFocus={() => setShowClubDropdown(true)}
+                                placeholder="Search for your club..."
+                                className={`w-full p-3 border rounded-lg focus:ring-2 outline-none transition-all text-foreground bg-background placeholder-muted-foreground ${!club ? 'border-red-300' : 'border-input focus:ring-ring focus:border-ring'}`}
+                            />
+                            
+                            {showClubDropdown && (
+                                <div className="absolute z-10 w-full mt-1 max-h-60 overflow-y-auto bg-background border border-border rounded-lg shadow-lg">
+                                    {(() => {
+                                        const searchLower = (club || clubSearchTerm).toLowerCase();
+                                        const filtered = clubs.filter(c => 
+                                            c.name.toLowerCase().includes(searchLower) ||
+                                            c.type.toLowerCase().includes(searchLower) ||
+                                            c.district.toLowerCase().includes(searchLower)
+                                        );
+                                        
+                                        if (filtered.length === 0 && searchLower) {
+                                            return (
+                                                <>
+                                                    <div className="p-3 text-sm text-muted-foreground">
+                                                        No clubs found matching "{club || clubSearchTerm}"
+                                                    </div>
+                                                    <button
+                                                        onClick={() => {
+                                                            setClub('None');
+                                                            setClubSearchTerm('');
+                                                            setShowClubDropdown(false);
+                                                        }}
+                                                        className="w-full p-3 text-left hover:bg-secondary/50 transition-colors border-t border-border"
+                                                    >
+                                                        <span className="font-medium">None</span>
+                                                        <span className="text-xs text-muted-foreground ml-2">(No club)</span>
+                                                    </button>
+                                                </>
+                                            );
+                                        }
+                                        
+                                        return (
+                                            <>
+                                                {filtered.map((c, idx) => (
+                                                    <button
+                                                        key={idx}
+                                                        onClick={() => {
+                                                            setClub(c.name);
+                                                            setClubSearchTerm('');
+                                                            setShowClubDropdown(false);
+                                                        }}
+                                                        className="w-full p-3 text-left hover:bg-secondary/50 transition-colors border-b border-border last:border-b-0"
+                                                    >
+                                                        <div className="font-medium">{c.name}</div>
+                                                        <div className="text-xs text-muted-foreground">
+                                                            {c.type} • {c.district}
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                                <button
+                                                    onClick={() => {
+                                                        setClub('None');
+                                                        setClubSearchTerm('');
+                                                        setShowClubDropdown(false);
+                                                    }}
+                                                    className="w-full p-3 text-left hover:bg-secondary/50 transition-colors border-t border-border bg-secondary/20"
+                                                >
+                                                    <span className="font-medium">None</span>
+                                                    <span className="text-xs text-muted-foreground ml-2">(No club)</span>
+                                                </button>
+                                            </>
+                                        );
+                                    })()}
+                                </div>
+                            )}
+                            
+                            {club && (
+                                <button
+                                    onClick={() => {
+                                        setClub('');
+                                        setClubSearchTerm('');
+                                        setShowClubDropdown(true);
+                                    }}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                                    type="button"
+                                >
+                                    ✕
+                                </button>
+                            )}
+                        </div>
                     )}
                     <p className="text-xs text-muted-foreground mt-1">
-                        Select your DCU cycling club from the list
+                        Search and select your DCU cycling club or "None" if you don't have one
                     </p>
                 </div>
 
@@ -566,13 +738,28 @@ function RegisterContent() {
                     </div>
                 )}
 
-                {/* Submit Button */}
-                <div className="pt-4">
+                {/* Submit Buttons */}
+                <div className="pt-4 space-y-3">
+                    {/* Save Progress Button */}
+                    {!isRegistered && (
+                        <button
+                            onClick={handleSaveProgress}
+                            disabled={savingProgress || submitting || !name}
+                            className={`w-full py-3 rounded-lg font-medium text-base transition shadow-sm
+                        ${name && !savingProgress && !submitting
+                                    ? 'bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border'
+                                    : 'bg-secondary/50 text-muted-foreground cursor-not-allowed border border-border'}`}
+                        >
+                            {savingProgress ? 'Saving...' : '💾 Save Progress'}
+                        </button>
+                    )}
+
+                    {/* Complete Registration Button */}
                     <button
                         onClick={handleSubmit}
-                        disabled={!canSubmit || submitting}
+                        disabled={!canSubmit || submitting || savingProgress}
                         className={`w-full py-3 rounded-lg font-bold text-lg transition shadow-md
-                    ${canSubmit
+                    ${canSubmit && !savingProgress
                                 ? 'bg-primary text-primary-foreground hover:opacity-90 hover:shadow-lg transform hover:-translate-y-0.5'
                                 : 'bg-secondary text-muted-foreground cursor-not-allowed'}`}
                     >
@@ -580,9 +767,12 @@ function RegisterContent() {
                             ? 'Saving...'
                             : (isRegistered ? 'Update Profile' : 'Complete Registration')}
                     </button>
-                    {!canSubmit && (
-                        <p className="text-center text-sm text-muted-foreground mt-2">
-                            Please complete and verify all required steps.
+                    
+                    {!canSubmit && !isRegistered && (
+                        <p className="text-center text-sm text-muted-foreground">
+                            {name 
+                                ? 'Complete all required steps to finish registration, or save your progress to continue later.'
+                                : 'Enter your name to save progress or complete all steps to finish registration.'}
                         </p>
                     )}
                 </div>
