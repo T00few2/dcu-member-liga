@@ -597,7 +597,9 @@ def dcu_api(request):
                 'eLicense': user_data.get('eLicense'),
                 'name': user_data.get('name'),
                 'zwiftId': user_data.get('zwiftId'),
-                'stravaConnected': bool(user_data.get('strava_access_token')) or bool(user_data.get('strava')) 
+                'club': user_data.get('club', ''),
+                'stravaConnected': bool(user_data.get('strava_access_token')) or bool(user_data.get('strava')),
+                'acceptedCoC': user_data.get('acceptedCoC', False)
             }), 200, headers)
 
         except Exception as e:
@@ -659,6 +661,7 @@ def dcu_api(request):
             e_license = request_json.get('eLicense')
             name = request_json.get('name')
             zwift_id = request_json.get('zwiftId')
+            club = request_json.get('club', '')
             
             if not e_license or not name:
                 return (jsonify({'message': 'Missing eLicense or name'}), 400, headers)
@@ -669,7 +672,8 @@ def dcu_api(request):
                 doc_ref.set({
                     'name': name,
                     'eLicense': e_license,
-                    'zwiftId': zwift_id, 
+                    'zwiftId': zwift_id,
+                    'club': club,
                     'verified': True,
                     'acceptedCoC': request_json.get('acceptedCoC', False),
                     'authUid': uid, 
@@ -694,6 +698,45 @@ def dcu_api(request):
             }), 200, headers)
         except Exception as e:
             return (jsonify({'message': str(e)}), 500, headers)
+
+    # --- CLUBS LIST ---
+    if path == '/clubs' and request.method == 'GET':
+        try:
+            import requests
+            from bs4 import BeautifulSoup
+            
+            # Fetch the DCU clubs page
+            response = requests.get('https://dcumedlem.sportstiming.dk/clubs', timeout=10)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Find the table with clubs
+            table = soup.find('table')
+            if not table:
+                return (jsonify({'message': 'Could not find clubs table'}), 500, headers)
+            
+            clubs = []
+            # Parse table rows (skip header)
+            rows = table.find_all('tr')[1:]  # Skip header row
+            
+            for row in rows:
+                cols = row.find_all('td')
+                if len(cols) >= 3:
+                    club_name = cols[0].get_text(strip=True)
+                    district = cols[1].get_text(strip=True)
+                    club_type = cols[2].get_text(strip=True)
+                    
+                    clubs.append({
+                        'name': club_name,
+                        'district': district,
+                        'type': club_type
+                    })
+            
+            return (jsonify({'clubs': clubs}), 200, headers)
+        except Exception as e:
+            print(f"Error fetching clubs: {e}")
+            return (jsonify({'message': f'Failed to fetch clubs: {str(e)}'}), 500, headers)
 
     # --- PARTICIPANTS LIST ---
     if path == '/participants' and request.method == 'GET':
@@ -720,6 +763,7 @@ def dcu_api(request):
                     'name': data.get('name'),
                     'eLicense': data.get('eLicense'),
                     'zwiftId': data.get('zwiftId'),
+                    'club': data.get('club', ''),
                     'category': zp.get('category', 'N/A'),
                     'ftp': zp.get('ftp', 'N/A'),
                     'rating': zr.get('currentRating', 'N/A'),

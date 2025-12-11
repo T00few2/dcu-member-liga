@@ -14,9 +14,15 @@ function RegisterContent() {
     const [eLicense, setELicense] = useState('');
     const [name, setName] = useState('');
     const [zwiftId, setZwiftId] = useState('');
+    const [club, setClub] = useState('');
     const [stravaConnected, setStravaConnected] = useState(false);
     const [acceptedCoC, setAcceptedCoC] = useState(false);
     const [showCoCModal, setShowCoCModal] = useState(false);
+
+    // Clubs State
+    const [clubs, setClubs] = useState<{ name: string; district: string; type: string }[]>([]);
+    const [loadingClubs, setLoadingClubs] = useState(true);
+    const [clubsError, setClubsError] = useState('');
 
     // Verification State
     const [initialData, setInitialData] = useState<{ eLicense?: string, zwiftId?: string }>({});
@@ -42,6 +48,30 @@ function RegisterContent() {
         }
     }, [user, authLoading, router]);
 
+    // Fetch Clubs List
+    useEffect(() => {
+        const fetchClubs = async () => {
+            try {
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+                const res = await fetch(`${apiUrl}/clubs`);
+                
+                if (res.ok) {
+                    const data = await res.json();
+                    setClubs(data.clubs || []);
+                } else {
+                    setClubsError('Failed to load clubs list');
+                }
+            } catch (err) {
+                console.error("Error fetching clubs:", err);
+                setClubsError('Failed to load clubs list');
+            } finally {
+                setLoadingClubs(false);
+            }
+        };
+
+        fetchClubs();
+    }, []);
+
     // Fetch Profile on Load
     useEffect(() => {
         const fetchProfile = async () => {
@@ -62,6 +92,7 @@ function RegisterContent() {
                         setName(data.name || '');
                         setELicense(data.eLicense || '');
                         setZwiftId(data.zwiftId || '');
+                        setClub(data.club || '');
                         setStravaConnected(data.stravaConnected || false);
                         setAcceptedCoC(data.acceptedCoC || false);
 
@@ -102,6 +133,7 @@ function RegisterContent() {
         localStorage.setItem('temp_reg_elicense', eLicense);
         localStorage.setItem('temp_reg_name', name);
         localStorage.setItem('temp_reg_zwiftid', zwiftId);
+        localStorage.setItem('temp_reg_club', club);
 
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
         window.location.href = `${apiUrl}/strava/login?eLicense=${eLicense}`;
@@ -113,15 +145,18 @@ function RegisterContent() {
             const tempName = localStorage.getItem('temp_reg_name');
             const tempELicense = localStorage.getItem('temp_reg_elicense');
             const tempZwiftId = localStorage.getItem('temp_reg_zwiftid');
+            const tempClub = localStorage.getItem('temp_reg_club');
 
             if (tempName) setName(tempName);
             if (tempELicense) setELicense(tempELicense);
             if (tempZwiftId) setZwiftId(tempZwiftId);
+            if (tempClub) setClub(tempClub);
 
             // Cleanup
             localStorage.removeItem('temp_reg_name');
             localStorage.removeItem('temp_reg_elicense');
             localStorage.removeItem('temp_reg_zwiftid');
+            localStorage.removeItem('temp_reg_club');
         }
     }, [stravaStatusParam]);
 
@@ -239,6 +274,7 @@ function RegisterContent() {
                     eLicense,
                     name,
                     zwiftId,
+                    club,
                     acceptedCoC,
                     uid: user.uid
                 }),
@@ -311,6 +347,32 @@ function RegisterContent() {
                         className="w-full p-3 border border-input rounded-lg focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all text-foreground bg-background placeholder-muted-foreground"
                         placeholder="Your Name"
                     />
+                </div>
+
+                {/* Club Selection */}
+                <div className="p-4 border border-border rounded-lg bg-secondary/50">
+                    <label className="block text-sm font-medium text-secondary-foreground mb-1">DCU Club</label>
+                    {loadingClubs ? (
+                        <p className="text-sm text-muted-foreground">Loading clubs...</p>
+                    ) : clubsError ? (
+                        <p className="text-sm text-red-600">{clubsError}</p>
+                    ) : (
+                        <select
+                            value={club}
+                            onChange={e => setClub(e.target.value)}
+                            className="w-full p-3 border border-input rounded-lg focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all text-foreground bg-background"
+                        >
+                            <option value="">Select your club</option>
+                            {clubs.map((c, idx) => (
+                                <option key={idx} value={c.name}>
+                                    {c.name} ({c.type})
+                                </option>
+                            ))}
+                        </select>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-1">
+                        Select your DCU cycling club from the list
+                    </p>
                 </div>
 
                 {/* Step 1: E-License */}
