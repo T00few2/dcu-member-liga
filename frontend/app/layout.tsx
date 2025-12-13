@@ -4,6 +4,7 @@ import "./globals.css";
 import Link from "next/link";
 import { AuthProvider } from "@/lib/auth-context";
 import Navbar from "@/components/Navbar";
+import ToastProvider from "@/components/ToastProvider";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -21,13 +22,15 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <AuthProvider>
-          <Navbar />
-          <main className="container mx-auto p-4 min-h-screen">
-            {children}
-          </main>
-          <footer className="bg-slate-100 p-4 text-center text-slate-600 text-sm">
-            © {new Date().getFullYear()} DCU Member League
-          </footer>
+          <ToastProvider>
+            <Navbar />
+            <main className="container mx-auto p-4 min-h-screen">
+              {children}
+            </main>
+            <footer className="bg-slate-100 p-4 text-center text-slate-600 text-sm">
+              © {new Date().getFullYear()} DCU Member League
+            </footer>
+          </ToastProvider>
         </AuthProvider>
       </body>
     </html>

@@ -4,9 +4,11 @@ import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import StravaAttribution from '@/components/StravaAttribution';
+import { useToast } from '@/components/ToastProvider';
 
 function RegisterContent() {
     const { user, loading: authLoading, refreshProfile } = useAuth();
+    const { showToast } = useToast();
     const router = useRouter();
     const searchParams = useSearchParams();
     const stravaStatusParam = searchParams.get('strava');
@@ -225,6 +227,7 @@ function RegisterContent() {
             if (!res.ok) throw new Error(data.message || 'Failed to disconnect Strava');
             setStravaConnected(false);
             setMessage('Strava disconnected.');
+            showToast('Strava disconnected.', 'success');
         } catch (err: any) {
             setError(err.message || 'Failed to disconnect Strava.');
         }
@@ -414,6 +417,7 @@ function RegisterContent() {
             if (!res.ok) throw new Error(data.message || 'Failed to save progress');
 
             setMessage('Progress saved! You can return later to complete registration.');
+            showToast('Progress saved.', 'success');
 
             // Update initial data
             setInitialData({ eLicense, zwiftId });
@@ -481,7 +485,9 @@ function RegisterContent() {
             if (!res.ok) throw new Error(data.message || 'Registration failed');
 
             setIsRegistered(true);
-            setMessage(data.message || (wasRegistered ? 'Profile updated!' : 'Registration complete!'));
+            const successMsg = data.message || (wasRegistered ? 'Profile updated!' : 'Registration complete!');
+            setMessage(successMsg);
+            showToast(successMsg, 'success');
 
             // Update initial data so we don't prompt to re-verify immediately
             setInitialData({ eLicense, zwiftId });
