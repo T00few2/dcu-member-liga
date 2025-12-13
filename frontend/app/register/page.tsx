@@ -131,6 +131,7 @@ function RegisterContent() {
                         setELicense(data.eLicense || '');
                         setZwiftId(data.zwiftId || '');
                         setClub(data.club || '');
+                        setTrainer(data.trainer || '');
                         setStravaConnected(data.stravaConnected || false);
                         setAcceptedCoC(data.acceptedCoC || false);
 
@@ -505,6 +506,14 @@ function RegisterContent() {
     const step4Complete = acceptedCoC;
 
     const canSubmit = step0Complete && clubComplete && trainerComplete && step1Complete && step2Complete && step4Complete;
+    const missingRequirements = [
+        !step0Complete ? 'Name' : null,
+        !step1Complete ? (eLicense.length > 0 ? 'E-License must be available' : 'E-License') : null,
+        !clubComplete ? 'Club' : null,
+        !trainerComplete ? 'Trainer / Powermeter' : null,
+        !step2Complete ? 'Zwift ID verification' : null,
+        !step4Complete ? 'Code of Conduct acceptance' : null
+    ].filter(Boolean) as string[];
 
     if (authLoading || fetchingProfile) {
         return <div className="p-8 text-center">Loading profile...</div>;
@@ -1021,6 +1030,17 @@ function RegisterContent() {
                             ? 'Saving...'
                             : (isRegistered ? 'Update Profile' : 'Complete Registration')}
                     </button>
+
+                    {isRegistered && !canSubmit && missingRequirements.length > 0 && (
+                        <div className="text-sm text-muted-foreground border border-border rounded-lg p-3 bg-muted/20">
+                            <div className="font-medium text-card-foreground mb-1">Update disabled — missing:</div>
+                            <ul className="list-disc pl-5 space-y-1">
+                                {missingRequirements.map(req => (
+                                    <li key={req}>{req}</li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
                     
                     {!canSubmit && !isRegistered && (
                         <p className="text-center text-sm text-muted-foreground">
