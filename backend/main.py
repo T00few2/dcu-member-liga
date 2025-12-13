@@ -847,6 +847,17 @@ def dcu_api(request):
                 # Use e_license as document ID if available, otherwise use uid temporarily
                 doc_id = str(e_license) if e_license else uid
                 doc_ref = db.collection('users').document(doc_id)
+                # Capture previous state to distinguish "first registration" from "profile update"
+                prev_data = {}
+                try:
+                    prev_doc = doc_ref.get()
+                    if prev_doc.exists:
+                        prev_data = prev_doc.to_dict() or {}
+                except Exception:
+                    prev_data = {}
+
+                prev_registered = bool(prev_data.get('registrationComplete', prev_data.get('verified', False)))
+                prev_zwift_id = prev_data.get('zwiftId')
                 doc_ref.set(user_data, merge=True)
 
                 # If we previously connected Strava while in draft mode (stored on uid doc),
@@ -871,12 +882,14 @@ def dcu_api(request):
                         'lastLogin': firestore.SERVER_TIMESTAMP
                     }, merge=True)
                 
-                # 3. TRIGGER STATS FETCH ON COMPLETE SIGNUP (not draft)
-                if not is_draft and zwift_id and e_license:
+                # 3. TRIGGER STATS FETCH
+                # Avoid expensive external calls on every "Update Profile".
+                # Only do it on first completed registration, or if Zwift ID changed.
+                if not is_draft and zwift_id and e_license and (not prev_registered or str(prev_zwift_id) != str(zwift_id)):
                     update_rider_stats(e_license, zwift_id)
             
             return (jsonify({
-                'message': 'Progress saved' if is_draft else 'Signup successful',
+                'message': 'Progress saved' if is_draft else ('Profile updated' if prev_registered else 'Signup successful'),
                 'verified': not is_draft,
                 'draft': is_draft,
                 'user': {'name': name, 'eLicense': e_license, 'zwiftId': zwift_id}

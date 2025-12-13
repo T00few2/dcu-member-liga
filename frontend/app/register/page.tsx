@@ -427,6 +427,7 @@ function RegisterContent() {
 
     const handleSubmit = async () => {
         if (!user) return;
+        const wasRegistered = isRegistered;
 
         // Final validation for complete registration
         if (!licenseAvailable) {
@@ -480,7 +481,7 @@ function RegisterContent() {
             if (!res.ok) throw new Error(data.message || 'Registration failed');
 
             setIsRegistered(true);
-            setMessage(isRegistered ? 'Profile updated!' : 'Registration complete!');
+            setMessage(data.message || (wasRegistered ? 'Profile updated!' : 'Registration complete!'));
 
             // Update initial data so we don't prompt to re-verify immediately
             setInitialData({ eLicense, zwiftId });
@@ -837,18 +838,18 @@ function RegisterContent() {
                         <div className="flex-1">
                             <label className="block font-semibold text-card-foreground mb-1">Zwift ID</label>
                             <p className="text-sm text-muted-foreground mb-2">Your Zwift ID is required for race results.</p>
-                            <div className="flex gap-2">
+                            <div className="flex flex-col gap-2 sm:flex-row">
                                 <input
                                     type="text"
                                     value={zwiftId}
                                     onChange={e => setZwiftId(e.target.value)}
-                                    className="flex-1 p-3 border border-input rounded-lg focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all text-foreground bg-background placeholder-muted-foreground"
+                                    className="w-full sm:flex-1 p-3 border border-input rounded-lg focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all text-foreground bg-background placeholder-muted-foreground"
                                     placeholder="e.g. 123456"
                                 />
                                 <button
                                     onClick={verifyZwiftId}
                                     disabled={verifyingZwift || !zwiftId}
-                                    className="px-4 py-2 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 disabled:opacity-50"
+                                    className="w-full sm:w-auto px-4 py-2 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 disabled:opacity-50"
                                 >
                                     {verifyingZwift ? '...' : 'Verify'}
                                 </button>
@@ -1026,9 +1027,17 @@ function RegisterContent() {
                                 ? 'bg-primary text-primary-foreground hover:opacity-90 hover:shadow-lg transform hover:-translate-y-0.5'
                                 : 'bg-secondary text-muted-foreground cursor-not-allowed'}`}
                     >
-                        {submitting
-                            ? 'Saving...'
-                            : (isRegistered ? 'Update Profile' : 'Complete Registration')}
+                        <span className="inline-flex items-center justify-center gap-2">
+                            {submitting && (
+                                <span
+                                    className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent"
+                                    aria-label="Saving"
+                                />
+                            )}
+                            {submitting
+                                ? 'Saving...'
+                                : (isRegistered ? 'Update Profile' : 'Complete Registration')}
+                        </span>
                     </button>
 
                     {isRegistered && !canSubmit && missingRequirements.length > 0 && (
