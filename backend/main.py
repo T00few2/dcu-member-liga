@@ -29,6 +29,7 @@ except Exception as e:
     db = None
 
 import time
+import secrets
 
 # Initialize Services
 strava_service = StravaService(db)
@@ -547,21 +548,151 @@ def dcu_api(request):
     # --- STRAVA ROUTES ---
 
     if path == '/strava/login' and request.method == 'GET':
-        e_license = request.args.get('eLicense')
-        url, error, status = strava_service.login(e_license)
-        if error:
-            return (jsonify({'message': error}), status, headers)
-        return redirect(url)
+        return (jsonify({'message': 'Use POST /strava/login with Authorization header'}), 405, headers)
+
+    if path == '/strava/login' and request.method == 'POST':
+        # Authenticated initiation of Strava OAuth.
+        # We do NOT accept eLicense as an unauthenticated state value.
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        try:
+            id_token = auth_header.split('Bearer ')[1]
+            decoded = auth.verify_id_token(id_token)
+            uid = decoded['uid']
+        except Exception:
+            return (jsonify({'message': 'Unauthorized'}), 401, headers)
+
+        body = request.get_json(silent=True) or {}
+        e_license = body.get('eLicense')  # optional (useful during registration)
+
+        if not db:
+            return (jsonify({'error': 'DB not available'}), 500, headers)
+
+        # Create short-lived OAuth state to prevent CSRF/account-linking issues.
+        state = secrets.token_urlsafe(32)
+        db.collection('strava_oauth_states').document(state).set({
+            'uid': uid,
+            'eLicense': e_license,
+            'createdAt': firestore.SERVER_TIMESTAMP
+        })
+
+        url = strava_service.build_authorize_url(state)
+        return (jsonify({'url': url}), 200, headers)
 
     if path == '/strava/callback' and request.method == 'GET':
         code = request.args.get('code')
-        e_license = request.args.get('state')
+        state = request.args.get('state')
         error = request.args.get('error')
         
-        url, error_msg, status = strava_service.callback(code, e_license, error)
-        if error_msg:
-             return (jsonify({'message': error_msg}), status, headers)
-        return redirect(url)
+        if error:
+            return (jsonify({'message': f'Strava Error: {error}'}), 400, headers)
+
+        if not code or not state:
+            return (jsonify({'message': 'Missing code or state'}), 400, headers)
+
+        if not db:
+            return (jsonify({'error': 'DB not available'}), 500, headers)
+
+        # Resolve state -> uid/eLicense (short-lived)
+        state_ref = db.collection('strava_oauth_states').document(state)
+        state_doc = state_ref.get()
+        if not state_doc.exists:
+            return (jsonify({'message': 'Invalid or expired state'}), 400, headers)
+        state_data = state_doc.to_dict() or {}
+        uid = state_data.get('uid')
+        e_license = state_data.get('eLicense')
+
+        try:
+            status_code, token_data = strava_service.exchange_code_for_tokens(code)
+            if status_code != 200:
+                # Do not echo token payloads; just provide a generic error.
+                return (jsonify({'message': 'Failed to get Strava tokens'}), 500, headers)
+
+            # Always store tokens on the authenticated user's draft doc (uid).
+            # Later, during /signup completion, we migrate to the final eLicense doc.
+            user_ref = db.collection('users').document(str(uid))
+            user_ref.set({
+                'strava': {
+                    'athlete_id': token_data.get('athlete', {}).get('id'),
+                    'access_token': token_data.get('access_token'),
+                    'refresh_token': token_data.get('refresh_token'),
+                    'expires_at': token_data.get('expires_at')
+                },
+                'updatedAt': firestore.SERVER_TIMESTAMP
+            }, merge=True)
+
+            # If the user is already registered/mapped to an eLicense, also store there.
+            if e_license:
+                mapping_doc = db.collection('auth_mappings').document(uid).get()
+                mapped_elicense = mapping_doc.to_dict().get('eLicense') if mapping_doc.exists else None
+                if mapped_elicense and str(mapped_elicense) == str(e_license):
+                    db.collection('users').document(str(e_license)).set({
+                        'strava': {
+                            'athlete_id': token_data.get('athlete', {}).get('id'),
+                            'access_token': token_data.get('access_token'),
+                            'refresh_token': token_data.get('refresh_token'),
+                            'expires_at': token_data.get('expires_at')
+                        },
+                        'updatedAt': firestore.SERVER_TIMESTAMP
+                    }, merge=True)
+
+        finally:
+            # One-time use
+            try:
+                state_ref.delete()
+            except Exception:
+                pass
+
+        return redirect("https://dcu-member-liga.vercel.app/register?strava=connected")
+
+    if path == '/strava/deauthorize' and request.method == 'POST':
+        # Authenticated disconnect/unlink flow
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        try:
+            id_token = auth_header.split('Bearer ')[1]
+            decoded = auth.verify_id_token(id_token)
+            uid = decoded['uid']
+        except Exception:
+            return (jsonify({'message': 'Unauthorized'}), 401, headers)
+
+        if not db:
+            return (jsonify({'error': 'DB not available'}), 500, headers)
+
+        # Try to locate Strava tokens on either the uid draft doc or the mapped eLicense doc.
+        access_token = None
+        user_doc = db.collection('users').document(str(uid)).get()
+        if user_doc.exists:
+            user_data = user_doc.to_dict() or {}
+            access_token = (user_data.get('strava') or {}).get('access_token')
+
+        mapped_elicense = None
+        mapping_doc = db.collection('auth_mappings').document(uid).get()
+        if mapping_doc.exists:
+            mapped_elicense = (mapping_doc.to_dict() or {}).get('eLicense')
+            if not access_token and mapped_elicense:
+                el_doc = db.collection('users').document(str(mapped_elicense)).get()
+                if el_doc.exists:
+                    el_data = el_doc.to_dict() or {}
+                    access_token = (el_data.get('strava') or {}).get('access_token')
+
+        # Revoke at Strava (best-effort)
+        revoked = strava_service.deauthorize(access_token) if access_token else False
+
+        # Remove tokens from Firestore (always)
+        try:
+            db.collection('users').document(str(uid)).set({'strava': firestore.DELETE_FIELD}, merge=True)
+        except Exception:
+            pass
+        if mapped_elicense:
+            try:
+                db.collection('users').document(str(mapped_elicense)).set({'strava': firestore.DELETE_FIELD}, merge=True)
+            except Exception:
+                pass
+
+        return (jsonify({'message': 'Strava disconnected', 'revoked': revoked}), 200, headers)
 
     # --- PROFILE ROUTE ---
     if path == '/profile' and request.method == 'GET':
@@ -717,6 +848,20 @@ def dcu_api(request):
                 doc_id = str(e_license) if e_license else uid
                 doc_ref = db.collection('users').document(doc_id)
                 doc_ref.set(user_data, merge=True)
+
+                # If we previously connected Strava while in draft mode (stored on uid doc),
+                # migrate Strava auth to the final eLicense doc when completing signup.
+                if not is_draft and e_license and str(doc_id) == str(e_license) and uid:
+                    draft_doc = db.collection('users').document(uid).get()
+                    if draft_doc.exists:
+                        draft_data = draft_doc.to_dict() or {}
+                        if draft_data.get('strava'):
+                            doc_ref.set({'strava': draft_data.get('strava')}, merge=True)
+                            # Clean up the draft doc to avoid keeping duplicate token copies.
+                            try:
+                                db.collection('users').document(uid).delete()
+                            except Exception:
+                                pass
 
                 # 2. Create/Update auth mapping (only if e_license is provided)
                 if e_license:

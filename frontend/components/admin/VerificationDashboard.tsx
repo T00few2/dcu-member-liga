@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import StravaAttribution from '@/components/StravaAttribution';
 import { 
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
     ComposedChart, Bar, Area, LabelList, Brush
@@ -767,7 +768,10 @@ export default function VerificationDashboard() {
                                 {/* Col 2: Strava Activities */}
                                 <div className="bg-card rounded-lg shadow border border-border overflow-hidden lg:col-span-1">
                                     <div className="bg-[#FC4C02]/10 p-3 border-b border-[#FC4C02]/20 font-semibold text-[#FC4C02] flex justify-between items-center">
-                                        <span>Strava Feed</span>
+                                        <div className="flex flex-col">
+                                            <span>Strava Feed</span>
+                                            <StravaAttribution className="mt-1" />
+                                        </div>
                                         <span className="text-xs bg-[#FC4C02] text-white px-2 py-0.5 rounded-full">Recent</span>
                                     </div>
                                     <div className="divide-y divide-border max-h-[500px] overflow-y-auto">

@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
+import StravaAttribution from '@/components/StravaAttribution';
 
 function RegisterContent() {
     const { user, loading: authLoading, refreshProfile } = useAuth();
@@ -184,8 +185,48 @@ function RegisterContent() {
         localStorage.setItem('temp_reg_club', club);
         localStorage.setItem('temp_reg_trainer', trainer);
 
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-        window.location.href = `${apiUrl}/strava/login?eLicense=${eLicense}`;
+        try {
+            if (!user) throw new Error('Not authenticated');
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+            const idToken = await user.getIdToken();
+            const res = await fetch(`${apiUrl}/strava/login`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${idToken}`
+                },
+                body: JSON.stringify({ eLicense })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Failed to start Strava login');
+            if (!data.url) throw new Error('Missing Strava redirect URL');
+            window.location.href = data.url;
+        } catch (err: any) {
+            setError(err.message || 'Failed to connect Strava.');
+        }
+    };
+
+    const handleDisconnectStrava = async () => {
+        if (!user) return;
+        setError('');
+        setMessage('');
+        try {
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+            const idToken = await user.getIdToken();
+            const res = await fetch(`${apiUrl}/strava/deauthorize`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${idToken}`
+                }
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Failed to disconnect Strava');
+            setStravaConnected(false);
+            setMessage('Strava disconnected.');
+        } catch (err: any) {
+            setError(err.message || 'Failed to disconnect Strava.');
+        }
     };
 
     // Restore temp state if returning from Strava
@@ -742,21 +783,35 @@ function RegisterContent() {
                                 {!stravaConnected && <span className="text-xs bg-secondary text-secondary-foreground px-2 py-1 rounded-full">Optional</span>}
                             </div>
                             <p className="text-sm text-muted-foreground mb-2">Link your account to track activities.</p>
+                            <StravaAttribution className="mb-3" />
 
                             {stravaConnected ? (
-                                <div className="text-green-700 dark:text-green-400 font-medium flex items-center gap-2">
-                                    <span>Connected</span>
-                                </div>
+                                <button
+                                    onClick={handleDisconnectStrava}
+                                    className="h-12 px-4 rounded-md border border-border bg-background text-foreground text-sm font-medium hover:bg-muted transition"
+                                >
+                                    Disconnect Strava
+                                </button>
                             ) : (
                                 <button
                                     onClick={handleConnectStrava}
                                     disabled={!eLicense} // Relaxed dependency on verified license for strava connection flow
-                                    className={`px-4 py-2 rounded font-medium text-sm flex items-center gap-2 transition
-                                ${eLicense
-                                            ? 'bg-[#FC4C02] text-white hover:bg-[#E34402]'
-                                            : 'bg-secondary text-muted-foreground cursor-not-allowed'}`}
+                                    className={`inline-flex items-center transition ${eLicense ? 'hover:opacity-90' : 'opacity-50 cursor-not-allowed'}`}
+                                    aria-label="Connect with Strava"
                                 >
-                                    Connect with Strava
+                                    <span className="sr-only">Connect with Strava</span>
+                                    <img
+                                        src="/strava/btn_strava_connect_with_orange.svg"
+                                        alt="Connect with Strava"
+                                        className="h-12 w-auto dark:hidden"
+                                        loading="lazy"
+                                    />
+                                    <img
+                                        src="/strava/btn_strava_connect_with_white.svg"
+                                        alt="Connect with Strava"
+                                        className="hidden h-12 w-auto dark:block"
+                                        loading="lazy"
+                                    />
                                 </button>
                             )}
                         </div>

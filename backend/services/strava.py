@@ -1,6 +1,5 @@
 import requests
 import time
-from flask import jsonify, redirect
 from config import STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, BACKEND_URL
 from firebase_admin import firestore
 
@@ -22,7 +21,8 @@ class StravaService:
             data = res.json()
             
             if res.status_code != 200:
-                print(f"Failed to refresh token: {data}")
+                # Never log token payloads; Strava responses can include sensitive fields.
+                print(f"Failed to refresh token: HTTP {res.status_code}")
                 return None
             
             if self.db:
@@ -38,10 +38,7 @@ class StravaService:
             print(f"Error refreshing token: {e}")
             return None
 
-    def login(self, e_license):
-        if not e_license:
-             return None, 'Missing eLicense param', 400
-
+    def build_authorize_url(self, state):
         redirect_uri = f"{BACKEND_URL}/strava/callback"
         scope = "read,activity:read_all" 
         
@@ -52,17 +49,11 @@ class StravaService:
             f"&redirect_uri={redirect_uri}"
             f"&approval_prompt=force"
             f"&scope={scope}"
-            f"&state={e_license}" 
+            f"&state={state}" 
         )
-        return strava_url, None, 302
+        return strava_url
 
-    def callback(self, code, e_license, error):
-        if error:
-            return None, f'Strava Error: {error}', 400
-        
-        if not code or not e_license:
-             return None, 'Missing code or state', 400
-
+    def exchange_code_for_tokens(self, code):
         token_url = "https://www.strava.com/oauth/token"
         payload = {
             'client_id': STRAVA_CLIENT_ID,
@@ -70,30 +61,26 @@ class StravaService:
             'code': code,
             'grant_type': 'authorization_code'
         }
-        
-        try:
-            res = requests.post(token_url, data=payload)
-            data = res.json()
-            
-            if res.status_code != 200:
-                 return None, {'message': 'Failed to get tokens', 'details': data}, 500
-            
-            if self.db:
-                user_ref = self.db.collection('users').document(str(e_license))
-                user_ref.set({
-                    'strava': {
-                        'athlete_id': data['athlete']['id'],
-                        'access_token': data['access_token'],
-                        'refresh_token': data['refresh_token'],
-                        'expires_at': data['expires_at']
-                    },
-                    'updatedAt': firestore.SERVER_TIMESTAMP
-                }, merge=True)
-            
-            return f"https://dcu-member-liga.vercel.app/register?strava=connected", None, 302
+        res = requests.post(token_url, data=payload)
+        data = res.json()
+        return res.status_code, data
 
+    def deauthorize(self, access_token):
+        """
+        Revoke an athlete's authorization for this app.
+        Strava endpoint: POST https://www.strava.com/oauth/deauthorize
+        """
+        if not access_token:
+            return False
+        try:
+            res = requests.post(
+                "https://www.strava.com/oauth/deauthorize",
+                data={'access_token': access_token}
+            )
+            return res.status_code == 200
         except Exception as e:
-             return None, str(e), 500
+            print(f"Error deauthorizing Strava token: {e}")
+            return False
 
     def _get_valid_token(self, e_license):
         if not e_license or not self.db:
