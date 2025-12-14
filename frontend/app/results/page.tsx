@@ -321,7 +321,7 @@ export default function ResultsPage() {
                                               {race.name}
                                           </th>
                                       ))}
-                                      <th className="px-4 py-3 text-right font-bold text-primary">Total Points (Best 5)</th>
+                                      <th className="px-4 py-3 text-right font-bold text-primary">Total Points</th>
                                   </tr>
                               </thead>
                               <tbody className="divide-y divide-border">
