@@ -183,7 +183,27 @@ export default function ResultsPage() {
   const displayStandingsCategory = (Object.keys(standings).length > 0 && !availableStandingsCategories.includes(standingsCategory))
       ? availableStandingsCategories[0]
       : standingsCategory;
-  const currentStandings = standings[displayStandingsCategory] || [];
+  
+  // Calculate standings with only best 5 races counting
+  const BEST_RACES_COUNT = 5;
+  const rawStandings = standings[displayStandingsCategory] || [];
+  
+  // Process each rider to calculate best 5 races
+  const processedStandings = rawStandings.map(rider => {
+      // Sort results by points descending and take top 5
+      const sortedResults = [...rider.results].sort((a, b) => b.points - a.points);
+      const countingRaceIds = new Set(sortedResults.slice(0, BEST_RACES_COUNT).map(r => r.raceId));
+      const bestFiveTotal = sortedResults.slice(0, BEST_RACES_COUNT).reduce((sum, r) => sum + r.points, 0);
+      
+      return {
+          ...rider,
+          calculatedTotal: bestFiveTotal,
+          countingRaceIds
+      };
+  });
+  
+  // Re-sort standings by the new calculated total
+  const currentStandings = processedStandings.sort((a, b) => b.calculatedTotal - a.calculatedTotal);
 
   // Extract all unique sprint keys (if any) from the results to build dynamic columns
   const allSprintKeys = new Set<string>();
@@ -301,7 +321,7 @@ export default function ResultsPage() {
                                               {race.name}
                                           </th>
                                       ))}
-                                      <th className="px-4 py-3 text-right font-bold text-primary">Total Points</th>
+                                      <th className="px-4 py-3 text-right font-bold text-primary">Total Points (Best 5)</th>
                                   </tr>
                               </thead>
                               <tbody className="divide-y divide-border">
@@ -314,13 +334,24 @@ export default function ResultsPage() {
                                           <td className="px-4 py-3 text-center text-muted-foreground">{rider.raceCount}</td>
                                           {races.map(race => {
                                               const result = rider.results.find(r => r.raceId === race.id);
+                                              const isCounting = rider.countingRaceIds.has(race.id);
                                               return (
-                                                  <td key={race.id} className="px-2 py-3 text-center text-sm text-muted-foreground">
+                                                  <td 
+                                                      key={race.id} 
+                                                      className={`px-2 py-3 text-center text-sm ${
+                                                          result 
+                                                              ? isCounting 
+                                                                  ? 'text-foreground font-medium' 
+                                                                  : 'text-muted-foreground/50 line-through'
+                                                              : 'text-muted-foreground'
+                                                      }`}
+                                                      title={result && !isCounting ? 'Not counting (outside best 5)' : undefined}
+                                                  >
                                                       {result ? result.points : '-'}
                                                   </td>
                                               );
                                           })}
-                                          <td className="px-4 py-3 text-right font-bold text-foreground text-lg">{rider.totalPoints}</td>
+                                          <td className="px-4 py-3 text-right font-bold text-foreground text-lg">{rider.calculatedTotal}</td>
                                       </tr>
                                   ))}
                               </tbody>
