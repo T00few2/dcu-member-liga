@@ -404,9 +404,25 @@ def dcu_api(request):
         if not db:
              return (jsonify({'error': 'DB not available'}), 500, headers)
         try:
-            # Reuse ResultsProcessor logic for aggregation
-            processor = ResultsProcessor(db, None, None) # Services not needed for aggregation
+            # 1. Try to get cached standings first
+            doc = db.collection('league').document('standings').get()
+            if doc.exists:
+                data = doc.to_dict()
+                # Check for freshness if needed, but for now we trust the event-driven update
+                standings = data.get('standings')
+                if standings:
+                    return (jsonify({'standings': standings}), 200, headers)
+
+            # 2. Fallback: Calculate if not present
+            processor = ResultsProcessor(db, None, None) 
             standings = processor.calculate_league_standings()
+            
+            # Save it for next time
+            db.collection('league').document('standings').set({
+                'standings': standings,
+                'updatedAt': firestore.SERVER_TIMESTAMP
+            })
+            
             return (jsonify({'standings': standings}), 200, headers)
         except Exception as e:
             return (jsonify({'message': str(e)}), 500, headers)

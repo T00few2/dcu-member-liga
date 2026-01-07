@@ -104,7 +104,22 @@ class ResultsProcessor:
             'resultsUpdatedAt': datetime.now()
         })
         
+        # 7. Update Global League Standings
+        try:
+            self.save_league_standings()
+        except Exception as e:
+            print(f"Error updating league standings: {e}")
+
         return all_results
+
+    def save_league_standings(self):
+        standings = self.calculate_league_standings()
+        self.db.collection('league').document('standings').set({
+            'standings': standings,
+            'updatedAt': firestore.SERVER_TIMESTAMP
+        }, merge=True)
+        print("Updated league standings document.")
+        return standings
 
     def _process_event_source(self, source, race_data, registered_riders, 
                               finish_points_scheme, sprint_points_scheme, 

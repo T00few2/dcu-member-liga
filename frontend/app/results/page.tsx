@@ -161,6 +161,23 @@ export default function ResultsPage() {
       return () => unsubscribe();
   }, [selectedRaceId, activeTab]);
 
+  // Live Updates for Standings
+  useEffect(() => {
+      // Subscribe to the league standings document
+      const unsubscribe = onSnapshot(doc(db, 'league', 'standings'), (docSnapshot) => {
+          if (docSnapshot.exists()) {
+              const data = docSnapshot.data();
+              if (data.standings) {
+                  setStandings(data.standings);
+              }
+          }
+      }, (error) => {
+          console.error("Error listening to standings updates:", error);
+      });
+
+      return () => unsubscribe();
+  }, []);
+
   const formatTime = (ms: number) => {
       if (!ms) return '-';
       const totalSeconds = Math.floor(ms / 1000);
