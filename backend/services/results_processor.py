@@ -389,7 +389,12 @@ class ResultsProcessor:
         if not self.db:
             return {}
 
-        print("Calculating league standings...")
+        # Fetch settings to know how many best races to count (default 5)
+        settings_doc = self.db.collection('league').document('settings').get()
+        settings = settings_doc.to_dict() if settings_doc.exists else {}
+        best_races_count = settings.get('bestRacesCount', 5)
+
+        print(f"Calculating league standings (Best {best_races_count} races)...")
         races_ref = self.db.collection('races')
         docs = races_ref.stream()
         
@@ -434,6 +439,16 @@ class ResultsProcessor:
         final_standings = {}
         for category, riders_dict in league_table.items():
             sorted_riders = list(riders_dict.values())
+            
+            # Apply Best X Calculation
+            for rider in sorted_riders:
+                results_list = rider['results']
+                # Sort descending by points
+                results_list.sort(key=lambda x: x['points'], reverse=True)
+                # Take top N
+                best_results = results_list[:best_races_count]
+                rider['totalPoints'] = sum(r['points'] for r in best_results)
+
             sorted_riders.sort(key=lambda x: x['totalPoints'], reverse=True)
             final_standings[category] = sorted_riders
             

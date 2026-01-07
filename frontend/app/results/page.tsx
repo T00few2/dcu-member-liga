@@ -71,6 +71,7 @@ export default function ResultsPage() {
   
   // Standings UI State
   const [standingsCategory, setStandingsCategory] = useState<string>('A');
+  const [bestRacesCount, setBestRacesCount] = useState<number>(5);
 
   // Access Control
   useEffect(() => {
@@ -97,9 +98,17 @@ export default function ResultsPage() {
             });
             
             // Fetch Standings
-            const standingsRes = await fetch(`${apiUrl}/league/standings`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            const [standingsRes, settingsRes] = await Promise.all([
+                fetch(`${apiUrl}/league/standings`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                fetch(`${apiUrl}/league/settings`, { headers: { 'Authorization': `Bearer ${token}` } })
+            ]);
+
+            if (settingsRes.ok) {
+                const settingsData = await settingsRes.json();
+                if (settingsData.settings?.bestRacesCount) {
+                    setBestRacesCount(settingsData.settings.bestRacesCount);
+                }
+            }
 
             if (racesRes.ok) {
                 const data = await racesRes.json();
@@ -177,9 +186,19 @@ export default function ResultsPage() {
   const selectedRace = races.find(r => r.id === selectedRaceId);
   
   // Sort available categories
-  let availableRaceCategories = selectedRace?.results 
-      ? Object.keys(selectedRace.results)
-      : ['A', 'B', 'C', 'D', 'E'];
+  let availableRaceCategories: string[] = [];
+  
+  if (selectedRace?.results && Object.keys(selectedRace.results).length > 0) {
+      availableRaceCategories = Object.keys(selectedRace.results);
+  } else if (selectedRace?.eventMode === 'multi' && selectedRace.eventConfiguration) {
+      // Use configured categories if no results yet
+      availableRaceCategories = selectedRace.eventConfiguration
+          .map(c => c.customCategory)
+          .filter(Boolean);
+  } else {
+      // Fallback default
+      availableRaceCategories = ['A', 'B', 'C', 'D', 'E'];
+  }
 
   if (selectedRace?.eventMode === 'multi' && selectedRace.eventConfiguration) {
       // Create a map of category -> index
@@ -239,20 +258,19 @@ export default function ResultsPage() {
       ? availableStandingsCategories[0]
       : standingsCategory;
   
-  // Calculate standings with only best 5 races counting
-  const BEST_RACES_COUNT = 5;
+  // Calculate standings with only best X races counting
   const rawStandings = standings[displayStandingsCategory] || [];
   
-  // Process each rider to calculate best 5 races
+  // Process each rider to calculate best races
   const processedStandings = rawStandings.map(rider => {
-      // Sort results by points descending and take top 5
+      // Sort results by points descending and take top N
       const sortedResults = [...rider.results].sort((a, b) => b.points - a.points);
-      const countingRaceIds = new Set(sortedResults.slice(0, BEST_RACES_COUNT).map(r => r.raceId));
-      const bestFiveTotal = sortedResults.slice(0, BEST_RACES_COUNT).reduce((sum, r) => sum + r.points, 0);
+      const countingRaceIds = new Set(sortedResults.slice(0, bestRacesCount).map(r => r.raceId));
+      const bestTotal = sortedResults.slice(0, bestRacesCount).reduce((sum, r) => sum + r.points, 0);
       
       return {
           ...rider,
-          calculatedTotal: bestFiveTotal,
+          calculatedTotal: bestTotal,
           countingRaceIds
       };
   });

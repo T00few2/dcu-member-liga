@@ -56,6 +56,7 @@ interface Race {
 interface LeagueSettings {
   finishPoints: number[];
   sprintPoints: number[];
+  bestRacesCount: number; // Added field
 }
 
 export default function LeagueManager() {
@@ -65,7 +66,7 @@ export default function LeagueManager() {
   const [routes, setRoutes] = useState<Route[]>([]);
   const [races, setRaces] = useState<Race[]>([]);
   const [availableSegments, setAvailableSegments] = useState<Segment[]>([]);
-  const [leagueSettings, setLeagueSettings] = useState<LeagueSettings>({ finishPoints: [], sprintPoints: [] });
+  const [leagueSettings, setLeagueSettings] = useState<LeagueSettings>({ finishPoints: [], sprintPoints: [], bestRacesCount: 5 });
   
   // Tabs
   const [activeTab, setActiveTab] = useState<'races' | 'settings'>('races');
@@ -102,6 +103,7 @@ export default function LeagueManager() {
   // Settings Form State
   const [finishPointsStr, setFinishPointsStr] = useState('');
   const [sprintPointsStr, setSprintPointsStr] = useState('');
+  const [bestRacesCount, setBestRacesCount] = useState(5);
   
   // Generator State
   const [genStart, setGenStart] = useState(130);
@@ -145,10 +147,12 @@ export default function LeagueManager() {
                 const settings = settingsData.settings || {};
                 setLeagueSettings({
                     finishPoints: settings.finishPoints || [],
-                    sprintPoints: settings.sprintPoints || []
+                    sprintPoints: settings.sprintPoints || [],
+                    bestRacesCount: settings.bestRacesCount || 5
                 });
                 setFinishPointsStr((settings.finishPoints || []).join(', '));
                 setSprintPointsStr((settings.sprintPoints || []).join(', '));
+                setBestRacesCount(settings.bestRacesCount || 5);
             }
 
         } catch (e) {
@@ -303,12 +307,12 @@ export default function LeagueManager() {
                   'Content-Type': 'application/json',
                   'Authorization': `Bearer ${token}`
               },
-              body: JSON.stringify({ finishPoints, sprintPoints })
+              body: JSON.stringify({ finishPoints, sprintPoints, bestRacesCount })
           });
           
           if (res.ok) {
               alert('Settings saved!');
-              setLeagueSettings({ finishPoints, sprintPoints });
+              setLeagueSettings({ finishPoints, sprintPoints, bestRacesCount });
           } else {
               alert('Failed to save settings');
           }
@@ -534,6 +538,17 @@ export default function LeagueManager() {
                                 onChange={e => setSprintPointsStr(e.target.value)}
                                 className="w-full p-3 border border-input rounded-lg bg-background text-foreground h-24 font-mono text-sm"
                                 placeholder="e.g. 10, 9, 8, 7, 6..."
+                            />
+                        </div>
+                        <div>
+                            <label className="block font-medium text-card-foreground mb-2">Number of Counting Races</label>
+                            <p className="text-xs text-muted-foreground mb-2">How many best results count towards the final league standing.</p>
+                            <input 
+                                type="number" 
+                                value={bestRacesCount}
+                                onChange={e => setBestRacesCount(parseInt(e.target.value) || 5)}
+                                className="w-24 p-2 border border-input rounded bg-background text-foreground"
+                                min="1"
                             />
                         </div>
                         <button 
