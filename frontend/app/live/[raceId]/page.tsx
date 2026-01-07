@@ -11,7 +11,11 @@ interface Race {
     results?: Record<string, ResultEntry[]>;
     sprints?: Sprint[];
     sprintData?: Sprint[]; // User specified field for correct ordering
-    // We might add 'status' or 'laps' later
+    eventMode?: 'single' | 'multi';
+    eventConfiguration?: {
+        eventId: string;
+        customCategory: string;
+    }[];
 }
 
 interface Sprint {
@@ -37,7 +41,7 @@ export default function LiveResultsPage() {
     const raceId = params?.raceId as string;
 
     // Configuration from URL
-    const category = searchParams.get('cat') || 'A';
+    const categoryParam = searchParams.get('cat');
     const isTransparent = searchParams.get('transparent') !== 'false'; // Default true
     const limit = parseInt(searchParams.get('limit') || '10'); // Default 10
     const autoScroll = searchParams.get('scroll') === 'true';
@@ -163,6 +167,34 @@ export default function LiveResultsPage() {
     if (!race) return null;
 
     // Filter Results
+    // Smart Category Selection:
+    // 1. URL Param
+    // 2. Map Zwift Event ID (from URL) to Custom Category Name
+    // 3. Default to first available category
+    // 4. Default to 'A'
+    
+    let displayCategory = categoryParam;
+
+    if (!displayCategory) {
+        if (race.eventMode === 'multi' && race.eventConfiguration) {
+            // Check if the current URL param (raceId) matches a specific event config
+            // raceId here is likely the Zwift ID if the user used the direct link
+            const match = race.eventConfiguration.find((c: any) => c.eventId === raceId);
+            if (match && match.customCategory) {
+                displayCategory = match.customCategory;
+            }
+        }
+        
+        // Fallback: Use first available category if still null
+        if (!displayCategory && race.results) {
+             const categories = Object.keys(race.results);
+             if (categories.length > 0) {
+                 displayCategory = categories[0];
+             }
+        }
+    }
+    
+    const category = displayCategory || 'A';
     const results = race.results?.[category] || [];
 
     // Determine Sprint Columns
