@@ -27,7 +27,7 @@ export default function RootLayout({
             <main className="container mx-auto p-4 min-h-screen">
               {children}
             </main>
-            <footer className="bg-slate-100 p-4 text-center text-slate-600 text-sm">
+            <footer className="site-footer bg-slate-100 p-4 text-center text-slate-600 text-sm">
               © {new Date().getFullYear()} DCU Member League
             </footer>
           </ToastProvider>

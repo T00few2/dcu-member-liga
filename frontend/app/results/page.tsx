@@ -19,9 +19,10 @@ interface Race {
   eventConfiguration?: {
     eventId: string;
     eventSecret: string;
-    customCategory: string; // e.g. "Elite Men"
+    customCategory: string;
+    laps?: number; // Added laps override
   }[];
-  results?: Record<string, ResultEntry[]>; // Keyed by category 'A', 'B', etc.
+  results?: Record<string, ResultEntry[]>;
   resultsUpdatedAt?: string;
   sprints?: Sprint[];
   sprintData?: Sprint[];
@@ -201,10 +202,39 @@ export default function ResultsPage() {
       : selectedCategory;
   const raceResults = selectedRace?.results?.[displayRaceCategory] || [];
 
+  // Determine laps for display
+  // If multi-event, look for specific category config overrides
+  let displayLaps = selectedRace?.laps;
+  if (selectedRace?.eventMode === 'multi' && selectedRace.eventConfiguration) {
+      const config = selectedRace.eventConfiguration.find(c => c.customCategory === displayRaceCategory);
+      if (config && config.laps) {
+          displayLaps = config.laps;
+      }
+  }
   // Standings Data
-  const availableStandingsCategories = Object.keys(standings).length > 0 
-      ? Object.keys(standings).sort() 
+  let availableStandingsCategories = Object.keys(standings).length > 0 
+      ? Object.keys(standings)
       : ['A', 'B', 'C', 'D', 'E'];
+
+  // Apply custom sorting based on the latest race configuration
+  const referenceRace = [...races].reverse().find(r => r.eventMode === 'multi' && r.eventConfiguration && r.eventConfiguration.length > 0);
+  
+  if (referenceRace && referenceRace.eventConfiguration) {
+      const orderMap = new Map();
+      referenceRace.eventConfiguration.forEach((cfg, idx) => {
+          if (cfg.customCategory) orderMap.set(cfg.customCategory, idx);
+      });
+      
+      availableStandingsCategories.sort((a, b) => {
+          const idxA = orderMap.has(a) ? orderMap.get(a) : 999;
+          const idxB = orderMap.has(b) ? orderMap.get(b) : 999;
+          if (idxA === idxB) return a.localeCompare(b);
+          return idxA - idxB;
+      });
+  } else {
+      availableStandingsCategories.sort();
+  }
+
   const displayStandingsCategory = (Object.keys(standings).length > 0 && !availableStandingsCategories.includes(standingsCategory))
       ? availableStandingsCategories[0]
       : standingsCategory;
@@ -415,7 +445,7 @@ export default function ResultsPage() {
                   {selectedRace && (
                       <div className="text-right hidden sm:block">
                           <div className="text-sm font-medium text-card-foreground">{selectedRace.map}</div>
-                          <div className="text-xs text-muted-foreground">{selectedRace.routeName} • {selectedRace.laps} laps</div>
+                          <div className="text-xs text-muted-foreground">{selectedRace.routeName} • {displayLaps} laps</div>
                       </div>
                   )}
               </div>

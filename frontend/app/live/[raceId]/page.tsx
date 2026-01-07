@@ -320,6 +320,9 @@ export default function LiveResultsPage() {
             
             {/* OBS Helper Styles */}
             <style jsx global>{`
+                .site-footer {
+                    display: none !important;
+                }
                 .scrollbar-hide::-webkit-scrollbar {
                     display: none;
                 }
