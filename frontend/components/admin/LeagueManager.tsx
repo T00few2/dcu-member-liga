@@ -40,6 +40,7 @@ interface Race {
   eventId?: string; // Legacy/Single Mode
   eventSecret?: string; // Legacy/Single Mode
   eventMode?: 'single' | 'multi';
+  linkedEventIds?: string[]; // New searchable index
   eventConfiguration?: {
     eventId: string;
     eventSecret: string;
@@ -405,12 +406,15 @@ export default function LeagueManager() {
         if (eventMode === 'single') {
             raceData.eventId = eventId;
             raceData.eventSecret = eventSecret;
-            raceData.eventConfiguration = []; // Clear if switching back
+            raceData.eventConfiguration = []; 
+            // Searchable Index
+            raceData.linkedEventIds = eventId ? [eventId] : [];
         } else {
             raceData.eventConfiguration = eventConfiguration;
-            // Clear legacy fields to avoid confusion, or keep them empty
             raceData.eventId = ''; 
             raceData.eventSecret = '';
+            // Searchable Index
+            raceData.linkedEventIds = eventConfiguration.map(c => c.eventId).filter(Boolean);
         }
         
         const method = editingRaceId ? 'PUT' : 'POST';

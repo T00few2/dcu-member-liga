@@ -75,19 +75,17 @@ export default function LiveResultsPage() {
                      if (!snapshot.empty) {
                         docRef = doc(db, 'races', snapshot.docs[0].id);
                      } else {
-                        // 3. Try Multi-Event Configuration (Array contains object with eventId)
-                        // This is harder in Firestore without an index on array contents.
-                        // We will rely on client-side filtering if necessary or assume user uses Race ID in URL now.
-                        // Ideally, the "Live" button in Admin links to the RACE ID, not Event ID.
+                        // 3. Try Linked Event IDs (New Array Index)
+                        const q2 = query(collection(db, 'races'), where('linkedEventIds', 'array-contains', raceId));
+                        const snapshot2 = await getDocs(q2);
                         
-                        // Let's fall back to trying to match against the eventConfiguration array if possible?
-                        // No, simpler: Update the Live Page to assume raceId IS the Firestore ID.
-                        // But for backward compatibility with old links (if any), we kept the eventId check.
-                        
-                        // If we are here, we found nothing by ID and nothing by legacy eventId.
-                        setError(`No race found with ID: ${raceId}`);
-                        setLoading(false);
-                        return;
+                        if (!snapshot2.empty) {
+                            docRef = doc(db, 'races', snapshot2.docs[0].id);
+                        } else {
+                            setError(`No race found with ID: ${raceId}`);
+                            setLoading(false);
+                            return;
+                        }
                      }
                 }
             } catch (err: any) {

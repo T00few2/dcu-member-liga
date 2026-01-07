@@ -15,6 +15,12 @@ interface Race {
   map: string;
   laps: number;
   eventId?: string;
+  eventMode?: 'single' | 'multi';
+  eventConfiguration?: {
+    eventId: string;
+    eventSecret: string;
+    customCategory: string; // e.g. "Elite Men"
+  }[];
   results?: Record<string, ResultEntry[]>; // Keyed by category 'A', 'B', etc.
   resultsUpdatedAt?: string;
   sprints?: Sprint[];
@@ -168,9 +174,28 @@ export default function ResultsPage() {
   
   // Race Results Data
   const selectedRace = races.find(r => r.id === selectedRaceId);
-  const availableRaceCategories = selectedRace?.results 
-      ? Object.keys(selectedRace.results).sort() 
+  
+  // Sort available categories
+  let availableRaceCategories = selectedRace?.results 
+      ? Object.keys(selectedRace.results)
       : ['A', 'B', 'C', 'D', 'E'];
+
+  if (selectedRace?.eventMode === 'multi' && selectedRace.eventConfiguration) {
+      // Create a map of category -> index
+      const orderMap = new Map();
+      selectedRace.eventConfiguration.forEach((cfg, idx) => {
+          if (cfg.customCategory) orderMap.set(cfg.customCategory, idx);
+      });
+      
+      availableRaceCategories.sort((a, b) => {
+          const idxA = orderMap.has(a) ? orderMap.get(a) : 999;
+          const idxB = orderMap.has(b) ? orderMap.get(b) : 999;
+          return idxA - idxB;
+      });
+  } else {
+      availableRaceCategories.sort();
+  }
+
   const displayRaceCategory = (selectedRace?.results && !availableRaceCategories.includes(selectedCategory) && availableRaceCategories.length > 0)
       ? availableRaceCategories[0]
       : selectedCategory;
@@ -301,7 +326,7 @@ export default function ResultsPage() {
                                   : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                               }`}
                           >
-                              Cat {cat}
+                              {cat}
                           </button>
                       ))}
                   </div>
@@ -407,7 +432,7 @@ export default function ResultsPage() {
                               : 'bg-muted/30 text-muted-foreground hover:bg-muted/50 hover:text-foreground'
                           }`}
                       >
-                          Category {cat}
+                          {cat}
                       </button>
                   ))}
               </div>
@@ -457,9 +482,9 @@ export default function ResultsPage() {
                   ) : (
                       <div className="p-12 text-center">
                           <p className="text-muted-foreground mb-4">
-                              No results available for <span className="font-semibold text-foreground">{selectedRace?.name}</span> (Category {displayRaceCategory})
+                              No results available for <span className="font-semibold text-foreground">{selectedRace?.name}</span> ({displayRaceCategory})
                           </p>
-                          {selectedRace?.eventId ? (
+                          {selectedRace?.eventId || (selectedRace?.eventConfiguration && selectedRace.eventConfiguration.length > 0) ? (
                               <div className="inline-block px-4 py-2 bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded text-sm">
                                   Results processing is pending or incomplete. Check back later.
                               </div>
