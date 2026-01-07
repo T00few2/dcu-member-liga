@@ -59,17 +59,36 @@ export default function LiveResultsPage() {
             
             // Query for the race doc with this eventId
             try {
-                // Note: raceId is a string from the URL, and eventId is likely stored as a string in Firestore.
-                const q = query(collection(db, 'races'), where('eventId', '==', raceId));
-                const snapshot = await getDocs(q);
+                // Determine if raceId is likely a Zwift Event ID (number) or a Firestore ID (string with mixed chars)
+                // Actually, the Live URL structure is /live/[raceId]. 
+                // Previously, we might have been using Event ID as the URL param, or the race ID.
+                // Let's try finding by document ID first (most robust), then by eventId.
                 
-                if (!snapshot.empty) {
-                    // Use the first matching document's ID
-                    docRef = doc(db, 'races', snapshot.docs[0].id);
-                } else {
-                    setError(`No race found with Event ID: ${raceId}`);
-                    setLoading(false);
-                    return;
+                // 1. Try Document ID
+                docRef = doc(db, 'races', raceId);
+                const docSnap = await getDocs(query(collection(db, 'races'), where('__name__', '==', raceId)));
+                
+                if (docSnap.empty) {
+                     // 2. Try Legacy Event ID
+                     const q = query(collection(db, 'races'), where('eventId', '==', raceId));
+                     const snapshot = await getDocs(q);
+                     if (!snapshot.empty) {
+                        docRef = doc(db, 'races', snapshot.docs[0].id);
+                     } else {
+                        // 3. Try Multi-Event Configuration (Array contains object with eventId)
+                        // This is harder in Firestore without an index on array contents.
+                        // We will rely on client-side filtering if necessary or assume user uses Race ID in URL now.
+                        // Ideally, the "Live" button in Admin links to the RACE ID, not Event ID.
+                        
+                        // Let's fall back to trying to match against the eventConfiguration array if possible?
+                        // No, simpler: Update the Live Page to assume raceId IS the Firestore ID.
+                        // But for backward compatibility with old links (if any), we kept the eventId check.
+                        
+                        // If we are here, we found nothing by ID and nothing by legacy eventId.
+                        setError(`No race found with ID: ${raceId}`);
+                        setLoading(false);
+                        return;
+                     }
                 }
             } catch (err: any) {
                 console.error("Query error:", err);

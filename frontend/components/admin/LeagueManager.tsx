@@ -44,6 +44,8 @@ interface Race {
     eventId: string;
     eventSecret: string;
     customCategory: string; // e.g. "Elite Men"
+    laps?: number; // Override Laps
+    startTime?: string; // Override Start Time (ISO string or Time string)
   }[];
   selectedSegments?: string[]; // List of segment unique keys (id_count) - KEPT FOR BACKWARDS COMPAT
   sprints?: SelectedSegment[]; // Full segment objects
@@ -81,7 +83,13 @@ export default function LeagueManager() {
   
   // Multi Mode State
   const [eventMode, setEventMode] = useState<'single' | 'multi'>('single');
-  const [eventConfiguration, setEventConfiguration] = useState<{eventId: string, eventSecret: string, customCategory: string}[]>([]);
+  const [eventConfiguration, setEventConfiguration] = useState<{
+      eventId: string, 
+      eventSecret: string, 
+      customCategory: string,
+      laps?: number,
+      startTime?: string
+  }[]>([]);
 
   const [selectedMap, setSelectedMap] = useState('');
   const [selectedRouteId, setSelectedRouteId] = useState('');
@@ -164,8 +172,15 @@ export default function LeagueManager() {
       
       const fetchSegments = async () => {
           try {
+              // Determine MAX laps to fetch
+              let maxLaps = laps;
+              if (eventMode === 'multi' && eventConfiguration.length > 0) {
+                  const cfgMax = Math.max(...eventConfiguration.map(c => c.laps || 0));
+                  if (cfgMax > maxLaps) maxLaps = cfgMax;
+              }
+
               const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-              const res = await fetch(`${apiUrl}/segments?routeId=${selectedRouteId}&laps=${laps}`);
+              const res = await fetch(`${apiUrl}/segments?routeId=${selectedRouteId}&laps=${maxLaps}`);
               if (res.ok) {
                   const data = await res.json();
                   setAvailableSegments(data.segments || []);
@@ -175,7 +190,7 @@ export default function LeagueManager() {
           }
       };
       fetchSegments();
-  }, [selectedRouteId, laps]);
+  }, [selectedRouteId, laps, eventMode, eventConfiguration]);
 
   // Real-time listener for viewing results
   useEffect(() => {
@@ -457,7 +472,7 @@ export default function LeagueManager() {
   };
 
   const addEventConfig = () => {
-      setEventConfiguration([...eventConfiguration, { eventId: '', eventSecret: '', customCategory: '' }]);
+      setEventConfiguration([...eventConfiguration, { eventId: '', eventSecret: '', customCategory: '', laps: laps, startTime: '' }]);
   };
 
   const removeEventConfig = (index: number) => {
@@ -466,7 +481,7 @@ export default function LeagueManager() {
       setEventConfiguration(newConfig);
   };
 
-  const updateEventConfig = (index: number, field: keyof typeof eventConfiguration[0], value: string) => {
+  const updateEventConfig = (index: number, field: keyof typeof eventConfiguration[0], value: string | number) => {
       const newConfig = [...eventConfiguration];
       newConfig[index] = { ...newConfig[index], [field]: value };
       setEventConfiguration(newConfig);
@@ -767,41 +782,67 @@ export default function LeagueManager() {
                               ) : (
                                   <div className="space-y-3">
                                       {eventConfiguration.map((config, idx) => (
-                                          <div key={idx} className="flex gap-2 items-start">
-                                              <div className="flex-1">
-                                                  <input 
-                                                    type="text" 
-                                                    value={config.eventId}
-                                                    onChange={e => updateEventConfig(idx, 'eventId', e.target.value)}
-                                                    className="w-full p-2 border border-input rounded bg-background text-foreground text-sm"
-                                                    placeholder="Zwift ID"
-                                                  />
+                                          <div key={idx} className="flex flex-col gap-2 p-3 bg-muted/20 rounded border border-border">
+                                              <div className="flex gap-2 items-start">
+                                                  <div className="flex-1">
+                                                      <label className="text-[10px] text-muted-foreground font-bold uppercase block mb-1">Zwift ID</label>
+                                                      <input 
+                                                        type="text" 
+                                                        value={config.eventId}
+                                                        onChange={e => updateEventConfig(idx, 'eventId', e.target.value)}
+                                                        className="w-full p-2 border border-input rounded bg-background text-foreground text-sm"
+                                                        placeholder="e.g. 12345"
+                                                      />
+                                                  </div>
+                                                  <div className="flex-1">
+                                                       <label className="text-[10px] text-muted-foreground font-bold uppercase block mb-1">Category Name</label>
+                                                      <input 
+                                                        type="text" 
+                                                        value={config.customCategory}
+                                                        onChange={e => updateEventConfig(idx, 'customCategory', e.target.value)}
+                                                        className="w-full p-2 border border-input rounded bg-background text-foreground text-sm"
+                                                        placeholder="e.g. Elite Men"
+                                                      />
+                                                  </div>
+                                                  <button 
+                                                    type="button" 
+                                                    onClick={() => removeEventConfig(idx)}
+                                                    className="text-red-500 hover:text-red-700 px-2 pt-6"
+                                                  >
+                                                      ✕
+                                                  </button>
                                               </div>
-                                              <div className="flex-1">
-                                                  <input 
-                                                    type="text" 
-                                                    value={config.eventSecret}
-                                                    onChange={e => updateEventConfig(idx, 'eventSecret', e.target.value)}
-                                                    className="w-full p-2 border border-input rounded bg-background text-foreground text-sm"
-                                                    placeholder="Secret (Optional)"
-                                                  />
+                                              <div className="flex gap-2 items-start">
+                                                   <div className="flex-1">
+                                                      <label className="text-[10px] text-muted-foreground font-bold uppercase block mb-1">Secret (Opt)</label>
+                                                      <input 
+                                                        type="text" 
+                                                        value={config.eventSecret}
+                                                        onChange={e => updateEventConfig(idx, 'eventSecret', e.target.value)}
+                                                        className="w-full p-2 border border-input rounded bg-background text-foreground text-sm"
+                                                        placeholder="Secret"
+                                                      />
+                                                  </div>
+                                                  <div className="w-20">
+                                                      <label className="text-[10px] text-muted-foreground font-bold uppercase block mb-1">Laps</label>
+                                                      <input 
+                                                        type="number" 
+                                                        value={config.laps || laps}
+                                                        onChange={e => updateEventConfig(idx, 'laps', parseInt(e.target.value))}
+                                                        className="w-full p-2 border border-input rounded bg-background text-foreground text-sm"
+                                                        min="1"
+                                                      />
+                                                  </div>
+                                                  <div className="flex-1">
+                                                      <label className="text-[10px] text-muted-foreground font-bold uppercase block mb-1">Start Time (Opt)</label>
+                                                      <input 
+                                                        type="time" 
+                                                        value={config.startTime || ''}
+                                                        onChange={e => updateEventConfig(idx, 'startTime', e.target.value)}
+                                                        className="w-full p-2 border border-input rounded bg-background text-foreground text-sm"
+                                                      />
+                                                  </div>
                                               </div>
-                                              <div className="flex-1">
-                                                  <input 
-                                                    type="text" 
-                                                    value={config.customCategory}
-                                                    onChange={e => updateEventConfig(idx, 'customCategory', e.target.value)}
-                                                    className="w-full p-2 border border-input rounded bg-background text-foreground text-sm"
-                                                    placeholder="Category Name (e.g. Elite Men)"
-                                                  />
-                                              </div>
-                                              <button 
-                                                type="button" 
-                                                onClick={() => removeEventConfig(idx)}
-                                                className="text-red-500 hover:text-red-700 px-2 py-2"
-                                              >
-                                                  ✕
-                                              </button>
                                           </div>
                                       ))}
                                       <button 
@@ -905,7 +946,25 @@ export default function LeagueManager() {
                           {(() => {
                               const race = races.find(r => r.id === viewingResultsId);
                               const results = race?.results || {};
-                              const categories = Object.keys(results).sort();
+                              
+                              // Sort categories: Custom Order if Multi-Event, else Alphabetical
+                              let categories = Object.keys(results);
+                              
+                              if (race?.eventMode === 'multi' && race.eventConfiguration) {
+                                  // Create a map of category -> index
+                                  const orderMap = new Map();
+                                  race.eventConfiguration.forEach((cfg, idx) => {
+                                      if (cfg.customCategory) orderMap.set(cfg.customCategory, idx);
+                                  });
+                                  
+                                  categories.sort((a, b) => {
+                                      const idxA = orderMap.has(a) ? orderMap.get(a) : 999;
+                                      const idxB = orderMap.has(b) ? orderMap.get(b) : 999;
+                                      return idxA - idxB;
+                                  });
+                              } else {
+                                  categories.sort();
+                              }
                               
                               if (categories.length === 0) {
                                   return <div className="text-center text-muted-foreground p-8">No results calculated yet.</div>;
@@ -914,7 +973,7 @@ export default function LeagueManager() {
                               return categories.map(cat => (
                                   <div key={cat} className="border border-border rounded-lg overflow-hidden">
                                       <div className="bg-secondary/50 px-4 py-2 font-semibold text-sm border-b border-border">
-                                          Category {cat}
+                                          {cat}
                                       </div>
                                       <table className="w-full text-left text-sm">
                                           <thead className="bg-muted/20 text-xs text-muted-foreground">
