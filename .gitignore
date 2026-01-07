@@ -37,3 +37,8 @@ yarn-error.log*
 # Google Cloud
 backend/serviceAccountKey.json
 
+Zwift API documentation.docx
+.gitignore
+Zwift API documentation.txt
+.gitignore
+Zwift API documentation.pdf

@@ -37,8 +37,14 @@ interface Race {
   laps: number;
   totalDistance: number;
   totalElevation: number;
-  eventId?: string; // Added Event ID
-  eventSecret?: string; // Added Event Secret
+  eventId?: string; // Legacy/Single Mode
+  eventSecret?: string; // Legacy/Single Mode
+  eventMode?: 'single' | 'multi';
+  eventConfiguration?: {
+    eventId: string;
+    eventSecret: string;
+    customCategory: string; // e.g. "Elite Men"
+  }[];
   selectedSegments?: string[]; // List of segment unique keys (id_count) - KEPT FOR BACKWARDS COMPAT
   sprints?: SelectedSegment[]; // Full segment objects
   results?: Record<string, any[]>; // Store results by category
@@ -68,8 +74,15 @@ export default function LeagueManager() {
   const [editingRaceId, setEditingRaceId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [date, setDate] = useState('');
+  
+  // Single Mode State
   const [eventId, setEventId] = useState('');
   const [eventSecret, setEventSecret] = useState('');
+  
+  // Multi Mode State
+  const [eventMode, setEventMode] = useState<'single' | 'multi'>('single');
+  const [eventConfiguration, setEventConfiguration] = useState<{eventId: string, eventSecret: string, customCategory: string}[]>([]);
+
   const [selectedMap, setSelectedMap] = useState('');
   const [selectedRouteId, setSelectedRouteId] = useState('');
   const [laps, setLaps] = useState(1);
@@ -202,6 +215,9 @@ export default function LeagueManager() {
       setDate(race.date);
       setEventId(race.eventId || '');
       setEventSecret(race.eventSecret || '');
+      setEventMode(race.eventMode || 'single');
+      setEventConfiguration(race.eventConfiguration || []);
+      
       setSelectedMap(race.map);
       setSelectedRouteId(race.routeId);
       setLaps(race.laps);
@@ -224,6 +240,8 @@ export default function LeagueManager() {
       setDate('');
       setEventId('');
       setEventSecret('');
+      setEventMode('single');
+      setEventConfiguration([]);
       setSelectedMap('');
       setSelectedRouteId('');
       setLaps(1);
@@ -355,11 +373,9 @@ export default function LeagueManager() {
         const calcDistance = (selectedRoute.distance * laps + selectedRoute.leadinDistance).toFixed(1);
         const calcElevation = Math.round(selectedRoute.elevation * laps + selectedRoute.leadinElevation);
 
-        const raceData = {
+        const raceData: any = {
             name,
             date,
-            eventId, // Include Event ID
-            eventSecret, // Include Event Secret
             routeId: selectedRoute.id,
             routeName: selectedRoute.name,
             map: selectedRoute.map,
@@ -367,8 +383,20 @@ export default function LeagueManager() {
             totalDistance: Number(calcDistance),
             totalElevation: Number(calcElevation),
             selectedSegments: selectedSprints.map(s => s.key), // Keep for legacy/compat
-            sprints: selectedSprints // Save full objects
+            sprints: selectedSprints, // Save full objects
+            eventMode
         };
+
+        if (eventMode === 'single') {
+            raceData.eventId = eventId;
+            raceData.eventSecret = eventSecret;
+            raceData.eventConfiguration = []; // Clear if switching back
+        } else {
+            raceData.eventConfiguration = eventConfiguration;
+            // Clear legacy fields to avoid confusion, or keep them empty
+            raceData.eventId = ''; 
+            raceData.eventSecret = '';
+        }
         
         const method = editingRaceId ? 'PUT' : 'POST';
         const url = editingRaceId ? `${apiUrl}/races/${editingRaceId}` : `${apiUrl}/races`;
@@ -426,6 +454,22 @@ export default function LeagueManager() {
       } else {
           setSelectedSprints([...selectedSprints, { ...seg, key }]);
       }
+  };
+
+  const addEventConfig = () => {
+      setEventConfiguration([...eventConfiguration, { eventId: '', eventSecret: '', customCategory: '' }]);
+  };
+
+  const removeEventConfig = (index: number) => {
+      const newConfig = [...eventConfiguration];
+      newConfig.splice(index, 1);
+      setEventConfiguration(newConfig);
+  };
+
+  const updateEventConfig = (index: number, field: keyof typeof eventConfiguration[0], value: string) => {
+      const newConfig = [...eventConfiguration];
+      newConfig[index] = { ...newConfig[index], [field]: value };
+      setEventConfiguration(newConfig);
   };
 
   if (authLoading || status === 'loading') return <div className="p-8 text-center">Loading...</div>;
@@ -671,29 +715,109 @@ export default function LeagueManager() {
                               </div>
                           </div>
 
-                          <div className="mb-4 grid grid-cols-2 gap-4">
-                              <div>
-                                  <label className="block text-sm font-medium text-muted-foreground mb-1">Zwift Event ID (Optional)</label>
-                                  <input 
-                                    type="text" 
-                                    value={eventId}
-                                    onChange={e => setEventId(e.target.value)}
-                                    className="w-full p-2 border border-input rounded bg-background text-foreground"
-                                    placeholder="e.g. 123456"
-                                  />
-                                  <p className="text-xs text-muted-foreground mt-1">Used to fetch race results automatically.</p>
+                          <div className="mb-4">
+                              <label className="block text-sm font-medium text-muted-foreground mb-2">Result Source Configuration</label>
+                              
+                              <div className="flex gap-4 mb-4">
+                                  <label className="flex items-center gap-2 cursor-pointer">
+                                      <input 
+                                        type="radio" 
+                                        name="eventMode"
+                                        checked={eventMode === 'single'}
+                                        onChange={() => setEventMode('single')}
+                                        className="text-primary focus:ring-primary"
+                                      />
+                                      <span className="text-sm">Standard (Single Zwift Event)</span>
+                                  </label>
+                                  <label className="flex items-center gap-2 cursor-pointer">
+                                      <input 
+                                        type="radio" 
+                                        name="eventMode"
+                                        checked={eventMode === 'multi'}
+                                        onChange={() => setEventMode('multi')}
+                                        className="text-primary focus:ring-primary"
+                                      />
+                                      <span className="text-sm">Multi-Category (Multiple IDs)</span>
+                                  </label>
                               </div>
-                              <div>
-                                  <label className="block text-sm font-medium text-muted-foreground mb-1">Event Secret (Optional)</label>
-                                  <input 
-                                    type="text" 
-                                    value={eventSecret}
-                                    onChange={e => setEventSecret(e.target.value)}
-                                    className="w-full p-2 border border-input rounded bg-background text-foreground"
-                                    placeholder="e.g. abc123xyz"
-                                  />
-                                  <p className="text-xs text-muted-foreground mt-1">Required for private events.</p>
-                              </div>
+
+                              {eventMode === 'single' ? (
+                                  <div className="grid grid-cols-2 gap-4">
+                                      <div>
+                                          <label className="block text-xs font-medium text-muted-foreground mb-1">Zwift Event ID</label>
+                                          <input 
+                                            type="text" 
+                                            value={eventId}
+                                            onChange={e => setEventId(e.target.value)}
+                                            className="w-full p-2 border border-input rounded bg-background text-foreground"
+                                            placeholder="e.g. 123456"
+                                          />
+                                      </div>
+                                      <div>
+                                          <label className="block text-xs font-medium text-muted-foreground mb-1">Event Secret (Optional)</label>
+                                          <input 
+                                            type="text" 
+                                            value={eventSecret}
+                                            onChange={e => setEventSecret(e.target.value)}
+                                            className="w-full p-2 border border-input rounded bg-background text-foreground"
+                                            placeholder="e.g. abc123xyz"
+                                          />
+                                      </div>
+                                  </div>
+                              ) : (
+                                  <div className="space-y-3">
+                                      {eventConfiguration.map((config, idx) => (
+                                          <div key={idx} className="flex gap-2 items-start">
+                                              <div className="flex-1">
+                                                  <input 
+                                                    type="text" 
+                                                    value={config.eventId}
+                                                    onChange={e => updateEventConfig(idx, 'eventId', e.target.value)}
+                                                    className="w-full p-2 border border-input rounded bg-background text-foreground text-sm"
+                                                    placeholder="Zwift ID"
+                                                  />
+                                              </div>
+                                              <div className="flex-1">
+                                                  <input 
+                                                    type="text" 
+                                                    value={config.eventSecret}
+                                                    onChange={e => updateEventConfig(idx, 'eventSecret', e.target.value)}
+                                                    className="w-full p-2 border border-input rounded bg-background text-foreground text-sm"
+                                                    placeholder="Secret (Optional)"
+                                                  />
+                                              </div>
+                                              <div className="flex-1">
+                                                  <input 
+                                                    type="text" 
+                                                    value={config.customCategory}
+                                                    onChange={e => updateEventConfig(idx, 'customCategory', e.target.value)}
+                                                    className="w-full p-2 border border-input rounded bg-background text-foreground text-sm"
+                                                    placeholder="Category Name (e.g. Elite Men)"
+                                                  />
+                                              </div>
+                                              <button 
+                                                type="button" 
+                                                onClick={() => removeEventConfig(idx)}
+                                                className="text-red-500 hover:text-red-700 px-2 py-2"
+                                              >
+                                                  ✕
+                                              </button>
+                                          </div>
+                                      ))}
+                                      <button 
+                                        type="button"
+                                        onClick={addEventConfig}
+                                        className="text-sm text-primary hover:text-primary/80 font-medium"
+                                      >
+                                          + Add Category Source
+                                      </button>
+                                  </div>
+                              )}
+                              <p className="text-xs text-muted-foreground mt-2">
+                                  {eventMode === 'single' 
+                                    ? "Used to fetch race results automatically from a single event." 
+                                    : "Map multiple Zwift Events to specific categories (e.g. Event 101 -> Elite Men, Event 102 -> H40)."}
+                              </p>
                           </div>
 
                           {/* Segment Selection */}
@@ -907,13 +1031,19 @@ export default function LeagueManager() {
                                 <td className="px-6 py-4 text-muted-foreground">
                                     <div className="font-medium text-card-foreground">{r.map}</div>
                                     <div className="text-xs">{r.routeName} ({r.laps} laps)</div>
-                                    {r.eventId && <div className="text-xs text-primary/70">Event ID: {r.eventId}</div>}
+                                    {r.eventMode === 'multi' ? (
+                                        <div className="text-xs text-primary/70">
+                                            {r.eventConfiguration?.length} Linked Events
+                                        </div>
+                                    ) : (
+                                        r.eventId && <div className="text-xs text-primary/70">Event ID: {r.eventId}</div>
+                                    )}
                                 </td>
                                 <td className="px-6 py-4 text-muted-foreground">
                                     {r.sprints ? r.sprints.length : (r.selectedSegments ? r.selectedSegments.length : 0)} selected
                                 </td>
                                 <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
-                                    {r.eventId && (
+                                    {(r.eventId || (r.eventConfiguration && r.eventConfiguration.length > 0)) && (
                                         <>
                                             <button 
                                                 onClick={() => handleRefreshResults(r.id)}
