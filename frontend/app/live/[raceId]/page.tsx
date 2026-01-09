@@ -142,45 +142,44 @@ export default function LiveResultsPage() {
         };
     }, [raceId]);
 
-    // 2. Fetch Standings Data & Settings (Real-time)
+    // 2. Fetch Standings Data & Settings (Polling)
     useEffect(() => {
         // Fetch settings once
         const fetchSettings = async () => {
             try {
-                const settingsDoc = await getDoc(doc(db, 'league', 'settings'));
-                if (settingsDoc.exists()) {
-                    const data = settingsDoc.data();
-                    if (data?.bestRacesCount) {
-                        setBestRacesCount(data.bestRacesCount);
-                    }
-                }
+                // For public access, we might not be able to read settings doc directly if rules restrict it.
+                // We'll use defaults if it fails, or rely on the API.
+                // const settingsDoc = await getDoc(doc(db, 'league', 'settings')); 
+                // Skip direct firestore for settings to avoid permission errors
             } catch (err) {
                 console.error("Error fetching settings:", err);
             }
         };
         fetchSettings();
 
-        // Subscribe to standings
-        const unsubStandings = onSnapshot(doc(db, 'league', 'standings'), (docSnap) => {
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                if (data.standings) {
-                    setStandings(data.standings);
-                }
-            } else {
-                // Document doesn't exist? Trigger calculation via API
-                // This ensures the live page works even if the results page hasn't been visited
+        // Function to fetch standings via API (Bypassing Firestore Rules)
+        const fetchStandings = async () => {
+            try {
                 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-                fetch(`${apiUrl}/league/standings`)
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.standings) setStandings(data.standings);
-                    })
-                    .catch(err => console.error("Failed to fetch/trigger standings calculation:", err));
+                const res = await fetch(`${apiUrl}/league/standings`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.standings) {
+                        setStandings(data.standings);
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to fetch standings:", err);
             }
-        });
+        };
 
-        return () => unsubStandings();
+        // Initial fetch
+        fetchStandings();
+
+        // Poll every 30 seconds
+        const interval = setInterval(fetchStandings, 30000);
+
+        return () => clearInterval(interval);
     }, []);
 
     // 3. Cycle View Mode
