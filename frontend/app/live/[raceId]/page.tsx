@@ -2,15 +2,15 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { db } from '@/lib/firebase';
-import { doc, onSnapshot, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, where, getDocs, getDoc } from 'firebase/firestore';
 import { useParams, useSearchParams } from 'next/navigation';
 
-// Types (Simplified for display)
+// Types
 interface Race {
     name: string;
     results?: Record<string, ResultEntry[]>;
     sprints?: Sprint[];
-    sprintData?: Sprint[]; // User specified field for correct ordering
+    sprintData?: Sprint[];
     eventMode?: 'single' | 'multi';
     eventConfiguration?: {
         eventId: string;
@@ -35,6 +35,15 @@ interface ResultEntry {
     sprintDetails?: Record<string, number>;
 }
 
+interface StandingEntry {
+    zwiftId: string;
+    name: string;
+    totalPoints: number;
+    raceCount: number;
+    results: { raceId: string, points: number }[];
+    calculatedTotal?: number; // Added for display
+}
+
 export default function LiveResultsPage() {
     const params = useParams();
     const searchParams = useSearchParams();
@@ -47,27 +56,30 @@ export default function LiveResultsPage() {
     const autoScroll = searchParams.get('scroll') === 'true';
     const showSprints = searchParams.get('sprints') !== 'false'; // Default true
     const showLastSprint = searchParams.get('lastSprint') === 'true';
+    
+    // View Mode Configuration
+    const initialView = (searchParams.get('view') === 'standings') ? 'standings' : 'race';
+    const cycleTime = parseInt(searchParams.get('cycle') || '0'); // Seconds, 0 = disabled
 
     const [race, setRace] = useState<Race | null>(null);
+    const [standings, setStandings] = useState<Record<string, StandingEntry[]>>({});
+    const [bestRacesCount, setBestRacesCount] = useState<number>(5);
+    
+    const [viewMode, setViewMode] = useState<'race' | 'standings'>(initialView);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     // Scrolling ref
     const containerRef = useRef<HTMLDivElement>(null);
 
+    // 1. Fetch Race Data (Real-time)
     useEffect(() => {
         if (!raceId) return;
 
         const setupSubscription = async () => {
             let docRef;
             
-            // Query for the race doc with this eventId
             try {
-                // Determine if raceId is likely a Zwift Event ID (number) or a Firestore ID (string with mixed chars)
-                // Actually, the Live URL structure is /live/[raceId]. 
-                // Previously, we might have been using Event ID as the URL param, or the race ID.
-                // Let's try finding by document ID first (most robust), then by eventId.
-                
                 // 1. Try Document ID
                 docRef = doc(db, 'races', raceId);
                 const docSnap = await getDocs(query(collection(db, 'races'), where('__name__', '==', raceId)));
@@ -79,7 +91,7 @@ export default function LiveResultsPage() {
                      if (!snapshot.empty) {
                         docRef = doc(db, 'races', snapshot.docs[0].id);
                      } else {
-                        // 3. Try Linked Event IDs (New Array Index)
+                        // 3. Try Linked Event IDs
                         const q2 = query(collection(db, 'races'), where('linkedEventIds', 'array-contains', raceId));
                         const snapshot2 = await getDocs(q2);
                         
@@ -120,7 +132,6 @@ export default function LiveResultsPage() {
             return unsubscribe;
         };
 
-        // Handle the async setup
         let unsubscribeFn: (() => void) | undefined;
         setupSubscription().then(unsub => {
             unsubscribeFn = unsub;
@@ -131,7 +142,51 @@ export default function LiveResultsPage() {
         };
     }, [raceId]);
 
-    // Auto-scroll effect
+    // 2. Fetch Standings Data & Settings (Real-time)
+    useEffect(() => {
+        // Fetch settings once
+        const fetchSettings = async () => {
+            try {
+                const settingsDoc = await getDoc(doc(db, 'league', 'settings'));
+                if (settingsDoc.exists()) {
+                    const data = settingsDoc.data();
+                    if (data?.bestRacesCount) {
+                        setBestRacesCount(data.bestRacesCount);
+                    }
+                }
+            } catch (err) {
+                console.error("Error fetching settings:", err);
+            }
+        };
+        fetchSettings();
+
+        // Subscribe to standings
+        const unsubStandings = onSnapshot(doc(db, 'league', 'standings'), (docSnap) => {
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                if (data.standings) {
+                    setStandings(data.standings);
+                }
+            }
+        });
+
+        return () => unsubStandings();
+    }, []);
+
+    // 3. Cycle View Mode
+    useEffect(() => {
+        if (cycleTime <= 0) return;
+
+        const interval = setInterval(() => {
+            setViewMode(prev => prev === 'race' ? 'standings' : 'race');
+            // Reset scroll on switch
+            if (containerRef.current) containerRef.current.scrollTop = 0;
+        }, cycleTime * 1000);
+
+        return () => clearInterval(interval);
+    }, [cycleTime]);
+
+    // 4. Auto-scroll effect
     useEffect(() => {
         if (!autoScroll || !containerRef.current) return;
 
@@ -141,14 +196,12 @@ export default function LiveResultsPage() {
         const speed = 1; // px per tick
 
         const interval = setInterval(() => {
+            // Only scroll if content overflows
             if (scrollContainer.scrollHeight <= scrollContainer.clientHeight) return;
 
             scrollPos += speed * direction;
             
-            // Check bounds
             if (scrollPos >= (scrollContainer.scrollHeight - scrollContainer.clientHeight)) {
-                // Pause at bottom then reverse? Or just jump to top? 
-                // OBS standard is usually loop or bounce. Let's bounce.
                 direction = -1;
                 scrollPos = scrollContainer.scrollHeight - scrollContainer.clientHeight;
             } else if (scrollPos <= 0) {
@@ -160,32 +213,26 @@ export default function LiveResultsPage() {
         }, 50);
 
         return () => clearInterval(interval);
-    }, [autoScroll, race]); // Re-run when data updates (height changes)
+    }, [autoScroll, race, viewMode, standings]); // Re-run when data updates or view changes
 
     if (loading) return <div className="p-8 text-white font-bold text-2xl">Loading Live Data...</div>;
     if (error) return <div className="p-8 text-red-500 font-bold text-2xl">{error}</div>;
     if (!race) return null;
 
-    // Filter Results
-    // Smart Category Selection:
-    // 1. URL Param
-    // 2. Map Zwift Event ID (from URL) to Custom Category Name
-    // 3. Default to first available category
-    // 4. Default to 'A'
-    
+    // --- Data Processing ---
+
+    // Determine Category
     let displayCategory = categoryParam;
 
     if (!displayCategory) {
         if (race.eventMode === 'multi' && race.eventConfiguration) {
             // Check if the current URL param (raceId) matches a specific event config
-            // raceId here is likely the Zwift ID if the user used the direct link
             const match = race.eventConfiguration.find((c: any) => c.eventId === raceId);
             if (match && match.customCategory) {
                 displayCategory = match.customCategory;
             }
         }
         
-        // Fallback: Use first available category if still null
         if (!displayCategory && race.results) {
              const categories = Object.keys(race.results);
              if (categories.length > 0) {
@@ -195,76 +242,157 @@ export default function LiveResultsPage() {
     }
     
     const category = displayCategory || 'A';
-    const results = race.results?.[category] || [];
 
-    // Determine Sprint Columns
-    const allSprintKeys = new Set<string>();
-    // Look through ALL results (not just displayed) to find active sprints
-    if (showSprints || showLastSprint) {
-        results.forEach(r => {
-            if (r.sprintDetails) {
-                Object.keys(r.sprintDetails).forEach(k => allSprintKeys.add(k));
-            }
-        });
-    }
-    const sprintColumns = Array.from(allSprintKeys).sort();
+    // --- Render Content ---
 
-    // Determine Last Sprint Key
-    let lastSprintKey: string | null = null;
-    
-    // Use sprintData if available as it has the correct order (chronological), otherwise fallback to sprints
-    // We assume the array in DB is ordered [First, Second, ... Last]
-    const sourceSprints = race.sprintData || race.sprints || [];
-    
-    if (showLastSprint && sourceSprints.length > 0 && allSprintKeys.size > 0) {
-        // Iterate backwards to find the last sprint that has data
-        for (let i = sourceSprints.length - 1; i >= 0; i--) {
-            const s = sourceSprints[i];
-            const possibleKeys = [s.key, `${s.id}_${s.count}`, `${s.id}`];
-            const foundKey = possibleKeys.find(k => allSprintKeys.has(k));
-            
-            if (foundKey) {
-                lastSprintKey = foundKey;
-                break;
+    const renderRaceResults = () => {
+        const results = race.results?.[category] || [];
+
+        // Sprint Columns
+        const allSprintKeys = new Set<string>();
+        if (showSprints || showLastSprint) {
+            results.forEach(r => {
+                if (r.sprintDetails) {
+                    Object.keys(r.sprintDetails).forEach(k => allSprintKeys.add(k));
+                }
+            });
+        }
+        const sprintColumns = Array.from(allSprintKeys).sort();
+
+        // Last Sprint Key
+        let lastSprintKey: string | null = null;
+        const sourceSprints = race.sprintData || race.sprints || [];
+        
+        if (showLastSprint && sourceSprints.length > 0 && allSprintKeys.size > 0) {
+            for (let i = sourceSprints.length - 1; i >= 0; i--) {
+                const s = sourceSprints[i];
+                const possibleKeys = [s.key, `${s.id}_${s.count}`, `${s.id}`];
+                const foundKey = possibleKeys.find(k => allSprintKeys.has(k));
+                if (foundKey) {
+                    lastSprintKey = foundKey;
+                    break;
+                }
             }
         }
-    }
 
-    // Sort and Prepare Display Results
-    let finalResults = [...results];
-    
-    if (lastSprintKey) {
-        // Sort by last sprint points
-        finalResults.sort((a, b) => {
-            const valA = a.sprintDetails?.[lastSprintKey] || 0;
-            const valB = b.sprintDetails?.[lastSprintKey] || 0;
-            return valB - valA;
-        });
-    }
-    
-    const displayResults = finalResults.slice(0, limit);
+        // Sort Results
+        let finalResults = [...results];
+        if (lastSprintKey) {
+            finalResults.sort((a, b) => {
+                const valA = a.sprintDetails?.[lastSprintKey] || 0;
+                const valB = b.sprintDetails?.[lastSprintKey] || 0;
+                return valB - valA;
+            });
+        }
+        const displayResults = finalResults.slice(0, limit);
 
-    const getSprintHeader = (key: string) => {
-        if (!race.sprints) return key;
-        // Try matching key, ID_COUNT, or just ID if count is not available
-        const sprint = race.sprints.find(s => s.key === key || `${s.id}_${s.count}` === key || s.id === key);
-        if (sprint) return `${sprint.name} #${sprint.count}`;
-        return key;
+        const getSprintHeader = (key: string) => {
+            if (!race.sprints) return key;
+            const sprint = race.sprints.find(s => s.key === key || `${s.id}_${s.count}` === key || s.id === key);
+            if (sprint) return `${sprint.name} #${sprint.count}`;
+            return key;
+        };
+
+        return (
+            <table className="w-full text-left border-collapse table-fixed">
+                <thead>
+                    <tr className="text-slate-400 text-lg uppercase tracking-wider border-b-2 border-slate-600 bg-slate-800/80">
+                        <th className="py-1 px-2 w-[10%] text-center">#</th>
+                        <th className="py-1 px-2 w-[55%]">Rider</th>
+                        <th className={`py-1 px-2 w-[35%] text-right font-bold break-words text-blue-400`}>
+                            {lastSprintKey ? getSprintHeader(lastSprintKey) : 'Pts'}
+                        </th>
+                    </tr>
+                </thead>
+                <tbody className="text-white font-bold text-3xl">
+                    {displayResults.map((rider, idx) => (
+                        <tr 
+                            key={rider.zwiftId} 
+                            className="border-b border-slate-700/50 even:bg-slate-800/40"
+                        >
+                            <td className="py-2 px-2 text-center font-bold text-slate-300">
+                                {idx + 1}
+                            </td>
+                            <td className="py-2 px-2 truncate">
+                                {rider.name}
+                            </td>
+                            <td className={`py-2 px-2 text-right font-extrabold text-blue-400`}>
+                                {lastSprintKey 
+                                    ? (rider.sprintDetails?.[lastSprintKey] || '-') 
+                                    : rider.totalPoints}
+                            </td>
+                        </tr>
+                    ))}
+                    {displayResults.length === 0 && (
+                        <tr>
+                            <td colSpan={3} className="py-8 text-center text-slate-500 text-xl italic">
+                                Waiting for results...
+                            </td>
+                        </tr>
+                    )}
+                </tbody>
+            </table>
+        );
     };
 
-    const formatTime = (ms: number) => {
-        if (!ms) return '-';
-        const totalSeconds = Math.floor(ms / 1000);
-        const minutes = Math.floor(totalSeconds / 60); // Keep minutes > 60 if needed
-        const seconds = totalSeconds % 60;
-        const millis = Math.floor((ms % 1000) / 100); // 1 decimal for millis
+    const renderStandings = () => {
+        const rawStandings = standings[category] || [];
         
-        const pad = (n: number) => n.toString().padStart(2, '0');
-        return `${pad(minutes)}:${pad(seconds)}.${millis}`;
+        // Process Best X
+        const processedStandings = rawStandings.map(rider => {
+            const sortedResults = [...rider.results].sort((a, b) => b.points - a.points);
+            const bestTotal = sortedResults.slice(0, bestRacesCount).reduce((sum, r) => sum + r.points, 0);
+            return {
+                ...rider,
+                calculatedTotal: bestTotal
+            };
+        });
+
+        // Sort
+        const currentStandings = processedStandings.sort((a, b) => (b.calculatedTotal || 0) - (a.calculatedTotal || 0));
+        const displayResults = currentStandings.slice(0, limit);
+
+        return (
+            <table className="w-full text-left border-collapse table-fixed">
+                <thead>
+                    <tr className="text-slate-400 text-lg uppercase tracking-wider border-b-2 border-slate-600 bg-slate-800/80">
+                        <th className="py-1 px-2 w-[10%] text-center">#</th>
+                        <th className="py-1 px-2 w-[55%]">Rider</th>
+                        <th className="py-1 px-2 w-[35%] text-right font-bold text-green-400">
+                            Points
+                        </th>
+                    </tr>
+                </thead>
+                <tbody className="text-white font-bold text-3xl">
+                    {displayResults.map((rider, idx) => (
+                        <tr 
+                            key={rider.zwiftId} 
+                            className="border-b border-slate-700/50 even:bg-slate-800/40"
+                        >
+                            <td className="py-2 px-2 text-center font-bold text-slate-300">
+                                {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
+                            </td>
+                            <td className="py-2 px-2 truncate">
+                                {rider.name}
+                            </td>
+                            <td className="py-2 px-2 text-right font-extrabold text-green-400">
+                                {rider.calculatedTotal}
+                            </td>
+                        </tr>
+                    ))}
+                    {displayResults.length === 0 && (
+                        <tr>
+                            <td colSpan={3} className="py-8 text-center text-slate-500 text-xl italic">
+                                No standings available.
+                            </td>
+                        </tr>
+                    )}
+                </tbody>
+            </table>
+        );
     };
 
     return (
-        // Break out of main layout constraints using fixed positioning
         <div 
             className={`fixed inset-0 z-50 overflow-hidden font-sans ${
                 isTransparent ? 'bg-transparent' : 'bg-slate-900'
@@ -275,50 +403,17 @@ export default function LiveResultsPage() {
                 className={`h-full w-full overflow-auto ${autoScroll ? 'scrollbar-hide' : ''}`}
             >
                 <div className="p-0">
-                    {/* Table */}
-                    <table className="w-full text-left border-collapse table-fixed">
-                        <thead>
-                            <tr className="text-slate-400 text-lg uppercase tracking-wider border-b-2 border-slate-600 bg-slate-800/80">
-                                <th className="py-1 px-2 w-[10%] text-center">#</th>
-                                <th className="py-1 px-2 w-[55%]">Rider</th>
-                                <th className={`py-1 px-2 w-[35%] text-right font-bold break-words text-blue-400`}>
-                                    {lastSprintKey ? getSprintHeader(lastSprintKey) : 'Pts'}
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody className="text-white font-bold text-3xl">
-                            {displayResults.map((rider, idx) => (
-                                <tr 
-                                    key={rider.zwiftId} 
-                                    className="border-b border-slate-700/50 even:bg-slate-800/40"
-                                >
-                                    <td className="py-2 px-2 text-center font-bold text-slate-300">
-                                        {idx + 1}
-                                    </td>
-                                    <td className="py-2 px-2 truncate">
-                                        {rider.name}
-                                    </td>
-                                    <td className={`py-2 px-2 text-right font-extrabold text-blue-400`}>
-                                        {lastSprintKey 
-                                            ? (rider.sprintDetails?.[lastSprintKey] || '-') 
-                                            : rider.totalPoints}
-                                    </td>
-                                </tr>
-                            ))}
-                            
-                            {displayResults.length === 0 && (
-                                <tr>
-                                    <td colSpan={3} className="py-8 text-center text-slate-500 text-xl italic">
-                                        Waiting for results...
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
+                    {/* Header showing mode if not transparent or just to differentiate */}
+                    <div className="bg-slate-900/90 text-center py-2 border-b border-slate-700">
+                        <h2 className="text-xl font-bold text-white uppercase tracking-widest">
+                            {viewMode === 'standings' ? `League Standings • ${category}` : `Race Results • ${category}`}
+                        </h2>
+                    </div>
+
+                    {viewMode === 'race' ? renderRaceResults() : renderStandings()}
                 </div>
             </div>
             
-            {/* OBS Helper Styles */}
             <style jsx global>{`
                 .site-footer {
                     display: none !important;
