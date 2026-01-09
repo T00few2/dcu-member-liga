@@ -167,6 +167,16 @@ export default function LiveResultsPage() {
                 if (data.standings) {
                     setStandings(data.standings);
                 }
+            } else {
+                // Document doesn't exist? Trigger calculation via API
+                // This ensures the live page works even if the results page hasn't been visited
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+                fetch(`${apiUrl}/league/standings`)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.standings) setStandings(data.standings);
+                    })
+                    .catch(err => console.error("Failed to fetch/trigger standings calculation:", err));
             }
         });
 
