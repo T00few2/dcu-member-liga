@@ -235,14 +235,22 @@ export default function LiveResultsPage() {
     let displayCategory = categoryParam;
 
     if (!displayCategory) {
-        if (race.eventMode === 'multi' && race.eventConfiguration) {
-            // Check if the current URL param (raceId) matches a specific event config
+        // Priority 1: Multi-mode Configuration
+        if (race.eventMode === 'multi' && race.eventConfiguration && race.eventConfiguration.length > 0) {
+            // 1a. Check if the current URL param (raceId) matches a specific event config
             const match = race.eventConfiguration.find((c: any) => c.eventId === raceId);
             if (match && match.customCategory) {
                 displayCategory = match.customCategory;
+            } else {
+                // 1b. Fallback to the first configured category
+                // This handles the case where we are viewing by Race Document ID, not Zwift ID
+                if (race.eventConfiguration[0].customCategory) {
+                    displayCategory = race.eventConfiguration[0].customCategory;
+                }
             }
         }
         
+        // Priority 2: Existing Results
         if (!displayCategory && race.results) {
              const categories = Object.keys(race.results);
              if (categories.length > 0) {
@@ -252,6 +260,14 @@ export default function LiveResultsPage() {
     }
     
     const category = displayCategory || 'A';
+
+    // Debugging
+    useEffect(() => {
+        if (process.env.NODE_ENV === 'development') {
+            console.log("Available Standings Categories:", Object.keys(standings));
+            console.log("Selected Live Category:", category);
+        }
+    }, [standings, category]);
 
     // --- Render Content ---
 
@@ -393,7 +409,7 @@ export default function LiveResultsPage() {
                     {displayResults.length === 0 && (
                         <tr>
                             <td colSpan={3} className="py-8 text-center text-slate-500 text-xl italic">
-                                No standings available.
+                                No standings available for category '{category}'.
                             </td>
                         </tr>
                     )}
