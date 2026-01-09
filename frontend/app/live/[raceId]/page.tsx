@@ -260,13 +260,6 @@ export default function LiveResultsPage() {
     
     const category = displayCategory || 'A';
 
-    // Debugging
-    useEffect(() => {
-        if (process.env.NODE_ENV === 'development') {
-            console.log("Available Standings Categories:", Object.keys(standings));
-            console.log("Selected Live Category:", category);
-        }
-    }, [standings, category]);
 
     // --- Render Content ---
 
