@@ -52,7 +52,17 @@ export default function LiveResultsPage() {
     // Configuration from URL
     const categoryParam = searchParams.get('cat');
     const isTransparent = searchParams.get('transparent') !== 'false'; // Default true
-    const limit = parseInt(searchParams.get('limit') || '10'); // Default 10
+    
+    // Parse limit robustly
+    const rawLimit = searchParams.get('limit');
+    let limit = 10;
+    if (rawLimit) {
+        const parsed = parseInt(rawLimit);
+        if (!isNaN(parsed) && parsed > 0) {
+            limit = parsed;
+        }
+    }
+    
     const autoScroll = searchParams.get('scroll') === 'true';
     const showSprints = searchParams.get('sprints') !== 'false'; // Default true
     const showLastSprint = searchParams.get('lastSprint') === 'true';
