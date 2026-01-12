@@ -48,8 +48,8 @@ export default function LiveLinksPage() {
                     ...doc.data()
                 })) as Race[];
 
-                // Sort by date descending
-                fetchedRaces.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                // Sort by date ascending (oldest first - matching league setup usually)
+                fetchedRaces.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
                 setRaces(fetchedRaces);
 
@@ -73,9 +73,30 @@ export default function LiveLinksPage() {
                     ['A', 'B', 'C', 'D', 'E'].forEach(c => categories.add(c));
                 }
 
-                // Sort categories
-                const sortedCats = Array.from(categories).sort();
-                setAllCategories(sortedCats);
+                // Sort categories based on the most recent configuration
+                const availableCategories = Array.from(categories);
+                
+                // Find a reference race (prefer the latest one with multi-mode config)
+                // We clone fetchedRaces because reverse() mutates in place
+                const referenceRace = [...fetchedRaces].reverse().find(r => r.eventMode === 'multi' && r.eventConfiguration && r.eventConfiguration.length > 0);
+  
+                if (referenceRace && referenceRace.eventConfiguration) {
+                    const orderMap = new Map();
+                    referenceRace.eventConfiguration.forEach((cfg, idx) => {
+                        if (cfg.customCategory) orderMap.set(cfg.customCategory, idx);
+                    });
+                    
+                    availableCategories.sort((a, b) => {
+                        const idxA = orderMap.has(a) ? orderMap.get(a) : 999;
+                        const idxB = orderMap.has(b) ? orderMap.get(b) : 999;
+                        if (idxA === idxB) return a.localeCompare(b);
+                        return idxA - idxB;
+                    });
+                } else {
+                    availableCategories.sort();
+                }
+
+                setAllCategories(availableCategories);
 
             } catch (error) {
                 console.error("Error fetching races:", error);
@@ -158,7 +179,7 @@ export default function LiveLinksPage() {
                                 placeholder="0 to disable"
                                 className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
                             />
-                            <p className="text-xs text-slate-500 mt-1">Set to 0 to disable auto-cycling between views</p>
+                            <p className="text-xs text-slate-500 mt-1">Cycles view between Race Results and League Standings. Set to 0 to disable.</p>
                         </div>
                     </div>
 
@@ -203,7 +224,7 @@ export default function LiveLinksPage() {
                                 onChange={(e) => updateConfig('lastSprint', e.target.checked)}
                                 className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
                             />
-                            <span className="text-slate-300">Sort by Last Sprint</span>
+                            <span className="text-slate-300">Show Only Last Sprint</span>
                         </label>
                     </div>
                 </div>
