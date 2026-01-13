@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { db } from '@/lib/firebase';
 import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 import Link from 'next/link';
+import { useAuth } from '@/lib/auth-context';
 
 interface Race {
     id: string;
@@ -18,9 +19,11 @@ interface Race {
 }
 
 export default function LiveLinksPage() {
+    const { user } = useAuth();
     const [races, setRaces] = useState<Race[]>([]);
     const [loading, setLoading] = useState(true);
     const [allCategories, setAllCategories] = useState<string[]>([]);
+    const [processingKey, setProcessingKey] = useState<string | null>(null);
 
     // Configuration State
     const [config, setConfig] = useState({
@@ -31,7 +34,10 @@ export default function LiveLinksPage() {
         scroll: false,
         sprints: true,
         lastSprint: false,
-        showCheckboxes: false // Helper to toggle advanced options visibility
+        showCheckboxes: false, // Helper to toggle advanced options visibility
+        // Calculation Settings
+        source: 'joined', // 'finishers' | 'joined' | 'signed_up'
+        filterRegistered: false
     });
 
     useEffect(() => {
@@ -133,6 +139,44 @@ export default function LiveLinksPage() {
         // Could add toast here
     };
 
+    const handleRefresh = async (raceId: string, category: string = 'All') => {
+        if (!user) {
+            alert('Please log in to calculate results.');
+            return;
+        }
+        
+        const key = `${raceId}-${category}`;
+        setProcessingKey(key);
+
+        try {
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+            const token = await user.getIdToken();
+            
+            const res = await fetch(`${apiUrl}/races/${raceId}/results/refresh`, {
+                method: 'POST',
+                headers: { 
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ 
+                    source: config.source,
+                    filterRegistered: config.filterRegistered,
+                    categoryFilter: category
+                })
+            });
+            
+            if (!res.ok) {
+                const data = await res.json();
+                alert(`Failed: ${data.message}`);
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Error updating results');
+        } finally {
+            setProcessingKey(null);
+        }
+    };
+
     if (loading) return <div className="p-8 text-white">Loading races...</div>;
 
     return (
@@ -228,6 +272,38 @@ export default function LiveLinksPage() {
                         </label>
                     </div>
                 </div>
+
+                {/* Calculation Settings Panel (Authenticated Only) */}
+                {user && (
+                    <div className="mt-6 pt-6 border-t border-slate-700">
+                        <h3 className="text-sm font-semibold uppercase text-slate-400 mb-4 tracking-wider">Calculation Settings (For "Calc" Buttons)</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-400 mb-1">Source Data</label>
+                                <select 
+                                    value={config.source}
+                                    onChange={(e) => updateConfig('source', e.target.value)}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                >
+                                    <option value="finishers">Finishers (Final Results)</option>
+                                    <option value="joined">Joined (Currently in Pen/Race)</option>
+                                    <option value="signed_up">Signed Up (Registration List)</option>
+                                </select>
+                            </div>
+                             <div className="flex items-end pb-2">
+                                <label className="flex items-center space-x-3 cursor-pointer">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={config.filterRegistered}
+                                        onChange={(e) => updateConfig('filterRegistered', e.target.checked)}
+                                        className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
+                                    />
+                                    <span className="text-slate-300">Filter Non-Registered Riders</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Matrix Table */}
@@ -265,6 +341,19 @@ export default function LiveLinksPage() {
                                         <div className="text-xs text-slate-500 mt-1">
                                             {new Date(race.date).toLocaleDateString()}
                                         </div>
+                                        {user && (
+                                            <button 
+                                                onClick={() => handleRefresh(race.id, 'All')}
+                                                disabled={!!processingKey}
+                                                className={`mt-2 px-2 py-1 text-[10px] uppercase font-bold rounded border transition-colors ${
+                                                    processingKey === `${race.id}-All` 
+                                                        ? 'bg-slate-700 text-slate-400 border-slate-600 cursor-not-allowed' 
+                                                        : 'bg-slate-800 text-green-500 border-green-900/50 hover:bg-green-900/20 hover:border-green-800'
+                                                }`}
+                                            >
+                                                {processingKey === `${race.id}-All` ? 'Calc...' : 'Calc All'}
+                                            </button>
+                                        )}
                                     </td>
                                     {allCategories.map(cat => {
                                         const isAvailable = raceCats.has(cat);
@@ -287,6 +376,19 @@ export default function LiveLinksPage() {
                                                         >
                                                             Copy Link
                                                         </button>
+                                                        {user && (
+                                                            <button 
+                                                                onClick={() => handleRefresh(race.id, cat)}
+                                                                disabled={!!processingKey}
+                                                                className={`text-[10px] font-bold uppercase tracking-wide transition-colors ${
+                                                                    processingKey === `${race.id}-${cat}` 
+                                                                        ? 'text-slate-600 cursor-wait' 
+                                                                        : 'text-green-600 hover:text-green-400'
+                                                                }`}
+                                                            >
+                                                                {processingKey === `${race.id}-${cat}` ? '...' : 'Calc'}
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 ) : (
                                                     <span className="text-slate-700 text-xl">·</span>
