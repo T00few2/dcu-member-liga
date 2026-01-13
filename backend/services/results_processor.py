@@ -42,18 +42,23 @@ class ResultsProcessor:
                 event_sources.append({
                     'id': cfg.get('eventId'),
                     'secret': cfg.get('eventSecret'),
-                    'customCategory': cfg.get('customCategory') # If set, override category
+                    'customCategory': cfg.get('customCategory'), # If set, override category
+                    'sprints': cfg.get('sprints', []) # Per-category sprints
                 })
         else:
             # Legacy/Single Mode
             event_id = race_data.get('eventId')
             event_secret = race_data.get('eventSecret')
+            # Use global sprints for single mode
+            global_sprints = race_data.get('sprints', [])
+            
             if event_id:
                 print("Using Single Event Configuration (Legacy)")
                 event_sources.append({
                     'id': event_id,
                     'secret': event_secret,
-                    'customCategory': None # Use Zwift Categories (A, B, C...)
+                    'customCategory': None, # Use Zwift Categories (A, B, C...)
+                    'sprints': global_sprints
                 })
         
         if not event_sources:
@@ -128,6 +133,7 @@ class ResultsProcessor:
         event_id = source['id']
         event_secret = source['secret']
         custom_category = source['customCategory'] # If present, ALL results go here
+        source_sprints = source.get('sprints', []) # Sprints specific to this source/category
         
         if not event_id:
             return
@@ -191,7 +197,7 @@ class ResultsProcessor:
             # Calculate Points & Sprints for this batch
             processed_batch = self._calculate_points_and_sprints(
                 finishers, 
-                race_data, 
+                source_sprints, # Pass per-source sprints
                 start_time, 
                 registered_riders, 
                 finish_points_scheme, 
@@ -298,7 +304,7 @@ class ResultsProcessor:
             
         return finishers
 
-    def _calculate_points_and_sprints(self, finishers, race_data, start_time, registered_riders, 
+    def _calculate_points_and_sprints(self, finishers, selected_sprints, start_time, registered_riders, 
                                       finish_points_scheme, sprint_points_scheme, fetch_mode):
         processed_riders = {}
         
@@ -329,7 +335,6 @@ class ResultsProcessor:
 
         # 2. Sprint Points
         if fetch_mode in ['finishers', 'joined']:
-            selected_sprints = race_data.get('sprints', [])
             
             if selected_sprints:
                 unique_segment_ids = set(s['id'] for s in selected_sprints)

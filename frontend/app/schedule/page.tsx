@@ -24,6 +24,16 @@ interface Race {
   totalDistance: number;
   totalElevation: number;
   sprints?: Segment[];
+  eventMode?: 'single' | 'multi';
+  eventConfiguration?: {
+      customCategory: string;
+      laps?: number;
+      sprints?: Segment[];
+      eventId: string;
+      eventSecret?: string;
+  }[];
+  eventId?: string; // Legacy/Single
+  eventSecret?: string; // Legacy/Single
 }
 
 const getZwiftInsiderUrl = (routeName: string) => {
@@ -94,13 +104,96 @@ export default function SchedulePage() {
   const RaceCard = ({ race, isPast = false }: { race: Race, isPast?: boolean }) => {
       const raceDate = new Date(race.date);
       
-      // Group sprints by lap for display
-      const sprintsByLap = (race.sprints || []).reduce((acc, seg) => {
-          const lap = seg.lap || 1;
-          if (!acc[lap]) acc[lap] = [];
-          acc[lap].push(seg);
-          return acc;
-      }, {} as Record<number, Segment[]>);
+      // Determine Laps Display
+      let lapsDisplay = <>{race.laps}</>;
+      if (race.eventMode === 'multi' && race.eventConfiguration) {
+          const uniqueLaps = Array.from(new Set(race.eventConfiguration.map(c => c.laps || race.laps)));
+          if (uniqueLaps.length > 1) {
+              lapsDisplay = (
+                  <div className="flex flex-col text-xs">
+                      {race.eventConfiguration.map(c => (
+                          <span key={c.customCategory}>{c.customCategory}: {c.laps || race.laps}</span>
+                      ))}
+                  </div>
+              );
+          } else if (uniqueLaps.length === 1 && uniqueLaps[0] !== race.laps) {
+               lapsDisplay = <>{uniqueLaps[0]}</>;
+          }
+      }
+
+      // Determine Sprints Display
+      let sprintsContent = null;
+      if (race.eventMode === 'multi' && race.eventConfiguration) {
+          // Multi-Category Sprints
+          sprintsContent = (
+              <div className="space-y-4">
+                  {race.eventConfiguration.map((config, idx) => {
+                      const catSprints = config.sprints || [];
+                      if (catSprints.length === 0) return null;
+                      
+                      const sprintsByLap = catSprints.reduce((acc, seg) => {
+                          const lap = seg.lap || 1;
+                          if (!acc[lap]) acc[lap] = [];
+                          acc[lap].push(seg);
+                          return acc;
+                      }, {} as Record<number, Segment[]>);
+
+                      return (
+                          <div key={idx} className="text-sm">
+                              <div className="font-semibold text-xs uppercase text-muted-foreground mb-2 border-b border-border pb-1">
+                                  {config.customCategory}
+                              </div>
+                              <div className="space-y-2">
+                                  {Object.keys(sprintsByLap).sort((a,b) => parseInt(a)-parseInt(b)).map(lapKey => {
+                                      const lapNum = parseInt(lapKey);
+                                      return (
+                                          <div key={lapNum} className="flex flex-col sm:flex-row gap-2 sm:gap-4 text-xs">
+                                              <div className="w-12 font-medium text-muted-foreground shrink-0">Lap {lapNum}</div>
+                                              <div className="flex-1 flex flex-wrap gap-2">
+                                                  {sprintsByLap[lapNum].sort((a,b) => a.count - b.count).map((seg, sIdx) => (
+                                                      <span key={sIdx} className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-secondary text-secondary-foreground border border-border">
+                                                          {seg.name}
+                                                      </span>
+                                                  ))}
+                                              </div>
+                                          </div>
+                                      );
+                                  })}
+                              </div>
+                          </div>
+                      );
+                  })}
+              </div>
+          );
+      } else if (race.sprints && race.sprints.length > 0) {
+          // Single Mode / Legacy Sprints
+          const sprintsByLap = race.sprints.reduce((acc, seg) => {
+              const lap = seg.lap || 1;
+              if (!acc[lap]) acc[lap] = [];
+              acc[lap].push(seg);
+              return acc;
+          }, {} as Record<number, Segment[]>);
+
+          sprintsContent = (
+              <div className="space-y-3">
+                  {Object.keys(sprintsByLap).sort((a,b) => parseInt(a)-parseInt(b)).map(lapKey => {
+                      const lapNum = parseInt(lapKey);
+                      return (
+                          <div key={lapNum} className="flex flex-col sm:flex-row gap-2 sm:gap-8 text-sm">
+                              <div className="w-16 font-medium text-muted-foreground shrink-0">Lap {lapNum}</div>
+                              <div className="flex-1 flex flex-wrap gap-2">
+                                  {sprintsByLap[lapNum].sort((a,b) => a.count - b.count).map((seg, idx) => (
+                                      <span key={idx} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                                          {seg.name}
+                                      </span>
+                                  ))}
+                              </div>
+                          </div>
+                      );
+                  })}
+              </div>
+          );
+      }
 
       return (
           <div className={`bg-card border border-border rounded-lg shadow-sm overflow-hidden mb-6 ${isPast ? 'opacity-75' : ''}`}>
@@ -114,6 +207,32 @@ export default function SchedulePage() {
                           <div className="text-muted-foreground text-sm mt-1">
                              Start: {raceDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
                           </div>
+                          {race.eventMode === 'multi' ? (
+                              <div className="flex flex-wrap gap-2 mt-2">
+                                  {race.eventConfiguration?.map((config, i) => (
+                                      <a 
+                                          key={i}
+                                          href={`https://www.zwift.com/eu/events/view/${config.eventId}${config.eventSecret ? `?eventSecret=${config.eventSecret}` : ''}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-xs bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20 px-2 py-1 rounded hover:bg-orange-500/20 transition-colors"
+                                      >
+                                          Event: {config.customCategory} ↗
+                                      </a>
+                                  ))}
+                              </div>
+                          ) : (
+                              race.eventId && (
+                                  <a 
+                                      href={`https://www.zwift.com/eu/events/view/${race.eventId}${race.eventSecret ? `?eventSecret=${race.eventSecret}` : ''}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-block mt-2 text-xs bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20 px-2 py-1 rounded hover:bg-orange-500/20 transition-colors"
+                                  >
+                                      View Event on Zwift ↗
+                                  </a>
+                              )
+                          )}
                       </div>
                       <div className="bg-muted/30 px-4 py-2 rounded-lg text-right">
                           <div className="font-semibold text-card-foreground">{race.map}</div>
@@ -141,32 +260,18 @@ export default function SchedulePage() {
                           <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Elevation</div>
                           <div className="font-semibold text-card-foreground">{race.totalElevation} m</div>
                       </div>
-                      <div className="bg-muted/20 p-3 rounded text-center">
+                      <div className="bg-muted/20 p-3 rounded text-center flex flex-col justify-center">
                           <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Laps</div>
-                          <div className="font-semibold text-card-foreground">{race.laps}</div>
+                          <div className="font-semibold text-card-foreground flex justify-center items-center h-full">
+                              {lapsDisplay}
+                          </div>
                       </div>
                   </div>
 
-                  {(race.sprints && race.sprints.length > 0) && (
+                  {sprintsContent && (
                       <div className="border-t border-border pt-4">
                           <h4 className="text-sm font-semibold text-card-foreground mb-3">Points Sprints</h4>
-                          <div className="space-y-3">
-                              {Object.keys(sprintsByLap).sort((a,b) => parseInt(a)-parseInt(b)).map(lapKey => {
-                                  const lapNum = parseInt(lapKey);
-                                  return (
-                                      <div key={lapNum} className="flex flex-col sm:flex-row gap-2 sm:gap-8 text-sm">
-                                          <div className="w-16 font-medium text-muted-foreground shrink-0">Lap {lapNum}</div>
-                                          <div className="flex-1 flex flex-wrap gap-2">
-                                              {sprintsByLap[lapNum].sort((a,b) => a.count - b.count).map((seg, idx) => (
-                                                  <span key={idx} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
-                                                      {seg.name}
-                                                  </span>
-                                              ))}
-                                          </div>
-                                      </div>
-                                  );
-                              })}
-                          </div>
+                          {sprintsContent}
                       </div>
                   )}
               </div>

@@ -5,18 +5,19 @@ import { db } from '@/lib/firebase';
 import { doc, onSnapshot, collection, query, where, getDocs, getDoc } from 'firebase/firestore';
 import { useParams, useSearchParams } from 'next/navigation';
 
-// Types
-interface Race {
-    name: string;
-    results?: Record<string, ResultEntry[]>;
-    sprints?: Sprint[];
-    sprintData?: Sprint[];
-    eventMode?: 'single' | 'multi';
-    eventConfiguration?: {
-        eventId: string;
-        customCategory: string;
-    }[];
-}
+    // Types
+    interface Race {
+        name: string;
+        results?: Record<string, ResultEntry[]>;
+        sprints?: Sprint[];
+        sprintData?: Sprint[];
+        eventMode?: 'single' | 'multi';
+        eventConfiguration?: {
+            eventId: string;
+            customCategory: string;
+            sprints?: Sprint[]; // Added support for per-category sprints
+        }[];
+    }
 
 interface Sprint {
     id: string;
@@ -273,8 +274,10 @@ export default function LiveResultsPage() {
     const renderRaceResults = () => {
         const results = race.results?.[category] || [];
 
-        // Sprint Columns
+        // Sprint Columns Logic
         const allSprintKeys = new Set<string>();
+        
+        // 1. Gather all sprint keys actually found in the RESULTS for this category
         if (showSprints || showLastSprint) {
             results.forEach(r => {
                 if (r.sprintDetails) {
@@ -282,13 +285,30 @@ export default function LiveResultsPage() {
                 }
             });
         }
-        const sprintColumns = Array.from(allSprintKeys).sort();
+        
+        // 2. Determine the correct "Source Sprints" config to use for resolving names/order
+        let sourceSprints: Sprint[] = [];
+        
+        if (race.eventMode === 'multi' && race.eventConfiguration) {
+            // Find config for current category
+            const catConfig = race.eventConfiguration.find(c => c.customCategory === category);
+            // Use per-category sprints if available
+            if (catConfig && catConfig.sprints && catConfig.sprints.length > 0) {
+                sourceSprints = catConfig.sprints;
+            } else {
+                 // Fallback to global if not found
+                 sourceSprints = race.sprints || [];
+            }
+        } else {
+            // Single Mode
+            sourceSprints = race.sprints || race.sprintData || [];
+        }
 
-        // Last Sprint Key
+        // Last Sprint Key Logic
         let lastSprintKey: string | null = null;
-        const sourceSprints = race.sprintData || race.sprints || [];
         
         if (showLastSprint && sourceSprints.length > 0 && allSprintKeys.size > 0) {
+            // iterate backwards through configured sprints to find the last one that has data
             for (let i = sourceSprints.length - 1; i >= 0; i--) {
                 const s = sourceSprints[i];
                 const possibleKeys = [s.key, `${s.id}_${s.count}`, `${s.id}`];
@@ -300,23 +320,22 @@ export default function LiveResultsPage() {
             }
         }
 
-        // Sort Results
-        let finalResults = [...results];
-        if (lastSprintKey) {
-            finalResults.sort((a, b) => {
-                const valA = a.sprintDetails?.[lastSprintKey] || 0;
-                const valB = b.sprintDetails?.[lastSprintKey] || 0;
-                return valB - valA;
-            });
-        }
-        const displayResults = finalResults.slice(0, limit);
-
+        // Helper to get header name
         const getSprintHeader = (key: string) => {
-            if (!race.sprints) return key;
-            const sprint = race.sprints.find(s => s.key === key || `${s.id}_${s.count}` === key || s.id === key);
-            if (sprint) return `${sprint.name} #${sprint.count}`;
-            return key;
+             // Try to find in sourceSprints first (most specific)
+             const sprint = sourceSprints.find(s => s.key === key || `${s.id}_${s.count}` === key || s.id === key);
+             if (sprint) return `${sprint.name} #${sprint.count}`;
+             
+             // Fallback to global search if not found (safety)
+             if (race.sprints) {
+                 const globalSprint = race.sprints.find(s => s.key === key || `${s.id}_${s.count}` === key || s.id === key);
+                 if (globalSprint) return `${globalSprint.name} #${globalSprint.count}`;
+             }
+             
+             return key;
         };
+
+        const displayResults = results.slice(0, limit);
 
         return (
             <table className="w-full text-left border-collapse table-fixed">

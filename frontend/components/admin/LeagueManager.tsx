@@ -47,9 +47,10 @@ interface Race {
     customCategory: string; // e.g. "Elite Men"
     laps?: number; // Override Laps
     startTime?: string; // Override Start Time (ISO string or Time string)
+    sprints?: SelectedSegment[]; // New: Per-category sprints
   }[];
   selectedSegments?: string[]; // List of segment unique keys (id_count) - KEPT FOR BACKWARDS COMPAT
-  sprints?: SelectedSegment[]; // Full segment objects
+  sprints?: SelectedSegment[]; // Full segment objects (Legacy/Global)
   results?: Record<string, any[]>; // Store results by category
 }
 
@@ -90,7 +91,8 @@ export default function LeagueManager() {
       eventSecret: string, 
       customCategory: string,
       laps?: number,
-      startTime?: string
+      startTime?: string,
+      sprints?: SelectedSegment[]
   }[]>([]);
 
   const [selectedMap, setSelectedMap] = useState('');
@@ -195,7 +197,7 @@ export default function LeagueManager() {
           }
       };
       fetchSegments();
-  }, [selectedRouteId, laps, eventMode, eventConfiguration]);
+  }, [selectedRouteId, laps, eventMode, eventConfiguration.length]); // Relaxed dependency on eventConfiguration deep changes
 
   // Real-time listener for viewing results
   useEffect(() => {
@@ -242,13 +244,23 @@ export default function LeagueManager() {
       setSelectedRouteId(race.routeId);
       setLaps(race.laps);
       
-      // Handle backwards compatibility or new structure
+          // Handle backwards compatibility or new structure
       if (race.sprints) {
           setSelectedSprints(race.sprints);
       } else if (race.selectedSegments) {
           setSelectedSprints([]);
       } else {
           setSelectedSprints([]);
+      }
+
+      // Handle Per-Category Sprints Loading
+      if (race.eventMode === 'multi' && race.eventConfiguration) {
+        setEventConfiguration(race.eventConfiguration.map(c => ({
+            ...c,
+            sprints: c.sprints || [] // Ensure sprints array exists
+        })));
+      } else {
+        setEventConfiguration([]);
       }
       
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -480,7 +492,7 @@ export default function LeagueManager() {
   };
 
   const addEventConfig = () => {
-      setEventConfiguration([...eventConfiguration, { eventId: '', eventSecret: '', customCategory: '', laps: laps, startTime: '' }]);
+      setEventConfiguration([...eventConfiguration, { eventId: '', eventSecret: '', customCategory: '', laps: laps, startTime: '', sprints: [] }]);
   };
 
   const removeEventConfig = (index: number) => {
@@ -489,10 +501,26 @@ export default function LeagueManager() {
       setEventConfiguration(newConfig);
   };
 
-  const updateEventConfig = (index: number, field: keyof typeof eventConfiguration[0], value: string | number) => {
+  const updateEventConfig = (index: number, field: keyof typeof eventConfiguration[0], value: any) => {
       const newConfig = [...eventConfiguration];
       newConfig[index] = { ...newConfig[index], [field]: value };
       setEventConfiguration(newConfig);
+  };
+
+  // Helper to toggle a sprint for a specific configuration
+  const toggleConfigSprint = (configIndex: number, seg: Segment) => {
+    const config = eventConfiguration[configIndex];
+    const currentSprints = config.sprints || [];
+    const key = `${seg.id}_${seg.count}`;
+    
+    let newSprints;
+    if (currentSprints.some(s => s.key === key)) {
+        newSprints = currentSprints.filter(s => s.key !== key);
+    } else {
+        newSprints = [...currentSprints, { ...seg, key }];
+    }
+    
+    updateEventConfig(configIndex, 'sprints', newSprints);
   };
 
   if (authLoading || status === 'loading') return <div className="p-8 text-center">Loading...</div>;
@@ -862,6 +890,57 @@ export default function LeagueManager() {
                                                       />
                                                   </div>
                                               </div>
+                                              
+                                              {/* Per-Category Sprint Selection Dropdown */}
+                                              <div className="mt-2">
+                                                  <label className="text-[10px] text-muted-foreground font-bold uppercase block mb-1">
+                                                      Sprint Segments ({config.sprints?.length || 0} selected)
+                                                  </label>
+                                                  <div className="relative group">
+                                                      <div className="w-full p-2 border border-input rounded bg-background text-foreground text-sm flex justify-between items-center cursor-pointer min-h-[38px]">
+                                                          <span className="truncate">
+                                                              {config.sprints && config.sprints.length > 0 
+                                                                  ? config.sprints.map(s => s.name).join(', ') 
+                                                                  : 'Select Sprints...'}
+                                                          </span>
+                                                          <span className="text-xs">▼</span>
+                                                      </div>
+                                                      
+                                                      <div className="hidden group-hover:block absolute z-10 w-full max-h-60 overflow-y-auto bg-card border border-border rounded shadow-lg p-2 mt-1">
+                                                           {Object.keys(segmentsByLap).sort((a,b) => parseInt(a)-parseInt(b)).map(lapKey => {
+                                                              const lapNum = parseInt(lapKey);
+                                                              // Only show segments up to the laps configured for this category
+                                                              if (lapNum > (config.laps || laps)) return null;
+                                                              
+                                                              return (
+                                                                  <div key={lapNum} className="mb-2">
+                                                                      <div className="text-[10px] font-bold text-muted-foreground uppercase mb-1 bg-muted/30 px-1">Lap {lapNum}</div>
+                                                                      {segmentsByLap[lapNum].map(seg => {
+                                                                          const uniqueKey = `${seg.id}_${seg.count}`;
+                                                                          const isSelected = config.sprints?.some(s => s.key === uniqueKey);
+                                                                          return (
+                                                                              <label key={uniqueKey} className="flex items-center gap-2 p-1.5 hover:bg-muted/50 rounded cursor-pointer">
+                                                                                  <input 
+                                                                                      type="checkbox"
+                                                                                      checked={isSelected}
+                                                                                      onChange={() => toggleConfigSprint(idx, seg)}
+                                                                                      className="w-3 h-3 rounded border-input text-primary"
+                                                                                  />
+                                                                                  <div className="text-xs truncate" title={`${seg.name} (${seg.direction})`}>
+                                                                                      {seg.name}
+                                                                                  </div>
+                                                                              </label>
+                                                                          );
+                                                                      })}
+                                                                  </div>
+                                                              );
+                                                          })}
+                                                          {availableSegments.length === 0 && (
+                                                              <div className="text-xs text-muted-foreground p-2">No segments found. Select Route first.</div>
+                                                          )}
+                                                      </div>
+                                                  </div>
+                                              </div>
                                           </div>
                                       ))}
                                       <button 
@@ -880,48 +959,50 @@ export default function LeagueManager() {
                               </p>
                           </div>
 
-                          {/* Segment Selection */}
-                          <div className="border-t border-border pt-4">
-                              <label className="block font-medium text-card-foreground mb-3">Sprint Segments (Scoring)</label>
-                              {availableSegments.length === 0 ? (
-                                  <p className="text-sm text-muted-foreground italic">No known segments on this route.</p>
-                              ) : (
-                                  <div className="space-y-4 max-h-96 overflow-y-auto">
-                                      {Object.keys(segmentsByLap).sort((a,b) => parseInt(a)-parseInt(b)).map(lapKey => {
-                                          const lapNum = parseInt(lapKey);
-                                          return (
-                                              <div key={lapNum} className="border border-border rounded-md overflow-hidden">
-                                                  <div className="bg-muted/30 px-3 py-2 text-sm font-semibold text-muted-foreground border-b border-border">
-                                                      Lap {lapNum}
-                                                  </div>
-                                                  <div className="p-2 grid grid-cols-1 md:grid-cols-2 gap-2">
-                                                      {segmentsByLap[lapNum].map((seg, idx) => {
-                                                          const uniqueKey = `${seg.id}_${seg.count}`;
-                                                          const isSelected = selectedSprints.some(s => s.key === uniqueKey);
-                                                          return (
-                                                              <label key={uniqueKey} className="flex items-center gap-3 p-2 rounded hover:bg-muted/50 cursor-pointer border border-transparent hover:border-border transition">
-                                                                  <input 
-                                                                    type="checkbox"
-                                                                    checked={isSelected}
-                                                                    onChange={() => toggleSegment(seg)}
-                                                                    className="w-4 h-4 rounded border-input text-primary focus:ring-primary"
-                                                                  />
-                                                                  <div className="text-sm">
-                                                                      <div className="font-medium text-foreground">{seg.name}</div>
-                                                                      <div className="text-xs text-muted-foreground">
-                                                                          {seg.direction} • Occurrence #{seg.count}
-                                                                      </div>
-                                                                  </div>
-                                                              </label>
-                                                          );
-                                                      })}
-                                                  </div>
-                                              </div>
-                                          );
-                                      })}
-                                  </div>
-                              )}
-                          </div>
+                          {/* Global Sprint Selection (Single Mode Only) */}
+                          {eventMode === 'single' && (
+                            <div className="border-t border-border pt-4">
+                                <label className="block font-medium text-card-foreground mb-3">Sprint Segments (Scoring)</label>
+                                {availableSegments.length === 0 ? (
+                                    <p className="text-sm text-muted-foreground italic">No known segments on this route.</p>
+                                ) : (
+                                    <div className="space-y-4 max-h-96 overflow-y-auto">
+                                        {Object.keys(segmentsByLap).sort((a,b) => parseInt(a)-parseInt(b)).map(lapKey => {
+                                            const lapNum = parseInt(lapKey);
+                                            return (
+                                                <div key={lapNum} className="border border-border rounded-md overflow-hidden">
+                                                    <div className="bg-muted/30 px-3 py-2 text-sm font-semibold text-muted-foreground border-b border-border">
+                                                        Lap {lapNum}
+                                                    </div>
+                                                    <div className="p-2 grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                        {segmentsByLap[lapNum].map((seg, idx) => {
+                                                            const uniqueKey = `${seg.id}_${seg.count}`;
+                                                            const isSelected = selectedSprints.some(s => s.key === uniqueKey);
+                                                            return (
+                                                                <label key={uniqueKey} className="flex items-center gap-3 p-2 rounded hover:bg-muted/50 cursor-pointer border border-transparent hover:border-border transition">
+                                                                    <input 
+                                                                        type="checkbox"
+                                                                        checked={isSelected}
+                                                                        onChange={() => toggleSegment(seg)}
+                                                                        className="w-4 h-4 rounded border-input text-primary focus:ring-primary"
+                                                                    />
+                                                                    <div className="text-sm">
+                                                                        <div className="font-medium text-foreground">{seg.name}</div>
+                                                                        <div className="text-xs text-muted-foreground">
+                                                                            {seg.direction} • Occurrence #{seg.count}
+                                                                        </div>
+                                                                    </div>
+                                                                </label>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                          )}
                       </div>
                   )}
 

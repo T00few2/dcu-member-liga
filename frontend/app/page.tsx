@@ -26,6 +26,14 @@ interface Race {
   eventId?: string;
   eventSecret?: string;
   sprints?: Segment[];
+  eventMode?: 'single' | 'multi';
+  eventConfiguration?: {
+      customCategory: string;
+      laps?: number;
+      sprints?: Segment[];
+      eventId: string;
+      eventSecret?: string;
+  }[];
 }
 
 const getZwiftInsiderUrl = (routeName: string) => {
@@ -144,56 +152,146 @@ export default function Home() {
                                 <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Elevation</div>
                                 <div className="font-semibold text-card-foreground">{nextRace.totalElevation} m</div>
                             </div>
-                            <div className="bg-muted/20 p-3 rounded text-center">
+                            <div className="bg-muted/20 p-3 rounded text-center flex flex-col justify-center">
                                 <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Laps</div>
-                                <div className="font-semibold text-card-foreground">{nextRace.laps}</div>
+                                <div className="font-semibold text-card-foreground flex justify-center items-center h-full">
+                                    {(() => {
+                                        if (nextRace.eventMode === 'multi' && nextRace.eventConfiguration) {
+                                            const uniqueLaps = Array.from(new Set(nextRace.eventConfiguration.map(c => c.laps || nextRace.laps)));
+                                            if (uniqueLaps.length > 1) {
+                                                return (
+                                                    <div className="flex flex-col text-xs">
+                                                        {nextRace.eventConfiguration.map(c => (
+                                                            <span key={c.customCategory}>{c.customCategory}: {c.laps || nextRace.laps}</span>
+                                                        ))}
+                                                    </div>
+                                                );
+                                            } else if (uniqueLaps.length === 1 && uniqueLaps[0] !== nextRace.laps) {
+                                                return <>{uniqueLaps[0]}</>;
+                                            }
+                                        }
+                                        return <>{nextRace.laps}</>;
+                                    })()}
+                                </div>
                             </div>
                         </div>
 
-                        {nextRace.sprints && nextRace.sprints.length > 0 && (
-                            <div className="border-t border-border pt-4 mb-6">
-                                <h4 className="text-sm font-semibold text-card-foreground mb-3">Points Sprints</h4>
-                                <div className="space-y-3">
-                                    {/* Group by lap for display */}
-                                    {Object.entries(
-                                        nextRace.sprints.reduce((acc, seg) => {
-                                            const lap = seg.lap || 1;
-                                            if (!acc[lap]) acc[lap] = [];
-                                            acc[lap].push(seg);
-                                            return acc;
-                                        }, {} as Record<number, Segment[]>)
-                                    )
-                                    .sort(([a], [b]) => parseInt(a) - parseInt(b))
-                                    .map(([lapKey, segments]) => (
-                                        <div key={lapKey} className="flex flex-col sm:flex-row gap-2 sm:gap-8 text-sm">
-                                            <div className="w-16 font-medium text-muted-foreground shrink-0">Lap {lapKey}</div>
-                                            <div className="flex-1 flex flex-wrap gap-2">
-                                                {segments.sort((a, b) => a.count - b.count).map((seg, idx) => (
-                                                    <span key={idx} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
-                                                        {seg.name}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
+                        {(() => {
+                            // Determine Sprints Display Logic Inline
+                            if (nextRace.eventMode === 'multi' && nextRace.eventConfiguration) {
+                                return (
+                                    <div className="border-t border-border pt-4 mb-6">
+                                        <h4 className="text-sm font-semibold text-card-foreground mb-3">Points Sprints</h4>
+                                        <div className="space-y-4">
+                                            {nextRace.eventConfiguration.map((config, idx) => {
+                                                const catSprints = config.sprints || [];
+                                                if (catSprints.length === 0) return null;
+                                                
+                                                const sprintsByLap = catSprints.reduce((acc, seg) => {
+                                                    const lap = seg.lap || 1;
+                                                    if (!acc[lap]) acc[lap] = [];
+                                                    acc[lap].push(seg);
+                                                    return acc;
+                                                }, {} as Record<number, Segment[]>);
 
-                        {nextRace.eventId && (
-                            <a 
-                                href={`https://www.zwift.com/eu/events/view/${nextRace.eventId}${nextRace.eventSecret ? `?eventSecret=${nextRace.eventSecret}` : ''}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="block w-full bg-[#fc6719] hover:bg-[#d9530e] text-white font-bold py-3 px-4 rounded-lg text-center transition shadow-md flex items-center justify-center gap-2"
-                            >
-                                <span>Race Pass</span>
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                                    <polyline points="15 3 21 3 21 9"></polyline>
-                                    <line x1="10" y1="14" x2="21" y2="3"></line>
-                                </svg>
-                            </a>
+                                                return (
+                                                    <div key={idx} className="text-sm">
+                                                        <div className="font-semibold text-xs uppercase text-muted-foreground mb-2 border-b border-border pb-1">
+                                                            {config.customCategory}
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            {Object.keys(sprintsByLap).sort((a,b) => parseInt(a)-parseInt(b)).map(lapKey => {
+                                                                const lapNum = parseInt(lapKey);
+                                                                return (
+                                                                    <div key={lapNum} className="flex flex-col sm:flex-row gap-2 sm:gap-4 text-xs">
+                                                                        <div className="w-12 font-medium text-muted-foreground shrink-0">Lap {lapNum}</div>
+                                                                        <div className="flex-1 flex flex-wrap gap-2">
+                                                                            {sprintsByLap[lapNum].sort((a,b) => a.count - b.count).map((seg, sIdx) => (
+                                                                                <span key={sIdx} className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-secondary text-secondary-foreground border border-border">
+                                                                                    {seg.name}
+                                                                                </span>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                );
+                            } else if (nextRace.sprints && nextRace.sprints.length > 0) {
+                                // Legacy Single Mode
+                                return (
+                                    <div className="border-t border-border pt-4 mb-6">
+                                        <h4 className="text-sm font-semibold text-card-foreground mb-3">Points Sprints</h4>
+                                        <div className="space-y-3">
+                                            {/* Group by lap for display */}
+                                            {Object.entries(
+                                                nextRace.sprints.reduce((acc, seg) => {
+                                                    const lap = seg.lap || 1;
+                                                    if (!acc[lap]) acc[lap] = [];
+                                                    acc[lap].push(seg);
+                                                    return acc;
+                                                }, {} as Record<number, Segment[]>)
+                                            )
+                                            .sort(([a], [b]) => parseInt(a) - parseInt(b))
+                                            .map(([lapKey, segments]) => (
+                                                <div key={lapKey} className="flex flex-col sm:flex-row gap-2 sm:gap-8 text-sm">
+                                                    <div className="w-16 font-medium text-muted-foreground shrink-0">Lap {lapKey}</div>
+                                                    <div className="flex-1 flex flex-wrap gap-2">
+                                                        {segments.sort((a, b) => a.count - b.count).map((seg, idx) => (
+                                                            <span key={idx} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                                                                {seg.name}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                );
+                            }
+                            return null;
+                        })()}
+
+                        {nextRace.eventMode === 'multi' ? (
+                            <div className="flex flex-col gap-2">
+                                {nextRace.eventConfiguration?.map((config, i) => (
+                                    <a 
+                                        key={i}
+                                        href={`https://www.zwift.com/eu/events/view/${config.eventId}${config.eventSecret ? `?eventSecret=${config.eventSecret}` : ''}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="block w-full bg-[#fc6719] hover:bg-[#d9530e] text-white font-bold py-2 px-4 rounded-lg text-center transition shadow-md flex items-center justify-center gap-2 text-sm"
+                                    >
+                                        <span>Race Pass: {config.customCategory}</span>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                                            <polyline points="15 3 21 3 21 9"></polyline>
+                                            <line x1="10" y1="14" x2="21" y2="3"></line>
+                                        </svg>
+                                    </a>
+                                ))}
+                            </div>
+                        ) : (
+                            nextRace.eventId && (
+                                <a 
+                                    href={`https://www.zwift.com/eu/events/view/${nextRace.eventId}${nextRace.eventSecret ? `?eventSecret=${nextRace.eventSecret}` : ''}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="block w-full bg-[#fc6719] hover:bg-[#d9530e] text-white font-bold py-3 px-4 rounded-lg text-center transition shadow-md flex items-center justify-center gap-2"
+                                >
+                                    <span>Race Pass</span>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                                        <polyline points="15 3 21 3 21 9"></polyline>
+                                        <line x1="10" y1="14" x2="21" y2="3"></line>
+                                    </svg>
+                                </a>
+                            )
                         )}
                     </div>
                 </div>

@@ -21,6 +21,7 @@ interface Race {
     eventSecret: string;
     customCategory: string;
     laps?: number; // Added laps override
+    sprints?: Sprint[]; // Added support for per-category sprints
   }[];
   results?: Record<string, ResultEntry[]>;
   resultsUpdatedAt?: string;
@@ -309,8 +310,22 @@ export default function ResultsPage() {
   let sprintColumns: string[] = [];
   
   if (selectedRace) {
-      // Use sprintData if available as it has the correct order
-      const orderedSprints = selectedRace.sprintData || selectedRace.sprints || [];
+      // Determine correct sprint config source
+      let orderedSprints: Sprint[] = [];
+      
+      if (selectedRace.eventMode === 'multi' && selectedRace.eventConfiguration) {
+          // Find config for current category
+          const catConfig = selectedRace.eventConfiguration.find(c => c.customCategory === displayRaceCategory);
+          if (catConfig && catConfig.sprints) {
+              orderedSprints = catConfig.sprints;
+          } else {
+               // Fallback to global if not found
+               orderedSprints = selectedRace.sprints || [];
+          }
+      } else {
+          // Single Mode
+          orderedSprints = selectedRace.sprintData || selectedRace.sprints || [];
+      }
       
       if (orderedSprints.length > 0) {
           // Iterate through defined sprints in order and pick those that have results
@@ -337,9 +352,20 @@ export default function ResultsPage() {
   }
 
   const getSprintHeader = (key: string) => {
-      if (!selectedRace?.sprints) return key.replace(/_/g, ' ');
+      // Find source sprint list again (could refactor to share)
+      let sourceSprints: Sprint[] = [];
+       if (selectedRace?.eventMode === 'multi' && selectedRace.eventConfiguration) {
+          const catConfig = selectedRace.eventConfiguration.find(c => c.customCategory === displayRaceCategory);
+          if (catConfig && catConfig.sprints) sourceSprints = catConfig.sprints;
+          else sourceSprints = selectedRace.sprints || [];
+       } else {
+          sourceSprints = selectedRace?.sprints || [];
+       }
+      
+      if (sourceSprints.length === 0) return key.replace(/_/g, ' ');
+
       // Try matching key, ID_COUNT, or just ID
-      const sprint = selectedRace.sprints.find(s => s.key === key || `${s.id}_${s.count}` === key || s.id === key);
+      const sprint = sourceSprints.find(s => s.key === key || `${s.id}_${s.count}` === key || s.id === key);
       
       if (sprint) {
           return `${sprint.name} #${sprint.count}`;
@@ -349,7 +375,7 @@ export default function ResultsPage() {
       if (parts.length >= 2) {
           const id = parts[0];
           const count = parseInt(parts[1]);
-          const match = selectedRace.sprints.find(s => s.id == id && s.count == count);
+          const match = sourceSprints.find(s => s.id == id && s.count == count);
           if (match) return `${match.name} #${match.count}`;
       }
       return key.replace(/_/g, ' ');
