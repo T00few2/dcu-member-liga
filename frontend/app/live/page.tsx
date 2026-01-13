@@ -298,7 +298,7 @@ export default function LiveLinksPage() {
                                         onChange={(e) => updateConfig('filterRegistered', e.target.checked)}
                                         className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
                                     />
-                                    <span className="text-slate-300">Filter Non-Registered Riders</span>
+                                    <span className="text-slate-300">Filter Registered (Show Only Registered)</span>
                                 </label>
                             </div>
                         </div>
