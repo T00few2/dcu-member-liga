@@ -891,22 +891,19 @@ export default function LeagueManager() {
                                                   </div>
                                               </div>
                                               
-                                              {/* Per-Category Sprint Selection Dropdown */}
+                                              {/* Per-Category Sprint Selection Accordion */}
                                               <div className="mt-2">
-                                                  <label className="text-[10px] text-muted-foreground font-bold uppercase block mb-1">
-                                                      Sprint Segments ({config.sprints?.length || 0} selected)
-                                                  </label>
-                                                  <div className="relative group">
-                                                      <div className="w-full p-2 border border-input rounded bg-background text-foreground text-sm flex justify-between items-center cursor-pointer min-h-[38px]">
-                                                          <span className="truncate">
-                                                              {config.sprints && config.sprints.length > 0 
-                                                                  ? config.sprints.map(s => s.name).join(', ') 
-                                                                  : 'Select Sprints...'}
+                                                  <details className="group border border-input rounded bg-background">
+                                                      <summary className="list-none flex justify-between items-center p-2 cursor-pointer text-xs font-medium text-foreground select-none">
+                                                          <span>
+                                                              Sprint Segments ({config.sprints?.length || 0} selected)
                                                           </span>
-                                                          <span className="text-xs">▼</span>
-                                                      </div>
+                                                          <span className="text-muted-foreground group-open:rotate-180 transition-transform">
+                                                              ▼
+                                                          </span>
+                                                      </summary>
                                                       
-                                                      <div className="hidden group-hover:block absolute z-10 w-full max-h-60 overflow-y-auto bg-card border border-border rounded shadow-lg p-2 mt-1">
+                                                      <div className="p-2 border-t border-input max-h-60 overflow-y-auto bg-muted/10">
                                                            {Object.keys(segmentsByLap).sort((a,b) => parseInt(a)-parseInt(b)).map(lapKey => {
                                                               const lapNum = parseInt(lapKey);
                                                               // Only show segments up to the laps configured for this category
@@ -914,7 +911,7 @@ export default function LeagueManager() {
                                                               
                                                               return (
                                                                   <div key={lapNum} className="mb-2">
-                                                                      <div className="text-[10px] font-bold text-muted-foreground uppercase mb-1 bg-muted/30 px-1">Lap {lapNum}</div>
+                                                                      <div className="text-[10px] font-bold text-muted-foreground uppercase mb-1 bg-muted/30 px-1 rounded">Lap {lapNum}</div>
                                                                       {segmentsByLap[lapNum].map(seg => {
                                                                           const uniqueKey = `${seg.id}_${seg.count}`;
                                                                           const isSelected = config.sprints?.some(s => s.key === uniqueKey);
@@ -924,7 +921,7 @@ export default function LeagueManager() {
                                                                                       type="checkbox"
                                                                                       checked={isSelected}
                                                                                       onChange={() => toggleConfigSprint(idx, seg)}
-                                                                                      className="w-3 h-3 rounded border-input text-primary"
+                                                                                      className="w-3 h-3 rounded border-input text-primary focus:ring-primary"
                                                                                   />
                                                                                   <div className="text-xs truncate" title={`${seg.name} (${seg.direction})`}>
                                                                                       {seg.name}
@@ -936,10 +933,10 @@ export default function LeagueManager() {
                                                               );
                                                           })}
                                                           {availableSegments.length === 0 && (
-                                                              <div className="text-xs text-muted-foreground p-2">No segments found. Select Route first.</div>
+                                                              <div className="text-xs text-muted-foreground p-2 text-center italic">No segments found. Select Route first.</div>
                                                           )}
                                                       </div>
-                                                  </div>
+                                                  </details>
                                               </div>
                                           </div>
                                       ))}
