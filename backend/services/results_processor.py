@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 from services.zwift import ZwiftService
 from services.zwift_game import ZwiftGameService
+from firebase_admin import firestore
 
 logger = logging.getLogger('ResultsProcessor')
 
