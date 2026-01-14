@@ -34,7 +34,7 @@ class ResultsProcessor:
         # Determine Event Sources
         event_sources = []
         event_config = race_data.get('eventConfiguration', [])
-        manual_dqs = set(race_data.get('manualDQs', []))
+        manual_dqs = set(str(dq) for dq in race_data.get('manualDQs', [])) # Ensure strings
         
         if event_config and len(event_config) > 0:
             # Multi-Event Mode
@@ -465,7 +465,12 @@ class ResultsProcessor:
             # Use override data if this is the race we just updated (Consistency Fix)
             if override_race_id and doc.id == override_race_id:
                 race_data = override_race_data
-                print(f"  Using fresh data for race {doc.id}")
+                # Ensure manualDQs is present in override data if it wasn't
+                if 'manualDQs' not in race_data:
+                    # Attempt to get it from the doc just in case
+                    race_data['manualDQs'] = doc.to_dict().get('manualDQs', [])
+                
+                print(f"  Using fresh data for race {doc.id} (Override). Manual DQs: {len(race_data.get('manualDQs', []))}")
             else:
                 race_data = doc.to_dict()
             
@@ -474,7 +479,7 @@ class ResultsProcessor:
                  race_data = override_race_data
 
             results = race_data.get('results', {}) # { 'A': [...], 'B': [...] }
-            manual_dqs = set(race_data.get('manualDQs', [])) # Get DQs for this race
+            manual_dqs = set(str(dq) for dq in race_data.get('manualDQs', [])) # Get DQs for this race (Ensure Strings)
 
             if not results:
                 continue
@@ -485,12 +490,12 @@ class ResultsProcessor:
                     league_table[category] = {}
                 
                 for rider in riders:
-                    zid = rider['zwiftId']
+                    zid = str(rider['zwiftId'])
                     
                     # If rider is DQ'd in this race, they get 0 points regardless of what the results say (double safety)
-                    # Although _calculate_points_and_sprints should have already set points to 0.
                     if zid in manual_dqs:
                         points = 0
+                        print(f"  [Standings] Rider {zid} is DQ in race {doc.id}, forcing 0 points.")
                     else:
                         points = rider['totalPoints']
                     
