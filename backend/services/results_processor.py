@@ -478,17 +478,7 @@ class ResultsProcessor:
                                         if w_zid in manual_dqs:
                                             continue
                                         
-                                        # Declassified riders KEEP sprint points unless otherwise specified
-                                        # (User said "get the same score" which is ambiguous about sprints.
-                                        # Standard rule: Relegation affects stage placing, usually keeps intermediate points unless specifically stripped.
-                                        # BUT if they "get the same score", maybe they shouldn't keep sprint points?
-                                        # Let's assume they KEEP sprint points for now as it's "declassification" (ranking) not "DQ" (removal).
-                                        # If user wants them to have identical TOTAL score, we should strip sprint points.
-                                        # Re-reading: "treated as if they finished last and get the same score".
-                                        # If multiple people are declassified, they all get the SAME score (last place points).
-                                        # This implies their total score is fixed to that value.
-                                        # So NO sprint points.)
-                                        
+                                        # Declassified riders LOSE sprint points as requested
                                         if w_zid in manual_declassifications:
                                             continue
 
