@@ -469,7 +469,13 @@ class ResultsProcessor:
             else:
                 race_data = doc.to_dict()
             
+            # Double check that we are not using outdated results for the current race ID if they were passed
+            if override_race_id and doc.id == override_race_id and override_race_data:
+                 race_data = override_race_data
+
             results = race_data.get('results', {}) # { 'A': [...], 'B': [...] }
+            manual_dqs = set(race_data.get('manualDQs', [])) # Get DQs for this race
+
             if not results:
                 continue
             
@@ -480,7 +486,13 @@ class ResultsProcessor:
                 
                 for rider in riders:
                     zid = rider['zwiftId']
-                    points = rider['totalPoints']
+                    
+                    # If rider is DQ'd in this race, they get 0 points regardless of what the results say (double safety)
+                    # Although _calculate_points_and_sprints should have already set points to 0.
+                    if zid in manual_dqs:
+                        points = 0
+                    else:
+                        points = rider['totalPoints']
                     
                     if zid not in league_table[category]:
                         league_table[category][zid] = {
