@@ -53,6 +53,7 @@ interface Race {
   sprints?: SelectedSegment[]; // Full segment objects (Legacy/Global)
   results?: Record<string, any[]>; // Store results by category
   manualDQs?: string[]; // Manually Disqualified Zwift IDs
+  manualDeclassifications?: string[]; // Manually Declassified Zwift IDs
 }
 
 interface LeagueSettings {
@@ -533,12 +534,32 @@ export default function LeagueManager() {
               });
           } else {
               await updateDoc(raceRef, {
-                  manualDQs: arrayUnion(zwiftId)
+                  manualDQs: arrayUnion(zwiftId),
+                  manualDeclassifications: arrayRemove(zwiftId) // Remove from declass if adding to DQ
               });
           }
       } catch (e) {
           console.error("Error updating DQ status:", e);
           alert("Failed to update DQ status");
+      }
+  };
+
+  const handleToggleDeclass = async (raceId: string, zwiftId: string, isCurrentlyDeclass: boolean) => {
+      try {
+          const raceRef = doc(db, 'races', raceId);
+          if (isCurrentlyDeclass) {
+              await updateDoc(raceRef, {
+                  manualDeclassifications: arrayRemove(zwiftId)
+              });
+          } else {
+              await updateDoc(raceRef, {
+                  manualDeclassifications: arrayUnion(zwiftId),
+                  manualDQs: arrayRemove(zwiftId) // Remove from DQ if adding to Declass
+              });
+          }
+      } catch (e) {
+          console.error("Error updating Declass status:", e);
+          alert("Failed to update Declass status");
       }
   };
 
@@ -1108,16 +1129,19 @@ export default function LeagueManager() {
                                                   <th className="px-4 py-2 text-right">Time</th>
                                                   <th className="px-4 py-2 text-right">Pts</th>
                                                   <th className="px-4 py-2 text-center w-20">Flags</th>
-                                                  <th className="px-4 py-2 text-center w-12">DQ</th>
+                                                  <th className="px-4 py-2 text-center w-12" title="Disqualify (0 pts)">DQ</th>
+                                                  <th className="px-4 py-2 text-center w-12" title="Declassify (Last place pts)">DC</th>
                                               </tr>
                                           </thead>
                                           <tbody className="divide-y divide-border">
                                               {results[cat].map((rider: any, idx: number) => {
                                                   const isFlagged = rider.flaggedCheating || rider.flaggedSandbagging;
                                                   const isManualDQ = (race?.manualDQs || []).includes(rider.zwiftId);
+                                                  const isManualDeclass = (race?.manualDeclassifications || []).includes(rider.zwiftId);
+                                                  
                                                   return (
-                                                      <tr key={rider.zwiftId} className={`hover:bg-muted/10 ${isFlagged || isManualDQ ? 'bg-red-50 dark:bg-red-950/20' : ''}`}>
-                                                          <td className="px-4 py-2 text-muted-foreground">{isManualDQ ? '-' : idx + 1}</td>
+                                                      <tr key={rider.zwiftId} className={`hover:bg-muted/10 ${isFlagged || isManualDQ ? 'bg-red-50 dark:bg-red-950/20' : isManualDeclass ? 'bg-yellow-50 dark:bg-yellow-950/20' : ''}`}>
+                                                          <td className="px-4 py-2 text-muted-foreground">{isManualDQ ? '-' : isManualDeclass ? '*' : idx + 1}</td>
                                                           <td className="px-4 py-2 font-medium">
                                                               {rider.name}
                                                               {isFlagged && (
@@ -1131,17 +1155,22 @@ export default function LeagueManager() {
                                                                       DISQUALIFIED
                                                                   </div>
                                                               )}
+                                                              {isManualDeclass && (
+                                                                  <div className="text-[10px] text-yellow-600 font-bold mt-0.5">
+                                                                      DECLASSIFIED
+                                                                  </div>
+                                                              )}
                                                           </td>
                                                           <td className="px-4 py-2 text-right font-mono text-muted-foreground">
                                                               {rider.finishTime > 0 ? new Date(rider.finishTime).toISOString().substr(11, 8) : '-'}
                                                           </td>
                                                           <td className="px-4 py-2 text-right font-bold text-primary">
                                                               {rider.totalPoints}
-                                                              {isManualDQ && rider.totalPoints > 0 && (
-                                                                  <span className="text-[10px] text-red-500 block" title="Recalculation needed to apply 0 points">
+                                                              {(isManualDQ && rider.totalPoints > 0) || (isManualDeclass && rider.totalPoints === 0) ? (
+                                                                  <span className="text-[10px] text-red-500 block" title="Recalculation needed">
                                                                       (Recalc)
                                                                   </span>
-                                                              )}
+                                                              ) : null}
                                                           </td>
                                                           <td className="px-4 py-2 text-center">
                                                               {isFlagged && <span className="text-xl" title="Flagged">🚩</span>}
@@ -1151,7 +1180,19 @@ export default function LeagueManager() {
                                                                   type="checkbox"
                                                                   checked={isManualDQ}
                                                                   onChange={() => race && handleToggleDQ(race.id, rider.zwiftId, isManualDQ)}
-                                                                  className="w-4 h-4 rounded border-input text-primary focus:ring-primary cursor-pointer"
+                                                                  disabled={isManualDeclass}
+                                                                  title={isManualDeclass ? "Uncheck Declassify first" : "Disqualify"}
+                                                                  className="w-4 h-4 rounded border-input text-primary focus:ring-primary cursor-pointer disabled:opacity-30"
+                                                              />
+                                                          </td>
+                                                          <td className="px-4 py-2 text-center">
+                                                              <input 
+                                                                  type="checkbox"
+                                                                  checked={isManualDeclass}
+                                                                  onChange={() => race && handleToggleDeclass(race.id, rider.zwiftId, isManualDeclass)}
+                                                                  disabled={isManualDQ}
+                                                                  title={isManualDQ ? "Uncheck DQ first" : "Declassify"}
+                                                                  className="w-4 h-4 rounded border-input text-yellow-500 focus:ring-yellow-500 cursor-pointer disabled:opacity-30"
                                                               />
                                                           </td>
                                                       </tr>

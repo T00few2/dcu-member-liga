@@ -36,6 +36,7 @@ class ResultsProcessor:
         event_sources = []
         event_config = race_data.get('eventConfiguration', [])
         manual_dqs = set(str(dq) for dq in race_data.get('manualDQs', [])) # Ensure strings
+        manual_declassifications = set(str(dq) for dq in race_data.get('manualDeclassifications', [])) # Ensure strings
         
         if event_config and len(event_config) > 0:
             # Multi-Event Mode
@@ -103,7 +104,8 @@ class ResultsProcessor:
                 fetch_mode,
                 filter_registered,
                 category_filter,
-                manual_dqs
+                manual_dqs,
+                manual_declassifications
             )
 
         # 6. Save Results to Firestore
@@ -135,7 +137,7 @@ class ResultsProcessor:
 
     def _process_event_source(self, source, race_data, registered_riders, 
                               finish_points_scheme, sprint_points_scheme, 
-                              all_results, fetch_mode, filter_registered, category_filter, manual_dqs):
+                              all_results, fetch_mode, filter_registered, category_filter, manual_dqs, manual_declassifications):
         
         event_id = source['id']
         event_secret = source['secret']
@@ -210,7 +212,8 @@ class ResultsProcessor:
                 finish_points_scheme, 
                 sprint_points_scheme,
                 fetch_mode,
-                manual_dqs
+                manual_dqs,
+                manual_declassifications
             )
             
             if custom_category:
@@ -234,8 +237,9 @@ class ResultsProcessor:
             
             # Re-Calculate Rank and Finish Points based on new order
             # Filter out DQs from ranking logic
-            valid_riders = [r for r in custom_cat_finishers if not r.get('disqualified')]
+            valid_riders = [r for r in custom_cat_finishers if not r.get('disqualified') and not r.get('declassified')]
             dq_riders = [r for r in custom_cat_finishers if r.get('disqualified')]
+            declassified_riders = [r for r in custom_cat_finishers if r.get('declassified')]
             
             # Recalculate rank/points for valid riders
             for rank, rider in enumerate(valid_riders):
@@ -252,8 +256,19 @@ class ResultsProcessor:
                 rider['finishPoints'] = points
                 rider['totalPoints'] = rider['totalPoints'] - old_finish_points + points
             
+            # Recalculate rank/points for declassified riders
+            # They get the points for the LAST place of the valid riders + 1
+            last_valid_rank = len(valid_riders)
+            last_place_points = finish_points_scheme[last_valid_rank] if last_valid_rank < len(finish_points_scheme) else 0
+
+            for rider in declassified_riders:
+                old_finish_points = rider['finishPoints']
+                rider['finishRank'] = last_valid_rank + 1
+                rider['finishPoints'] = last_place_points
+                rider['totalPoints'] = rider['totalPoints'] - old_finish_points + last_place_points
+
             # Combine back
-            custom_cat_finishers = valid_riders + dq_riders
+            custom_cat_finishers = valid_riders + declassified_riders + dq_riders
             
             # Re-Sort by Total Points
             custom_cat_finishers.sort(key=lambda x: x['totalPoints'], reverse=True)
@@ -318,12 +333,13 @@ class ResultsProcessor:
         return finishers
 
     def _calculate_points_and_sprints(self, finishers, selected_sprints, start_time, registered_riders, 
-                                      finish_points_scheme, sprint_points_scheme, fetch_mode, manual_dqs):
+                                      finish_points_scheme, sprint_points_scheme, fetch_mode, manual_dqs, manual_declassifications):
         processed_riders = {}
         
-        # 1. Split Valid vs DQ
-        valid_finishers = [f for f in finishers if str(f['zwiftId']) not in manual_dqs]
+        # 1. Split Valid vs DQ vs Declassified
+        valid_finishers = [f for f in finishers if str(f['zwiftId']) not in manual_dqs and str(f['zwiftId']) not in manual_declassifications]
         dq_finishers = [f for f in finishers if str(f['zwiftId']) in manual_dqs]
+        declassified_finishers = [f for f in finishers if str(f['zwiftId']) in manual_declassifications]
 
         # 1. Finish Points (Valid)
         for rank, rider in enumerate(valid_finishers):
@@ -347,6 +363,38 @@ class ResultsProcessor:
                 'flaggedCheating': rider.get('flaggedCheating', False),
                 'flaggedSandbagging': rider.get('flaggedSandbagging', False),
                 'disqualified': False,
+                'declassified': False,
+                'criticalP': rider.get('criticalP', {})
+            }
+            processed_riders[rider['zwiftId']] = res
+
+        # 1c. Finish Points (Declassified)
+        # All get points as if they finished after the last valid rider
+        last_valid_rank = len(valid_finishers)
+        # Points for position (last_valid_rank + 1) - i.e. index (last_valid_rank)
+        last_place_points = finish_points_scheme[last_valid_rank] if last_valid_rank < len(finish_points_scheme) else 0
+
+        for rider in declassified_finishers:
+            res = {
+                'zwiftId': rider['zwiftId'],
+                'name': rider['name'],
+                'finishTime': rider['time'],
+                'finishRank': last_valid_rank + 1,
+                'finishPoints': last_place_points,
+                'sprintPoints': 0,
+                'totalPoints': last_place_points, # They keep sprint points if they got any? Usually no. Assuming sprints are kept? User said "all declassified riders are treated as if they finished last and get the same score". Usually implies finish score. Let's assume sprint points are KEPT unless specified otherwise. Wait, user said "get the same score". This might imply total score = last place score. Let's assume finish points = last place, sprint points = 0? Or sprint points kept? 
+                # "treated as if they finished last" usually refers to finish position.
+                # "get the same score" supports the idea that they all get the same points.
+                # Let's start with Finish Points = Last Place, Sprint Points = Kept (but we calc them later).
+                # Actually, usually relegation means you lose sprint points too if you were relegated for dangerous sprinting.
+                # But if "declassified", maybe just moved to back of pack.
+                # I will let them KEEP sprint points for now, but give them LAST PLACE finish points.
+                'sprintDetails': {}, 
+                'sprintData': {},
+                'flaggedCheating': rider.get('flaggedCheating', False),
+                'flaggedSandbagging': rider.get('flaggedSandbagging', False),
+                'disqualified': False,
+                'declassified': True,
                 'criticalP': rider.get('criticalP', {})
             }
             processed_riders[rider['zwiftId']] = res
@@ -429,6 +477,20 @@ class ResultsProcessor:
                                         # Skip DQ riders
                                         if w_zid in manual_dqs:
                                             continue
+                                        
+                                        # Declassified riders KEEP sprint points unless otherwise specified
+                                        # (User said "get the same score" which is ambiguous about sprints.
+                                        # Standard rule: Relegation affects stage placing, usually keeps intermediate points unless specifically stripped.
+                                        # BUT if they "get the same score", maybe they shouldn't keep sprint points?
+                                        # Let's assume they KEEP sprint points for now as it's "declassification" (ranking) not "DQ" (removal).
+                                        # If user wants them to have identical TOTAL score, we should strip sprint points.
+                                        # Re-reading: "treated as if they finished last and get the same score".
+                                        # If multiple people are declassified, they all get the SAME score (last place points).
+                                        # This implies their total score is fixed to that value.
+                                        # So NO sprint points.)
+                                        
+                                        if w_zid in manual_declassifications:
+                                            continue
 
                                         rider_data = processed_riders[w_zid]
                                         rider_data['sprintPoints'] += points
@@ -481,6 +543,7 @@ class ResultsProcessor:
 
             results = race_data.get('results', {}) # { 'A': [...], 'B': [...] }
             manual_dqs = set(str(dq) for dq in race_data.get('manualDQs', [])) # Get DQs for this race (Ensure Strings)
+            manual_declassifications = set(str(dq) for dq in race_data.get('manualDeclassifications', []))
 
             if not results:
                 continue
@@ -490,6 +553,11 @@ class ResultsProcessor:
                 if category not in league_table:
                     league_table[category] = {}
                 
+                # Calculate what "Last Place" points would be for this category if needed
+                # We need to find the count of VALID riders to know the index for last place points
+                valid_riders_count = sum(1 for r in riders if str(r['zwiftId']) not in manual_dqs and str(r['zwiftId']) not in manual_declassifications)
+                last_place_points = finish_points_scheme[valid_riders_count] if valid_riders_count < len(finish_points_scheme) else 0
+
                 for rider in riders:
                     zid = str(rider['zwiftId'])
                     
@@ -497,6 +565,9 @@ class ResultsProcessor:
                     if zid in manual_dqs:
                         points = 0
                         print(f"  [Standings] Rider {zid} is DQ in race {doc.id}, forcing 0 points.")
+                    elif zid in manual_declassifications:
+                        points = last_place_points
+                        print(f"  [Standings] Rider {zid} is Declassified in race {doc.id}, forcing last place points ({points}).")
                     else:
                         points = rider['totalPoints']
                     
