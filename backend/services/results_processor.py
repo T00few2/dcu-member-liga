@@ -111,16 +111,20 @@ class ResultsProcessor:
             'resultsUpdatedAt': datetime.now()
         })
         
+        # Update local race_data object with the new results so we can pass it to standings calc
+        race_data['results'] = all_results
+
         # 7. Update Global League Standings
         try:
-            self.save_league_standings()
+            # Pass the current race data to ensure we use the latest results (consistency fix)
+            self.save_league_standings(override_race_id=race_id, override_race_data=race_data)
         except Exception as e:
             print(f"Error updating league standings: {e}")
 
         return all_results
 
-    def save_league_standings(self):
-        standings = self.calculate_league_standings()
+    def save_league_standings(self, override_race_id=None, override_race_data=None):
+        standings = self.calculate_league_standings(override_race_id, override_race_data)
         self.db.collection('league').document('standings').set({
             'standings': standings,
             'updatedAt': firestore.SERVER_TIMESTAMP
@@ -437,7 +441,7 @@ class ResultsProcessor:
         final_list.sort(key=lambda x: x['totalPoints'], reverse=True)
         return final_list
 
-    def calculate_league_standings(self):
+    def calculate_league_standings(self, override_race_id=None, override_race_data=None):
         """
         Aggregates results from all races to produce a league table per category.
         Returns: { 'A': [ {name, zwiftId, totalPoints, raceCount, ...} ], 'B': ... }
@@ -458,7 +462,13 @@ class ResultsProcessor:
         race_count = 0
 
         for doc in docs:
-            race_data = doc.to_dict()
+            # Use override data if this is the race we just updated (Consistency Fix)
+            if override_race_id and doc.id == override_race_id:
+                race_data = override_race_data
+                print(f"  Using fresh data for race {doc.id}")
+            else:
+                race_data = doc.to_dict()
+            
             results = race_data.get('results', {}) # { 'A': [...], 'B': [...] }
             if not results:
                 continue
