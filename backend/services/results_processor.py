@@ -516,6 +516,7 @@ class ResultsProcessor:
         settings_doc = self.db.collection('league').document('settings').get()
         settings = settings_doc.to_dict() if settings_doc.exists else {}
         best_races_count = settings.get('bestRacesCount', 5)
+        finish_points_scheme = settings.get('finishPoints', []) # Fetch points scheme here
 
         print(f"Calculating league standings (Best {best_races_count} races)...")
         races_ref = self.db.collection('races')
