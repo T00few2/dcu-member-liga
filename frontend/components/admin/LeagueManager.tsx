@@ -1114,7 +1114,7 @@ export default function LeagueManager() {
                                           <tbody className="divide-y divide-border">
                                               {results[cat].map((rider: any, idx: number) => {
                                                   const isFlagged = rider.flaggedCheating || rider.flaggedSandbagging;
-                                                  const isManualDQ = (race.manualDQs || []).includes(rider.zwiftId);
+                                                  const isManualDQ = (race?.manualDQs || []).includes(rider.zwiftId);
                                                   return (
                                                       <tr key={rider.zwiftId} className={`hover:bg-muted/10 ${isFlagged || isManualDQ ? 'bg-red-50 dark:bg-red-950/20' : ''}`}>
                                                           <td className="px-4 py-2 text-muted-foreground">{isManualDQ ? '-' : idx + 1}</td>
@@ -1150,7 +1150,7 @@ export default function LeagueManager() {
                                                               <input 
                                                                   type="checkbox"
                                                                   checked={isManualDQ}
-                                                                  onChange={() => handleToggleDQ(race.id, rider.zwiftId, isManualDQ)}
+                                                                  onChange={() => race && handleToggleDQ(race.id, rider.zwiftId, isManualDQ)}
                                                                   className="w-4 h-4 rounded border-input text-primary focus:ring-primary cursor-pointer"
                                                               />
                                                           </td>
