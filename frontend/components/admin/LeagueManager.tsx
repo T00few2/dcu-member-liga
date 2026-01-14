@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { db } from '@/lib/firebase';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 
 interface Route {
   id: string;
@@ -52,6 +52,7 @@ interface Race {
   selectedSegments?: string[]; // List of segment unique keys (id_count) - KEPT FOR BACKWARDS COMPAT
   sprints?: SelectedSegment[]; // Full segment objects (Legacy/Global)
   results?: Record<string, any[]>; // Store results by category
+  manualDQs?: string[]; // Manually Disqualified Zwift IDs
 }
 
 interface LeagueSettings {
@@ -521,6 +522,24 @@ export default function LeagueManager() {
     }
     
     updateEventConfig(configIndex, 'sprints', newSprints);
+  };
+
+  const handleToggleDQ = async (raceId: string, zwiftId: string, isCurrentlyDQ: boolean) => {
+      try {
+          const raceRef = doc(db, 'races', raceId);
+          if (isCurrentlyDQ) {
+              await updateDoc(raceRef, {
+                  manualDQs: arrayRemove(zwiftId)
+              });
+          } else {
+              await updateDoc(raceRef, {
+                  manualDQs: arrayUnion(zwiftId)
+              });
+          }
+      } catch (e) {
+          console.error("Error updating DQ status:", e);
+          alert("Failed to update DQ status");
+      }
   };
 
   if (authLoading || status === 'loading') return <div className="p-8 text-center">Loading...</div>;
@@ -1029,9 +1048,18 @@ export default function LeagueManager() {
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                   <div className="bg-card w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-lg shadow-2xl border border-border flex flex-col">
                       <div className="p-4 border-b border-border flex justify-between items-center bg-muted/30">
-                          <h3 className="text-lg font-bold text-card-foreground">
-                              Results: {races.find(r => r.id === viewingResultsId)?.name}
-                          </h3>
+                          <div className="flex items-center gap-4">
+                              <h3 className="text-lg font-bold text-card-foreground">
+                                  Results: {races.find(r => r.id === viewingResultsId)?.name}
+                              </h3>
+                              <button 
+                                  onClick={() => handleRefreshResults(viewingResultsId!)}
+                                  disabled={status === 'refreshing'}
+                                  className="text-xs bg-primary text-primary-foreground px-3 py-1 rounded hover:opacity-90 font-medium"
+                              >
+                                  {status === 'refreshing' ? 'Calculating...' : 'Recalculate Results'}
+                              </button>
+                          </div>
                           <button 
                               onClick={() => setViewingResultsId(null)}
                               className="text-muted-foreground hover:text-foreground p-1"
@@ -1080,14 +1108,16 @@ export default function LeagueManager() {
                                                   <th className="px-4 py-2 text-right">Time</th>
                                                   <th className="px-4 py-2 text-right">Pts</th>
                                                   <th className="px-4 py-2 text-center w-20">Flags</th>
+                                                  <th className="px-4 py-2 text-center w-12">DQ</th>
                                               </tr>
                                           </thead>
                                           <tbody className="divide-y divide-border">
                                               {results[cat].map((rider: any, idx: number) => {
                                                   const isFlagged = rider.flaggedCheating || rider.flaggedSandbagging;
+                                                  const isManualDQ = (race.manualDQs || []).includes(rider.zwiftId);
                                                   return (
-                                                      <tr key={rider.zwiftId} className={`hover:bg-muted/10 ${isFlagged ? 'bg-red-50 dark:bg-red-950/20' : ''}`}>
-                                                          <td className="px-4 py-2 text-muted-foreground">{idx + 1}</td>
+                                                      <tr key={rider.zwiftId} className={`hover:bg-muted/10 ${isFlagged || isManualDQ ? 'bg-red-50 dark:bg-red-950/20' : ''}`}>
+                                                          <td className="px-4 py-2 text-muted-foreground">{isManualDQ ? '-' : idx + 1}</td>
                                                           <td className="px-4 py-2 font-medium">
                                                               {rider.name}
                                                               {isFlagged && (
@@ -1096,15 +1126,33 @@ export default function LeagueManager() {
                                                                       {rider.flaggedSandbagging ? 'SANDBAGGING' : ''}
                                                                   </div>
                                                               )}
+                                                              {isManualDQ && (
+                                                                  <div className="text-[10px] text-red-600 font-bold mt-0.5">
+                                                                      DISQUALIFIED
+                                                                  </div>
+                                                              )}
                                                           </td>
                                                           <td className="px-4 py-2 text-right font-mono text-muted-foreground">
                                                               {rider.finishTime > 0 ? new Date(rider.finishTime).toISOString().substr(11, 8) : '-'}
                                                           </td>
                                                           <td className="px-4 py-2 text-right font-bold text-primary">
                                                               {rider.totalPoints}
+                                                              {isManualDQ && rider.totalPoints > 0 && (
+                                                                  <span className="text-[10px] text-red-500 block" title="Recalculation needed to apply 0 points">
+                                                                      (Recalc)
+                                                                  </span>
+                                                              )}
                                                           </td>
                                                           <td className="px-4 py-2 text-center">
                                                               {isFlagged && <span className="text-xl" title="Flagged">🚩</span>}
+                                                          </td>
+                                                          <td className="px-4 py-2 text-center">
+                                                              <input 
+                                                                  type="checkbox"
+                                                                  checked={isManualDQ}
+                                                                  onChange={() => handleToggleDQ(race.id, rider.zwiftId, isManualDQ)}
+                                                                  className="w-4 h-4 rounded border-input text-primary focus:ring-primary cursor-pointer"
+                                                              />
                                                           </td>
                                                       </tr>
                                                   );

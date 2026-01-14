@@ -34,6 +34,7 @@ class ResultsProcessor:
         # Determine Event Sources
         event_sources = []
         event_config = race_data.get('eventConfiguration', [])
+        manual_dqs = set(race_data.get('manualDQs', []))
         
         if event_config and len(event_config) > 0:
             # Multi-Event Mode
@@ -100,7 +101,8 @@ class ResultsProcessor:
                 all_results,
                 fetch_mode,
                 filter_registered,
-                category_filter
+                category_filter,
+                manual_dqs
             )
 
         # 6. Save Results to Firestore
@@ -128,7 +130,7 @@ class ResultsProcessor:
 
     def _process_event_source(self, source, race_data, registered_riders, 
                               finish_points_scheme, sprint_points_scheme, 
-                              all_results, fetch_mode, filter_registered, category_filter):
+                              all_results, fetch_mode, filter_registered, category_filter, manual_dqs):
         
         event_id = source['id']
         event_secret = source['secret']
@@ -202,7 +204,8 @@ class ResultsProcessor:
                 registered_riders, 
                 finish_points_scheme, 
                 sprint_points_scheme,
-                fetch_mode
+                fetch_mode,
+                manual_dqs
             )
             
             if custom_category:
@@ -225,7 +228,12 @@ class ResultsProcessor:
                 custom_cat_finishers.sort(key=lambda x: x['name'])
             
             # Re-Calculate Rank and Finish Points based on new order
-            for rank, rider in enumerate(custom_cat_finishers):
+            # Filter out DQs from ranking logic
+            valid_riders = [r for r in custom_cat_finishers if not r.get('disqualified')]
+            dq_riders = [r for r in custom_cat_finishers if r.get('disqualified')]
+            
+            # Recalculate rank/points for valid riders
+            for rank, rider in enumerate(valid_riders):
                 if fetch_mode == 'finishers' and rider['finishTime'] > 0:
                      points = finish_points_scheme[rank] if rank < len(finish_points_scheme) else 0
                      finish_rank = rank + 1
@@ -234,13 +242,13 @@ class ResultsProcessor:
                      finish_rank = 0
                 
                 # Update points (subtract old finish points if any, add new)
-                # Actually, _calculate_points_and_sprints already assigned finish points based on subgroup rank.
-                # We need to recalculate for the merged group.
-                
                 old_finish_points = rider['finishPoints']
                 rider['finishRank'] = finish_rank
                 rider['finishPoints'] = points
                 rider['totalPoints'] = rider['totalPoints'] - old_finish_points + points
+            
+            # Combine back
+            custom_cat_finishers = valid_riders + dq_riders
             
             # Re-Sort by Total Points
             custom_cat_finishers.sort(key=lambda x: x['totalPoints'], reverse=True)
@@ -305,11 +313,15 @@ class ResultsProcessor:
         return finishers
 
     def _calculate_points_and_sprints(self, finishers, selected_sprints, start_time, registered_riders, 
-                                      finish_points_scheme, sprint_points_scheme, fetch_mode):
+                                      finish_points_scheme, sprint_points_scheme, fetch_mode, manual_dqs):
         processed_riders = {}
         
-        # 1. Finish Points
-        for rank, rider in enumerate(finishers):
+        # 1. Split Valid vs DQ
+        valid_finishers = [f for f in finishers if str(f['zwiftId']) not in manual_dqs]
+        dq_finishers = [f for f in finishers if str(f['zwiftId']) in manual_dqs]
+
+        # 1. Finish Points (Valid)
+        for rank, rider in enumerate(valid_finishers):
             if fetch_mode == 'finishers' and rider['time'] > 0:
                     points = finish_points_scheme[rank] if rank < len(finish_points_scheme) else 0
                     finish_rank = rank + 1
@@ -329,6 +341,26 @@ class ResultsProcessor:
                 'sprintData': {},
                 'flaggedCheating': rider.get('flaggedCheating', False),
                 'flaggedSandbagging': rider.get('flaggedSandbagging', False),
+                'disqualified': False,
+                'criticalP': rider.get('criticalP', {})
+            }
+            processed_riders[rider['zwiftId']] = res
+
+        # 1b. Finish Points (DQ)
+        for rider in dq_finishers:
+            res = {
+                'zwiftId': rider['zwiftId'],
+                'name': rider['name'],
+                'finishTime': rider['time'],
+                'finishRank': 9999,
+                'finishPoints': 0,
+                'sprintPoints': 0,
+                'totalPoints': 0,
+                'sprintDetails': {}, 
+                'sprintData': {},
+                'flaggedCheating': rider.get('flaggedCheating', False),
+                'flaggedSandbagging': rider.get('flaggedSandbagging', False),
+                'disqualified': True,
                 'criticalP': rider.get('criticalP', {})
             }
             processed_riders[rider['zwiftId']] = res
@@ -389,6 +421,10 @@ class ResultsProcessor:
                                     w_zid = str(winner_entry['id'])
                                     
                                     if w_zid in processed_riders:
+                                        # Skip DQ riders
+                                        if w_zid in manual_dqs:
+                                            continue
+
                                         rider_data = processed_riders[w_zid]
                                         rider_data['sprintPoints'] += points
                                         rider_data['totalPoints'] += points
