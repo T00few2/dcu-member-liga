@@ -53,6 +53,7 @@ interface Race {
   }[];
   selectedSegments?: string[]; // List of segment unique keys (id_count) - KEPT FOR BACKWARDS COMPAT
   sprints?: SelectedSegment[]; // Full segment objects (Legacy/Global)
+  segmentType?: 'sprint' | 'split';
   results?: Record<string, any[]>; // Store results by category
   manualDQs?: string[]; // Manually Disqualified Zwift IDs
   manualDeclassifications?: string[]; // Manually Declassified Zwift IDs
