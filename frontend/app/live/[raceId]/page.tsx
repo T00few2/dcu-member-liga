@@ -53,6 +53,16 @@ export default function LiveResultsPage() {
     // Configuration from URL
     const categoryParam = searchParams.get('cat');
     const isTransparent = searchParams.get('transparent') !== 'false'; // Default true
+    const isFull = searchParams.get('full') === 'true';
+    const titleParam = searchParams.get('title');
+    const defaultLogoSrc = '/live/logo.png';
+    const defaultBannerSrc = '/live/banner.png';
+    const defaultBackgroundSrc = '/live/background.jpg';
+    const logoSrc = searchParams.get('logo') || defaultLogoSrc;
+    const bannerParam = searchParams.get('banner');
+    const includeBanner = bannerParam !== 'false';
+    const bannerSrc = includeBanner ? (bannerParam || defaultBannerSrc) : '';
+    const backgroundSrc = searchParams.get('bg') || defaultBackgroundSrc;
     
     // Parse limit robustly
     const rawLimit = searchParams.get('limit');
@@ -211,25 +221,65 @@ export default function LiveResultsPage() {
         let scrollPos = 0;
         let direction = 1; // 1 = down, -1 = up
         const speed = 1; // px per tick
+        const tickMs = 50;
+        const pauseMs = 3000;
+        let intervalId: ReturnType<typeof setInterval> | null = null;
+        let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-        const interval = setInterval(() => {
-            // Only scroll if content overflows
-            if (scrollContainer.scrollHeight <= scrollContainer.clientHeight) return;
-
-            scrollPos += speed * direction;
-            
-            if (scrollPos >= (scrollContainer.scrollHeight - scrollContainer.clientHeight)) {
-                direction = -1;
-                scrollPos = scrollContainer.scrollHeight - scrollContainer.clientHeight;
-            } else if (scrollPos <= 0) {
-                direction = 1;
-                scrollPos = 0;
+        const stopInterval = () => {
+            if (intervalId) {
+                clearInterval(intervalId);
+                intervalId = null;
             }
+        };
 
-            scrollContainer.scrollTop = scrollPos;
-        }, 50);
+        const startInterval = () => {
+            if (intervalId) return;
+            intervalId = setInterval(() => {
+                // Only scroll if content overflows
+                if (scrollContainer.scrollHeight <= scrollContainer.clientHeight) return;
 
-        return () => clearInterval(interval);
+                scrollPos += speed * direction;
+                const maxScroll = scrollContainer.scrollHeight - scrollContainer.clientHeight;
+
+                if (scrollPos >= maxScroll) {
+                    scrollPos = maxScroll;
+                    scrollContainer.scrollTop = scrollPos;
+                    stopInterval();
+                    timeoutId = setTimeout(() => {
+                        direction = -1;
+                        startInterval();
+                    }, pauseMs);
+                    return;
+                }
+
+                if (scrollPos <= 0) {
+                    scrollPos = 0;
+                    scrollContainer.scrollTop = scrollPos;
+                    stopInterval();
+                    timeoutId = setTimeout(() => {
+                        direction = 1;
+                        startInterval();
+                    }, pauseMs);
+                    return;
+                }
+
+                scrollContainer.scrollTop = scrollPos;
+            }, tickMs);
+        };
+
+        scrollContainer.scrollTop = 0;
+        scrollPos = 0;
+        timeoutId = setTimeout(() => {
+            startInterval();
+        }, pauseMs);
+
+        return () => {
+            stopInterval();
+            if (timeoutId) {
+                clearTimeout(timeoutId);
+            }
+        };
     }, [autoScroll, race, viewMode, standings]); // Re-run when data updates or view changes
 
     if (loading) return <div className="p-8 text-white font-bold text-2xl">Loading Live Data...</div>;
@@ -267,6 +317,10 @@ export default function LiveResultsPage() {
     }
     
     const category = displayCategory || 'A';
+    const headerTitle = titleParam || race.name || 'Race Results';
+    const headerCellPadding = isFull ? 'py-0' : 'py-1';
+    const bodyCellPadding = isFull ? 'py-0.5' : 'py-2';
+    const tableBodyTextSize = isFull ? 'text-2xl' : 'text-3xl';
 
 
     // --- Render Content ---
@@ -341,26 +395,26 @@ export default function LiveResultsPage() {
             <table className="w-full text-left border-collapse table-fixed">
                 <thead>
                     <tr className="text-slate-400 text-lg uppercase tracking-wider border-b-2 border-slate-600 bg-slate-800/80">
-                        <th className="py-1 px-2 w-[10%] text-center">#</th>
-                        <th className="py-1 px-2 w-[55%]">Rider</th>
-                        <th className={`py-1 px-2 w-[35%] text-right font-bold break-words text-blue-400`}>
+                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[10%] text-center`}>#</th>
+                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[55%]`}>Rider</th>
+                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[35%] text-right font-bold break-words text-blue-400`}>
                             {lastSprintKey ? getSprintHeader(lastSprintKey) : 'Pts'}
                         </th>
                     </tr>
                 </thead>
-                <tbody className="text-white font-bold text-3xl">
+                <tbody className={`text-white font-bold ${tableBodyTextSize}`}>
                     {displayResults.map((rider, idx) => (
                         <tr 
                             key={rider.zwiftId} 
                             className="border-b border-slate-700/50 even:bg-slate-800/40"
                         >
-                            <td className="py-2 px-2 text-center font-bold text-slate-300">
+                            <td className={`${bodyCellPadding} px-2 text-center font-bold text-slate-300`}>
                                 {idx + 1}
                             </td>
-                            <td className="py-2 px-2 truncate">
+                            <td className={`${bodyCellPadding} px-2 truncate`}>
                                 {rider.name}
                             </td>
-                            <td className={`py-2 px-2 text-right font-extrabold text-blue-400`}>
+                            <td className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-400`}>
                                 {lastSprintKey 
                                     ? (rider.sprintDetails?.[lastSprintKey] || '-') 
                                     : rider.totalPoints}
@@ -400,26 +454,26 @@ export default function LiveResultsPage() {
             <table className="w-full text-left border-collapse table-fixed">
                 <thead>
                     <tr className="text-slate-400 text-lg uppercase tracking-wider border-b-2 border-slate-600 bg-slate-800/80">
-                        <th className="py-1 px-2 w-[10%] text-center">#</th>
-                        <th className="py-1 px-2 w-[55%]">Rider</th>
-                        <th className="py-1 px-2 w-[35%] text-right font-bold text-green-400">
+                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[10%] text-center`}>#</th>
+                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[55%]`}>Rider</th>
+                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[35%] text-right font-bold text-green-400`}>
                             Points
                         </th>
                     </tr>
                 </thead>
-                <tbody className="text-white font-bold text-3xl">
+                <tbody className={`text-white font-bold ${tableBodyTextSize}`}>
                     {displayResults.map((rider, idx) => (
                         <tr 
                             key={rider.zwiftId} 
                             className="border-b border-slate-700/50 even:bg-slate-800/40"
                         >
-                            <td className="py-2 px-2 text-center font-bold text-slate-300">
+                            <td className={`${bodyCellPadding} px-2 text-center font-bold text-slate-300`}>
                                 {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
                             </td>
-                            <td className="py-2 px-2 truncate">
+                            <td className={`${bodyCellPadding} px-2 truncate`}>
                                 {rider.name}
                             </td>
-                            <td className="py-2 px-2 text-right font-extrabold text-green-400">
+                            <td className={`${bodyCellPadding} px-2 text-right font-extrabold text-green-400`}>
                                 {rider.calculatedTotal}
                             </td>
                         </tr>
@@ -436,6 +490,76 @@ export default function LiveResultsPage() {
         );
     };
 
+    if (isFull) {
+        return (
+            <div className="fixed inset-0 z-50 overflow-hidden font-sans text-white">
+                <div
+                    className="absolute inset-0 bg-slate-600"
+                    style={{
+                        backgroundImage: backgroundSrc ? `url(${backgroundSrc})` : undefined,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                        filter: 'blur(6px)',
+                        transform: 'scale(1.03)'
+                    }}
+                />
+                <div className="absolute inset-0 bg-slate-600/30" />
+
+                <div className="relative z-10 flex h-full flex-col">
+                    <header className="relative flex items-center justify-center py-6">
+                        <div className="text-center">
+                            <h1 className="text-4xl md:text-6xl font-black tracking-wide">{headerTitle}</h1>
+                            <p className="mt-2 text-xl md:text-2xl text-slate-200 uppercase tracking-widest">
+                                {viewMode === 'standings' ? `Standings • ${category}` : `Results • ${category}`}
+                            </p>
+                        </div>
+
+                        {logoSrc && (
+                            <img
+                                src={logoSrc}
+                                alt="Logo"
+                                className="absolute right-6 top-6 z-20 h-16 md:h-24 object-contain"
+                                style={{ filter: 'none' }}
+                            />
+                        )}
+                    </header>
+
+                    <div
+                        ref={containerRef}
+                        className={`flex-1 overflow-auto px-6 ${autoScroll ? 'scrollbar-hide' : ''}`}
+                    >
+                        <div className="mx-auto max-w-6xl rounded-xl border border-slate-700/70 bg-slate-600/25 shadow-2xl backdrop-blur">
+                            {viewMode === 'race' ? renderRaceResults() : renderStandings()}
+                        </div>
+                    </div>
+
+                    {includeBanner && bannerSrc && (
+                        <div className="flex justify-center py-6">
+                            <img
+                                src={bannerSrc}
+                                alt="Banner"
+                                className="h-16 md:h-20 object-contain opacity-70"
+                            />
+                        </div>
+                    )}
+                </div>
+
+                <style jsx global>{`
+                    .site-footer {
+                        display: none !important;
+                    }
+                    .scrollbar-hide::-webkit-scrollbar {
+                        display: none;
+                    }
+                    .scrollbar-hide {
+                        -ms-overflow-style: none;
+                        scrollbar-width: none;
+                    }
+                `}</style>
+            </div>
+        );
+    }
+
     return (
         <div 
             className={`fixed inset-0 z-50 overflow-hidden font-sans ${
@@ -448,7 +572,7 @@ export default function LiveResultsPage() {
             >
                 <div className="p-0">
                     {/* Header showing mode if not transparent or just to differentiate */}
-                    <div className="bg-slate-900/90 text-center py-2 border-b border-slate-700">
+                    <div className="sticky top-0 z-20 bg-slate-900/90 text-center py-2 border-b border-slate-700">
                         <h2 className="text-xl font-bold text-white uppercase tracking-widest">
                             {viewMode === 'standings' ? `League Standings • ${category}` : `Race Results • ${category}`}
                         </h2>

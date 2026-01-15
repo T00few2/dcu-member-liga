@@ -34,6 +34,8 @@ export default function LiveLinksPage() {
         scroll: false,
         sprints: true,
         lastSprint: false,
+        full: false,
+        includeBanner: true,
         showCheckboxes: false, // Helper to toggle advanced options visibility
         // Calculation Settings
         source: 'joined', // 'finishers' | 'joined' | 'signed_up'
@@ -130,6 +132,8 @@ export default function LiveLinksPage() {
         if (config.scroll) params.set('scroll', 'true');
         if (!config.sprints) params.set('sprints', 'false');
         if (config.lastSprint) params.set('lastSprint', 'true');
+        if (config.full) params.set('full', 'true');
+        if (!config.includeBanner) params.set('banner', 'false');
 
         return `${baseUrl}?${params.toString()}`;
     };
@@ -251,6 +255,26 @@ export default function LiveLinksPage() {
                     </div>
 
                      <div className="space-y-3">
+                        <label className="flex items-center space-x-3 cursor-pointer">
+                            <input 
+                                type="checkbox" 
+                                checked={config.full}
+                                onChange={(e) => updateConfig('full', e.target.checked)}
+                                className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
+                            />
+                            <span className="text-slate-300">Full-Screen Layout</span>
+                        </label>
+
+                        <label className="flex items-center space-x-3 cursor-pointer">
+                            <input 
+                                type="checkbox" 
+                                checked={config.includeBanner}
+                                onChange={(e) => updateConfig('includeBanner', e.target.checked)}
+                                className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
+                            />
+                            <span className="text-slate-300">Include Banner</span>
+                        </label>
+
                         <label className="flex items-center space-x-3 cursor-pointer">
                             <input 
                                 type="checkbox" 
