@@ -49,6 +49,7 @@ interface Race {
     laps?: number; // Override Laps
     startTime?: string; // Override Start Time (ISO string or Time string)
     sprints?: SelectedSegment[]; // New: Per-category sprints
+    segmentType?: 'sprint' | 'split';
   }[];
   selectedSegments?: string[]; // List of segment unique keys (id_count) - KEPT FOR BACKWARDS COMPAT
   sprints?: SelectedSegment[]; // Full segment objects (Legacy/Global)
