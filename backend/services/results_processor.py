@@ -418,7 +418,7 @@ class ResultsProcessor:
             }
             processed_riders[rider['zwiftId']] = res
 
-        # 2. Sprint Points
+        # 2. Sprint Points / Split Times
         if fetch_mode in ['finishers', 'joined']:
             
             if selected_sprints:
@@ -452,42 +452,47 @@ class ResultsProcessor:
                         if occ_idx in ranked_table:
                             rankings = ranked_table[occ_idx]
                             
-                            # Save performance data
+                            sprint_key = sprint_config.get('key') or f"{sprint_config['id']}_{sprint_config['count']}"
+                            is_split = sprint_config.get('type') == 'split'
+
+                            # Save performance data (sprints + splits)
                             for s_rank, s_data in rankings.items():
                                 s_zid = str(s_data['id'])
                                 if s_zid in processed_riders:
                                     r_data = processed_riders[s_zid]
-                                    sprint_key = sprint_config.get('key') or f"{sprint_config['id']}_{sprint_config['count']}"
                                     if 'sprintData' not in r_data:
                                         r_data['sprintData'] = {}
                                     r_data['sprintData'][sprint_key] = {
                                         'avgPower': s_data.get('avgPower'),
                                         'time': s_data.get('time'),
-                                        'rank': s_rank
+                                        'rank': s_rank,
+                                        'worldTime': s_data.get('worldTime')
                                     }
 
-                            # Award points
-                            for p_idx, points in enumerate(sprint_points_scheme):
-                                rank = p_idx + 1
-                                if rank in rankings:
-                                    winner_entry = rankings[rank]
-                                    w_zid = str(winner_entry['id'])
-                                    
-                                    if w_zid in processed_riders:
-                                        # Skip DQ riders
-                                        if w_zid in manual_dqs:
-                                            continue
-                                        
-                                        # Declassified riders LOSE sprint points as requested
-                                        if w_zid in manual_declassifications:
-                                            continue
+                                    if is_split:
+                                        r_data['sprintDetails'][sprint_key] = s_data.get('worldTime')
 
-                                        rider_data = processed_riders[w_zid]
-                                        rider_data['sprintPoints'] += points
-                                        rider_data['totalPoints'] += points
+                            # Award points only for sprint segments
+                            if not is_split:
+                                for p_idx, points in enumerate(sprint_points_scheme):
+                                    rank = p_idx + 1
+                                    if rank in rankings:
+                                        winner_entry = rankings[rank]
+                                        w_zid = str(winner_entry['id'])
                                         
-                                        sprint_key = sprint_config.get('key') or f"{sprint_config['id']}_{sprint_config['count']}"
-                                        rider_data['sprintDetails'][sprint_key] = points
+                                        if w_zid in processed_riders:
+                                            # Skip DQ riders
+                                            if w_zid in manual_dqs:
+                                                continue
+                                            
+                                            # Declassified riders LOSE sprint points as requested
+                                            if w_zid in manual_declassifications:
+                                                continue
+
+                                            rider_data = processed_riders[w_zid]
+                                            rider_data['sprintPoints'] += points
+                                            rider_data['totalPoints'] += points
+                                            rider_data['sprintDetails'][sprint_key] = points
 
         # Return list sorted by total points (preliminary sort)
         final_list = list(processed_riders.values())
@@ -676,7 +681,8 @@ class ResultsProcessor:
                     "name": participant_lookup.get(entry['athleteId']),
                     "id": entry['athleteId'],
                     "avgPower": entry['avgPower'],
-                    "time": entry['elapsed']
+                    "time": entry['elapsed'],
+                    "worldTime": entry['worldTime']
                 }
                 for rank, entry in enumerate(sorted_entries)
             }

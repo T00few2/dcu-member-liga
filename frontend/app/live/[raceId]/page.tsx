@@ -24,6 +24,7 @@ interface Sprint {
     name: string;
     count: number;
     key: string;
+    type?: 'sprint' | 'split';
 }
 
 interface ResultEntry {
@@ -33,7 +34,7 @@ interface ResultEntry {
     finishRank: number;
     finishPoints: number;
     totalPoints: number;
-    sprintDetails?: Record<string, number>;
+    sprintDetails?: Record<string, number | string>;
 }
 
 interface StandingEntry {
@@ -79,14 +80,17 @@ export default function LiveResultsPage() {
     const showLastSprint = searchParams.get('lastSprint') === 'true';
     
     // View Mode Configuration
-    const initialView = (searchParams.get('view') === 'standings') ? 'standings' : 'race';
+    const viewParam = searchParams.get('view');
+    const initialView = (viewParam === 'time-trial')
+        ? 'time-trial'
+        : (viewParam === 'standings') ? 'standings' : 'race';
     const cycleTime = parseInt(searchParams.get('cycle') || '0'); // Seconds, 0 = disabled
 
     const [race, setRace] = useState<Race | null>(null);
     const [standings, setStandings] = useState<Record<string, StandingEntry[]>>({});
     const [bestRacesCount, setBestRacesCount] = useState<number>(5);
     
-    const [viewMode, setViewMode] = useState<'race' | 'standings'>(initialView);
+    const [viewMode, setViewMode] = useState<'race' | 'standings' | 'time-trial'>(initialView);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -202,7 +206,7 @@ export default function LiveResultsPage() {
 
     // 3. Cycle View Mode
     useEffect(() => {
-        if (cycleTime <= 0) return;
+        if (cycleTime <= 0 || initialView === 'time-trial') return;
 
         const interval = setInterval(() => {
             setViewMode(prev => prev === 'race' ? 'standings' : 'race');
@@ -211,7 +215,7 @@ export default function LiveResultsPage() {
         }, cycleTime * 1000);
 
         return () => clearInterval(interval);
-    }, [cycleTime]);
+    }, [cycleTime, initialView]);
 
     // 4. Auto-scroll effect
     useEffect(() => {
@@ -322,6 +326,34 @@ export default function LiveResultsPage() {
     const bodyCellPadding = isFull ? 'py-0.5' : 'py-2';
     const tableBodyTextSize = isFull ? 'text-2xl' : 'text-3xl';
 
+    const formatTimeValue = (ms: number) => {
+        const safeMs = Math.max(0, ms);
+        const totalSeconds = Math.floor(safeMs / 1000);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        const millis = safeMs % 1000;
+
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        const padMs = (n: number) => n.toString().padStart(3, '0');
+
+        if (hours > 0) {
+            return `${hours}:${pad(minutes)}:${pad(seconds)}.${padMs(millis)}`;
+        }
+        return `${pad(minutes)}:${pad(seconds)}.${padMs(millis)}`;
+    };
+
+    const formatTimeOrDash = (ms?: number) => {
+        if (!ms) return '-';
+        return formatTimeValue(ms);
+    };
+
+    const formatDelta = (ms?: number | null) => {
+        if (ms === null || ms === undefined) return '-';
+        if (ms <= 0) return formatTimeValue(0);
+        return `+${formatTimeValue(ms)}`;
+    };
+
 
     // --- Render Content ---
 
@@ -340,31 +372,32 @@ export default function LiveResultsPage() {
             });
         }
         
-        // 2. Determine the correct "Source Sprints" config to use for resolving names/order
-        let sourceSprints: Sprint[] = [];
+        // 2. Determine the configured segments for resolving names/order
+        let configuredSegments: Sprint[] = [];
         
         if (race.eventMode === 'multi' && race.eventConfiguration) {
             // Find config for current category
             const catConfig = race.eventConfiguration.find(c => c.customCategory === category);
             // Use per-category sprints if available
             if (catConfig && catConfig.sprints && catConfig.sprints.length > 0) {
-                sourceSprints = catConfig.sprints;
+                configuredSegments = catConfig.sprints;
             } else {
                  // Fallback to global if not found
-                 sourceSprints = race.sprints || [];
+                 configuredSegments = race.sprints || [];
             }
         } else {
             // Single Mode
-            sourceSprints = race.sprints || race.sprintData || [];
+            configuredSegments = race.sprints || race.sprintData || [];
         }
+        const sprintSegments = configuredSegments.filter(s => s.type !== 'split');
 
         // Last Sprint Key Logic
         let lastSprintKey: string | null = null;
         
-        if (showLastSprint && sourceSprints.length > 0 && allSprintKeys.size > 0) {
+        if (showLastSprint && sprintSegments.length > 0 && allSprintKeys.size > 0) {
             // iterate backwards through configured sprints to find the last one that has data
-            for (let i = sourceSprints.length - 1; i >= 0; i--) {
-                const s = sourceSprints[i];
+            for (let i = sprintSegments.length - 1; i >= 0; i--) {
+                const s = sprintSegments[i];
                 const possibleKeys = [s.key, `${s.id}_${s.count}`, `${s.id}`];
                 const foundKey = possibleKeys.find(k => allSprintKeys.has(k));
                 if (foundKey) {
@@ -377,7 +410,7 @@ export default function LiveResultsPage() {
         // Helper to get header name
         const getSprintHeader = (key: string) => {
              // Try to find in sourceSprints first (most specific)
-             const sprint = sourceSprints.find(s => s.key === key || `${s.id}_${s.count}` === key || s.id === key);
+            const sprint = sprintSegments.find(s => s.key === key || `${s.id}_${s.count}` === key || s.id === key);
              if (sprint) return `${sprint.name} #${sprint.count}`;
              
              // Fallback to global search if not found (safety)
@@ -490,6 +523,115 @@ export default function LiveResultsPage() {
         );
     };
 
+    const renderTimeTrialSplits = () => {
+        const results = race.results?.[category] || [];
+
+        // Determine the configured segments for resolving names/order
+        let configuredSegments: Sprint[] = [];
+
+        if (race.eventMode === 'multi' && race.eventConfiguration) {
+            // Find config for current category
+            const catConfig = race.eventConfiguration.find(c => c.customCategory === category);
+            // Use per-category sprints if available
+            if (catConfig && catConfig.sprints && catConfig.sprints.length > 0) {
+                configuredSegments = catConfig.sprints;
+            } else {
+                // Fallback to global if not found
+                configuredSegments = race.sprints || [];
+            }
+        } else {
+            // Single Mode
+            configuredSegments = race.sprints || race.sprintData || [];
+        }
+
+        const splitSegments = configuredSegments.filter(s => s.type === 'split');
+        const splitKeys = splitSegments.map(s => s.key || `${s.id}_${s.count}`);
+
+        const parseWorldTime = (value: unknown) => {
+            if (value === null || value === undefined) return null;
+            const parsed = typeof value === 'string' ? parseInt(value, 10) : Number(value);
+            return Number.isFinite(parsed) ? parsed : null;
+        };
+
+        const minWorldTimes = new Map<string, number>();
+        splitKeys.forEach(key => {
+            const times = results
+                .map(r => parseWorldTime(r.sprintDetails?.[key]))
+                .filter((v): v is number => v !== null);
+            if (times.length > 0) {
+                minWorldTimes.set(key, Math.min(...times));
+            }
+        });
+
+        const displayResults = results.slice(0, limit);
+
+        return (
+            <table className="w-full text-left border-collapse table-fixed">
+                <thead>
+                    <tr className="text-slate-400 text-lg uppercase tracking-wider border-b-2 border-slate-600 bg-slate-800/80">
+                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[10%] text-center`}>#</th>
+                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[45%]`}>Rider</th>
+                        {splitKeys.map(key => {
+                            const split = splitSegments.find(s => s.key === key || `${s.id}_${s.count}` === key || s.id === key);
+                            const headerLabel = split ? `${split.name} #${split.count}` : key;
+                            return (
+                                <th
+                                    key={key}
+                                    className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-center text-blue-300`}
+                                >
+                                    {headerLabel}
+                                </th>
+                            );
+                        })}
+                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-right font-bold text-green-300`}>Finish</th>
+                    </tr>
+                </thead>
+                <tbody className={`text-white font-bold ${tableBodyTextSize}`}>
+                    {displayResults.map((rider, idx) => (
+                        <tr
+                            key={rider.zwiftId}
+                            className="border-b border-slate-700/50 even:bg-slate-800/40"
+                        >
+                            <td className={`${bodyCellPadding} px-2 text-center font-bold text-slate-300`}>
+                                {idx + 1}
+                            </td>
+                            <td className={`${bodyCellPadding} px-2 truncate`}>
+                                {rider.name}
+                            </td>
+                            {splitKeys.map(key => {
+                                const worldTime = parseWorldTime(rider.sprintDetails?.[key]);
+                                const minTime = minWorldTimes.get(key);
+                                const delta = (worldTime !== null && minTime !== undefined) ? (worldTime - minTime) : null;
+                                return (
+                                    <td key={key} className={`${bodyCellPadding} px-2 text-center font-extrabold text-blue-300`}>
+                                        {delta === null ? '-' : formatDelta(delta)}
+                                    </td>
+                                );
+                            })}
+                            <td className={`${bodyCellPadding} px-2 text-right font-extrabold text-green-300`}>
+                                {formatTimeOrDash(rider.finishTime)}
+                            </td>
+                        </tr>
+                    ))}
+                    {displayResults.length === 0 && (
+                        <tr>
+                            <td colSpan={3 + splitKeys.length} className="py-8 text-center text-slate-500 text-xl italic">
+                                No split results available.
+                            </td>
+                        </tr>
+                    )}
+                    {displayResults.length > 0 && splitKeys.length === 0 && (
+                        <tr>
+                            <td colSpan={3} className="py-8 text-center text-slate-500 text-xl italic">
+                                No split segments configured.
+                            </td>
+                        </tr>
+                    )}
+                </tbody>
+            </table>
+        );
+    };
+
     if (isFull) {
         return (
             <div className="fixed inset-0 z-50 overflow-hidden font-sans text-white">
@@ -510,7 +652,11 @@ export default function LiveResultsPage() {
                         <div className="text-center">
                             <h1 className="text-4xl md:text-6xl font-black tracking-wide">{headerTitle}</h1>
                             <p className="mt-2 text-xl md:text-2xl text-slate-200 uppercase tracking-widest">
-                                {viewMode === 'standings' ? `Standings • ${category}` : `Results • ${category}`}
+                                {viewMode === 'standings'
+                                    ? `Standings • ${category}`
+                                    : viewMode === 'time-trial'
+                                        ? `Time Trail • ${category}`
+                                        : `Results • ${category}`}
                             </p>
                         </div>
 
@@ -529,7 +675,11 @@ export default function LiveResultsPage() {
                         className={`flex-1 overflow-auto px-6 ${autoScroll ? 'scrollbar-hide' : ''}`}
                     >
                         <div className="mx-auto max-w-6xl rounded-xl border border-slate-700/70 bg-slate-600/25 shadow-2xl backdrop-blur">
-                            {viewMode === 'race' ? renderRaceResults() : renderStandings()}
+                            {viewMode === 'race'
+                                ? renderRaceResults()
+                                : viewMode === 'time-trial'
+                                    ? renderTimeTrialSplits()
+                                    : renderStandings()}
                         </div>
                     </div>
 
@@ -574,11 +724,19 @@ export default function LiveResultsPage() {
                     {/* Header showing mode if not transparent or just to differentiate */}
                     <div className="sticky top-0 z-20 bg-slate-900/90 text-center py-2 border-b border-slate-700">
                         <h2 className="text-xl font-bold text-white uppercase tracking-widest">
-                            {viewMode === 'standings' ? `League Standings • ${category}` : `Race Results • ${category}`}
+                            {viewMode === 'standings'
+                                ? `League Standings • ${category}`
+                                : viewMode === 'time-trial'
+                                    ? `Time Trail • ${category}`
+                                    : `Race Results • ${category}`}
                         </h2>
                     </div>
 
-                    {viewMode === 'race' ? renderRaceResults() : renderStandings()}
+                    {viewMode === 'race'
+                        ? renderRaceResults()
+                        : viewMode === 'time-trial'
+                            ? renderTimeTrialSplits()
+                            : renderStandings()}
                 </div>
             </div>
             

@@ -212,6 +212,7 @@ export default function LiveLinksPage() {
                             >
                                 <option value="race">Race Results</option>
                                 <option value="standings">League Standings</option>
+                                <option value="time-trial">Time Trail</option>
                             </select>
                         </div>
                     </div>

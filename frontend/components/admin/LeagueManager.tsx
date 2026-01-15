@@ -25,6 +25,7 @@ interface Segment {
 
 interface SelectedSegment extends Segment {
     key: string;
+    type?: 'sprint' | 'split';
 }
 
 interface Race {
@@ -248,7 +249,7 @@ export default function LeagueManager() {
       
           // Handle backwards compatibility or new structure
       if (race.sprints) {
-          setSelectedSprints(race.sprints);
+          setSelectedSprints(race.sprints.map(s => ({ ...s, type: s.type || 'sprint' })));
       } else if (race.selectedSegments) {
           setSelectedSprints([]);
       } else {
@@ -259,7 +260,7 @@ export default function LeagueManager() {
       if (race.eventMode === 'multi' && race.eventConfiguration) {
         setEventConfiguration(race.eventConfiguration.map(c => ({
             ...c,
-            sprints: c.sprints || [] // Ensure sprints array exists
+            sprints: (c.sprints || []).map(s => ({ ...s, type: s.type || 'sprint' }))
         })));
       } else {
         setEventConfiguration([]);
@@ -489,7 +490,7 @@ export default function LeagueManager() {
       if (selectedSprints.some(s => s.key === key)) {
           setSelectedSprints(selectedSprints.filter(s => s.key !== key));
       } else {
-          setSelectedSprints([...selectedSprints, { ...seg, key }]);
+          setSelectedSprints([...selectedSprints, { ...seg, key, type: 'sprint' }]);
       }
   };
 
@@ -519,10 +520,21 @@ export default function LeagueManager() {
     if (currentSprints.some(s => s.key === key)) {
         newSprints = currentSprints.filter(s => s.key !== key);
     } else {
-        newSprints = [...currentSprints, { ...seg, key }];
+        newSprints = [...currentSprints, { ...seg, key, type: 'sprint' }];
     }
     
     updateEventConfig(configIndex, 'sprints', newSprints);
+  };
+
+  const updateSegmentType = (key: string, type: 'sprint' | 'split') => {
+      setSelectedSprints(prev => prev.map(s => s.key === key ? { ...s, type } : s));
+  };
+
+  const updateConfigSegmentType = (configIndex: number, key: string, type: 'sprint' | 'split') => {
+      const config = eventConfiguration[configIndex];
+      const currentSprints = config.sprints || [];
+      const newSprints = currentSprints.map(s => s.key === key ? { ...s, type } : s);
+      updateEventConfig(configIndex, 'sprints', newSprints);
   };
 
   const handleToggleDQ = async (raceId: string, zwiftId: string, isCurrentlyDQ: boolean) => {
@@ -955,6 +967,7 @@ export default function LeagueManager() {
                                                                       {segmentsByLap[lapNum].map(seg => {
                                                                           const uniqueKey = `${seg.id}_${seg.count}`;
                                                                           const isSelected = config.sprints?.some(s => s.key === uniqueKey);
+                                                                          const selectedType = config.sprints?.find(s => s.key === uniqueKey)?.type || 'sprint';
                                                                           return (
                                                                               <label key={uniqueKey} className="flex items-center gap-2 p-1.5 hover:bg-muted/50 rounded cursor-pointer">
                                                                                   <input 
@@ -966,6 +979,17 @@ export default function LeagueManager() {
                                                                                   <div className="text-xs truncate" title={`${seg.name} (${seg.direction})`}>
                                                                                       {seg.name}
                                                                                   </div>
+                                                                                  {isSelected && (
+                                                                                      <select
+                                                                                          value={selectedType}
+                                                                                          onChange={(e) => updateConfigSegmentType(idx, uniqueKey, e.target.value as 'sprint' | 'split')}
+                                                                                          onClick={(e) => e.stopPropagation()}
+                                                                                          className="ml-auto text-[10px] bg-background border border-border rounded px-1.5 py-0.5 text-foreground"
+                                                                                      >
+                                                                                          <option value="sprint">Sprint</option>
+                                                                                          <option value="split">Split</option>
+                                                                                      </select>
+                                                                                  )}
                                                                               </label>
                                                                           );
                                                                       })}
@@ -1012,9 +1036,10 @@ export default function LeagueManager() {
                                                         Lap {lapNum}
                                                     </div>
                                                     <div className="p-2 grid grid-cols-1 md:grid-cols-2 gap-2">
-                                                        {segmentsByLap[lapNum].map((seg, idx) => {
+                                                                              {segmentsByLap[lapNum].map((seg, idx) => {
                                                             const uniqueKey = `${seg.id}_${seg.count}`;
                                                             const isSelected = selectedSprints.some(s => s.key === uniqueKey);
+                                                                                  const selectedType = selectedSprints.find(s => s.key === uniqueKey)?.type || 'sprint';
                                                             return (
                                                                 <label key={uniqueKey} className="flex items-center gap-3 p-2 rounded hover:bg-muted/50 cursor-pointer border border-transparent hover:border-border transition">
                                                                     <input 
@@ -1029,6 +1054,17 @@ export default function LeagueManager() {
                                                                             {seg.direction} • Occurrence #{seg.count}
                                                                         </div>
                                                                     </div>
+                                                                                          {isSelected && (
+                                                                                              <select
+                                                                                                  value={selectedType}
+                                                                                                  onChange={(e) => updateSegmentType(uniqueKey, e.target.value as 'sprint' | 'split')}
+                                                                                                  onClick={(e) => e.stopPropagation()}
+                                                                                                  className="ml-auto text-xs bg-background border border-border rounded px-2 py-1 text-foreground"
+                                                                                              >
+                                                                                                  <option value="sprint">Sprint</option>
+                                                                                                  <option value="split">Split</option>
+                                                                                              </select>
+                                                                                          )}
                                                                 </label>
                                                             );
                                                         })}
