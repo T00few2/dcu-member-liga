@@ -26,6 +26,7 @@ interface Sprint {
     name: string;
     count: number;
     key: string;
+    lap?: number;
     type?: 'sprint' | 'split';
 }
 
@@ -555,7 +556,11 @@ export default function LiveResultsPage() {
         const splitSegments = segmentType === 'split'
             ? configuredSegments
             : configuredSegments.filter(s => s.type === 'split');
-        const splitKeys = splitSegments.map(s => s.key || `${s.id}_${s.count}`);
+
+        const splitColumns = splitSegments.map((s) => ({
+            label: `${s.name} #${s.count}`,
+            keys: [s.key, `${s.id}_${s.count}`, `${s.id}`].filter(Boolean) as string[]
+        }));
 
         const parseWorldTime = (value: unknown) => {
             if (value === null || value === undefined) return null;
@@ -564,16 +569,42 @@ export default function LiveResultsPage() {
         };
 
         const minWorldTimes = new Map<string, number>();
-        splitKeys.forEach(key => {
+        const getWorldTimeForColumn = (rider: ResultEntry, columnKeys: string[]) => {
+            for (const key of columnKeys) {
+                const worldTime = parseWorldTime(rider.sprintDetails?.[key]);
+                if (worldTime !== null) return worldTime;
+            }
+            return null;
+        };
+
+        splitColumns.forEach(col => {
             const times = results
-                .map(r => parseWorldTime(r.sprintDetails?.[key]))
+                .map(r => getWorldTimeForColumn(r, col.keys))
                 .filter((v): v is number => v !== null);
             if (times.length > 0) {
-                minWorldTimes.set(key, Math.min(...times));
+                minWorldTimes.set(col.keys[0], Math.min(...times));
             }
         });
 
-        const displayResults = results.slice(0, limit);
+        const getLatestSplitWorldTime = (rider: ResultEntry) => {
+            for (let i = splitColumns.length - 1; i >= 0; i--) {
+                const worldTime = getWorldTimeForColumn(rider, splitColumns[i].keys);
+                if (worldTime !== null) return worldTime;
+            }
+            return null;
+        };
+
+        const getSortValue = (rider: ResultEntry) => {
+            if (rider.finishTime && rider.finishTime > 0) {
+                return rider.finishTime;
+            }
+            const latestSplit = getLatestSplitWorldTime(rider);
+            return latestSplit ?? Number.POSITIVE_INFINITY;
+        };
+
+        const displayResults = [...results]
+            .sort((a, b) => getSortValue(a) - getSortValue(b))
+            .slice(0, limit);
 
         return (
             <table className="w-full text-left border-collapse table-fixed">
@@ -581,15 +612,13 @@ export default function LiveResultsPage() {
                     <tr className="text-slate-400 text-lg uppercase tracking-wider border-b-2 border-slate-600 bg-slate-800/80">
                         <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[10%] text-center`}>#</th>
                         <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[45%]`}>Rider</th>
-                        {splitKeys.map(key => {
-                            const split = splitSegments.find(s => s.key === key || `${s.id}_${s.count}` === key || s.id === key);
-                            const headerLabel = split ? `${split.name} #${split.count}` : key;
+                        {splitColumns.map(col => {
                             return (
                                 <th
-                                    key={key}
+                                    key={col.keys[0]}
                                     className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-center text-blue-300`}
                                 >
-                                    {headerLabel}
+                                    {col.label}
                                 </th>
                             );
                         })}
@@ -608,12 +637,12 @@ export default function LiveResultsPage() {
                             <td className={`${bodyCellPadding} px-2 truncate`}>
                                 {rider.name}
                             </td>
-                            {splitKeys.map(key => {
-                                const worldTime = parseWorldTime(rider.sprintDetails?.[key]);
-                                const minTime = minWorldTimes.get(key);
+                            {splitColumns.map(col => {
+                                const worldTime = getWorldTimeForColumn(rider, col.keys);
+                                const minTime = minWorldTimes.get(col.keys[0]);
                                 const delta = (worldTime !== null && minTime !== undefined) ? (worldTime - minTime) : null;
                                 return (
-                                    <td key={key} className={`${bodyCellPadding} px-2 text-center font-extrabold text-blue-300`}>
+                                    <td key={col.keys[0]} className={`${bodyCellPadding} px-2 text-center font-extrabold text-blue-300`}>
                                         {delta === null ? '-' : formatDelta(delta)}
                                     </td>
                                 );
@@ -625,12 +654,12 @@ export default function LiveResultsPage() {
                     ))}
                     {displayResults.length === 0 && (
                         <tr>
-                            <td colSpan={3 + splitKeys.length} className="py-8 text-center text-slate-500 text-xl italic">
+                            <td colSpan={3 + splitColumns.length} className="py-8 text-center text-slate-500 text-xl italic">
                                 No split results available.
                             </td>
                         </tr>
                     )}
-                    {displayResults.length > 0 && splitKeys.length === 0 && (
+                    {displayResults.length > 0 && splitColumns.length === 0 && (
                         <tr>
                             <td colSpan={3} className="py-8 text-center text-slate-500 text-xl italic">
                                 No split segments configured.
