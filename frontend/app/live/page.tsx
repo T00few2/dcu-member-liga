@@ -35,7 +35,7 @@ export default function LiveLinksPage() {
         sprints: true,
         lastSprint: false,
         full: false,
-        includeBanner: true,
+        includeBanner: false,
         showCheckboxes: false, // Helper to toggle advanced options visibility
         // Calculation Settings
         source: 'joined', // 'finishers' | 'joined' | 'signed_up'
