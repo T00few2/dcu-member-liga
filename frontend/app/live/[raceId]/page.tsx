@@ -56,7 +56,7 @@ export default function LiveResultsPage() {
     const isFull = searchParams.get('full') === 'true';
     const titleParam = searchParams.get('title');
     const defaultLogoSrc = '/live/logo.png';
-    const defaultBannerSrc = '/live/banner.png';
+    const defaultBannerSrc = '/live/banner.PNG';
     const defaultBackgroundSrc = '/live/background.jpg';
     const logoSrc = searchParams.get('logo') || defaultLogoSrc;
     const bannerParam = searchParams.get('banner');
