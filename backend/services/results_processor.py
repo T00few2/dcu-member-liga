@@ -46,7 +46,8 @@ class ResultsProcessor:
                     'id': cfg.get('eventId'),
                     'secret': cfg.get('eventSecret'),
                     'customCategory': cfg.get('customCategory'), # If set, override category
-                    'sprints': cfg.get('sprints', []) # Per-category sprints
+                    'sprints': cfg.get('sprints', []), # Per-category sprints
+                    'segmentType': cfg.get('segmentType') or race_data.get('segmentType')
                 })
         else:
             # Legacy/Single Mode
@@ -61,7 +62,8 @@ class ResultsProcessor:
                     'id': event_id,
                     'secret': event_secret,
                     'customCategory': None, # Use Zwift Categories (A, B, C...)
-                    'sprints': global_sprints
+                    'sprints': global_sprints,
+                    'segmentType': race_data.get('segmentType')
                 })
         
         if not event_sources:
@@ -213,7 +215,8 @@ class ResultsProcessor:
                 sprint_points_scheme,
                 fetch_mode,
                 manual_dqs,
-                manual_declassifications
+                manual_declassifications,
+                source.get('segmentType')
             )
             
             if custom_category:
@@ -333,7 +336,8 @@ class ResultsProcessor:
         return finishers
 
     def _calculate_points_and_sprints(self, finishers, selected_sprints, start_time, registered_riders, 
-                                      finish_points_scheme, sprint_points_scheme, fetch_mode, manual_dqs, manual_declassifications):
+                                      finish_points_scheme, sprint_points_scheme, fetch_mode, manual_dqs, manual_declassifications,
+                                      segment_type=None):
         processed_riders = {}
         
         # 1. Split Valid vs DQ vs Declassified
@@ -453,7 +457,9 @@ class ResultsProcessor:
                             rankings = ranked_table[occ_idx]
                             
                             sprint_key = sprint_config.get('key') or f"{sprint_config['id']}_{sprint_config['count']}"
-                            is_split = sprint_config.get('type') == 'split'
+                            config_type = sprint_config.get('type')
+                            effective_type = config_type or segment_type or 'sprint'
+                            is_split = effective_type == 'split'
 
                             # Save performance data (sprints + splits)
                             for s_rank, s_data in rankings.items():

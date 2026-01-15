@@ -11,11 +11,13 @@ import { useParams, useSearchParams } from 'next/navigation';
         results?: Record<string, ResultEntry[]>;
         sprints?: Sprint[];
         sprintData?: Sprint[];
+    segmentType?: 'sprint' | 'split';
         eventMode?: 'single' | 'multi';
         eventConfiguration?: {
             eventId: string;
             customCategory: string;
             sprints?: Sprint[]; // Added support for per-category sprints
+        segmentType?: 'sprint' | 'split';
         }[];
     }
 
@@ -374,6 +376,7 @@ export default function LiveResultsPage() {
         
         // 2. Determine the configured segments for resolving names/order
         let configuredSegments: Sprint[] = [];
+        let segmentType: 'sprint' | 'split' = race.segmentType || 'sprint';
         
         if (race.eventMode === 'multi' && race.eventConfiguration) {
             // Find config for current category
@@ -381,6 +384,7 @@ export default function LiveResultsPage() {
             // Use per-category sprints if available
             if (catConfig && catConfig.sprints && catConfig.sprints.length > 0) {
                 configuredSegments = catConfig.sprints;
+                segmentType = catConfig.segmentType || segmentType;
             } else {
                  // Fallback to global if not found
                  configuredSegments = race.sprints || [];
@@ -389,7 +393,9 @@ export default function LiveResultsPage() {
             // Single Mode
             configuredSegments = race.sprints || race.sprintData || [];
         }
-        const sprintSegments = configuredSegments.filter(s => s.type !== 'split');
+        const sprintSegments = segmentType === 'split'
+            ? []
+            : configuredSegments.filter(s => s.type !== 'split');
 
         // Last Sprint Key Logic
         let lastSprintKey: string | null = null;
@@ -528,6 +534,7 @@ export default function LiveResultsPage() {
 
         // Determine the configured segments for resolving names/order
         let configuredSegments: Sprint[] = [];
+        let segmentType: 'sprint' | 'split' = race.segmentType || 'sprint';
 
         if (race.eventMode === 'multi' && race.eventConfiguration) {
             // Find config for current category
@@ -535,6 +542,7 @@ export default function LiveResultsPage() {
             // Use per-category sprints if available
             if (catConfig && catConfig.sprints && catConfig.sprints.length > 0) {
                 configuredSegments = catConfig.sprints;
+                segmentType = catConfig.segmentType || segmentType;
             } else {
                 // Fallback to global if not found
                 configuredSegments = race.sprints || [];
@@ -544,7 +552,9 @@ export default function LiveResultsPage() {
             configuredSegments = race.sprints || race.sprintData || [];
         }
 
-        const splitSegments = configuredSegments.filter(s => s.type === 'split');
+        const splitSegments = segmentType === 'split'
+            ? configuredSegments
+            : configuredSegments.filter(s => s.type === 'split');
         const splitKeys = splitSegments.map(s => s.key || `${s.id}_${s.count}`);
 
         const parseWorldTime = (value: unknown) => {

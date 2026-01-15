@@ -95,7 +95,8 @@ export default function LeagueManager() {
       customCategory: string,
       laps?: number,
       startTime?: string,
-      sprints?: SelectedSegment[]
+      sprints?: SelectedSegment[],
+      segmentType?: 'sprint' | 'split'
   }[]>([]);
 
   const [selectedMap, setSelectedMap] = useState('');
@@ -104,6 +105,7 @@ export default function LeagueManager() {
   
   // We now store selected sprints as full objects for better UI display later
   const [selectedSprints, setSelectedSprints] = useState<SelectedSegment[]>([]);
+  const [segmentType, setSegmentType] = useState<'sprint' | 'split'>('sprint');
   
   // Settings Form State
   const [finishPointsStr, setFinishPointsStr] = useState('');
@@ -249,7 +251,7 @@ export default function LeagueManager() {
       
           // Handle backwards compatibility or new structure
       if (race.sprints) {
-          setSelectedSprints(race.sprints.map(s => ({ ...s, type: s.type || 'sprint' })));
+          setSelectedSprints(race.sprints);
       } else if (race.selectedSegments) {
           setSelectedSprints([]);
       } else {
@@ -260,11 +262,14 @@ export default function LeagueManager() {
       if (race.eventMode === 'multi' && race.eventConfiguration) {
         setEventConfiguration(race.eventConfiguration.map(c => ({
             ...c,
-            sprints: (c.sprints || []).map(s => ({ ...s, type: s.type || 'sprint' }))
+            sprints: c.sprints || [],
+            segmentType: c.segmentType || 'sprint'
         })));
       } else {
         setEventConfiguration([]);
       }
+
+      setSegmentType(race.segmentType || 'sprint');
       
       window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -281,6 +286,7 @@ export default function LeagueManager() {
       setSelectedRouteId('');
       setLaps(1);
       setSelectedSprints([]);
+      setSegmentType('sprint');
   };
 
   const generatePoints = () => {
@@ -419,6 +425,7 @@ export default function LeagueManager() {
             totalElevation: Number(calcElevation),
             selectedSegments: selectedSprints.map(s => s.key), // Keep for legacy/compat
             sprints: selectedSprints, // Save full objects
+            segmentType,
             eventMode
         };
 
@@ -490,12 +497,12 @@ export default function LeagueManager() {
       if (selectedSprints.some(s => s.key === key)) {
           setSelectedSprints(selectedSprints.filter(s => s.key !== key));
       } else {
-          setSelectedSprints([...selectedSprints, { ...seg, key, type: 'sprint' }]);
+          setSelectedSprints([...selectedSprints, { ...seg, key }]);
       }
   };
 
   const addEventConfig = () => {
-      setEventConfiguration([...eventConfiguration, { eventId: '', eventSecret: '', customCategory: '', laps: laps, startTime: '', sprints: [] }]);
+      setEventConfiguration([...eventConfiguration, { eventId: '', eventSecret: '', customCategory: '', laps: laps, startTime: '', sprints: [], segmentType: 'sprint' }]);
   };
 
   const removeEventConfig = (index: number) => {
@@ -520,21 +527,10 @@ export default function LeagueManager() {
     if (currentSprints.some(s => s.key === key)) {
         newSprints = currentSprints.filter(s => s.key !== key);
     } else {
-        newSprints = [...currentSprints, { ...seg, key, type: 'sprint' }];
+        newSprints = [...currentSprints, { ...seg, key }];
     }
     
     updateEventConfig(configIndex, 'sprints', newSprints);
-  };
-
-  const updateSegmentType = (key: string, type: 'sprint' | 'split') => {
-      setSelectedSprints(prev => prev.map(s => s.key === key ? { ...s, type } : s));
-  };
-
-  const updateConfigSegmentType = (configIndex: number, key: string, type: 'sprint' | 'split') => {
-      const config = eventConfiguration[configIndex];
-      const currentSprints = config.sprints || [];
-      const newSprints = currentSprints.map(s => s.key === key ? { ...s, type } : s);
-      updateEventConfig(configIndex, 'sprints', newSprints);
   };
 
   const handleToggleDQ = async (raceId: string, zwiftId: string, isCurrentlyDQ: boolean) => {
@@ -941,6 +937,17 @@ export default function LeagueManager() {
                                                         className="w-full p-2 border border-input rounded bg-background text-foreground text-sm"
                                                       />
                                                   </div>
+                                                  <div className="w-32">
+                                                      <label className="text-[10px] text-muted-foreground font-bold uppercase block mb-1">Segments Used For</label>
+                                                      <select
+                                                        value={config.segmentType || 'sprint'}
+                                                        onChange={e => updateEventConfig(idx, 'segmentType', e.target.value as 'sprint' | 'split')}
+                                                        className="w-full p-2 border border-input rounded bg-background text-foreground text-sm"
+                                                      >
+                                                          <option value="sprint">Sprint Points</option>
+                                                          <option value="split">Time Trial Splits</option>
+                                                      </select>
+                                                  </div>
                                               </div>
                                               
                                               {/* Per-Category Sprint Selection Accordion */}
@@ -964,10 +971,9 @@ export default function LeagueManager() {
                                                               return (
                                                                   <div key={lapNum} className="mb-2">
                                                                       <div className="text-[10px] font-bold text-muted-foreground uppercase mb-1 bg-muted/30 px-1 rounded">Lap {lapNum}</div>
-                                                                      {segmentsByLap[lapNum].map(seg => {
-                                                                          const uniqueKey = `${seg.id}_${seg.count}`;
-                                                                          const isSelected = config.sprints?.some(s => s.key === uniqueKey);
-                                                                          const selectedType = config.sprints?.find(s => s.key === uniqueKey)?.type || 'sprint';
+                                                                              {segmentsByLap[lapNum].map(seg => {
+                                                                                  const uniqueKey = `${seg.id}_${seg.count}`;
+                                                                                  const isSelected = config.sprints?.some(s => s.key === uniqueKey);
                                                                           return (
                                                                               <label key={uniqueKey} className="flex items-center gap-2 p-1.5 hover:bg-muted/50 rounded cursor-pointer">
                                                                                   <input 
@@ -979,17 +985,6 @@ export default function LeagueManager() {
                                                                                   <div className="text-xs truncate" title={`${seg.name} (${seg.direction})`}>
                                                                                       {seg.name}
                                                                                   </div>
-                                                                                  {isSelected && (
-                                                                                      <select
-                                                                                          value={selectedType}
-                                                                                          onChange={(e) => updateConfigSegmentType(idx, uniqueKey, e.target.value as 'sprint' | 'split')}
-                                                                                          onClick={(e) => e.stopPropagation()}
-                                                                                          className="ml-auto text-[10px] bg-background border border-border rounded px-1.5 py-0.5 text-foreground"
-                                                                                      >
-                                                                                          <option value="sprint">Sprint</option>
-                                                                                          <option value="split">Split</option>
-                                                                                      </select>
-                                                                                  )}
                                                                               </label>
                                                                           );
                                                                       })}
@@ -1023,6 +1018,17 @@ export default function LeagueManager() {
                           {/* Global Sprint Selection (Single Mode Only) */}
                           {eventMode === 'single' && (
                             <div className="border-t border-border pt-4">
+                                <div className="mb-3">
+                                    <label className="block font-medium text-card-foreground mb-1">Segments Used For</label>
+                                    <select
+                                        value={segmentType}
+                                        onChange={(e) => setSegmentType(e.target.value as 'sprint' | 'split')}
+                                        className="w-full sm:w-64 p-2 border border-input rounded bg-background text-foreground text-sm"
+                                    >
+                                        <option value="sprint">Sprint Points</option>
+                                        <option value="split">Time Trial Splits</option>
+                                    </select>
+                                </div>
                                 <label className="block font-medium text-card-foreground mb-3">Sprint Segments (Scoring)</label>
                                 {availableSegments.length === 0 ? (
                                     <p className="text-sm text-muted-foreground italic">No known segments on this route.</p>
@@ -1037,9 +1043,8 @@ export default function LeagueManager() {
                                                     </div>
                                                     <div className="p-2 grid grid-cols-1 md:grid-cols-2 gap-2">
                                                                               {segmentsByLap[lapNum].map((seg, idx) => {
-                                                            const uniqueKey = `${seg.id}_${seg.count}`;
-                                                            const isSelected = selectedSprints.some(s => s.key === uniqueKey);
-                                                                                  const selectedType = selectedSprints.find(s => s.key === uniqueKey)?.type || 'sprint';
+                                                                                  const uniqueKey = `${seg.id}_${seg.count}`;
+                                                                                  const isSelected = selectedSprints.some(s => s.key === uniqueKey);
                                                             return (
                                                                 <label key={uniqueKey} className="flex items-center gap-3 p-2 rounded hover:bg-muted/50 cursor-pointer border border-transparent hover:border-border transition">
                                                                     <input 
@@ -1054,17 +1059,6 @@ export default function LeagueManager() {
                                                                             {seg.direction} • Occurrence #{seg.count}
                                                                         </div>
                                                                     </div>
-                                                                                          {isSelected && (
-                                                                                              <select
-                                                                                                  value={selectedType}
-                                                                                                  onChange={(e) => updateSegmentType(uniqueKey, e.target.value as 'sprint' | 'split')}
-                                                                                                  onClick={(e) => e.stopPropagation()}
-                                                                                                  className="ml-auto text-xs bg-background border border-border rounded px-2 py-1 text-foreground"
-                                                                                              >
-                                                                                                  <option value="sprint">Sprint</option>
-                                                                                                  <option value="split">Split</option>
-                                                                                              </select>
-                                                                                          )}
                                                                 </label>
                                                             );
                                                         })}
