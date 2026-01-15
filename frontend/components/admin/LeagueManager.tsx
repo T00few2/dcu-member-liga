@@ -957,7 +957,7 @@ export default function LeagueManager() {
                                                   <details className="group border border-input rounded bg-background">
                                                       <summary className="list-none flex justify-between items-center p-2 cursor-pointer text-xs font-medium text-foreground select-none">
                                                           <span>
-                                                              Sprint Segments ({config.sprints?.length || 0} selected)
+                                                              {config.segmentType === 'split' ? 'Split Segments' : 'Sprint Segments'} ({config.sprints?.length || 0} selected)
                                                           </span>
                                                           <span className="text-muted-foreground group-open:rotate-180 transition-transform">
                                                               ▼
@@ -1031,7 +1031,9 @@ export default function LeagueManager() {
                                         <option value="split">Time Trial Splits</option>
                                     </select>
                                 </div>
-                                <label className="block font-medium text-card-foreground mb-3">Sprint Segments (Scoring)</label>
+                                <label className="block font-medium text-card-foreground mb-3">
+                                    {segmentType === 'split' ? 'Split Segments' : 'Sprint Segments (Scoring)'}
+                                </label>
                                 {availableSegments.length === 0 ? (
                                     <p className="text-sm text-muted-foreground italic">No known segments on this route.</p>
                                 ) : (
