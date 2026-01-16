@@ -81,6 +81,7 @@ export default function LiveResultsPage() {
     const autoScroll = searchParams.get('scroll') === 'true';
     const showSprints = searchParams.get('sprints') !== 'false'; // Default true
     const showLastSprint = searchParams.get('lastSprint') === 'true';
+    const showLastSplit = searchParams.get('lastSplit') === 'true';
     
     // View Mode Configuration
     const viewParam = searchParams.get('view');
@@ -353,8 +354,13 @@ export default function LiveResultsPage() {
 
     const formatDelta = (ms?: number | null) => {
         if (ms === null || ms === undefined) return '-';
-        if (ms <= 0) return formatTimeValue(0);
-        return `+${formatTimeValue(ms)}`;
+        const raw = formatTimeValue(Math.max(0, ms));
+        const stripped = raw
+            .replace(/^00:/, '')
+            .replace(/^0(\d):/, '$1:')
+            .replace(/^0(\d)(\.)/, '$1$2');
+        if (ms <= 0) return stripped;
+        return `+${stripped}`;
     };
 
 
@@ -398,20 +404,29 @@ export default function LiveResultsPage() {
             ? []
             : configuredSegments.filter(s => s.type !== 'split');
 
-        // Last Sprint Key Logic
-        let lastSprintKey: string | null = null;
-        
-        if (showLastSprint && sprintSegments.length > 0 && allSprintKeys.size > 0) {
-            // iterate backwards through configured sprints to find the last one that has data
-            for (let i = sprintSegments.length - 1; i >= 0; i--) {
-                const s = sprintSegments[i];
-                const possibleKeys = [s.key, `${s.id}_${s.count}`, `${s.id}`];
-                const foundKey = possibleKeys.find(k => allSprintKeys.has(k));
+        // Sprint columns ordering (aligned with results page)
+        let sprintColumns: string[] = [];
+        const remainingSprintKeys = new Set(allSprintKeys);
+
+        if (sprintSegments.length > 0) {
+            sprintSegments.forEach(s => {
+                const potentialKeys = [s.key, `${s.id}_${s.count}`, `${s.id}`];
+                const foundKey = potentialKeys.find(k => k && remainingSprintKeys.has(k));
                 if (foundKey) {
-                    lastSprintKey = foundKey;
-                    break;
+                    sprintColumns.push(foundKey);
+                    remainingSprintKeys.delete(foundKey);
                 }
-            }
+            });
+        }
+
+        if (remainingSprintKeys.size > 0) {
+            sprintColumns = [...sprintColumns, ...Array.from(remainingSprintKeys).sort()];
+        }
+
+        if (showLastSprint && sprintColumns.length > 0) {
+            sprintColumns = [sprintColumns[sprintColumns.length - 1]];
+        } else if (!showSprints) {
+            sprintColumns = [];
         }
 
         // Helper to get header name
@@ -429,17 +444,35 @@ export default function LiveResultsPage() {
              return key;
         };
 
-        const displayResults = results.slice(0, limit);
+        const displayResults = [...results]
+            .sort((a, b) => (b.totalPoints || 0) - (a.totalPoints || 0))
+            .slice(0, limit);
 
         return (
             <table className="w-full text-left border-collapse table-fixed">
                 <thead>
                     <tr className="text-slate-400 text-lg uppercase tracking-wider border-b-2 border-slate-600 bg-slate-800/80">
                         <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[10%] text-center`}>#</th>
-                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[55%]`}>Rider</th>
-                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[35%] text-right font-bold break-words text-blue-400`}>
-                            {lastSprintKey ? getSprintHeader(lastSprintKey) : 'Pts'}
-                        </th>
+                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 ${sprintColumns.length > 0 ? 'w-[40%]' : 'w-[50%]'}`}>Rider</th>
+                        {sprintColumns.length > 0 ? (
+                            <>
+                                {sprintColumns.map(key => (
+                                <th
+                                    key={key}
+                                    className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-center font-bold break-words text-blue-400`}
+                                >
+                                    {getSprintHeader(key)}
+                                </th>
+                                ))}
+                                <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-right font-bold text-blue-300`}>
+                                    Total
+                                </th>
+                            </>
+                        ) : (
+                            <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[35%] text-right font-bold break-words text-blue-400`}>
+                                Pts
+                            </th>
+                        )}
                     </tr>
                 </thead>
                 <tbody className={`text-white font-bold ${tableBodyTextSize}`}>
@@ -454,11 +487,22 @@ export default function LiveResultsPage() {
                             <td className={`${bodyCellPadding} px-2 truncate`}>
                                 {rider.name}
                             </td>
-                            <td className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-400`}>
-                                {lastSprintKey 
-                                    ? (rider.sprintDetails?.[lastSprintKey] || '-') 
-                                    : rider.totalPoints}
-                            </td>
+                            {sprintColumns.length > 0 ? (
+                                <>
+                                    {sprintColumns.map(key => (
+                                        <td key={key} className={`${bodyCellPadding} px-2 text-center font-extrabold text-blue-400`}>
+                                            {rider.sprintDetails?.[key] ?? '-'}
+                                        </td>
+                                    ))}
+                                    <td className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-300`}>
+                                        {rider.totalPoints ?? 0}
+                                    </td>
+                                </>
+                            ) : (
+                                <td className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-400`}>
+                                    {rider.totalPoints}
+                                </td>
+                            )}
                         </tr>
                     ))}
                     {displayResults.length === 0 && (
@@ -557,11 +601,6 @@ export default function LiveResultsPage() {
             ? configuredSegments
             : configuredSegments.filter(s => s.type === 'split');
 
-        const splitColumns = splitSegments.map((s) => ({
-            label: `${s.name} #${s.count}`,
-            keys: [s.key, `${s.id}_${s.count}`, `${s.id}`].filter(Boolean) as string[]
-        }));
-
         const parseWorldTime = (value: unknown) => {
             if (value === null || value === undefined) return null;
             const parsed = typeof value === 'string' ? parseInt(value, 10) : Number(value);
@@ -577,6 +616,26 @@ export default function LiveResultsPage() {
             return null;
         };
 
+        let splitColumns = splitSegments.map((s) => ({
+            label: `${s.name} #${s.count}`,
+            keys: [s.key, `${s.id}_${s.count}`, `${s.id}`].filter(Boolean) as string[]
+        }));
+
+        if (showLastSplit && splitColumns.length > 0) {
+            let lastWithData = -1;
+            for (let i = splitColumns.length - 1; i >= 0; i--) {
+                const col = splitColumns[i];
+                const hasData = results.some(r => getWorldTimeForColumn(r, col.keys) !== null);
+                if (hasData) {
+                    lastWithData = i;
+                    break;
+                }
+            }
+            if (lastWithData >= 0) {
+                splitColumns = [splitColumns[lastWithData]];
+            }
+        }
+
         splitColumns.forEach(col => {
             const times = results
                 .map(r => getWorldTimeForColumn(r, col.keys))
@@ -586,24 +645,40 @@ export default function LiveResultsPage() {
             }
         });
 
-        const getLatestSplitWorldTime = (rider: ResultEntry) => {
+        const getLatestSplit = (rider: ResultEntry) => {
             for (let i = splitColumns.length - 1; i >= 0; i--) {
                 const worldTime = getWorldTimeForColumn(rider, splitColumns[i].keys);
-                if (worldTime !== null) return worldTime;
+                if (worldTime !== null) {
+                    return { index: i, worldTime };
+                }
             }
             return null;
         };
 
-        const getSortValue = (rider: ResultEntry) => {
-            if (rider.finishTime && rider.finishTime > 0) {
-                return rider.finishTime;
-            }
-            const latestSplit = getLatestSplitWorldTime(rider);
-            return latestSplit ?? Number.POSITIVE_INFINITY;
-        };
-
         const displayResults = [...results]
-            .sort((a, b) => getSortValue(a) - getSortValue(b))
+            .sort((a, b) => {
+                const aFinished = a.finishTime && a.finishTime > 0;
+                const bFinished = b.finishTime && b.finishTime > 0;
+
+                if (aFinished && bFinished) {
+                    return a.finishTime - b.finishTime;
+                }
+                if (aFinished) return -1;
+                if (bFinished) return 1;
+
+                const aLatest = getLatestSplit(a);
+                const bLatest = getLatestSplit(b);
+
+                if (aLatest && bLatest) {
+                    if (aLatest.index !== bLatest.index) {
+                        return bLatest.index - aLatest.index;
+                    }
+                    return aLatest.worldTime - bLatest.worldTime;
+                }
+                if (aLatest) return -1;
+                if (bLatest) return 1;
+                return 0;
+            })
             .slice(0, limit);
 
         return (
@@ -611,7 +686,7 @@ export default function LiveResultsPage() {
                 <thead>
                     <tr className="text-slate-400 text-lg uppercase tracking-wider border-b-2 border-slate-600 bg-slate-800/80">
                         <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[10%] text-center`}>#</th>
-                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[45%]`}>Rider</th>
+                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[40%]`}>Rider</th>
                         {splitColumns.map(col => {
                             return (
                                 <th
@@ -622,7 +697,6 @@ export default function LiveResultsPage() {
                                 </th>
                             );
                         })}
-                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-right font-bold text-green-300`}>Finish</th>
                     </tr>
                 </thead>
                 <tbody className={`text-white font-bold ${tableBodyTextSize}`}>
@@ -647,9 +721,6 @@ export default function LiveResultsPage() {
                                     </td>
                                 );
                             })}
-                            <td className={`${bodyCellPadding} px-2 text-right font-extrabold text-green-300`}>
-                                {formatTimeOrDash(rider.finishTime)}
-                            </td>
                         </tr>
                     ))}
                     {displayResults.length === 0 && (

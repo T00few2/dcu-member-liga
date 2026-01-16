@@ -36,6 +36,7 @@ export default function LiveLinksPage() {
         lastSprint: false,
         full: false,
         includeBanner: false,
+        lastSplit: false,
         showCheckboxes: false, // Helper to toggle advanced options visibility
         // Calculation Settings
         source: 'joined', // 'finishers' | 'joined' | 'signed_up'
@@ -134,6 +135,7 @@ export default function LiveLinksPage() {
         if (config.lastSprint) params.set('lastSprint', 'true');
         if (config.full) params.set('full', 'true');
         if (!config.includeBanner) params.set('banner', 'false');
+        if (config.lastSplit) params.set('lastSplit', 'true');
 
         return `${baseUrl}?${params.toString()}`;
     };
@@ -265,36 +267,53 @@ export default function LiveLinksPage() {
                             />
                             <span className="text-slate-300">Full-Screen Layout</span>
                         </label>
+                        {config.full && (
+                            <label className="flex items-center space-x-3 cursor-pointer">
+                                <input 
+                                    type="checkbox" 
+                                    checked={config.includeBanner}
+                                    onChange={(e) => updateConfig('includeBanner', e.target.checked)}
+                                    className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
+                                />
+                                <span className="text-slate-300">Include Banner (Full-Screen)</span>
+                            </label>
+                        )}
 
-                        <label className="flex items-center space-x-3 cursor-pointer">
-                            <input 
-                                type="checkbox" 
-                                checked={config.includeBanner}
-                                onChange={(e) => updateConfig('includeBanner', e.target.checked)}
-                                className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
-                            />
-                            <span className="text-slate-300">Include Banner</span>
-                        </label>
+                        {config.view === 'race' && (
+                            <>
+                                <label className="flex items-center space-x-3 cursor-pointer">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={config.sprints}
+                                        onChange={(e) => updateConfig('sprints', e.target.checked)}
+                                        className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
+                                    />
+                                    <span className="text-slate-300">Show Sprints (Sprint Races)</span>
+                                </label>
 
-                        <label className="flex items-center space-x-3 cursor-pointer">
-                            <input 
-                                type="checkbox" 
-                                checked={config.sprints}
-                                onChange={(e) => updateConfig('sprints', e.target.checked)}
-                                className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
-                            />
-                            <span className="text-slate-300">Show Sprints</span>
-                        </label>
-
-                         <label className="flex items-center space-x-3 cursor-pointer">
-                            <input 
-                                type="checkbox" 
-                                checked={config.lastSprint}
-                                onChange={(e) => updateConfig('lastSprint', e.target.checked)}
-                                className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
-                            />
-                            <span className="text-slate-300">Show Only Last Sprint</span>
-                        </label>
+                                <label className="flex items-center space-x-3 cursor-pointer">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={config.lastSprint}
+                                        onChange={(e) => updateConfig('lastSprint', e.target.checked)}
+                                        className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
+                                    />
+                                    <span className="text-slate-300">Show Only Last Sprint (Sprint Races)</span>
+                                </label>
+                            </>
+                        )}
+                        
+                        {config.view === 'time-trial' && (
+                            <label className="flex items-center space-x-3 cursor-pointer">
+                                <input 
+                                    type="checkbox" 
+                                    checked={config.lastSplit}
+                                    onChange={(e) => updateConfig('lastSplit', e.target.checked)}
+                                    className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
+                                />
+                                <span className="text-slate-300">Show Only Last Split (Time Trail)</span>
+                            </label>
+                        )}
                     </div>
                 </div>
 
