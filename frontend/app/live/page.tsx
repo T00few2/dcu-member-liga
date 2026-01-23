@@ -15,6 +15,9 @@ interface Race {
         eventId: string;
         customCategory: string;
     }[];
+    singleModeCategories?: {
+        category: string;
+    }[];
     results?: Record<string, any[]>;
 }
 
@@ -65,10 +68,16 @@ export default function LiveLinksPage() {
                 // Extract all unique categories
                 const categories = new Set<string>();
                 fetchedRaces.forEach(race => {
-                    // Check configuration
+                    // Check multi-mode configuration
                     if (race.eventConfiguration && race.eventConfiguration.length > 0) {
                         race.eventConfiguration.forEach(c => {
                             if (c.customCategory) categories.add(c.customCategory);
+                        });
+                    }
+                    // Check single-mode category configuration
+                    if (race.singleModeCategories && race.singleModeCategories.length > 0) {
+                        race.singleModeCategories.forEach(c => {
+                            if (c.category) categories.add(c.category);
                         });
                     }
                     // Check results
@@ -85,14 +94,27 @@ export default function LiveLinksPage() {
                 // Sort categories based on the most recent configuration
                 const availableCategories = Array.from(categories);
                 
-                // Find a reference race (prefer the latest one with multi-mode config)
+                // Find a reference race (prefer the latest one with multi-mode config OR single-mode with categories)
                 // We clone fetchedRaces because reverse() mutates in place
-                const referenceRace = [...fetchedRaces].reverse().find(r => r.eventMode === 'multi' && r.eventConfiguration && r.eventConfiguration.length > 0);
+                const referenceRaceMulti = [...fetchedRaces].reverse().find(r => r.eventMode === 'multi' && r.eventConfiguration && r.eventConfiguration.length > 0);
+                const referenceRaceSingle = [...fetchedRaces].reverse().find(r => r.singleModeCategories && r.singleModeCategories.length > 0);
   
-                if (referenceRace && referenceRace.eventConfiguration) {
+                if (referenceRaceMulti && referenceRaceMulti.eventConfiguration) {
                     const orderMap = new Map();
-                    referenceRace.eventConfiguration.forEach((cfg, idx) => {
+                    referenceRaceMulti.eventConfiguration.forEach((cfg, idx) => {
                         if (cfg.customCategory) orderMap.set(cfg.customCategory, idx);
+                    });
+                    
+                    availableCategories.sort((a, b) => {
+                        const idxA = orderMap.has(a) ? orderMap.get(a) : 999;
+                        const idxB = orderMap.has(b) ? orderMap.get(b) : 999;
+                        if (idxA === idxB) return a.localeCompare(b);
+                        return idxA - idxB;
+                    });
+                } else if (referenceRaceSingle && referenceRaceSingle.singleModeCategories) {
+                    const orderMap = new Map();
+                    referenceRaceSingle.singleModeCategories.forEach((cfg, idx) => {
+                        if (cfg.category) orderMap.set(cfg.category, idx);
                     });
                     
                     availableCategories.sort((a, b) => {
@@ -365,13 +387,16 @@ export default function LiveLinksPage() {
                         {races.map((race) => {
                             // Determine which categories are valid for this race
                             const raceCats = new Set<string>();
-                            if (race.eventConfiguration) {
+                            if (race.eventConfiguration && race.eventConfiguration.length > 0) {
                                 race.eventConfiguration.forEach(c => c.customCategory && raceCats.add(c.customCategory));
+                            }
+                            if (race.singleModeCategories && race.singleModeCategories.length > 0) {
+                                race.singleModeCategories.forEach(c => c.category && raceCats.add(c.category));
                             }
                             if (race.results) {
                                 Object.keys(race.results).forEach(c => raceCats.add(c));
                             }
-                            // Default fallback
+                            // Default fallback only if no configuration or results
                             if (raceCats.size === 0) {
                                 ['A', 'B', 'C', 'D', 'E'].forEach(c => raceCats.add(c));
                             }
