@@ -6,6 +6,13 @@ import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 
+interface CategoryConfig {
+  category: string;
+  laps?: number;
+  sprints?: Sprint[];
+  segmentType?: 'sprint' | 'split';
+}
+
 interface Race {
   id: string;
   name: string;
@@ -23,6 +30,7 @@ interface Race {
     laps?: number; // Added laps override
     sprints?: Sprint[]; // Added support for per-category sprints
   }[];
+  singleModeCategories?: CategoryConfig[]; // Per-category config for single mode
   results?: Record<string, ResultEntry[]>;
   resultsUpdatedAt?: string;
   sprints?: Sprint[];
@@ -213,6 +221,11 @@ export default function ResultsPage() {
       availableRaceCategories = selectedRace.eventConfiguration
           .map(c => c.customCategory)
           .filter(Boolean);
+  } else if (selectedRace?.singleModeCategories && selectedRace.singleModeCategories.length > 0) {
+      // Use configured single mode categories if no results yet
+      availableRaceCategories = selectedRace.singleModeCategories
+          .map(c => c.category)
+          .filter(Boolean);
   } else {
       // Fallback default
       availableRaceCategories = ['A', 'B', 'C', 'D', 'E'];
@@ -223,6 +236,18 @@ export default function ResultsPage() {
       const orderMap = new Map();
       selectedRace.eventConfiguration.forEach((cfg, idx) => {
           if (cfg.customCategory) orderMap.set(cfg.customCategory, idx);
+      });
+      
+      availableRaceCategories.sort((a, b) => {
+          const idxA = orderMap.has(a) ? orderMap.get(a) : 999;
+          const idxB = orderMap.has(b) ? orderMap.get(b) : 999;
+          return idxA - idxB;
+      });
+  } else if (selectedRace?.singleModeCategories && selectedRace.singleModeCategories.length > 0) {
+      // Use order from singleModeCategories
+      const orderMap = new Map();
+      selectedRace.singleModeCategories.forEach((cfg, idx) => {
+          if (cfg.category) orderMap.set(cfg.category, idx);
       });
       
       availableRaceCategories.sort((a, b) => {
@@ -244,6 +269,12 @@ export default function ResultsPage() {
   let displayLaps = selectedRace?.laps;
   if (selectedRace?.eventMode === 'multi' && selectedRace.eventConfiguration) {
       const config = selectedRace.eventConfiguration.find(c => c.customCategory === displayRaceCategory);
+      if (config && config.laps) {
+          displayLaps = config.laps;
+      }
+  } else if (selectedRace?.singleModeCategories && selectedRace.singleModeCategories.length > 0) {
+      // Check single mode category config for laps override
+      const config = selectedRace.singleModeCategories.find(c => c.category === displayRaceCategory);
       if (config && config.laps) {
           displayLaps = config.laps;
       }
@@ -323,8 +354,19 @@ export default function ResultsPage() {
                orderedSprints = selectedRace.sprints || [];
           }
       } else {
-          // Single Mode
-          orderedSprints = selectedRace.sprintData || selectedRace.sprints || [];
+          // Single Mode - check for per-category config
+          if (selectedRace.singleModeCategories && selectedRace.singleModeCategories.length > 0) {
+              const catConfig = selectedRace.singleModeCategories.find(c => c.category === displayRaceCategory);
+              if (catConfig && catConfig.sprints) {
+                  orderedSprints = catConfig.sprints;
+              } else {
+                  // Fallback to global sprints
+                  orderedSprints = selectedRace.sprintData || selectedRace.sprints || [];
+              }
+          } else {
+              // Legacy: no per-category config
+              orderedSprints = selectedRace.sprintData || selectedRace.sprints || [];
+          }
       }
       
       if (orderedSprints.length > 0) {
@@ -358,6 +400,11 @@ export default function ResultsPage() {
           const catConfig = selectedRace.eventConfiguration.find(c => c.customCategory === displayRaceCategory);
           if (catConfig && catConfig.sprints) sourceSprints = catConfig.sprints;
           else sourceSprints = selectedRace.sprints || [];
+       } else if (selectedRace?.singleModeCategories && selectedRace.singleModeCategories.length > 0) {
+          // Check single mode category config for sprints
+          const catConfig = selectedRace.singleModeCategories.find(c => c.category === displayRaceCategory);
+          if (catConfig && catConfig.sprints) sourceSprints = catConfig.sprints;
+          else sourceSprints = selectedRace?.sprints || [];
        } else {
           sourceSprints = selectedRace?.sprints || [];
        }

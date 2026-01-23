@@ -6,19 +6,27 @@ import { doc, onSnapshot, collection, query, where, getDocs, getDoc } from 'fire
 import { useParams, useSearchParams } from 'next/navigation';
 
     // Types
+    interface CategoryConfig {
+        category: string;
+        laps?: number;
+        sprints?: Sprint[];
+        segmentType?: 'sprint' | 'split';
+    }
+
     interface Race {
         name: string;
         results?: Record<string, ResultEntry[]>;
         sprints?: Sprint[];
         sprintData?: Sprint[];
-    segmentType?: 'sprint' | 'split';
+        segmentType?: 'sprint' | 'split';
         eventMode?: 'single' | 'multi';
         eventConfiguration?: {
             eventId: string;
             customCategory: string;
             sprints?: Sprint[]; // Added support for per-category sprints
-        segmentType?: 'sprint' | 'split';
+            segmentType?: 'sprint' | 'split';
         }[];
+        singleModeCategories?: CategoryConfig[]; // Per-category config for single mode
     }
 
 interface Sprint {
@@ -397,8 +405,20 @@ export default function LiveResultsPage() {
                  configuredSegments = race.sprints || [];
             }
         } else {
-            // Single Mode
-            configuredSegments = race.sprints || race.sprintData || [];
+            // Single Mode - check for per-category config
+            if (race.singleModeCategories && race.singleModeCategories.length > 0) {
+                const catConfig = race.singleModeCategories.find(c => c.category === category);
+                if (catConfig && catConfig.sprints && catConfig.sprints.length > 0) {
+                    configuredSegments = catConfig.sprints;
+                    segmentType = catConfig.segmentType || segmentType;
+                } else {
+                    // Fallback to global sprints
+                    configuredSegments = race.sprints || race.sprintData || [];
+                }
+            } else {
+                // Legacy: no per-category config
+                configuredSegments = race.sprints || race.sprintData || [];
+            }
         }
         const sprintSegments = segmentType === 'split'
             ? []
@@ -593,8 +613,20 @@ export default function LiveResultsPage() {
                 configuredSegments = race.sprints || [];
             }
         } else {
-            // Single Mode
-            configuredSegments = race.sprints || race.sprintData || [];
+            // Single Mode - check for per-category config
+            if (race.singleModeCategories && race.singleModeCategories.length > 0) {
+                const catConfig = race.singleModeCategories.find(c => c.category === category);
+                if (catConfig && catConfig.sprints && catConfig.sprints.length > 0) {
+                    configuredSegments = catConfig.sprints;
+                    segmentType = catConfig.segmentType || segmentType;
+                } else {
+                    // Fallback to global sprints
+                    configuredSegments = race.sprints || race.sprintData || [];
+                }
+            } else {
+                // Legacy: no per-category config
+                configuredSegments = race.sprints || race.sprintData || [];
+            }
         }
 
         const splitSegments = segmentType === 'split'

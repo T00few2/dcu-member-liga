@@ -28,6 +28,13 @@ interface SelectedSegment extends Segment {
     type?: 'sprint' | 'split';
 }
 
+interface CategoryConfig {
+  category: string; // e.g. "A", "B", or "Elite Men"
+  laps?: number;
+  sprints?: SelectedSegment[];
+  segmentType?: 'sprint' | 'split';
+}
+
 interface Race {
   id: string;
   name: string;
@@ -51,6 +58,7 @@ interface Race {
     sprints?: SelectedSegment[]; // New: Per-category sprints
     segmentType?: 'sprint' | 'split';
   }[];
+  singleModeCategories?: CategoryConfig[]; // Per-category config for single mode
   selectedSegments?: string[]; // List of segment unique keys (id_count) - KEPT FOR BACKWARDS COMPAT
   sprints?: SelectedSegment[]; // Full segment objects (Legacy/Global)
   segmentType?: 'sprint' | 'split';
@@ -100,6 +108,9 @@ export default function LeagueManager() {
       sprints?: SelectedSegment[],
       segmentType?: 'sprint' | 'split'
   }[]>([]);
+
+  // Single Mode Category Configuration (for per-category laps/sprints)
+  const [singleModeCategories, setSingleModeCategories] = useState<CategoryConfig[]>([]);
 
   const [selectedMap, setSelectedMap] = useState('');
   const [selectedRouteId, setSelectedRouteId] = useState('');
@@ -192,6 +203,11 @@ export default function LeagueManager() {
                   const cfgMax = Math.max(...eventConfiguration.map(c => c.laps || 0));
                   if (cfgMax > maxLaps) maxLaps = cfgMax;
               }
+              // Also check single mode category configs
+              if (eventMode === 'single' && singleModeCategories.length > 0) {
+                  const catMax = Math.max(...singleModeCategories.map(c => c.laps || 0));
+                  if (catMax > maxLaps) maxLaps = catMax;
+              }
 
               const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
               const res = await fetch(`${apiUrl}/segments?routeId=${selectedRouteId}&laps=${maxLaps}`);
@@ -204,7 +220,7 @@ export default function LeagueManager() {
           }
       };
       fetchSegments();
-  }, [selectedRouteId, laps, eventMode, eventConfiguration.length]); // Relaxed dependency on eventConfiguration deep changes
+  }, [selectedRouteId, laps, eventMode, eventConfiguration.length, singleModeCategories.length]); // Relaxed dependency on configuration deep changes
 
   // Real-time listener for viewing results
   useEffect(() => {
@@ -267,8 +283,19 @@ export default function LeagueManager() {
             sprints: c.sprints || [],
             segmentType: c.segmentType || 'sprint'
         })));
+        setSingleModeCategories([]);
       } else {
         setEventConfiguration([]);
+        // Load single mode category config
+        if (race.singleModeCategories && race.singleModeCategories.length > 0) {
+            setSingleModeCategories(race.singleModeCategories.map(c => ({
+                ...c,
+                sprints: c.sprints || [],
+                segmentType: c.segmentType || 'sprint'
+            })));
+        } else {
+            setSingleModeCategories([]);
+        }
       }
 
       setSegmentType(race.segmentType || 'sprint');
@@ -284,6 +311,7 @@ export default function LeagueManager() {
       setEventSecret('');
       setEventMode('single');
       setEventConfiguration([]);
+      setSingleModeCategories([]);
       setSelectedMap('');
       setSelectedRouteId('');
       setLaps(1);
@@ -434,11 +462,13 @@ export default function LeagueManager() {
         if (eventMode === 'single') {
             raceData.eventId = eventId;
             raceData.eventSecret = eventSecret;
-            raceData.eventConfiguration = []; 
+            raceData.eventConfiguration = [];
+            raceData.singleModeCategories = singleModeCategories.length > 0 ? singleModeCategories : [];
             // Searchable Index
             raceData.linkedEventIds = eventId ? [eventId] : [];
         } else {
             raceData.eventConfiguration = eventConfiguration;
+            raceData.singleModeCategories = [];
             raceData.eventId = ''; 
             raceData.eventSecret = '';
             // Searchable Index
@@ -533,6 +563,46 @@ export default function LeagueManager() {
     }
     
     updateEventConfig(configIndex, 'sprints', newSprints);
+  };
+
+  // Single Mode Category Helpers
+  const addSingleModeCategory = () => {
+      const defaultCategories = ['A', 'B', 'C', 'D', 'E'];
+      const usedCategories = singleModeCategories.map(c => c.category);
+      const nextCategory = defaultCategories.find(c => !usedCategories.includes(c)) || '';
+      setSingleModeCategories([...singleModeCategories, { 
+          category: nextCategory, 
+          laps: laps, 
+          sprints: [], 
+          segmentType: 'sprint' 
+      }]);
+  };
+
+  const removeSingleModeCategory = (index: number) => {
+      const newConfig = [...singleModeCategories];
+      newConfig.splice(index, 1);
+      setSingleModeCategories(newConfig);
+  };
+
+  const updateSingleModeCategory = (index: number, field: keyof CategoryConfig, value: any) => {
+      const newConfig = [...singleModeCategories];
+      newConfig[index] = { ...newConfig[index], [field]: value };
+      setSingleModeCategories(newConfig);
+  };
+
+  const toggleSingleModeCategorySprint = (configIndex: number, seg: Segment) => {
+      const config = singleModeCategories[configIndex];
+      const currentSprints = config.sprints || [];
+      const key = `${seg.id}_${seg.count}`;
+      
+      let newSprints;
+      if (currentSprints.some(s => s.key === key)) {
+          newSprints = currentSprints.filter(s => s.key !== key);
+      } else {
+          newSprints = [...currentSprints, { ...seg, key }];
+      }
+      
+      updateSingleModeCategory(configIndex, 'sprints', newSprints);
   };
 
   const handleToggleDQ = async (raceId: string, zwiftId: string, isCurrentlyDQ: boolean) => {
@@ -854,26 +924,146 @@ export default function LeagueManager() {
                               </div>
 
                               {eventMode === 'single' ? (
-                                  <div className="grid grid-cols-2 gap-4">
-                                      <div>
-                                          <label className="block text-xs font-medium text-muted-foreground mb-1">Zwift Event ID</label>
-                                          <input 
-                                            type="text" 
-                                            value={eventId}
-                                            onChange={e => setEventId(e.target.value)}
-                                            className="w-full p-2 border border-input rounded bg-background text-foreground"
-                                            placeholder="e.g. 123456"
-                                          />
+                                  <div className="space-y-4">
+                                      <div className="grid grid-cols-2 gap-4">
+                                          <div>
+                                              <label className="block text-xs font-medium text-muted-foreground mb-1">Zwift Event ID</label>
+                                              <input 
+                                                type="text" 
+                                                value={eventId}
+                                                onChange={e => setEventId(e.target.value)}
+                                                className="w-full p-2 border border-input rounded bg-background text-foreground"
+                                                placeholder="e.g. 123456"
+                                              />
+                                          </div>
+                                          <div>
+                                              <label className="block text-xs font-medium text-muted-foreground mb-1">Event Secret (Optional)</label>
+                                              <input 
+                                                type="text" 
+                                                value={eventSecret}
+                                                onChange={e => setEventSecret(e.target.value)}
+                                                className="w-full p-2 border border-input rounded bg-background text-foreground"
+                                                placeholder="e.g. abc123xyz"
+                                              />
+                                          </div>
                                       </div>
-                                      <div>
-                                          <label className="block text-xs font-medium text-muted-foreground mb-1">Event Secret (Optional)</label>
-                                          <input 
-                                            type="text" 
-                                            value={eventSecret}
-                                            onChange={e => setEventSecret(e.target.value)}
-                                            className="w-full p-2 border border-input rounded bg-background text-foreground"
-                                            placeholder="e.g. abc123xyz"
-                                          />
+
+                                      {/* Per-Category Configuration for Single Mode */}
+                                      <div className="border-t border-border pt-4">
+                                          <div className="flex justify-between items-center mb-3">
+                                              <div>
+                                                  <label className="block text-sm font-medium text-foreground">Category Configuration</label>
+                                                  <p className="text-xs text-muted-foreground">
+                                                      {singleModeCategories.length === 0 
+                                                          ? "Default: Uses Zwift categories (A, B, C, D, E) with global laps/sprints" 
+                                                          : "Custom: Per-category laps and sprint configuration"}
+                                                  </p>
+                                              </div>
+                                              <button
+                                                  type="button"
+                                                  onClick={addSingleModeCategory}
+                                                  className="text-sm text-primary hover:text-primary/80 font-medium"
+                                              >
+                                                  + Add Category
+                                              </button>
+                                          </div>
+
+                                          {singleModeCategories.length > 0 && (
+                                              <div className="space-y-3">
+                                                  {singleModeCategories.map((config, idx) => (
+                                                      <div key={idx} className="flex flex-col gap-2 p-3 bg-muted/20 rounded border border-border">
+                                                          <div className="flex gap-2 items-start">
+                                                              <div className="w-24">
+                                                                  <label className="text-[10px] text-muted-foreground font-bold uppercase block mb-1">Category</label>
+                                                                  <input 
+                                                                    type="text" 
+                                                                    value={config.category}
+                                                                    onChange={e => updateSingleModeCategory(idx, 'category', e.target.value)}
+                                                                    className="w-full p-2 border border-input rounded bg-background text-foreground text-sm"
+                                                                    placeholder="e.g. A"
+                                                                  />
+                                                              </div>
+                                                              <div className="w-20">
+                                                                  <label className="text-[10px] text-muted-foreground font-bold uppercase block mb-1">Laps</label>
+                                                                  <input 
+                                                                    type="number" 
+                                                                    value={config.laps || laps}
+                                                                    onChange={e => updateSingleModeCategory(idx, 'laps', parseInt(e.target.value))}
+                                                                    className="w-full p-2 border border-input rounded bg-background text-foreground text-sm"
+                                                                    min="1"
+                                                                  />
+                                                              </div>
+                                                              <div className="flex-1">
+                                                                  <label className="text-[10px] text-muted-foreground font-bold uppercase block mb-1">Segments Used For</label>
+                                                                  <select
+                                                                    value={config.segmentType || 'sprint'}
+                                                                    onChange={e => updateSingleModeCategory(idx, 'segmentType', e.target.value as 'sprint' | 'split')}
+                                                                    className="w-full p-2 border border-input rounded bg-background text-foreground text-sm"
+                                                                  >
+                                                                      <option value="sprint">Sprint Points</option>
+                                                                      <option value="split">Time Trial Splits</option>
+                                                                  </select>
+                                                              </div>
+                                                              <button 
+                                                                type="button" 
+                                                                onClick={() => removeSingleModeCategory(idx)}
+                                                                className="text-red-500 hover:text-red-700 px-2 pt-6"
+                                                              >
+                                                                  ✕
+                                                              </button>
+                                                          </div>
+                                                          
+                                                          {/* Per-Category Sprint Selection */}
+                                                          <div className="mt-2">
+                                                              <details className="group border border-input rounded bg-background">
+                                                                  <summary className="list-none flex justify-between items-center p-2 cursor-pointer text-xs font-medium text-foreground select-none">
+                                                                      <span>
+                                                                          {config.segmentType === 'split' ? 'Split Segments' : 'Sprint Segments'} ({config.sprints?.length || 0} selected)
+                                                                      </span>
+                                                                      <span className="text-muted-foreground group-open:rotate-180 transition-transform">
+                                                                          ▼
+                                                                      </span>
+                                                                  </summary>
+                                                                  
+                                                                  <div className="p-2 border-t border-input max-h-60 overflow-y-auto bg-muted/10">
+                                                                       {Object.keys(segmentsByLap).sort((a,b) => parseInt(a)-parseInt(b)).map(lapKey => {
+                                                                          const lapNum = parseInt(lapKey);
+                                                                          // Only show segments up to the laps configured for this category
+                                                                          if (lapNum > (config.laps || laps)) return null;
+                                                                          
+                                                                          return (
+                                                                              <div key={lapNum} className="mb-2">
+                                                                                  <div className="text-[10px] font-bold text-muted-foreground uppercase mb-1 bg-muted/30 px-1 rounded">Lap {lapNum}</div>
+                                                                                          {segmentsByLap[lapNum].map(seg => {
+                                                                                              const uniqueKey = `${seg.id}_${seg.count}`;
+                                                                                              const isSelected = config.sprints?.some(s => s.key === uniqueKey);
+                                                                                      return (
+                                                                                          <label key={uniqueKey} className="flex items-center gap-2 p-1.5 hover:bg-muted/50 rounded cursor-pointer">
+                                                                                              <input 
+                                                                                                  type="checkbox"
+                                                                                                  checked={isSelected}
+                                                                                                  onChange={() => toggleSingleModeCategorySprint(idx, seg)}
+                                                                                                  className="w-3 h-3 rounded border-input text-primary focus:ring-primary"
+                                                                                              />
+                                                                                              <div className="text-xs truncate" title={`${seg.name} (${seg.direction})`}>
+                                                                                                  {seg.name}
+                                                                                              </div>
+                                                                                          </label>
+                                                                                      );
+                                                                                  })}
+                                                                              </div>
+                                                                          );
+                                                                      })}
+                                                                      {availableSegments.length === 0 && (
+                                                                          <div className="text-xs text-muted-foreground p-2 text-center italic">No segments found. Select Route first.</div>
+                                                                      )}
+                                                                  </div>
+                                                              </details>
+                                                          </div>
+                                                      </div>
+                                                  ))}
+                                              </div>
+                                          )}
                                       </div>
                                   </div>
                               ) : (
@@ -1017,8 +1207,8 @@ export default function LeagueManager() {
                               </p>
                           </div>
 
-                          {/* Global Sprint Selection (Single Mode Only) */}
-                          {eventMode === 'single' && (
+                          {/* Global Sprint Selection (Single Mode Only, when no per-category config) */}
+                          {eventMode === 'single' && singleModeCategories.length === 0 && (
                             <div className="border-t border-border pt-4">
                                 <div className="mb-3">
                                     <label className="block font-medium text-card-foreground mb-1">Segments Used For</label>

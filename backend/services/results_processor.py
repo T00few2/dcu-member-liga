@@ -38,6 +38,9 @@ class ResultsProcessor:
         manual_dqs = set(str(dq) for dq in race_data.get('manualDQs', [])) # Ensure strings
         manual_declassifications = set(str(dq) for dq in race_data.get('manualDeclassifications', [])) # Ensure strings
         
+        # Get per-category configs for single mode (new feature)
+        single_mode_categories = race_data.get('singleModeCategories', [])
+
         if event_config and len(event_config) > 0:
             # Multi-Event Mode
             print("Using Multi-Event Configuration")
@@ -53,17 +56,31 @@ class ResultsProcessor:
             # Legacy/Single Mode
             event_id = race_data.get('eventId')
             event_secret = race_data.get('eventSecret')
-            # Use global sprints for single mode
+            # Use global sprints for single mode (fallback)
             global_sprints = race_data.get('sprints', [])
             
             if event_id:
-                print("Using Single Event Configuration (Legacy)")
+                print("Using Single Event Configuration")
+                # Build per-category sprint/config map if available
+                category_config_map = {}
+                if single_mode_categories:
+                    print(f"  Found {len(single_mode_categories)} per-category configurations")
+                    for cat_cfg in single_mode_categories:
+                        cat_name = cat_cfg.get('category')
+                        if cat_name:
+                            category_config_map[cat_name] = {
+                                'sprints': cat_cfg.get('sprints', []),
+                                'segmentType': cat_cfg.get('segmentType') or race_data.get('segmentType'),
+                                'laps': cat_cfg.get('laps')
+                            }
+                
                 event_sources.append({
                     'id': event_id,
                     'secret': event_secret,
                     'customCategory': None, # Use Zwift Categories (A, B, C...)
                     'sprints': global_sprints,
-                    'segmentType': race_data.get('segmentType')
+                    'segmentType': race_data.get('segmentType'),
+                    'categoryConfigMap': category_config_map  # NEW: Pass per-category configs
                 })
         
         if not event_sources:
@@ -145,6 +162,7 @@ class ResultsProcessor:
         event_secret = source['secret']
         custom_category = source['customCategory'] # If present, ALL results go here
         source_sprints = source.get('sprints', []) # Sprints specific to this source/category
+        category_config_map = source.get('categoryConfigMap', {}) # Per-category configs for single mode
         
         if not event_id:
             return
@@ -205,10 +223,23 @@ class ResultsProcessor:
                 subgroup_id, event_secret, fetch_mode, filter_registered, registered_riders
             )
             
+            # Determine sprints and segment type for this category
+            # Use per-category config if available (single mode with category configs)
+            category_sprints = source_sprints
+            category_segment_type = source.get('segmentType')
+            
+            if not custom_category and category_label in category_config_map:
+                cat_cfg = category_config_map[category_label]
+                if cat_cfg.get('sprints'):
+                    category_sprints = cat_cfg['sprints']
+                    print(f"    Using per-category sprints for {category_label}: {len(category_sprints)} sprints")
+                if cat_cfg.get('segmentType'):
+                    category_segment_type = cat_cfg['segmentType']
+            
             # Calculate Points & Sprints for this batch
             processed_batch = self._calculate_points_and_sprints(
                 finishers, 
-                source_sprints, # Pass per-source sprints
+                category_sprints, # Pass category-specific sprints
                 start_time, 
                 registered_riders, 
                 finish_points_scheme, 
@@ -216,7 +247,7 @@ class ResultsProcessor:
                 fetch_mode,
                 manual_dqs,
                 manual_declassifications,
-                source.get('segmentType')
+                category_segment_type
             )
             
             if custom_category:
@@ -224,6 +255,13 @@ class ResultsProcessor:
             else:
                 # Standard Mode: Save directly to A, B, C...
                 # Note: This overwrites previous results for this category if multiple sources map to 'A' (unlikely in standard mode)
+                
+                # Filter by configured categories if singleModeCategories is set
+                # Only keep results for categories that are in the config map
+                if category_config_map and category_label not in category_config_map:
+                    print(f"    Skipping category {category_label} (not in configured categories)")
+                    continue
+                
                 all_results[category_label] = processed_batch
                 print(f"    Saved {len(processed_batch)} results to {category_label}")
 
