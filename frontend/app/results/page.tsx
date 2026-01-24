@@ -151,9 +151,9 @@ export default function ResultsPage() {
     }
   }, [user, isRegistered]);
 
-  // Live Updates for Selected Race
+  // Live Updates for Selected Race - always subscribe when a race is selected
   useEffect(() => {
-      if (!selectedRaceId || activeTab !== 'results') return;
+      if (!selectedRaceId) return;
 
       // Subscribe to the race document for real-time updates
       const unsubscribe = onSnapshot(doc(db, 'races', selectedRaceId), (docSnapshot) => {
@@ -168,7 +168,7 @@ export default function ResultsPage() {
       });
 
       return () => unsubscribe();
-  }, [selectedRaceId, activeTab]);
+  }, [selectedRaceId]);
 
   // Live Updates for Standings
   useEffect(() => {
