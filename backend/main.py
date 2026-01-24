@@ -1529,6 +1529,32 @@ def dcu_api(request):
             if not race_ids:
                 return (jsonify({'message': 'No race IDs provided'}), 400, headers)
             
+            # Fetch test participants from database
+            test_users_ref = db.collection('users').where('isTestData', '==', True)
+            test_users_docs = list(test_users_ref.stream())
+            test_participants = []
+            for doc in test_users_docs:
+                data = doc.to_dict()
+                test_participants.append({
+                    'zwiftId': data.get('zwiftId'),
+                    'name': data.get('name'),
+                    'eLicense': data.get('eLicense')
+                })
+            
+            # If no test participants exist, create temporary ones
+            if len(test_participants) == 0:
+                print("No test participants found, generating temporary names")
+                first_names = ['Magnus', 'Oliver', 'William', 'Noah', 'Lucas', 'Oscar', 'Carl', 'Victor',
+                              'Emma', 'Ida', 'Clara', 'Freja', 'Alma', 'Ella', 'Sofia', 'Anna']
+                last_names = ['Nielsen', 'Jensen', 'Hansen', 'Pedersen', 'Andersen', 'Christensen',
+                             'Larsen', 'Sørensen', 'Rasmussen', 'Petersen', 'Madsen', 'Kristensen']
+                for i in range(100):
+                    test_participants.append({
+                        'zwiftId': f"999{i:04d}",
+                        'name': f"{random.choice(first_names)} {random.choice(last_names)}",
+                        'eLicense': f"TEMP-{i:04d}"
+                    })
+            
             # Get league settings for point schemes
             settings_doc = db.collection('league').document('settings').get()
             settings = settings_doc.to_dict() if settings_doc.exists else {}
@@ -1583,6 +1609,11 @@ def dcu_api(request):
                 
                 race_results = {}
                 
+                # RANDOMIZE: Shuffle participants differently for each race
+                shuffled_participants = test_participants.copy()
+                random.shuffle(shuffled_participants)
+                participant_index = 0
+                
                 for category in categories:
                     rider_count = category_riders.get(category, 5)  # Default 5 per category
                     if rider_count <= 0:
@@ -1592,19 +1623,32 @@ def dcu_api(request):
                     sprints = cat_config.get('sprints', [])
                     segment_type = cat_config.get('segmentType', 'sprint')
                     
-                    # Generate fake riders for this category
+                    # Get riders for this category from shuffled pool
+                    category_riders_list = []
+                    for _ in range(rider_count):
+                        if participant_index < len(shuffled_participants):
+                            category_riders_list.append(shuffled_participants[participant_index])
+                            participant_index += 1
+                        else:
+                            # Wrap around if we run out
+                            participant_index = 0
+                            category_riders_list.append(shuffled_participants[participant_index])
+                            participant_index += 1
+                    
+                    # RANDOMIZE: Shuffle the order within category for finish positions
+                    random.shuffle(category_riders_list)
+                    
                     category_results = []
                     
                     # Base finish time (randomized per category)
                     base_time_ms = random.randint(1800000, 3600000)  # 30-60 minutes
                     
-                    for rank in range(1, rider_count + 1):
-                        # Generate fake rider data
-                        rider_name = f"Test Rider {category}-{rank}"
-                        zwift_id = f"999{categories.index(category)}{rank:03d}"
+                    for rank, rider in enumerate(category_riders_list, 1):
+                        rider_name = rider['name']
+                        zwift_id = rider['zwiftId']
                         
                         # Calculate finish time with some variance
-                        time_variance = random.randint(0, 60000) * rank  # More variance for lower positions
+                        time_variance = random.randint(5000, 30000) * rank  # Random gap between positions
                         finish_time = base_time_ms + time_variance
                         
                         # Determine if this rider has finished based on progress
@@ -1627,24 +1671,24 @@ def dcu_api(request):
                         
                         if sprints and len(sprints) > 0:
                             # Determine how many sprints are "complete" based on progress
-                            sprints_complete = max(1, int((progress / 100) * len(sprints)))
+                            sprints_complete = max(1, int((progress / 100) * len(sprints))) if progress > 0 else 0
                             
                             for s_idx, sprint in enumerate(sprints[:sprints_complete]):
                                 sprint_key = sprint.get('key') or f"{sprint.get('id')}_{sprint.get('count', 1)}"
                                 
                                 # Generate sprint time (world time)
                                 base_world_time = 1700000000000 + (s_idx * 300000)  # Base timestamp
-                                sprint_world_time = base_world_time + random.randint(0, 30000) * rank
-                                sprint_elapsed = random.randint(30000, 120000) + (rank * 1000)  # 30-120s + position variance
+                                # RANDOMIZE: Add random variance to sprint times
+                                sprint_world_time = base_world_time + random.randint(0, 60000)
+                                sprint_elapsed = random.randint(30000, 120000)  # 30-120s random
                                 
                                 if segment_type == 'split':
                                     # For splits, store world time
                                     sprint_details[sprint_key] = sprint_world_time
                                 else:
-                                    # For sprints, calculate and store points
-                                    # Randomize sprint ranking a bit
-                                    sprint_rank = max(1, rank + random.randint(-2, 2))
-                                    sprint_rank = min(sprint_rank, rider_count)
+                                    # For sprints, RANDOMIZE ranking independently of finish position
+                                    # This means sprint winners can be different from race winners
+                                    sprint_rank = random.randint(1, rider_count)
                                     
                                     points = sprint_points_scheme[sprint_rank - 1] if sprint_rank - 1 < len(sprint_points_scheme) else 0
                                     sprint_details[sprint_key] = points
@@ -1678,7 +1722,7 @@ def dcu_api(request):
                         
                         category_results.append(rider_result)
                     
-                    # Sort by total points (descending)
+                    # Sort by total points (descending) for final display order
                     category_results.sort(key=lambda x: x['totalPoints'], reverse=True)
                     race_results[category] = category_results
                 
