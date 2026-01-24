@@ -1663,12 +1663,9 @@ def dcu_api(request):
                         time_variance = random.randint(5000, 30000) * rank  # Random gap between positions
                         finish_time = base_time_ms + time_variance
                         
-                        # Determine if this rider has finished based on progress
-                        finisher_threshold = (progress / 100) * rider_count
-                        has_finished = rank <= finisher_threshold
-                        
-                        # For incomplete races, mark unfinished riders with 0 time
-                        if not has_finished:
+                        # ONLY set finish times when race is 100% complete
+                        # Any progress < 100 means race is in progress - no finishers yet
+                        if progress < 100:
                             finish_time = 0
                         
                         # Generate RAW sprint data (times only, no points)

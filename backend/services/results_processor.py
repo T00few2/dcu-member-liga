@@ -258,16 +258,50 @@ class ResultsProcessor:
             # Combine all riders for sprint calculation
             all_category_riders = valid_riders + declassified_riders + dq_riders
             
-            # Calculate sprint points
+            # Build a map of sprint_key -> segment_type from race configuration
+            # This tells us whether each segment is a 'sprint' (awards points) or 'split' (time only)
+            sprint_type_map = {}  # sprint_key -> 'sprint' or 'split'
+            global_segment_type = race_data.get('segmentType', 'sprint')
+            
+            # Check multi-mode config
+            if race_data.get('eventConfiguration'):
+                for cfg in race_data['eventConfiguration']:
+                    cat_segment_type = cfg.get('segmentType') or global_segment_type
+                    for sprint in cfg.get('sprints', []):
+                        sprint_key = sprint.get('key') or f"{sprint.get('id')}_{sprint.get('count', 1)}"
+                        # Per-sprint type override or category default
+                        sprint_type_map[sprint_key] = sprint.get('type') or cat_segment_type
+            
+            # Check single-mode category config
+            elif race_data.get('singleModeCategories'):
+                for cfg in race_data['singleModeCategories']:
+                    if cfg.get('category') == category:
+                        cat_segment_type = cfg.get('segmentType') or global_segment_type
+                        for sprint in cfg.get('sprints', []):
+                            sprint_key = sprint.get('key') or f"{sprint.get('id')}_{sprint.get('count', 1)}"
+                            sprint_type_map[sprint_key] = sprint.get('type') or cat_segment_type
+                        break
+            
+            # Fallback to global sprints config
+            if not sprint_type_map:
+                for sprint in race_data.get('sprints', []):
+                    sprint_key = sprint.get('key') or f"{sprint.get('id')}_{sprint.get('count', 1)}"
+                    sprint_type_map[sprint_key] = sprint.get('type') or global_segment_type
+            
+            # Calculate sprint points / split times
             # First, collect all sprint keys from sprintData
             sprint_keys = set()
             for rider in all_category_riders:
                 sprint_data = rider.get('sprintData', {})
                 sprint_keys.update(sprint_data.keys())
             
-            # For each sprint, rank riders by time and award points
+            # For each sprint/split, rank riders by time
             for sprint_key in sprint_keys:
-                # Collect riders who have data for this sprint
+                # Determine if this is a sprint (awards points) or split (time only)
+                segment_type = sprint_type_map.get(sprint_key, global_segment_type)
+                is_split = segment_type == 'split'
+                
+                # Collect riders who have data for this segment
                 sprint_entries = []
                 for rider in all_category_riders:
                     sprint_data = rider.get('sprintData', {})
@@ -285,7 +319,7 @@ class ResultsProcessor:
                 # Sort by worldTime (earliest = fastest through segment = rank 1)
                 sprint_entries.sort(key=lambda x: x['worldTime'])
                 
-                # Assign ranks and points
+                # Assign ranks and points/times
                 for rank, entry in enumerate(sprint_entries):
                     zid = str(entry['zwiftId'])
                     sprint_rank = rank + 1
@@ -300,19 +334,32 @@ class ResultsProcessor:
                                 rider['sprintData'][sprint_key] = {}
                             rider['sprintData'][sprint_key]['rank'] = sprint_rank
                             
-                            # Award points (only for non-DQ, non-declassified)
-                            if zid not in manual_dqs and zid not in manual_declassifications:
-                                points = sprint_points_scheme[rank] if rank < len(sprint_points_scheme) else 0
-                                if 'sprintDetails' not in rider:
-                                    rider['sprintDetails'] = {}
-                                rider['sprintDetails'][sprint_key] = points
+                            if 'sprintDetails' not in rider:
+                                rider['sprintDetails'] = {}
+                            
+                            if is_split:
+                                # For splits: store worldTime (no points)
+                                rider['sprintDetails'][sprint_key] = entry['worldTime']
+                            else:
+                                # For sprints: award points (only for non-DQ, non-declassified)
+                                if zid not in manual_dqs and zid not in manual_declassifications:
+                                    points = sprint_points_scheme[rank] if rank < len(sprint_points_scheme) else 0
+                                    rider['sprintDetails'][sprint_key] = points
                             break
             
             # Calculate total points for each rider
+            # Only sum actual sprint points, not split times (which are stored as worldTime)
             for rider in all_category_riders:
                 finish_pts = rider.get('finishPoints', 0)
                 sprint_details = rider.get('sprintDetails', {})
-                sprint_pts = sum(sprint_details.values()) if sprint_details else 0
+                
+                # Sum only sprint points (not split times)
+                # Split times are worldTime values (large numbers), points are small (< 1000)
+                sprint_pts = 0
+                for s_key, value in sprint_details.items():
+                    segment_type = sprint_type_map.get(s_key, global_segment_type)
+                    if segment_type != 'split':
+                        sprint_pts += value
                 
                 rider['sprintPoints'] = sprint_pts
                 rider['totalPoints'] = finish_pts + sprint_pts
