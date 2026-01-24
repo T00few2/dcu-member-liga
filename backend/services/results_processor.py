@@ -154,6 +154,190 @@ class ResultsProcessor:
         print("Updated league standings document.")
         return standings
 
+    def recalculate_race_points(self, race_id):
+        """
+        Recalculates points for an existing race using league scoring settings.
+        Used for test data or when scoring settings change.
+        
+        Expects race results to have raw data:
+        - finishTime: milliseconds (0 if not finished)
+        - sprintData: { sprintKey: { time, worldTime, rank } } for raw sprint times
+        
+        Will calculate and update:
+        - finishRank, finishPoints (based on finish time order)
+        - sprintPoints, sprintDetails (based on sprint times)
+        - totalPoints
+        """
+        if not self.db:
+            raise Exception("Database not available")
+        
+        print(f"Recalculating points for race: {race_id}")
+        
+        # 1. Fetch Race Data
+        race_doc = self.db.collection('races').document(race_id).get()
+        if not race_doc.exists:
+            raise Exception(f"Race {race_id} not found")
+        
+        race_data = race_doc.to_dict()
+        results = race_data.get('results', {})
+        
+        if not results:
+            print("  No results to recalculate")
+            return results
+        
+        # 2. Fetch League Settings
+        settings_doc = self.db.collection('league').document('settings').get()
+        settings = settings_doc.to_dict() if settings_doc.exists else {}
+        finish_points_scheme = settings.get('finishPoints', [])
+        sprint_points_scheme = settings.get('sprintPoints', [])
+        
+        print(f"  Finish scheme: {finish_points_scheme[:5]}... ({len(finish_points_scheme)} positions)")
+        print(f"  Sprint scheme: {sprint_points_scheme[:5]}... ({len(sprint_points_scheme)} positions)")
+        
+        # 3. Get DQs and Declassifications
+        manual_dqs = set(str(dq) for dq in race_data.get('manualDQs', []))
+        manual_declassifications = set(str(dq) for dq in race_data.get('manualDeclassifications', []))
+        
+        # 4. Process Each Category
+        updated_results = {}
+        
+        for category, riders in results.items():
+            print(f"  Processing category {category} ({len(riders)} riders)")
+            
+            # Separate valid, DQ, and declassified riders
+            valid_riders = []
+            dq_riders = []
+            declassified_riders = []
+            
+            for rider in riders:
+                zid = str(rider.get('zwiftId', ''))
+                if zid in manual_dqs:
+                    dq_riders.append(rider)
+                elif zid in manual_declassifications:
+                    declassified_riders.append(rider)
+                else:
+                    valid_riders.append(rider)
+            
+            # Sort valid riders by finish time (0 means not finished, put at end)
+            valid_riders.sort(key=lambda x: x.get('finishTime', 0) if x.get('finishTime', 0) > 0 else 999999999999)
+            
+            # Calculate finish points for valid riders
+            for rank, rider in enumerate(valid_riders):
+                finish_time = rider.get('finishTime', 0)
+                
+                if finish_time > 0:
+                    # Rider has finished - award finish points
+                    points = finish_points_scheme[rank] if rank < len(finish_points_scheme) else 0
+                    rider['finishRank'] = rank + 1
+                    rider['finishPoints'] = points
+                else:
+                    # Rider not finished yet
+                    rider['finishRank'] = 0
+                    rider['finishPoints'] = 0
+                
+                rider['disqualified'] = False
+                rider['declassified'] = False
+            
+            # Calculate last place points for declassified riders
+            last_valid_rank = len([r for r in valid_riders if r.get('finishTime', 0) > 0])
+            last_place_points = finish_points_scheme[last_valid_rank] if last_valid_rank < len(finish_points_scheme) else 0
+            
+            for rider in declassified_riders:
+                rider['finishRank'] = last_valid_rank + 1
+                rider['finishPoints'] = last_place_points
+                rider['disqualified'] = False
+                rider['declassified'] = True
+            
+            # DQ riders get no finish points
+            for rider in dq_riders:
+                rider['finishRank'] = 9999
+                rider['finishPoints'] = 0
+                rider['disqualified'] = True
+                rider['declassified'] = False
+            
+            # Combine all riders for sprint calculation
+            all_category_riders = valid_riders + declassified_riders + dq_riders
+            
+            # Calculate sprint points
+            # First, collect all sprint keys from sprintData
+            sprint_keys = set()
+            for rider in all_category_riders:
+                sprint_data = rider.get('sprintData', {})
+                sprint_keys.update(sprint_data.keys())
+            
+            # For each sprint, rank riders by time and award points
+            for sprint_key in sprint_keys:
+                # Collect riders who have data for this sprint
+                sprint_entries = []
+                for rider in all_category_riders:
+                    sprint_data = rider.get('sprintData', {})
+                    if sprint_key in sprint_data:
+                        entry = sprint_data[sprint_key]
+                        # Use worldTime for ranking (lower is better = faster through segment)
+                        world_time = entry.get('worldTime', 0)
+                        if world_time > 0:
+                            sprint_entries.append({
+                                'zwiftId': rider.get('zwiftId'),
+                                'worldTime': world_time,
+                                'time': entry.get('time', 0)
+                            })
+                
+                # Sort by worldTime (earliest = fastest through segment = rank 1)
+                sprint_entries.sort(key=lambda x: x['worldTime'])
+                
+                # Assign ranks and points
+                for rank, entry in enumerate(sprint_entries):
+                    zid = str(entry['zwiftId'])
+                    sprint_rank = rank + 1
+                    
+                    # Find the rider and update their sprint data
+                    for rider in all_category_riders:
+                        if str(rider.get('zwiftId')) == zid:
+                            # Update rank in sprintData
+                            if 'sprintData' not in rider:
+                                rider['sprintData'] = {}
+                            if sprint_key not in rider['sprintData']:
+                                rider['sprintData'][sprint_key] = {}
+                            rider['sprintData'][sprint_key]['rank'] = sprint_rank
+                            
+                            # Award points (only for non-DQ, non-declassified)
+                            if zid not in manual_dqs and zid not in manual_declassifications:
+                                points = sprint_points_scheme[rank] if rank < len(sprint_points_scheme) else 0
+                                if 'sprintDetails' not in rider:
+                                    rider['sprintDetails'] = {}
+                                rider['sprintDetails'][sprint_key] = points
+                            break
+            
+            # Calculate total points for each rider
+            for rider in all_category_riders:
+                finish_pts = rider.get('finishPoints', 0)
+                sprint_details = rider.get('sprintDetails', {})
+                sprint_pts = sum(sprint_details.values()) if sprint_details else 0
+                
+                rider['sprintPoints'] = sprint_pts
+                rider['totalPoints'] = finish_pts + sprint_pts
+            
+            # Sort by total points (descending)
+            all_category_riders.sort(key=lambda x: x.get('totalPoints', 0), reverse=True)
+            
+            updated_results[category] = all_category_riders
+        
+        # 5. Save Updated Results
+        self.db.collection('races').document(race_id).update({
+            'results': updated_results,
+            'resultsUpdatedAt': datetime.now()
+        })
+        
+        # 6. Update League Standings
+        race_data['results'] = updated_results
+        try:
+            self.save_league_standings(override_race_id=race_id, override_race_data=race_data)
+        except Exception as e:
+            print(f"Error updating league standings: {e}")
+        
+        print(f"  Recalculation complete for {len(updated_results)} categories")
+        return updated_results
+
     def _process_event_source(self, source, race_data, registered_riders, 
                               finish_points_scheme, sprint_points_scheme, 
                               all_results, fetch_mode, filter_registered, category_filter, manual_dqs, manual_declassifications):

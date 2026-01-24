@@ -1555,13 +1555,8 @@ def dcu_api(request):
                         'eLicense': f"TEMP-{i:04d}"
                     })
             
-            # Get league settings for point schemes
-            settings_doc = db.collection('league').document('settings').get()
-            settings = settings_doc.to_dict() if settings_doc.exists else {}
-            finish_points_scheme = settings.get('finishPoints', [100, 95, 90, 85, 80, 75, 70, 65, 60, 55, 50, 45, 40, 35, 30, 25, 20, 15, 10, 5])
-            sprint_points_scheme = settings.get('sprintPoints', [10, 8, 6, 4, 2])
-            
             results_generated = {}
+            processor = ResultsProcessor(db, None, None)
             
             for race_id in race_ids:
                 race_doc = db.collection('races').document(race_id).get()
@@ -1621,7 +1616,6 @@ def dcu_api(request):
                     
                     cat_config = category_configs.get(category, {})
                     sprints = cat_config.get('sprints', [])
-                    segment_type = cat_config.get('segmentType', 'sprint')
                     
                     # Get riders for this category from shuffled pool
                     category_riders_list = []
@@ -1640,8 +1634,26 @@ def dcu_api(request):
                     
                     category_results = []
                     
+                    # Pre-compute sprint orderings for each sprint (unique positions per sprint)
+                    # We use worldTime to determine sprint order (lower = earlier = better)
+                    sprint_orderings = {}  # sprint_key -> {zwiftId: order_index}
+                    if sprints and len(sprints) > 0:
+                        sprints_complete = max(1, int((progress / 100) * len(sprints))) if progress > 0 else 0
+                        
+                        for s_idx, sprint in enumerate(sprints[:sprints_complete]):
+                            sprint_key = sprint.get('key') or f"{sprint.get('id')}_{sprint.get('count', 1)}"
+                            # Create a random ordering for this sprint (different from finish order)
+                            sprint_order = category_riders_list.copy()
+                            random.shuffle(sprint_order)
+                            sprint_orderings[sprint_key] = {
+                                rider['zwiftId']: order_idx 
+                                for order_idx, rider in enumerate(sprint_order)
+                            }
+                    
                     # Base finish time (randomized per category)
                     base_time_ms = random.randint(1800000, 3600000)  # 30-60 minutes
+                    # Base world time for sprints (timestamp in ms)
+                    base_world_time = 1700000000000
                     
                     for rank, rider in enumerate(category_riders_list, 1):
                         rider_name = rider['name']
@@ -1655,64 +1667,47 @@ def dcu_api(request):
                         finisher_threshold = (progress / 100) * rider_count
                         has_finished = rank <= finisher_threshold
                         
-                        # Calculate finish points
-                        if has_finished and progress >= 50:  # Only award finish points if race is 50%+ complete
-                            finish_points = finish_points_scheme[rank - 1] if rank - 1 < len(finish_points_scheme) else 0
-                            finish_rank = rank
-                        else:
-                            finish_points = 0
-                            finish_rank = 0
+                        # For incomplete races, mark unfinished riders with 0 time
+                        if not has_finished:
                             finish_time = 0
                         
-                        # Sprint/Split data
-                        sprint_points_total = 0
-                        sprint_details = {}
+                        # Generate RAW sprint data (times only, no points)
+                        # Points will be calculated by ResultsProcessor
                         sprint_data = {}
                         
                         if sprints and len(sprints) > 0:
-                            # Determine how many sprints are "complete" based on progress
                             sprints_complete = max(1, int((progress / 100) * len(sprints))) if progress > 0 else 0
                             
                             for s_idx, sprint in enumerate(sprints[:sprints_complete]):
                                 sprint_key = sprint.get('key') or f"{sprint.get('id')}_{sprint.get('count', 1)}"
                                 
-                                # Generate sprint time (world time)
-                                base_world_time = 1700000000000 + (s_idx * 300000)  # Base timestamp
-                                # RANDOMIZE: Add random variance to sprint times
-                                sprint_world_time = base_world_time + random.randint(0, 60000)
-                                sprint_elapsed = random.randint(30000, 120000)  # 30-120s random
+                                # Get this rider's order for this sprint (0 = first/fastest)
+                                sprint_order = sprint_orderings.get(sprint_key, {}).get(zwift_id, rank - 1)
                                 
-                                if segment_type == 'split':
-                                    # For splits, store world time
-                                    sprint_details[sprint_key] = sprint_world_time
-                                else:
-                                    # For sprints, RANDOMIZE ranking independently of finish position
-                                    # This means sprint winners can be different from race winners
-                                    sprint_rank = random.randint(1, rider_count)
-                                    
-                                    points = sprint_points_scheme[sprint_rank - 1] if sprint_rank - 1 < len(sprint_points_scheme) else 0
-                                    sprint_details[sprint_key] = points
-                                    sprint_points_total += points
+                                # WorldTime determines ranking (lower = faster through segment)
+                                # Add sprint index offset so later sprints have later times
+                                sprint_world_time = base_world_time + (s_idx * 600000) + (sprint_order * random.randint(2000, 8000))
+                                sprint_elapsed = random.randint(30000, 120000)  # 30-120s random segment time
                                 
                                 sprint_data[sprint_key] = {
                                     'worldTime': sprint_world_time,
                                     'time': sprint_elapsed,
-                                    'avgPower': random.randint(200, 400),
-                                    'rank': rank
+                                    'avgPower': random.randint(200, 400)
+                                    # Note: No 'rank' or points here - processor will calculate them
                                 }
                         
-                        total_points = finish_points + sprint_points_total
-                        
+                        # Create RAW rider result (no points calculated)
+                        # Points will be calculated by recalculate_race_points()
                         rider_result = {
                             'zwiftId': zwift_id,
                             'name': rider_name,
                             'finishTime': finish_time,
-                            'finishRank': finish_rank,
-                            'finishPoints': finish_points,
-                            'sprintPoints': sprint_points_total,
-                            'totalPoints': total_points,
-                            'sprintDetails': sprint_details,
-                            'sprintData': sprint_data,
+                            'finishRank': 0,  # Will be calculated by processor
+                            'finishPoints': 0,  # Will be calculated by processor
+                            'sprintPoints': 0,  # Will be calculated by processor
+                            'totalPoints': 0,  # Will be calculated by processor
+                            'sprintDetails': {},  # Will be populated by processor
+                            'sprintData': sprint_data,  # Raw timing data for processor
                             'flaggedCheating': False,
                             'flaggedSandbagging': False,
                             'disqualified': False,
@@ -1722,27 +1717,31 @@ def dcu_api(request):
                         
                         category_results.append(rider_result)
                     
-                    # Sort by total points (descending) for final display order
-                    category_results.sort(key=lambda x: x['totalPoints'], reverse=True)
+                    # Sort by finish time for initial order (non-finishers at end)
+                    category_results.sort(key=lambda x: x['finishTime'] if x['finishTime'] > 0 else 999999999999)
                     race_results[category] = category_results
                 
-                # Save results to race document
+                # Save RAW results to race document
                 db.collection('races').document(race_id).update({
                     'results': race_results,
                     'resultsUpdatedAt': firestore.SERVER_TIMESTAMP
                 })
                 
-                results_generated[race_id] = {
-                    'categories': list(race_results.keys()),
-                    'totalRiders': sum(len(r) for r in race_results.values())
-                }
-            
-            # Update league standings
-            try:
-                processor = ResultsProcessor(db, None, None)
-                processor.save_league_standings()
-            except Exception as e:
-                print(f"Error updating standings after seed: {e}")
+                # Use the REAL points calculator to calculate all points
+                # This validates that the scoring logic works correctly
+                try:
+                    calculated_results = processor.recalculate_race_points(race_id)
+                    results_generated[race_id] = {
+                        'categories': list(calculated_results.keys()),
+                        'totalRiders': sum(len(r) for r in calculated_results.values())
+                    }
+                except Exception as e:
+                    print(f"Error calculating points for race {race_id}: {e}")
+                    results_generated[race_id] = {
+                        'categories': list(race_results.keys()),
+                        'totalRiders': sum(len(r) for r in race_results.values()),
+                        'error': str(e)
+                    }
             
             return (jsonify({
                 'message': f'Generated test results for {len(results_generated)} races',
