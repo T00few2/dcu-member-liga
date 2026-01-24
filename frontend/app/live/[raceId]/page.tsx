@@ -653,7 +653,15 @@ export default function LiveResultsPage() {
             keys: [s.key, `${s.id}_${s.count}`, `${s.id}`].filter(Boolean) as string[]
         }));
 
-        if (showLastSplit && splitColumns.length > 0) {
+        // Check if any rider has finished
+        const hasAnyFinisher = results.some(r => r.finishTime && r.finishTime > 0);
+
+        // In "show last split" mode: if riders have finished, treat finish as the final split
+        // and hide all split columns (show only finish time)
+        const showFinishAsLastSplit = showLastSplit && hasAnyFinisher;
+
+        if (showLastSplit && splitColumns.length > 0 && !showFinishAsLastSplit) {
+            // No finishers yet - find the last split with data
             let lastWithData = -1;
             for (let i = splitColumns.length - 1; i >= 0; i--) {
                 const col = splitColumns[i];
@@ -666,6 +674,9 @@ export default function LiveResultsPage() {
             if (lastWithData >= 0) {
                 splitColumns = [splitColumns[lastWithData]];
             }
+        } else if (showFinishAsLastSplit) {
+            // Riders have finished - hide split columns, show only finish time
+            splitColumns = [];
         }
 
         splitColumns.forEach(col => {
@@ -718,7 +729,7 @@ export default function LiveResultsPage() {
                 <thead>
                     <tr className="text-slate-400 text-lg uppercase tracking-wider border-b-2 border-slate-600 bg-slate-800/80">
                         <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[10%] text-center`}>#</th>
-                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[40%]`}>Rider</th>
+                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 ${hasAnyFinisher ? 'w-[30%]' : 'w-[40%]'}`}>Rider</th>
                         {splitColumns.map(col => {
                             return (
                                 <th
@@ -729,6 +740,11 @@ export default function LiveResultsPage() {
                                 </th>
                             );
                         })}
+                        {hasAnyFinisher && (
+                            <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-center text-green-300`}>
+                                Finish Time
+                            </th>
+                        )}
                     </tr>
                 </thead>
                 <tbody className={`text-white font-bold ${tableBodyTextSize}`}>
@@ -753,18 +769,23 @@ export default function LiveResultsPage() {
                                     </td>
                                 );
                             })}
+                            {hasAnyFinisher && (
+                                <td className={`${bodyCellPadding} px-2 text-center font-extrabold text-green-300`}>
+                                    {formatTimeOrDash(rider.finishTime)}
+                                </td>
+                            )}
                         </tr>
                     ))}
                     {displayResults.length === 0 && (
                         <tr>
-                            <td colSpan={3 + splitColumns.length} className="py-8 text-center text-slate-500 text-xl italic">
+                            <td colSpan={3 + splitColumns.length + (hasAnyFinisher ? 1 : 0)} className="py-8 text-center text-slate-500 text-xl italic">
                                 No split results available.
                             </td>
                         </tr>
                     )}
                     {displayResults.length > 0 && splitColumns.length === 0 && (
                         <tr>
-                            <td colSpan={3} className="py-8 text-center text-slate-500 text-xl italic">
+                            <td colSpan={3 + (hasAnyFinisher ? 1 : 0)} className="py-8 text-center text-slate-500 text-xl italic">
                                 No split segments configured.
                             </td>
                         </tr>
