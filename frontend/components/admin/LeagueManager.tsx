@@ -83,7 +83,7 @@ export default function LeagueManager() {
   const [leagueSettings, setLeagueSettings] = useState<LeagueSettings>({ finishPoints: [], sprintPoints: [], bestRacesCount: 5 });
   
   // Tabs
-  const [activeTab, setActiveTab] = useState<'races' | 'settings'>('races');
+  const [activeTab, setActiveTab] = useState<'races' | 'settings' | 'testing'>('races');
 
   // Results View State
   const [viewingResultsId, setViewingResultsId] = useState<string | null>(null);
@@ -839,6 +839,12 @@ export default function LeagueManager() {
           >
               Scoring Settings
           </button>
+          <button 
+            onClick={() => setActiveTab('testing')}
+            className={`pb-2 px-4 font-medium transition ${activeTab === 'testing' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+              Testing
+          </button>
       </div>
 
       {activeTab === 'settings' && (
@@ -886,180 +892,6 @@ export default function LeagueManager() {
                             {status === 'saving' ? 'Saving...' : 'Save Settings'}
                         </button>
                     </form>
-                </div>
-
-                {/* Test Data Generation */}
-                <div className="bg-card p-6 rounded-lg shadow border border-border border-dashed border-slate-300 dark:border-slate-700">
-                    <h3 className="text-lg font-semibold mb-4 text-card-foreground">Development Tools</h3>
-                    
-                    {/* Test Participants Section */}
-                    <div className="mb-6 pb-6 border-b border-border">
-                        <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Test Participants</h4>
-                        <p className="text-sm text-muted-foreground mb-3">
-                            Currently: <span className="font-bold text-foreground">{testParticipantCount}</span> test participants
-                        </p>
-                        <div className="flex gap-2 flex-wrap">
-                            <button
-                                type="button"
-                                onClick={() => handleGenerateParticipants(20)}
-                                disabled={status === 'seeding'}
-                                className="bg-slate-800 text-white px-3 py-1.5 rounded hover:bg-slate-700 text-sm font-medium disabled:opacity-50"
-                            >
-                                {status === 'seeding' ? 'Working...' : 'Generate 20'}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => handleGenerateParticipants(50)}
-                                disabled={status === 'seeding'}
-                                className="bg-slate-700 text-white px-3 py-1.5 rounded hover:bg-slate-600 text-sm font-medium disabled:opacity-50"
-                            >
-                                Generate 50
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleClearParticipants}
-                                disabled={status === 'seeding' || testParticipantCount === 0}
-                                className="bg-red-800 text-white px-3 py-1.5 rounded hover:bg-red-700 text-sm font-medium disabled:opacity-50"
-                            >
-                                Clear All
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Test Results Section */}
-                    <div>
-                        <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Test Results</h4>
-                        
-                        {/* Race Selection */}
-                        <div className="mb-4">
-                            <label className="block text-xs font-medium text-muted-foreground mb-2">Select Races</label>
-                            <div className="max-h-40 overflow-y-auto border border-input rounded bg-background p-2 space-y-1">
-                                {races.map(race => (
-                                    <label key={race.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted/50 p-1 rounded">
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedTestRaces.includes(race.id)}
-                                            onChange={(e) => {
-                                                if (e.target.checked) {
-                                                    setSelectedTestRaces([...selectedTestRaces, race.id]);
-                                                } else {
-                                                    setSelectedTestRaces(selectedTestRaces.filter(id => id !== race.id));
-                                                }
-                                            }}
-                                            className="w-4 h-4 rounded border-input text-primary focus:ring-primary"
-                                        />
-                                        <span className="text-sm text-foreground truncate">{race.name}</span>
-                                        <span className="text-xs text-muted-foreground ml-auto">
-                                            {new Date(race.date).toLocaleDateString()}
-                                        </span>
-                                    </label>
-                                ))}
-                                {races.length === 0 && (
-                                    <p className="text-sm text-muted-foreground italic p-2">No races configured</p>
-                                )}
-                            </div>
-                            <div className="flex gap-2 mt-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setSelectedTestRaces(races.map(r => r.id))}
-                                    className="text-xs text-primary hover:text-primary/80"
-                                >
-                                    Select All
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setSelectedTestRaces([])}
-                                    className="text-xs text-muted-foreground hover:text-foreground"
-                                >
-                                    Select None
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Riders per Category */}
-                        {selectedTestRaces.length > 0 && (
-                            <div className="mb-4">
-                                <label className="block text-xs font-medium text-muted-foreground mb-2">
-                                    Riders per Category
-                                </label>
-                                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-                                    {getTestCategories().map(cat => (
-                                        <div key={cat} className="flex flex-col">
-                                            <label className="text-xs text-center text-muted-foreground mb-1 truncate" title={cat}>
-                                                {cat}
-                                            </label>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                max="50"
-                                                value={testCategoryRiders[cat] ?? 5}
-                                                onChange={(e) => setTestCategoryRiders({
-                                                    ...testCategoryRiders,
-                                                    [cat]: parseInt(e.target.value) || 0
-                                                })}
-                                                className="w-full p-1.5 border border-input rounded bg-background text-foreground text-sm text-center"
-                                            />
-                                        </div>
-                                    ))}
-                                </div>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                    Total: {Object.values(testCategoryRiders).reduce((a, b) => a + b, 0)} riders
-                                </p>
-                            </div>
-                        )}
-
-                        {/* Progress Slider */}
-                        {selectedTestRaces.length > 0 && (
-                            <div className="mb-4">
-                                <label className="block text-xs font-medium text-muted-foreground mb-2">
-                                    Race Progress: <span className="font-bold text-foreground">{testProgress}%</span>
-                                </label>
-                                <input
-                                    type="range"
-                                    min="0"
-                                    max="100"
-                                    step="10"
-                                    value={testProgress}
-                                    onChange={(e) => setTestProgress(parseInt(e.target.value))}
-                                    className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
-                                />
-                                <p className="text-xs text-muted-foreground mt-1">
-                                    {testProgress === 0 && "Empty results (riders listed, no times)"}
-                                    {testProgress > 0 && testProgress < 50 && "Early race: some sprints, no finishers"}
-                                    {testProgress >= 50 && testProgress < 100 && `Mid-race: ~${testProgress}% finished, sprints in progress`}
-                                    {testProgress === 100 && "Complete: all riders finished, all sprints scored"}
-                                </p>
-                            </div>
-                        )}
-
-                        {/* Action Buttons */}
-                        <div className="flex gap-2 flex-wrap">
-                            <button
-                                type="button"
-                                onClick={handleGenerateResults}
-                                disabled={status === 'seeding' || selectedTestRaces.length === 0}
-                                className="bg-green-700 text-white px-3 py-1.5 rounded hover:bg-green-600 text-sm font-medium disabled:opacity-50"
-                            >
-                                {status === 'seeding' ? 'Generating...' : 'Generate Results'}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => handleClearResults(false)}
-                                disabled={status === 'seeding' || selectedTestRaces.length === 0}
-                                className="bg-orange-700 text-white px-3 py-1.5 rounded hover:bg-orange-600 text-sm font-medium disabled:opacity-50"
-                            >
-                                Clear Selected
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => handleClearResults(true)}
-                                disabled={status === 'seeding'}
-                                className="bg-red-800 text-white px-3 py-1.5 rounded hover:bg-red-700 text-sm font-medium disabled:opacity-50"
-                            >
-                                Clear All Results
-                            </button>
-                        </div>
-                    </div>
                 </div>
             </div>
 
@@ -1124,6 +956,194 @@ export default function LeagueManager() {
                     </button>
                 </div>
             </div>
+          </div>
+      )}
+
+      {activeTab === 'testing' && (
+          <div className="max-w-4xl">
+              <div className="bg-card p-6 rounded-lg shadow border border-border mb-8">
+                  <h2 className="text-xl font-semibold mb-2 text-card-foreground">Test Data Generator</h2>
+                  <p className="text-sm text-muted-foreground mb-6">
+                      Generate fake participants and results to test live pages, results displays, and league standings without real race data.
+                  </p>
+                  
+                  {/* Test Participants Section */}
+                  <div className="mb-8 pb-8 border-b border-border">
+                      <h3 className="text-lg font-semibold text-card-foreground mb-4">Test Participants</h3>
+                      <p className="text-sm text-muted-foreground mb-4">
+                          Currently: <span className="font-bold text-foreground text-lg">{testParticipantCount}</span> test participants in database
+                      </p>
+                      <div className="flex gap-3 flex-wrap">
+                          <button
+                              type="button"
+                              onClick={() => handleGenerateParticipants(20)}
+                              disabled={status === 'seeding'}
+                              className="bg-primary text-primary-foreground px-4 py-2 rounded hover:opacity-90 font-medium disabled:opacity-50"
+                          >
+                              {status === 'seeding' ? 'Working...' : 'Generate 20 Participants'}
+                          </button>
+                          <button
+                              type="button"
+                              onClick={() => handleGenerateParticipants(50)}
+                              disabled={status === 'seeding'}
+                              className="bg-secondary text-secondary-foreground px-4 py-2 rounded hover:opacity-90 font-medium disabled:opacity-50"
+                          >
+                              Generate 50 Participants
+                          </button>
+                          <button
+                              type="button"
+                              onClick={handleClearParticipants}
+                              disabled={status === 'seeding' || testParticipantCount === 0}
+                              className="bg-destructive text-destructive-foreground px-4 py-2 rounded hover:opacity-90 font-medium disabled:opacity-50"
+                          >
+                              Clear All Participants
+                          </button>
+                      </div>
+                  </div>
+
+                  {/* Test Results Section */}
+                  <div>
+                      <h3 className="text-lg font-semibold text-card-foreground mb-4">Test Results</h3>
+                      
+                      {/* Race Selection */}
+                      <div className="mb-6">
+                          <label className="block text-sm font-medium text-card-foreground mb-2">Select Races to Generate Results For</label>
+                          <div className="max-h-48 overflow-y-auto border border-input rounded-lg bg-background p-3 space-y-2">
+                              {races.map(race => (
+                                  <label key={race.id} className="flex items-center gap-3 cursor-pointer hover:bg-muted/50 p-2 rounded-md transition">
+                                      <input
+                                          type="checkbox"
+                                          checked={selectedTestRaces.includes(race.id)}
+                                          onChange={(e) => {
+                                              if (e.target.checked) {
+                                                  setSelectedTestRaces([...selectedTestRaces, race.id]);
+                                              } else {
+                                                  setSelectedTestRaces(selectedTestRaces.filter(id => id !== race.id));
+                                              }
+                                          }}
+                                          className="w-4 h-4 rounded border-input text-primary focus:ring-primary"
+                                      />
+                                      <span className="text-sm font-medium text-foreground">{race.name}</span>
+                                      <span className="text-xs text-muted-foreground ml-auto">
+                                          {new Date(race.date).toLocaleDateString()}
+                                      </span>
+                                  </label>
+                              ))}
+                              {races.length === 0 && (
+                                  <p className="text-sm text-muted-foreground italic p-4 text-center">No races configured. Create races in the Races tab first.</p>
+                              )}
+                          </div>
+                          <div className="flex gap-4 mt-3">
+                              <button
+                                  type="button"
+                                  onClick={() => setSelectedTestRaces(races.map(r => r.id))}
+                                  className="text-sm text-primary hover:text-primary/80 font-medium"
+                              >
+                                  Select All
+                              </button>
+                              <button
+                                  type="button"
+                                  onClick={() => setSelectedTestRaces([])}
+                                  className="text-sm text-muted-foreground hover:text-foreground"
+                              >
+                                  Select None
+                              </button>
+                              <span className="text-sm text-muted-foreground ml-auto">
+                                  {selectedTestRaces.length} race(s) selected
+                              </span>
+                          </div>
+                      </div>
+
+                      {/* Riders per Category */}
+                      {selectedTestRaces.length > 0 && (
+                          <div className="mb-6 p-4 bg-muted/30 rounded-lg border border-border">
+                              <label className="block text-sm font-medium text-card-foreground mb-3">
+                                  Riders per Category
+                              </label>
+                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                                  {getTestCategories().map(cat => (
+                                      <div key={cat} className="flex flex-col">
+                                          <label className="text-xs font-medium text-muted-foreground mb-1 truncate" title={cat}>
+                                              {cat}
+                                          </label>
+                                          <input
+                                              type="number"
+                                              min="0"
+                                              max="50"
+                                              value={testCategoryRiders[cat] ?? 5}
+                                              onChange={(e) => setTestCategoryRiders({
+                                                  ...testCategoryRiders,
+                                                  [cat]: parseInt(e.target.value) || 0
+                                              })}
+                                              className="w-full p-2 border border-input rounded bg-background text-foreground text-sm text-center"
+                                          />
+                                      </div>
+                                  ))}
+                              </div>
+                              <p className="text-sm text-muted-foreground mt-3">
+                                  Total: <span className="font-bold text-foreground">{Object.values(testCategoryRiders).reduce((a, b) => a + b, 0)}</span> riders per race
+                              </p>
+                          </div>
+                      )}
+
+                      {/* Progress Slider */}
+                      {selectedTestRaces.length > 0 && (
+                          <div className="mb-6 p-4 bg-muted/30 rounded-lg border border-border">
+                              <label className="block text-sm font-medium text-card-foreground mb-3">
+                                  Race Progress: <span className="font-bold text-primary text-lg">{testProgress}%</span>
+                              </label>
+                              <input
+                                  type="range"
+                                  min="0"
+                                  max="100"
+                                  step="10"
+                                  value={testProgress}
+                                  onChange={(e) => setTestProgress(parseInt(e.target.value))}
+                                  className="w-full h-3 bg-muted rounded-lg appearance-none cursor-pointer"
+                              />
+                              <div className="flex justify-between text-xs text-muted-foreground mt-2">
+                                  <span>0% - Empty</span>
+                                  <span>50% - Mid-race</span>
+                                  <span>100% - Complete</span>
+                              </div>
+                              <p className="text-sm text-muted-foreground mt-3 p-3 bg-background rounded border border-border">
+                                  {testProgress === 0 && "📋 Empty results - riders listed with no times or points"}
+                                  {testProgress > 0 && testProgress < 50 && "🏃 Early race - some sprints completed, no finishers yet"}
+                                  {testProgress >= 50 && testProgress < 100 && `🚴 Mid-race - ~${testProgress}% of riders finished, sprints in progress`}
+                                  {testProgress === 100 && "🏁 Complete race - all riders finished, all sprints and points calculated"}
+                              </p>
+                          </div>
+                      )}
+
+                      {/* Action Buttons */}
+                      <div className="flex gap-3 flex-wrap pt-4 border-t border-border">
+                          <button
+                              type="button"
+                              onClick={handleGenerateResults}
+                              disabled={status === 'seeding' || selectedTestRaces.length === 0}
+                              className="bg-green-600 text-white px-5 py-2.5 rounded hover:bg-green-500 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                              {status === 'seeding' ? 'Generating...' : 'Generate Results'}
+                          </button>
+                          <button
+                              type="button"
+                              onClick={() => handleClearResults(false)}
+                              disabled={status === 'seeding' || selectedTestRaces.length === 0}
+                              className="bg-orange-600 text-white px-5 py-2.5 rounded hover:bg-orange-500 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                              Clear Selected Results
+                          </button>
+                          <button
+                              type="button"
+                              onClick={() => handleClearResults(true)}
+                              disabled={status === 'seeding'}
+                              className="bg-destructive text-destructive-foreground px-5 py-2.5 rounded hover:opacity-90 font-medium disabled:opacity-50"
+                          >
+                              Clear All Race Results
+                          </button>
+                      </div>
+                  </div>
+              </div>
           </div>
       )}
 
