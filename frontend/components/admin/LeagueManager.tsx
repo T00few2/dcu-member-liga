@@ -141,6 +141,7 @@ export default function LeagueManager() {
 
   // Test Data Generator State
   const [testParticipantCount, setTestParticipantCount] = useState(0);
+  const [participantsToGenerate, setParticipantsToGenerate] = useState(20);
   const [selectedTestRaces, setSelectedTestRaces] = useState<string[]>([]);
   const [testProgress, setTestProgress] = useState(100);
   const [testCategoryRiders, setTestCategoryRiders] = useState<Record<string, number>>({});
@@ -973,23 +974,25 @@ export default function LeagueManager() {
                       <p className="text-sm text-muted-foreground mb-4">
                           Currently: <span className="font-bold text-foreground text-lg">{testParticipantCount}</span> test participants in database
                       </p>
-                      <div className="flex gap-3 flex-wrap">
-                          <button
-                              type="button"
-                              onClick={() => handleGenerateParticipants(20)}
-                              disabled={status === 'seeding'}
-                              className="bg-primary text-primary-foreground px-4 py-2 rounded hover:opacity-90 font-medium disabled:opacity-50"
-                          >
-                              {status === 'seeding' ? 'Working...' : 'Generate 20 Participants'}
-                          </button>
-                          <button
-                              type="button"
-                              onClick={() => handleGenerateParticipants(50)}
-                              disabled={status === 'seeding'}
-                              className="bg-secondary text-secondary-foreground px-4 py-2 rounded hover:opacity-90 font-medium disabled:opacity-50"
-                          >
-                              Generate 50 Participants
-                          </button>
+                      <div className="flex gap-3 flex-wrap items-center">
+                          <div className="flex items-center gap-2">
+                              <input
+                                  type="number"
+                                  min="1"
+                                  max="500"
+                                  value={participantsToGenerate}
+                                  onChange={(e) => setParticipantsToGenerate(Math.max(1, Math.min(500, parseInt(e.target.value) || 1)))}
+                                  className="w-20 px-3 py-2 border border-input rounded-lg bg-background text-foreground"
+                              />
+                              <button
+                                  type="button"
+                                  onClick={() => handleGenerateParticipants(participantsToGenerate)}
+                                  disabled={status === 'seeding'}
+                                  className="bg-primary text-primary-foreground px-4 py-2 rounded hover:opacity-90 font-medium disabled:opacity-50"
+                              >
+                                  {status === 'seeding' ? 'Working...' : 'Generate Participants'}
+                              </button>
+                          </div>
                           <button
                               type="button"
                               onClick={handleClearParticipants}
