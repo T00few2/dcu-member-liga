@@ -1367,4 +1367,395 @@ def dcu_api(request):
         }
         return (jsonify(stats_data), 200, headers)
 
+    # --- ADMIN: TEST DATA SEED ENDPOINTS ---
+    
+    # GET /admin/seed/stats - Get count of test participants
+    if path == '/admin/seed/stats' and request.method == 'GET':
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        try:
+            id_token = auth_header.split('Bearer ')[1]
+            auth.verify_id_token(id_token)
+        except:
+            return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        
+        if not db:
+            return (jsonify({'error': 'DB not available'}), 500, headers)
+        
+        try:
+            # Count test participants
+            users_ref = db.collection('users').where('isTestData', '==', True)
+            docs = list(users_ref.stream())
+            count = len(docs)
+            return (jsonify({'testParticipantCount': count}), 200, headers)
+        except Exception as e:
+            return (jsonify({'message': str(e)}), 500, headers)
+
+    # POST /admin/seed/participants - Create test participants
+    if path == '/admin/seed/participants' and request.method == 'POST':
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        try:
+            id_token = auth_header.split('Bearer ')[1]
+            auth.verify_id_token(id_token)
+        except:
+            return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        
+        if not db:
+            return (jsonify({'error': 'DB not available'}), 500, headers)
+        
+        try:
+            import random
+            
+            req_data = request.get_json(silent=True) or {}
+            count = req_data.get('count', 20)
+            
+            # Danish-style first and last names for realistic test data
+            first_names = [
+                'Magnus', 'Oliver', 'William', 'Noah', 'Lucas', 'Oscar', 'Carl', 'Victor',
+                'Malthe', 'Alfred', 'Emil', 'Aksel', 'Valdemar', 'August', 'Frederik',
+                'Emma', 'Ida', 'Clara', 'Freja', 'Alma', 'Ella', 'Sofia', 'Anna',
+                'Laura', 'Karla', 'Mathilde', 'Agnes', 'Lily', 'Josefine', 'Alberte'
+            ]
+            last_names = [
+                'Nielsen', 'Jensen', 'Hansen', 'Pedersen', 'Andersen', 'Christensen',
+                'Larsen', 'Sørensen', 'Rasmussen', 'Petersen', 'Madsen', 'Kristensen',
+                'Olsen', 'Thomsen', 'Christiansen', 'Poulsen', 'Johansen', 'Knudsen',
+                'Mortensen', 'Møller'
+            ]
+            clubs = [
+                'Aarhus Cykle Ring', 'Team Biciklet', 'Odense Cykel Club', 
+                'Copenhagen Cycling', 'Roskilde CK', 'Aalborg CK', 'Test Club'
+            ]
+            
+            # Find highest existing test ID to avoid collisions
+            existing_test = db.collection('users').where('isTestData', '==', True).stream()
+            max_id = 0
+            for doc in existing_test:
+                data = doc.to_dict()
+                e_lic = data.get('eLicense', '')
+                if e_lic.startswith('TEST-'):
+                    try:
+                        num = int(e_lic.split('-')[1])
+                        if num > max_id:
+                            max_id = num
+                    except:
+                        pass
+            
+            created = []
+            for i in range(count):
+                idx = max_id + i + 1
+                e_license = f"TEST-{idx:04d}"
+                zwift_id = f"999{idx:04d}"
+                name = f"{random.choice(first_names)} {random.choice(last_names)}"
+                club = random.choice(clubs)
+                
+                user_data = {
+                    'eLicense': e_license,
+                    'zwiftId': zwift_id,
+                    'name': name,
+                    'club': club,
+                    'isTestData': True,
+                    'registrationComplete': True,
+                    'verified': True,
+                    'createdAt': firestore.SERVER_TIMESTAMP
+                }
+                
+                db.collection('users').document(e_license).set(user_data)
+                created.append({'eLicense': e_license, 'name': name, 'zwiftId': zwift_id})
+            
+            return (jsonify({
+                'message': f'Created {len(created)} test participants',
+                'participants': created
+            }), 201, headers)
+        except Exception as e:
+            print(f"Seed participants error: {e}")
+            return (jsonify({'message': str(e)}), 500, headers)
+
+    # DELETE /admin/seed/participants - Clear test participants
+    if path == '/admin/seed/participants' and request.method == 'DELETE':
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        try:
+            id_token = auth_header.split('Bearer ')[1]
+            auth.verify_id_token(id_token)
+        except:
+            return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        
+        if not db:
+            return (jsonify({'error': 'DB not available'}), 500, headers)
+        
+        try:
+            # Find and delete all test participants
+            users_ref = db.collection('users').where('isTestData', '==', True)
+            docs = list(users_ref.stream())
+            
+            deleted_count = 0
+            for doc in docs:
+                doc.reference.delete()
+                deleted_count += 1
+            
+            return (jsonify({
+                'message': f'Deleted {deleted_count} test participants'
+            }), 200, headers)
+        except Exception as e:
+            return (jsonify({'message': str(e)}), 500, headers)
+
+    # POST /admin/seed/results - Generate test results for races
+    if path == '/admin/seed/results' and request.method == 'POST':
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        try:
+            id_token = auth_header.split('Bearer ')[1]
+            auth.verify_id_token(id_token)
+        except:
+            return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        
+        if not db:
+            return (jsonify({'error': 'DB not available'}), 500, headers)
+        
+        try:
+            import random
+            
+            req_data = request.get_json(silent=True) or {}
+            race_ids = req_data.get('raceIds', [])
+            progress = req_data.get('progress', 100)  # 0-100
+            category_riders = req_data.get('categoryRiders', {})  # {"A": 5, "B": 8, ...}
+            
+            if not race_ids:
+                return (jsonify({'message': 'No race IDs provided'}), 400, headers)
+            
+            # Get league settings for point schemes
+            settings_doc = db.collection('league').document('settings').get()
+            settings = settings_doc.to_dict() if settings_doc.exists else {}
+            finish_points_scheme = settings.get('finishPoints', [100, 95, 90, 85, 80, 75, 70, 65, 60, 55, 50, 45, 40, 35, 30, 25, 20, 15, 10, 5])
+            sprint_points_scheme = settings.get('sprintPoints', [10, 8, 6, 4, 2])
+            
+            results_generated = {}
+            
+            for race_id in race_ids:
+                race_doc = db.collection('races').document(race_id).get()
+                if not race_doc.exists:
+                    continue
+                
+                race_data = race_doc.to_dict()
+                
+                # Determine categories for this race
+                categories = []
+                category_configs = {}  # Store sprint config per category
+                
+                if race_data.get('eventMode') == 'multi' and race_data.get('eventConfiguration'):
+                    # Multi-mode: use custom categories
+                    for cfg in race_data['eventConfiguration']:
+                        cat = cfg.get('customCategory')
+                        if cat:
+                            categories.append(cat)
+                            category_configs[cat] = {
+                                'sprints': cfg.get('sprints', []),
+                                'segmentType': cfg.get('segmentType') or race_data.get('segmentType', 'sprint'),
+                                'laps': cfg.get('laps') or race_data.get('laps', 1)
+                            }
+                elif race_data.get('singleModeCategories') and len(race_data['singleModeCategories']) > 0:
+                    # Single mode with custom categories
+                    for cfg in race_data['singleModeCategories']:
+                        cat = cfg.get('category')
+                        if cat:
+                            categories.append(cat)
+                            category_configs[cat] = {
+                                'sprints': cfg.get('sprints', []),
+                                'segmentType': cfg.get('segmentType') or race_data.get('segmentType', 'sprint'),
+                                'laps': cfg.get('laps') or race_data.get('laps', 1)
+                            }
+                else:
+                    # Standard mode: A, B, C, D, E
+                    categories = ['A', 'B', 'C', 'D', 'E']
+                    global_sprints = race_data.get('sprints', [])
+                    for cat in categories:
+                        category_configs[cat] = {
+                            'sprints': global_sprints,
+                            'segmentType': race_data.get('segmentType', 'sprint'),
+                            'laps': race_data.get('laps', 1)
+                        }
+                
+                race_results = {}
+                
+                for category in categories:
+                    rider_count = category_riders.get(category, 5)  # Default 5 per category
+                    if rider_count <= 0:
+                        continue
+                    
+                    cat_config = category_configs.get(category, {})
+                    sprints = cat_config.get('sprints', [])
+                    segment_type = cat_config.get('segmentType', 'sprint')
+                    
+                    # Generate fake riders for this category
+                    category_results = []
+                    
+                    # Base finish time (randomized per category)
+                    base_time_ms = random.randint(1800000, 3600000)  # 30-60 minutes
+                    
+                    for rank in range(1, rider_count + 1):
+                        # Generate fake rider data
+                        rider_name = f"Test Rider {category}-{rank}"
+                        zwift_id = f"999{categories.index(category)}{rank:03d}"
+                        
+                        # Calculate finish time with some variance
+                        time_variance = random.randint(0, 60000) * rank  # More variance for lower positions
+                        finish_time = base_time_ms + time_variance
+                        
+                        # Determine if this rider has finished based on progress
+                        finisher_threshold = (progress / 100) * rider_count
+                        has_finished = rank <= finisher_threshold
+                        
+                        # Calculate finish points
+                        if has_finished and progress >= 50:  # Only award finish points if race is 50%+ complete
+                            finish_points = finish_points_scheme[rank - 1] if rank - 1 < len(finish_points_scheme) else 0
+                            finish_rank = rank
+                        else:
+                            finish_points = 0
+                            finish_rank = 0
+                            finish_time = 0
+                        
+                        # Sprint/Split data
+                        sprint_points_total = 0
+                        sprint_details = {}
+                        sprint_data = {}
+                        
+                        if sprints and len(sprints) > 0:
+                            # Determine how many sprints are "complete" based on progress
+                            sprints_complete = max(1, int((progress / 100) * len(sprints)))
+                            
+                            for s_idx, sprint in enumerate(sprints[:sprints_complete]):
+                                sprint_key = sprint.get('key') or f"{sprint.get('id')}_{sprint.get('count', 1)}"
+                                
+                                # Generate sprint time (world time)
+                                base_world_time = 1700000000000 + (s_idx * 300000)  # Base timestamp
+                                sprint_world_time = base_world_time + random.randint(0, 30000) * rank
+                                sprint_elapsed = random.randint(30000, 120000) + (rank * 1000)  # 30-120s + position variance
+                                
+                                if segment_type == 'split':
+                                    # For splits, store world time
+                                    sprint_details[sprint_key] = sprint_world_time
+                                else:
+                                    # For sprints, calculate and store points
+                                    # Randomize sprint ranking a bit
+                                    sprint_rank = max(1, rank + random.randint(-2, 2))
+                                    sprint_rank = min(sprint_rank, rider_count)
+                                    
+                                    points = sprint_points_scheme[sprint_rank - 1] if sprint_rank - 1 < len(sprint_points_scheme) else 0
+                                    sprint_details[sprint_key] = points
+                                    sprint_points_total += points
+                                
+                                sprint_data[sprint_key] = {
+                                    'worldTime': sprint_world_time,
+                                    'time': sprint_elapsed,
+                                    'avgPower': random.randint(200, 400),
+                                    'rank': rank
+                                }
+                        
+                        total_points = finish_points + sprint_points_total
+                        
+                        rider_result = {
+                            'zwiftId': zwift_id,
+                            'name': rider_name,
+                            'finishTime': finish_time,
+                            'finishRank': finish_rank,
+                            'finishPoints': finish_points,
+                            'sprintPoints': sprint_points_total,
+                            'totalPoints': total_points,
+                            'sprintDetails': sprint_details,
+                            'sprintData': sprint_data,
+                            'flaggedCheating': False,
+                            'flaggedSandbagging': False,
+                            'disqualified': False,
+                            'declassified': False,
+                            'isTestData': True
+                        }
+                        
+                        category_results.append(rider_result)
+                    
+                    # Sort by total points (descending)
+                    category_results.sort(key=lambda x: x['totalPoints'], reverse=True)
+                    race_results[category] = category_results
+                
+                # Save results to race document
+                db.collection('races').document(race_id).update({
+                    'results': race_results,
+                    'resultsUpdatedAt': firestore.SERVER_TIMESTAMP
+                })
+                
+                results_generated[race_id] = {
+                    'categories': list(race_results.keys()),
+                    'totalRiders': sum(len(r) for r in race_results.values())
+                }
+            
+            # Update league standings
+            try:
+                processor = ResultsProcessor(db, None, None)
+                processor.save_league_standings()
+            except Exception as e:
+                print(f"Error updating standings after seed: {e}")
+            
+            return (jsonify({
+                'message': f'Generated test results for {len(results_generated)} races',
+                'results': results_generated
+            }), 200, headers)
+        except Exception as e:
+            print(f"Seed results error: {e}")
+            return (jsonify({'message': str(e)}), 500, headers)
+
+    # DELETE /admin/seed/results - Clear test results
+    if path == '/admin/seed/results' and request.method == 'DELETE':
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        try:
+            id_token = auth_header.split('Bearer ')[1]
+            auth.verify_id_token(id_token)
+        except:
+            return (jsonify({'message': 'Unauthorized'}), 401, headers)
+        
+        if not db:
+            return (jsonify({'error': 'DB not available'}), 500, headers)
+        
+        try:
+            req_data = request.get_json(silent=True) or {}
+            race_ids = req_data.get('raceIds', [])  # Empty = clear all
+            
+            cleared_count = 0
+            
+            if race_ids:
+                # Clear specific races
+                for race_id in race_ids:
+                    db.collection('races').document(race_id).update({
+                        'results': firestore.DELETE_FIELD
+                    })
+                    cleared_count += 1
+            else:
+                # Clear all races
+                races_ref = db.collection('races')
+                docs = races_ref.stream()
+                for doc in docs:
+                    doc.reference.update({
+                        'results': firestore.DELETE_FIELD
+                    })
+                    cleared_count += 1
+            
+            # Recalculate standings (will be empty/updated)
+            try:
+                processor = ResultsProcessor(db, None, None)
+                processor.save_league_standings()
+            except Exception as e:
+                print(f"Error updating standings after clear: {e}")
+            
+            return (jsonify({
+                'message': f'Cleared results from {cleared_count} races'
+            }), 200, headers)
+        except Exception as e:
+            return (jsonify({'message': str(e)}), 500, headers)
+
     return ('Not Found', 404, headers)

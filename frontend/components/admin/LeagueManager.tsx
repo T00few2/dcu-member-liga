@@ -139,6 +139,12 @@ export default function LeagueManager() {
   const [filterRegistered, setFilterRegistered] = useState(true);
   const [categoryFilter, setCategoryFilter] = useState('All');
 
+  // Test Data Generator State
+  const [testParticipantCount, setTestParticipantCount] = useState(0);
+  const [selectedTestRaces, setSelectedTestRaces] = useState<string[]>([]);
+  const [testProgress, setTestProgress] = useState(100);
+  const [testCategoryRiders, setTestCategoryRiders] = useState<Record<string, number>>({});
+
   // Fetch Initial Data
   useEffect(() => {
     const fetchData = async () => {
@@ -187,6 +193,18 @@ export default function LeagueManager() {
         fetchData();
     }
   }, [user, authLoading]);
+
+  // Fetch test participant count on load
+  useEffect(() => {
+      if (user && !authLoading) {
+          fetchTestParticipantCount();
+      }
+  }, [user, authLoading]);
+
+  // Update category riders when selected races change
+  useEffect(() => {
+      initTestCategoryRiders();
+  }, [selectedTestRaces, races]);
 
   // Fetch Segments when Route/Laps change
   useEffect(() => {
@@ -374,28 +392,189 @@ export default function LeagueManager() {
       }
   };
   
-  const handleSeedData = async () => {
-      if (!user || !confirm('This will generate 20 fake users with random data. Continue?')) return;
+  // Fetch test participant count
+  const fetchTestParticipantCount = async () => {
+      if (!user) return;
+      try {
+          const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+          const token = await user.getIdToken();
+          const res = await fetch(`${apiUrl}/admin/seed/stats`, {
+              headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (res.ok) {
+              const data = await res.json();
+              setTestParticipantCount(data.testParticipantCount || 0);
+          }
+      } catch (e) {
+          console.error('Error fetching test stats:', e);
+      }
+  };
+
+  // Generate test participants
+  const handleGenerateParticipants = async (count: number = 20) => {
+      if (!user) return;
       setStatus('seeding');
       try {
           const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
           const token = await user.getIdToken();
-          const res = await fetch(`${apiUrl}/admin/seed`, {
+          const res = await fetch(`${apiUrl}/admin/seed/participants`, {
               method: 'POST',
-              headers: { 'Authorization': `Bearer ${token}` }
+              headers: { 
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ count })
           });
           
           if (res.ok) {
-              alert('Test data generated successfully! Check the Participants page.');
+              const data = await res.json();
+              alert(data.message);
+              fetchTestParticipantCount();
           } else {
               const data = await res.json();
               alert(`Failed: ${data.message}`);
           }
       } catch (e) {
-          alert('Error generating data');
+          alert('Error generating participants');
       } finally {
           setStatus('idle');
       }
+  };
+
+  // Clear test participants
+  const handleClearParticipants = async () => {
+      if (!user || !confirm('Delete all test participants?')) return;
+      setStatus('seeding');
+      try {
+          const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+          const token = await user.getIdToken();
+          const res = await fetch(`${apiUrl}/admin/seed/participants`, {
+              method: 'DELETE',
+              headers: { 'Authorization': `Bearer ${token}` }
+          });
+          
+          if (res.ok) {
+              const data = await res.json();
+              alert(data.message);
+              fetchTestParticipantCount();
+          } else {
+              const data = await res.json();
+              alert(`Failed: ${data.message}`);
+          }
+      } catch (e) {
+          alert('Error clearing participants');
+      } finally {
+          setStatus('idle');
+      }
+  };
+
+  // Generate test results
+  const handleGenerateResults = async () => {
+      if (!user || selectedTestRaces.length === 0) {
+          alert('Please select at least one race');
+          return;
+      }
+      setStatus('seeding');
+      try {
+          const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+          const token = await user.getIdToken();
+          const res = await fetch(`${apiUrl}/admin/seed/results`, {
+              method: 'POST',
+              headers: { 
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                  raceIds: selectedTestRaces,
+                  progress: testProgress,
+                  categoryRiders: testCategoryRiders
+              })
+          });
+          
+          if (res.ok) {
+              const data = await res.json();
+              alert(data.message);
+          } else {
+              const data = await res.json();
+              alert(`Failed: ${data.message}`);
+          }
+      } catch (e) {
+          alert('Error generating results');
+      } finally {
+          setStatus('idle');
+      }
+  };
+
+  // Clear test results
+  const handleClearResults = async (clearAll: boolean = false) => {
+      const raceIds = clearAll ? [] : selectedTestRaces;
+      const msg = clearAll 
+          ? 'Clear results from ALL races?' 
+          : `Clear results from ${selectedTestRaces.length} selected race(s)?`;
+      
+      if (!user || !confirm(msg)) return;
+      
+      setStatus('seeding');
+      try {
+          const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+          const token = await user.getIdToken();
+          const res = await fetch(`${apiUrl}/admin/seed/results`, {
+              method: 'DELETE',
+              headers: { 
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ raceIds })
+          });
+          
+          if (res.ok) {
+              const data = await res.json();
+              alert(data.message);
+          } else {
+              const data = await res.json();
+              alert(`Failed: ${data.message}`);
+          }
+      } catch (e) {
+          alert('Error clearing results');
+      } finally {
+          setStatus('idle');
+      }
+  };
+
+  // Get categories for selected races
+  const getTestCategories = (): string[] => {
+      if (selectedTestRaces.length === 0) return ['A', 'B', 'C', 'D', 'E'];
+      
+      const allCategories = new Set<string>();
+      
+      for (const raceId of selectedTestRaces) {
+          const race = races.find(r => r.id === raceId);
+          if (!race) continue;
+          
+          if (race.eventMode === 'multi' && race.eventConfiguration) {
+              race.eventConfiguration.forEach(cfg => {
+                  if (cfg.customCategory) allCategories.add(cfg.customCategory);
+              });
+          } else if (race.singleModeCategories && race.singleModeCategories.length > 0) {
+              race.singleModeCategories.forEach(cfg => {
+                  if (cfg.category) allCategories.add(cfg.category);
+              });
+          } else {
+              ['A', 'B', 'C', 'D', 'E'].forEach(c => allCategories.add(c));
+          }
+      }
+      
+      return Array.from(allCategories).sort();
+  };
+
+  // Initialize category riders when races change
+  const initTestCategoryRiders = () => {
+      const cats = getTestCategories();
+      const newRiders: Record<string, number> = {};
+      cats.forEach(cat => {
+          newRiders[cat] = testCategoryRiders[cat] ?? 5;
+      });
+      setTestCategoryRiders(newRiders);
   };
 
   const handleRefreshResults = async (raceId: string) => {
@@ -711,19 +890,176 @@ export default function LeagueManager() {
 
                 {/* Test Data Generation */}
                 <div className="bg-card p-6 rounded-lg shadow border border-border border-dashed border-slate-300 dark:border-slate-700">
-                    <h3 className="text-lg font-semibold mb-2 text-card-foreground">Development Tools</h3>
-                    <p className="text-sm text-muted-foreground mb-4">
-                        Need to test the layout with multiple users but limited by Strava API restrictions? 
-                        Generate fake participants here.
-                    </p>
-                    <button
-                        type="button"
-                        onClick={handleSeedData}
-                        disabled={status === 'seeding'}
-                        className="bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-700 text-sm font-medium disabled:opacity-50"
-                    >
-                        {status === 'seeding' ? 'Generating...' : 'Generate 20 Test Participants'}
-                    </button>
+                    <h3 className="text-lg font-semibold mb-4 text-card-foreground">Development Tools</h3>
+                    
+                    {/* Test Participants Section */}
+                    <div className="mb-6 pb-6 border-b border-border">
+                        <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Test Participants</h4>
+                        <p className="text-sm text-muted-foreground mb-3">
+                            Currently: <span className="font-bold text-foreground">{testParticipantCount}</span> test participants
+                        </p>
+                        <div className="flex gap-2 flex-wrap">
+                            <button
+                                type="button"
+                                onClick={() => handleGenerateParticipants(20)}
+                                disabled={status === 'seeding'}
+                                className="bg-slate-800 text-white px-3 py-1.5 rounded hover:bg-slate-700 text-sm font-medium disabled:opacity-50"
+                            >
+                                {status === 'seeding' ? 'Working...' : 'Generate 20'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleGenerateParticipants(50)}
+                                disabled={status === 'seeding'}
+                                className="bg-slate-700 text-white px-3 py-1.5 rounded hover:bg-slate-600 text-sm font-medium disabled:opacity-50"
+                            >
+                                Generate 50
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleClearParticipants}
+                                disabled={status === 'seeding' || testParticipantCount === 0}
+                                className="bg-red-800 text-white px-3 py-1.5 rounded hover:bg-red-700 text-sm font-medium disabled:opacity-50"
+                            >
+                                Clear All
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Test Results Section */}
+                    <div>
+                        <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Test Results</h4>
+                        
+                        {/* Race Selection */}
+                        <div className="mb-4">
+                            <label className="block text-xs font-medium text-muted-foreground mb-2">Select Races</label>
+                            <div className="max-h-40 overflow-y-auto border border-input rounded bg-background p-2 space-y-1">
+                                {races.map(race => (
+                                    <label key={race.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted/50 p-1 rounded">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedTestRaces.includes(race.id)}
+                                            onChange={(e) => {
+                                                if (e.target.checked) {
+                                                    setSelectedTestRaces([...selectedTestRaces, race.id]);
+                                                } else {
+                                                    setSelectedTestRaces(selectedTestRaces.filter(id => id !== race.id));
+                                                }
+                                            }}
+                                            className="w-4 h-4 rounded border-input text-primary focus:ring-primary"
+                                        />
+                                        <span className="text-sm text-foreground truncate">{race.name}</span>
+                                        <span className="text-xs text-muted-foreground ml-auto">
+                                            {new Date(race.date).toLocaleDateString()}
+                                        </span>
+                                    </label>
+                                ))}
+                                {races.length === 0 && (
+                                    <p className="text-sm text-muted-foreground italic p-2">No races configured</p>
+                                )}
+                            </div>
+                            <div className="flex gap-2 mt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedTestRaces(races.map(r => r.id))}
+                                    className="text-xs text-primary hover:text-primary/80"
+                                >
+                                    Select All
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedTestRaces([])}
+                                    className="text-xs text-muted-foreground hover:text-foreground"
+                                >
+                                    Select None
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Riders per Category */}
+                        {selectedTestRaces.length > 0 && (
+                            <div className="mb-4">
+                                <label className="block text-xs font-medium text-muted-foreground mb-2">
+                                    Riders per Category
+                                </label>
+                                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                                    {getTestCategories().map(cat => (
+                                        <div key={cat} className="flex flex-col">
+                                            <label className="text-xs text-center text-muted-foreground mb-1 truncate" title={cat}>
+                                                {cat}
+                                            </label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                max="50"
+                                                value={testCategoryRiders[cat] ?? 5}
+                                                onChange={(e) => setTestCategoryRiders({
+                                                    ...testCategoryRiders,
+                                                    [cat]: parseInt(e.target.value) || 0
+                                                })}
+                                                className="w-full p-1.5 border border-input rounded bg-background text-foreground text-sm text-center"
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Total: {Object.values(testCategoryRiders).reduce((a, b) => a + b, 0)} riders
+                                </p>
+                            </div>
+                        )}
+
+                        {/* Progress Slider */}
+                        {selectedTestRaces.length > 0 && (
+                            <div className="mb-4">
+                                <label className="block text-xs font-medium text-muted-foreground mb-2">
+                                    Race Progress: <span className="font-bold text-foreground">{testProgress}%</span>
+                                </label>
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="100"
+                                    step="10"
+                                    value={testProgress}
+                                    onChange={(e) => setTestProgress(parseInt(e.target.value))}
+                                    className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
+                                />
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    {testProgress === 0 && "Empty results (riders listed, no times)"}
+                                    {testProgress > 0 && testProgress < 50 && "Early race: some sprints, no finishers"}
+                                    {testProgress >= 50 && testProgress < 100 && `Mid-race: ~${testProgress}% finished, sprints in progress`}
+                                    {testProgress === 100 && "Complete: all riders finished, all sprints scored"}
+                                </p>
+                            </div>
+                        )}
+
+                        {/* Action Buttons */}
+                        <div className="flex gap-2 flex-wrap">
+                            <button
+                                type="button"
+                                onClick={handleGenerateResults}
+                                disabled={status === 'seeding' || selectedTestRaces.length === 0}
+                                className="bg-green-700 text-white px-3 py-1.5 rounded hover:bg-green-600 text-sm font-medium disabled:opacity-50"
+                            >
+                                {status === 'seeding' ? 'Generating...' : 'Generate Results'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleClearResults(false)}
+                                disabled={status === 'seeding' || selectedTestRaces.length === 0}
+                                className="bg-orange-700 text-white px-3 py-1.5 rounded hover:bg-orange-600 text-sm font-medium disabled:opacity-50"
+                            >
+                                Clear Selected
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleClearResults(true)}
+                                disabled={status === 'seeding'}
+                                className="bg-red-800 text-white px-3 py-1.5 rounded hover:bg-red-700 text-sm font-medium disabled:opacity-50"
+                            >
+                                Clear All Results
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
