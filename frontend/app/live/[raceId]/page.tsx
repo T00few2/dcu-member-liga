@@ -109,6 +109,10 @@ export default function LiveResultsPage() {
 
     // Scrolling ref
     const containerRef = useRef<HTMLDivElement>(null);
+    
+    // Fit-to-screen refs and state
+    const tableWrapperRef = useRef<HTMLDivElement>(null);
+    const [fitScale, setFitScale] = useState(1);
 
     // 1. Fetch Race Data (Real-time)
     useEffect(() => {
@@ -299,6 +303,54 @@ export default function LiveResultsPage() {
         };
     }, [autoScroll, race, viewMode, standings]); // Re-run when data updates or view changes
 
+    // 5. Fit-to-screen: measure content and calculate scale
+    useEffect(() => {
+        if (!fitToScreen || !isFull || !tableWrapperRef.current || !containerRef.current) {
+            setFitScale(1);
+            return;
+        }
+
+        const calculateScale = () => {
+            const wrapper = tableWrapperRef.current;
+            const container = containerRef.current;
+            if (!wrapper || !container) return;
+
+            // Temporarily remove transform to measure true content height
+            const originalTransform = wrapper.style.transform;
+            wrapper.style.transform = 'none';
+            
+            // Force reflow to get accurate measurement
+            void wrapper.offsetHeight;
+            
+            // Get the natural height of the table content (unscaled)
+            const contentHeight = wrapper.scrollHeight;
+            // Get the available height in the container
+            const availableHeight = container.clientHeight;
+
+            // Restore original transform
+            wrapper.style.transform = originalTransform;
+
+            if (contentHeight <= availableHeight || contentHeight === 0) {
+                setFitScale(1);
+            } else {
+                // Calculate scale to fit, with a minimum of 0.3
+                const scale = Math.max(0.3, availableHeight / contentHeight);
+                setFitScale(scale);
+            }
+        };
+
+        // Calculate after a short delay to ensure content is rendered
+        const timeoutId = setTimeout(calculateScale, 50);
+        
+        // Recalculate on window resize
+        window.addEventListener('resize', calculateScale);
+        
+        return () => {
+            clearTimeout(timeoutId);
+            window.removeEventListener('resize', calculateScale);
+        };
+    }, [fitToScreen, isFull, race, viewMode, standings, limit]);
+
     if (loading) return <div className="p-8 text-white font-bold text-2xl">Loading Live Data...</div>;
     if (error) return <div className="p-8 text-red-500 font-bold text-2xl">{error}</div>;
     if (!race) return null;
@@ -340,47 +392,10 @@ export default function LiveResultsPage() {
     const results = race.results?.[category] || [];
     const resultCount = Math.min(results.length, limit);
     
-    // Calculate dynamic sizing when fitToScreen is enabled
-    // Approximate available height: viewport minus header (~120px) and some padding
-    // Each row needs: padding + text height
-    const getFitToScreenStyles = () => {
-        if (!fitToScreen || !isFull || resultCount === 0) {
-            return {
-                headerPadding: isFull ? 'py-0' : 'py-1',
-                bodyPadding: isFull ? 'py-0.5' : 'py-2',
-                textSize: isFull ? 'text-2xl' : 'text-3xl',
-                rowStyle: {}
-            };
-        }
-        
-        // Calculate based on number of rows to display
-        // Available height is roughly: 100vh - header(~100px) - table header(~40px)
-        // We want all rows to fit, so divide available space by row count
-        const availableHeight = 100; // vh units
-        const headerOffset = 15; // vh for header and table header
-        const tableHeight = availableHeight - headerOffset;
-        const rowHeight = Math.max(3, Math.min(8, tableHeight / resultCount)); // vh per row, min 3vh, max 8vh
-        
-        // Scale text size based on row height
-        // 17 riders at 85vh gives ~5vh per row, should use text-2xl (medium)
-        let textSize = 'text-2xl';
-        if (rowHeight < 3.5) textSize = 'text-base';
-        else if (rowHeight < 4.5) textSize = 'text-lg';
-        else if (rowHeight < 5) textSize = 'text-xl';
-        
-        return {
-            headerPadding: 'py-0',
-            bodyPadding: '', // Will use inline style instead
-            textSize,
-            rowStyle: { height: `${rowHeight}vh` }
-        };
-    };
-    
-    const fitStyles = getFitToScreenStyles();
-    const headerCellPadding = fitStyles.headerPadding;
-    const bodyCellPadding = fitStyles.bodyPadding;
-    const tableBodyTextSize = fitStyles.textSize;
-    const fitRowStyle = fitStyles.rowStyle;
+    // Standard sizing
+    const headerCellPadding = isFull ? 'py-0' : 'py-1';
+    const bodyCellPadding = isFull ? 'py-0.5' : 'py-2';
+    const tableBodyTextSize = isFull ? 'text-2xl' : 'text-3xl';
 
     const formatTimeValue = (ms: number) => {
         const safeMs = Math.max(0, ms);
@@ -544,7 +559,6 @@ export default function LiveResultsPage() {
                         <tr 
                             key={rider.zwiftId} 
                             className="border-b border-slate-700/50 even:bg-slate-800/40"
-                            style={fitRowStyle}
                         >
                             <td className={`${bodyCellPadding} px-2 text-center font-bold text-slate-300 align-middle`}>
                                 {idx + 1}
@@ -615,7 +629,6 @@ export default function LiveResultsPage() {
                         <tr 
                             key={rider.zwiftId} 
                             className="border-b border-slate-700/50 even:bg-slate-800/40"
-                            style={fitRowStyle}
                         >
                             <td className={`${bodyCellPadding} px-2 text-center font-bold text-slate-300 align-middle`}>
                                 {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
@@ -820,7 +833,6 @@ export default function LiveResultsPage() {
                             <tr
                                 key={rider.zwiftId}
                                 className="border-b border-slate-700/50 even:bg-slate-800/40"
-                                style={fitRowStyle}
                             >
                                 <td className={`${bodyCellPadding} px-2 text-center font-bold text-slate-300 align-middle`}>
                                     {idx + 1}
@@ -905,15 +917,38 @@ export default function LiveResultsPage() {
 
                     <div
                         ref={containerRef}
-                        className={`flex-1 overflow-auto px-6 ${autoScroll ? 'scrollbar-hide' : ''}`}
+                        className={`flex-1 px-6 ${fitToScreen ? 'overflow-hidden flex flex-col' : 'overflow-auto'} ${autoScroll ? 'scrollbar-hide' : ''}`}
                     >
-                        <div className="mx-auto max-w-6xl rounded-xl border border-slate-700/70 bg-slate-600/25 shadow-2xl backdrop-blur">
-                            {viewMode === 'race'
-                                ? renderRaceResults()
-                                : viewMode === 'time-trial'
-                                    ? renderTimeTrialSplits()
-                                    : renderStandings()}
-                        </div>
+                        {fitToScreen ? (
+                            <div className="flex-1 relative">
+                                <div 
+                                    ref={tableWrapperRef}
+                                    className="absolute top-0 left-0 right-0 mx-auto max-w-6xl rounded-xl border border-slate-700/70 bg-slate-600/25 shadow-2xl backdrop-blur"
+                                    style={{
+                                        transform: `scale(${fitScale})`,
+                                        transformOrigin: 'top center',
+                                        width: '100%'
+                                    }}
+                                >
+                                    {viewMode === 'race'
+                                        ? renderRaceResults()
+                                        : viewMode === 'time-trial'
+                                            ? renderTimeTrialSplits()
+                                            : renderStandings()}
+                                </div>
+                            </div>
+                        ) : (
+                            <div 
+                                ref={tableWrapperRef}
+                                className="mx-auto max-w-6xl rounded-xl border border-slate-700/70 bg-slate-600/25 shadow-2xl backdrop-blur"
+                            >
+                                {viewMode === 'race'
+                                    ? renderRaceResults()
+                                    : viewMode === 'time-trial'
+                                        ? renderTimeTrialSplits()
+                                        : renderStandings()}
+                            </div>
+                        )}
                     </div>
 
                     {includeBanner && bannerSrc && (
