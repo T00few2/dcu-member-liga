@@ -787,6 +787,7 @@ class ResultsProcessor:
         settings = settings_doc.to_dict() if settings_doc.exists else {}
         best_races_count = settings.get('bestRacesCount', 5)
         finish_points_scheme = settings.get('finishPoints', []) # Fetch points scheme here
+        league_rank_points = settings.get('leagueRankPoints', []) # Optional: Points based on race rank
 
         print(f"Calculating league standings (Best {best_races_count} races)...")
         races_ref = self.db.collection('races')
@@ -827,7 +828,33 @@ class ResultsProcessor:
                 # Calculate what "Last Place" points would be for this category if needed
                 # We need to find the count of VALID riders to know the index for last place points
                 valid_riders_count = sum(1 for r in riders if str(r['zwiftId']) not in manual_dqs and str(r['zwiftId']) not in manual_declassifications)
+                
+                # Default logic fallback
                 last_place_points = finish_points_scheme[valid_riders_count] if valid_riders_count < len(finish_points_scheme) else 0
+
+                # NEW: League Rank Points Logic
+                # If enabled, calculate points based on rank within this race
+                race_league_points_map = {}
+                if league_rank_points:
+                    # 1. Identify valid riders for ranking (exclude DQs and Declassified)
+                    # Declassified riders will be handled separately (forced to last place points)
+                    ranking_candidates = [
+                        r for r in riders 
+                        if str(r['zwiftId']) not in manual_dqs and str(r['zwiftId']) not in manual_declassifications
+                    ]
+                    
+                    # 2. Sort by Raw Total Points (Descending), then by Finish Rank (Ascending) as tie breaker
+                    ranking_candidates.sort(key=lambda x: (x.get('totalPoints', 0), -x.get('finishRank', 9999)), reverse=True)
+                    
+                    # 3. Assign points from scheme
+                    for rank, r in enumerate(ranking_candidates):
+                        p = league_rank_points[rank] if rank < len(league_rank_points) else 0
+                        race_league_points_map[str(r['zwiftId'])] = p
+                    
+                    # 4. Determine "Last Place" points for declassified riders in this scheme
+                    # They get the points corresponding to the position AFTER the last valid rider
+                    last_valid_idx = len(ranking_candidates)
+                    league_last_place_points = league_rank_points[last_valid_idx] if last_valid_idx < len(league_rank_points) else 0
 
                 for rider in riders:
                     zid = str(rider['zwiftId'])
@@ -836,10 +863,21 @@ class ResultsProcessor:
                     if zid in manual_dqs:
                         points = 0
                         print(f"  [Standings] Rider {zid} is DQ in race {doc.id}, forcing 0 points.")
+                    
+                    elif league_rank_points:
+                        # NEW MODE: Use rank-based points
+                        if zid in manual_declassifications:
+                            points = league_last_place_points
+                            print(f"  [Standings] Rider {zid} is Declassified in race {doc.id}, forcing league rank last place points ({points}).")
+                        else:
+                            points = race_league_points_map.get(zid, 0)
+                            
                     elif zid in manual_declassifications:
+                        # OLD MODE: Declassified fallback
                         points = last_place_points
                         print(f"  [Standings] Rider {zid} is Declassified in race {doc.id}, forcing last place points ({points}).")
                     else:
+                        # OLD MODE: Raw points
                         points = rider['totalPoints']
                     
                     if zid not in league_table[category]:
