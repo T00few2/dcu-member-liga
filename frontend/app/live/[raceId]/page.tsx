@@ -724,68 +724,91 @@ export default function LiveResultsPage() {
             })
             .slice(0, limit);
 
+        // Find the winner's (fastest) finish time for calculating deltas
+        const winnerFinishTime = hasAnyFinisher 
+            ? Math.min(...displayResults.filter(r => r.finishTime > 0).map(r => r.finishTime))
+            : 0;
+
+        // Format finish time: winner gets absolute time, others get delta
+        const formatFinishTimeOrDelta = (finishTime: number, isFirst: boolean) => {
+            if (!finishTime || finishTime <= 0) return '-';
+            if (isFirst || finishTime === winnerFinishTime) {
+                return formatTimeValue(finishTime);
+            }
+            // Show delta to winner
+            const delta = finishTime - winnerFinishTime;
+            return formatDelta(delta);
+        };
+
+        // Determine column count for proper table layout
+        const totalColumns = 2 + splitColumns.length + (hasAnyFinisher ? 1 : 0);
+        const showNoSplitsMessage = displayResults.length > 0 && splitColumns.length === 0 && !showFinishAsLastSplit;
+
         return (
-            <table className="w-full text-left border-collapse table-fixed">
+            <table className="w-full text-left border-collapse">
                 <thead>
                     <tr className="text-slate-400 text-lg uppercase tracking-wider border-b-2 border-slate-600 bg-slate-800/80">
-                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[10%] text-center`}>#</th>
-                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 ${hasAnyFinisher ? 'w-[30%]' : 'w-[40%]'}`}>Rider</th>
+                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-16 text-center`}>#</th>
+                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2`}>Rider</th>
                         {splitColumns.map(col => {
                             return (
                                 <th
                                     key={col.keys[0]}
-                                    className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-center text-blue-300`}
+                                    className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-center text-blue-300 w-40`}
                                 >
                                     {col.label}
                                 </th>
                             );
                         })}
                         {hasAnyFinisher && (
-                            <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-center text-green-300`}>
+                            <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-center text-green-300 w-48`}>
                                 Finish Time
                             </th>
                         )}
                     </tr>
                 </thead>
                 <tbody className={`text-white font-bold ${tableBodyTextSize}`}>
-                    {displayResults.map((rider, idx) => (
-                        <tr
-                            key={rider.zwiftId}
-                            className="border-b border-slate-700/50 even:bg-slate-800/40"
-                        >
-                            <td className={`${bodyCellPadding} px-2 text-center font-bold text-slate-300`}>
-                                {idx + 1}
-                            </td>
-                            <td className={`${bodyCellPadding} px-2 truncate`}>
-                                {rider.name}
-                            </td>
-                            {splitColumns.map(col => {
-                                const worldTime = getWorldTimeForColumn(rider, col.keys);
-                                const minTime = minWorldTimes.get(col.keys[0]);
-                                const delta = (worldTime !== null && minTime !== undefined) ? (worldTime - minTime) : null;
-                                return (
-                                    <td key={col.keys[0]} className={`${bodyCellPadding} px-2 text-center font-extrabold text-blue-300`}>
-                                        {delta === null ? '-' : formatDelta(delta)}
-                                    </td>
-                                );
-                            })}
-                            {hasAnyFinisher && (
-                                <td className={`${bodyCellPadding} px-2 text-center font-extrabold text-green-300`}>
-                                    {formatTimeOrDash(rider.finishTime)}
+                    {displayResults.map((rider, idx) => {
+                        const isWinner = rider.finishTime > 0 && rider.finishTime === winnerFinishTime;
+                        return (
+                            <tr
+                                key={rider.zwiftId}
+                                className="border-b border-slate-700/50 even:bg-slate-800/40"
+                            >
+                                <td className={`${bodyCellPadding} px-2 text-center font-bold text-slate-300`}>
+                                    {idx + 1}
                                 </td>
-                            )}
-                        </tr>
-                    ))}
+                                <td className={`${bodyCellPadding} px-2 truncate`}>
+                                    {rider.name}
+                                </td>
+                                {splitColumns.map(col => {
+                                    const worldTime = getWorldTimeForColumn(rider, col.keys);
+                                    const minTime = minWorldTimes.get(col.keys[0]);
+                                    const delta = (worldTime !== null && minTime !== undefined) ? (worldTime - minTime) : null;
+                                    return (
+                                        <td key={col.keys[0]} className={`${bodyCellPadding} px-2 text-center font-extrabold text-blue-300`}>
+                                            {delta === null ? '-' : formatDelta(delta)}
+                                        </td>
+                                    );
+                                })}
+                                {hasAnyFinisher && (
+                                    <td className={`${bodyCellPadding} px-2 text-center font-extrabold ${isWinner ? 'text-green-300' : 'text-green-400/80'}`}>
+                                        {formatFinishTimeOrDelta(rider.finishTime, isWinner)}
+                                    </td>
+                                )}
+                            </tr>
+                        );
+                    })}
                     {displayResults.length === 0 && (
                         <tr>
-                            <td colSpan={3 + splitColumns.length + (hasAnyFinisher ? 1 : 0)} className="py-8 text-center text-slate-500 text-xl italic">
+                            <td colSpan={totalColumns} className="py-8 text-center text-slate-500 text-xl italic">
                                 No split results available.
                             </td>
                         </tr>
                     )}
-                    {displayResults.length > 0 && splitColumns.length === 0 && (
+                    {showNoSplitsMessage && (
                         <tr>
-                            <td colSpan={3 + (hasAnyFinisher ? 1 : 0)} className="py-8 text-center text-slate-500 text-xl italic">
+                            <td colSpan={totalColumns} className="py-8 text-center text-slate-500 text-xl italic">
                                 No split segments configured.
                             </td>
                         </tr>
