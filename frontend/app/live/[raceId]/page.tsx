@@ -14,7 +14,9 @@ import { useParams, useSearchParams } from 'next/navigation';
     }
 
     interface Race {
+        id: string;
         name: string;
+        date: string;
         results?: Record<string, ResultEntry[]>;
         sprints?: Sprint[];
         sprintData?: Sprint[];
@@ -100,6 +102,7 @@ export default function LiveResultsPage() {
     const cycleTime = parseInt(searchParams.get('cycle') || '0'); // Seconds, 0 = disabled
 
     const [race, setRace] = useState<Race | null>(null);
+    const [allRaces, setAllRaces] = useState<Race[]>([]);
     const [standings, setStandings] = useState<Record<string, StandingEntry[]>>({});
     const [bestRacesCount, setBestRacesCount] = useState<number>(5);
     
@@ -217,6 +220,23 @@ export default function LiveResultsPage() {
                 console.error("Standings error:", err);
             }
         );
+
+        // Fetch all races for standings display
+        const fetchAllRaces = async () => {
+            try {
+                const racesSnapshot = await getDocs(collection(db, 'races'));
+                const races = racesSnapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                })) as Race[];
+                // Sort by date
+                races.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                setAllRaces(races);
+            } catch (err) {
+                console.error("Error fetching races:", err);
+            }
+        };
+        fetchAllRaces();
 
         return () => unsub();
     }, []);
@@ -599,13 +619,35 @@ export default function LiveResultsPage() {
     const renderStandings = () => {
         const rawStandings = standings[category] || [];
         
+        // Get race IDs that have results for this category
+        const raceIdsWithResults = new Set<string>();
+        rawStandings.forEach(rider => {
+            rider.results.forEach(r => raceIdsWithResults.add(r.raceId));
+        });
+        
+        // Filter and sort races that have results
+        const relevantRaces = allRaces.filter(r => raceIdsWithResults.has(r.id));
+        
         // Process Best X
         const processedStandings = rawStandings.map(rider => {
             const sortedResults = [...rider.results].sort((a, b) => b.points - a.points);
-            const bestTotal = sortedResults.slice(0, bestRacesCount).reduce((sum, r) => sum + r.points, 0);
+            const bestResults = sortedResults.slice(0, bestRacesCount);
+            const bestTotal = bestResults.reduce((sum, r) => sum + r.points, 0);
+            const bestRaceIds = new Set(bestResults.map(r => r.raceId));
+            
+            // Create a map of raceId -> points for quick lookup
+            const pointsByRace: Record<string, { points: number, isBest: boolean }> = {};
+            rider.results.forEach(r => {
+                pointsByRace[r.raceId] = { 
+                    points: r.points, 
+                    isBest: bestRaceIds.has(r.raceId) 
+                };
+            });
+            
             return {
                 ...rider,
-                calculatedTotal: bestTotal
+                calculatedTotal: bestTotal,
+                pointsByRace
             };
         });
 
@@ -613,14 +655,32 @@ export default function LiveResultsPage() {
         const currentStandings = processedStandings.sort((a, b) => (b.calculatedTotal || 0) - (a.calculatedTotal || 0));
         const displayResults = currentStandings.slice(0, limit);
 
+        // Format race name for header (short version)
+        const getRaceShortName = (race: Race, index: number) => {
+            // Try to extract a short name or use "R1", "R2", etc.
+            const dateStr = new Date(race.date).toLocaleDateString('da-DK', { day: '2-digit', month: '2-digit' });
+            return `R${index + 1}`;
+        };
+
+        const totalColumns = 2 + relevantRaces.length + 1; // #, name, races..., total
+
         return (
-            <table className="w-full text-left border-collapse table-fixed">
+            <table className="w-full text-left border-collapse">
                 <thead>
-                    <tr className="text-slate-400 text-lg uppercase tracking-wider border-b-2 border-slate-600 bg-slate-800/80">
-                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[10%] text-center`}>#</th>
-                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[55%]`}>Rider</th>
-                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[35%] text-right font-bold text-green-400`}>
-                            Points
+                    <tr className="text-slate-400 text-sm uppercase tracking-wider border-b-2 border-slate-600 bg-slate-800/80">
+                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-1 w-10 text-center`}>#</th>
+                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2`}>Rider</th>
+                        {relevantRaces.map((race, idx) => (
+                            <th 
+                                key={race.id}
+                                className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-1 text-center font-bold text-blue-400 w-12`}
+                                title={`${race.name} (${new Date(race.date).toLocaleDateString()})`}
+                            >
+                                {getRaceShortName(race, idx)}
+                            </th>
+                        ))}
+                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-center font-bold text-green-400 w-16`}>
+                            Total
                         </th>
                     </tr>
                 </thead>
@@ -630,20 +690,35 @@ export default function LiveResultsPage() {
                             key={rider.zwiftId} 
                             className="border-b border-slate-700/50 even:bg-slate-800/40"
                         >
-                            <td className={`${bodyCellPadding} px-2 text-center font-bold text-slate-300 align-middle`}>
+                            <td className={`${bodyCellPadding} px-1 text-center font-bold text-slate-300 align-middle`}>
                                 {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
                             </td>
                             <td className={`${bodyCellPadding} px-2 truncate align-middle`}>
                                 {rider.name}
                             </td>
-                            <td className={`${bodyCellPadding} px-2 text-right font-extrabold text-green-400 align-middle`}>
+                            {relevantRaces.map(race => {
+                                const raceResult = rider.pointsByRace[race.id];
+                                const points = raceResult?.points;
+                                const isBest = raceResult?.isBest;
+                                return (
+                                    <td 
+                                        key={race.id} 
+                                        className={`${bodyCellPadding} px-1 text-center align-middle ${
+                                            isBest ? 'text-green-400 font-extrabold' : 'text-slate-400'
+                                        }`}
+                                    >
+                                        {points !== undefined ? points : '-'}
+                                    </td>
+                                );
+                            })}
+                            <td className={`${bodyCellPadding} px-2 text-center font-extrabold text-green-400 align-middle`}>
                                 {rider.calculatedTotal}
                             </td>
                         </tr>
                     ))}
                     {displayResults.length === 0 && (
                         <tr>
-                            <td colSpan={3} className="py-8 text-center text-slate-500 text-xl italic">
+                            <td colSpan={totalColumns} className="py-8 text-center text-slate-500 text-xl italic">
                                 No standings available for category '{category}'.
                             </td>
                         </tr>
