@@ -204,6 +204,21 @@ export default function ResultsPage() {
       return `${pad(minutes)}:${pad(seconds)}.${padMs(millis)}`;
   };
 
+  const formatGap = (ms: number) => {
+      const totalSeconds = Math.floor(ms / 1000);
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      const millis = ms % 1000;
+      
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      const padMs = (n: number) => n.toString().padStart(3, '0');
+
+      if (minutes > 0) {
+          return `${minutes}:${pad(seconds)}.${padMs(millis)}`;
+      }
+      return `${seconds}.${padMs(millis)}`;
+  };
+
   if (authLoading || loading) return <div className="p-8 text-center text-muted-foreground">Loading results...</div>;
 
   // --- Derived Data ---
@@ -392,6 +407,24 @@ export default function ResultsPage() {
       const remaining = Array.from(allSprintKeys).sort();
       sprintColumns = [...sprintColumns, ...remaining];
   }
+
+  // Pre-calculate best times for each split column (where values are timestamps)
+  const bestSplitTimes: Record<string, number> = {};
+  sprintColumns.forEach(key => {
+      // Check if this column looks like a split (large numbers > 1,000,000)
+      // We check the first non-null value we find to determine type
+      const sampleValue = raceResults.find(r => r.sprintDetails?.[key])?.sprintDetails?.[key];
+      
+      if (sampleValue && sampleValue > 1000000) { 
+           const times = raceResults
+              .map(r => r.sprintDetails?.[key])
+              .filter((v): v is number => typeof v === 'number' && v > 0);
+           
+           if (times.length > 0) {
+               bestSplitTimes[key] = Math.min(...times);
+           }
+      }
+  });
 
   const getSprintHeader = (key: string) => {
       // Find source sprint list again (could refactor to share)
@@ -605,11 +638,30 @@ export default function ResultsPage() {
                                         <td className="px-4 py-3 font-medium text-card-foreground">{rider.name}</td>
                                         <td className="px-4 py-3 text-right font-mono text-muted-foreground">{formatTime(rider.finishTime)}</td>
                                         {/* Dynamic Sprint Data */}
-                                        {sprintColumns.map(sprintKey => (
-                                            <td key={sprintKey} className="px-4 py-3 text-center text-muted-foreground">
-                                                {rider.sprintDetails?.[sprintKey] || '-'}
-                                            </td>
-                                        ))}
+                                        {sprintColumns.map(sprintKey => {
+                                            const val = rider.sprintDetails?.[sprintKey];
+                                            const best = bestSplitTimes[sprintKey];
+                                            
+                                            let displayVal: React.ReactNode = '-';
+                                            
+                                            if (val !== undefined && val !== null) {
+                                                if (best) {
+                                                    // It's a split time
+                                                    const diff = val - best;
+                                                    if (diff === 0) displayVal = <span className="text-green-600 dark:text-green-400 font-bold">0.00</span>;
+                                                    else displayVal = <span className="text-red-500 dark:text-red-400">+{formatGap(diff)}</span>;
+                                                } else {
+                                                    // It's points
+                                                    displayVal = val;
+                                                }
+                                            }
+
+                                            return (
+                                                <td key={sprintKey} className="px-4 py-3 text-center text-muted-foreground">
+                                                    {displayVal}
+                                                </td>
+                                            );
+                                        })}
                                         <td className="px-4 py-3 text-right text-muted-foreground font-medium">{rider.finishPoints}</td>
                                         <td className="px-4 py-3 text-right font-bold text-foreground">{rider.totalPoints}</td>
                                     </tr>
