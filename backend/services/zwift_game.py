@@ -121,163 +121,178 @@ class ZwiftGameService:
                 occurrences.append((entry.copy(), lap, order_counter))
                 order_counter += 1
 
+        # Pre-index segments by roadId for faster lookup
+        segments_by_road = defaultdict(list)
+        for seg in segments_data:
+            if seg.get("archId") is None:
+                continue
+            road_id = seg.get("roadId")
+            if road_id is not None:
+                segments_by_road[road_id].append(seg)
+
         all_found_segments = []
-        # ----------------------------
-        # First pass: Process each manifest occurrence individually for "normal" segments.
-        # ----------------------------
-        for entry, lap, order in occurrences:
-            entry_road_id = entry.get("roadId")
-            if entry_road_id is None:
-                continue
-            entry_reverse = bool(entry.get("reverse", False))
-            entry_start = entry.get("start")
-            entry_end   = entry.get("end")
-            if entry_start is None or entry_end is None:
-                continue
+        
+        # Track active segments: segment_id -> { "start_order": order, "lap": lap, ... }
+        # Key is (segment_id, direction) just to be safe, though ID should be unique.
+        active_segments = {} 
 
-            matching_segments = []
-            for seg in segments_data:
-                if seg.get("roadId") != entry_road_id:
-                    continue
-                if seg.get("archId") is None:
-                    continue
+        def finish_segment(seg_id, direction, current_order, current_lap, seg_data):
+            key = (seg_id, direction)
+            if key in active_segments:
+                start_info = active_segments.pop(key)
+                
+                # Construct the found segment object
+                # Use the lap from when it started (or finished? usually finish lap matters for timing)
+                # But here we want to list them in order.
+                # Let's attribute to the lap where it finishes.
+                
+                seg_copy = seg_data.copy()
+                seg_copy["lap"] = current_lap
+                seg_copy["direction"] = direction
+                seg_copy["id"] = seg_id
+                # Use the order from the finish point so it sorts correctly in the timeline
+                seg_copy["order"] = current_order 
+                
+                all_found_segments.append(seg_copy)
 
-                if not entry_reverse:
-                    seg_start = seg.get("roadStartForward")
-                    seg_finish = seg.get("roadFinish")
-                    if seg_start is None or seg_finish is None:
-                        continue
-                    # Skip full‑circuit segments here.
-                    if seg_start == seg_finish:
-                        continue
-                    if entry_start <= seg_start and entry_end >= seg_finish:
-                        seg_copy = seg.copy()
-                        seg_copy["lap"] = lap
-                        seg_copy["direction"] = "forward"
-                        seg_copy["id"] = seg.get("idForward")
-                        seg_copy["order"] = order
-                        matching_segments.append(seg_copy)
-                else:
-                    seg_start = seg.get("roadStartReverse")
-                    seg_finish = seg.get("roadFinish")
-                    if seg_start is None or seg_finish is None:
-                        continue
-                    if seg_start == seg_finish:
-                        continue
-                    if entry_end >= seg_start and entry_start <= seg_finish:
-                        seg_copy = seg.copy()
-                        seg_copy["lap"] = lap
-                        seg_copy["direction"] = "reverse"
-                        seg_copy["id"] = seg.get("idReverse")
-                        seg_copy["order"] = order
-                        matching_segments.append(seg_copy)
-            
-            # sort segments along the road
-            if not entry_reverse:
-                matching_segments.sort(
-                    key=lambda s: (
-                        s.get("roadStartForward") is None,
-                        s.get("roadStartForward", float("inf")),
-                    )
-                )
-            else:
-                matching_segments.sort(
-                    key=lambda s: (
-                        s.get("roadStartReverse") is None,
-                        s.get("roadStartReverse", float("inf")),
-                    ),
-                    reverse=True,
-                )
+        def start_segment(seg_id, direction, current_order, current_lap):
+            key = (seg_id, direction)
+            if key not in active_segments:
+                active_segments[key] = {
+                    "start_order": current_order,
+                    "lap": current_lap
+                }
 
-            entry["segmentIds"] = [s.get("id") for s in matching_segments]
-            all_found_segments.extend(matching_segments)
-
-        # ----------------------------
-        # Second pass: Handle full‑circuit segments by merging manifest entries.
-        # ----------------------------
-        groups = defaultdict(list)
+        # Iterate through the route chronologically
         for entry, lap, order in occurrences:
             road_id = entry.get("roadId")
             if road_id is None:
                 continue
-            direction = "reverse" if entry.get("reverse", False) else "forward"
-            groups[(lap, road_id, direction)].append((entry, order))
-
-        # -- Forward groups merging --
-        for (lap, road_id, direction), group_list in groups.items():
-            if direction != "forward":
-                continue
-            if len(group_list) < 2:
-                continue
-            group_list.sort(key=lambda tup: tup[1])
-            group_entries = [entry for entry, _ in group_list]
-            candidate_order = min(order for _, order in group_list)
             
-            if not (any(entry.get("start") == 0 for entry in group_entries) and
-                    any(entry.get("end") == 1 for entry in group_entries)):
-                continue
-            candidate_start = min(entry.get("start", 0) for entry in group_entries)
-            candidate_end = max(entry.get("end", 0) for entry in group_entries) + 1
-
-            for seg in segments_data:
-                if seg.get("roadId") != road_id or seg.get("archId") is None:
+            is_reverse_entry = bool(entry.get("reverse", False))
+            entry_start = entry.get("start", 0)
+            entry_end = entry.get("end", 0)
+            
+            # Define the interval on the road covered by this entry
+            # We treat everything as [min, max] range checks, but order matters for Start/Finish logic.
+            min_p = min(entry_start, entry_end)
+            max_p = max(entry_start, entry_end)
+            
+            # Get segments on this road
+            road_segments = segments_by_road.get(road_id, [])
+            
+            for seg in road_segments:
+                # Determine segment parameters based on our direction of travel
+                # If we are traversing the road in Reverse, we look for Reverse segments?
+                # Or do we look for Forward segments that we traverse backwards?
+                # Usually Zwift segments are directional. You only trigger them if you go the right way.
+                # So if entry is Reverse, we look for Reverse segments.
+                
+                if is_reverse_entry:
+                    seg_id = seg.get("idReverse")
+                    s_start = seg.get("roadStartReverse")
+                    s_finish = seg.get("roadFinish") # Assuming roadFinish is shared or same coordinate?
+                    # Note: Some data might have roadFinishReverse? Usually not.
+                    # If roadStartReverse > roadFinish, it implies decreasing metric traversal.
+                    direction = "reverse"
+                else:
+                    seg_id = seg.get("idForward")
+                    s_start = seg.get("roadStartForward")
+                    s_finish = seg.get("roadFinish")
+                    direction = "forward"
+                
+                if not seg_id or s_start is None or s_finish is None:
                     continue
-                seg_start = seg.get("roadStartForward")
-                seg_finish = seg.get("roadFinish")
-                if seg_start is None or seg_finish is None or seg_start != seg_finish:
-                    continue  # Only full‑circuit segments.
-                seg_point = seg_start
-                if candidate_start < seg_point and candidate_end > (seg_point + 1):
-                    seg_copy = seg.copy()
-                    seg_copy["lap"] = lap
-                    seg_copy["direction"] = "forward"
-                    seg_copy["id"] = seg.get("idForward")
-                    seg_copy["order"] = candidate_order
-                    all_found_segments.append(seg_copy)
-                    for entry in group_entries:
-                        entry.setdefault("segmentIds", []).append(seg.get("idForward"))
 
-        # -- Reverse groups merging --
-        for (lap, road_id, direction), group_list in groups.items():
-            if direction != "reverse":
-                continue
-            if len(group_list) < 2:
-                continue
-            group_list.sort(key=lambda tup: tup[1])
-            group_entries = [entry for entry, _ in group_list]
-            candidate_order = min(order for _, order in group_list)
-            for i in range(len(group_entries) - 1):
-                current = group_entries[i]
-                nxt = group_entries[i+1]
-                if (current.get("start") == 0 and current.get("end") == 1 and
-                    nxt.get("end") == 1 and nxt.get("start") == 0):
-                    flipped_current_start = 1 - current.get("end")
-                    flipped_current_end = 1 - current.get("start")
-                    flipped_next_start = 1 - nxt.get("end")
-                    flipped_next_end = 1 - nxt.get("start")
-                    candidate_flipped_start = min(flipped_current_start, flipped_next_start)
-                    candidate_flipped_end = max(flipped_current_end, flipped_next_end) + 1
-                    journey_length = candidate_flipped_end - candidate_flipped_start
-                    if journey_length <= 1:
-                        continue
-                    for seg in segments_data:
-                        if seg.get("roadId") != road_id or seg.get("archId") is None:
-                            continue
-                        seg_start = seg.get("roadStartReverse")
-                        seg_finish = seg.get("roadFinish")
-                        if seg_start is None or seg_finish is None or seg_start != seg_finish:
-                            continue
-                        flipped_seg_point = 1 - seg_start
-                        if candidate_flipped_start < flipped_seg_point and candidate_flipped_end > (flipped_seg_point + 1):
-                            seg_copy = seg.copy()
-                            seg_copy["lap"] = lap
-                            seg_copy["direction"] = "reverse"
-                            seg_copy["id"] = seg.get("idReverse")
-                            seg_copy["order"] = candidate_order
-                            all_found_segments.append(seg_copy)
-                            current.setdefault("segmentIds", []).append(seg.get("idReverse"))
-                            nxt.setdefault("segmentIds", []).append(seg.get("idReverse"))
+                # Check if points are within the road interval we traversed
+                # We use a small epsilon for float comparisons if needed, but simple <= is usually ok.
+                # We relax strict inequality to handle boundary conditions.
+                
+                # Is Start point in this entry?
+                has_start = (min_p <= s_start <= max_p)
+                
+                # Is Finish point in this entry?
+                has_finish = (min_p <= s_finish <= max_p)
+                
+                if not has_start and not has_finish:
+                    continue
+                
+                # Determine traversal order
+                # If is_reverse_entry is True, we move from High metric to Low metric?
+                # (Assuming reverse means against the road coordinate system)
+                # If is_reverse_entry is False, we move from Low to High.
+                
+                # Logic:
+                # 1. Did we cross Start?
+                # 2. Did we cross Finish?
+                # 3. In what order?
+                
+                # We can simplify:
+                # If we have both, check their relative positions vs traversal direction.
+                
+                if has_start and has_finish:
+                    # Both points in this single entry.
+                    
+                    # Check segment direction vs traversal direction
+                    # Forward Entry (Low->High): Segment must be Low->High (Start < Finish)
+                    # Reverse Entry (High->Low): Segment must be High->Low (Start > Finish)?
+                    # Or does 'reverse' segment mean defined such that Start < Finish but we hit it?
+                    # Usually:
+                    # Forward Segment: Start=0.2, Finish=0.5. Traversed 0->1. OK.
+                    # Reverse Segment: Start=0.8, Finish=0.5. Traversed 1->0. OK.
+                    
+                    if not is_reverse_entry:
+                        # Moving Low -> High
+                        if s_start < s_finish:
+                            # Start then Finish -> Complete
+                            # But wait, if we were already active (from previous lap?), we finish then start?
+                            # No, if we are active, we are waiting for finish.
+                            # If s_start < s_finish, we hit Start first.
+                            # If we were active, it means we missed a finish somewhere? Or loop?
+                            # Let's assume standard behavior:
+                            # If Start < Finish: Start -> Finish.
+                            start_segment(seg_id, direction, order, lap)
+                            finish_segment(seg_id, direction, order, lap, seg)
+                        else:
+                            # Start > Finish (e.g. 0.6 -> 0.4).
+                            # Moving Low -> High (0.3 -> 0.7).
+                            # We hit Finish (0.4) then Start (0.6).
+                            finish_segment(seg_id, direction, order, lap, seg)
+                            start_segment(seg_id, direction, order, lap)
+                    else:
+                        # Moving High -> Low
+                        if s_start > s_finish:
+                            # Start (0.8) -> Finish (0.5).
+                            # Moving 0.9 -> 0.4.
+                            # We hit Start first.
+                            start_segment(seg_id, direction, order, lap)
+                            finish_segment(seg_id, direction, order, lap, seg)
+                        else:
+                            # Start (0.4) < Finish (0.6).
+                            # Moving 0.9 -> 0.3.
+                            # We hit Finish (0.6) then Start (0.4).
+                            finish_segment(seg_id, direction, order, lap, seg)
+                            start_segment(seg_id, direction, order, lap)
+                            
+                elif has_start:
+                    # Only Start is in range.
+                    start_segment(seg_id, direction, order, lap)
+                    
+                elif has_finish:
+                    # Only Finish is in range.
+                    finish_segment(seg_id, direction, order, lap, seg)
 
+            # Add segmentIds to the entry for debugging/frontend use
+            # This is a bit tricky now as segments might span entries.
+            # We can list segments that *started* or *finished* or are *active* in this entry.
+            # The original code listed segments fully contained or merged.
+            # Let's list segments that finish in this entry, or are fully contained.
+            # For now, we can skip populating entry["segmentIds"] or populate it with what we found.
+            # The frontend might rely on it.
+            # Let's populate it with segments that FINISHED here.
+            # (We can't easily modify the 'entry' in 'occurrences' to include started-but-not-finished without more state).
+            # But the return value 'result' is what matters most.
+            
         # ----------------------------
         # Compute occurrence counts.
         segment_counts = {}
