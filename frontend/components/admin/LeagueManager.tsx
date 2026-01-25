@@ -70,7 +70,8 @@ interface Race {
 interface LeagueSettings {
   finishPoints: number[];
   sprintPoints: number[];
-  bestRacesCount: number; // Added field
+  leagueRankPoints?: number[]; // Optional: Points based on race rank
+  bestRacesCount: number;
 }
 
 export default function LeagueManager() {
@@ -80,7 +81,7 @@ export default function LeagueManager() {
   const [routes, setRoutes] = useState<Route[]>([]);
   const [races, setRaces] = useState<Race[]>([]);
   const [availableSegments, setAvailableSegments] = useState<Segment[]>([]);
-  const [leagueSettings, setLeagueSettings] = useState<LeagueSettings>({ finishPoints: [], sprintPoints: [], bestRacesCount: 5 });
+  const [leagueSettings, setLeagueSettings] = useState<LeagueSettings>({ finishPoints: [], sprintPoints: [], leagueRankPoints: [], bestRacesCount: 5 });
   
   // Tabs
   const [activeTab, setActiveTab] = useState<'races' | 'settings' | 'testing'>('races');
@@ -123,13 +124,14 @@ export default function LeagueManager() {
   // Settings Form State
   const [finishPointsStr, setFinishPointsStr] = useState('');
   const [sprintPointsStr, setSprintPointsStr] = useState('');
+  const [leagueRankPointsStr, setLeagueRankPointsStr] = useState('');
   const [bestRacesCount, setBestRacesCount] = useState(5);
   
   // Generator State
   const [genStart, setGenStart] = useState(130);
   const [genEnd, setGenEnd] = useState(1);
   const [genStep, setGenStep] = useState(1);
-  const [genTarget, setGenTarget] = useState<'finish' | 'sprint'>('finish');
+  const [genTarget, setGenTarget] = useState<'finish' | 'sprint' | 'league'>('finish');
 
   const [status, setStatus] = useState<'idle' | 'loading' | 'saving' | 'seeding' | 'refreshing'>('idle');
   const [error, setError] = useState('');
@@ -175,10 +177,12 @@ export default function LeagueManager() {
                 setLeagueSettings({
                     finishPoints: settings.finishPoints || [],
                     sprintPoints: settings.sprintPoints || [],
+                    leagueRankPoints: settings.leagueRankPoints || [],
                     bestRacesCount: settings.bestRacesCount || 5
                 });
                 setFinishPointsStr((settings.finishPoints || []).join(', '));
                 setSprintPointsStr((settings.sprintPoints || []).join(', '));
+                setLeagueRankPointsStr((settings.leagueRankPoints || []).join(', '));
                 setBestRacesCount(settings.bestRacesCount || 5);
             }
 
@@ -354,8 +358,10 @@ export default function LeagueManager() {
       const str = points.join(', ');
       if (genTarget === 'finish') {
           setFinishPointsStr(str);
-      } else {
+      } else if (genTarget === 'sprint') {
           setSprintPointsStr(str);
+      } else {
+          setLeagueRankPointsStr(str);
       }
   };
 
@@ -370,6 +376,7 @@ export default function LeagueManager() {
           
           const finishPoints = finishPointsStr.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
           const sprintPoints = sprintPointsStr.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+          const leagueRankPoints = leagueRankPointsStr.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
           
           const res = await fetch(`${apiUrl}/league/settings`, {
               method: 'POST',
@@ -377,12 +384,12 @@ export default function LeagueManager() {
                   'Content-Type': 'application/json',
                   'Authorization': `Bearer ${token}`
               },
-              body: JSON.stringify({ finishPoints, sprintPoints, bestRacesCount })
+              body: JSON.stringify({ finishPoints, sprintPoints, leagueRankPoints, bestRacesCount })
           });
           
           if (res.ok) {
               alert('Settings saved!');
-              setLeagueSettings({ finishPoints, sprintPoints, bestRacesCount });
+              setLeagueSettings({ finishPoints, sprintPoints, leagueRankPoints, bestRacesCount });
           } else {
               alert('Failed to save settings');
           }
@@ -875,6 +882,16 @@ export default function LeagueManager() {
                             />
                         </div>
                         <div>
+                            <label className="block font-medium text-card-foreground mb-2">League Rank Points (Optional)</label>
+                            <p className="text-xs text-muted-foreground mb-2">If set, league points are awarded based on rank in the race (Finish + Sprint points). Leave empty to use raw points sum.</p>
+                            <textarea 
+                                value={leagueRankPointsStr}
+                                onChange={e => setLeagueRankPointsStr(e.target.value)}
+                                className="w-full p-3 border border-input rounded-lg bg-background text-foreground h-24 font-mono text-sm"
+                                placeholder="e.g. 50, 48, 46, 44..."
+                            />
+                        </div>
+                        <div>
                             <label className="block font-medium text-card-foreground mb-2">Number of Counting Races</label>
                             <p className="text-xs text-muted-foreground mb-2">How many best results count towards the final league standing.</p>
                             <input 
@@ -916,6 +933,13 @@ export default function LeagueManager() {
                                 className={`flex-1 py-1 px-2 text-sm rounded border ${genTarget === 'sprint' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-input'}`}
                             >
                                 Sprint
+                            </button>
+                            <button 
+                                type="button"
+                                onClick={() => setGenTarget('league')}
+                                className={`flex-1 py-1 px-2 text-sm rounded border ${genTarget === 'league' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-input'}`}
+                            >
+                                League
                             </button>
                         </div>
                     </div>
