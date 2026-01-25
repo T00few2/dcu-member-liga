@@ -39,6 +39,7 @@ export default function LiveLinksPage() {
         lastSprint: false,
         full: false,
         includeBanner: false,
+        fitToScreen: false,
         lastSplit: false,
         showCheckboxes: false, // Helper to toggle advanced options visibility
         // Calculation Settings
@@ -157,6 +158,7 @@ export default function LiveLinksPage() {
         if (config.lastSprint) params.set('lastSprint', 'true');
         if (config.full) params.set('full', 'true');
         if (!config.includeBanner) params.set('banner', 'false');
+        if (config.fitToScreen) params.set('fit', 'true');
         if (config.lastSplit) params.set('lastSplit', 'true');
 
         return `${baseUrl}?${params.toString()}`;
@@ -290,15 +292,26 @@ export default function LiveLinksPage() {
                             <span className="text-slate-300">Full-Screen Layout</span>
                         </label>
                         {config.full && (
-                            <label className="flex items-center space-x-3 cursor-pointer">
-                                <input 
-                                    type="checkbox" 
-                                    checked={config.includeBanner}
-                                    onChange={(e) => updateConfig('includeBanner', e.target.checked)}
-                                    className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
-                                />
-                                <span className="text-slate-300">Include Banner (Full-Screen)</span>
-                            </label>
+                            <>
+                                <label className="flex items-center space-x-3 cursor-pointer">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={config.includeBanner}
+                                        onChange={(e) => updateConfig('includeBanner', e.target.checked)}
+                                        className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
+                                    />
+                                    <span className="text-slate-300">Include Banner (Full-Screen)</span>
+                                </label>
+                                <label className="flex items-center space-x-3 cursor-pointer">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={config.fitToScreen}
+                                        onChange={(e) => updateConfig('fitToScreen', e.target.checked)}
+                                        className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
+                                    />
+                                    <span className="text-slate-300">Fit All Riders to Screen</span>
+                                </label>
+                            </>
                         )}
 
                         {config.view === 'race' && (

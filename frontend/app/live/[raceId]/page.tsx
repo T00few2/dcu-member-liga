@@ -90,6 +90,7 @@ export default function LiveResultsPage() {
     const showSprints = searchParams.get('sprints') !== 'false'; // Default true
     const showLastSprint = searchParams.get('lastSprint') === 'true';
     const showLastSplit = searchParams.get('lastSplit') === 'true';
+    const fitToScreen = searchParams.get('fit') === 'true';
     
     // View Mode Configuration
     const viewParam = searchParams.get('view');
@@ -334,9 +335,52 @@ export default function LiveResultsPage() {
     
     const category = displayCategory || 'A';
     const headerTitle = titleParam || race.name || 'Race Results';
-    const headerCellPadding = isFull ? 'py-0' : 'py-1';
-    const bodyCellPadding = isFull ? 'py-0.5' : 'py-2';
-    const tableBodyTextSize = isFull ? 'text-2xl' : 'text-3xl';
+    
+    // Get result count for fit-to-screen calculations
+    const results = race.results?.[category] || [];
+    const resultCount = Math.min(results.length, limit);
+    
+    // Calculate dynamic sizing when fitToScreen is enabled
+    // Approximate available height: viewport minus header (~120px) and some padding
+    // Each row needs: padding + text height
+    const getFitToScreenStyles = () => {
+        if (!fitToScreen || !isFull || resultCount === 0) {
+            return {
+                headerPadding: isFull ? 'py-0' : 'py-1',
+                bodyPadding: isFull ? 'py-0.5' : 'py-2',
+                textSize: isFull ? 'text-2xl' : 'text-3xl',
+                rowStyle: {}
+            };
+        }
+        
+        // Calculate based on number of rows to display
+        // Available height is roughly: 100vh - header(~100px) - table header(~40px)
+        // We want all rows to fit, so divide available space by row count
+        const availableHeight = 100; // vh units
+        const headerOffset = 15; // vh for header and table header
+        const tableHeight = availableHeight - headerOffset;
+        const rowHeight = Math.max(3, Math.min(8, tableHeight / resultCount)); // vh per row, min 3vh, max 8vh
+        
+        // Scale text size based on row height
+        // 17 riders at 85vh gives ~5vh per row, should use text-2xl (medium)
+        let textSize = 'text-2xl';
+        if (rowHeight < 3.5) textSize = 'text-base';
+        else if (rowHeight < 4.5) textSize = 'text-lg';
+        else if (rowHeight < 5) textSize = 'text-xl';
+        
+        return {
+            headerPadding: 'py-0',
+            bodyPadding: '', // Will use inline style instead
+            textSize,
+            rowStyle: { height: `${rowHeight}vh` }
+        };
+    };
+    
+    const fitStyles = getFitToScreenStyles();
+    const headerCellPadding = fitStyles.headerPadding;
+    const bodyCellPadding = fitStyles.bodyPadding;
+    const tableBodyTextSize = fitStyles.textSize;
+    const fitRowStyle = fitStyles.rowStyle;
 
     const formatTimeValue = (ms: number) => {
         const safeMs = Math.max(0, ms);
@@ -500,26 +544,27 @@ export default function LiveResultsPage() {
                         <tr 
                             key={rider.zwiftId} 
                             className="border-b border-slate-700/50 even:bg-slate-800/40"
+                            style={fitRowStyle}
                         >
-                            <td className={`${bodyCellPadding} px-2 text-center font-bold text-slate-300`}>
+                            <td className={`${bodyCellPadding} px-2 text-center font-bold text-slate-300 align-middle`}>
                                 {idx + 1}
                             </td>
-                            <td className={`${bodyCellPadding} px-2 truncate`}>
+                            <td className={`${bodyCellPadding} px-2 truncate align-middle`}>
                                 {rider.name}
                             </td>
                             {sprintColumns.length > 0 ? (
                                 <>
                                     {sprintColumns.map(key => (
-                                        <td key={key} className={`${bodyCellPadding} px-2 text-center font-extrabold text-blue-400`}>
+                                        <td key={key} className={`${bodyCellPadding} px-2 text-center font-extrabold text-blue-400 align-middle`}>
                                             {rider.sprintDetails?.[key] ?? '-'}
                                         </td>
                                     ))}
-                                    <td className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-300`}>
+                                    <td className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-300 align-middle`}>
                                         {rider.totalPoints ?? 0}
                                     </td>
                                 </>
                             ) : (
-                                <td className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-400`}>
+                                <td className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-400 align-middle`}>
                                     {rider.totalPoints}
                                 </td>
                             )}
@@ -570,14 +615,15 @@ export default function LiveResultsPage() {
                         <tr 
                             key={rider.zwiftId} 
                             className="border-b border-slate-700/50 even:bg-slate-800/40"
+                            style={fitRowStyle}
                         >
-                            <td className={`${bodyCellPadding} px-2 text-center font-bold text-slate-300`}>
+                            <td className={`${bodyCellPadding} px-2 text-center font-bold text-slate-300 align-middle`}>
                                 {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
                             </td>
-                            <td className={`${bodyCellPadding} px-2 truncate`}>
+                            <td className={`${bodyCellPadding} px-2 truncate align-middle`}>
                                 {rider.name}
                             </td>
-                            <td className={`${bodyCellPadding} px-2 text-right font-extrabold text-green-400`}>
+                            <td className={`${bodyCellPadding} px-2 text-right font-extrabold text-green-400 align-middle`}>
                                 {rider.calculatedTotal}
                             </td>
                         </tr>
@@ -774,11 +820,12 @@ export default function LiveResultsPage() {
                             <tr
                                 key={rider.zwiftId}
                                 className="border-b border-slate-700/50 even:bg-slate-800/40"
+                                style={fitRowStyle}
                             >
-                                <td className={`${bodyCellPadding} px-2 text-center font-bold text-slate-300`}>
+                                <td className={`${bodyCellPadding} px-2 text-center font-bold text-slate-300 align-middle`}>
                                     {idx + 1}
                                 </td>
-                                <td className={`${bodyCellPadding} px-2 truncate`}>
+                                <td className={`${bodyCellPadding} px-2 truncate align-middle`}>
                                     {rider.name}
                                 </td>
                                 {splitColumns.map(col => {
@@ -786,13 +833,13 @@ export default function LiveResultsPage() {
                                     const minTime = minWorldTimes.get(col.keys[0]);
                                     const delta = (worldTime !== null && minTime !== undefined) ? (worldTime - minTime) : null;
                                     return (
-                                        <td key={col.keys[0]} className={`${bodyCellPadding} px-2 text-center font-extrabold text-blue-300`}>
+                                        <td key={col.keys[0]} className={`${bodyCellPadding} px-2 text-center font-extrabold text-blue-300 align-middle`}>
                                             {delta === null ? '-' : formatDelta(delta)}
                                         </td>
                                     );
                                 })}
                                 {hasAnyFinisher && (
-                                    <td className={`${bodyCellPadding} px-2 text-center font-extrabold ${isWinner ? 'text-green-300' : 'text-green-400/80'}`}>
+                                    <td className={`${bodyCellPadding} px-2 text-center font-extrabold align-middle ${isWinner ? 'text-green-300' : 'text-green-400/80'}`}>
                                         {formatFinishTimeOrDelta(rider.finishTime, isWinner)}
                                     </td>
                                 )}
