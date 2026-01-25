@@ -386,11 +386,13 @@ def dcu_api(request):
             # Validate schemes are lists of numbers
             finish_points = data.get('finishPoints', [])
             sprint_points = data.get('sprintPoints', [])
+            league_rank_points = data.get('leagueRankPoints', [])
             best_races_count = data.get('bestRacesCount', 5)
             
             db.collection('league').document('settings').set({
                 'finishPoints': finish_points,
                 'sprintPoints': sprint_points,
+                'leagueRankPoints': league_rank_points,
                 'bestRacesCount': best_races_count,
                 'updatedAt': firestore.SERVER_TIMESTAMP
             }, merge=True)
