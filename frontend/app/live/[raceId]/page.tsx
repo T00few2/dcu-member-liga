@@ -93,6 +93,8 @@ export default function LiveResultsPage() {
     const showLastSprint = searchParams.get('lastSprint') === 'true';
     const showLastSplit = searchParams.get('lastSplit') === 'true';
     const fitToScreen = searchParams.get('fit') === 'true';
+    const nameMaxParam = searchParams.get('nameMax');
+    const nameMax = nameMaxParam ? parseInt(nameMaxParam) : NaN;
     
     // View Mode Configuration
     const viewParam = searchParams.get('view');
@@ -116,6 +118,17 @@ export default function LiveResultsPage() {
     // Fit-to-screen refs and state
     const tableWrapperRef = useRef<HTMLDivElement>(null);
     const [fitScale, setFitScale] = useState(1);
+
+    const shortenRiderName = (name: string) => {
+        if (!name) return '';
+        if (!Number.isFinite(nameMax) || nameMax <= 0) {
+            return name;
+        }
+        if (name.length <= nameMax) {
+            return name;
+        }
+        return `${name.slice(0, Math.max(1, nameMax - 3)).trimEnd()}...`;
+    };
 
     // 1. Fetch Race Data (Real-time)
     useEffect(() => {
@@ -584,7 +597,7 @@ export default function LiveResultsPage() {
                                 {idx + 1}
                             </td>
                             <td className={`${bodyCellPadding} px-2 truncate align-middle`}>
-                                {rider.name}
+                                {shortenRiderName(rider.name)}
                             </td>
                             {sprintColumns.length > 0 ? (
                                 <>
@@ -694,7 +707,7 @@ export default function LiveResultsPage() {
                                 {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
                             </td>
                             <td className={`${bodyCellPadding} px-2 truncate align-middle`}>
-                                {rider.name}
+                                {shortenRiderName(rider.name)}
                             </td>
                             {relevantRaces.map(race => {
                                 const raceResult = rider.pointsByRace[race.id];
@@ -913,7 +926,7 @@ export default function LiveResultsPage() {
                                     {idx + 1}
                                 </td>
                                 <td className={`${bodyCellPadding} px-2 truncate align-middle`}>
-                                    {rider.name}
+                                    {shortenRiderName(rider.name)}
                                 </td>
                                 {splitColumns.map(col => {
                                     const worldTime = getWorldTimeForColumn(rider, col.keys);

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, query, doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 
@@ -19,6 +19,9 @@ interface Race {
         category: string;
     }[];
     results?: Record<string, any[]>;
+    manualDQs?: string[];
+    manualDeclassifications?: string[];
+    manualExclusions?: string[];
 }
 
 export default function LiveLinksPage() {
@@ -27,6 +30,7 @@ export default function LiveLinksPage() {
     const [loading, setLoading] = useState(true);
     const [allCategories, setAllCategories] = useState<string[]>([]);
     const [processingKey, setProcessingKey] = useState<string | null>(null);
+    const [viewingResultsId, setViewingResultsId] = useState<string | null>(null);
 
     // Configuration State
     const [config, setConfig] = useState({
@@ -204,6 +208,111 @@ export default function LiveLinksPage() {
             alert('Error updating results');
         } finally {
             setProcessingKey(null);
+        }
+    };
+
+    const updateRaceFlagsLocally = (raceId: string, updater: (race: Race) => Race) => {
+        setRaces(prev => prev.map(r => (r.id === raceId ? updater(r) : r)));
+    };
+
+    const toggleValue = (values: string[] | undefined, zwiftId: string, isCurrentlySet: boolean) => {
+        const list = values ? [...values] : [];
+        if (isCurrentlySet) {
+            return list.filter(v => v !== zwiftId);
+        }
+        if (!list.includes(zwiftId)) {
+            list.push(zwiftId);
+        }
+        return list;
+    };
+
+    const handleToggleDQ = async (raceId: string, zwiftId: string, isCurrentlyDQ: boolean) => {
+        if (!user) {
+            alert('Please log in to update results.');
+            return;
+        }
+        try {
+            const raceRef = doc(db, 'races', raceId);
+            if (isCurrentlyDQ) {
+                await updateDoc(raceRef, {
+                    manualDQs: arrayRemove(zwiftId)
+                });
+            } else {
+                await updateDoc(raceRef, {
+                    manualDQs: arrayUnion(zwiftId),
+                    manualDeclassifications: arrayRemove(zwiftId),
+                    manualExclusions: arrayRemove(zwiftId)
+                });
+            }
+            updateRaceFlagsLocally(raceId, (race) => ({
+                ...race,
+                manualDQs: toggleValue(race.manualDQs, zwiftId, isCurrentlyDQ),
+                manualDeclassifications: toggleValue(race.manualDeclassifications, zwiftId, true),
+                manualExclusions: toggleValue(race.manualExclusions, zwiftId, true)
+            }));
+        } catch (e) {
+            console.error("Error updating DQ status:", e);
+            alert("Failed to update DQ status");
+        }
+    };
+
+    const handleToggleDeclass = async (raceId: string, zwiftId: string, isCurrentlyDeclass: boolean) => {
+        if (!user) {
+            alert('Please log in to update results.');
+            return;
+        }
+        try {
+            const raceRef = doc(db, 'races', raceId);
+            if (isCurrentlyDeclass) {
+                await updateDoc(raceRef, {
+                    manualDeclassifications: arrayRemove(zwiftId)
+                });
+            } else {
+                await updateDoc(raceRef, {
+                    manualDeclassifications: arrayUnion(zwiftId),
+                    manualDQs: arrayRemove(zwiftId),
+                    manualExclusions: arrayRemove(zwiftId)
+                });
+            }
+            updateRaceFlagsLocally(raceId, (race) => ({
+                ...race,
+                manualDeclassifications: toggleValue(race.manualDeclassifications, zwiftId, isCurrentlyDeclass),
+                manualDQs: toggleValue(race.manualDQs, zwiftId, true),
+                manualExclusions: toggleValue(race.manualExclusions, zwiftId, true)
+            }));
+        } catch (e) {
+            console.error("Error updating Declass status:", e);
+            alert("Failed to update Declass status");
+        }
+    };
+
+    const handleToggleExclude = async (raceId: string, zwiftId: string, isCurrentlyExcluded: boolean) => {
+        if (!user) {
+            alert('Please log in to update results.');
+            return;
+        }
+        try {
+            const raceRef = doc(db, 'races', raceId);
+            if (isCurrentlyExcluded) {
+                await updateDoc(raceRef, {
+                    manualExclusions: arrayRemove(zwiftId)
+                });
+            } else {
+                await updateDoc(raceRef, {
+                    manualExclusions: arrayUnion(zwiftId),
+                    manualDQs: arrayRemove(zwiftId),
+                    manualDeclassifications: arrayRemove(zwiftId)
+                });
+            }
+            updateRaceFlagsLocally(raceId, (race) => ({
+                ...race,
+                manualExclusions: toggleValue(race.manualExclusions, zwiftId, isCurrentlyExcluded),
+                manualDQs: toggleValue(race.manualDQs, zwiftId, true),
+                manualDeclassifications: toggleValue(race.manualDeclassifications, zwiftId, true)
+            }));
+        } catch (e) {
+            console.error("Error updating exclusion status:", e);
+            alert("Failed to update exclusion status");
         }
     };
 
@@ -424,17 +533,25 @@ export default function LiveLinksPage() {
                                             {new Date(race.date).toLocaleDateString()}
                                         </div>
                                         {user && (
-                                            <button 
-                                                onClick={() => handleRefresh(race.id, 'All')}
-                                                disabled={!!processingKey}
-                                                className={`mt-2 px-2 py-1 text-[10px] uppercase font-bold rounded border transition-colors ${
-                                                    processingKey === `${race.id}-All` 
-                                                        ? 'bg-slate-700 text-slate-400 border-slate-600 cursor-not-allowed' 
-                                                        : 'bg-slate-800 text-green-500 border-green-900/50 hover:bg-green-900/20 hover:border-green-800'
-                                                }`}
-                                            >
-                                                {processingKey === `${race.id}-All` ? 'Calc...' : 'Calc All'}
-                                            </button>
+                                            <div className="mt-2 flex items-center gap-2">
+                                                <button 
+                                                    onClick={() => handleRefresh(race.id, 'All')}
+                                                    disabled={!!processingKey}
+                                                    className={`px-2 py-1 text-[10px] uppercase font-bold rounded border transition-colors ${
+                                                        processingKey === `${race.id}-All` 
+                                                            ? 'bg-slate-700 text-slate-400 border-slate-600 cursor-not-allowed' 
+                                                            : 'bg-slate-800 text-green-500 border-green-900/50 hover:bg-green-900/20 hover:border-green-800'
+                                                    }`}
+                                                >
+                                                    {processingKey === `${race.id}-All` ? 'Calc...' : 'Calc All'}
+                                                </button>
+                                                <button
+                                                    onClick={() => setViewingResultsId(race.id)}
+                                                    className="px-2 py-1 text-[10px] uppercase font-bold rounded border border-slate-700 text-slate-300 hover:text-white hover:border-slate-500"
+                                                >
+                                                    View
+                                                </button>
+                                            </div>
                                         )}
                                     </td>
                                     {allCategories.map(cat => {
@@ -488,6 +605,154 @@ export default function LiveLinksPage() {
             <div className="mt-8 text-slate-500 text-sm text-center">
                 Click "Open" to view the live board in a new tab, or "Copy Link" to paste into OBS/Streaming software.
             </div>
+
+            {/* Results Modal */}
+            {viewingResultsId && (() => {
+                const race = races.find(r => r.id === viewingResultsId);
+                const results = race?.results || {};
+                const categories = Object.keys(results).sort();
+
+                return (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                        <div className="bg-slate-900 w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-lg shadow-2xl border border-slate-700 flex flex-col">
+                            <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-800">
+                                <div className="flex items-center gap-4">
+                                    <h3 className="text-lg font-bold text-slate-100">
+                                        Results: {race?.name || viewingResultsId}
+                                    </h3>
+                                    <button 
+                                        onClick={() => race && handleRefresh(race.id, 'All')}
+                                        disabled={!!processingKey}
+                                        className="text-xs bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-500 font-medium"
+                                    >
+                                        {processingKey === `${race?.id}-All` ? 'Calculating...' : 'Recalculate Results'}
+                                    </button>
+                                </div>
+                                <button 
+                                    onClick={() => setViewingResultsId(null)}
+                                    className="text-slate-400 hover:text-slate-100 p-1"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                            <div className="overflow-y-auto p-4 space-y-6">
+                                {(race?.manualExclusions || []).length > 0 && (
+                                    <div className="border border-slate-700 rounded-lg p-3 bg-slate-800/40 text-xs">
+                                        <div className="font-semibold text-slate-400 mb-2">Excluded Riders</div>
+                                        <div className="flex flex-wrap gap-2">
+                                            {(race?.manualExclusions || []).map((zid: string) => (
+                                                <button
+                                                    key={zid}
+                                                    onClick={() => race && handleToggleExclude(race.id, zid, true)}
+                                                    className="px-2 py-1 rounded border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-400"
+                                                    title="Remove exclusion"
+                                                >
+                                                    {zid} ×
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                                {categories.length === 0 ? (
+                                    <div className="text-center text-slate-400 p-8">No results calculated yet.</div>
+                                ) : (
+                                    categories.map(cat => (
+                                        <div key={cat} className="border border-slate-700 rounded-lg overflow-hidden">
+                                            <div className="bg-slate-800 px-4 py-2 font-semibold text-sm border-b border-slate-700">
+                                                {cat}
+                                            </div>
+                                            <table className="w-full text-left text-sm">
+                                                <thead className="bg-slate-800/50 text-xs text-slate-400">
+                                                    <tr>
+                                                        <th className="px-4 py-2 w-12">Pos</th>
+                                                        <th className="px-4 py-2">Rider</th>
+                                                        <th className="px-4 py-2 text-right">Time</th>
+                                                        <th className="px-4 py-2 text-right">Pts</th>
+                                                        <th className="px-4 py-2 text-center w-12" title="Disqualify (0 pts)">DQ</th>
+                                                        <th className="px-4 py-2 text-center w-12" title="Declassify (Last place pts)">DC</th>
+                                                        <th className="px-4 py-2 text-center w-12" title="Exclude from results">EX</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-800">
+                                                    {results[cat].map((rider: any, idx: number) => {
+                                                        const isManualDQ = (race?.manualDQs || []).includes(rider.zwiftId);
+                                                        const isManualDeclass = (race?.manualDeclassifications || []).includes(rider.zwiftId);
+                                                        const isManualExcluded = (race?.manualExclusions || []).includes(rider.zwiftId);
+
+                                                        return (
+                                                            <tr key={rider.zwiftId} className={`hover:bg-slate-800/50 ${isManualExcluded ? 'bg-slate-800/30' : isManualDQ ? 'bg-red-950/30' : isManualDeclass ? 'bg-yellow-950/20' : ''}`}>
+                                                                <td className="px-4 py-2 text-slate-400">{isManualExcluded ? '×' : isManualDQ ? '-' : isManualDeclass ? '*' : idx + 1}</td>
+                                                                <td className="px-4 py-2 font-medium">
+                                                                    {rider.name}
+                                                                    {isManualExcluded && (
+                                                                        <div className="text-[10px] text-slate-400 font-bold mt-0.5">
+                                                                            EXCLUDED
+                                                                        </div>
+                                                                    )}
+                                                                    {isManualDQ && (
+                                                                        <div className="text-[10px] text-red-500 font-bold mt-0.5">
+                                                                            DISQUALIFIED
+                                                                        </div>
+                                                                    )}
+                                                                    {isManualDeclass && (
+                                                                        <div className="text-[10px] text-yellow-500 font-bold mt-0.5">
+                                                                            DECLASSIFIED
+                                                                        </div>
+                                                                    )}
+                                                                </td>
+                                                                <td className="px-4 py-2 text-right font-mono text-slate-400">
+                                                                    {rider.finishTime > 0 ? new Date(rider.finishTime).toISOString().substr(11, 8) : '-'}
+                                                                </td>
+                                                                <td className="px-4 py-2 text-right font-bold text-blue-400">
+                                                                    {rider.totalPoints}
+                                                                    {(isManualExcluded || (isManualDQ && rider.totalPoints > 0) || (isManualDeclass && rider.totalPoints === 0)) ? (
+                                                                        <span className="text-[10px] text-red-500 block" title="Recalculation needed">
+                                                                            (Recalc)
+                                                                        </span>
+                                                                    ) : null}
+                                                                </td>
+                                                                <td className="px-4 py-2 text-center">
+                                                                    <input 
+                                                                        type="checkbox"
+                                                                        checked={isManualDQ}
+                                                                        onChange={() => race && handleToggleDQ(race.id, rider.zwiftId, isManualDQ)}
+                                                                        disabled={isManualDeclass || isManualExcluded}
+                                                                        title={isManualExcluded ? "Excluded from results" : isManualDeclass ? "Uncheck Declassify first" : "Disqualify"}
+                                                                        className="w-4 h-4 rounded border-slate-700 text-blue-500 focus:ring-blue-500 cursor-pointer disabled:opacity-30"
+                                                                    />
+                                                                </td>
+                                                                <td className="px-4 py-2 text-center">
+                                                                    <input 
+                                                                        type="checkbox"
+                                                                        checked={isManualDeclass}
+                                                                        onChange={() => race && handleToggleDeclass(race.id, rider.zwiftId, isManualDeclass)}
+                                                                        disabled={isManualDQ || isManualExcluded}
+                                                                        title={isManualExcluded ? "Excluded from results" : isManualDQ ? "Uncheck DQ first" : "Declassify"}
+                                                                        className="w-4 h-4 rounded border-slate-700 text-yellow-500 focus:ring-yellow-500 cursor-pointer disabled:opacity-30"
+                                                                    />
+                                                                </td>
+                                                                <td className="px-4 py-2 text-center">
+                                                                    <input 
+                                                                        type="checkbox"
+                                                                        checked={isManualExcluded}
+                                                                        onChange={() => race && handleToggleExclude(race.id, rider.zwiftId, isManualExcluded)}
+                                                                        title={isManualExcluded ? "Include in results" : "Exclude from results"}
+                                                                        className="w-4 h-4 rounded border-slate-700 text-slate-400 focus:ring-slate-500 cursor-pointer"
+                                                                    />
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
         </div>
     );
 }
