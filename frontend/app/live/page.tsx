@@ -48,7 +48,8 @@ export default function LiveLinksPage() {
         showCheckboxes: false, // Helper to toggle advanced options visibility
         // Calculation Settings
         source: 'joined', // 'finishers' | 'joined' | 'signed_up'
-        filterRegistered: false
+        filterRegistered: false,
+        nameMax: ''
     });
 
     useEffect(() => {
@@ -164,6 +165,7 @@ export default function LiveLinksPage() {
         if (!config.includeBanner) params.set('banner', 'false');
         if (config.fitToScreen) params.set('fit', 'true');
         if (config.lastSplit) params.set('lastSplit', 'true');
+        if (config.nameMax.trim()) params.set('nameMax', config.nameMax.trim());
 
         return `${baseUrl}?${params.toString()}`;
     };
@@ -335,6 +337,17 @@ export default function LiveLinksPage() {
                                 type="number" 
                                 value={config.limit}
                                 onChange={(e) => updateConfig('limit', parseInt(e.target.value) || 10)}
+                                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-400 mb-1">Name Max Length (optional)</label>
+                            <input 
+                                type="number" 
+                                min={1}
+                                value={config.nameMax}
+                                onChange={(e) => updateConfig('nameMax', e.target.value)}
+                                placeholder="Full name"
                                 className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
                             />
                         </div>
