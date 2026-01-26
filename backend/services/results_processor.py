@@ -37,6 +37,7 @@ class ResultsProcessor:
         event_config = race_data.get('eventConfiguration', [])
         manual_dqs = set(str(dq) for dq in race_data.get('manualDQs', [])) # Ensure strings
         manual_declassifications = set(str(dq) for dq in race_data.get('manualDeclassifications', [])) # Ensure strings
+        manual_exclusions = set(str(ex) for ex in race_data.get('manualExclusions', [])) # Ensure strings
         
         # Get per-category configs for single mode (new feature)
         single_mode_categories = race_data.get('singleModeCategories', [])
@@ -124,7 +125,8 @@ class ResultsProcessor:
                 filter_registered,
                 category_filter,
                 manual_dqs,
-                manual_declassifications
+                manual_declassifications,
+                manual_exclusions
             )
 
         # 6. Save Results to Firestore
@@ -197,6 +199,7 @@ class ResultsProcessor:
         # 3. Get DQs and Declassifications
         manual_dqs = set(str(dq) for dq in race_data.get('manualDQs', []))
         manual_declassifications = set(str(dq) for dq in race_data.get('manualDeclassifications', []))
+        manual_exclusions = set(str(ex) for ex in race_data.get('manualExclusions', []))
         
         # 4. Process Each Category
         updated_results = {}
@@ -211,6 +214,8 @@ class ResultsProcessor:
             
             for rider in riders:
                 zid = str(rider.get('zwiftId', ''))
+                if zid in manual_exclusions:
+                    continue
                 if zid in manual_dqs:
                     dq_riders.append(rider)
                 elif zid in manual_declassifications:
@@ -387,7 +392,8 @@ class ResultsProcessor:
 
     def _process_event_source(self, source, race_data, registered_riders, 
                               finish_points_scheme, sprint_points_scheme, 
-                              all_results, fetch_mode, filter_registered, category_filter, manual_dqs, manual_declassifications):
+                              all_results, fetch_mode, filter_registered, category_filter, manual_dqs, manual_declassifications,
+                              manual_exclusions):
         
         event_id = source['id']
         event_secret = source['secret']
@@ -453,6 +459,8 @@ class ResultsProcessor:
             finishers = self._fetch_finishers(
                 subgroup_id, event_secret, fetch_mode, filter_registered, registered_riders
             )
+            if manual_exclusions:
+                finishers = [f for f in finishers if str(f.get('zwiftId')) not in manual_exclusions]
             
             # Determine sprints and segment type for this category
             # Use per-category config if available (single mode with category configs)
@@ -816,6 +824,7 @@ class ResultsProcessor:
             results = race_data.get('results', {}) # { 'A': [...], 'B': [...] }
             manual_dqs = set(str(dq) for dq in race_data.get('manualDQs', [])) # Get DQs for this race (Ensure Strings)
             manual_declassifications = set(str(dq) for dq in race_data.get('manualDeclassifications', []))
+            manual_exclusions = set(str(ex) for ex in race_data.get('manualExclusions', []))
 
             if not results:
                 continue
@@ -840,7 +849,9 @@ class ResultsProcessor:
                     # Declassified riders will be handled separately (forced to last place points)
                     ranking_candidates = [
                         r for r in riders 
-                        if str(r['zwiftId']) not in manual_dqs and str(r['zwiftId']) not in manual_declassifications
+                        if str(r['zwiftId']) not in manual_dqs
+                        and str(r['zwiftId']) not in manual_declassifications
+                        and str(r['zwiftId']) not in manual_exclusions
                     ]
                     
                     # 2. Sort by Raw Total Points (Descending), then by Finish Rank (Ascending) as tie breaker
@@ -858,6 +869,8 @@ class ResultsProcessor:
 
                 for rider in riders:
                     zid = str(rider['zwiftId'])
+                    if zid in manual_exclusions:
+                        continue
                     
                     # If rider is DQ'd in this race, they get 0 points regardless of what the results say (double safety)
                     if zid in manual_dqs:

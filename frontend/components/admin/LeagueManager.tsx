@@ -65,6 +65,7 @@ interface Race {
   results?: Record<string, any[]>; // Store results by category
   manualDQs?: string[]; // Manually Disqualified Zwift IDs
   manualDeclassifications?: string[]; // Manually Declassified Zwift IDs
+  manualExclusions?: string[]; // Completely exclude riders from results
 }
 
 interface LeagueSettings {
@@ -827,6 +828,26 @@ export default function LeagueManager() {
       } catch (e) {
           console.error("Error updating Declass status:", e);
           alert("Failed to update Declass status");
+      }
+  };
+
+  const handleToggleExclude = async (raceId: string, zwiftId: string, isCurrentlyExcluded: boolean) => {
+      try {
+          const raceRef = doc(db, 'races', raceId);
+          if (isCurrentlyExcluded) {
+              await updateDoc(raceRef, {
+                  manualExclusions: arrayRemove(zwiftId)
+              });
+          } else {
+              await updateDoc(raceRef, {
+                  manualExclusions: arrayUnion(zwiftId),
+                  manualDQs: arrayRemove(zwiftId),
+                  manualDeclassifications: arrayRemove(zwiftId)
+              });
+          }
+      } catch (e) {
+          console.error("Error updating exclusion status:", e);
+          alert("Failed to update exclusion status");
       }
   };
 
@@ -1723,7 +1744,26 @@ export default function LeagueManager() {
                                   return <div className="text-center text-muted-foreground p-8">No results calculated yet.</div>;
                               }
 
-                              return categories.map(cat => (
+                              return (
+                                  <>
+                                      {(race?.manualExclusions || []).length > 0 && (
+                                          <div className="border border-border rounded-lg p-3 bg-muted/20 text-xs">
+                                              <div className="font-semibold text-muted-foreground mb-2">Excluded Riders</div>
+                                              <div className="flex flex-wrap gap-2">
+                                                  {(race?.manualExclusions || []).map((zid: string) => (
+                                                      <button
+                                                          key={zid}
+                                                          onClick={() => race && handleToggleExclude(race.id, zid, true)}
+                                                          className="px-2 py-1 rounded border border-border bg-background hover:bg-muted/50 text-muted-foreground"
+                                                          title="Remove exclusion"
+                                                      >
+                                                          {zid} ×
+                                                      </button>
+                                                  ))}
+                                              </div>
+                                          </div>
+                                      )}
+                                      {categories.map(cat => (
                                   <div key={cat} className="border border-border rounded-lg overflow-hidden">
                                       <div className="bg-secondary/50 px-4 py-2 font-semibold text-sm border-b border-border">
                                           {cat}
@@ -1738,6 +1778,7 @@ export default function LeagueManager() {
                                                   <th className="px-4 py-2 text-center w-20">Flags</th>
                                                   <th className="px-4 py-2 text-center w-12" title="Disqualify (0 pts)">DQ</th>
                                                   <th className="px-4 py-2 text-center w-12" title="Declassify (Last place pts)">DC</th>
+                                                  <th className="px-4 py-2 text-center w-12" title="Exclude from results">EX</th>
                                               </tr>
                                           </thead>
                                           <tbody className="divide-y divide-border">
@@ -1745,16 +1786,22 @@ export default function LeagueManager() {
                                                   const isFlagged = rider.flaggedCheating || rider.flaggedSandbagging;
                                                   const isManualDQ = (race?.manualDQs || []).includes(rider.zwiftId);
                                                   const isManualDeclass = (race?.manualDeclassifications || []).includes(rider.zwiftId);
+                                                  const isManualExcluded = (race?.manualExclusions || []).includes(rider.zwiftId);
                                                   
                                                   return (
-                                                      <tr key={rider.zwiftId} className={`hover:bg-muted/10 ${isFlagged || isManualDQ ? 'bg-red-50 dark:bg-red-950/20' : isManualDeclass ? 'bg-yellow-50 dark:bg-yellow-950/20' : ''}`}>
-                                                          <td className="px-4 py-2 text-muted-foreground">{isManualDQ ? '-' : isManualDeclass ? '*' : idx + 1}</td>
+                                                      <tr key={rider.zwiftId} className={`hover:bg-muted/10 ${isManualExcluded ? 'bg-slate-50 dark:bg-slate-900/30' : isFlagged || isManualDQ ? 'bg-red-50 dark:bg-red-950/20' : isManualDeclass ? 'bg-yellow-50 dark:bg-yellow-950/20' : ''}`}>
+                                                          <td className="px-4 py-2 text-muted-foreground">{isManualExcluded ? '×' : isManualDQ ? '-' : isManualDeclass ? '*' : idx + 1}</td>
                                                           <td className="px-4 py-2 font-medium">
                                                               {rider.name}
                                                               {isFlagged && (
                                                                   <div className="text-[10px] text-red-600 font-bold mt-0.5">
                                                                       {rider.flaggedCheating ? 'CHEATING ' : ''}
                                                                       {rider.flaggedSandbagging ? 'SANDBAGGING' : ''}
+                                                                  </div>
+                                                              )}
+                                                              {isManualExcluded && (
+                                                                  <div className="text-[10px] text-slate-600 font-bold mt-0.5">
+                                                                      EXCLUDED
                                                                   </div>
                                                               )}
                                                               {isManualDQ && (
@@ -1773,7 +1820,7 @@ export default function LeagueManager() {
                                                           </td>
                                                           <td className="px-4 py-2 text-right font-bold text-primary">
                                                               {rider.totalPoints}
-                                                              {(isManualDQ && rider.totalPoints > 0) || (isManualDeclass && rider.totalPoints === 0) ? (
+                                                              {(isManualExcluded || (isManualDQ && rider.totalPoints > 0) || (isManualDeclass && rider.totalPoints === 0)) ? (
                                                                   <span className="text-[10px] text-red-500 block" title="Recalculation needed">
                                                                       (Recalc)
                                                                   </span>
@@ -1787,8 +1834,8 @@ export default function LeagueManager() {
                                                                   type="checkbox"
                                                                   checked={isManualDQ}
                                                                   onChange={() => race && handleToggleDQ(race.id, rider.zwiftId, isManualDQ)}
-                                                                  disabled={isManualDeclass}
-                                                                  title={isManualDeclass ? "Uncheck Declassify first" : "Disqualify"}
+                                                                  disabled={isManualDeclass || isManualExcluded}
+                                                                  title={isManualExcluded ? "Excluded from results" : isManualDeclass ? "Uncheck Declassify first" : "Disqualify"}
                                                                   className="w-4 h-4 rounded border-input text-primary focus:ring-primary cursor-pointer disabled:opacity-30"
                                                               />
                                                           </td>
@@ -1797,9 +1844,18 @@ export default function LeagueManager() {
                                                                   type="checkbox"
                                                                   checked={isManualDeclass}
                                                                   onChange={() => race && handleToggleDeclass(race.id, rider.zwiftId, isManualDeclass)}
-                                                                  disabled={isManualDQ}
-                                                                  title={isManualDQ ? "Uncheck DQ first" : "Declassify"}
+                                                                  disabled={isManualDQ || isManualExcluded}
+                                                                  title={isManualExcluded ? "Excluded from results" : isManualDQ ? "Uncheck DQ first" : "Declassify"}
                                                                   className="w-4 h-4 rounded border-input text-yellow-500 focus:ring-yellow-500 cursor-pointer disabled:opacity-30"
+                                                              />
+                                                          </td>
+                                                          <td className="px-4 py-2 text-center">
+                                                              <input 
+                                                                  type="checkbox"
+                                                                  checked={isManualExcluded}
+                                                                  onChange={() => race && handleToggleExclude(race.id, rider.zwiftId, isManualExcluded)}
+                                                                  title={isManualExcluded ? "Include in results" : "Exclude from results"}
+                                                                  className="w-4 h-4 rounded border-input text-slate-600 focus:ring-slate-500 cursor-pointer"
                                                               />
                                                           </td>
                                                       </tr>
@@ -1808,7 +1864,9 @@ export default function LeagueManager() {
                                           </tbody>
                                       </table>
                                   </div>
-                              ));
+                              ))}
+                                  </>
+                              );
                           })()}
                       </div>
                   </div>
