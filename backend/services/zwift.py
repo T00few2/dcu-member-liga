@@ -192,13 +192,22 @@ class ZwiftService:
 
             try:
                 data = self.fetch_json_with_retry(participants_url, headers, params)
-                all_participants.extend(data)
-                print(f"Fetched {len(data)} participants, total so far: {len(all_participants)}.")
+                
+                # Handle potential response wrapping (e.g. {'entries': [...]})
+                if isinstance(data, dict):
+                    entries = data.get('entries', [])
+                elif isinstance(data, list):
+                    entries = data
+                else:
+                    entries = []
+                
+                all_participants.extend(entries)
+                print(f"Fetched {len(entries)} participants, total so far: {len(all_participants)}.")
 
                 # Stop if fewer than limit participants are returned, indicating end of pages
-                if len(data) < limit:
+                if len(entries) < limit:
                     break
-                start += len(data)  # Move to the next page
+                start += len(entries)  # Move to the next page
                 
                 time.sleep(1) # Gentle backoff
             
