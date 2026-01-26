@@ -167,48 +167,93 @@ class ZwiftService:
                 
         return all_results
 
-    def get_event_participants(self, event_sub_id, joined=False, limit=50, event_secret=None):
-        """Fetch all participants for a specific event subgroup, with pagination and JSON retry."""
+    def get_event_participants(
+            self,
+            event_sub_id,
+            joined=False,
+            limit=100,
+            page=None,
+            participant_type='all',
+            page_delay=10,
+            overlap_delay=0,
+        ):
+        """
+        Fetch participants for a specific event subgroup with pagination.
+
+        Notes:
+        - The signed_up endpoint returns duplicates and has broken paging.
+          We de-duplicate by athlete id and fetch overlapping pages to compensate.
+        """
         self.ensure_valid_token()
         
         headers = {
             'Authorization': f"Bearer {self.auth_token['access_token']}",
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            # Avoid brotli responses (requests doesn't decode br by default)
+            'Accept-Encoding': 'gzip, deflate',
         }
         
         participants_url = f'https://us-or-rly101.zwift.com/api/events/subgroups/entrants/{event_sub_id}'
-        start = 0
+        start = (page * limit) if page is not None else 0
         all_participants = []
+        seen_ids = set()
 
-        while True:
+        def merge_page(start_offset):
             params = {
-                'type': 'all',
+                'type': participant_type,
                 'participation': 'registered' if joined else 'signed_up',
-                'start': start,
+                'start': start_offset,
                 'limit': limit,
             }
-            if event_secret:
-                params['eventSecret'] = event_secret
+            data = self.fetch_json_with_retry(participants_url, headers, params)
+            for participant in data:
+                participant_id = participant.get('id')
+                if participant_id is None or participant_id not in seen_ids:
+                    if participant_id is not None:
+                        seen_ids.add(participant_id)
+                    all_participants.append(participant)
+            return data
 
+        overlapping_starts = []
+        while True:
             try:
-                data = self.fetch_json_with_retry(participants_url, headers, params)
-                all_participants.extend(data)
+                data = merge_page(start)
                 print(f"Fetched {len(data)} participants, total so far: {len(all_participants)}.")
+
+                if not joined and (start or len(data) == limit):
+                    # Overlapping pages help compensate for broken paging on signed_up.
+                    step = 20
+                    for i in range(step, limit, step):
+                        overlapping_starts.append(start + i)
 
                 # Stop if fewer than limit participants are returned, indicating end of pages
                 if len(data) < limit:
                     break
                 start += len(data)  # Move to the next page
-                
-                time.sleep(1) # Gentle backoff
-            
+
+                if page is not None:
+                    break
+
+                if page_delay:
+                    time.sleep(page_delay)  # Delay between requests
+
+            except ValueError as e:
+                print("JSON parsing error or non-JSON response:", e)
+                break  # Exit loop on persistent JSON parsing errors
+
             except RequestException as e:
                 print(f"Request error: {e}")
                 break  # Exit loop on request error
-            
-            except ValueError as e:
-                print("JSON parsing error, despite retries:", e)
-                break  # Exit loop on persistent JSON parsing errors
+
+        # Fetch overlapping pages (sequentially) to improve coverage.
+        for overlap_start in overlapping_starts:
+            try:
+                merge_page(overlap_start)
+                if overlap_delay:
+                    time.sleep(overlap_delay)
+            except (ValueError, RequestException) as e:
+                print(f"Overlap fetch error: {e}")
 
         return all_participants
 
