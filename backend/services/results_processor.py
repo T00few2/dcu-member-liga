@@ -263,6 +263,10 @@ class ResultsProcessor:
             # Combine all riders for sprint calculation
             all_category_riders = valid_riders + declassified_riders + dq_riders
             
+            # Reset sprint details before recalculating
+            for rider in all_category_riders:
+                rider['sprintDetails'] = {}
+            
             # Build a map of sprint_key -> segment_type from race configuration
             # This tells us whether each segment is a 'sprint' (awards points) or 'split' (time only)
             sprint_type_map = {}  # sprint_key -> 'sprint' or 'split'
@@ -324,33 +328,46 @@ class ResultsProcessor:
                 # Sort by worldTime (earliest = fastest through segment = rank 1)
                 sprint_entries.sort(key=lambda x: x['worldTime'])
                 
-                # Assign ranks and points/times
-                for rank, entry in enumerate(sprint_entries):
+                # Assign roll-down ranks (exclude DQ/DC)
+                valid_entries = [
+                    entry for entry in sprint_entries
+                    if str(entry['zwiftId']) not in manual_dqs
+                    and str(entry['zwiftId']) not in manual_declassifications
+                ]
+                valid_rank_map = {
+                    str(entry['zwiftId']): idx + 1
+                    for idx, entry in enumerate(valid_entries)
+                }
+                
+                # Update ranks for all entries (DQ/DC => rank 0)
+                for entry in sprint_entries:
                     zid = str(entry['zwiftId'])
-                    sprint_rank = rank + 1
+                    sprint_rank = valid_rank_map.get(zid, 0)
                     
-                    # Find the rider and update their sprint data
                     for rider in all_category_riders:
                         if str(rider.get('zwiftId')) == zid:
-                            # Update rank in sprintData
                             if 'sprintData' not in rider:
                                 rider['sprintData'] = {}
                             if sprint_key not in rider['sprintData']:
                                 rider['sprintData'][sprint_key] = {}
                             rider['sprintData'][sprint_key]['rank'] = sprint_rank
                             
-                            if 'sprintDetails' not in rider:
-                                rider['sprintDetails'] = {}
-                            
+                            # For splits: store worldTime (no points)
                             if is_split:
-                                # For splits: store worldTime (no points)
                                 rider['sprintDetails'][sprint_key] = entry['worldTime']
-                            else:
-                                # For sprints: award points (only for non-DQ, non-declassified)
-                                if zid not in manual_dqs and zid not in manual_declassifications:
-                                    points = sprint_points_scheme[rank] if rank < len(sprint_points_scheme) else 0
-                                    rider['sprintDetails'][sprint_key] = points
                             break
+                
+                # Award sprint points with roll-down (exclude DQ/DC)
+                if not is_split:
+                    for points_idx, entry in enumerate(valid_entries):
+                        if points_idx >= len(sprint_points_scheme):
+                            break
+                        zid = str(entry['zwiftId'])
+                        points = sprint_points_scheme[points_idx]
+                        for rider in all_category_riders:
+                            if str(rider.get('zwiftId')) == zid:
+                                rider['sprintDetails'][sprint_key] = points
+                                break
             
             # Calculate total points for each rider
             # Only sum actual sprint points, not split times (which are stored as worldTime)
@@ -738,6 +755,21 @@ class ResultsProcessor:
                             effective_type = config_type or segment_type or 'sprint'
                             is_split = effective_type == 'split'
 
+                            # Roll-down ranks (exclude DQ/DC)
+                            ordered_entries = [
+                                rankings[rank] for rank in sorted(rankings.keys())
+                            ]
+                            valid_entries = [
+                                entry for entry in ordered_entries
+                                if str(entry['id']) in processed_riders
+                                and str(entry['id']) not in manual_dqs
+                                and str(entry['id']) not in manual_declassifications
+                            ]
+                            valid_rank_map = {
+                                str(entry['id']): idx + 1
+                                for idx, entry in enumerate(valid_entries)
+                            }
+                            
                             # Save performance data (sprints + splits)
                             for s_rank, s_data in rankings.items():
                                 s_zid = str(s_data['id'])
@@ -748,7 +780,7 @@ class ResultsProcessor:
                                     r_data['sprintData'][sprint_key] = {
                                         'avgPower': s_data.get('avgPower'),
                                         'time': s_data.get('time'),
-                                        'rank': s_rank,
+                                        'rank': valid_rank_map.get(s_zid, 0),
                                         'worldTime': s_data.get('worldTime')
                                     }
 
@@ -758,24 +790,14 @@ class ResultsProcessor:
                             # Award points only for sprint segments
                             if not is_split:
                                 for p_idx, points in enumerate(sprint_points_scheme):
-                                    rank = p_idx + 1
-                                    if rank in rankings:
-                                        winner_entry = rankings[rank]
-                                        w_zid = str(winner_entry['id'])
-                                        
-                                        if w_zid in processed_riders:
-                                            # Skip DQ riders
-                                            if w_zid in manual_dqs:
-                                                continue
-                                            
-                                            # Declassified riders LOSE sprint points as requested
-                                            if w_zid in manual_declassifications:
-                                                continue
-
-                                            rider_data = processed_riders[w_zid]
-                                            rider_data['sprintPoints'] += points
-                                            rider_data['totalPoints'] += points
-                                            rider_data['sprintDetails'][sprint_key] = points
+                                    if p_idx >= len(valid_entries):
+                                        break
+                                    winner_entry = valid_entries[p_idx]
+                                    w_zid = str(winner_entry['id'])
+                                    rider_data = processed_riders[w_zid]
+                                    rider_data['sprintPoints'] += points
+                                    rider_data['totalPoints'] += points
+                                    rider_data['sprintDetails'][sprint_key] = points
 
         # Return list sorted by total points (preliminary sort)
         final_list = list(processed_riders.values())
