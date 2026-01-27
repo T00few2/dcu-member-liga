@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 from services.zwift import ZwiftService
 from services.zwift_game import ZwiftGameService
@@ -386,8 +386,13 @@ class ResultsProcessor:
                 rider['sprintPoints'] = sprint_pts
                 rider['totalPoints'] = finish_pts + sprint_pts
             
-            # Sort by total points (descending)
-            all_category_riders.sort(key=lambda x: x.get('totalPoints', 0), reverse=True)
+            # Sort by total points (descending), then finish time (ascending)
+            def _race_sort_key(rider):
+                finish_time = rider.get('finishTime', 0) or 0
+                finish_time_key = finish_time if finish_time > 0 else 999999999999
+                return (rider.get('totalPoints', 0), -finish_time_key)
+            
+            all_category_riders.sort(key=_race_sort_key, reverse=True)
             
             updated_results[category] = all_category_riders
         
@@ -799,9 +804,13 @@ class ResultsProcessor:
                                     rider_data['totalPoints'] += points
                                     rider_data['sprintDetails'][sprint_key] = points
 
-        # Return list sorted by total points (preliminary sort)
+        # Return list sorted by total points, then finish time (ties)
         final_list = list(processed_riders.values())
-        final_list.sort(key=lambda x: x['totalPoints'], reverse=True)
+        def _race_sort_key(rider):
+            finish_time = rider.get('finishTime', 0) or 0
+            finish_time_key = finish_time if finish_time > 0 else 999999999999
+            return (rider.get('totalPoints', 0), -finish_time_key)
+        final_list.sort(key=_race_sort_key, reverse=True)
         return final_list
 
     def calculate_league_standings(self, override_race_id=None, override_race_data=None):
@@ -811,6 +820,63 @@ class ResultsProcessor:
         """
         if not self.db:
             return {}
+
+        def _normalize_dt(value):
+            if not value:
+                return None
+            if value.tzinfo:
+                return value.astimezone(timezone.utc).replace(tzinfo=None)
+            return value
+
+        def _parse_dt(value):
+            if not value:
+                return None
+            if isinstance(value, datetime):
+                return _normalize_dt(value)
+            try:
+                # Support ISO date strings with optional Z suffix
+                parsed = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+                return _normalize_dt(parsed)
+            except Exception:
+                return None
+
+        def _get_race_datetime(race_data):
+            date_value = race_data.get('date')
+            date_str = str(date_value) if date_value is not None else ''
+            parsed_date = _parse_dt(date_value)
+            
+            # If date already includes time, use it directly
+            if parsed_date and ('T' in date_str or ' ' in date_str):
+                return parsed_date
+            
+            # Try explicit start time fields
+            start_time = race_data.get('startTime')
+            if not start_time:
+                # Fallback to earliest eventConfiguration startTime
+                times = [
+                    cfg.get('startTime')
+                    for cfg in (race_data.get('eventConfiguration') or [])
+                    if cfg.get('startTime')
+                ]
+                if times:
+                    # Prefer the earliest time
+                    times.sort()
+                    start_time = times[0]
+            
+            if start_time:
+                # If startTime is full ISO datetime, parse it directly
+                parsed_start = _parse_dt(start_time)
+                if parsed_start:
+                    return parsed_start
+                
+                # Otherwise combine date + time
+                if date_str:
+                    combined = f"{date_str}T{start_time}"
+                    parsed_combined = _parse_dt(combined)
+                    if parsed_combined:
+                        return parsed_combined
+            
+            return parsed_date
 
         # Fetch settings to know how many best races to count (default 5)
         settings_doc = self.db.collection('league').document('settings').get()
@@ -844,6 +910,7 @@ class ResultsProcessor:
                  race_data = override_race_data
 
             results = race_data.get('results', {}) # { 'A': [...], 'B': [...] }
+            race_date = _get_race_datetime(race_data)
             manual_dqs = set(str(dq) for dq in race_data.get('manualDQs', [])) # Get DQs for this race (Ensure Strings)
             manual_declassifications = set(str(dq) for dq in race_data.get('manualDeclassifications', []))
             manual_exclusions = set(str(ex) for ex in race_data.get('manualExclusions', []))
@@ -921,7 +988,9 @@ class ResultsProcessor:
                             'name': rider['name'],
                             'totalPoints': 0,
                             'raceCount': 0,
-                            'results': [] 
+                            'results': [],
+                            'lastRacePoints': 0,
+                            'lastRaceDate': None
                         }
                     
                     entry = league_table[category][zid]
@@ -931,6 +1000,12 @@ class ResultsProcessor:
                         'raceId': doc.id,
                         'points': points
                     })
+                    
+                    if race_date:
+                        last_date = entry.get('lastRaceDate')
+                        if not last_date or race_date >= last_date:
+                            entry['lastRaceDate'] = race_date
+                            entry['lastRacePoints'] = points
 
         print(f"Processed {race_count} races for standings.")
 
@@ -948,7 +1023,10 @@ class ResultsProcessor:
                 best_results = results_list[:best_races_count]
                 rider['totalPoints'] = sum(r['points'] for r in best_results)
 
-            sorted_riders.sort(key=lambda x: x['totalPoints'], reverse=True)
+            sorted_riders.sort(
+                key=lambda x: (x['totalPoints'], x.get('lastRacePoints', 0)),
+                reverse=True
+            )
             final_standings[category] = sorted_riders
             
         return final_standings
