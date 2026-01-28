@@ -710,7 +710,7 @@ export default function LiveResultsPage() {
                                         className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-right font-bold text-blue-300`}
                                         style={{
                                             backgroundColor: resolveColor(overlayHeaderBg),
-                                            color: resolveColor(overlayAccent, overlayHeaderText || overlayText || undefined)
+                                            color: resolveColor(overlayHeaderText, overlayText)
                                         }}
                                     >
                                         League Pts
@@ -733,7 +733,7 @@ export default function LiveResultsPage() {
                                         className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[35%] text-right font-bold break-words text-blue-400`}
                                         style={{
                                             backgroundColor: resolveColor(overlayHeaderBg),
-                                            color: resolveColor(overlayAccent, overlayHeaderText || overlayText || undefined)
+                                            color: resolveColor(overlayHeaderText, overlayText)
                                         }}
                                     >
                                         League Pts
@@ -744,7 +744,7 @@ export default function LiveResultsPage() {
                                     className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[35%] text-right font-bold break-words text-blue-400`}
                                     style={{
                                         backgroundColor: resolveColor(overlayHeaderBg),
-                                        color: resolveColor(overlayAccent, overlayHeaderText || overlayText || undefined)
+                                        color: resolveColor(overlayHeaderText, overlayText)
                                     }}
                                 >
                                     League Pts
@@ -807,7 +807,7 @@ export default function LiveResultsPage() {
                                     {showLeaguePoints && (
                                         <td
                                             className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-300 align-middle`}
-                                            style={{ color: resolveColor(overlayAccent, overlayRowText || overlayText || undefined) }}
+                                            style={{ color: resolveColor(overlayRowText, overlayText) }}
                                         >
                                             {leaguePointsByZwiftId.has(rider.zwiftId)
                                                 ? leaguePointsByZwiftId.get(rider.zwiftId)
@@ -826,7 +826,7 @@ export default function LiveResultsPage() {
                                         </td>
                                         <td
                                             className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-400 align-middle`}
-                                            style={{ color: resolveColor(overlayAccent, overlayRowText || overlayText || undefined) }}
+                                            style={{ color: resolveColor(overlayRowText, overlayText) }}
                                         >
                                             {leaguePointsByZwiftId.has(rider.zwiftId)
                                                 ? leaguePointsByZwiftId.get(rider.zwiftId)
@@ -836,7 +836,7 @@ export default function LiveResultsPage() {
                                 ) : (
                                     <td
                                         className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-400 align-middle`}
-                                        style={{ color: resolveColor(overlayAccent, overlayRowText || overlayText || undefined) }}
+                                        style={{ color: resolveColor(overlayRowText, overlayText) }}
                                     >
                                         {leaguePointsByZwiftId.has(rider.zwiftId)
                                             ? leaguePointsByZwiftId.get(rider.zwiftId)
