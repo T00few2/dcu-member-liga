@@ -46,6 +46,18 @@ export default function LiveLinksPage() {
         fitToScreen: false,
         lastSplit: false,
         showCheckboxes: false, // Helper to toggle advanced options visibility
+        // Overlay color options (non-full view)
+        overlayText: '',
+        overlayMuted: '',
+        overlayAccent: '',
+        overlayPositive: '',
+        overlayHeaderText: '',
+        overlayHeaderBg: '',
+        overlayRowText: '',
+        overlayRowBg: '',
+        overlayRowAltBg: '',
+        overlayBorder: '',
+        overlayBackground: '',
         // Calculation Settings
         source: 'joined', // 'finishers' | 'joined' | 'signed_up'
         filterRegistered: false,
@@ -166,6 +178,17 @@ export default function LiveLinksPage() {
         if (config.fitToScreen) params.set('fit', 'true');
         if (config.lastSplit) params.set('lastSplit', 'true');
         if (config.nameMax.trim()) params.set('nameMax', config.nameMax.trim());
+        if (config.overlayText.trim()) params.set('text', config.overlayText.trim());
+        if (config.overlayMuted.trim()) params.set('muted', config.overlayMuted.trim());
+        if (config.overlayAccent.trim()) params.set('accent', config.overlayAccent.trim());
+        if (config.overlayPositive.trim()) params.set('positive', config.overlayPositive.trim());
+        if (config.overlayHeaderText.trim()) params.set('headerText', config.overlayHeaderText.trim());
+        if (config.overlayHeaderBg.trim()) params.set('headerBg', config.overlayHeaderBg.trim());
+        if (config.overlayRowText.trim()) params.set('rowText', config.overlayRowText.trim());
+        if (config.overlayRowBg.trim()) params.set('rowBg', config.overlayRowBg.trim());
+        if (config.overlayRowAltBg.trim()) params.set('rowAltBg', config.overlayRowAltBg.trim());
+        if (config.overlayBorder.trim()) params.set('border', config.overlayBorder.trim());
+        if (config.overlayBackground.trim()) params.set('overlayBg', config.overlayBackground.trim());
 
         return `${baseUrl}?${params.toString()}`;
     };
@@ -505,6 +528,126 @@ export default function LiveLinksPage() {
                         </div>
                     </div>
                 )}
+            </div>
+
+            {/* Overlay Color Settings (Non-Full View) */}
+            <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 mb-8">
+                <h2 className="text-xl font-semibold mb-4 text-slate-200 border-b border-slate-700 pb-2">Overlay Colors (OBS / Non-Full)</h2>
+                <p className="text-xs text-slate-400 mb-4">
+                    Optional. Use any valid CSS color (hex, rgb, hsl, named). Empty = default.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div>
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Base Text</label>
+                        <input
+                            type="text"
+                            value={config.overlayText}
+                            onChange={(e) => updateConfig('overlayText', e.target.value)}
+                            placeholder="#ffffff"
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Muted Text</label>
+                        <input
+                            type="text"
+                            value={config.overlayMuted}
+                            onChange={(e) => updateConfig('overlayMuted', e.target.value)}
+                            placeholder="#94a3b8"
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Accent</label>
+                        <input
+                            type="text"
+                            value={config.overlayAccent}
+                            onChange={(e) => updateConfig('overlayAccent', e.target.value)}
+                            placeholder="#60a5fa"
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Positive</label>
+                        <input
+                            type="text"
+                            value={config.overlayPositive}
+                            onChange={(e) => updateConfig('overlayPositive', e.target.value)}
+                            placeholder="#4ade80"
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Header Text</label>
+                        <input
+                            type="text"
+                            value={config.overlayHeaderText}
+                            onChange={(e) => updateConfig('overlayHeaderText', e.target.value)}
+                            placeholder="#ffffff"
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Header Background</label>
+                        <input
+                            type="text"
+                            value={config.overlayHeaderBg}
+                            onChange={(e) => updateConfig('overlayHeaderBg', e.target.value)}
+                            placeholder="rgba(15, 23, 42, 0.9)"
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Row Text</label>
+                        <input
+                            type="text"
+                            value={config.overlayRowText}
+                            onChange={(e) => updateConfig('overlayRowText', e.target.value)}
+                            placeholder="#ffffff"
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Row Background</label>
+                        <input
+                            type="text"
+                            value={config.overlayRowBg}
+                            onChange={(e) => updateConfig('overlayRowBg', e.target.value)}
+                            placeholder="rgba(15, 23, 42, 0.4)"
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Row Alt Background</label>
+                        <input
+                            type="text"
+                            value={config.overlayRowAltBg}
+                            onChange={(e) => updateConfig('overlayRowAltBg', e.target.value)}
+                            placeholder="rgba(30, 41, 59, 0.4)"
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Border</label>
+                        <input
+                            type="text"
+                            value={config.overlayBorder}
+                            onChange={(e) => updateConfig('overlayBorder', e.target.value)}
+                            placeholder="rgba(51, 65, 85, 0.5)"
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Overlay Background</label>
+                        <input
+                            type="text"
+                            value={config.overlayBackground}
+                            onChange={(e) => updateConfig('overlayBackground', e.target.value)}
+                            placeholder="#0f172a"
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                    </div>
+                </div>
             </div>
 
             {/* Matrix Table */}

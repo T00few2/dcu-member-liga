@@ -95,6 +95,22 @@ export default function LiveResultsPage() {
     const fitToScreen = searchParams.get('fit') === 'true';
     const nameMaxParam = searchParams.get('nameMax');
     const nameMax = nameMaxParam ? parseInt(nameMaxParam) : NaN;
+
+    // Overlay color configuration (non-full view only)
+    const overlayEnabled = !isFull;
+    const overlayText = overlayEnabled ? searchParams.get('text') : null;
+    const overlayMuted = overlayEnabled ? searchParams.get('muted') : null;
+    const overlayAccent = overlayEnabled ? searchParams.get('accent') : null;
+    const overlayPositive = overlayEnabled ? searchParams.get('positive') : null;
+    const overlayHeaderText = overlayEnabled ? searchParams.get('headerText') : null;
+    const overlayHeaderBg = overlayEnabled ? searchParams.get('headerBg') : null;
+    const overlayRowText = overlayEnabled ? searchParams.get('rowText') : null;
+    const overlayRowBg = overlayEnabled ? searchParams.get('rowBg') : null;
+    const overlayRowAltBg = overlayEnabled ? searchParams.get('rowAltBg') : null;
+    const overlayBorder = overlayEnabled ? searchParams.get('border') : null;
+    const overlayBackground = overlayEnabled ? searchParams.get('overlayBg') : null;
+    const resolveColor = (primary?: string | null, fallback?: string | null) =>
+        primary || fallback || undefined;
     
     // View Mode Configuration
     const viewParam = searchParams.get('view');
@@ -563,37 +579,82 @@ export default function LiveResultsPage() {
         return (
             <table className="w-full text-left border-collapse table-fixed">
                 <thead>
-                    <tr className="text-slate-400 text-lg uppercase tracking-wider border-b-2 border-slate-600 bg-slate-800/80">
-                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[10%] text-center`}>#</th>
-                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 ${sprintColumns.length > 0 ? 'w-[40%]' : 'w-[50%]'}`}>Rider</th>
+                    <tr
+                        className="text-slate-400 text-lg uppercase tracking-wider border-b-2 border-slate-600 bg-slate-800/80"
+                        style={{
+                            backgroundColor: resolveColor(overlayHeaderBg),
+                            color: resolveColor(overlayHeaderText, overlayText),
+                            borderColor: resolveColor(overlayBorder)
+                        }}
+                    >
+                        <th
+                            className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[10%] text-center`}
+                            style={{ backgroundColor: resolveColor(overlayHeaderBg) }}
+                        >
+                            #
+                        </th>
+                        <th
+                            className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 ${sprintColumns.length > 0 ? 'w-[40%]' : 'w-[50%]'}`}
+                            style={{ backgroundColor: resolveColor(overlayHeaderBg) }}
+                        >
+                            Rider
+                        </th>
                         {sprintColumns.length > 0 ? (
                             <>
                                 {sprintColumns.map(key => (
                                 <th
                                     key={key}
                                     className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-center font-bold break-words text-blue-400`}
+                                    style={{
+                                        backgroundColor: resolveColor(overlayHeaderBg),
+                                        color: resolveColor(overlayAccent, overlayHeaderText || overlayText || undefined)
+                                    }}
                                 >
                                     {getSprintHeader(key)}
                                 </th>
                                 ))}
-                                <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-right font-bold text-blue-300`}>
+                                <th
+                                    className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-right font-bold text-blue-300`}
+                                    style={{
+                                        backgroundColor: resolveColor(overlayHeaderBg),
+                                        color: resolveColor(overlayAccent, overlayHeaderText || overlayText || undefined)
+                                    }}
+                                >
                                     Total
                                 </th>
                             </>
                         ) : (
-                            <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[35%] text-right font-bold break-words text-blue-400`}>
+                            <th
+                                className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[35%] text-right font-bold break-words text-blue-400`}
+                                style={{
+                                    backgroundColor: resolveColor(overlayHeaderBg),
+                                    color: resolveColor(overlayAccent, overlayHeaderText || overlayText || undefined)
+                                }}
+                            >
                                 Pts
                             </th>
                         )}
                     </tr>
                 </thead>
-                <tbody className={`text-white font-bold ${tableBodyTextSize}`}>
+                <tbody
+                    className={`text-white font-bold ${tableBodyTextSize}`}
+                    style={{ color: resolveColor(overlayRowText, overlayText) }}
+                >
                     {displayResults.map((rider, idx) => (
                         <tr 
                             key={rider.zwiftId} 
                             className="border-b border-slate-700/50 even:bg-slate-800/40"
+                            style={{
+                                borderColor: resolveColor(overlayBorder),
+                                backgroundColor: idx % 2 === 1
+                                    ? resolveColor(overlayRowAltBg, overlayRowBg)
+                                    : resolveColor(overlayRowBg)
+                            }}
                         >
-                            <td className={`${bodyCellPadding} px-2 text-center font-bold text-slate-300 align-middle`}>
+                            <td
+                                className={`${bodyCellPadding} px-2 text-center font-bold text-slate-300 align-middle`}
+                                style={{ color: resolveColor(overlayMuted, overlayRowText || overlayText || undefined) }}
+                            >
                                 {idx + 1}
                             </td>
                             <td className={`${bodyCellPadding} px-2 truncate align-middle`}>
@@ -602,16 +663,26 @@ export default function LiveResultsPage() {
                             {sprintColumns.length > 0 ? (
                                 <>
                                     {sprintColumns.map(key => (
-                                        <td key={key} className={`${bodyCellPadding} px-2 text-center font-extrabold text-blue-400 align-middle`}>
+                                        <td
+                                            key={key}
+                                            className={`${bodyCellPadding} px-2 text-center font-extrabold text-blue-400 align-middle`}
+                                            style={{ color: resolveColor(overlayAccent, overlayRowText || overlayText || undefined) }}
+                                        >
                                             {rider.sprintDetails?.[key] ?? '-'}
                                         </td>
                                     ))}
-                                    <td className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-300 align-middle`}>
+                                    <td
+                                        className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-300 align-middle`}
+                                        style={{ color: resolveColor(overlayAccent, overlayRowText || overlayText || undefined) }}
+                                    >
                                         {rider.totalPoints ?? 0}
                                     </td>
                                 </>
                             ) : (
-                                <td className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-400 align-middle`}>
+                                <td
+                                    className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-400 align-middle`}
+                                    style={{ color: resolveColor(overlayAccent, overlayRowText || overlayText || undefined) }}
+                                >
                                     {rider.totalPoints}
                                 </td>
                             )}
@@ -619,7 +690,11 @@ export default function LiveResultsPage() {
                     ))}
                     {displayResults.length === 0 && (
                         <tr>
-                            <td colSpan={3} className="py-8 text-center text-slate-500 text-xl italic">
+                            <td
+                                colSpan={3}
+                                className="py-8 text-center text-slate-500 text-xl italic"
+                                style={{ color: resolveColor(overlayMuted, overlayText || undefined) }}
+                            >
                                 Waiting for results...
                             </td>
                         </tr>
@@ -680,30 +755,69 @@ export default function LiveResultsPage() {
         return (
             <table className="w-full text-left border-collapse">
                 <thead>
-                    <tr className="text-slate-400 text-sm uppercase tracking-wider border-b-2 border-slate-600 bg-slate-800/80">
-                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-1 w-10 text-center`}>#</th>
-                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2`}>Rider</th>
+                    <tr
+                        className="text-slate-400 text-sm uppercase tracking-wider border-b-2 border-slate-600 bg-slate-800/80"
+                        style={{
+                            backgroundColor: resolveColor(overlayHeaderBg),
+                            color: resolveColor(overlayHeaderText, overlayText),
+                            borderColor: resolveColor(overlayBorder)
+                        }}
+                    >
+                        <th
+                            className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-1 w-10 text-center`}
+                            style={{ backgroundColor: resolveColor(overlayHeaderBg) }}
+                        >
+                            #
+                        </th>
+                        <th
+                            className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2`}
+                            style={{ backgroundColor: resolveColor(overlayHeaderBg) }}
+                        >
+                            Rider
+                        </th>
                         {relevantRaces.map((race, idx) => (
                             <th 
                                 key={race.id}
                                 className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-1 text-center font-bold text-blue-400 w-12`}
                                 title={`${race.name} (${new Date(race.date).toLocaleDateString()})`}
+                                style={{
+                                    backgroundColor: resolveColor(overlayHeaderBg),
+                                    color: resolveColor(overlayAccent, overlayHeaderText || overlayText || undefined)
+                                }}
                             >
                                 {getRaceShortName(race, idx)}
                             </th>
                         ))}
-                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-center font-bold text-green-400 w-16`}>
+                        <th
+                            className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-center font-bold text-green-400 w-16`}
+                            style={{
+                                backgroundColor: resolveColor(overlayHeaderBg),
+                                color: resolveColor(overlayPositive, overlayHeaderText || overlayText || undefined)
+                            }}
+                        >
                             Total
                         </th>
                     </tr>
                 </thead>
-                <tbody className={`text-white font-bold ${tableBodyTextSize}`}>
+                <tbody
+                    className={`text-white font-bold ${tableBodyTextSize}`}
+                    style={{ color: resolveColor(overlayRowText, overlayText) }}
+                >
                     {displayResults.map((rider, idx) => (
                         <tr 
                             key={rider.zwiftId} 
                             className="border-b border-slate-700/50 even:bg-slate-800/40"
+                            style={{
+                                borderColor: resolveColor(overlayBorder),
+                                backgroundColor: idx % 2 === 1
+                                    ? resolveColor(overlayRowAltBg, overlayRowBg)
+                                    : resolveColor(overlayRowBg)
+                            }}
                         >
-                            <td className={`${bodyCellPadding} px-1 text-center font-bold text-slate-300 align-middle`}>
+                            <td
+                                className={`${bodyCellPadding} px-1 text-center font-bold text-slate-300 align-middle`}
+                                style={{ color: resolveColor(overlayMuted, overlayRowText || overlayText || undefined) }}
+                            >
                                 {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
                             </td>
                             <td className={`${bodyCellPadding} px-2 truncate align-middle`}>
@@ -719,19 +833,32 @@ export default function LiveResultsPage() {
                                         className={`${bodyCellPadding} px-1 text-center align-middle ${
                                             isBest ? 'text-green-400 font-extrabold' : 'text-slate-400'
                                         }`}
+                                        style={{
+                                            color: resolveColor(
+                                                isBest ? overlayPositive : overlayMuted,
+                                                overlayRowText || overlayText || undefined
+                                            )
+                                        }}
                                     >
                                         {points !== undefined ? points : '-'}
                                     </td>
                                 );
                             })}
-                            <td className={`${bodyCellPadding} px-2 text-center font-extrabold text-green-400 align-middle`}>
+                            <td
+                                className={`${bodyCellPadding} px-2 text-center font-extrabold text-green-400 align-middle`}
+                                style={{ color: resolveColor(overlayPositive, overlayRowText || overlayText || undefined) }}
+                            >
                                 {rider.calculatedTotal}
                             </td>
                         </tr>
                     ))}
                     {displayResults.length === 0 && (
                         <tr>
-                            <td colSpan={totalColumns} className="py-8 text-center text-slate-500 text-xl italic">
+                            <td
+                                colSpan={totalColumns}
+                                className="py-8 text-center text-slate-500 text-xl italic"
+                                style={{ color: resolveColor(overlayMuted, overlayText || undefined) }}
+                            >
                                 No standings available for category '{category}'.
                             </td>
                         </tr>
@@ -894,35 +1021,74 @@ export default function LiveResultsPage() {
         return (
             <table className="w-full text-left border-collapse">
                 <thead>
-                    <tr className="text-slate-400 text-lg uppercase tracking-wider border-b-2 border-slate-600 bg-slate-800/80">
-                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-16 text-center`}>#</th>
-                        <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2`}>Rider</th>
+                    <tr
+                        className="text-slate-400 text-lg uppercase tracking-wider border-b-2 border-slate-600 bg-slate-800/80"
+                        style={{
+                            backgroundColor: resolveColor(overlayHeaderBg),
+                            color: resolveColor(overlayHeaderText, overlayText),
+                            borderColor: resolveColor(overlayBorder)
+                        }}
+                    >
+                        <th
+                            className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-16 text-center`}
+                            style={{ backgroundColor: resolveColor(overlayHeaderBg) }}
+                        >
+                            #
+                        </th>
+                        <th
+                            className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2`}
+                            style={{ backgroundColor: resolveColor(overlayHeaderBg) }}
+                        >
+                            Rider
+                        </th>
                         {splitColumns.map(col => {
                             return (
                                 <th
                                     key={col.keys[0]}
                                     className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-center text-blue-300 w-40`}
+                                    style={{
+                                        backgroundColor: resolveColor(overlayHeaderBg),
+                                        color: resolveColor(overlayAccent, overlayHeaderText || overlayText || undefined)
+                                    }}
                                 >
                                     {col.label}
                                 </th>
                             );
                         })}
                         {hasAnyFinisher && (
-                            <th className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-center text-green-300 w-48`}>
+                            <th
+                                className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-center text-green-300 w-48`}
+                                style={{
+                                    backgroundColor: resolveColor(overlayHeaderBg),
+                                    color: resolveColor(overlayPositive, overlayHeaderText || overlayText || undefined)
+                                }}
+                            >
                                 Finish Time
                             </th>
                         )}
                     </tr>
                 </thead>
-                <tbody className={`text-white font-bold ${tableBodyTextSize}`}>
+                <tbody
+                    className={`text-white font-bold ${tableBodyTextSize}`}
+                    style={{ color: resolveColor(overlayRowText, overlayText) }}
+                >
                     {displayResults.map((rider, idx) => {
                         const isWinner = rider.finishTime > 0 && rider.finishTime === winnerFinishTime;
                         return (
                             <tr
                                 key={rider.zwiftId}
                                 className="border-b border-slate-700/50 even:bg-slate-800/40"
+                                style={{
+                                    borderColor: resolveColor(overlayBorder),
+                                    backgroundColor: idx % 2 === 1
+                                        ? resolveColor(overlayRowAltBg, overlayRowBg)
+                                        : resolveColor(overlayRowBg)
+                                }}
                             >
-                                <td className={`${bodyCellPadding} px-2 text-center font-bold text-slate-300 align-middle`}>
+                                <td
+                                    className={`${bodyCellPadding} px-2 text-center font-bold text-slate-300 align-middle`}
+                                    style={{ color: resolveColor(overlayMuted, overlayRowText || overlayText || undefined) }}
+                                >
                                     {idx + 1}
                                 </td>
                                 <td className={`${bodyCellPadding} px-2 truncate align-middle`}>
@@ -933,13 +1099,20 @@ export default function LiveResultsPage() {
                                     const minTime = minWorldTimes.get(col.keys[0]);
                                     const delta = (worldTime !== null && minTime !== undefined) ? (worldTime - minTime) : null;
                                     return (
-                                        <td key={col.keys[0]} className={`${bodyCellPadding} px-2 text-center font-extrabold text-blue-300 align-middle`}>
+                                        <td
+                                            key={col.keys[0]}
+                                            className={`${bodyCellPadding} px-2 text-center font-extrabold text-blue-300 align-middle`}
+                                            style={{ color: resolveColor(overlayAccent, overlayRowText || overlayText || undefined) }}
+                                        >
                                             {delta === null ? '-' : formatDelta(delta)}
                                         </td>
                                     );
                                 })}
                                 {hasAnyFinisher && (
-                                    <td className={`${bodyCellPadding} px-2 text-center font-extrabold align-middle ${isWinner ? 'text-green-300' : 'text-green-400/80'}`}>
+                                    <td
+                                        className={`${bodyCellPadding} px-2 text-center font-extrabold align-middle ${isWinner ? 'text-green-300' : 'text-green-400/80'}`}
+                                        style={{ color: resolveColor(overlayPositive, overlayRowText || overlayText || undefined) }}
+                                    >
                                         {formatFinishTimeOrDelta(rider.finishTime, isWinner)}
                                     </td>
                                 )}
@@ -948,14 +1121,22 @@ export default function LiveResultsPage() {
                     })}
                     {displayResults.length === 0 && (
                         <tr>
-                            <td colSpan={totalColumns} className="py-8 text-center text-slate-500 text-xl italic">
+                            <td
+                                colSpan={totalColumns}
+                                className="py-8 text-center text-slate-500 text-xl italic"
+                                style={{ color: resolveColor(overlayMuted, overlayText || undefined) }}
+                            >
                                 No split results available.
                             </td>
                         </tr>
                     )}
                     {showNoSplitsMessage && (
                         <tr>
-                            <td colSpan={totalColumns} className="py-8 text-center text-slate-500 text-xl italic">
+                            <td
+                                colSpan={totalColumns}
+                                className="py-8 text-center text-slate-500 text-xl italic"
+                                style={{ color: resolveColor(overlayMuted, overlayText || undefined) }}
+                            >
                                 No split segments configured.
                             </td>
                         </tr>
@@ -1071,6 +1252,10 @@ export default function LiveResultsPage() {
             className={`fixed inset-0 z-50 overflow-hidden font-sans ${
                 isTransparent ? 'bg-transparent' : 'bg-slate-900'
             }`}
+            style={{
+                backgroundColor: !isTransparent ? resolveColor(overlayBackground) : undefined,
+                color: resolveColor(overlayText)
+            }}
         >
             <div 
                 ref={containerRef}
@@ -1078,8 +1263,18 @@ export default function LiveResultsPage() {
             >
                 <div className="p-0">
                     {/* Header showing mode if not transparent or just to differentiate */}
-                    <div className="sticky top-0 z-20 bg-slate-900/90 text-center py-2 border-b border-slate-700">
-                        <h2 className="text-xl font-bold text-white uppercase tracking-widest">
+                    <div
+                        className="sticky top-0 z-20 bg-slate-900/90 text-center py-2 border-b border-slate-700"
+                        style={{
+                            backgroundColor: resolveColor(overlayHeaderBg, overlayBackground),
+                            borderColor: resolveColor(overlayBorder),
+                            color: resolveColor(overlayHeaderText, overlayText)
+                        }}
+                    >
+                        <h2
+                            className="text-xl font-bold text-white uppercase tracking-widest"
+                            style={{ color: resolveColor(overlayHeaderText, overlayText) }}
+                        >
                             {viewMode === 'standings'
                                 ? `League Standings • ${category}`
                                 : viewMode === 'time-trial'
