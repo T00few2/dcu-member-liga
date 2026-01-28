@@ -189,7 +189,7 @@ export default function LiveResultsPage() {
                 docRef,
                 (docSnap) => {
                     if (docSnap.exists()) {
-                        setRace({ id: docSnap.id, ...(docSnap.data() as Race) });
+                        setRace({ ...(docSnap.data() as Race), id: docSnap.id });
                         setLoading(false);
                     } else {
                         setError('Race not found');
