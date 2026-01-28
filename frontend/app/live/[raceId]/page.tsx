@@ -644,6 +644,8 @@ export default function LiveResultsPage() {
 
         const showTotalPoints = sprintColumns.length > 0 && !isSplitResults;
         const showFinishTime = sprintColumns.length === 0 || isSplitResults;
+        const leaguePointsHeaderClass = isFull ? 'text-slate-100' : 'text-blue-300';
+        const leaguePointsCellClass = isFull ? 'text-slate-100' : 'text-blue-300';
         const showLeaguePoints = true;
 
         return (
@@ -707,7 +709,7 @@ export default function LiveResultsPage() {
                                 )}
                                 {showLeaguePoints && (
                                     <th
-                                        className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-right font-bold text-blue-300`}
+                                        className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-right font-bold ${leaguePointsHeaderClass}`}
                                         style={{
                                             backgroundColor: resolveColor(overlayHeaderBg),
                                             color: resolveColor(overlayHeaderText, overlayText)
@@ -730,7 +732,7 @@ export default function LiveResultsPage() {
                                         Finish Time
                                     </th>
                                     <th
-                                        className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[35%] text-right font-bold break-words text-blue-400`}
+                                        className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[35%] text-right font-bold break-words ${leaguePointsHeaderClass}`}
                                         style={{
                                             backgroundColor: resolveColor(overlayHeaderBg),
                                             color: resolveColor(overlayHeaderText, overlayText)
@@ -741,7 +743,7 @@ export default function LiveResultsPage() {
                                 </>
                             ) : (
                                 <th
-                                    className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[35%] text-right font-bold break-words text-blue-400`}
+                                    className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[35%] text-right font-bold break-words ${leaguePointsHeaderClass}`}
                                     style={{
                                         backgroundColor: resolveColor(overlayHeaderBg),
                                         color: resolveColor(overlayHeaderText, overlayText)
@@ -806,7 +808,7 @@ export default function LiveResultsPage() {
                                     )}
                                     {showLeaguePoints && (
                                         <td
-                                            className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-300 align-middle`}
+                                            className={`${bodyCellPadding} px-2 text-right font-extrabold ${leaguePointsCellClass} align-middle`}
                                             style={{ color: resolveColor(overlayRowText, overlayText) }}
                                         >
                                             {leaguePointsByZwiftId.has(rider.zwiftId)
@@ -825,7 +827,7 @@ export default function LiveResultsPage() {
                                             {formatFinishTimeOrDelta(rider.finishTime, rider.finishTime === winnerFinishTime)}
                                         </td>
                                         <td
-                                            className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-400 align-middle`}
+                                            className={`${bodyCellPadding} px-2 text-right font-extrabold ${leaguePointsCellClass} align-middle`}
                                             style={{ color: resolveColor(overlayRowText, overlayText) }}
                                         >
                                             {leaguePointsByZwiftId.has(rider.zwiftId)
@@ -835,7 +837,7 @@ export default function LiveResultsPage() {
                                     </>
                                 ) : (
                                     <td
-                                        className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-400 align-middle`}
+                                        className={`${bodyCellPadding} px-2 text-right font-extrabold ${leaguePointsCellClass} align-middle`}
                                         style={{ color: resolveColor(overlayRowText, overlayText) }}
                                     >
                                         {leaguePointsByZwiftId.has(rider.zwiftId)
