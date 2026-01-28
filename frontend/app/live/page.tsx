@@ -64,6 +64,82 @@ export default function LiveLinksPage() {
         nameMax: ''
     });
 
+    const overlayPalettes = [
+        {
+            name: 'Default Blue',
+            overlayText: '',
+            overlayMuted: '',
+            overlayAccent: '',
+            overlayPositive: '',
+            overlayHeaderText: '',
+            overlayHeaderBg: '',
+            overlayRowText: '',
+            overlayRowBg: '',
+            overlayRowAltBg: '',
+            overlayBorder: '',
+            overlayBackground: ''
+        },
+        {
+            name: 'High Contrast',
+            overlayText: '#f8fafc',
+            overlayMuted: '#94a3b8',
+            overlayAccent: '#38bdf8',
+            overlayPositive: '#4ade80',
+            overlayHeaderText: '#ffffff',
+            overlayHeaderBg: '#0f172a',
+            overlayRowText: '#f8fafc',
+            overlayRowBg: 'rgba(15, 23, 42, 0.85)',
+            overlayRowAltBg: 'rgba(30, 41, 59, 0.85)',
+            overlayBorder: 'rgba(148, 163, 184, 0.35)',
+            overlayBackground: '#0b1220'
+        },
+        {
+            name: 'Vivid Purple',
+            overlayText: '#f5f3ff',
+            overlayMuted: '#c4b5fd',
+            overlayAccent: '#a855f7',
+            overlayPositive: '#22c55e',
+            overlayHeaderText: '#faf5ff',
+            overlayHeaderBg: 'rgba(88, 28, 135, 0.9)',
+            overlayRowText: '#f5f3ff',
+            overlayRowBg: 'rgba(30, 27, 75, 0.7)',
+            overlayRowAltBg: 'rgba(49, 46, 129, 0.7)',
+            overlayBorder: 'rgba(168, 85, 247, 0.45)',
+            overlayBackground: '#0f0b24'
+        },
+        {
+            name: 'Warm Amber',
+            overlayText: '#fef3c7',
+            overlayMuted: '#f59e0b',
+            overlayAccent: '#f97316',
+            overlayPositive: '#84cc16',
+            overlayHeaderText: '#fffbeb',
+            overlayHeaderBg: 'rgba(120, 53, 15, 0.9)',
+            overlayRowText: '#fef3c7',
+            overlayRowBg: 'rgba(69, 26, 3, 0.7)',
+            overlayRowAltBg: 'rgba(92, 33, 6, 0.7)',
+            overlayBorder: 'rgba(245, 158, 11, 0.4)',
+            overlayBackground: '#1a1209'
+        }
+    ];
+
+    const applyOverlayPalette = (palette: typeof overlayPalettes[number]) => {
+        setConfig(prev => ({
+            ...prev,
+            overlayText: palette.overlayText,
+            overlayMuted: palette.overlayMuted,
+            overlayAccent: palette.overlayAccent,
+            overlayPositive: palette.overlayPositive,
+            overlayHeaderText: palette.overlayHeaderText,
+            overlayHeaderBg: palette.overlayHeaderBg,
+            overlayRowText: palette.overlayRowText,
+            overlayRowBg: palette.overlayRowBg,
+            overlayRowAltBg: palette.overlayRowAltBg,
+            overlayBorder: palette.overlayBorder,
+            overlayBackground: palette.overlayBackground
+        }));
+    };
+
     useEffect(() => {
         const fetchRaces = async () => {
             try {
@@ -370,7 +446,7 @@ export default function LiveLinksPage() {
                                 min={1}
                                 value={config.nameMax}
                                 onChange={(e) => updateConfig('nameMax', e.target.value)}
-                                placeholder="Full name"
+                                placeholder="# characters"
                                 className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
                             />
                         </div>
@@ -531,123 +607,250 @@ export default function LiveLinksPage() {
             </div>
 
             {/* Overlay Color Settings (Non-Full View) */}
-            <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 mb-8">
-                <h2 className="text-xl font-semibold mb-4 text-slate-200 border-b border-slate-700 pb-2">Overlay Colors (OBS / Non-Full)</h2>
-                <p className="text-xs text-slate-400 mb-4">
-                    Optional. Use any valid CSS color (hex, rgb, hsl, named). Empty = default.
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-slate-800 rounded-lg border border-slate-700 mb-8">
+                <details className="group">
+                    <summary className="list-none cursor-pointer select-none px-6 py-4 flex items-center justify-between">
+                        <div>
+                            <h2 className="text-xl font-semibold text-slate-200">Overlay Colors (OBS / Non-Full)</h2>
+                            <p className="text-xs text-slate-400 mt-1">
+                                Optional. Use any valid CSS color (hex, rgb, hsl, named). Empty = default.
+                            </p>
+                        </div>
+                        <span className="text-xs text-slate-400 group-open:rotate-180 transition-transform">▾</span>
+                    </summary>
+                    <div className="px-6 pb-6 pt-2 border-t border-slate-700">
+                        <div className="flex flex-wrap gap-2 mb-4">
+                            {overlayPalettes.map(palette => (
+                                <button
+                                    key={palette.name}
+                                    onClick={() => applyOverlayPalette(palette)}
+                                    className="px-3 py-1 text-xs font-semibold rounded border border-slate-700 text-slate-200 hover:border-slate-500 hover:text-white"
+                                    type="button"
+                                >
+                                    {palette.name}
+                                </button>
+                            ))}
+                            <button
+                                onClick={() => applyOverlayPalette(overlayPalettes[0])}
+                                className="px-3 py-1 text-xs font-semibold rounded border border-slate-700 text-slate-400 hover:text-white"
+                                type="button"
+                            >
+                                Reset
+                            </button>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div>
                         <label className="block text-xs font-medium text-slate-400 mb-1">Base Text</label>
-                        <input
-                            type="text"
-                            value={config.overlayText}
-                            onChange={(e) => updateConfig('overlayText', e.target.value)}
-                            placeholder="#ffffff"
-                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                        />
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="color"
+                                value={config.overlayText || '#ffffff'}
+                                onChange={(e) => updateConfig('overlayText', e.target.value)}
+                                className="h-9 w-9 p-0 border border-slate-700 rounded bg-slate-900"
+                                title="Pick base text color"
+                            />
+                            <input
+                                type="text"
+                                value={config.overlayText}
+                                onChange={(e) => updateConfig('overlayText', e.target.value)}
+                                placeholder="#ffffff"
+                                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
+                        </div>
                     </div>
                     <div>
                         <label className="block text-xs font-medium text-slate-400 mb-1">Muted Text</label>
-                        <input
-                            type="text"
-                            value={config.overlayMuted}
-                            onChange={(e) => updateConfig('overlayMuted', e.target.value)}
-                            placeholder="#94a3b8"
-                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                        />
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="color"
+                                value={config.overlayMuted || '#94a3b8'}
+                                onChange={(e) => updateConfig('overlayMuted', e.target.value)}
+                                className="h-9 w-9 p-0 border border-slate-700 rounded bg-slate-900"
+                                title="Pick muted text color"
+                            />
+                            <input
+                                type="text"
+                                value={config.overlayMuted}
+                                onChange={(e) => updateConfig('overlayMuted', e.target.value)}
+                                placeholder="#94a3b8"
+                                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
+                        </div>
                     </div>
                     <div>
                         <label className="block text-xs font-medium text-slate-400 mb-1">Accent</label>
-                        <input
-                            type="text"
-                            value={config.overlayAccent}
-                            onChange={(e) => updateConfig('overlayAccent', e.target.value)}
-                            placeholder="#60a5fa"
-                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                        />
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="color"
+                                value={config.overlayAccent || '#60a5fa'}
+                                onChange={(e) => updateConfig('overlayAccent', e.target.value)}
+                                className="h-9 w-9 p-0 border border-slate-700 rounded bg-slate-900"
+                                title="Pick accent color"
+                            />
+                            <input
+                                type="text"
+                                value={config.overlayAccent}
+                                onChange={(e) => updateConfig('overlayAccent', e.target.value)}
+                                placeholder="#60a5fa"
+                                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
+                        </div>
                     </div>
                     <div>
                         <label className="block text-xs font-medium text-slate-400 mb-1">Positive</label>
-                        <input
-                            type="text"
-                            value={config.overlayPositive}
-                            onChange={(e) => updateConfig('overlayPositive', e.target.value)}
-                            placeholder="#4ade80"
-                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                        />
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="color"
+                                value={config.overlayPositive || '#4ade80'}
+                                onChange={(e) => updateConfig('overlayPositive', e.target.value)}
+                                className="h-9 w-9 p-0 border border-slate-700 rounded bg-slate-900"
+                                title="Pick positive color"
+                            />
+                            <input
+                                type="text"
+                                value={config.overlayPositive}
+                                onChange={(e) => updateConfig('overlayPositive', e.target.value)}
+                                placeholder="#4ade80"
+                                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
+                        </div>
                     </div>
                     <div>
                         <label className="block text-xs font-medium text-slate-400 mb-1">Header Text</label>
-                        <input
-                            type="text"
-                            value={config.overlayHeaderText}
-                            onChange={(e) => updateConfig('overlayHeaderText', e.target.value)}
-                            placeholder="#ffffff"
-                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                        />
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="color"
+                                value={config.overlayHeaderText || '#ffffff'}
+                                onChange={(e) => updateConfig('overlayHeaderText', e.target.value)}
+                                className="h-9 w-9 p-0 border border-slate-700 rounded bg-slate-900"
+                                title="Pick header text color"
+                            />
+                            <input
+                                type="text"
+                                value={config.overlayHeaderText}
+                                onChange={(e) => updateConfig('overlayHeaderText', e.target.value)}
+                                placeholder="#ffffff"
+                                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
+                        </div>
                     </div>
                     <div>
                         <label className="block text-xs font-medium text-slate-400 mb-1">Header Background</label>
-                        <input
-                            type="text"
-                            value={config.overlayHeaderBg}
-                            onChange={(e) => updateConfig('overlayHeaderBg', e.target.value)}
-                            placeholder="rgba(15, 23, 42, 0.9)"
-                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                        />
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="color"
+                                value={config.overlayHeaderBg || '#0f172a'}
+                                onChange={(e) => updateConfig('overlayHeaderBg', e.target.value)}
+                                className="h-9 w-9 p-0 border border-slate-700 rounded bg-slate-900"
+                                title="Pick header background color"
+                            />
+                            <input
+                                type="text"
+                                value={config.overlayHeaderBg}
+                                onChange={(e) => updateConfig('overlayHeaderBg', e.target.value)}
+                                placeholder="rgba(15, 23, 42, 0.9)"
+                                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
+                        </div>
                     </div>
                     <div>
                         <label className="block text-xs font-medium text-slate-400 mb-1">Row Text</label>
-                        <input
-                            type="text"
-                            value={config.overlayRowText}
-                            onChange={(e) => updateConfig('overlayRowText', e.target.value)}
-                            placeholder="#ffffff"
-                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                        />
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="color"
+                                value={config.overlayRowText || '#ffffff'}
+                                onChange={(e) => updateConfig('overlayRowText', e.target.value)}
+                                className="h-9 w-9 p-0 border border-slate-700 rounded bg-slate-900"
+                                title="Pick row text color"
+                            />
+                            <input
+                                type="text"
+                                value={config.overlayRowText}
+                                onChange={(e) => updateConfig('overlayRowText', e.target.value)}
+                                placeholder="#ffffff"
+                                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
+                        </div>
                     </div>
                     <div>
                         <label className="block text-xs font-medium text-slate-400 mb-1">Row Background</label>
-                        <input
-                            type="text"
-                            value={config.overlayRowBg}
-                            onChange={(e) => updateConfig('overlayRowBg', e.target.value)}
-                            placeholder="rgba(15, 23, 42, 0.4)"
-                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                        />
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="color"
+                                value={config.overlayRowBg || '#0f172a'}
+                                onChange={(e) => updateConfig('overlayRowBg', e.target.value)}
+                                className="h-9 w-9 p-0 border border-slate-700 rounded bg-slate-900"
+                                title="Pick row background color"
+                            />
+                            <input
+                                type="text"
+                                value={config.overlayRowBg}
+                                onChange={(e) => updateConfig('overlayRowBg', e.target.value)}
+                                placeholder="rgba(15, 23, 42, 0.4)"
+                                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
+                        </div>
                     </div>
                     <div>
                         <label className="block text-xs font-medium text-slate-400 mb-1">Row Alt Background</label>
-                        <input
-                            type="text"
-                            value={config.overlayRowAltBg}
-                            onChange={(e) => updateConfig('overlayRowAltBg', e.target.value)}
-                            placeholder="rgba(30, 41, 59, 0.4)"
-                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                        />
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="color"
+                                value={config.overlayRowAltBg || '#1e293b'}
+                                onChange={(e) => updateConfig('overlayRowAltBg', e.target.value)}
+                                className="h-9 w-9 p-0 border border-slate-700 rounded bg-slate-900"
+                                title="Pick alternate row background color"
+                            />
+                            <input
+                                type="text"
+                                value={config.overlayRowAltBg}
+                                onChange={(e) => updateConfig('overlayRowAltBg', e.target.value)}
+                                placeholder="rgba(30, 41, 59, 0.4)"
+                                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
+                        </div>
                     </div>
                     <div>
                         <label className="block text-xs font-medium text-slate-400 mb-1">Border</label>
-                        <input
-                            type="text"
-                            value={config.overlayBorder}
-                            onChange={(e) => updateConfig('overlayBorder', e.target.value)}
-                            placeholder="rgba(51, 65, 85, 0.5)"
-                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                        />
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="color"
+                                value={config.overlayBorder || '#334155'}
+                                onChange={(e) => updateConfig('overlayBorder', e.target.value)}
+                                className="h-9 w-9 p-0 border border-slate-700 rounded bg-slate-900"
+                                title="Pick border color"
+                            />
+                            <input
+                                type="text"
+                                value={config.overlayBorder}
+                                onChange={(e) => updateConfig('overlayBorder', e.target.value)}
+                                placeholder="rgba(51, 65, 85, 0.5)"
+                                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
+                        </div>
                     </div>
                     <div>
                         <label className="block text-xs font-medium text-slate-400 mb-1">Overlay Background</label>
-                        <input
-                            type="text"
-                            value={config.overlayBackground}
-                            onChange={(e) => updateConfig('overlayBackground', e.target.value)}
-                            placeholder="#0f172a"
-                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                        />
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="color"
+                                value={config.overlayBackground || '#0f172a'}
+                                onChange={(e) => updateConfig('overlayBackground', e.target.value)}
+                                className="h-9 w-9 p-0 border border-slate-700 rounded bg-slate-900"
+                                title="Pick overlay background color"
+                            />
+                            <input
+                                type="text"
+                                value={config.overlayBackground}
+                                onChange={(e) => updateConfig('overlayBackground', e.target.value)}
+                                placeholder="#0f172a"
+                                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
+                        </div>
                     </div>
-                </div>
+                        </div>
+                    </div>
+                </details>
             </div>
 
             {/* Matrix Table */}
