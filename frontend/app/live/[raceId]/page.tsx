@@ -189,7 +189,7 @@ export default function LiveResultsPage() {
                 docRef,
                 (docSnap) => {
                     if (docSnap.exists()) {
-                        setRace(docSnap.data() as Race);
+                        setRace({ id: docSnap.id, ...(docSnap.data() as Race) });
                         setLoading(false);
                     } else {
                         setError('Race not found');
@@ -576,6 +576,16 @@ export default function LiveResultsPage() {
              return key;
         };
 
+        const standingsForCategory = standings[category] || [];
+        const raceKey = race.id || raceId;
+        const leaguePointsByZwiftId = new Map<string, number>();
+        standingsForCategory.forEach(entry => {
+            const match = entry.results?.find(r => r.raceId === raceKey);
+            if (match) {
+                leaguePointsByZwiftId.set(entry.zwiftId, match.points);
+            }
+        });
+
         const displayResults = [...results]
             .sort((a, b) => {
                 if (isSplitResults) {
@@ -615,7 +625,7 @@ export default function LiveResultsPage() {
             return formatDelta(parsed - min);
         };
 
-        const hasAnyFinisher = isSplitResults && displayResults.some(r => r.finishTime && r.finishTime > 0);
+        const hasAnyFinisher = displayResults.some(r => r.finishTime && r.finishTime > 0);
         const winnerFinishTime = hasAnyFinisher
             ? Math.min(
                 ...displayResults
@@ -631,6 +641,10 @@ export default function LiveResultsPage() {
             }
             return formatDelta(finishTime - winnerFinishTime);
         };
+
+        const showTotalPoints = sprintColumns.length > 0 && !isSplitResults;
+        const showFinishTime = sprintColumns.length === 0 || isSplitResults;
+        const showLeaguePoints = true;
 
         return (
             <table className="w-full text-left border-collapse table-fixed">
@@ -669,28 +683,7 @@ export default function LiveResultsPage() {
                                     {getSprintHeader(key)}
                                 </th>
                                 ))}
-                                {isSplitResults ? (
-                                    <>
-                                        <th
-                                            className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-right font-bold text-green-300`}
-                                            style={{
-                                                backgroundColor: resolveColor(overlayHeaderBg),
-                                                color: resolveColor(overlayPositive, overlayHeaderText || overlayText || undefined)
-                                            }}
-                                        >
-                                            Finish Time
-                                        </th>
-                                        <th
-                                            className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-right font-bold text-blue-300`}
-                                            style={{
-                                                backgroundColor: resolveColor(overlayHeaderBg),
-                                                color: resolveColor(overlayAccent, overlayHeaderText || overlayText || undefined)
-                                            }}
-                                        >
-                                            Total
-                                        </th>
-                                    </>
-                                ) : (
+                                {showTotalPoints && (
                                     <th
                                         className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-right font-bold text-blue-300`}
                                         style={{
@@ -701,18 +694,51 @@ export default function LiveResultsPage() {
                                         Total
                                     </th>
                                 )}
+                                {showFinishTime && (
+                                    <th
+                                        className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-right font-bold text-green-300`}
+                                        style={{
+                                            backgroundColor: resolveColor(overlayHeaderBg),
+                                            color: resolveColor(overlayPositive, overlayHeaderText || overlayText || undefined)
+                                        }}
+                                    >
+                                        Finish Time
+                                    </th>
+                                )}
+                                {showLeaguePoints && (
+                                    <th
+                                        className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-right font-bold text-blue-300`}
+                                        style={{
+                                            backgroundColor: resolveColor(overlayHeaderBg),
+                                            color: resolveColor(overlayAccent, overlayHeaderText || overlayText || undefined)
+                                        }}
+                                    >
+                                        League Pts
+                                    </th>
+                                )}
                             </>
                         ) : (
-                            isSplitResults ? (
-                                <th
-                                    className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[35%] text-right font-bold break-words text-green-300`}
-                                    style={{
-                                        backgroundColor: resolveColor(overlayHeaderBg),
-                                        color: resolveColor(overlayPositive, overlayHeaderText || overlayText || undefined)
-                                    }}
-                                >
-                                    Finish Time
-                                </th>
+                            showFinishTime ? (
+                                <>
+                                    <th
+                                        className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[35%] text-right font-bold break-words text-green-300`}
+                                        style={{
+                                            backgroundColor: resolveColor(overlayHeaderBg),
+                                            color: resolveColor(overlayPositive, overlayHeaderText || overlayText || undefined)
+                                        }}
+                                    >
+                                        Finish Time
+                                    </th>
+                                    <th
+                                        className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[35%] text-right font-bold break-words text-blue-400`}
+                                        style={{
+                                            backgroundColor: resolveColor(overlayHeaderBg),
+                                            color: resolveColor(overlayAccent, overlayHeaderText || overlayText || undefined)
+                                        }}
+                                    >
+                                        League Pts
+                                    </th>
+                                </>
                             ) : (
                                 <th
                                     className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[35%] text-right font-bold break-words text-blue-400`}
@@ -721,7 +747,7 @@ export default function LiveResultsPage() {
                                         color: resolveColor(overlayAccent, overlayHeaderText || overlayText || undefined)
                                     }}
                                 >
-                                    Pts
+                                    League Pts
                                 </th>
                             )
                         )}
@@ -762,22 +788,7 @@ export default function LiveResultsPage() {
                                             {formatSprintValue(rider.sprintDetails?.[key], key)}
                                         </td>
                                     ))}
-                                    {isSplitResults ? (
-                                        <>
-                                            <td
-                                                className={`${bodyCellPadding} px-2 text-right font-extrabold text-green-300 align-middle`}
-                                                style={{ color: resolveColor(overlayPositive, overlayRowText || overlayText || undefined) }}
-                                            >
-                                                {formatFinishTimeOrDelta(rider.finishTime, rider.finishTime === winnerFinishTime)}
-                                            </td>
-                                            <td
-                                                className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-300 align-middle`}
-                                                style={{ color: resolveColor(overlayAccent, overlayRowText || overlayText || undefined) }}
-                                            >
-                                                {rider.totalPoints ?? 0}
-                                            </td>
-                                        </>
-                                    ) : (
+                                    {showTotalPoints && (
                                         <td
                                             className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-300 align-middle`}
                                             style={{ color: resolveColor(overlayAccent, overlayRowText || overlayText || undefined) }}
@@ -785,21 +796,51 @@ export default function LiveResultsPage() {
                                             {rider.totalPoints ?? 0}
                                         </td>
                                     )}
+                                    {showFinishTime && (
+                                        <td
+                                            className={`${bodyCellPadding} px-2 text-right font-extrabold text-green-300 align-middle`}
+                                            style={{ color: resolveColor(overlayPositive, overlayRowText || overlayText || undefined) }}
+                                        >
+                                            {formatFinishTimeOrDelta(rider.finishTime, rider.finishTime === winnerFinishTime)}
+                                        </td>
+                                    )}
+                                    {showLeaguePoints && (
+                                        <td
+                                            className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-300 align-middle`}
+                                            style={{ color: resolveColor(overlayAccent, overlayRowText || overlayText || undefined) }}
+                                        >
+                                            {leaguePointsByZwiftId.has(rider.zwiftId)
+                                                ? leaguePointsByZwiftId.get(rider.zwiftId)
+                                                : (rider.finishPoints ?? '-')}
+                                        </td>
+                                    )}
                                 </>
                             ) : (
-                                isSplitResults ? (
-                                    <td
-                                        className={`${bodyCellPadding} px-2 text-right font-extrabold text-green-300 align-middle`}
-                                        style={{ color: resolveColor(overlayPositive, overlayRowText || overlayText || undefined) }}
-                                    >
-                                        {formatFinishTimeOrDelta(rider.finishTime, rider.finishTime === winnerFinishTime)}
-                                    </td>
+                                showFinishTime ? (
+                                    <>
+                                        <td
+                                            className={`${bodyCellPadding} px-2 text-right font-extrabold text-green-300 align-middle`}
+                                            style={{ color: resolveColor(overlayPositive, overlayRowText || overlayText || undefined) }}
+                                        >
+                                            {formatFinishTimeOrDelta(rider.finishTime, rider.finishTime === winnerFinishTime)}
+                                        </td>
+                                        <td
+                                            className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-400 align-middle`}
+                                            style={{ color: resolveColor(overlayAccent, overlayRowText || overlayText || undefined) }}
+                                        >
+                                            {leaguePointsByZwiftId.has(rider.zwiftId)
+                                                ? leaguePointsByZwiftId.get(rider.zwiftId)
+                                                : (rider.finishPoints ?? '-')}
+                                        </td>
+                                    </>
                                 ) : (
                                     <td
                                         className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-400 align-middle`}
                                         style={{ color: resolveColor(overlayAccent, overlayRowText || overlayText || undefined) }}
                                     >
-                                        {rider.totalPoints}
+                                        {leaguePointsByZwiftId.has(rider.zwiftId)
+                                            ? leaguePointsByZwiftId.get(rider.zwiftId)
+                                            : (rider.finishPoints ?? '-')}
                                     </td>
                                 )
                             )}
