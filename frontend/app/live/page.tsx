@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, getDocs, query, doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { collection, getDocs, query, doc, updateDoc, arrayUnion, arrayRemove, getDoc, setDoc } from 'firebase/firestore';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 
@@ -31,6 +31,21 @@ export default function LiveLinksPage() {
     const [allCategories, setAllCategories] = useState<string[]>([]);
     const [processingKey, setProcessingKey] = useState<string | null>(null);
     const [viewingResultsId, setViewingResultsId] = useState<string | null>(null);
+    const [savedSchemes, setSavedSchemes] = useState<Array<{
+        name: string;
+        overlayText: string;
+        overlayMuted: string;
+        overlayAccent: string;
+        overlayPositive: string;
+        overlayHeaderText: string;
+        overlayHeaderBg: string;
+        overlayRowText: string;
+        overlayRowBg: string;
+        overlayRowAltBg: string;
+        overlayBorder: string;
+        overlayBackground: string;
+    }>>([]);
+    const [schemeName, setSchemeName] = useState('');
 
     // Configuration State
     const [config, setConfig] = useState({
@@ -139,6 +154,66 @@ export default function LiveLinksPage() {
             overlayBackground: palette.overlayBackground
         }));
     };
+
+    const getOverlaySchemeFromConfig = (name: string) => ({
+        name,
+        overlayText: config.overlayText,
+        overlayMuted: config.overlayMuted,
+        overlayAccent: config.overlayAccent,
+        overlayPositive: config.overlayPositive,
+        overlayHeaderText: config.overlayHeaderText,
+        overlayHeaderBg: config.overlayHeaderBg,
+        overlayRowText: config.overlayRowText,
+        overlayRowBg: config.overlayRowBg,
+        overlayRowAltBg: config.overlayRowAltBg,
+        overlayBorder: config.overlayBorder,
+        overlayBackground: config.overlayBackground
+    });
+
+    const saveOverlaySchemes = async (schemes: typeof savedSchemes) => {
+        setSavedSchemes(schemes);
+        const settingsRef = doc(db, 'league', 'liveOverlay');
+        try {
+            await setDoc(settingsRef, { schemes }, { merge: true });
+        } catch (e) {
+            console.error('Failed to save overlay schemes:', e);
+            alert('Failed to save color schemes.');
+        }
+    };
+
+    const handleSaveScheme = () => {
+        const name = schemeName.trim();
+        if (!name) return;
+        const nextScheme = getOverlaySchemeFromConfig(name);
+        const existingIdx = savedSchemes.findIndex(s => s.name.toLowerCase() === name.toLowerCase());
+        const next = existingIdx >= 0
+            ? savedSchemes.map((s, idx) => (idx === existingIdx ? nextScheme : s))
+            : [...savedSchemes, nextScheme];
+        saveOverlaySchemes(next).then(() => setSchemeName(''));
+    };
+
+    const handleDeleteScheme = (name: string) => {
+        const next = savedSchemes.filter(s => s.name !== name);
+        saveOverlaySchemes(next);
+    };
+
+    useEffect(() => {
+        const loadSchemes = async () => {
+            try {
+                const settingsRef = doc(db, 'league', 'liveOverlay');
+                const snap = await getDoc(settingsRef);
+                const data = snap.exists() ? snap.data() : null;
+                if (data?.schemes && Array.isArray(data.schemes)) {
+                    setSavedSchemes(data.schemes);
+                } else {
+                    setSavedSchemes([]);
+                }
+            } catch (e) {
+                console.error('Failed to load overlay schemes:', e);
+            }
+        };
+        loadSchemes();
+    }, []);
 
     useEffect(() => {
         const fetchRaces = async () => {
@@ -637,6 +712,44 @@ export default function LiveLinksPage() {
                             >
                                 Reset
                             </button>
+                            {savedSchemes.map(scheme => (
+                                <button
+                                    key={scheme.name}
+                                    onClick={() => applyOverlayPalette(scheme)}
+                                    className="relative pl-3 pr-6 py-1 text-xs font-semibold rounded border border-slate-700 text-slate-200 hover:border-slate-500 hover:text-white"
+                                    type="button"
+                                >
+                                    {scheme.name}
+                                    <span
+                                        className="absolute right-1 top-1 text-[10px] text-slate-400 hover:text-red-300"
+                                        title="Delete scheme"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDeleteScheme(scheme.name);
+                                        }}
+                                    >
+                                        ✕
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
+                        <div className="flex flex-col gap-3 mb-4">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <input
+                                    type="text"
+                                    value={schemeName}
+                                    onChange={(e) => setSchemeName(e.target.value)}
+                                    placeholder="Scheme name"
+                                    className="min-w-[220px] bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                />
+                                <button
+                                    onClick={handleSaveScheme}
+                                    className="px-3 py-2 text-xs font-semibold rounded border border-blue-700 text-blue-200 hover:text-white hover:border-blue-400"
+                                    type="button"
+                                >
+                                    Save Scheme
+                                </button>
+                            </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div>

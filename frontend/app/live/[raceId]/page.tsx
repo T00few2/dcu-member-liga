@@ -448,14 +448,15 @@ export default function LiveResultsPage() {
 
     const formatTimeValue = (ms: number) => {
         const safeMs = Math.max(0, ms);
-        const totalSeconds = Math.floor(safeMs / 1000);
+        const roundedMs = Math.round(safeMs / 10) * 10;
+        const totalSeconds = Math.floor(roundedMs / 1000);
         const hours = Math.floor(totalSeconds / 3600);
         const minutes = Math.floor((totalSeconds % 3600) / 60);
         const seconds = totalSeconds % 60;
-        const millis = safeMs % 1000;
+        const millis = roundedMs % 1000;
 
         const pad = (n: number) => n.toString().padStart(2, '0');
-        const padMs = (n: number) => n.toString().padStart(3, '0');
+        const padMs = (n: number) => Math.floor(n / 10).toString().padStart(2, '0');
 
         if (hours > 0) {
             return `${hours}:${pad(minutes)}:${pad(seconds)}.${padMs(millis)}`;
@@ -528,16 +529,19 @@ export default function LiveResultsPage() {
                 configuredSegments = race.sprints || race.sprintData || [];
             }
         }
-        const sprintSegments = segmentType === 'split'
-            ? []
-            : configuredSegments.filter(s => s.type !== 'split');
+        const isSplitResults = segmentType === 'split';
+        const sprintSegments = configuredSegments.filter(s => s.type !== 'split');
+        const splitSegments = configuredSegments.filter(s => s.type === 'split');
+        const activeSegments = isSplitResults
+            ? (splitSegments.length > 0 ? splitSegments : configuredSegments)
+            : sprintSegments;
 
         // Sprint columns ordering (aligned with results page)
         let sprintColumns: string[] = [];
         const remainingSprintKeys = new Set(allSprintKeys);
 
-        if (sprintSegments.length > 0) {
-            sprintSegments.forEach(s => {
+        if (activeSegments.length > 0) {
+            activeSegments.forEach(s => {
                 const potentialKeys = [s.key, `${s.id}_${s.count}`, `${s.id}`];
                 const foundKey = potentialKeys.find(k => k && remainingSprintKeys.has(k));
                 if (foundKey) {
@@ -560,7 +564,7 @@ export default function LiveResultsPage() {
         // Helper to get header name
         const getSprintHeader = (key: string) => {
              // Try to find in sourceSprints first (most specific)
-            const sprint = sprintSegments.find(s => s.key === key || `${s.id}_${s.count}` === key || s.id === key);
+            const sprint = activeSegments.find(s => s.key === key || `${s.id}_${s.count}` === key || s.id === key);
              if (sprint) return `${sprint.name} #${sprint.count}`;
              
              // Fallback to global search if not found (safety)
@@ -573,8 +577,60 @@ export default function LiveResultsPage() {
         };
 
         const displayResults = [...results]
-            .sort((a, b) => (b.totalPoints || 0) - (a.totalPoints || 0))
+            .sort((a, b) => {
+                if (isSplitResults) {
+                    const aFinish = a.finishTime && a.finishTime > 0 ? a.finishTime : Number.MAX_SAFE_INTEGER;
+                    const bFinish = b.finishTime && b.finishTime > 0 ? b.finishTime : Number.MAX_SAFE_INTEGER;
+                    return aFinish - bFinish;
+                }
+                return (b.totalPoints || 0) - (a.totalPoints || 0);
+            })
             .slice(0, limit);
+
+        const parseWorldTime = (value: unknown) => {
+            if (value === null || value === undefined) return null;
+            const parsed = typeof value === 'string' ? parseInt(value, 10) : Number(value);
+            return Number.isFinite(parsed) ? parsed : null;
+        };
+
+        const minWorldTimes = new Map<string, number>();
+        if (isSplitResults && sprintColumns.length > 0) {
+            sprintColumns.forEach(key => {
+                const times = results
+                    .map(r => parseWorldTime(r.sprintDetails?.[key]))
+                    .filter((v): v is number => v !== null);
+                if (times.length > 0) {
+                    minWorldTimes.set(key, Math.min(...times));
+                }
+            });
+        }
+
+        const formatSprintValue = (value: unknown, key: string) => {
+            if (value === null || value === undefined || value === '') return '-';
+            if (!isSplitResults) return value as any;
+            const parsed = parseWorldTime(value);
+            if (parsed === null) return '-';
+            const min = minWorldTimes.get(key);
+            if (min === undefined) return formatTimeValue(parsed);
+            return formatDelta(parsed - min);
+        };
+
+        const hasAnyFinisher = isSplitResults && displayResults.some(r => r.finishTime && r.finishTime > 0);
+        const winnerFinishTime = hasAnyFinisher
+            ? Math.min(
+                ...displayResults
+                    .filter(r => r.finishTime && r.finishTime > 0)
+                    .map(r => r.finishTime)
+            )
+            : 0;
+
+        const formatFinishTimeOrDelta = (finishTime: number, isWinner: boolean) => {
+            if (!finishTime || finishTime <= 0) return '-';
+            if (isWinner || finishTime === winnerFinishTime) {
+                return formatTimeValue(finishTime);
+            }
+            return formatDelta(finishTime - winnerFinishTime);
+        };
 
         return (
             <table className="w-full text-left border-collapse table-fixed">
@@ -613,26 +669,61 @@ export default function LiveResultsPage() {
                                     {getSprintHeader(key)}
                                 </th>
                                 ))}
+                                {isSplitResults ? (
+                                    <>
+                                        <th
+                                            className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-right font-bold text-green-300`}
+                                            style={{
+                                                backgroundColor: resolveColor(overlayHeaderBg),
+                                                color: resolveColor(overlayPositive, overlayHeaderText || overlayText || undefined)
+                                            }}
+                                        >
+                                            Finish Time
+                                        </th>
+                                        <th
+                                            className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-right font-bold text-blue-300`}
+                                            style={{
+                                                backgroundColor: resolveColor(overlayHeaderBg),
+                                                color: resolveColor(overlayAccent, overlayHeaderText || overlayText || undefined)
+                                            }}
+                                        >
+                                            Total
+                                        </th>
+                                    </>
+                                ) : (
+                                    <th
+                                        className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-right font-bold text-blue-300`}
+                                        style={{
+                                            backgroundColor: resolveColor(overlayHeaderBg),
+                                            color: resolveColor(overlayAccent, overlayHeaderText || overlayText || undefined)
+                                        }}
+                                    >
+                                        Total
+                                    </th>
+                                )}
+                            </>
+                        ) : (
+                            isSplitResults ? (
                                 <th
-                                    className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-right font-bold text-blue-300`}
+                                    className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[35%] text-right font-bold break-words text-green-300`}
+                                    style={{
+                                        backgroundColor: resolveColor(overlayHeaderBg),
+                                        color: resolveColor(overlayPositive, overlayHeaderText || overlayText || undefined)
+                                    }}
+                                >
+                                    Finish Time
+                                </th>
+                            ) : (
+                                <th
+                                    className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[35%] text-right font-bold break-words text-blue-400`}
                                     style={{
                                         backgroundColor: resolveColor(overlayHeaderBg),
                                         color: resolveColor(overlayAccent, overlayHeaderText || overlayText || undefined)
                                     }}
                                 >
-                                    Total
+                                    Pts
                                 </th>
-                            </>
-                        ) : (
-                            <th
-                                className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[35%] text-right font-bold break-words text-blue-400`}
-                                style={{
-                                    backgroundColor: resolveColor(overlayHeaderBg),
-                                    color: resolveColor(overlayAccent, overlayHeaderText || overlayText || undefined)
-                                }}
-                            >
-                                Pts
-                            </th>
+                            )
                         )}
                     </tr>
                 </thead>
@@ -668,23 +759,49 @@ export default function LiveResultsPage() {
                                             className={`${bodyCellPadding} px-2 text-center font-extrabold text-blue-400 align-middle`}
                                             style={{ color: resolveColor(overlayAccent, overlayRowText || overlayText || undefined) }}
                                         >
-                                            {rider.sprintDetails?.[key] ?? '-'}
+                                            {formatSprintValue(rider.sprintDetails?.[key], key)}
                                         </td>
                                     ))}
-                                    <td
-                                        className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-300 align-middle`}
-                                        style={{ color: resolveColor(overlayAccent, overlayRowText || overlayText || undefined) }}
-                                    >
-                                        {rider.totalPoints ?? 0}
-                                    </td>
+                                    {isSplitResults ? (
+                                        <>
+                                            <td
+                                                className={`${bodyCellPadding} px-2 text-right font-extrabold text-green-300 align-middle`}
+                                                style={{ color: resolveColor(overlayPositive, overlayRowText || overlayText || undefined) }}
+                                            >
+                                                {formatFinishTimeOrDelta(rider.finishTime, rider.finishTime === winnerFinishTime)}
+                                            </td>
+                                            <td
+                                                className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-300 align-middle`}
+                                                style={{ color: resolveColor(overlayAccent, overlayRowText || overlayText || undefined) }}
+                                            >
+                                                {rider.totalPoints ?? 0}
+                                            </td>
+                                        </>
+                                    ) : (
+                                        <td
+                                            className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-300 align-middle`}
+                                            style={{ color: resolveColor(overlayAccent, overlayRowText || overlayText || undefined) }}
+                                        >
+                                            {rider.totalPoints ?? 0}
+                                        </td>
+                                    )}
                                 </>
                             ) : (
-                                <td
-                                    className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-400 align-middle`}
-                                    style={{ color: resolveColor(overlayAccent, overlayRowText || overlayText || undefined) }}
-                                >
-                                    {rider.totalPoints}
-                                </td>
+                                isSplitResults ? (
+                                    <td
+                                        className={`${bodyCellPadding} px-2 text-right font-extrabold text-green-300 align-middle`}
+                                        style={{ color: resolveColor(overlayPositive, overlayRowText || overlayText || undefined) }}
+                                    >
+                                        {formatFinishTimeOrDelta(rider.finishTime, rider.finishTime === winnerFinishTime)}
+                                    </td>
+                                ) : (
+                                    <td
+                                        className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-400 align-middle`}
+                                        style={{ color: resolveColor(overlayAccent, overlayRowText || overlayText || undefined) }}
+                                    >
+                                        {rider.totalPoints}
+                                    </td>
+                                )
                             )}
                         </tr>
                     ))}
