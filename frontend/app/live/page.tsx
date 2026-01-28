@@ -705,13 +705,6 @@ export default function LiveLinksPage() {
                                     {palette.name}
                                 </button>
                             ))}
-                            <button
-                                onClick={() => applyOverlayPalette(overlayPalettes[0])}
-                                className="px-3 py-1 text-xs font-semibold rounded border border-slate-700 text-slate-400 hover:text-white"
-                                type="button"
-                            >
-                                Reset
-                            </button>
                             {savedSchemes.map(scheme => (
                                 <button
                                     key={scheme.name}
@@ -732,6 +725,13 @@ export default function LiveLinksPage() {
                                     </span>
                                 </button>
                             ))}
+                            <button
+                                onClick={() => applyOverlayPalette(overlayPalettes[0])}
+                                className="px-3 py-1 text-xs font-semibold rounded border border-slate-700 text-slate-400 hover:text-white"
+                                type="button"
+                            >
+                                Reset
+                            </button>
                         </div>
                         <div className="flex flex-col gap-3 mb-4">
                             <div className="flex flex-wrap items-center gap-2">
