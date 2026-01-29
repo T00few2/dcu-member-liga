@@ -10,6 +10,7 @@ interface Race {
     id: string;
     name: string;
     date: string;
+    type?: 'scratch' | 'points' | 'time-trial';
     eventMode?: 'single' | 'multi';
     eventConfiguration?: {
         eventId: string;
@@ -31,6 +32,8 @@ export default function LiveLinksPage() {
     const [allCategories, setAllCategories] = useState<string[]>([]);
     const [processingKey, setProcessingKey] = useState<string | null>(null);
     const [viewingResultsId, setViewingResultsId] = useState<string | null>(null);
+    const [viewingCategory, setViewingCategory] = useState<string | null>(null);
+    const [processingCategory, setProcessingCategory] = useState<string | null>(null);
     const [savedSchemes, setSavedSchemes] = useState<Array<{
         name: string;
         overlayText: string;
@@ -50,15 +53,14 @@ export default function LiveLinksPage() {
     // Configuration State
     const [config, setConfig] = useState({
         limit: 10,
-        view: 'race', // 'race' | 'standings'
         cycle: 0,
         transparent: true,
         scroll: false,
         sprints: true,
         lastSprint: false,
         full: false,
-        includeBanner: false,
-        fitToScreen: false,
+        includeBanner: true,
+        fitToScreen: true,
         lastSplit: false,
         showCheckboxes: false, // Helper to toggle advanced options visibility
         // Overlay color options (non-full view)
@@ -312,19 +314,36 @@ export default function LiveLinksPage() {
         setConfig(prev => ({ ...prev, [field]: value }));
     };
 
-    const generateUrl = (raceId: string, category: string) => {
+    const generateUrl = (raceId: string, category: string, forceView?: string, forceFull?: boolean) => {
         const baseUrl = `/live/${raceId}`;
         const params = new URLSearchParams();
         
         params.set('cat', category);
         if (config.limit !== 10) params.set('limit', config.limit.toString());
-        if (config.view !== 'race') params.set('view', config.view);
+        
+        // View Logic
+        if (forceView) {
+            params.set('view', forceView);
+        } else {
+            const race = races.find(r => r.id === raceId);
+            if (race?.type === 'time-trial') {
+                params.set('view', 'time-trial');
+            }
+        }
+
         if (config.cycle > 0) params.set('cycle', config.cycle.toString());
         if (!config.transparent) params.set('transparent', 'false');
         if (config.scroll) params.set('scroll', 'true');
         if (!config.sprints) params.set('sprints', 'false');
         if (config.lastSprint) params.set('lastSprint', 'true');
-        if (config.full) params.set('full', 'true');
+        
+        // Full Screen Logic
+        if (forceFull) {
+            params.set('full', 'true');
+        } else if (config.full && forceFull !== false) {
+             params.set('full', 'true');
+        }
+
         if (!config.includeBanner) params.set('banner', 'false');
         if (config.fitToScreen) params.set('fit', 'true');
         if (config.lastSplit) params.set('lastSplit', 'true');
@@ -384,6 +403,45 @@ export default function LiveLinksPage() {
             alert('Error updating results');
         } finally {
             setProcessingKey(null);
+        }
+    };
+
+    const handleRefreshCategory = async (category: string) => {
+        if (!user) {
+            alert('Please log in to calculate results.');
+            return;
+        }
+        
+        setProcessingCategory(category);
+        
+        try {
+            const racesToUpdate = races.filter(race => {
+                const raceCats = new Set<string>();
+                if (race.eventConfiguration && race.eventConfiguration.length > 0) {
+                    race.eventConfiguration.forEach(c => c.customCategory && raceCats.add(c.customCategory));
+                }
+                if (race.singleModeCategories && race.singleModeCategories.length > 0) {
+                    race.singleModeCategories.forEach(c => c.category && raceCats.add(c.category));
+                }
+                if (race.results) {
+                    Object.keys(race.results).forEach(c => raceCats.add(c));
+                }
+                if (raceCats.size === 0) {
+                    ['A', 'B', 'C', 'D', 'E'].forEach(c => raceCats.add(c));
+                }
+                return raceCats.has(category);
+            });
+
+            for (const race of racesToUpdate) {
+                // We use the existing handleRefresh which handles the API call and individual cell state
+                // This might be slow for many races but provides good feedback
+                await handleRefresh(race.id, category);
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Error updating category results');
+        } finally {
+            setProcessingCategory(null);
         }
     };
 
@@ -525,18 +583,7 @@ export default function LiveLinksPage() {
                                 className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
                             />
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-400 mb-1">Default View</label>
-                            <select 
-                                value={config.view}
-                                onChange={(e) => updateConfig('view', e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                            >
-                                <option value="race">Race Results</option>
-                                <option value="standings">League Standings</option>
-                                <option value="time-trial">Time Trail</option>
-                            </select>
-                        </div>
+{/* View selection removed - handled per-race type */}
                     </div>
 
                     {/* Cycle & Display */}
@@ -578,73 +625,57 @@ export default function LiveLinksPage() {
                     </div>
 
                      <div className="space-y-3">
+                        <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Full Screen Options</div>
                         <label className="flex items-center space-x-3 cursor-pointer">
                             <input 
                                 type="checkbox" 
-                                checked={config.full}
-                                onChange={(e) => updateConfig('full', e.target.checked)}
+                                checked={config.includeBanner}
+                                onChange={(e) => updateConfig('includeBanner', e.target.checked)}
                                 className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
                             />
-                            <span className="text-slate-300">Full-Screen Layout</span>
+                            <span className="text-slate-300">Include Banner</span>
                         </label>
-                        {config.full && (
-                            <>
-                                <label className="flex items-center space-x-3 cursor-pointer">
-                                    <input 
-                                        type="checkbox" 
-                                        checked={config.includeBanner}
-                                        onChange={(e) => updateConfig('includeBanner', e.target.checked)}
-                                        className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
-                                    />
-                                    <span className="text-slate-300">Include Banner (Full-Screen)</span>
-                                </label>
-                                <label className="flex items-center space-x-3 cursor-pointer">
-                                    <input 
-                                        type="checkbox" 
-                                        checked={config.fitToScreen}
-                                        onChange={(e) => updateConfig('fitToScreen', e.target.checked)}
-                                        className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
-                                    />
-                                    <span className="text-slate-300">Fit All Riders to Screen</span>
-                                </label>
-                            </>
-                        )}
+                        <label className="flex items-center space-x-3 cursor-pointer">
+                            <input 
+                                type="checkbox" 
+                                checked={config.fitToScreen}
+                                onChange={(e) => updateConfig('fitToScreen', e.target.checked)}
+                                className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
+                            />
+                            <span className="text-slate-300">Fit to Screen</span>
+                        </label>
 
-                        {config.view === 'race' && (
-                            <>
-                                <label className="flex items-center space-x-3 cursor-pointer">
-                                    <input 
-                                        type="checkbox" 
-                                        checked={config.sprints}
-                                        onChange={(e) => updateConfig('sprints', e.target.checked)}
-                                        className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
-                                    />
-                                    <span className="text-slate-300">Show Sprints (Sprint Races)</span>
-                                </label>
+                        <div className="border-t border-slate-700 my-2 pt-2"></div>
 
-                                <label className="flex items-center space-x-3 cursor-pointer">
-                                    <input 
-                                        type="checkbox" 
-                                        checked={config.lastSprint}
-                                        onChange={(e) => updateConfig('lastSprint', e.target.checked)}
-                                        className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
-                                    />
-                                    <span className="text-slate-300">Show Only Last Sprint (Sprint Races)</span>
-                                </label>
-                            </>
-                        )}
+                        <label className="flex items-center space-x-3 cursor-pointer">
+                            <input 
+                                type="checkbox" 
+                                checked={config.sprints}
+                                onChange={(e) => updateConfig('sprints', e.target.checked)}
+                                className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
+                            />
+                            <span className="text-slate-300">Show Sprints (Sprint Races)</span>
+                        </label>
+
+                        <label className="flex items-center space-x-3 cursor-pointer">
+                            <input 
+                                type="checkbox" 
+                                checked={config.lastSprint}
+                                onChange={(e) => updateConfig('lastSprint', e.target.checked)}
+                                className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
+                            />
+                            <span className="text-slate-300">Show Only Last Sprint (Sprint Races)</span>
+                        </label>
                         
-                        {config.view === 'time-trial' && (
-                            <label className="flex items-center space-x-3 cursor-pointer">
-                                <input 
-                                    type="checkbox" 
-                                    checked={config.lastSplit}
-                                    onChange={(e) => updateConfig('lastSplit', e.target.checked)}
-                                    className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
-                                />
-                                <span className="text-slate-300">Show Only Last Split (Time Trail)</span>
-                            </label>
-                        )}
+                        <label className="flex items-center space-x-3 cursor-pointer">
+                            <input 
+                                type="checkbox" 
+                                checked={config.lastSplit}
+                                onChange={(e) => updateConfig('lastSplit', e.target.checked)}
+                                className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
+                            />
+                            <span className="text-slate-300">Show Only Last Split (Time Trail)</span>
+                        </label>
                     </div>
                 </div>
 
@@ -973,7 +1004,32 @@ export default function LiveLinksPage() {
                         <tr className="bg-slate-800 text-slate-400 uppercase tracking-wider text-sm">
                             <th className="p-4 border-b border-slate-700 sticky left-0 bg-slate-800 z-10 w-64 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)]">Race</th>
                             {allCategories.map(cat => (
-                                <th key={cat} className="p-4 border-b border-slate-700 text-center min-w-[100px]">{cat}</th>
+                                <th key={cat} className="p-4 border-b border-slate-700 text-center min-w-[100px]">
+                                    <div className="flex flex-col gap-2 items-center">
+                                        <span>{cat}</span>
+                                        {user && (
+                                            <div className="flex gap-1">
+                                                <button 
+                                                    onClick={() => handleRefreshCategory(cat)}
+                                                    disabled={!!processingCategory}
+                                                    className={`px-2 py-1 text-[10px] uppercase font-bold rounded border transition-colors ${
+                                                        processingCategory === cat 
+                                                            ? 'bg-slate-700 text-slate-400 border-slate-600 cursor-not-allowed' 
+                                                            : 'bg-slate-800 text-green-500 border-green-900/50 hover:bg-green-900/20 hover:border-green-800'
+                                                    }`}
+                                                >
+                                                    {processingCategory === cat ? '...' : 'Calc All'}
+                                                </button>
+                                                <button
+                                                    onClick={() => setViewingCategory(cat)}
+                                                    className="px-2 py-1 text-[10px] uppercase font-bold rounded border border-slate-700 text-slate-300 hover:text-white hover:border-slate-500"
+                                                >
+                                                    View
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </th>
                             ))}
                         </tr>
                     </thead>
@@ -1004,54 +1060,52 @@ export default function LiveLinksPage() {
                                         <div className="text-xs text-slate-500 mt-1">
                                             {new Date(race.date).toLocaleDateString()}
                                         </div>
-                                        {user && (
-                                            <div className="mt-2 flex items-center gap-2">
-                                                <button 
-                                                    onClick={() => handleRefresh(race.id, 'All')}
-                                                    disabled={!!processingKey}
-                                                    className={`px-2 py-1 text-[10px] uppercase font-bold rounded border transition-colors ${
-                                                        processingKey === `${race.id}-All` 
-                                                            ? 'bg-slate-700 text-slate-400 border-slate-600 cursor-not-allowed' 
-                                                            : 'bg-slate-800 text-green-500 border-green-900/50 hover:bg-green-900/20 hover:border-green-800'
-                                                    }`}
-                                                >
-                                                    {processingKey === `${race.id}-All` ? 'Calc...' : 'Calc All'}
-                                                </button>
-                                                <button
-                                                    onClick={() => setViewingResultsId(race.id)}
-                                                    className="px-2 py-1 text-[10px] uppercase font-bold rounded border border-slate-700 text-slate-300 hover:text-white hover:border-slate-500"
-                                                >
-                                                    View
-                                                </button>
-                                            </div>
-                                        )}
                                     </td>
                                     {allCategories.map(cat => {
                                         const isAvailable = raceCats.has(cat);
-                                        const url = generateUrl(race.id, cat);
+                                        const urlOverlay = generateUrl(race.id, cat, undefined, false);
+                                        const urlFull = generateUrl(race.id, cat, undefined, true);
                                         
                                         return (
-                                            <td key={cat} className="p-3 text-center border-r border-slate-800/50 last:border-0">
+                                            <td key={cat} className="p-3 text-center border-r border-slate-800/50 last:border-0 min-w-[140px]">
                                                 {isAvailable ? (
-                                                    <div className="flex flex-col gap-2 items-center">
-                                                        <Link 
-                                                            href={url} 
-                                                            target="_blank"
-                                                            className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded transition-colors"
-                                                        >
-                                                            Open
-                                                        </Link>
-                                                        <button
-                                                            onClick={() => copyToClipboard(url)}
-                                                            className="text-[10px] text-slate-500 hover:text-slate-300 uppercase tracking-wide"
-                                                        >
-                                                            Copy Link
-                                                        </button>
+                                                    <div className="flex flex-col gap-2 items-center w-full">
+                                                        <div className="grid grid-cols-[1fr_auto] gap-2 w-full">
+                                                            <Link 
+                                                                href={urlOverlay} 
+                                                                target="_blank"
+                                                                className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-white text-[10px] font-bold rounded transition-colors text-center truncate"
+                                                            >
+                                                                Overlay
+                                                            </Link>
+                                                            <button
+                                                                onClick={() => copyToClipboard(urlOverlay)}
+                                                                className="px-2 py-1 bg-slate-800 border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-white text-[10px] font-bold rounded transition-colors"
+                                                                title="Copy Overlay Link"
+                                                            >
+                                                                Copy
+                                                            </button>
+                                                            
+                                                            <Link 
+                                                                href={urlFull} 
+                                                                target="_blank"
+                                                                className="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold rounded transition-colors text-center truncate"
+                                                            >
+                                                                Full Screen
+                                                            </Link>
+                                                            <button
+                                                                onClick={() => copyToClipboard(urlFull)}
+                                                                className="px-2 py-1 bg-slate-800 border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-white text-[10px] font-bold rounded transition-colors"
+                                                                title="Copy Full Screen Link"
+                                                            >
+                                                                Copy
+                                                            </button>
+                                                        </div>
                                                         {user && (
                                                             <button 
                                                                 onClick={() => handleRefresh(race.id, cat)}
                                                                 disabled={!!processingKey}
-                                                                className={`text-[10px] font-bold uppercase tracking-wide transition-colors ${
+                                                                className={`text-[10px] font-bold uppercase tracking-wide transition-colors mt-1 ${
                                                                     processingKey === `${race.id}-${cat}` 
                                                                         ? 'text-slate-600 cursor-wait' 
                                                                         : 'text-green-600 hover:text-green-400'
@@ -1070,12 +1124,65 @@ export default function LiveLinksPage() {
                                 </tr>
                             );
                         })}
+                        {/* League Standings Row */}
+                        <tr className="border-t-2 border-slate-700 bg-slate-800/80">
+                            <td className="p-4 border-r border-slate-800 sticky left-0 bg-slate-800 z-10 font-bold text-slate-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)]">
+                                League Standings
+                            </td>
+                            {allCategories.map(cat => {
+                                const latestRaceId = races.length > 0 ? races[races.length - 1].id : 'no-race';
+                                const urlOverlay = generateUrl(latestRaceId, cat, 'standings', false);
+                                const urlFull = generateUrl(latestRaceId, cat, 'standings', true);
+                                
+                                return (
+                                    <td key={cat} className="p-3 text-center border-r border-slate-800/50 last:border-0 min-w-[140px]">
+                                        {latestRaceId !== 'no-race' ? (
+                                            <div className="flex flex-col gap-2 items-center w-full">
+                                                <div className="grid grid-cols-[1fr_auto] gap-2 w-full">
+                                                    <Link 
+                                                        href={urlOverlay} 
+                                                        target="_blank"
+                                                        className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-white text-[10px] font-bold rounded transition-colors text-center truncate"
+                                                    >
+                                                        Overlay
+                                                    </Link>
+                                                    <button
+                                                        onClick={() => copyToClipboard(urlOverlay)}
+                                                        className="px-2 py-1 bg-slate-800 border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-white text-[10px] font-bold rounded transition-colors"
+                                                        title="Copy Overlay Link"
+                                                    >
+                                                        Copy
+                                                    </button>
+                                                    
+                                                    <Link 
+                                                        href={urlFull} 
+                                                        target="_blank"
+                                                        className="px-2 py-1 bg-purple-600 hover:bg-purple-500 text-white text-[10px] font-bold rounded transition-colors text-center truncate"
+                                                    >
+                                                        Full Screen
+                                                    </Link>
+                                                    <button
+                                                        onClick={() => copyToClipboard(urlFull)}
+                                                        className="px-2 py-1 bg-slate-800 border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-white text-[10px] font-bold rounded transition-colors"
+                                                        title="Copy Full Screen Link"
+                                                    >
+                                                        Copy
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <span className="text-slate-600 text-sm italic">No data</span>
+                                        )}
+                                    </td>
+                                );
+                            })}
+                        </tr>
                     </tbody>
                 </table>
             </div>
             
             <div className="mt-8 text-slate-500 text-sm text-center">
-                Click "Open" to view the live board in a new tab, or "Copy Link" to paste into OBS/Streaming software.
+                Click "Open" buttons to view in a new tab, or "Copy" buttons to paste into OBS/Streaming software.
             </div>
 
             {/* Results Modal */}
@@ -1219,6 +1326,111 @@ export default function LiveLinksPage() {
                                             </table>
                                         </div>
                                     ))
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
+
+            {/* Category Results Modal */}
+            {viewingCategory && (() => {
+                const relevantRaces = races.filter(r => r.results && r.results[viewingCategory] && r.results[viewingCategory].length > 0);
+                
+                return (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                        <div className="bg-slate-900 w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-lg shadow-2xl border border-slate-700 flex flex-col">
+                            <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-800">
+                                <h3 className="text-lg font-bold text-slate-100">
+                                    Results: Category {viewingCategory}
+                                </h3>
+                                <button 
+                                    onClick={() => setViewingCategory(null)}
+                                    className="text-slate-400 hover:text-slate-100 p-1"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                            <div className="overflow-y-auto p-4 space-y-8">
+                                {relevantRaces.length === 0 ? (
+                                    <div className="text-center text-slate-400 p-8">No results calculated for this category yet.</div>
+                                ) : (
+                                    relevantRaces.map(race => {
+                                        const results = race.results?.[viewingCategory] || [];
+                                        
+                                        return (
+                                            <div key={race.id} className="border border-slate-700 rounded-lg overflow-hidden">
+                                                <div className="bg-slate-800 px-4 py-2 font-semibold text-sm border-b border-slate-700 flex justify-between items-center">
+                                                    <span>{race.name}</span>
+                                                    <span className="text-xs text-slate-400">{new Date(race.date).toLocaleDateString()}</span>
+                                                </div>
+                                                <table className="w-full text-left text-sm">
+                                                    <thead className="bg-slate-800/50 text-xs text-slate-400">
+                                                        <tr>
+                                                            <th className="px-4 py-2 w-12">Pos</th>
+                                                            <th className="px-4 py-2">Rider</th>
+                                                            <th className="px-4 py-2 text-right">Time</th>
+                                                            <th className="px-4 py-2 text-right">Pts</th>
+                                                            <th className="px-4 py-2 text-center w-12">DQ</th>
+                                                            <th className="px-4 py-2 text-center w-12">DC</th>
+                                                            <th className="px-4 py-2 text-center w-12">EX</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-800">
+                                                        {results.map((rider: any, idx: number) => {
+                                                            const isManualDQ = (race.manualDQs || []).includes(rider.zwiftId);
+                                                            const isManualDeclass = (race.manualDeclassifications || []).includes(rider.zwiftId);
+                                                            const isManualExcluded = (race.manualExclusions || []).includes(rider.zwiftId);
+
+                                                            return (
+                                                                <tr key={rider.zwiftId} className={`hover:bg-slate-800/50 ${isManualExcluded ? 'bg-slate-800/30' : isManualDQ ? 'bg-red-950/30' : isManualDeclass ? 'bg-yellow-950/20' : ''}`}>
+                                                                    <td className="px-4 py-2 text-slate-400">{isManualExcluded ? '×' : isManualDQ ? '-' : isManualDeclass ? '*' : idx + 1}</td>
+                                                                    <td className="px-4 py-2 font-medium">
+                                                                        {rider.name}
+                                                                        {isManualExcluded && <div className="text-[10px] text-slate-400 font-bold mt-0.5">EXCLUDED</div>}
+                                                                        {isManualDQ && <div className="text-[10px] text-red-500 font-bold mt-0.5">DISQUALIFIED</div>}
+                                                                        {isManualDeclass && <div className="text-[10px] text-yellow-500 font-bold mt-0.5">DECLASSIFIED</div>}
+                                                                    </td>
+                                                                    <td className="px-4 py-2 text-right font-mono text-slate-400">
+                                                                        {rider.finishTime > 0 ? new Date(rider.finishTime).toISOString().substr(11, 8) : '-'}
+                                                                    </td>
+                                                                    <td className="px-4 py-2 text-right font-bold text-blue-400">
+                                                                        {rider.totalPoints}
+                                                                    </td>
+                                                                    <td className="px-4 py-2 text-center">
+                                                                        <input 
+                                                                            type="checkbox"
+                                                                            checked={isManualDQ}
+                                                                            onChange={() => handleToggleDQ(race.id, rider.zwiftId, isManualDQ)}
+                                                                            disabled={isManualDeclass || isManualExcluded}
+                                                                            className="w-4 h-4 rounded border-slate-700 text-blue-500 focus:ring-blue-500 cursor-pointer disabled:opacity-30"
+                                                                        />
+                                                                    </td>
+                                                                    <td className="px-4 py-2 text-center">
+                                                                        <input 
+                                                                            type="checkbox"
+                                                                            checked={isManualDeclass}
+                                                                            onChange={() => handleToggleDeclass(race.id, rider.zwiftId, isManualDeclass)}
+                                                                            disabled={isManualDQ || isManualExcluded}
+                                                                            className="w-4 h-4 rounded border-slate-700 text-yellow-500 focus:ring-yellow-500 cursor-pointer disabled:opacity-30"
+                                                                        />
+                                                                    </td>
+                                                                    <td className="px-4 py-2 text-center">
+                                                                        <input 
+                                                                            type="checkbox"
+                                                                            checked={isManualExcluded}
+                                                                            onChange={() => handleToggleExclude(race.id, rider.zwiftId, isManualExcluded)}
+                                                                            className="w-4 h-4 rounded border-slate-700 text-slate-400 focus:ring-slate-500 cursor-pointer"
+                                                                        />
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        );
+                                    })
                                 )}
                             </div>
                         </div>

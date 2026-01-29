@@ -7,6 +7,7 @@ export function useLiveStandings() {
     const [standings, setStandings] = useState<Record<string, StandingEntry[]>>({});
     const [bestRacesCount, setBestRacesCount] = useState<number>(5);
     const [allRaces, setAllRaces] = useState<Race[]>([]);
+    const [leagueName, setLeagueName] = useState<string>('');
 
     useEffect(() => {
         // Fetch settings once
@@ -17,6 +18,9 @@ export function useLiveStandings() {
                      const data = settingsDoc.data();
                      if (data?.bestRacesCount) {
                          setBestRacesCount(data.bestRacesCount);
+                     }
+                     if (data?.name) {
+                         setLeagueName(data.name);
                      }
                  }
             } catch (err) {
@@ -60,5 +64,5 @@ export function useLiveStandings() {
         return () => unsub();
     }, []);
 
-    return { standings, bestRacesCount, allRaces };
+    return { standings, bestRacesCount, allRaces, leagueName };
 }

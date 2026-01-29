@@ -112,7 +112,7 @@ class ResultsProcessor:
         all_results = race_data.get('results', {})
         if not all_results:
             all_results = {}
-
+        
         for source in event_sources:
             self._process_event_source(
                 source, 
@@ -304,7 +304,7 @@ class ResultsProcessor:
                 end_time = start_time + timedelta(hours=3)
                 unique_segment_ids = set(s['id'] for s in category_sprints)
                 segment_efforts = self.zwift_fetcher.fetch_segment_efforts(unique_segment_ids, start_time, end_time)
-
+            
             if custom_category:
                 custom_cat_finishers.extend(finishers)
                 custom_cat_segment_efforts.update(segment_efforts)

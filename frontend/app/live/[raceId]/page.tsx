@@ -64,7 +64,7 @@ export default function LiveResultsPage() {
 
     // --- Hooks ---
     const { race, loading, error } = useLiveRace(raceId);
-    const { standings, bestRacesCount, allRaces } = useLiveStandings();
+    const { standings, bestRacesCount, allRaces, leagueName } = useLiveStandings();
     
     // View Mode
     const containerRef = useRef<HTMLDivElement>(null);
@@ -116,7 +116,8 @@ export default function LiveResultsPage() {
         }
     }
     const category = displayCategory || 'A';
-    const headerTitle = titleParam || race.name || 'Race Results';
+    
+    let headerTitle = titleParam || leagueName || 'League';
 
     const renderContent = () => {
         if (viewMode === 'race') {
@@ -190,9 +191,7 @@ export default function LiveResultsPage() {
                             <p className="mt-2 text-xl md:text-2xl text-slate-200 uppercase tracking-widest">
                                 {viewMode === 'standings'
                                     ? `Standings • ${category}`
-                                    : viewMode === 'time-trial'
-                                        ? `Time Trail • ${category}`
-                                        : `Results • ${category}`}
+                                    : `${race.name} • ${category}`}
                             </p>
                         </div>
 
