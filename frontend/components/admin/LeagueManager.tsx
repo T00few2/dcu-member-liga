@@ -143,7 +143,7 @@ export default function LeagueManager() {
 
   // Results Fetch Mode (Data Source)
   const [resultSource, setResultSource] = useState<'finishers' | 'joined' | 'signed_up'>('finishers');
-  const [filterRegistered, setFilterRegistered] = useState(true);
+  const [filterRegistered, setFilterRegistered] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState('All');
 
   // Test Data Generator State
