@@ -38,18 +38,24 @@ def save_settings():
     
     try:
         data = request.get_json()
+        name = data.get('name')
         finish_points = data.get('finishPoints', [])
         sprint_points = data.get('sprintPoints', [])
         league_rank_points = data.get('leagueRankPoints', [])
         best_races_count = data.get('bestRacesCount', 5)
         
-        db.collection('league').document('settings').set({
+        update_data = {
             'finishPoints': finish_points,
             'sprintPoints': sprint_points,
             'leagueRankPoints': league_rank_points,
             'bestRacesCount': best_races_count,
             'updatedAt': firestore.SERVER_TIMESTAMP
-        }, merge=True)
+        }
+        
+        if name is not None:
+            update_data['name'] = name
+            
+        db.collection('league').document('settings').set(update_data, merge=True)
         
         return jsonify({'message': 'Settings saved'}), 200
     except Exception as e:

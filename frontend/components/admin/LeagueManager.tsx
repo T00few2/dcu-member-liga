@@ -69,6 +69,7 @@ interface Race {
 }
 
 interface LeagueSettings {
+  name?: string;
   finishPoints: number[];
   sprintPoints: number[];
   leagueRankPoints?: number[]; // Optional: Points based on race rank
@@ -123,6 +124,7 @@ export default function LeagueManager() {
   const [segmentType, setSegmentType] = useState<'sprint' | 'split'>('sprint');
   
   // Settings Form State
+  const [leagueName, setLeagueName] = useState('');
   const [finishPointsStr, setFinishPointsStr] = useState('');
   const [sprintPointsStr, setSprintPointsStr] = useState('');
   const [leagueRankPointsStr, setLeagueRankPointsStr] = useState('');
@@ -176,11 +178,13 @@ export default function LeagueManager() {
                 const settingsData = await settingsRes.json();
                 const settings = settingsData.settings || {};
                 setLeagueSettings({
+                    name: settings.name || '',
                     finishPoints: settings.finishPoints || [],
                     sprintPoints: settings.sprintPoints || [],
                     leagueRankPoints: settings.leagueRankPoints || [],
                     bestRacesCount: settings.bestRacesCount || 5
                 });
+                setLeagueName(settings.name || '');
                 setFinishPointsStr((settings.finishPoints || []).join(', '));
                 setSprintPointsStr((settings.sprintPoints || []).join(', '));
                 setLeagueRankPointsStr((settings.leagueRankPoints || []).join(', '));
@@ -385,12 +389,12 @@ export default function LeagueManager() {
                   'Content-Type': 'application/json',
                   'Authorization': `Bearer ${token}`
               },
-              body: JSON.stringify({ finishPoints, sprintPoints, leagueRankPoints, bestRacesCount })
+              body: JSON.stringify({ name: leagueName, finishPoints, sprintPoints, leagueRankPoints, bestRacesCount })
           });
           
           if (res.ok) {
               alert('Settings saved!');
-              setLeagueSettings({ finishPoints, sprintPoints, leagueRankPoints, bestRacesCount });
+              setLeagueSettings({ name: leagueName, finishPoints, sprintPoints, leagueRankPoints, bestRacesCount });
           } else {
               alert('Failed to save settings');
           }
@@ -1197,6 +1201,30 @@ export default function LeagueManager() {
 
       {activeTab === 'races' && (
         <>
+          {/* League Configuration */}
+          <div className="bg-card p-6 rounded-lg shadow mb-8 border border-border">
+              <h2 className="text-xl font-semibold mb-4 text-card-foreground">League Configuration</h2>
+              <div className="flex gap-4 items-end">
+                  <div className="flex-1">
+                      <label className="block text-sm font-medium text-muted-foreground mb-1">League Name</label>
+                      <input 
+                          type="text"
+                          value={leagueName}
+                          onChange={e => setLeagueName(e.target.value)}
+                          className="w-full p-2 border border-input rounded bg-background text-foreground"
+                          placeholder="e.g. DCU e-Cycling Cup 2026"
+                      />
+                  </div>
+                  <button 
+                      onClick={(e) => handleSaveSettings(e as any)}
+                      disabled={status === 'saving'}
+                      className="bg-primary text-primary-foreground px-4 py-2 rounded hover:opacity-90 font-medium"
+                  >
+                      {status === 'saving' ? 'Saving...' : 'Save Name'}
+                  </button>
+              </div>
+          </div>
+
           {/* Race Form */}
           <div className="bg-card p-6 rounded-lg shadow mb-8 border border-border">
               <div className="flex justify-between items-center mb-6">
