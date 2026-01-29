@@ -41,6 +41,7 @@ def seed_participants():
         first_names = ['Magnus', 'Oliver', 'William', 'Noah', 'Lucas', 'Oscar', 'Carl', 'Victor', 'Malthe', 'Alfred', 'Emil', 'Aksel', 'Valdemar', 'August', 'Frederik', 'Emma', 'Ida', 'Clara', 'Freja', 'Alma', 'Ella', 'Sofia', 'Anna', 'Laura', 'Karla', 'Mathilde', 'Agnes', 'Lily', 'Josefine', 'Alberte']
         last_names = ['Nielsen', 'Jensen', 'Hansen', 'Pedersen', 'Andersen', 'Christensen', 'Larsen', 'Sørensen', 'Rasmussen', 'Petersen', 'Madsen', 'Kristensen', 'Olsen', 'Thomsen', 'Christiansen', 'Poulsen', 'Johansen', 'Knudsen', 'Mortensen', 'Møller']
         clubs = ['Aarhus Cykle Ring', 'Team Biciklet', 'Odense Cykel Club', 'Copenhagen Cycling', 'Roskilde CK', 'Aalborg CK', 'Test Club']
+        categories = ['A', 'B', 'C', 'D', 'E']
         
         existing_test = db.collection('users').where('isTestData', '==', True).stream()
         max_id = 0
@@ -59,6 +60,7 @@ def seed_participants():
             e_license = f"TEST-{idx:04d}"
             zwift_id = f"999{idx:04d}"
             name = f"{random.choice(first_names)} {random.choice(last_names)}"
+            assigned_category = random.choice(categories)
             
             user_data = {
                 'eLicense': e_license,
@@ -68,10 +70,12 @@ def seed_participants():
                 'isTestData': True,
                 'registrationComplete': True,
                 'verified': True,
+                'category': assigned_category, # Stored for seeding consistency
+                'zwiftPower': {'category': assigned_category}, # Stored for UI consistency
                 'createdAt': firestore.SERVER_TIMESTAMP
             }
             db.collection('users').document(e_license).set(user_data)
-            created.append({'eLicense': e_license, 'name': name, 'zwiftId': zwift_id})
+            created.append({'eLicense': e_license, 'name': name, 'zwiftId': zwift_id, 'category': assigned_category})
         
         return jsonify({'message': f'Created {len(created)} test participants', 'participants': created}), 201
     except Exception as e: return jsonify({'message': str(e)}), 500
@@ -114,7 +118,8 @@ def seed_results():
             test_participants.append({
                 'zwiftId': data.get('zwiftId'),
                 'name': data.get('name'),
-                'eLicense': data.get('eLicense')
+                'eLicense': data.get('eLicense'),
+                'category': data.get('category', 'A') # Default to A if older test data
             })
         
         if len(test_participants) == 0:
@@ -123,7 +128,8 @@ def seed_results():
                 test_participants.append({
                     'zwiftId': f"999{i:04d}",
                     'name': f"Temp User {i}",
-                    'eLicense': f"TEMP-{i:04d}"
+                    'eLicense': f"TEMP-{i:04d}",
+                    'category': random.choice(['A', 'B', 'C', 'D', 'E'])
                 })
         
         results_generated = {}
@@ -156,12 +162,6 @@ def seed_results():
                  for cat in categories:
                      category_configs[cat] = {'sprints': race_data.get('sprints', [])}
             
-            shuffled_participants = test_participants.copy()
-            random.shuffle(shuffled_participants)
-            p_idx = 0
-            
-            race_results = {}
-            
             for category in categories:
                 rider_count = category_riders.get(category, 5)
                 if rider_count <= 0: continue
@@ -169,13 +169,30 @@ def seed_results():
                 cat_config = category_configs.get(category, {})
                 sprints = cat_config.get('sprints', [])
                 
-                # Assign riders
-                riders_list = []
-                for _ in range(rider_count):
-                    riders_list.append(shuffled_participants[p_idx % len(shuffled_participants)])
-                    p_idx += 1
+                # Determine which rider pool to use
+                # If category is standard A-E, use that pool directly.
+                # If custom (e.g. "Open", "H50"), deterministically map it to A-E so we get consistent riders.
+                target_pool_cat = category
+                if category not in ['A', 'B', 'C', 'D', 'E']:
+                    # Simple hash to map string to 0-4
+                    hash_val = sum(ord(c) for c in category)
+                    target_pool_cat = ['A', 'B', 'C', 'D', 'E'][hash_val % 5]
                 
-                random.shuffle(riders_list) # Finish order
+                # Filter participants by this target pool
+                potential_riders = [p for p in test_participants if p.get('category') == target_pool_cat]
+                
+                # If we don't have enough riders for this category in our test pool, we might want to skip or just use what we have
+                if not potential_riders:
+                    continue
+                    
+                # Sort to ensure consistent starting order before selection (Deterministic pool)
+                potential_riders.sort(key=lambda x: x['zwiftId'])
+                
+                # Assign riders (take top N)
+                riders_list = potential_riders[:rider_count]
+                if len(riders_list) == 0: continue
+                
+                random.shuffle(riders_list) # Finish order within the race
                 
                 cat_results = []
                 base_time_ms = random.randint(1800000, 3600000)
