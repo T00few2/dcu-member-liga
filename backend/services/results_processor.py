@@ -297,7 +297,7 @@ class ResultsProcessor:
             category_config = self._get_category_config(race_data, effective_category)
             category_config['sprints'] = category_sprints
             category_config['segmentType'] = category_segment_type
-
+            
             # Fetch Segment Efforts using ZwiftFetcher
             segment_efforts = {}
             if fetch_mode in ['finishers', 'joined'] and category_sprints:
@@ -328,10 +328,36 @@ class ResultsProcessor:
 
     def _get_category_config(self, race_data, category):
         """Helper to build a config dict for RaceScorer from race_data"""
-        return {
+        
+        # Default global config
+        config = {
             'manualDQs': race_data.get('manualDQs', []),
             'manualDeclassifications': race_data.get('manualDeclassifications', []),
             'manualExclusions': race_data.get('manualExclusions', []),
             'segmentType': race_data.get('segmentType', 'sprint'),
             'sprints': race_data.get('sprints', [])
         }
+        
+        # Try to find specific category config overrides
+        
+        # 1. Check Multi-Mode Config (eventConfiguration)
+        if race_data.get('eventMode') == 'multi' and race_data.get('eventConfiguration'):
+            for cfg in race_data['eventConfiguration']:
+                if cfg.get('customCategory') == category:
+                    if cfg.get('segmentType'):
+                        config['segmentType'] = cfg['segmentType']
+                    if cfg.get('sprints'):
+                        config['sprints'] = cfg['sprints']
+                    return config
+                    
+        # 2. Check Single-Mode Config (singleModeCategories)
+        if race_data.get('singleModeCategories'):
+            for cfg in race_data['singleModeCategories']:
+                if cfg.get('category') == category:
+                    if cfg.get('segmentType'):
+                        config['segmentType'] = cfg['segmentType']
+                    if cfg.get('sprints'):
+                        config['sprints'] = cfg['sprints']
+                    return config
+                    
+        return config

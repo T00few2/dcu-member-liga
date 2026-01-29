@@ -233,7 +233,10 @@ def seed_results():
             
             db.collection('races').document(race_id).update({
                 'results': race_results,
-                'resultsUpdatedAt': firestore.SERVER_TIMESTAMP
+                'resultsUpdatedAt': firestore.SERVER_TIMESTAMP,
+                'manualDQs': [],
+                'manualDeclassifications': [],
+                'manualExclusions': []
             })
             
             try:
