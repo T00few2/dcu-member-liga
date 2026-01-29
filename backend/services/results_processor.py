@@ -982,6 +982,21 @@ class ResultsProcessor:
                         # OLD MODE: Raw points
                         points = rider['totalPoints']
                     
+                    # --- EXCLUSION LOGIC (Per User Request) ---
+                    # Only include if:
+                    # 1. Finished (finishTime > 0)
+                    # 2. OR has Earned Points (points > 0)
+                    # 3. OR has passed a split/sprint (sprintData exists)
+                    
+                    has_finished = rider.get('finishTime', 0) > 0
+                    has_points = points > 0
+                    # Check for any sprint/split activity (using raw sprintData which implies timing recorded)
+                    has_activity = bool(rider.get('sprintData'))
+                    
+                    if not (has_finished or has_points or has_activity):
+                        continue
+                    # -------------------------------------------
+
                     if zid not in league_table[category]:
                         league_table[category][zid] = {
                             'zwiftId': zid,
