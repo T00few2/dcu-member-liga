@@ -70,8 +70,8 @@ def seed_participants():
                 'isTestData': True,
                 'registrationComplete': True,
                 'verified': True,
-                'category': assigned_category, # Stored for seeding consistency
-                'zwiftPower': {'category': assigned_category}, # Stored for UI consistency
+                'category': assigned_category,
+                'zwiftPower': {'category': assigned_category},
                 'createdAt': firestore.SERVER_TIMESTAMP
             }
             db.collection('users').document(e_license).set(user_data)
@@ -119,7 +119,7 @@ def seed_results():
                 'zwiftId': data.get('zwiftId'),
                 'name': data.get('name'),
                 'eLicense': data.get('eLicense'),
-                'category': data.get('category', 'A') # Default to A if older test data
+                'category': data.get('category', 'A') 
             })
         
         if len(test_participants) == 0:
@@ -133,9 +133,12 @@ def seed_results():
                 })
         
         results_generated = {}
-        processor = ResultsProcessor(db, None, None) # No Zwift/Game service needed for recalc
+        processor = ResultsProcessor(db, None, None) 
         
         for race_id in race_ids:
+            # Initialize immediately to prevent scope issues in error blocks
+            race_results = {}
+            
             race_doc = db.collection('races').document(race_id).get()
             if not race_doc.exists: continue
             
@@ -164,35 +167,27 @@ def seed_results():
             
             for category in categories:
                 rider_count = category_riders.get(category, 5)
-                if rider_count <= 0: continue
-                
                 cat_config = category_configs.get(category, {})
                 sprints = cat_config.get('sprints', [])
                 
-                # Determine which rider pool to use
-                # If category is standard A-E, use that pool directly.
-                # If custom (e.g. "Open", "H50"), deterministically map it to A-E so we get consistent riders.
+                # Custom Category Mapping Logic
                 target_pool_cat = category
                 if category not in ['A', 'B', 'C', 'D', 'E']:
-                    # Simple hash to map string to 0-4
                     hash_val = sum(ord(c) for c in category)
                     target_pool_cat = ['A', 'B', 'C', 'D', 'E'][hash_val % 5]
                 
-                # Filter participants by this target pool
                 potential_riders = [p for p in test_participants if p.get('category') == target_pool_cat]
-                
-                # If we don't have enough riders for this category in our test pool, we might want to skip or just use what we have
-                if not potential_riders:
-                    continue
+                if not potential_riders: continue
                     
-                # Sort to ensure consistent starting order before selection (Deterministic pool)
+                # Sort for deterministic selection
                 potential_riders.sort(key=lambda x: x['zwiftId'])
                 
-                # Assign riders (take top N)
+                # Take top N
                 riders_list = potential_riders[:rider_count]
                 if len(riders_list) == 0: continue
                 
-                random.shuffle(riders_list) # Finish order within the race
+                # Randomize finish order
+                random.shuffle(riders_list) 
                 
                 cat_results = []
                 base_time_ms = random.randint(1800000, 3600000)
@@ -202,7 +197,6 @@ def seed_results():
                      if progress < 100: finish_time = 0
                      
                      sprint_data = {}
-                     # Simplified sprint generation
                      if sprints:
                          sprints_complete = max(1, int((progress / 100) * len(sprints))) if progress > 0 else 0
                          for s_idx, sprint in enumerate(sprints[:sprints_complete]):
