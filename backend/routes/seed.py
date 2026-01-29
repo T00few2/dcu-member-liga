@@ -201,8 +201,16 @@ def seed_results():
                          sprints_complete = max(1, int((progress / 100) * len(sprints))) if progress > 0 else 0
                          for s_idx, sprint in enumerate(sprints[:sprints_complete]):
                              sprint_key = sprint.get('key') or f"{sprint.get('id')}_{sprint.get('count', 1)}"
+                             
+                             # Generate realistic worldTime (arrival time at split)
+                             # Base: Race Start (arbitrary) + 10 mins per split
+                             # Variance: Slower riders (higher rank) arrive later
+                             race_start_ts = 1700000000000
+                             split_base_ms = (s_idx + 1) * 600000 
+                             gap_ms = (rank - 1) * random.randint(2000, 8000) + random.randint(0, 500)
+                             
                              sprint_data[sprint_key] = {
-                                 'worldTime': 1700000000000 + (s_idx * 600000),
+                                 'worldTime': race_start_ts + split_base_ms + gap_ms,
                                  'time': random.randint(30000, 120000),
                                  'avgPower': random.randint(200, 400)
                              }
