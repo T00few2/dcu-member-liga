@@ -45,6 +45,7 @@ interface Race {
   laps: number;
   totalDistance: number;
   totalElevation: number;
+  type?: 'scratch' | 'points' | 'time-trial';
   eventId?: string; // Legacy/Single Mode
   eventSecret?: string; // Legacy/Single Mode
   eventMode?: 'single' | 'multi';
@@ -95,6 +96,7 @@ export default function LeagueManager() {
   const [editingRaceId, setEditingRaceId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [date, setDate] = useState('');
+  const [raceType, setRaceType] = useState<'scratch' | 'points' | 'time-trial'>('scratch');
   
   // Single Mode State
   const [eventId, setEventId] = useState('');
@@ -267,6 +269,15 @@ export default function LeagueManager() {
       return () => unsubscribe();
   }, [viewingResultsId]);
 
+  // Sync segmentType with raceType
+  useEffect(() => {
+    if (raceType === 'time-trial') {
+      setSegmentType('split');
+    } else {
+      setSegmentType('sprint');
+    }
+  }, [raceType]);
+
   // --- Derived Data ---
   const maps = Array.from(new Set(routes.map(r => r.map))).sort();
   const filteredRoutes = selectedMap ? routes.filter(r => r.map === selectedMap) : [];
@@ -286,6 +297,7 @@ export default function LeagueManager() {
       setEditingRaceId(race.id);
       setName(race.name);
       setDate(race.date);
+      setRaceType(race.type || 'scratch');
       setEventId(race.eventId || '');
       setEventSecret(race.eventSecret || '');
       setEventMode(race.eventMode || 'single');
@@ -639,6 +651,7 @@ export default function LeagueManager() {
         const raceData: any = {
             name,
             date,
+            type: raceType,
             routeId: selectedRoute.id,
             routeName: selectedRoute.name,
             map: selectedRoute.map,
@@ -1239,7 +1252,7 @@ export default function LeagueManager() {
               </div>
               
               <form onSubmit={handleSaveRace} className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                       <div>
                           <label className="block text-sm font-medium text-muted-foreground mb-1">Race Name</label>
                           <input 
@@ -1260,6 +1273,18 @@ export default function LeagueManager() {
                             onChange={e => setDate(e.target.value)}
                             className="w-full p-2 border border-input rounded bg-background text-foreground"
                             />
+                      </div>
+                      <div>
+                          <label className="block text-sm font-medium text-muted-foreground mb-1">Race Type</label>
+                          <select 
+                            value={raceType} 
+                            onChange={(e) => setRaceType(e.target.value as any)}
+                            className="w-full p-2 border border-input rounded bg-background text-foreground"
+                          >
+                            <option value="scratch">Scratch Race</option>
+                            <option value="points">Points Race</option>
+                            <option value="time-trial">Time Trial</option>
+                          </select>
                       </div>
                   </div>
 
