@@ -56,6 +56,7 @@ export function StandingsTable({ standings, allRaces, category, bestRacesCount, 
 
     // Format race name for header (short version)
     const getRaceShortName = (race: Race, index: number) => {
+        if (isFull) return race.name;
         return `R${index + 1}`;
     };
 
@@ -92,7 +93,7 @@ export function StandingsTable({ standings, allRaces, category, bestRacesCount, 
                     {relevantRaces.map((race, idx) => (
                         <th 
                             key={race.id}
-                            className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-1 text-center font-bold text-blue-400 w-12`}
+                            className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-1 text-center font-bold text-blue-400 ${isFull ? 'min-w-[120px] max-w-[200px]' : 'w-12'}`}
                             title={`${race.name} (${new Date(race.date).toLocaleDateString()})`}
                             style={{
                                 backgroundColor: resolveColor(overlay.headerBg),

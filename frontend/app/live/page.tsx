@@ -645,37 +645,6 @@ export default function LiveLinksPage() {
                             <span className="text-slate-300">Fit to Screen</span>
                         </label>
 
-                        <div className="border-t border-slate-700 my-2 pt-2"></div>
-
-                        <label className="flex items-center space-x-3 cursor-pointer">
-                            <input 
-                                type="checkbox" 
-                                checked={config.sprints}
-                                onChange={(e) => updateConfig('sprints', e.target.checked)}
-                                className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
-                            />
-                            <span className="text-slate-300">Show Sprints (Sprint Races)</span>
-                        </label>
-
-                        <label className="flex items-center space-x-3 cursor-pointer">
-                            <input 
-                                type="checkbox" 
-                                checked={config.lastSprint}
-                                onChange={(e) => updateConfig('lastSprint', e.target.checked)}
-                                className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
-                            />
-                            <span className="text-slate-300">Show Only Last Sprint (Sprint Races)</span>
-                        </label>
-                        
-                        <label className="flex items-center space-x-3 cursor-pointer">
-                            <input 
-                                type="checkbox" 
-                                checked={config.lastSplit}
-                                onChange={(e) => updateConfig('lastSplit', e.target.checked)}
-                                className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
-                            />
-                            <span className="text-slate-300">Show Only Last Split (Time Trail)</span>
-                        </label>
                     </div>
                 </div>
 
@@ -1105,10 +1074,10 @@ export default function LiveLinksPage() {
                                                             <button 
                                                                 onClick={() => handleRefresh(race.id, cat)}
                                                                 disabled={!!processingKey}
-                                                                className={`text-[10px] font-bold uppercase tracking-wide transition-colors mt-1 ${
+                                                                className={`w-full px-2 py-1 mt-1 text-[10px] uppercase font-bold rounded border transition-colors flex items-center justify-center ${
                                                                     processingKey === `${race.id}-${cat}` 
-                                                                        ? 'text-slate-600 cursor-wait' 
-                                                                        : 'text-green-600 hover:text-green-400'
+                                                                        ? 'bg-slate-700 text-slate-400 border-slate-600 cursor-wait' 
+                                                                        : 'bg-green-900/30 border-green-800 text-green-400 hover:bg-green-900/50 hover:text-green-300'
                                                                 }`}
                                                             >
                                                                 {processingKey === `${race.id}-${cat}` ? '...' : 'Calc'}
