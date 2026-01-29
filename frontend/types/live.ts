@@ -28,6 +28,7 @@ export interface Race {
     id: string;
     name: string;
     date: string;
+    type?: 'scratch' | 'points' | 'time-trial';
     results?: Record<string, ResultEntry[]>;
     sprints?: Sprint[];
     sprintData?: Sprint[];

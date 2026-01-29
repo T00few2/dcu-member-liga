@@ -120,19 +120,19 @@ export default function LiveResultsPage() {
     let headerTitle = titleParam || leagueName || 'League';
 
     const renderContent = () => {
-        if (viewMode === 'race') {
-            // Calculate League Points Map
-            const standingsForCategory = standings[category] || [];
-            const raceKey = race.id || raceId;
-            const leaguePointsByZwiftId = new Map<string, number>();
-            
-            standingsForCategory.forEach(entry => {
-                const match = entry.results?.find(r => r.raceId === raceKey);
-                if (match) {
-                    leaguePointsByZwiftId.set(entry.zwiftId, match.points);
-                }
-            });
+        // Calculate League Points Map (shared for Race and Time Trial)
+        const standingsForCategory = standings[category] || [];
+        const raceKey = race.id || raceId;
+        const leaguePointsByZwiftId = new Map<string, number>();
+        
+        standingsForCategory.forEach(entry => {
+            const match = entry.results?.find(r => r.raceId === raceKey);
+            if (match) {
+                leaguePointsByZwiftId.set(entry.zwiftId, match.points);
+            }
+        });
 
+        if (viewMode === 'race') {
             return (
                 <RaceResultsTable 
                     race={race} 
@@ -152,6 +152,7 @@ export default function LiveResultsPage() {
                     category={category}
                     config={{ showLastSplit, isFull, nameMax }}
                     overlay={overlay}
+                    standingsPoints={leaguePointsByZwiftId} 
                 />
             );
         }
@@ -213,7 +214,7 @@ export default function LiveResultsPage() {
                             <div className="flex-1 relative">
                                 <div 
                                     ref={tableWrapperRef}
-                                    className="absolute top-0 left-0 right-0 mx-auto max-w-6xl rounded-xl border border-slate-700/70 bg-slate-600/25 shadow-2xl backdrop-blur"
+                                    className={`absolute top-0 left-0 right-0 mx-auto rounded-xl border border-slate-700/70 bg-slate-600/25 shadow-2xl backdrop-blur ${race.type === 'points' && isFull ? 'max-w-[95%]' : 'max-w-6xl'}`}
                                     style={{
                                         transform: `scale(${fitScale})`,
                                         transformOrigin: 'top center',
@@ -226,7 +227,7 @@ export default function LiveResultsPage() {
                         ) : (
                             <div 
                                 ref={tableWrapperRef}
-                                className="mx-auto max-w-6xl rounded-xl border border-slate-700/70 bg-slate-600/25 shadow-2xl backdrop-blur"
+                                className={`mx-auto rounded-xl border border-slate-700/70 bg-slate-600/25 shadow-2xl backdrop-blur ${race.type === 'points' && isFull ? 'max-w-[95%]' : 'max-w-6xl'}`}
                             >
                                 {renderContent()}
                             </div>
@@ -282,10 +283,8 @@ export default function LiveResultsPage() {
                             style={{ color: resolveColor(overlay.headerText, overlay.text) }}
                         >
                             {viewMode === 'standings'
-                                ? `League Standings • ${category}`
-                                : viewMode === 'time-trial'
-                                    ? `Time Trail • ${category}`
-                                    : `Race Results • ${category}`}
+                                ? `${headerTitle} • ${category}`
+                                : `${race.name} • ${category}`}
                         </h2>
                     </div>
 

@@ -85,6 +85,16 @@ export function RaceResultsTable({ race, results, category, config, overlay, sta
         sprintColumns = [];
     }
 
+    const isPointsRace = race.type === 'points';
+    const isPointsRaceOverlay = isPointsRace && !isFull;
+    if (isPointsRaceOverlay) {
+        sprintColumns = [];
+    }
+
+    // Points Race Full Screen Logic
+    const isPointsRaceFull = isPointsRace && isFull;
+    const riderColumnWidth = isPointsRaceFull ? (sprintColumns.length > 0 ? 'w-[25%]' : 'w-[40%]') : (sprintColumns.length > 0 ? 'w-[40%]' : 'w-[50%]');
+
     const getSprintHeader = (key: string) => {
         const sprint = activeSegments.find(s => s.key === key || `${s.id}_${s.count}` === key || s.id === key);
         if (sprint) return `${sprint.name} #${sprint.count}`;
@@ -135,9 +145,9 @@ export function RaceResultsTable({ race, results, category, config, overlay, sta
         return formatDelta(finishTime - winnerFinishTime);
     };
 
-    const showTotalPoints = sprintColumns.length > 0 && !isSplitResults;
-    const showFinishTime = sprintColumns.length === 0 || isSplitResults;
-    const showLeaguePoints = true;
+    const showTotalPoints = (sprintColumns.length > 0 && !isSplitResults) || isPointsRaceOverlay;
+    const showFinishTime = (sprintColumns.length === 0 || isSplitResults) && !isPointsRaceOverlay;
+    const showLeaguePoints = isFull;
 
     // Styling
     const headerCellPadding = isFull ? 'py-0' : 'py-1';
@@ -164,7 +174,7 @@ export function RaceResultsTable({ race, results, category, config, overlay, sta
                         #
                     </th>
                     <th
-                        className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 ${sprintColumns.length > 0 ? 'w-[40%]' : 'w-[50%]'}`}
+                        className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 ${riderColumnWidth}`}
                         style={{ backgroundColor: resolveColor(overlay.headerBg) }}
                     >
                         Rider
@@ -218,8 +228,19 @@ export function RaceResultsTable({ race, results, category, config, overlay, sta
                             )}
                         </>
                     ) : (
-                        showFinishTime ? (
-                            <>
+                        <>
+                            {showTotalPoints && (
+                                <th
+                                    className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-right font-bold text-blue-300`}
+                                    style={{
+                                        backgroundColor: resolveColor(overlay.headerBg),
+                                        color: resolveColor(overlay.accent, overlay.headerText || overlay.text || undefined)
+                                    }}
+                                >
+                                    Total
+                                </th>
+                            )}
+                            {showFinishTime && (
                                 <th
                                     className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[35%] text-right font-bold break-words text-green-300`}
                                     style={{
@@ -229,6 +250,8 @@ export function RaceResultsTable({ race, results, category, config, overlay, sta
                                 >
                                     Finish Time
                                 </th>
+                            )}
+                            {showLeaguePoints && (
                                 <th
                                     className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[35%] text-right font-bold break-words ${leaguePointsHeaderClass}`}
                                     style={{
@@ -238,18 +261,8 @@ export function RaceResultsTable({ race, results, category, config, overlay, sta
                                 >
                                     League Pts
                                 </th>
-                            </>
-                        ) : (
-                            <th
-                                className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 w-[35%] text-right font-bold break-words ${leaguePointsHeaderClass}`}
-                                style={{
-                                    backgroundColor: resolveColor(overlay.headerBg),
-                                    color: resolveColor(overlay.headerText, overlay.text)
-                                }}
-                            >
-                                League Pts
-                            </th>
-                        )
+                            )}
+                        </>
                     )}
                 </tr>
             </thead>
@@ -316,14 +329,24 @@ export function RaceResultsTable({ race, results, category, config, overlay, sta
                                 )}
                             </>
                         ) : (
-                            showFinishTime ? (
-                                <>
+                            <>
+                                {showTotalPoints && (
+                                    <td
+                                        className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-300 align-middle`}
+                                        style={{ color: resolveColor(overlay.accent, overlay.rowText || overlay.text || undefined) }}
+                                    >
+                                        {rider.totalPoints ?? 0}
+                                    </td>
+                                )}
+                                {showFinishTime && (
                                     <td
                                         className={`${bodyCellPadding} px-2 text-right font-extrabold text-green-300 align-middle`}
                                         style={{ color: resolveColor(overlay.positive, overlay.rowText || overlay.text || undefined) }}
                                     >
                                         {formatFinishTimeOrDelta(rider.finishTime, rider.finishTime === winnerFinishTime)}
                                     </td>
+                                )}
+                                {showLeaguePoints && (
                                     <td
                                         className={`${bodyCellPadding} px-2 text-right font-extrabold ${leaguePointsCellClass} align-middle`}
                                         style={{ color: resolveColor(overlay.rowText, overlay.text) }}
@@ -332,17 +355,8 @@ export function RaceResultsTable({ race, results, category, config, overlay, sta
                                             ? standingsPoints.get(rider.zwiftId)
                                             : (rider.finishPoints ?? '-')}
                                     </td>
-                                </>
-                            ) : (
-                                <td
-                                    className={`${bodyCellPadding} px-2 text-right font-extrabold ${leaguePointsCellClass} align-middle`}
-                                    style={{ color: resolveColor(overlay.rowText, overlay.text) }}
-                                >
-                                    {standingsPoints.has(rider.zwiftId)
-                                        ? standingsPoints.get(rider.zwiftId)
-                                        : (rider.finishPoints ?? '-')}
-                                </td>
-                            )
+                                )}
+                            </>
                         )}
                     </tr>
                 ))}

@@ -12,9 +12,10 @@ interface TimeTrialTableProps {
         nameMax: number;
     };
     overlay: OverlayConfig;
+    standingsPoints: Map<string, number>;
 }
 
-export function TimeTrialTable({ race, results, category, config, overlay }: TimeTrialTableProps) {
+export function TimeTrialTable({ race, results, category, config, overlay, standingsPoints }: TimeTrialTableProps) {
     const { showLastSplit, isFull, nameMax } = config;
 
     let configuredSegments: Sprint[] = [];
@@ -143,6 +144,8 @@ export function TimeTrialTable({ race, results, category, config, overlay }: Tim
     const headerCellPadding = isFull ? 'py-0' : 'py-1';
     const bodyCellPadding = isFull ? 'py-0.5' : 'py-2';
     const tableBodyTextSize = isFull ? 'text-2xl' : 'text-3xl';
+    const leaguePointsHeaderClass = isFull ? 'text-slate-100' : 'text-blue-300';
+    const leaguePointsCellClass = isFull ? 'text-slate-100' : 'text-blue-300';
 
     return (
         <table className="w-full text-left border-collapse">
@@ -190,6 +193,17 @@ export function TimeTrialTable({ race, results, category, config, overlay }: Tim
                             }}
                         >
                             Finish Time
+                        </th>
+                    )}
+                    {isFull && (
+                        <th
+                            className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-2 text-right font-bold ${leaguePointsHeaderClass} w-32`}
+                            style={{
+                                backgroundColor: resolveColor(overlay.headerBg),
+                                color: resolveColor(overlay.headerText, overlay.text)
+                            }}
+                        >
+                            League Pts
                         </th>
                     )}
                 </tr>
@@ -242,13 +256,23 @@ export function TimeTrialTable({ race, results, category, config, overlay }: Tim
                                     {formatFinishTimeOrDelta(rider.finishTime, isWinner)}
                                 </td>
                             )}
+                            {isFull && (
+                                <td
+                                    className={`${bodyCellPadding} px-2 text-right font-extrabold ${leaguePointsCellClass} align-middle`}
+                                    style={{ color: resolveColor(overlay.rowText, overlay.text) }}
+                                >
+                                    {standingsPoints.has(rider.zwiftId)
+                                        ? standingsPoints.get(rider.zwiftId)
+                                        : (rider.finishPoints ?? '-')}
+                                </td>
+                            )}
                         </tr>
                     );
                 })}
                 {displayResults.length === 0 && (
                     <tr>
                         <td
-                            colSpan={totalColumns}
+                            colSpan={totalColumns + (isFull ? 1 : 0)}
                             className="py-8 text-center text-slate-500 text-xl italic"
                             style={{ color: resolveColor(overlay.muted, overlay.text || undefined) }}
                         >
@@ -259,7 +283,7 @@ export function TimeTrialTable({ race, results, category, config, overlay }: Tim
                 {showNoSplitsMessage && (
                     <tr>
                         <td
-                            colSpan={totalColumns}
+                            colSpan={totalColumns + (isFull ? 1 : 0)}
                             className="py-8 text-center text-slate-500 text-xl italic"
                             style={{ color: resolveColor(overlay.muted, overlay.text || undefined) }}
                         >
