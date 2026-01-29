@@ -941,10 +941,15 @@ class ResultsProcessor:
                         if str(r['zwiftId']) not in manual_dqs
                         and str(r['zwiftId']) not in manual_declassifications
                         and str(r['zwiftId']) not in manual_exclusions
+                        and (
+                            r.get('finishTime', 0) > 0 
+                            or r.get('totalPoints', 0) > 0 
+                            or bool(r.get('sprintData'))
+                        )
                     ]
                     
                     # 2. Sort by Raw Total Points (Descending), then by Finish Rank (Ascending) as tie breaker
-                    ranking_candidates.sort(key=lambda x: (x.get('totalPoints', 0), -x.get('finishRank', 9999)), reverse=True)
+                    ranking_candidates.sort(key=lambda x: (x.get('totalPoints', 0), - (x.get('finishRank') if x.get('finishRank', 0) > 0 else 9999999)), reverse=True)
                     
                     # 3. Assign points from scheme
                     for rank, r in enumerate(ranking_candidates):
