@@ -219,17 +219,15 @@ class LeagueEngine:
         result = {}
         
         # Get split segments configuration
+        # The sprints array is already in chronological order (course order)
         sprints_config = self._get_category_sprints(race_data, category)
         segment_type = self._get_category_segment_type(race_data, category)
         
-        # Filter to only split type segments
+        # Filter to only split type segments, preserving original order
         if segment_type == 'split':
-            splits = sprints_config
+            splits = list(sprints_config)  # Keep original order
         else:
             splits = [s for s in sprints_config if s.get('type') == 'split']
-        
-        # Sort splits by their expected order
-        splits.sort(key=lambda x: (x.get('count', 0), x.get('key', '')))
         
         def get_furthest_segment(rider):
             """Find the furthest segment crossed, return (index, worldTime) or None"""
