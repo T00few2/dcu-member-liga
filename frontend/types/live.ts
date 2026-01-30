@@ -22,6 +22,7 @@ export interface ResultEntry {
     finishPoints: number;
     totalPoints: number;
     sprintDetails?: Record<string, number | string>;
+    leaguePoints?: number | null;
 }
 
 export interface Race {

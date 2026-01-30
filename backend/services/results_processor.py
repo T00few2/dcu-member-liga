@@ -108,6 +108,9 @@ class ResultsProcessor:
         
         print(f"Found {len(registered_riders)} registered riders in database.")
 
+        # Get league rank points for preliminary league points calculation
+        league_rank_points = settings.get('leagueRankPoints', [])
+
         # 4. Process Each Source
         all_results = race_data.get('results', {})
         if not all_results:
@@ -122,7 +125,8 @@ class ResultsProcessor:
                 all_results,
                 fetch_mode,
                 filter_registered,
-                category_filter
+                category_filter,
+                league_rank_points
             )
 
         # 6. Save Results to Firestore
@@ -178,12 +182,20 @@ class ResultsProcessor:
             sprint_points_scheme=settings.get('sprintPoints', [])
         )
         
+        league_rank_points = settings.get('leagueRankPoints', [])
+        
         updated_results = {}
         
         for category, riders in results.items():
             print(f"  Processing category {category} ({len(riders)} riders)")
             category_config = self._get_category_config(race_data, category)
+            category_config['type'] = race_data.get('type', 'scratch')
             updated_riders = scorer.calculate_results(riders, category_config, segment_efforts_map=None)
+            
+            # Calculate preliminary league points
+            if league_rank_points:
+                scorer.calculate_league_points(updated_riders, category_config, league_rank_points)
+            
             updated_results[category] = updated_riders
         
         self.db.collection('races').document(race_id).update({
@@ -231,7 +243,8 @@ class ResultsProcessor:
         return engine.calculate_standings(races_data, override_race_id, override_race_data)
 
     def _process_event_source(self, source, race_data, registered_riders, scorer, 
-                              all_results, fetch_mode, filter_registered, category_filter):
+                              all_results, fetch_mode, filter_registered, category_filter,
+                              league_rank_points=None):
         
         event_id = source['id']
         event_secret = source['secret']
@@ -313,7 +326,15 @@ class ResultsProcessor:
                     print(f"    Skipping category {category_label} (not in configured categories)")
                     continue
                 
+                # Add race type to config for league points calculation
+                category_config['type'] = race_data.get('type', 'scratch')
+                
                 processed_batch = scorer.calculate_results(finishers, category_config, segment_efforts)
+                
+                # Calculate preliminary league points
+                if league_rank_points:
+                    scorer.calculate_league_points(processed_batch, category_config, league_rank_points)
+                
                 all_results[category_label] = processed_batch
                 print(f"    Saved {len(processed_batch)} results to {category_label}")
 
@@ -321,8 +342,14 @@ class ResultsProcessor:
             cat_config = self._get_category_config(race_data, custom_category)
             cat_config['sprints'] = source.get('sprints', [])
             cat_config['segmentType'] = source.get('segmentType')
+            cat_config['type'] = race_data.get('type', 'scratch')
             
             processed_batch = scorer.calculate_results(custom_cat_finishers, cat_config, custom_cat_segment_efforts)
+            
+            # Calculate preliminary league points
+            if league_rank_points:
+                scorer.calculate_league_points(processed_batch, cat_config, league_rank_points)
+            
             all_results[custom_category] = processed_batch
             print(f"    Saved {len(processed_batch)} merged results to {custom_category}")
 
