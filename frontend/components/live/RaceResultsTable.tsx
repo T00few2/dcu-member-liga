@@ -13,10 +13,9 @@ interface RaceResultsTableProps {
         nameMax: number;
     };
     overlay: OverlayConfig;
-    standingsPoints: Map<string, number>;
 }
 
-export function RaceResultsTable({ race, results, category, config, overlay, standingsPoints }: RaceResultsTableProps) {
+export function RaceResultsTable({ race, results, category, config, overlay }: RaceResultsTableProps) {
     const { showSprints, showLastSprint, isFull, nameMax } = config;
 
     // Sprint Columns Logic
@@ -322,9 +321,7 @@ export function RaceResultsTable({ race, results, category, config, overlay, sta
                                         className={`${bodyCellPadding} px-2 text-right font-extrabold ${leaguePointsCellClass} align-middle`}
                                         style={{ color: resolveColor(overlay.rowText, overlay.text) }}
                                     >
-                                        {rider.leaguePoints != null 
-                                            ? rider.leaguePoints 
-                                            : (standingsPoints.has(rider.zwiftId) ? standingsPoints.get(rider.zwiftId) : null) ?? '-'}
+                                        {rider.leaguePoints != null ? rider.leaguePoints : '-'}
                                     </td>
                                 )}
                             </>
@@ -351,9 +348,7 @@ export function RaceResultsTable({ race, results, category, config, overlay, sta
                                         className={`${bodyCellPadding} px-2 text-right font-extrabold ${leaguePointsCellClass} align-middle`}
                                         style={{ color: resolveColor(overlay.rowText, overlay.text) }}
                                     >
-                                        {rider.leaguePoints != null 
-                                            ? rider.leaguePoints 
-                                            : (standingsPoints.has(rider.zwiftId) ? standingsPoints.get(rider.zwiftId) : null) ?? '-'}
+                                        {rider.leaguePoints != null ? rider.leaguePoints : '-'}
                                     </td>
                                 )}
                             </>
