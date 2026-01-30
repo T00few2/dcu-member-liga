@@ -322,9 +322,7 @@ export function RaceResultsTable({ race, results, category, config, overlay, sta
                                         className={`${bodyCellPadding} px-2 text-right font-extrabold ${leaguePointsCellClass} align-middle`}
                                         style={{ color: resolveColor(overlay.rowText, overlay.text) }}
                                     >
-                                        {standingsPoints.has(rider.zwiftId)
-                                            ? standingsPoints.get(rider.zwiftId)
-                                            : (rider.finishPoints ?? '-')}
+                                        {(standingsPoints.has(rider.zwiftId) ? standingsPoints.get(rider.zwiftId) : rider.finishPoints) || '-'}
                                     </td>
                                 )}
                             </>
@@ -351,9 +349,7 @@ export function RaceResultsTable({ race, results, category, config, overlay, sta
                                         className={`${bodyCellPadding} px-2 text-right font-extrabold ${leaguePointsCellClass} align-middle`}
                                         style={{ color: resolveColor(overlay.rowText, overlay.text) }}
                                     >
-                                        {standingsPoints.has(rider.zwiftId)
-                                            ? standingsPoints.get(rider.zwiftId)
-                                            : (rider.finishPoints ?? '-')}
+                                        {(standingsPoints.has(rider.zwiftId) ? standingsPoints.get(rider.zwiftId) : rider.finishPoints) || '-'}
                                     </td>
                                 )}
                             </>

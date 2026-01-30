@@ -2,6 +2,13 @@ import { Race, StandingEntry, OverlayConfig } from '@/types/live';
 import { shortenRiderName } from '@/lib/formatters';
 import { resolveColor } from '@/lib/colors';
 
+interface RaceResult {
+    zwiftId: string;
+    name: string;
+    finishTime?: number;
+    totalPoints?: number;
+}
+
 interface StandingsTableProps {
     standings: StandingEntry[];
     allRaces: Race[];
@@ -13,9 +20,10 @@ interface StandingsTableProps {
         nameMax: number;
     };
     overlay: OverlayConfig;
+    currentRaceResults?: RaceResult[]; // Optional: show participants when no standings
 }
 
-export function StandingsTable({ standings, allRaces, category, bestRacesCount, config, overlay }: StandingsTableProps) {
+export function StandingsTable({ standings, allRaces, category, bestRacesCount, config, overlay, currentRaceResults }: StandingsTableProps) {
     const { isFull, limit, nameMax } = config;
 
     // Get race IDs that have results for this category
@@ -167,7 +175,38 @@ export function StandingsTable({ standings, allRaces, category, bestRacesCount, 
                         </td>
                     </tr>
                 ))}
-                {displayResults.length === 0 && (
+                {displayResults.length === 0 && currentRaceResults && currentRaceResults.length > 0 && (
+                    // Show participants from current race when no standings yet
+                    currentRaceResults.slice(0, limit).map((rider, idx) => (
+                        <tr 
+                            key={rider.zwiftId} 
+                            className="border-b border-slate-700/50 even:bg-slate-800/40"
+                            style={{
+                                borderColor: resolveColor(overlay.border),
+                                backgroundColor: idx % 2 === 1
+                                    ? resolveColor(overlay.rowAltBg, overlay.rowBg)
+                                    : resolveColor(overlay.rowBg)
+                            }}
+                        >
+                            <td
+                                className={`${bodyCellPadding} px-1 text-center font-bold text-slate-300 align-middle`}
+                                style={{ color: resolveColor(overlay.muted, overlay.rowText || overlay.text || undefined) }}
+                            >
+                                {idx + 1}
+                            </td>
+                            <td className={`${bodyCellPadding} px-2 truncate align-middle`}>
+                                {shortenRiderName(rider.name, nameMax)}
+                            </td>
+                            <td
+                                className={`${bodyCellPadding} px-2 text-center font-extrabold text-slate-500 align-middle`}
+                                style={{ color: resolveColor(overlay.muted, overlay.rowText || overlay.text || undefined) }}
+                            >
+                                -
+                            </td>
+                        </tr>
+                    ))
+                )}
+                {displayResults.length === 0 && (!currentRaceResults || currentRaceResults.length === 0) && (
                     <tr>
                         <td
                             colSpan={totalColumns}

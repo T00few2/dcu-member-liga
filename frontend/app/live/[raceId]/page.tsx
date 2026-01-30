@@ -164,6 +164,7 @@ export default function LiveResultsPage() {
                 bestRacesCount={bestRacesCount}
                 config={{ isFull, limit, nameMax }}
                 overlay={overlay}
+                currentRaceResults={race.results?.[category]}
             />
         );
     };
