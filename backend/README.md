@@ -50,10 +50,27 @@ The complex logic for calculating race results is organized into specialized com
     *   Sorts riders based on Total Points and Finish Time.
 
 4.  **`services/results/league_engine.py`**:
-    *   **Pure Business Logic**. Calculates global league standings.
-    *   Aggregates results from all races.
+    *   **Single Source of Truth** for all league points calculations.
+    *   Calculates per-race league points based on race type (see below).
+    *   Aggregates results across all races for global standings.
     *   Applies "Best X Races" rules.
     *   Handles exclusion logic (e.g., must finish or score points to be listed).
+
+#### League Points Calculation by Race Type
+
+The `LeagueEngine` determines league points differently depending on the race type:
+
+| Race Type | Ranking Criteria | Notes |
+|-----------|------------------|-------|
+| **time-trial** | `finishTime` (asc), or segment progress + `worldTime` for non-finishers | Fastest finisher wins. Non-finishers ranked by furthest segment reached, then by crossing time. |
+| **scratch** | `finishTime` (asc) | Fastest finisher wins. DNF riders excluded from ranking. |
+| **points** | `totalPoints` (desc), `finishRank` (asc) as tie-breaker | Highest points wins. Finish position breaks ties. |
+
+For all race types:
+*   DQ'd riders receive 0 league points.
+*   Declassified riders are ranked after non-declassified riders.
+*   Excluded riders are omitted entirely.
+*   League points are assigned from the configured `leagueRankPoints` array (e.g., `[50, 48, 46, ...]`).
 
 #### Integration Services
 *   `services/zwift.py`: Low-level Zwift API client (Profile, Events, Activity feed).
@@ -76,10 +93,14 @@ The complex logic for calculating race results is organized into specialized com
 ### League Standings Update
 1.  **Trigger**: Auto-triggered after race results, or manual `GET /league/standings`.
 2.  **Flow**:
-    *   Fetches all Race results from Firestore.
-    *   `LeagueEngine` processes the raw list.
-    *   Points are summed, "Best X" logic applied.
-    *   Final table saved to Firestore (`league/standings`).
+    *   Fetches all Race results and league settings from Firestore.
+    *   `LeagueEngine` calculates league points for each race based on race type:
+        *   **Time trials**: Ranked by finish time, or segment progress for non-finishers.
+        *   **Scratch races**: Ranked by finish time (fastest wins).
+        *   **Points races**: Ranked by total points (highest wins).
+    *   Per-race league points are aggregated per rider.
+    *   "Best X Races" logic applied if configured.
+    *   Final standings table saved to Firestore (`league/standings`).
 
 ## Test Data & Seeding Module
 
