@@ -54,83 +54,29 @@ class LeagueEngine:
                 continue
             
             race_count += 1
+            race_type = race_data.get('type', 'scratch')
+            
             for category, riders in results.items():
                 if category not in league_table:
                     league_table[category] = {}
                 
-                # Calculate what "Last Place" points would be for this category if needed
-                valid_riders_count = sum(1 for r in riders if str(r['zwiftId']) not in manual_dqs and str(r['zwiftId']) not in manual_declassifications)
-                
-                last_place_points = self.finish_points_scheme[valid_riders_count] if valid_riders_count < len(self.finish_points_scheme) else 0
-
-                # NEW: League Rank Points Logic
-                race_league_points_map = {}
-                league_last_place_points = 0
-                
-                if self.league_rank_points:
-                    # 1. Identify valid riders for ranking
-                    ranking_candidates = [
-                        r for r in riders 
-                        if str(r['zwiftId']) not in manual_dqs
-                        and str(r['zwiftId']) not in manual_declassifications
-                        and str(r['zwiftId']) not in manual_exclusions
-                        and (
-                            r.get('finishTime', 0) > 0 
-                            or r.get('totalPoints', 0) > 0 
-                            or bool(r.get('sprintData'))
-                        )
-                    ]
-                    
-                    # 2. Sort by Raw Total Points (Descending), then by Finish Rank (Ascending) as tie breaker
-                    # Tie-breaker logic: FinishRank 1 is better than 2. So we negate it?
-                    # Original code: -x.get('finishRank', 9999) 
-                    # If rank is 1 => -1. If rank is 2 => -2. -1 > -2. So Rank 1 comes first. Correct.
-                    # DNF (finishRank 0 or high) should be last.
-                    # Updated logic from previous turn:
-                    # - (x.get('finishRank') if x.get('finishRank', 0) > 0 else 9999999)
-                    
-                    ranking_candidates.sort(key=lambda x: (
-                        x.get('totalPoints', 0), 
-                        - (x.get('finishRank') if x.get('finishRank', 0) > 0 else 9999999)
-                    ), reverse=True)
-                    
-                    # 3. Assign points from scheme
-                    for rank, r in enumerate(ranking_candidates):
-                        p = self.league_rank_points[rank] if rank < len(self.league_rank_points) else 0
-                        race_league_points_map[str(r['zwiftId'])] = p
-                    
-                    # 4. Determine "Last Place" points for declassified riders
-                    last_valid_idx = len(ranking_candidates)
-                    league_last_place_points = self.league_rank_points[last_valid_idx] if last_valid_idx < len(self.league_rank_points) else 0
+                # Calculate league points for this race/category
+                league_points_map = self._calculate_race_league_points(
+                    riders, race_data, category, race_type,
+                    manual_dqs, manual_declassifications, manual_exclusions
+                )
 
                 for rider in riders:
                     zid = str(rider['zwiftId'])
                     if zid in manual_exclusions:
                         continue
                     
-                    if zid in manual_dqs:
-                        points = 0
-                        # print(f"  [Standings] Rider {zid} is DQ in race {race_id}, forcing 0 points.")
+                    # Get league points from the calculated map
+                    points = league_points_map.get(zid)
                     
-                    elif self.league_rank_points:
-                        if zid in manual_declassifications:
-                            points = league_last_place_points
-                        else:
-                            points = race_league_points_map.get(zid, 0)
-                            
-                    elif zid in manual_declassifications:
-                        points = last_place_points
-                    else:
-                        points = rider.get('totalPoints', 0)
-                    
-                    # --- EXCLUSION LOGIC ---
-                    has_finished = rider.get('finishTime', 0) > 0
-                    has_points = points > 0
-                    has_activity = bool(rider.get('sprintData'))
-                    
-                    if not (has_finished or has_points or has_activity):
+                    # Skip riders with no points (None means not ranked)
+                    if points is None:
                         continue
-                    # -----------------------
 
                     if zid not in league_table[category]:
                         league_table[category][zid] = {
@@ -178,6 +124,201 @@ class LeagueEngine:
             final_standings[category] = sorted_riders
             
         return final_standings
+
+    def _calculate_race_league_points(self, riders, race_data, category, race_type, 
+                                       manual_dqs, manual_declassifications, manual_exclusions):
+        """
+        Calculate league points for a single race/category.
+        Returns a dict mapping zwiftId -> points (or None if not ranked).
+        """
+        if not self.league_rank_points:
+            # No league rank points configured - use raw totalPoints
+            result = {}
+            valid_riders_count = sum(1 for r in riders 
+                if str(r['zwiftId']) not in manual_dqs 
+                and str(r['zwiftId']) not in manual_declassifications)
+            last_place_points = self.finish_points_scheme[valid_riders_count] if valid_riders_count < len(self.finish_points_scheme) else 0
+            
+            for rider in riders:
+                zid = str(rider['zwiftId'])
+                if zid in manual_exclusions:
+                    continue
+                if zid in manual_dqs:
+                    result[zid] = 0
+                elif zid in manual_declassifications:
+                    result[zid] = last_place_points
+                else:
+                    points = rider.get('totalPoints', 0)
+                    has_finished = rider.get('finishTime', 0) > 0
+                    has_activity = bool(rider.get('sprintData'))
+                    if points > 0 or has_finished or has_activity:
+                        result[zid] = points
+            return result
+        
+        # League rank points configured - rank riders and assign points
+        if race_type == 'time-trial':
+            return self._calculate_time_trial_league_points(
+                riders, race_data, category, manual_dqs, manual_declassifications, manual_exclusions
+            )
+        else:
+            return self._calculate_points_race_league_points(
+                riders, manual_dqs, manual_declassifications, manual_exclusions
+            )
+    
+    def _calculate_points_race_league_points(self, riders, manual_dqs, manual_declassifications, manual_exclusions):
+        """
+        Calculate league points for points/scratch races.
+        Ranking: totalPoints (desc), finishRank (asc) as tie-breaker
+        """
+        result = {}
+        ranking_data = []
+        
+        for rider in riders:
+            zid = str(rider.get('zwiftId'))
+            
+            if zid in manual_exclusions:
+                continue
+            
+            if zid in manual_dqs:
+                result[zid] = 0
+                continue
+            
+            has_finished = rider.get('finishTime', 0) > 0
+            has_points = rider.get('totalPoints', 0) > 0
+            has_activity = bool(rider.get('sprintData'))
+            
+            if not (has_finished or has_points or has_activity):
+                continue
+            
+            ranking_data.append({
+                'zid': zid,
+                'totalPoints': rider.get('totalPoints', 0),
+                'finishRank': rider.get('finishRank', 0) if rider.get('finishRank', 0) > 0 else 9999999,
+                'isDeclassified': zid in manual_declassifications
+            })
+        
+        # Sort: non-declassified first, then by totalPoints desc, finishRank asc
+        ranking_data.sort(key=lambda x: (
+            0 if x['isDeclassified'] else 1,
+            x['totalPoints'],
+            -x['finishRank']
+        ), reverse=True)
+        
+        for rank, entry in enumerate(ranking_data):
+            points = self.league_rank_points[rank] if rank < len(self.league_rank_points) else 0
+            result[entry['zid']] = points
+        
+        return result
+    
+    def _calculate_time_trial_league_points(self, riders, race_data, category, 
+                                            manual_dqs, manual_declassifications, manual_exclusions):
+        """
+        Calculate league points for time trials.
+        Ranking: finishTime (asc) if finished, otherwise by furthest segment + worldTime
+        """
+        result = {}
+        
+        # Get split segments configuration
+        sprints_config = self._get_category_sprints(race_data, category)
+        segment_type = self._get_category_segment_type(race_data, category)
+        
+        # Filter to only split type segments
+        if segment_type == 'split':
+            splits = sprints_config
+        else:
+            splits = [s for s in sprints_config if s.get('type') == 'split']
+        
+        # Sort splits by their expected order
+        splits.sort(key=lambda x: (x.get('count', 0), x.get('key', '')))
+        
+        def get_furthest_segment(rider):
+            """Find the furthest segment crossed, return (index, worldTime) or None"""
+            sprint_data = rider.get('sprintData', {})
+            if not sprint_data:
+                return None
+            
+            for i in range(len(splits) - 1, -1, -1):
+                s = splits[i]
+                keys = [s.get('key'), f"{s['id']}_{s['count']}", str(s['id'])]
+                for key in keys:
+                    if key and key in sprint_data:
+                        data = sprint_data[key]
+                        world_time = data.get('worldTime', 0) if isinstance(data, dict) else 0
+                        if world_time > 0:
+                            return (i, world_time)
+            return None
+        
+        ranking_data = []
+        
+        for rider in riders:
+            zid = str(rider.get('zwiftId'))
+            
+            if zid in manual_exclusions:
+                continue
+            
+            if zid in manual_dqs:
+                result[zid] = 0
+                continue
+            
+            has_finished = rider.get('finishTime', 0) > 0
+            furthest = get_furthest_segment(rider)
+            can_rank = has_finished or furthest is not None
+            
+            if not can_rank:
+                continue
+            
+            ranking_data.append({
+                'zid': zid,
+                'hasFinished': has_finished,
+                'finishTime': rider.get('finishTime', 0),
+                'segmentIndex': furthest[0] if furthest else -1,
+                'segmentWorldTime': furthest[1] if furthest else float('inf'),
+                'isDeclassified': zid in manual_declassifications
+            })
+        
+        # Sort: non-declassified first, finishers by time, non-finishers by segment progress
+        def sort_key(x):
+            declass_key = 1 if x['isDeclassified'] else 0
+            if x['hasFinished']:
+                return (declass_key, 0, x['finishTime'], 0, 0)
+            else:
+                return (declass_key, 1, 0, -x['segmentIndex'], x['segmentWorldTime'])
+        
+        ranking_data.sort(key=sort_key)
+        
+        for rank, entry in enumerate(ranking_data):
+            points = self.league_rank_points[rank] if rank < len(self.league_rank_points) else 0
+            result[entry['zid']] = points
+        
+        return result
+    
+    def _get_category_sprints(self, race_data, category):
+        """Get sprint/segment configuration for a category"""
+        if race_data.get('eventMode') == 'multi' and race_data.get('eventConfiguration'):
+            for cfg in race_data['eventConfiguration']:
+                if cfg.get('customCategory') == category:
+                    return cfg.get('sprints', [])
+        
+        if race_data.get('singleModeCategories'):
+            for cfg in race_data['singleModeCategories']:
+                if cfg.get('category') == category:
+                    return cfg.get('sprints', [])
+        
+        return race_data.get('sprints', [])
+    
+    def _get_category_segment_type(self, race_data, category):
+        """Get segment type for a category"""
+        if race_data.get('eventMode') == 'multi' and race_data.get('eventConfiguration'):
+            for cfg in race_data['eventConfiguration']:
+                if cfg.get('customCategory') == category:
+                    return cfg.get('segmentType') or race_data.get('segmentType', 'sprint')
+        
+        if race_data.get('singleModeCategories'):
+            for cfg in race_data['singleModeCategories']:
+                if cfg.get('category') == category:
+                    return cfg.get('segmentType') or race_data.get('segmentType', 'sprint')
+        
+        return race_data.get('segmentType', 'sprint')
 
     @staticmethod
     def _normalize_dt(value):

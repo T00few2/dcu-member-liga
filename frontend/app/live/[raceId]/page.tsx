@@ -120,6 +120,18 @@ export default function LiveResultsPage() {
     let headerTitle = titleParam || leagueName || 'League';
 
     const renderContent = () => {
+        // Get league points from standings for the current race
+        const standingsForCategory = standings[category] || [];
+        const raceKey = race.id || raceId;
+        const leaguePointsByZwiftId = new Map<string, number>();
+        
+        standingsForCategory.forEach(entry => {
+            const match = entry.results?.find(r => r.raceId === raceKey);
+            if (match) {
+                leaguePointsByZwiftId.set(entry.zwiftId, match.points);
+            }
+        });
+
         if (viewMode === 'race') {
             return (
                 <RaceResultsTable 
@@ -128,6 +140,7 @@ export default function LiveResultsPage() {
                     category={category}
                     config={{ showSprints, showLastSprint, isFull, nameMax }}
                     overlay={overlay}
+                    standingsPoints={leaguePointsByZwiftId}
                 />
             );
         }
@@ -139,6 +152,7 @@ export default function LiveResultsPage() {
                     category={category}
                     config={{ showLastSplit, isFull, nameMax }}
                     overlay={overlay}
+                    standingsPoints={leaguePointsByZwiftId}
                 />
             );
         }

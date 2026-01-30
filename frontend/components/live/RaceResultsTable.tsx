@@ -13,9 +13,10 @@ interface RaceResultsTableProps {
         nameMax: number;
     };
     overlay: OverlayConfig;
+    standingsPoints: Map<string, number>;
 }
 
-export function RaceResultsTable({ race, results, category, config, overlay }: RaceResultsTableProps) {
+export function RaceResultsTable({ race, results, category, config, overlay, standingsPoints }: RaceResultsTableProps) {
     const { showSprints, showLastSprint, isFull, nameMax } = config;
 
     // Sprint Columns Logic
@@ -321,7 +322,7 @@ export function RaceResultsTable({ race, results, category, config, overlay }: R
                                         className={`${bodyCellPadding} px-2 text-right font-extrabold ${leaguePointsCellClass} align-middle`}
                                         style={{ color: resolveColor(overlay.rowText, overlay.text) }}
                                     >
-                                        {rider.leaguePoints != null ? rider.leaguePoints : '-'}
+                                        {standingsPoints.get(rider.zwiftId) ?? '-'}
                                     </td>
                                 )}
                             </>
@@ -348,7 +349,7 @@ export function RaceResultsTable({ race, results, category, config, overlay }: R
                                         className={`${bodyCellPadding} px-2 text-right font-extrabold ${leaguePointsCellClass} align-middle`}
                                         style={{ color: resolveColor(overlay.rowText, overlay.text) }}
                                     >
-                                        {rider.leaguePoints != null ? rider.leaguePoints : '-'}
+                                        {standingsPoints.get(rider.zwiftId) ?? '-'}
                                     </td>
                                 )}
                             </>

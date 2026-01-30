@@ -12,9 +12,10 @@ interface TimeTrialTableProps {
         nameMax: number;
     };
     overlay: OverlayConfig;
+    standingsPoints: Map<string, number>;
 }
 
-export function TimeTrialTable({ race, results, category, config, overlay }: TimeTrialTableProps) {
+export function TimeTrialTable({ race, results, category, config, overlay, standingsPoints }: TimeTrialTableProps) {
     const { showLastSplit, isFull, nameMax } = config;
 
     let configuredSegments: Sprint[] = [];
@@ -260,7 +261,7 @@ export function TimeTrialTable({ race, results, category, config, overlay }: Tim
                                     className={`${bodyCellPadding} px-2 text-right font-extrabold ${leaguePointsCellClass} align-middle`}
                                     style={{ color: resolveColor(overlay.rowText, overlay.text) }}
                                 >
-                                    {rider.leaguePoints != null ? rider.leaguePoints : '-'}
+                                    {standingsPoints.get(rider.zwiftId) ?? '-'}
                                 </td>
                             )}
                         </tr>

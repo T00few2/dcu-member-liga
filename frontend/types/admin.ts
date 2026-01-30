@@ -74,7 +74,6 @@ export interface RaceResult {
     finishPoints: number;
     totalPoints: number;
     sprintDetails?: Record<string, number | string>;
-    leaguePoints?: number | null;
     flaggedCheating?: boolean;
     flaggedSandbagging?: boolean;
 }
