@@ -129,13 +129,9 @@ export function TimeTrialTable({ race, results, category, config, overlay, stand
         ? Math.min(...displayResults.filter(r => r.finishTime > 0).map(r => r.finishTime))
         : 0;
 
-    const formatFinishTimeOrDelta = (finishTime: number, isFirst: boolean) => {
+    const formatFinishTime = (finishTime: number) => {
         if (!finishTime || finishTime <= 0) return '-';
-        if (isFirst || finishTime === winnerFinishTime) {
-            return formatTimeValue(finishTime);
-        }
-        const delta = finishTime - winnerFinishTime;
-        return formatDelta(delta);
+        return formatTimeValue(finishTime);
     };
 
     const totalColumns = 2 + splitColumns.length + (hasAnyFinisher ? 1 : 0);
@@ -253,7 +249,7 @@ export function TimeTrialTable({ race, results, category, config, overlay, stand
                                     className={`${bodyCellPadding} px-2 text-center font-extrabold align-middle ${isWinner ? 'text-green-300' : 'text-green-400/80'}`}
                                     style={{ color: resolveColor(overlay.positive, overlay.rowText || overlay.text || undefined) }}
                                 >
-                                    {formatFinishTimeOrDelta(rider.finishTime, isWinner)}
+                                    {formatFinishTime(rider.finishTime)}
                                 </td>
                             )}
                             {isFull && (
