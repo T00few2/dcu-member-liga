@@ -160,14 +160,61 @@ class LeagueEngine:
             return self._calculate_time_trial_league_points(
                 riders, race_data, category, manual_dqs, manual_declassifications, manual_exclusions
             )
+        elif race_type == 'scratch':
+            return self._calculate_scratch_race_league_points(
+                riders, manual_dqs, manual_declassifications, manual_exclusions
+            )
         else:
+            # Points races - rank by totalPoints
             return self._calculate_points_race_league_points(
                 riders, manual_dqs, manual_declassifications, manual_exclusions
             )
     
+    def _calculate_scratch_race_league_points(self, riders, manual_dqs, manual_declassifications, manual_exclusions):
+        """
+        Calculate league points for scratch races.
+        Ranking: finishTime (asc) - fastest finisher wins
+        """
+        result = {}
+        ranking_data = []
+        
+        for rider in riders:
+            zid = str(rider.get('zwiftId'))
+            
+            if zid in manual_exclusions:
+                continue
+            
+            if zid in manual_dqs:
+                result[zid] = 0
+                continue
+            
+            has_finished = rider.get('finishTime', 0) > 0
+            
+            # Only rank riders who finished
+            if not has_finished:
+                continue
+            
+            ranking_data.append({
+                'zid': zid,
+                'finishTime': rider.get('finishTime', 0),
+                'isDeclassified': zid in manual_declassifications
+            })
+        
+        # Sort: non-declassified first, then by finishTime asc (fastest first)
+        ranking_data.sort(key=lambda x: (
+            1 if x['isDeclassified'] else 0,
+            x['finishTime']
+        ))
+        
+        for rank, entry in enumerate(ranking_data):
+            points = self.league_rank_points[rank] if rank < len(self.league_rank_points) else 0
+            result[entry['zid']] = points
+        
+        return result
+    
     def _calculate_points_race_league_points(self, riders, manual_dqs, manual_declassifications, manual_exclusions):
         """
-        Calculate league points for points/scratch races.
+        Calculate league points for points races.
         Ranking: totalPoints (desc), finishRank (asc) as tie-breaker
         """
         result = {}
