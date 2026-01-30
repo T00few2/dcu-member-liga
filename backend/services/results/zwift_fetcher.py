@@ -39,7 +39,7 @@ class ZwiftFetcher:
                 # Helper to build finisher object
                 finisher = {
                     'zwiftId': zid,
-                    'time': entry.get('activityData', {}).get('durationInMilliseconds', 0),
+                    'finishTime': entry.get('activityData', {}).get('durationInMilliseconds', 0),
                     'flaggedCheating': entry.get('flaggedCheating', False),
                     'flaggedSandbagging': entry.get('flaggedSandbagging', False),
                     'criticalP': entry.get('criticalP', {})
@@ -54,7 +54,7 @@ class ZwiftFetcher:
                     finisher['info'] = {}
                     finishers.append(finisher)
             
-            finishers.sort(key=lambda x: x['time'])
+            finishers.sort(key=lambda x: x['finishTime'])
             
         else:
             is_joined = (fetch_mode == 'joined')
@@ -64,7 +64,7 @@ class ZwiftFetcher:
                 zid = str(p.get('id'))
                 finisher = {
                     'zwiftId': zid,
-                    'time': 0,
+                    'finishTime': 0,
                     'flaggedCheating': False,
                     'flaggedSandbagging': False,
                     'criticalP': {}
