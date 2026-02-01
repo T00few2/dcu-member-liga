@@ -32,32 +32,44 @@ const formatWorldTime = (ms: number | null): string => {
     return `${hours}:${minutes}:${seconds}.${millis}`;
 };
 
-// Parse time string (HH:MM:SS.mmm or MM:SS.mmm) to milliseconds
-const parseTimeString = (str: string): number | null => {
+// Parse time string (HH:MM:SS.mmm) back to Unix timestamp
+// Uses a reference timestamp to get the correct date
+const parseTimeStringToTimestamp = (str: string, referenceTimestamp: number | null): number | null => {
     if (!str || str === '-') return null;
     
-    // Try HH:MM:SS.mmm format
+    // Try plain number (raw timestamp in ms) - if it's a large number, use directly
+    const num = parseInt(str.replace(/,/g, ''), 10);
+    if (!isNaN(num) && num > 1000000000000) {
+        // Looks like a Unix timestamp in ms (> year 2001)
+        return num;
+    }
+    
+    // Try HH:MM:SS.mmm format - reconstruct full timestamp
     const fullMatch = str.match(/^(\d{1,2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?$/);
     if (fullMatch) {
         const hours = parseInt(fullMatch[1], 10);
         const minutes = parseInt(fullMatch[2], 10);
         const seconds = parseInt(fullMatch[3], 10);
         const millis = fullMatch[4] ? parseInt(fullMatch[4].padEnd(3, '0'), 10) : 0;
-        return ((hours * 3600 + minutes * 60 + seconds) * 1000) + millis;
+        
+        // If we have a reference timestamp, use its date
+        if (referenceTimestamp && referenceTimestamp > 1000000000000) {
+            const refDate = new Date(referenceTimestamp);
+            const newDate = new Date(Date.UTC(
+                refDate.getUTCFullYear(),
+                refDate.getUTCMonth(),
+                refDate.getUTCDate(),
+                hours,
+                minutes,
+                seconds,
+                millis
+            ));
+            return newDate.getTime();
+        }
+        
+        // No reference - can't reconstruct full timestamp
+        return null;
     }
-    
-    // Try MM:SS.mmm format
-    const shortMatch = str.match(/^(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?$/);
-    if (shortMatch) {
-        const minutes = parseInt(shortMatch[1], 10);
-        const seconds = parseInt(shortMatch[2], 10);
-        const millis = shortMatch[3] ? parseInt(shortMatch[3].padEnd(3, '0'), 10) : 0;
-        return ((minutes * 60 + seconds) * 1000) + millis;
-    }
-    
-    // Try plain number (ms)
-    const num = parseInt(str, 10);
-    if (!isNaN(num)) return num;
     
     return null;
 };
@@ -249,12 +261,31 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
         setEditValue(e.target.value);
     };
 
+    // Find a reference timestamp for a sprint column (from any rider that has data)
+    const findReferenceTimestamp = (sprintKey: string): number | null => {
+        for (const rider of results) {
+            const sprintData = rider.sprintData || {};
+            // Check primary key and alt keys
+            const col = sprintColumns.find(c => c.key === sprintKey);
+            const keysToTry = col ? [col.key, ...col.altKeys] : [sprintKey];
+            
+            for (const key of keysToTry) {
+                const entry = sprintData[key];
+                if (entry?.worldTime && entry.worldTime > 1000000000000) {
+                    return entry.worldTime;
+                }
+            }
+        }
+        return null;
+    };
+
     // Handle edit confirm (Enter or blur)
     const handleEditConfirm = () => {
         if (!editingCell) return;
         
         const { zwiftId, sprintKey } = editingCell;
-        const parsed = parseTimeString(editValue);
+        const referenceTimestamp = findReferenceTimestamp(sprintKey);
+        const parsed = parseTimeStringToTimestamp(editValue, referenceTimestamp);
         
         if (parsed !== null) {
             setPendingEdits(prev => ({
@@ -264,6 +295,8 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
                     [sprintKey]: parsed
                 }
             }));
+        } else if (editValue.trim() !== '') {
+            alert('Could not parse time. Use format HH:MM:SS.mmm or paste a raw timestamp.');
         }
         
         setEditingCell(null);
