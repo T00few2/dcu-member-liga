@@ -35,17 +35,18 @@ const formatWorldTime = (ms: number | null): string => {
 // Parse time string (HH:MM:SS.mmm) back to Unix timestamp
 // Uses a reference timestamp to get the correct date
 const parseTimeStringToTimestamp = (str: string, referenceTimestamp: number | null): number | null => {
-    if (!str || str === '-') return null;
+    const trimmed = str?.trim();
+    if (!trimmed || trimmed === '-') return null;
     
     // Try plain number (raw timestamp in ms) - if it's a large number, use directly
-    const num = parseInt(str.replace(/,/g, ''), 10);
+    const num = parseInt(trimmed.replace(/,/g, ''), 10);
     if (!isNaN(num) && num > 1000000000000) {
         // Looks like a Unix timestamp in ms (> year 2001)
         return num;
     }
     
     // Try HH:MM:SS.mmm format - reconstruct full timestamp
-    const fullMatch = str.match(/^(\d{1,2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?$/);
+    const fullMatch = trimmed.match(/^(\d{1,2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?$/);
     if (fullMatch) {
         const hours = parseInt(fullMatch[1], 10);
         const minutes = parseInt(fullMatch[2], 10);
@@ -67,10 +68,12 @@ const parseTimeStringToTimestamp = (str: string, referenceTimestamp: number | nu
             return newDate.getTime();
         }
         
-        // No reference - can't reconstruct full timestamp
+        // No reference - can't reconstruct full timestamp, return error
+        console.warn('No valid reference timestamp found. Available data:', { str: trimmed, referenceTimestamp });
         return null;
     }
     
+    console.warn('Time string did not match expected format:', trimmed);
     return null;
 };
 
@@ -262,20 +265,53 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
     };
 
     // Find a reference timestamp for a sprint column (from any rider that has data)
+    // This looks at ORIGINAL data, ignoring pending edits
     const findReferenceTimestamp = (sprintKey: string): number | null => {
+        // First, try to find from the column's configured keys
+        const col = sprintColumns.find(c => c.key === sprintKey);
+        const keysToTry = col ? [col.key, ...col.altKeys] : [sprintKey];
+        
+        // Search in sprintData (where worldTime is stored for all segment types)
         for (const rider of results) {
             const sprintData = rider.sprintData || {};
-            // Check primary key and alt keys
-            const col = sprintColumns.find(c => c.key === sprintKey);
-            const keysToTry = col ? [col.key, ...col.altKeys] : [sprintKey];
             
+            // Try configured keys first
             for (const key of keysToTry) {
                 const entry = sprintData[key];
                 if (entry?.worldTime && entry.worldTime > 1000000000000) {
+                    console.log('Found reference timestamp via configured key:', key, entry.worldTime);
+                    return entry.worldTime;
+                }
+            }
+            
+            // Try all keys in this rider's sprintData
+            for (const key of Object.keys(sprintData)) {
+                const entry = sprintData[key];
+                if (entry?.worldTime && entry.worldTime > 1000000000000) {
+                    console.log('Found reference timestamp via any key:', key, entry.worldTime);
                     return entry.worldTime;
                 }
             }
         }
+        
+        // Check sprintDetails (for splits, worldTime is stored directly)
+        for (const rider of results) {
+            const sprintDetails = rider.sprintDetails || {};
+            for (const key of Object.keys(sprintDetails)) {
+                const val = sprintDetails[key];
+                if (typeof val === 'number' && val > 1000000000000) {
+                    console.log('Found reference timestamp in sprintDetails:', key, val);
+                    return val;
+                }
+            }
+        }
+        
+        console.warn('No reference timestamp found. Results sample:', results.slice(0, 2).map(r => ({
+            zwiftId: r.zwiftId,
+            sprintData: r.sprintData,
+            sprintDetails: r.sprintDetails
+        })));
+        
         return null;
     };
 
@@ -284,7 +320,21 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
         if (!editingCell) return;
         
         const { zwiftId, sprintKey } = editingCell;
-        const referenceTimestamp = findReferenceTimestamp(sprintKey);
+        
+        // Try to find reference timestamp from multiple sources
+        let referenceTimestamp = findReferenceTimestamp(sprintKey);
+        
+        // Fallback: use tableData which has already extracted values
+        if (!referenceTimestamp) {
+            for (const row of tableData) {
+                const val = row[sprintKey];
+                if (typeof val === 'number' && val > 1000000000000) {
+                    referenceTimestamp = val;
+                    break;
+                }
+            }
+        }
+        
         const parsed = parseTimeStringToTimestamp(editValue, referenceTimestamp);
         
         if (parsed !== null) {
@@ -296,7 +346,9 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
                 }
             }));
         } else if (editValue.trim() !== '') {
-            alert('Could not parse time. Use format HH:MM:SS.mmm or paste a raw timestamp.');
+            // Show more helpful error with debug info
+            console.error('Parse failed:', { editValue, referenceTimestamp, sprintKey });
+            alert(`Could not parse time "${editValue}". Use format HH:MM:SS.mmm or paste a raw timestamp.${!referenceTimestamp ? ' (No reference timestamp found)' : ''}`);
         }
         
         setEditingCell(null);
