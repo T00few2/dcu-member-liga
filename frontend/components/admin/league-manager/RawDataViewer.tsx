@@ -473,7 +473,7 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
         <div className="space-y-6">
             <div className="bg-card p-6 rounded-lg shadow border border-border">
                 <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-xl font-semibold text-card-foreground">Raw Race Data Viewer</h2>
+                    <h2 className="text-xl font-semibold text-card-foreground">Results Editor</h2>
                     
                     {/* Edit Mode Toggle */}
                     {selectedRace && results.length > 0 && selectedRace.type === 'points' && (

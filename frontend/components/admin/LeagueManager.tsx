@@ -306,7 +306,7 @@ export default function LeagueManager() {
                             : 'text-muted-foreground hover:text-foreground'
                     }`}
                 >
-                    Raw Data
+                    Results Editor
                 </button>
             </div>
 
