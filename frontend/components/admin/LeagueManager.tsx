@@ -19,6 +19,7 @@ import {
     ResultsModal,
     LeagueSettingsForm,
     TestDataPanel,
+    RawDataViewer,
 } from './league-manager';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -43,7 +44,7 @@ export default function LeagueManager() {
     const raceForm = useRaceForm();
 
     // Local UI state
-    const [activeTab, setActiveTab] = useState<'races' | 'settings' | 'testing'>('races');
+    const [activeTab, setActiveTab] = useState<'races' | 'settings' | 'testing' | 'rawdata'>('races');
     const [viewingResultsId, setViewingResultsId] = useState<string | null>(null);
     const [availableSegments, setAvailableSegments] = useState<Segment[]>([]);
     
@@ -297,6 +298,16 @@ export default function LeagueManager() {
                 >
                     Testing
                 </button>
+                <button 
+                    onClick={() => setActiveTab('rawdata')}
+                    className={`pb-2 px-4 font-medium transition ${
+                        activeTab === 'rawdata' 
+                            ? 'text-primary border-b-2 border-primary' 
+                            : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                >
+                    Raw Data
+                </button>
             </div>
 
             {/* Settings Tab */}
@@ -318,6 +329,11 @@ export default function LeagueManager() {
                     status={status}
                     setStatus={setStatus}
                 />
+            )}
+
+            {/* Raw Data Tab */}
+            {activeTab === 'rawdata' && (
+                <RawDataViewer races={races} />
             )}
 
             {/* Races Tab */}

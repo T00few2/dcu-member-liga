@@ -5,3 +5,4 @@ export { default as ResultsModal } from './ResultsModal';
 export { default as LeagueSettingsForm } from './LeagueSettingsForm';
 export { default as TestDataPanel } from './TestDataPanel';
 export { default as SegmentPicker, CollapsibleSegmentPicker } from './SegmentPicker';
+export { default as RawDataViewer } from './RawDataViewer';
