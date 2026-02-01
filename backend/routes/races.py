@@ -89,6 +89,95 @@ def update_race(race_id):
     except Exception as e:
         return jsonify({'message': str(e)}), 500
 
+@races_bp.route('/races/<race_id>/results/<category>/sprints', methods=['PUT'])
+def update_sprint_data(race_id, category):
+    """
+    Update sprint data for riders in a specific category and recalculate all points.
+    
+    Request body:
+    {
+        "updates": [
+            {
+                "zwiftId": "12345",
+                "sprintData": {
+                    "sprint_key": { "worldTime": 1234567890, "time": 12345, "avgPower": 250 },
+                    ...
+                }
+            },
+            ...
+        ]
+    }
+    """
+    try:
+        verify_admin_auth()
+    except:
+        return jsonify({'message': 'Unauthorized'}), 401
+    
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+    
+    try:
+        req_data = request.get_json()
+        updates = req_data.get('updates', [])
+        
+        if not updates:
+            return jsonify({'message': 'No updates provided'}), 400
+        
+        # Fetch current race data
+        race_doc = db.collection('races').document(race_id).get()
+        if not race_doc.exists:
+            return jsonify({'message': 'Race not found'}), 404
+        
+        race_data = race_doc.to_dict()
+        results = race_data.get('results', {})
+        
+        if category not in results:
+            return jsonify({'message': f'Category {category} not found in results'}), 404
+        
+        # Create lookup by zwiftId
+        riders_by_id = {str(r['zwiftId']): r for r in results[category]}
+        
+        # Apply updates
+        updated_count = 0
+        for update in updates:
+            zid = str(update.get('zwiftId'))
+            new_sprint_data = update.get('sprintData', {})
+            
+            if zid in riders_by_id:
+                rider = riders_by_id[zid]
+                if 'sprintData' not in rider:
+                    rider['sprintData'] = {}
+                
+                # Merge sprint data (update specific keys)
+                for key, data in new_sprint_data.items():
+                    if key not in rider['sprintData']:
+                        rider['sprintData'][key] = {}
+                    rider['sprintData'][key].update(data)
+                
+                updated_count += 1
+        
+        # Save updated results first
+        db.collection('races').document(race_id).update({
+            'results': results
+        })
+        
+        # Now recalculate all points
+        zwift_service = get_zwift_service()
+        game_service = get_zwift_game_service()
+        processor = ResultsProcessor(db, zwift_service, game_service)
+        
+        updated_results = processor.recalculate_race_points(race_id)
+        
+        return jsonify({
+            'message': f'Updated {updated_count} riders, points recalculated',
+            'results': updated_results
+        }), 200
+        
+    except Exception as e:
+        print(f"Sprint data update error: {e}")
+        return jsonify({'message': str(e)}), 500
+
+
 @races_bp.route('/races/<race_id>/results/refresh', methods=['POST'])
 def refresh_results(race_id):
     try:

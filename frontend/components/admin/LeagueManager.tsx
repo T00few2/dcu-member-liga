@@ -333,7 +333,7 @@ export default function LeagueManager() {
 
             {/* Raw Data Tab */}
             {activeTab === 'rawdata' && (
-                <RawDataViewer races={races} />
+                <RawDataViewer races={races} onRaceUpdate={handleRaceUpdate} />
             )}
 
             {/* Races Tab */}
