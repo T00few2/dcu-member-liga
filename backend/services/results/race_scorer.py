@@ -205,41 +205,59 @@ class RaceScorer:
             
             efforts.sort(key=lambda x: x['worldTime'])
 
-            # 3. Assign Ranks & Points
-            rank_counter = 1
-            points_idx = 0
+            # 3. Assign Ranks & Points with tie handling
+            # Standard competition ranking: ties share same rank/points, next position is skipped
+            # E.g., if points are [10,9,8,7] and first two tie: 10,10,8,7
             
+            # First pass: filter to valid riders only and group by worldTime
+            valid_efforts = []
             for effort in efforts:
-                rider = effort['rider']
                 zid = effort['zwiftId']
-                
-                # Check eligibility
                 is_valid = (zid not in manual_dqs) and (zid not in manual_declass)
-                
-                # Assign Rank (Raw rank, including DQs for display purposes?)
-                # Usually DQs are removed from ranking entirely.
-                # Valid Rank only increments for valid riders.
-                
-                effective_rank = 0
-                points = 0
-                
                 if is_valid:
-                    effective_rank = rank_counter
-                    rank_counter += 1
+                    valid_efforts.append(effort)
+            
+            # Assign ranks and points with tie handling
+            position = 0  # 0-based position in points scheme
+            i = 0
+            while i < len(valid_efforts):
+                current_time = valid_efforts[i]['worldTime']
+                
+                # Find all riders with the same worldTime (ties)
+                tie_group = [valid_efforts[i]]
+                j = i + 1
+                while j < len(valid_efforts) and valid_efforts[j]['worldTime'] == current_time:
+                    tie_group.append(valid_efforts[j])
+                    j += 1
+                
+                # All riders in tie group get the same rank (position + 1, 1-based)
+                rank = position + 1
+                
+                # Get points for this position (if available and not a split)
+                points = 0
+                if not is_split and position < len(self.sprint_points_scheme):
+                    points = self.sprint_points_scheme[position]
+                
+                # Assign to all riders in the tie group
+                for effort in tie_group:
+                    rider = effort['rider']
+                    rider['sprintData'][key]['rank'] = rank
                     
-                    if not is_split:
-                        if points_idx < len(self.sprint_points_scheme):
-                            points = self.sprint_points_scheme[points_idx]
-                            points_idx += 1
+                    if is_split:
+                        rider['sprintDetails'][key] = effort['worldTime']
+                    else:
+                        if points > 0:
+                            rider['sprintDetails'][key] = points
+                            rider['sprintPoints'] += points
                 
-                # Update Rider Data
-                rider['sprintData'][key]['rank'] = effective_rank
-                
-                if is_split:
-                    # For splits, we store the worldTime in details for time display
-                    rider['sprintDetails'][key] = effort['worldTime']
-                else:
-                    # For sprints, we store points
-                    if points > 0:
-                        rider['sprintDetails'][key] = points
-                        rider['sprintPoints'] += points
+                # Skip positions equal to the size of the tie group
+                position += len(tie_group)
+                i = j
+            
+            # Mark invalid riders (DQ/declassified) with rank 0
+            for effort in efforts:
+                zid = effort['zwiftId']
+                is_valid = (zid not in manual_dqs) and (zid not in manual_declass)
+                if not is_valid:
+                    rider = effort['rider']
+                    rider['sprintData'][key]['rank'] = 0
