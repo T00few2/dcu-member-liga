@@ -32,16 +32,18 @@ const formatWorldTime = (ms: number | null): string => {
     return `${hours}:${minutes}:${seconds}.${millis}`;
 };
 
-// Parse time string (HH:MM:SS.mmm) back to Unix timestamp
-// Uses a reference timestamp to get the correct date
+// Minimum threshold for worldTime values (100 billion - catches both Unix and Zwift epochs)
+const MIN_WORLDTIME = 100000000000;
+
+// Parse time string (HH:MM:SS.mmm) back to timestamp
+// Uses a reference timestamp to get the correct date/epoch
 const parseTimeStringToTimestamp = (str: string, referenceTimestamp: number | null): number | null => {
     const trimmed = str?.trim();
     if (!trimmed || trimmed === '-') return null;
     
-    // Try plain number (raw timestamp in ms) - if it's a large number, use directly
+    // Try plain number (raw timestamp) - if it's a large number, use directly
     const num = parseInt(trimmed.replace(/,/g, ''), 10);
-    if (!isNaN(num) && num > 1000000000000) {
-        // Looks like a Unix timestamp in ms (> year 2001)
+    if (!isNaN(num) && num > MIN_WORLDTIME) {
         return num;
     }
     
@@ -53,8 +55,8 @@ const parseTimeStringToTimestamp = (str: string, referenceTimestamp: number | nu
         const seconds = parseInt(fullMatch[3], 10);
         const millis = fullMatch[4] ? parseInt(fullMatch[4].padEnd(3, '0'), 10) : 0;
         
-        // If we have a reference timestamp, use its date
-        if (referenceTimestamp && referenceTimestamp > 1000000000000) {
+        // If we have a reference timestamp, use its date portion
+        if (referenceTimestamp && referenceTimestamp > MIN_WORLDTIME) {
             const refDate = new Date(referenceTimestamp);
             const newDate = new Date(Date.UTC(
                 refDate.getUTCFullYear(),
@@ -68,7 +70,7 @@ const parseTimeStringToTimestamp = (str: string, referenceTimestamp: number | nu
             return newDate.getTime();
         }
         
-        // No reference - can't reconstruct full timestamp, return error
+        // No reference - can't reconstruct full timestamp
         console.warn('No valid reference timestamp found. Available data:', { str: trimmed, referenceTimestamp });
         return null;
     }
@@ -189,15 +191,24 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
                     const dataEntry: SprintDataEntry | undefined = sprintData[key];
                     const detailValue = sprintDetails[key];
                     
-                    if (valueMode === 'worldTime' && dataEntry?.worldTime) {
-                        value = dataEntry.worldTime;
-                        foundKey = key;
-                        break;
+                    if (valueMode === 'worldTime') {
+                        // First try sprintData.worldTime (points races)
+                        if (dataEntry?.worldTime) {
+                            value = dataEntry.worldTime;
+                            foundKey = key;
+                            break;
+                        }
+                        // Fallback: sprintDetails might have worldTime directly (splits/time-trials)
+                        if (typeof detailValue === 'number' && detailValue > MIN_WORLDTIME) {
+                            value = detailValue;
+                            foundKey = key;
+                            break;
+                        }
                     } else if (valueMode === 'elapsed' && dataEntry?.time) {
                         value = dataEntry.time;
                         foundKey = key;
                         break;
-                    } else if (valueMode === 'points' && typeof detailValue === 'number') {
+                    } else if (valueMode === 'points' && typeof detailValue === 'number' && detailValue < MIN_WORLDTIME) {
                         value = detailValue;
                         foundKey = key;
                         break;
@@ -278,7 +289,7 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
             // Try configured keys first
             for (const key of keysToTry) {
                 const entry = sprintData[key];
-                if (entry?.worldTime && entry.worldTime > 1000000000000) {
+                if (entry?.worldTime && entry.worldTime > MIN_WORLDTIME) {
                     console.log('Found reference timestamp via configured key:', key, entry.worldTime);
                     return entry.worldTime;
                 }
@@ -287,7 +298,7 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
             // Try all keys in this rider's sprintData
             for (const key of Object.keys(sprintData)) {
                 const entry = sprintData[key];
-                if (entry?.worldTime && entry.worldTime > 1000000000000) {
+                if (entry?.worldTime && entry.worldTime > MIN_WORLDTIME) {
                     console.log('Found reference timestamp via any key:', key, entry.worldTime);
                     return entry.worldTime;
                 }
@@ -299,7 +310,7 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
             const sprintDetails = rider.sprintDetails || {};
             for (const key of Object.keys(sprintDetails)) {
                 const val = sprintDetails[key];
-                if (typeof val === 'number' && val > 1000000000000) {
+                if (typeof val === 'number' && val > MIN_WORLDTIME) {
                     console.log('Found reference timestamp in sprintDetails:', key, val);
                     return val;
                 }
@@ -328,14 +339,22 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
         if (!referenceTimestamp) {
             for (const row of tableData) {
                 const val = row[sprintKey];
-                if (typeof val === 'number' && val > 1000000000000) {
+                if (typeof val === 'number' && val > MIN_WORLDTIME) {
                     referenceTimestamp = val;
                     break;
                 }
             }
         }
         
+        // Note: We do NOT fallback to race date or current date because
+        // Zwift worldTime uses a different epoch than Unix timestamps.
+        // Reference must come from existing Zwift data in the same race.
+        
+        console.log('Attempting to parse:', { editValue, referenceTimestamp, raceDate: selectedRace?.date });
+        
         const parsed = parseTimeStringToTimestamp(editValue, referenceTimestamp);
+        
+        console.log('Parse result:', parsed);
         
         if (parsed !== null) {
             setPendingEdits(prev => ({
@@ -347,7 +366,7 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
             }));
         } else if (editValue.trim() !== '') {
             // Show more helpful error with debug info
-            console.error('Parse failed:', { editValue, referenceTimestamp, sprintKey });
+            console.error('Parse failed:', { editValue, referenceTimestamp, sprintKey, raceDate: selectedRace?.date });
             alert(`Could not parse time "${editValue}". Use format HH:MM:SS.mmm or paste a raw timestamp.${!referenceTimestamp ? ' (No reference timestamp found)' : ''}`);
         }
         
