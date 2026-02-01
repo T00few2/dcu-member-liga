@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import type { Race, SelectedSegment } from '@/types/admin';
+import type { Race, SelectedSegment, SprintDataEntry } from '@/types/admin';
 
 interface RawDataViewerProps {
     races: Race[];
@@ -12,33 +12,19 @@ type SortConfig = {
     direction: 'asc' | 'desc';
 };
 
-// Parse worldTime from sprintDetails value (handles various formats)
-const parseWorldTime = (value: unknown): number | null => {
-    if (value === null || value === undefined) return null;
-    
-    // Handle string format like "worldTime:1234567890;time:12345"
-    if (typeof value === 'string' && value.includes('worldTime:')) {
-        const match = value.match(/worldTime:(\d+)/);
-        if (match) return parseInt(match[1], 10);
-    }
-    
-    // Handle direct number or numeric string
-    const parsed = typeof value === 'string' ? parseInt(value, 10) : Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-};
+type ValueMode = 'worldTime' | 'points' | 'elapsed';
 
-// Format worldTime as readable timestamp
-const formatWorldTime = (worldTime: number | null): string => {
-    if (worldTime === null) return '-';
-    // worldTime is typically in milliseconds since some epoch
-    // Display as raw value for now - can be formatted if needed
-    return worldTime.toLocaleString();
+// Format number value
+const formatValue = (value: number | null): string => {
+    if (value === null || value === undefined) return '-';
+    return value.toLocaleString();
 };
 
 export default function RawDataViewer({ races }: RawDataViewerProps) {
     const [selectedRaceId, setSelectedRaceId] = useState<string>('');
     const [selectedCategory, setSelectedCategory] = useState<string>('');
     const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'name', direction: 'asc' });
+    const [valueMode, setValueMode] = useState<ValueMode>('worldTime');
 
     // Get selected race
     const selectedRace = useMemo(() => 
@@ -96,7 +82,7 @@ export default function RawDataViewer({ races }: RawDataViewerProps) {
         return selectedRace.results[selectedCategory];
     }, [selectedRace, selectedCategory]);
 
-    // Build table data with worldTime values
+    // Build table data with segment values
     const tableData = useMemo(() => {
         return results.map(rider => {
             const row: Record<string, any> = {
@@ -106,26 +92,38 @@ export default function RawDataViewer({ races }: RawDataViewerProps) {
                 finishRank: rider.finishRank || 0,
             };
             
-            // Extract worldTime for each sprint column
+            // Access sprintData (contains full segment info) and sprintDetails (contains points or worldTime)
+            const sprintData = rider.sprintData || {};
+            const sprintDetails = rider.sprintDetails || {};
+            
+            // Extract values for each sprint column based on mode
             sprintColumns.forEach(col => {
-                let worldTime: number | null = null;
+                let value: number | null = null;
                 
                 // Try primary key first, then alt keys
                 const keysToTry = [col.key, ...col.altKeys];
                 for (const key of keysToTry) {
-                    const value = rider.sprintDetails?.[key];
-                    if (value !== undefined) {
-                        worldTime = parseWorldTime(value);
-                        if (worldTime !== null) break;
+                    const dataEntry: SprintDataEntry | undefined = sprintData[key];
+                    const detailValue = sprintDetails[key];
+                    
+                    if (valueMode === 'worldTime' && dataEntry?.worldTime) {
+                        value = dataEntry.worldTime;
+                        break;
+                    } else if (valueMode === 'elapsed' && dataEntry?.time) {
+                        value = dataEntry.time;
+                        break;
+                    } else if (valueMode === 'points' && typeof detailValue === 'number') {
+                        value = detailValue;
+                        break;
                     }
                 }
                 
-                row[col.key] = worldTime;
+                row[col.key] = value;
             });
             
             return row;
         });
-    }, [results, sprintColumns]);
+    }, [results, sprintColumns, valueMode]);
 
     // Sort table data
     const sortedData = useMemo(() => {
@@ -215,10 +213,45 @@ export default function RawDataViewer({ races }: RawDataViewerProps) {
                     </div>
                 </div>
 
-                {/* Info */}
+                {/* Value Mode Toggle */}
                 {selectedRace && results.length > 0 && (
-                    <div className="text-sm text-muted-foreground mb-4">
-                        {results.length} riders • {sprintColumns.length} segments
+                    <div className="flex items-center gap-4 mb-4">
+                        <span className="text-sm font-medium text-muted-foreground">Show:</span>
+                        <div className="flex gap-1 bg-muted rounded-lg p-1">
+                            <button
+                                onClick={() => setValueMode('worldTime')}
+                                className={`px-3 py-1 text-sm rounded-md transition ${
+                                    valueMode === 'worldTime' 
+                                        ? 'bg-background text-foreground shadow-sm' 
+                                        : 'text-muted-foreground hover:text-foreground'
+                                }`}
+                            >
+                                World Time
+                            </button>
+                            <button
+                                onClick={() => setValueMode('elapsed')}
+                                className={`px-3 py-1 text-sm rounded-md transition ${
+                                    valueMode === 'elapsed' 
+                                        ? 'bg-background text-foreground shadow-sm' 
+                                        : 'text-muted-foreground hover:text-foreground'
+                                }`}
+                            >
+                                Elapsed Time
+                            </button>
+                            <button
+                                onClick={() => setValueMode('points')}
+                                className={`px-3 py-1 text-sm rounded-md transition ${
+                                    valueMode === 'points' 
+                                        ? 'bg-background text-foreground shadow-sm' 
+                                        : 'text-muted-foreground hover:text-foreground'
+                                }`}
+                            >
+                                Points
+                            </button>
+                        </div>
+                        <span className="text-sm text-muted-foreground ml-auto">
+                            {results.length} riders • {sprintColumns.length} segments
+                        </span>
                     </div>
                 )}
 
@@ -278,7 +311,7 @@ export default function RawDataViewer({ races }: RawDataViewerProps) {
                                                 key={col.key}
                                                 className="px-3 py-2 text-right text-foreground tabular-nums"
                                             >
-                                                {formatWorldTime(row[col.key])}
+                                                {formatValue(row[col.key])}
                                             </td>
                                         ))}
                                     </tr>

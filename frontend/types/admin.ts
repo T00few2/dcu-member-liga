@@ -66,6 +66,13 @@ export interface Race {
     manualExclusions?: string[];
 }
 
+export interface SprintDataEntry {
+    time?: number;      // elapsed time in ms
+    worldTime?: number; // absolute worldTime
+    avgPower?: number;
+    rank?: number;
+}
+
 export interface RaceResult {
     zwiftId: string;
     name: string;
@@ -74,6 +81,7 @@ export interface RaceResult {
     finishPoints: number;
     totalPoints: number;
     sprintDetails?: Record<string, number | string>;
+    sprintData?: Record<string, SprintDataEntry>;
     flaggedCheating?: boolean;
     flaggedSandbagging?: boolean;
 }
