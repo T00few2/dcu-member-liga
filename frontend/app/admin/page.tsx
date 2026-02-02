@@ -8,7 +8,7 @@ import VerificationDashboard from '@/components/admin/VerificationDashboard';
 import TrainerManager from '@/components/admin/TrainerManager';
 
 export default function AdminPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, isAdmin, refreshClaims } = useAuth();
   const router = useRouter();
   
   // Top Level Tab State
@@ -22,6 +22,29 @@ export default function AdminPage() {
   }, [user, authLoading, router]);
 
   if (authLoading) return <div className="p-8 text-center">Loading...</div>;
+  if (!user) return null;
+
+  if (!isAdmin) {
+    return (
+      <div className="max-w-3xl mx-auto mt-8 px-4">
+        <h1 className="text-3xl font-bold mb-2 text-foreground">Admin Dashboard</h1>
+        <p className="text-muted-foreground mb-6">
+          You’re signed in, but you don’t have admin access.
+        </p>
+        <div className="bg-card p-6 rounded-lg shadow border border-border">
+          <p className="text-card-foreground mb-4">
+            If you were just granted access, refresh your session to load the new permissions.
+          </p>
+          <button
+            onClick={() => refreshClaims()}
+            className="bg-primary text-primary-foreground px-4 py-2 rounded hover:opacity-90 font-medium"
+          >
+            Refresh permissions
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto mt-8 px-4">

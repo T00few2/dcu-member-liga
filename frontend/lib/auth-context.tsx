@@ -14,24 +14,29 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   isRegistered: boolean;
+  isAdmin: boolean;
   signInWithGoogle: () => Promise<void>;
   logOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  refreshClaims: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
   isRegistered: false,
+  isAdmin: false,
   signInWithGoogle: async () => {},
   logOut: async () => {},
   refreshProfile: async () => {},
+  refreshClaims: async () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isRegistered, setIsRegistered] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const fetchProfile = useCallback(async (currentUser: User) => {
     try {
@@ -54,23 +59,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const fetchClaims = useCallback(async (currentUser: User) => {
+    try {
+      const tokenResult = await currentUser.getIdTokenResult();
+      setIsAdmin(tokenResult?.claims?.admin === true);
+    } catch (error) {
+      console.error("Error fetching token claims:", error);
+      setIsAdmin(false);
+    }
+  }, []);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setUser(user);
       if (user) {
         await fetchProfile(user);
+        await fetchClaims(user);
       } else {
         setIsRegistered(false);
+        setIsAdmin(false);
       }
       setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [fetchProfile]);
+  }, [fetchProfile, fetchClaims]);
 
   const refreshProfile = async () => {
     if (user) {
       await fetchProfile(user);
+    }
+  };
+
+  const refreshClaims = async () => {
+    if (user) {
+      // Force token refresh so newly set custom claims are picked up immediately.
+      await user.getIdToken(true);
+      await fetchClaims(user);
     }
   };
 
@@ -87,13 +112,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       await firebaseSignOut(auth);
       setIsRegistered(false);
+      setIsAdmin(false);
     } catch (error) {
       console.error("Error signing out", error);
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, isRegistered, signInWithGoogle, logOut, refreshProfile }}>
+    <AuthContext.Provider value={{ user, loading, isRegistered, isAdmin, signInWithGoogle, logOut, refreshProfile, refreshClaims }}>
       {children}
     </AuthContext.Provider>
   );

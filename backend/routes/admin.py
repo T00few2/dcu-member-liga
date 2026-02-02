@@ -1,25 +1,19 @@
 from flask import Blueprint, request, jsonify
-from firebase_admin import auth, firestore
+from firebase_admin import firestore
 from extensions import db, get_zwift_service, strava_service, get_zp_service
+from authz import require_admin, AuthzError
 
 admin_bp = Blueprint('admin', __name__)
 
 def verify_admin_auth():
-    auth_header = request.headers.get('Authorization')
-    if not auth_header or not auth_header.startswith('Bearer '):
-        raise Exception('Unauthorized')
-    try:
-        id_token = auth_header.split('Bearer ')[1]
-        auth.verify_id_token(id_token)
-    except Exception:
-        raise Exception('Unauthorized')
+    return require_admin(request)
 
 @admin_bp.route('/admin/verification/rider/<e_license>', methods=['GET'])
 def verify_rider(e_license):
     try:
         verify_admin_auth()
-    except:
-        return jsonify({'message': 'Unauthorized'}), 401
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
 
     if not db:
             return jsonify({'error': 'DB not available'}), 500
@@ -125,8 +119,8 @@ def verify_rider(e_license):
 def get_strava_streams(activity_id):
     try:
         verify_admin_auth()
-    except:
-        return jsonify({'message': 'Unauthorized'}), 401
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
 
     e_license = request.args.get('eLicense')
     if not e_license:
@@ -162,7 +156,7 @@ def get_trainers():
 @admin_bp.route('/trainers', methods=['POST'])
 def create_trainer():
     try: verify_admin_auth()
-    except: return jsonify({'message': 'Unauthorized'}), 401
+    except AuthzError as e: return jsonify({'message': e.message}), e.status_code
     
     if not db: return jsonify({'error': 'DB not available'}), 500
     
@@ -185,7 +179,7 @@ def create_trainer():
 @admin_bp.route('/trainers/<trainer_id>', methods=['PUT'])
 def update_trainer(trainer_id):
     try: verify_admin_auth()
-    except: return jsonify({'message': 'Unauthorized'}), 401
+    except AuthzError as e: return jsonify({'message': e.message}), e.status_code
     
     if not db: return jsonify({'error': 'DB not available'}), 500
     
@@ -203,7 +197,7 @@ def update_trainer(trainer_id):
 @admin_bp.route('/trainers/<trainer_id>', methods=['DELETE'])
 def delete_trainer(trainer_id):
     try: verify_admin_auth()
-    except: return jsonify({'message': 'Unauthorized'}), 401
+    except AuthzError as e: return jsonify({'message': e.message}), e.status_code
     
     if not db: return jsonify({'error': 'DB not available'}), 500
     try:
@@ -245,7 +239,7 @@ def request_trainer():
 @admin_bp.route('/trainers/requests', methods=['GET'])
 def get_trainer_requests():
     try: verify_admin_auth()
-    except: return jsonify({'message': 'Unauthorized'}), 401
+    except AuthzError as e: return jsonify({'message': e.message}), e.status_code
     
     if not db: return jsonify({'error': 'DB not available'}), 500
     try:
@@ -264,7 +258,7 @@ def get_trainer_requests():
 @admin_bp.route('/trainers/requests/<request_id>/approve', methods=['POST'])
 def approve_trainer_request(request_id):
     try: verify_admin_auth()
-    except: return jsonify({'message': 'Unauthorized'}), 401
+    except AuthzError as e: return jsonify({'message': e.message}), e.status_code
     
     if not db: return jsonify({'error': 'DB not available'}), 500
     try:
@@ -293,7 +287,7 @@ def approve_trainer_request(request_id):
 @admin_bp.route('/trainers/requests/<request_id>/reject', methods=['POST'])
 def reject_trainer_request(request_id):
     try: verify_admin_auth()
-    except: return jsonify({'message': 'Unauthorized'}), 401
+    except AuthzError as e: return jsonify({'message': e.message}), e.status_code
     
     if not db: return jsonify({'error': 'DB not available'}), 500
     try:

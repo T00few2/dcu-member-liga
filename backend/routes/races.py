@@ -1,21 +1,15 @@
 from flask import Blueprint, request, jsonify
-from firebase_admin import auth, firestore
+from firebase_admin import firestore
 from extensions import db, get_zwift_service, get_zwift_game_service
 from services.results_processor import ResultsProcessor
 from datetime import datetime
+from authz import require_admin, AuthzError
 
 races_bp = Blueprint('races', __name__)
 
 def verify_admin_auth():
-    auth_header = request.headers.get('Authorization')
-    if not auth_header or not auth_header.startswith('Bearer '):
-        raise Exception('Unauthorized')
-    try:
-        id_token = auth_header.split('Bearer ')[1]
-        auth.verify_id_token(id_token)
-        # TODO: Add specific admin check here if needed
-    except Exception:
-        raise Exception('Unauthorized')
+    # Backwards-compatible wrapper used throughout this file.
+    return require_admin(request)
 
 @races_bp.route('/races', methods=['GET'])
 def get_races():
@@ -37,8 +31,8 @@ def get_races():
 def create_race():
     try:
         verify_admin_auth()
-    except:
-        return jsonify({'message': 'Unauthorized'}), 401
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
 
     if not db:
         return jsonify({'error': 'DB not available'}), 500
@@ -57,8 +51,8 @@ def create_race():
 def delete_race(race_id):
     try:
         verify_admin_auth()
-    except:
-        return jsonify({'message': 'Unauthorized'}), 401
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
 
     if not db:
         return jsonify({'error': 'DB not available'}), 500
@@ -73,8 +67,8 @@ def delete_race(race_id):
 def update_race(race_id):
     try:
         verify_admin_auth()
-    except:
-        return jsonify({'message': 'Unauthorized'}), 401
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
 
     if not db:
         return jsonify({'error': 'DB not available'}), 500
@@ -110,8 +104,8 @@ def update_sprint_data(race_id, category):
     """
     try:
         verify_admin_auth()
-    except:
-        return jsonify({'message': 'Unauthorized'}), 401
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
     
     if not db:
         return jsonify({'error': 'DB not available'}), 500
@@ -182,8 +176,8 @@ def update_sprint_data(race_id, category):
 def refresh_results(race_id):
     try:
         verify_admin_auth()
-    except:
-        return jsonify({'message': 'Unauthorized'}), 401
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
     
     if not db:
         return jsonify({'error': 'DB not available'}), 500

@@ -1,19 +1,13 @@
 from flask import Blueprint, request, jsonify
-from firebase_admin import auth, firestore
+from firebase_admin import firestore
 from extensions import db
 from services.results_processor import ResultsProcessor
+from authz import require_admin, AuthzError
 
 league_bp = Blueprint('league', __name__)
 
 def verify_admin_auth():
-    auth_header = request.headers.get('Authorization')
-    if not auth_header or not auth_header.startswith('Bearer '):
-        raise Exception('Unauthorized')
-    try:
-        id_token = auth_header.split('Bearer ')[1]
-        auth.verify_id_token(id_token)
-    except Exception:
-        raise Exception('Unauthorized')
+    return require_admin(request)
 
 @league_bp.route('/league/settings', methods=['GET'])
 def get_settings():
@@ -30,8 +24,8 @@ def get_settings():
 def save_settings():
     try:
         verify_admin_auth()
-    except:
-        return jsonify({'message': 'Unauthorized'}), 401
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
 
     if not db:
             return jsonify({'error': 'DB not available'}), 500
