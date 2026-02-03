@@ -23,8 +23,10 @@ policy_bp = Blueprint("policy", __name__)
 
 @policy_bp.route("/policy/meta", methods=["GET"])
 def policy_meta():
-    # This endpoint can safely fall back to defaults if DB is unavailable.
-    return jsonify({"policies": get_policy_meta(db), "knownPolicies": KNOWN_POLICIES}), 200
+    try:
+        return jsonify({"policies": get_policy_meta(db), "knownPolicies": KNOWN_POLICIES}), 200
+    except PolicyError as e:
+        return jsonify({"message": e.message}), e.status_code
 
 
 @policy_bp.route("/policy/<policy_key>/current", methods=["GET"])

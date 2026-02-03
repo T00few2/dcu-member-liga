@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from firebase_admin import auth, firestore
 from extensions import db, get_zwift_service, get_zp_service, strava_service, zr_service, get_zwift_game_service
-from services.policy_store import POLICY_DATA_POLICY, POLICY_PUBLIC_RESULTS, get_policy_meta
+from services.policy_store import POLICY_DATA_POLICY, POLICY_PUBLIC_RESULTS, PolicyError, get_policy_meta
 
 users_bp = Blueprint('users', __name__)
 
@@ -98,7 +98,10 @@ def get_profile():
         
         # Always include currently required versions so clients can gate consistently,
         # even for brand new users without a profile document yet.
-        policy_meta = get_policy_meta(db)
+        try:
+            policy_meta = get_policy_meta(db)
+        except PolicyError as e:
+            return jsonify({'message': e.message}), e.status_code
 
         if not user_doc.exists:
             return jsonify({
@@ -182,7 +185,10 @@ def signup():
                 return jsonify({'message': 'You must accept the data policy.'}), 400
             if not accepted_public_results:
                 return jsonify({'message': 'You must accept publication of name and results.'}), 400
-            required_versions = get_policy_meta(db)
+            try:
+                required_versions = get_policy_meta(db)
+            except PolicyError as e:
+                return jsonify({'message': e.message}), e.status_code
             required_data_policy = required_versions.get(POLICY_DATA_POLICY, {}).get('requiredVersion')
             required_public = required_versions.get(POLICY_PUBLIC_RESULTS, {}).get('requiredVersion')
             if data_policy_version != required_data_policy:
@@ -289,7 +295,10 @@ def update_consents():
         data_policy_version = request_json.get('dataPolicyVersion')
         public_results_consent_version = request_json.get('publicResultsConsentVersion')
 
-        required_versions = get_policy_meta(db)
+        try:
+            required_versions = get_policy_meta(db)
+        except PolicyError as e:
+            return jsonify({'message': e.message}), e.status_code
         required_data_policy = required_versions.get(POLICY_DATA_POLICY, {}).get('requiredVersion')
         required_public = required_versions.get(POLICY_PUBLIC_RESULTS, {}).get('requiredVersion')
 

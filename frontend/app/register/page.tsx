@@ -191,27 +191,6 @@ function RegisterContent() {
         }
     }, [user, authLoading]);
 
-    // Fallback: if we don't have required versions yet, fetch policy meta (public).
-    useEffect(() => {
-        const fetchMeta = async () => {
-            try {
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-                const res = await fetch(`${apiUrl}/policy/meta`);
-                const data = await res.json().catch(() => ({}));
-                if (!res.ok) return;
-                const policies = data.policies || {};
-                setRequiredDataPolicyVersion(policies.dataPolicy?.requiredVersion || null);
-                setRequiredPublicResultsConsentVersion(policies.publicResultsConsent?.requiredVersion || null);
-            } catch {
-                // ignore
-            }
-        };
-
-        if (!requiredDataPolicyVersion || !requiredPublicResultsConsentVersion) {
-            fetchMeta();
-        }
-    }, [requiredDataPolicyVersion, requiredPublicResultsConsentVersion]);
-
     // Handle Strava redirect return
     useEffect(() => {
         if (stravaStatusParam === 'connected') {

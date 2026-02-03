@@ -17,6 +17,8 @@ interface AuthContextType {
   isRegistered: boolean;
   isAdmin: boolean;
   needsConsentUpdate: boolean;
+  requiredDataPolicyVersion: string | null;
+  requiredPublicResultsConsentVersion: string | null;
   signInWithGoogle: () => Promise<void>;
   logOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -29,6 +31,8 @@ const AuthContext = createContext<AuthContextType>({
   isRegistered: false,
   isAdmin: false,
   needsConsentUpdate: false,
+  requiredDataPolicyVersion: null,
+  requiredPublicResultsConsentVersion: null,
   signInWithGoogle: async () => {},
   logOut: async () => {},
   refreshProfile: async () => {},
@@ -41,6 +45,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isRegistered, setIsRegistered] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [needsConsentUpdate, setNeedsConsentUpdate] = useState(false);
+  const [requiredDataPolicyVersion, setRequiredDataPolicyVersion] = useState<string | null>(null);
+  const [requiredPublicResultsConsentVersion, setRequiredPublicResultsConsentVersion] = useState<string | null>(null);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -59,17 +65,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Consent gate: backend is source of truth for required versions.
         const requiredPolicy = data.requiredDataPolicyVersion;
         const requiredPublic = data.requiredPublicResultsConsentVersion;
+        setRequiredDataPolicyVersion(requiredPolicy || null);
+        setRequiredPublicResultsConsentVersion(requiredPublic || null);
         const policyOk = !!requiredPolicy && (data.dataPolicyVersion === requiredPolicy) && !!data.acceptedDataPolicy;
         const publicOk = !!requiredPublic && (data.publicResultsConsentVersion === requiredPublic) && !!data.acceptedPublicResults;
         setNeedsConsentUpdate(!(policyOk && publicOk));
       } else {
         setIsRegistered(false);
         setNeedsConsentUpdate(false);
+        setRequiredDataPolicyVersion(null);
+        setRequiredPublicResultsConsentVersion(null);
       }
     } catch (error) {
       console.error("Error fetching profile:", error);
       setIsRegistered(false);
       setNeedsConsentUpdate(false);
+      setRequiredDataPolicyVersion(null);
+      setRequiredPublicResultsConsentVersion(null);
     }
   }, []);
 
@@ -93,6 +105,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsRegistered(false);
         setIsAdmin(false);
         setNeedsConsentUpdate(false);
+        setRequiredDataPolicyVersion(null);
+        setRequiredPublicResultsConsentVersion(null);
       }
       setLoading(false);
     });
@@ -142,13 +156,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsRegistered(false);
       setIsAdmin(false);
       setNeedsConsentUpdate(false);
+      setRequiredDataPolicyVersion(null);
+      setRequiredPublicResultsConsentVersion(null);
     } catch (error) {
       console.error("Error signing out", error);
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, isRegistered, isAdmin, needsConsentUpdate, signInWithGoogle, logOut, refreshProfile, refreshClaims }}>
+    <AuthContext.Provider value={{ user, loading, isRegistered, isAdmin, needsConsentUpdate, requiredDataPolicyVersion, requiredPublicResultsConsentVersion, signInWithGoogle, logOut, refreshProfile, refreshClaims }}>
       {children}
     </AuthContext.Provider>
   );

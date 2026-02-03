@@ -5,18 +5,11 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 
-type PolicyMeta = {
-  displayVersion: string;
-  requiredVersion: string;
-};
-
 export default function ConsentPage() {
-  const { user, loading, needsConsentUpdate, refreshProfile } = useAuth();
+  const { user, loading, needsConsentUpdate, refreshProfile, requiredDataPolicyVersion, requiredPublicResultsConsentVersion } = useAuth();
   const router = useRouter();
   const [acceptedDataPolicy, setAcceptedDataPolicy] = useState(false);
   const [acceptedPublicResults, setAcceptedPublicResults] = useState(false);
-  const [requiredDataPolicyVersion, setRequiredDataPolicyVersion] = useState<string | null>(null);
-  const [requiredPublicResultsConsentVersion, setRequiredPublicResultsConsentVersion] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -33,23 +26,6 @@ export default function ConsentPage() {
       router.push('/');
     }
   }, [loading, user, needsConsentUpdate, router]);
-
-  useEffect(() => {
-    const fetchMeta = async () => {
-      try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-        const res = await fetch(`${apiUrl}/policy/meta`);
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.message || 'Kunne ikke hente policy metadata.');
-        const policies = (data.policies || {}) as Record<string, PolicyMeta>;
-        setRequiredDataPolicyVersion(policies.dataPolicy?.requiredVersion || null);
-        setRequiredPublicResultsConsentVersion(policies.publicResultsConsent?.requiredVersion || null);
-      } catch {
-        // If meta can't be fetched, backend /consents will reject anyway; keep UX minimal.
-      }
-    };
-    fetchMeta();
-  }, []);
 
   const handleSave = async () => {
     if (!user) return;
