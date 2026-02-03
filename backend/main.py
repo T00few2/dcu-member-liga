@@ -7,6 +7,7 @@ from routes.users import users_bp
 from routes.admin import admin_bp
 from routes.integration import integration_bp
 from routes.seed import seed_bp
+from routes.policy import policy_bp
 
 def create_app():
     app = Flask(__name__)
@@ -18,6 +19,7 @@ def create_app():
     app.register_blueprint(admin_bp)
     app.register_blueprint(integration_bp)
     app.register_blueprint(seed_bp)
+    app.register_blueprint(policy_bp)
     
     # Add CORS headers to all responses
     @app.after_request

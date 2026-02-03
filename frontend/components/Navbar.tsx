@@ -6,12 +6,11 @@ import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 
 export default function Navbar() {
-  const { user, signInWithGoogle, logOut, loading, isRegistered } = useAuth();
+  const { user, signInWithGoogle, logOut, loading, isRegistered, needsConsentUpdate } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const pathname = usePathname();
-
-  if (pathname?.startsWith('/live')) return null;
+  const hideNavbar = pathname?.startsWith('/live');
 
   // Close drawer when route changes
   useEffect(() => {
@@ -37,6 +36,8 @@ export default function Navbar() {
     { href: '/results', label: 'Results' },
     { href: '/stats', label: 'Stats' },
   ];
+
+  if (hideNavbar) return null;
 
   return (
     <>
@@ -66,7 +67,7 @@ export default function Navbar() {
                 {user ? (
                     <div className="flex items-center gap-4">
                         {/* Desktop Navigation Links */}
-                        {isRegistered && (
+                        {isRegistered && !needsConsentUpdate && (
                             <div className="hidden md:flex items-center gap-6">
                                 {navLinks.map(link => (
                                     <Link 

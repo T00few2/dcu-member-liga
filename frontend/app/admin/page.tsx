@@ -6,13 +6,14 @@ import { useRouter } from 'next/navigation';
 import LeagueManager from '@/components/admin/LeagueManager';
 import VerificationDashboard from '@/components/admin/VerificationDashboard';
 import TrainerManager from '@/components/admin/TrainerManager';
+import PolicyManager from '@/components/admin/PolicyManager';
 
 export default function AdminPage() {
   const { user, loading: authLoading, isAdmin, refreshClaims } = useAuth();
   const router = useRouter();
   
   // Top Level Tab State
-  const [activeSection, setActiveSection] = useState<'league' | 'verification' | 'trainers'>('league');
+  const [activeSection, setActiveSection] = useState<'league' | 'verification' | 'trainers' | 'policies'>('league');
 
   // Access Control
   useEffect(() => {
@@ -71,6 +72,12 @@ export default function AdminPage() {
           >
               Trainers
           </button>
+          <button 
+            onClick={() => setActiveSection('policies')}
+            className={`pb-4 px-6 text-lg font-medium transition ${activeSection === 'policies' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+              Policies
+          </button>
       </div>
 
       {/* Section Content */}
@@ -79,8 +86,10 @@ export default function AdminPage() {
               <LeagueManager />
           ) : activeSection === 'verification' ? (
               <VerificationDashboard />
-          ) : (
+          ) : activeSection === 'trainers' ? (
               <TrainerManager />
+          ) : (
+              <PolicyManager user={user} />
           )}
       </div>
     </div>

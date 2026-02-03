@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from firebase_admin import auth, firestore
 from extensions import db, get_zwift_service, get_zp_service, strava_service, zr_service, get_zwift_game_service
+from services.policy_store import POLICY_DATA_POLICY, POLICY_PUBLIC_RESULTS, get_policy_meta
 
 users_bp = Blueprint('users', __name__)
 
@@ -95,12 +96,31 @@ def get_profile():
             user_doc = db.collection('users').document(uid).get()
             e_license = None
         
+        # Always include currently required versions so clients can gate consistently,
+        # even for brand new users without a profile document yet.
+        policy_meta = get_policy_meta(db)
+
         if not user_doc.exists:
-            return jsonify({'registered': False}), 200
+            return jsonify({
+                'registered': False,
+                'requiredDataPolicyVersion': policy_meta.get(POLICY_DATA_POLICY, {}).get('requiredVersion'),
+                'requiredPublicResultsConsentVersion': policy_meta.get(POLICY_PUBLIC_RESULTS, {}).get('requiredVersion'),
+            }), 200
         
         user_data = user_doc.to_dict()
         registration_complete = user_data.get('registrationComplete', user_data.get('verified', False))
         
+        stored_data_policy_version = (
+            user_data.get('dataPolicy', {}).get('version')
+            if isinstance(user_data.get('dataPolicy'), dict)
+            else None
+        )
+        stored_public_results_version = (
+            user_data.get('publicResultsConsent', {}).get('version')
+            if isinstance(user_data.get('publicResultsConsent'), dict)
+            else None
+        )
+
         return jsonify({
             'registered': registration_complete,
             'hasDraft': not registration_complete and user_data.get('name'),
@@ -110,7 +130,13 @@ def get_profile():
             'club': user_data.get('club', ''),
             'trainer': user_data.get('trainer', ''),
             'stravaConnected': bool(user_data.get('strava_access_token')) or bool(user_data.get('strava')),
-            'acceptedCoC': user_data.get('acceptedCoC', False)
+            'acceptedCoC': user_data.get('acceptedCoC', False),
+            'acceptedDataPolicy': user_data.get('acceptedDataPolicy', False),
+            'acceptedPublicResults': user_data.get('acceptedPublicResults', False),
+            'dataPolicyVersion': stored_data_policy_version,
+            'publicResultsConsentVersion': stored_public_results_version,
+            'requiredDataPolicyVersion': policy_meta.get(POLICY_DATA_POLICY, {}).get('requiredVersion'),
+            'requiredPublicResultsConsentVersion': policy_meta.get(POLICY_PUBLIC_RESULTS, {}).get('requiredVersion'),
         }), 200
 
     except Exception as e:
@@ -141,6 +167,10 @@ def signup():
         club = request_json.get('club', '')
         trainer = request_json.get('trainer', '')
         is_draft = request_json.get('draft', False)
+        accepted_data_policy = bool(request_json.get('acceptedDataPolicy', False))
+        accepted_public_results = bool(request_json.get('acceptedPublicResults', False))
+        data_policy_version = request_json.get('dataPolicyVersion')
+        public_results_consent_version = request_json.get('publicResultsConsentVersion')
         
         if is_draft:
             if not name:
@@ -148,6 +178,17 @@ def signup():
         else:
             if not e_license or not name:
                 return jsonify({'message': 'Missing eLicense or name'}), 400
+            if not accepted_data_policy:
+                return jsonify({'message': 'You must accept the data policy.'}), 400
+            if not accepted_public_results:
+                return jsonify({'message': 'You must accept publication of name and results.'}), 400
+            required_versions = get_policy_meta(db)
+            required_data_policy = required_versions.get(POLICY_DATA_POLICY, {}).get('requiredVersion')
+            required_public = required_versions.get(POLICY_PUBLIC_RESULTS, {}).get('requiredVersion')
+            if data_policy_version != required_data_policy:
+                return jsonify({'message': 'Data policy version mismatch. Please review and accept the latest policy.'}), 400
+            if public_results_consent_version != required_public:
+                return jsonify({'message': 'Public results consent version mismatch. Please review and accept the latest consent.'}), 400
 
         if db:
             user_data = {
@@ -161,6 +202,19 @@ def signup():
             if trainer: user_data['trainer'] = trainer
             
             user_data['acceptedCoC'] = request_json.get('acceptedCoC', False)
+            user_data['acceptedDataPolicy'] = accepted_data_policy
+            if accepted_data_policy:
+                user_data['dataPolicy'] = {
+                    'version': data_policy_version,
+                    'acceptedAt': firestore.SERVER_TIMESTAMP
+                }
+
+            user_data['acceptedPublicResults'] = accepted_public_results
+            if accepted_public_results:
+                user_data['publicResultsConsent'] = {
+                    'version': public_results_consent_version,
+                    'acceptedAt': firestore.SERVER_TIMESTAMP
+                }
             
             if is_draft:
                 user_data['registrationComplete'] = False
@@ -210,6 +264,68 @@ def signup():
             'draft': is_draft,
             'user': {'name': name, 'eLicense': e_license, 'zwiftId': zwift_id}
         }), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+
+
+@users_bp.route('/consents', methods=['POST'])
+def update_consents():
+    """
+    Update policy/consent acceptances without changing registration status.
+    Requires a valid Firebase ID token.
+    """
+    try:
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'message': 'Missing or invalid Authorization header'}), 401
+
+        id_token = auth_header.split('Bearer ')[1]
+        decoded_token = auth.verify_id_token(id_token)
+        uid = decoded_token['uid']
+
+        request_json = request.get_json(silent=True) or {}
+        accepted_data_policy = bool(request_json.get('acceptedDataPolicy', False))
+        accepted_public_results = bool(request_json.get('acceptedPublicResults', False))
+        data_policy_version = request_json.get('dataPolicyVersion')
+        public_results_consent_version = request_json.get('publicResultsConsentVersion')
+
+        required_versions = get_policy_meta(db)
+        required_data_policy = required_versions.get(POLICY_DATA_POLICY, {}).get('requiredVersion')
+        required_public = required_versions.get(POLICY_PUBLIC_RESULTS, {}).get('requiredVersion')
+
+        if not accepted_data_policy or data_policy_version != required_data_policy:
+            return jsonify({'message': 'You must accept the latest data policy.'}), 400
+        if not accepted_public_results or public_results_consent_version != required_public:
+            return jsonify({'message': 'You must accept the latest public results consent.'}), 400
+
+        if not db:
+            return jsonify({'message': 'Database not available'}), 500
+
+        # Resolve user doc (eLicense mapping if present)
+        mapping_doc = db.collection('auth_mappings').document(uid).get()
+        if mapping_doc.exists:
+            e_license = mapping_doc.to_dict().get('eLicense')
+            doc_id = str(e_license) if e_license else uid
+        else:
+            doc_id = uid
+
+        updates = {
+            'acceptedDataPolicy': True,
+            'dataPolicy': {
+                'version': data_policy_version,
+                'acceptedAt': firestore.SERVER_TIMESTAMP
+            },
+            'acceptedPublicResults': True,
+            'publicResultsConsent': {
+                'version': public_results_consent_version,
+                'acceptedAt': firestore.SERVER_TIMESTAMP
+            },
+            'updatedAt': firestore.SERVER_TIMESTAMP
+        }
+
+        db.collection('users').document(doc_id).set(updates, merge=True)
+
+        return jsonify({'message': 'Consents updated'}), 200
     except Exception as e:
         return jsonify({'message': str(e)}), 500
 

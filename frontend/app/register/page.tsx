@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import StravaAttribution from '@/components/StravaAttribution';
 import { useToast } from '@/components/ToastProvider';
+import Link from 'next/link';
 
 function RegisterContent() {
     const { user, loading: authLoading, refreshProfile } = useAuth();
@@ -20,6 +21,10 @@ function RegisterContent() {
     const [club, setClub] = useState('');
     const [stravaConnected, setStravaConnected] = useState(false);
     const [acceptedCoC, setAcceptedCoC] = useState(false);
+    const [acceptedDataPolicy, setAcceptedDataPolicy] = useState(false);
+    const [acceptedPublicResults, setAcceptedPublicResults] = useState(false);
+    const [requiredDataPolicyVersion, setRequiredDataPolicyVersion] = useState<string | null>(null);
+    const [requiredPublicResultsConsentVersion, setRequiredPublicResultsConsentVersion] = useState<string | null>(null);
     const [showCoCModal, setShowCoCModal] = useState(false);
 
     // Clubs State
@@ -127,6 +132,20 @@ function RegisterContent() {
 
                 if (res.ok) {
                     const data = await res.json();
+
+                    // Capture required versions for display/submission
+                    setRequiredDataPolicyVersion(data.requiredDataPolicyVersion || null);
+                    setRequiredPublicResultsConsentVersion(data.requiredPublicResultsConsentVersion || null);
+
+                    const policyOk =
+                        !!data.requiredDataPolicyVersion &&
+                        data.dataPolicyVersion === data.requiredDataPolicyVersion &&
+                        !!data.acceptedDataPolicy;
+                    const publicOk =
+                        !!data.requiredPublicResultsConsentVersion &&
+                        data.publicResultsConsentVersion === data.requiredPublicResultsConsentVersion &&
+                        !!data.acceptedPublicResults;
+
                     if (data.registered) {
                         setIsRegistered(true);
                         setName(data.name || '');
@@ -136,6 +155,8 @@ function RegisterContent() {
                         setTrainer(data.trainer || '');
                         setStravaConnected(data.stravaConnected || false);
                         setAcceptedCoC(data.acceptedCoC || false);
+                        setAcceptedDataPolicy(policyOk);
+                        setAcceptedPublicResults(publicOk);
 
                         setInitialData({ eLicense: data.eLicense, zwiftId: data.zwiftId });
                         // Assume existing profile is verified
@@ -150,6 +171,8 @@ function RegisterContent() {
                         setTrainer(data.trainer || '');
                         setStravaConnected(data.stravaConnected || false);
                         setAcceptedCoC(data.acceptedCoC || false);
+                        setAcceptedDataPolicy(policyOk);
+                        setAcceptedPublicResults(publicOk);
                         setMessage('Welcome back! Your progress has been restored. Complete the remaining steps to finish registration.');
                     } else {
                         // Not registered, but maybe prefill name
@@ -167,6 +190,27 @@ function RegisterContent() {
             fetchProfile();
         }
     }, [user, authLoading]);
+
+    // Fallback: if we don't have required versions yet, fetch policy meta (public).
+    useEffect(() => {
+        const fetchMeta = async () => {
+            try {
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+                const res = await fetch(`${apiUrl}/policy/meta`);
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) return;
+                const policies = data.policies || {};
+                setRequiredDataPolicyVersion(policies.dataPolicy?.requiredVersion || null);
+                setRequiredPublicResultsConsentVersion(policies.publicResultsConsent?.requiredVersion || null);
+            } catch {
+                // ignore
+            }
+        };
+
+        if (!requiredDataPolicyVersion || !requiredPublicResultsConsentVersion) {
+            fetchMeta();
+        }
+    }, [requiredDataPolicyVersion, requiredPublicResultsConsentVersion]);
 
     // Handle Strava redirect return
     useEffect(() => {
@@ -408,6 +452,10 @@ function RegisterContent() {
                     club: club || null,
                     trainer: trainer || null,
                     acceptedCoC,
+                    acceptedDataPolicy,
+                    dataPolicyVersion: requiredDataPolicyVersion,
+                    acceptedPublicResults,
+                    publicResultsConsentVersion: requiredPublicResultsConsentVersion,
                     uid: user.uid,
                     draft: true  // Mark as incomplete/draft
                 }),
@@ -454,6 +502,14 @@ function RegisterContent() {
             setError("You must accept the Code of Conduct.");
             return;
         }
+        if (!acceptedDataPolicy) {
+            setError("You must accept the data policy.");
+            return;
+        }
+        if (!acceptedPublicResults) {
+            setError("You must accept publication of name and results.");
+            return;
+        }
 
         setSubmitting(true);
         setError('');
@@ -476,6 +532,10 @@ function RegisterContent() {
                     club,
                     trainer,
                     acceptedCoC,
+                    acceptedDataPolicy,
+                    dataPolicyVersion: requiredDataPolicyVersion,
+                    acceptedPublicResults,
+                    publicResultsConsentVersion: requiredPublicResultsConsentVersion,
                     uid: user.uid,
                     draft: false  // Mark as complete
                 }),
@@ -511,15 +571,19 @@ function RegisterContent() {
     // Strava is now optional but recommended
     const step3Complete = stravaConnected;
     const step4Complete = acceptedCoC;
+    const step5Complete = acceptedDataPolicy;
+    const step6Complete = acceptedPublicResults;
 
-    const canSubmit = step0Complete && clubComplete && trainerComplete && step1Complete && step2Complete && step4Complete;
+    const canSubmit = step0Complete && clubComplete && trainerComplete && step1Complete && step2Complete && step4Complete && step5Complete && step6Complete;
     const missingRequirements = [
         !step0Complete ? 'Name' : null,
         !step1Complete ? (eLicense.length > 0 ? 'E-License must be available' : 'E-License') : null,
         !clubComplete ? 'Club' : null,
         !trainerComplete ? 'Trainer / Powermeter' : null,
         !step2Complete ? 'Zwift ID verification' : null,
-        !step4Complete ? 'Code of Conduct acceptance' : null
+        !step4Complete ? 'Code of Conduct acceptance' : null,
+        !step5Complete ? 'Data policy acceptance' : null,
+        !step6Complete ? 'Public results acceptance' : null,
     ].filter(Boolean) as string[];
 
     if (authLoading || fetchingProfile) {
@@ -922,6 +986,67 @@ function RegisterContent() {
                             </div>
                         </div>
                         {step4Complete && <span className="text-green-600 dark:text-green-400 text-xl">✓</span>}
+                    </div>
+                </div>
+
+                {/* Step 7: Datapolitik */}
+                <div className={`p-4 border rounded-lg transition-colors ${step5Complete ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' : 'bg-card border-border'}`}>
+                    <div className="flex items-start gap-3">
+                        <div className={`mt-1 w-6 h-6 rounded-full flex items-center justify-center text-xs text-white font-bold ${step5Complete ? 'bg-green-500' : 'bg-muted-foreground'}`}>
+                            8
+                        </div>
+                        <div className="flex-1">
+                            <label className="block font-semibold text-card-foreground mb-1">Datapolitik</label>
+                            <p className="text-sm text-muted-foreground mb-3">
+                                Du skal acceptere vores{' '}
+                                <Link href="/datapolitik" className="text-primary hover:underline" target="_blank">
+                                    datapolitik
+                                </Link>{' '}
+                                for at kunne deltage.
+                            </p>
+                            <label className="flex items-start gap-3 p-3 rounded border border-border bg-muted/10">
+                                <input
+                                    type="checkbox"
+                                    className="mt-1"
+                                    checked={acceptedDataPolicy}
+                                    onChange={(e) => setAcceptedDataPolicy(e.target.checked)}
+                                />
+                                <span className="text-sm text-card-foreground">
+                                    Jeg har læst og accepterer datapolitikken
+                                    {requiredDataPolicyVersion ? ` (version ${requiredDataPolicyVersion})` : ''}.
+                                </span>
+                            </label>
+                        </div>
+                        {step5Complete && <span className="text-green-600 dark:text-green-400 text-xl">✓</span>}
+                    </div>
+                </div>
+
+                {/* Step 8: Offentliggørelse af navn og resultater */}
+                <div className={`p-4 border rounded-lg transition-colors ${step6Complete ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' : 'bg-card border-border'}`}>
+                    <div className="flex items-start gap-3">
+                        <div className={`mt-1 w-6 h-6 rounded-full flex items-center justify-center text-xs text-white font-bold ${step6Complete ? 'bg-green-500' : 'bg-muted-foreground'}`}>
+                            9
+                        </div>
+                        <div className="flex-1">
+                            <label className="block font-semibold text-card-foreground mb-1">Offentliggørelse</label>
+                            <p className="text-sm text-muted-foreground mb-3">
+                                Ligaen offentliggør normalt resultater og stillinger (fx på websiden og i live overlays til streaming).
+                                Dette kan omfatte dit <strong>navn</strong>, <strong>kategori</strong>, <strong>placering</strong> og <strong>point</strong>.
+                            </p>
+                            <label className="flex items-start gap-3 p-3 rounded border border-border bg-muted/10">
+                                <input
+                                    type="checkbox"
+                                    className="mt-1"
+                                    checked={acceptedPublicResults}
+                                    onChange={(e) => setAcceptedPublicResults(e.target.checked)}
+                                />
+                                <span className="text-sm text-card-foreground">
+                                    Jeg accepterer, at mit navn og mine resultater kan offentliggøres som en del af ligaens resultater og stillinger
+                                    {requiredPublicResultsConsentVersion ? ` (version ${requiredPublicResultsConsentVersion})` : ''}.
+                                </span>
+                            </label>
+                        </div>
+                        {step6Complete && <span className="text-green-600 dark:text-green-400 text-xl">✓</span>}
                     </div>
                 </div>
 

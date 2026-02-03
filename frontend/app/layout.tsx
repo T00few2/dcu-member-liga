@@ -28,7 +28,19 @@ export default function RootLayout({
               {children}
             </main>
             <footer className="site-footer bg-slate-100 p-4 text-center text-slate-600 text-sm">
-              © {new Date().getFullYear()} DCU Member League
+              <div className="flex flex-col gap-2 items-center justify-center">
+                <div>
+                  © {new Date().getFullYear()} DCU Member League
+                </div>
+                <div className="flex gap-4">
+                  <Link href="/datapolitik" className="hover:underline">
+                    Datapolitik
+                  </Link>
+                  <Link href="/offentliggoerelse" className="hover:underline">
+                    Offentliggørelse
+                  </Link>
+                </div>
+              </div>
             </footer>
           </ToastProvider>
         </AuthProvider>

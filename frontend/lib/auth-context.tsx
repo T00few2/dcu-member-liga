@@ -9,12 +9,14 @@ import {
   signOut as firebaseSignOut 
 } from 'firebase/auth';
 import { auth } from './firebase';
+import { usePathname, useRouter } from 'next/navigation';
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   isRegistered: boolean;
   isAdmin: boolean;
+  needsConsentUpdate: boolean;
   signInWithGoogle: () => Promise<void>;
   logOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -26,6 +28,7 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   isRegistered: false,
   isAdmin: false,
+  needsConsentUpdate: false,
   signInWithGoogle: async () => {},
   logOut: async () => {},
   refreshProfile: async () => {},
@@ -37,6 +40,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [isRegistered, setIsRegistered] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [needsConsentUpdate, setNeedsConsentUpdate] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
 
   const fetchProfile = useCallback(async (currentUser: User) => {
     try {
@@ -50,12 +56,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.ok) {
         const data = await res.json();
         setIsRegistered(!!data.registered);
+        // Consent gate: backend is source of truth for required versions.
+        const requiredPolicy = data.requiredDataPolicyVersion;
+        const requiredPublic = data.requiredPublicResultsConsentVersion;
+        const policyOk = !!requiredPolicy && (data.dataPolicyVersion === requiredPolicy) && !!data.acceptedDataPolicy;
+        const publicOk = !!requiredPublic && (data.publicResultsConsentVersion === requiredPublic) && !!data.acceptedPublicResults;
+        setNeedsConsentUpdate(!(policyOk && publicOk));
       } else {
         setIsRegistered(false);
+        setNeedsConsentUpdate(false);
       }
     } catch (error) {
       console.error("Error fetching profile:", error);
       setIsRegistered(false);
+      setNeedsConsentUpdate(false);
     }
   }, []);
 
@@ -78,12 +92,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         setIsRegistered(false);
         setIsAdmin(false);
+        setNeedsConsentUpdate(false);
       }
       setLoading(false);
     });
 
     return () => unsubscribe();
   }, [fetchProfile, fetchClaims]);
+
+  // Global consent gate: if signed in and consents are outdated, redirect to /consent.
+  // Allow accessing /consent and policy pages so user can review and accept.
+  useEffect(() => {
+    if (loading) return;
+    if (!user) return;
+    if (!needsConsentUpdate) return;
+
+    const allowed = pathname === '/consent' || pathname === '/datapolitik' || pathname === '/offentliggoerelse';
+    if (!allowed) {
+      router.push('/consent');
+    }
+  }, [loading, user, needsConsentUpdate, pathname, router]);
 
   const refreshProfile = async () => {
     if (user) {
@@ -113,13 +141,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await firebaseSignOut(auth);
       setIsRegistered(false);
       setIsAdmin(false);
+      setNeedsConsentUpdate(false);
     } catch (error) {
       console.error("Error signing out", error);
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, isRegistered, isAdmin, signInWithGoogle, logOut, refreshProfile, refreshClaims }}>
+    <AuthContext.Provider value={{ user, loading, isRegistered, isAdmin, needsConsentUpdate, signInWithGoogle, logOut, refreshProfile, refreshClaims }}>
       {children}
     </AuthContext.Provider>
   );
