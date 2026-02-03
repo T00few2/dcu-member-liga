@@ -55,6 +55,12 @@ export default function PolicyManager({ user }: { user: User }) {
     [versions, selectedVersion, editVersion]
   );
 
+  const versionExists = useMemo(() => {
+    const v = editVersion.trim();
+    if (!v) return false;
+    return versions.some(x => x.version === v);
+  }, [versions, editVersion]);
+
   const refreshMeta = async () => {
     const res = await fetch(`${API_URL}/policy/meta`);
     const data = await res.json().catch(() => ({}));
@@ -159,6 +165,7 @@ export default function PolicyManager({ user }: { user: User }) {
     try {
       const v = editVersion.trim();
       if (!v) throw new Error('Version is required');
+      if (!versionExists) throw new Error('Version not found. Click “Save draft” first to create it.');
       const token = await user.getIdToken();
       const res = await fetch(`${API_URL}/admin/policy/${policyKey}/versions/${encodeURIComponent(v)}/submit`, {
         method: 'POST',
@@ -182,6 +189,7 @@ export default function PolicyManager({ user }: { user: User }) {
     try {
       const v = editVersion.trim();
       if (!v) throw new Error('Version is required');
+      if (!versionExists) throw new Error('Version not found. Click “Save draft” first to create it.');
       const token = await user.getIdToken();
       const res = await fetch(`${API_URL}/admin/policy/${policyKey}/versions/${encodeURIComponent(v)}/approve`, {
         method: 'POST',
@@ -205,6 +213,7 @@ export default function PolicyManager({ user }: { user: User }) {
     try {
       const v = editVersion.trim();
       if (!v) throw new Error('Version is required');
+      if (!versionExists) throw new Error('Version not found. Click “Save draft” first to create it.');
       const token = await user.getIdToken();
       const res = await fetch(`${API_URL}/admin/policy/${policyKey}/versions/${encodeURIComponent(v)}/publish`, {
         method: 'POST',
@@ -418,6 +427,11 @@ export default function PolicyManager({ user }: { user: User }) {
               Publish
             </button>
           </div>
+          {!versionExists && editVersion.trim() && (
+            <div className="text-xs text-muted-foreground">
+              Tip: Click <strong>Save draft</strong> first to create the version before you can submit/approve/publish.
+            </div>
+          )}
 
           {selected && (
             <div className="text-xs text-muted-foreground">
