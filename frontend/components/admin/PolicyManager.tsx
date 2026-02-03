@@ -239,6 +239,92 @@ export default function PolicyManager({ user }: { user: User }) {
 
   return (
     <div className="space-y-6">
+      <details className="bg-card rounded-lg shadow border border-border overflow-hidden">
+        <summary className="cursor-pointer select-none p-4 text-sm font-medium text-card-foreground hover:bg-muted/20">
+          How the policy system works (click to expand)
+        </summary>
+        <div className="p-4 pt-0 text-sm text-muted-foreground space-y-3">
+          <p>
+            Policies are stored as <strong>versioned, immutable documents</strong> in Firestore. The website renders the
+            <strong> current display version</strong>, and users must accept the <strong>current required version</strong> to continue.
+          </p>
+
+          <div className="space-y-1">
+            <div className="font-medium text-card-foreground">Key concepts</div>
+            <ul className="list-disc pl-5 space-y-1">
+              <li>
+                <strong>Policy</strong>: choose <code>dataPolicy</code> (Datapolitik) or <code>publicResultsConsent</code> (Offentliggørelse).
+              </li>
+              <li>
+                <strong>Version</strong>: a unique identifier (e.g. <code>2026-02-03</code> or <code>2026-02-03.1</code>).
+              </li>
+              <li>
+                <strong>Content format</strong>: the policy text is stored and edited as <strong>Markdown</strong> (GFM). The Preview on the right shows
+                how it will render on the public pages.
+              </li>
+              <li>
+                <strong>Display vs Required</strong>:
+                <ul className="list-disc pl-5 mt-1 space-y-1">
+                  <li>
+                    <strong>Display</strong>: what the public pages show (<code>/datapolitik</code>, <code>/offentliggoerelse</code>).
+                  </li>
+                  <li>
+                    <strong>Required</strong>: what users must accept. If required changes, users are redirected to <code>/consent</code>.
+                  </li>
+                </ul>
+              </li>
+              <li>
+                <strong>requires re-accept</strong>: if checked, publishing will also update “Required” (and force users to accept again).
+              </li>
+            </ul>
+          </div>
+
+          <div className="space-y-1">
+            <div className="font-medium text-card-foreground">Workflow</div>
+            <ol className="list-decimal pl-5 space-y-1">
+              <li><strong>Save draft</strong>: creates/updates the version (status: <code>draft</code>).</li>
+              <li><strong>Submit for review</strong>: locks the draft for review (status: <code>pending_review</code>).</li>
+              <li><strong>Approve</strong>: a different admin approves (status: <code>approved</code>).</li>
+              <li><strong>Publish</strong>: makes it live (status: <code>published</code>) and updates Display/Required depending on flags.</li>
+            </ol>
+            <p className="text-xs">
+              Four-eyes rule: for <strong>major</strong> changes (<code>requires re-accept</code>), the author cannot approve their own version.
+            </p>
+          </div>
+
+          <div className="space-y-1">
+            <div className="font-medium text-card-foreground">Markdown quick example</div>
+            <p className="text-xs text-muted-foreground">
+              Helpful guide: <a className="text-primary hover:underline" href="https://guides.github.com/features/mastering-markdown/" target="_blank" rel="noreferrer">Mastering Markdown</a>
+            </p>
+            <pre className="text-xs p-3 bg-muted/20 border border-border rounded overflow-auto">
+{`# Datapolitik
+
+**Version:** 2026-02-03
+
+## 1. Hvem er vi?
+...`}
+            </pre>
+          </div>
+
+          <div className="space-y-1">
+            <div className="font-medium text-card-foreground">Minor vs major edits</div>
+            <ul className="list-disc pl-5 space-y-1">
+              <li>
+                <strong>Minor</strong> (typos/format/clarifications): publish with <code>requires re-accept</code> unchecked. Users are not interrupted.
+              </li>
+              <li>
+                <strong>Major</strong> (new data/sharing/purpose/retention/public visibility): publish with <code>requires re-accept</code> checked.
+              </li>
+            </ul>
+          </div>
+
+          <p className="text-xs">
+            Tip: once a version is submitted/published, it can’t be edited. Create a new version for changes.
+          </p>
+        </div>
+      </details>
+
       <div className="bg-card p-6 rounded-lg shadow border border-border">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="flex-1">
