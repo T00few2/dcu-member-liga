@@ -255,6 +255,11 @@ def publish_version(
         created_by = v.get("createdByUid")
         approved_by = v.get("approvedByUid")
 
+        psnap = policy_ref.get(transaction=transaction)
+        p = psnap.to_dict() or {} if psnap.exists else {}
+        prev_display = p.get("currentDisplayVersion")
+        prev_required = p.get("currentRequiredVersion")
+
         if requires:
             if status != "approved":
                 raise PolicyError("Major changes must be approved before publish", 409)
@@ -284,6 +289,13 @@ def publish_version(
         }
         if requires:
             updates["currentRequiredVersion"] = version
+        else:
+            # Ensure required version is stable across "minor" publishes.
+            # If the policy doc was created before we stored currentRequiredVersion,
+            # missing requiredVersion would otherwise fall back to displayVersion and
+            # unintentionally force re-accept for minor edits.
+            if not prev_required:
+                updates["currentRequiredVersion"] = prev_display or version
         transaction.set(policy_ref, updates, merge=True)
 
         return {"displayVersion": version, "requiredVersion": updates.get("currentRequiredVersion")}
