@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { User } from 'firebase/auth';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import MarkdownRenderer from '@/components/MarkdownRenderer';
 
 type PolicyMeta = {
   displayVersion: string;
@@ -477,7 +476,7 @@ export default function PolicyManager({ user }: { user: User }) {
               <label className="block text-sm font-medium text-muted-foreground mb-1">Preview</label>
               <div className="h-72 overflow-auto p-3 border border-border rounded bg-background">
                 <div className="prose prose-slate dark:prose-invert max-w-none">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{contentMdDa || '_No content_'}</ReactMarkdown>
+                  <MarkdownRenderer markdown={contentMdDa || '_No content_'} />
                 </div>
               </div>
             </div>

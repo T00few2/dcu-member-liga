@@ -1,8 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import MarkdownRenderer from '@/components/MarkdownRenderer';
 
 type PolicyDoc = {
   policyKey: string;
@@ -50,7 +49,7 @@ export default function PublicResultsPolicyPage() {
         </div>
       ) : policy ? (
         <div className="prose prose-slate dark:prose-invert max-w-none">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{policy.contentMdDa}</ReactMarkdown>
+          <MarkdownRenderer markdown={policy.contentMdDa} />
         </div>
       ) : null}
     </div>
