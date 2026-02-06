@@ -1,12 +1,12 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { 
-  User, 
-  onAuthStateChanged, 
-  signInWithPopup, 
-  GoogleAuthProvider, 
-  signOut as firebaseSignOut 
+import {
+  User,
+  onAuthStateChanged,
+  signInWithPopup,
+  GoogleAuthProvider,
+  signOut as firebaseSignOut
 } from 'firebase/auth';
 import { auth } from './firebase';
 import { usePathname, useRouter } from 'next/navigation';
@@ -23,6 +23,8 @@ interface AuthContextType {
   logOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   refreshClaims: () => Promise<void>;
+  isImpersonating: boolean;
+  toggleImpersonation: () => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -33,17 +35,21 @@ const AuthContext = createContext<AuthContextType>({
   needsConsentUpdate: false,
   requiredDataPolicyVersion: null,
   requiredPublicResultsConsentVersion: null,
-  signInWithGoogle: async () => {},
-  logOut: async () => {},
-  refreshProfile: async () => {},
-  refreshClaims: async () => {},
+  signInWithGoogle: async () => { },
+  logOut: async () => { },
+  refreshProfile: async () => { },
+  refreshClaims: async () => { },
+  isImpersonating: false,
+  toggleImpersonation: () => { },
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isRegistered, setIsRegistered] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [realIsAdmin, setRealIsAdmin] = useState(false);
+  const [isImpersonating, setIsImpersonating] = useState(false);
+  const isAdmin = realIsAdmin && !isImpersonating;
   const [needsConsentUpdate, setNeedsConsentUpdate] = useState(false);
   const [requiredDataPolicyVersion, setRequiredDataPolicyVersion] = useState<string | null>(null);
   const [requiredPublicResultsConsentVersion, setRequiredPublicResultsConsentVersion] = useState<string | null>(null);
@@ -88,10 +94,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const fetchClaims = useCallback(async (currentUser: User) => {
     try {
       const tokenResult = await currentUser.getIdTokenResult();
-      setIsAdmin(tokenResult?.claims?.admin === true);
+      setRealIsAdmin(tokenResult?.claims?.admin === true);
     } catch (error) {
       console.error("Error fetching token claims:", error);
-      setIsAdmin(false);
+      setRealIsAdmin(false);
     }
   }, []);
 
@@ -103,7 +109,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await fetchClaims(user);
       } else {
         setIsRegistered(false);
-        setIsAdmin(false);
+        setRealIsAdmin(false);
+        setIsImpersonating(false);
         setNeedsConsentUpdate(false);
         setRequiredDataPolicyVersion(null);
         setRequiredPublicResultsConsentVersion(null);
@@ -141,6 +148,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const toggleImpersonation = useCallback(() => {
+    if (realIsAdmin) {
+      setIsImpersonating(prev => !prev);
+    }
+  }, [realIsAdmin]);
+
   const signInWithGoogle = async () => {
     try {
       const provider = new GoogleAuthProvider();
@@ -154,7 +167,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       await firebaseSignOut(auth);
       setIsRegistered(false);
-      setIsAdmin(false);
+      setRealIsAdmin(false);
+      setIsImpersonating(false);
       setNeedsConsentUpdate(false);
       setRequiredDataPolicyVersion(null);
       setRequiredPublicResultsConsentVersion(null);
@@ -164,7 +178,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, isRegistered, isAdmin, needsConsentUpdate, requiredDataPolicyVersion, requiredPublicResultsConsentVersion, signInWithGoogle, logOut, refreshProfile, refreshClaims }}>
+    <AuthContext.Provider value={{ user, loading, isRegistered, isAdmin, needsConsentUpdate, requiredDataPolicyVersion, requiredPublicResultsConsentVersion, signInWithGoogle, logOut, refreshProfile, refreshClaims, isImpersonating, toggleImpersonation }}>
       {children}
     </AuthContext.Provider>
   );
