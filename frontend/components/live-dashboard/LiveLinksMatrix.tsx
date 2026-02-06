@@ -17,6 +17,7 @@ interface LiveLinksMatrixProps {
     onRefreshCategory: (category: string) => Promise<void>;
     onViewResults: (raceId: string) => void;
     onViewCategory: (category: string) => void;
+    isAdmin: boolean;
 }
 
 // Generate URL for live page
@@ -30,10 +31,10 @@ function generateUrl(
 ): string {
     const baseUrl = `/live/${raceId}`;
     const params = new URLSearchParams();
-    
+
     params.set('cat', category);
     if (config.limit !== 10) params.set('limit', config.limit.toString());
-    
+
     // View Logic
     if (forceView) {
         params.set('view', forceView);
@@ -49,7 +50,7 @@ function generateUrl(
     if (config.scroll) params.set('scroll', 'true');
     if (!config.sprints) params.set('sprints', 'false');
     if (config.lastSprint) params.set('lastSprint', 'true');
-    
+
     // Full Screen Logic
     if (forceFull) {
         params.set('full', 'true');
@@ -92,6 +93,7 @@ export default function LiveLinksMatrix({
     onRefreshCategory,
     onViewResults,
     onViewCategory,
+    isAdmin,
 }: LiveLinksMatrixProps) {
     return (
         <>
@@ -106,25 +108,26 @@ export default function LiveLinksMatrix({
                                 <th key={cat} className="p-4 border-b border-slate-700 text-center min-w-[100px]">
                                     <div className="flex flex-col gap-2 items-center">
                                         <span>{cat}</span>
-                                        {user && (
+                                        {isAdmin && (
                                             <div className="flex gap-1">
-                                                <button 
+                                                <button
                                                     onClick={() => onRefreshCategory(cat)}
                                                     disabled={!!processingCategory}
-                                                    className={`px-2 py-1 text-[10px] uppercase font-bold rounded border transition-colors ${
-                                                        processingCategory === cat 
-                                                            ? 'bg-slate-700 text-slate-400 border-slate-600 cursor-not-allowed' 
-                                                            : 'bg-slate-800 text-green-500 border-green-900/50 hover:bg-green-900/20 hover:border-green-800'
-                                                    }`}
+                                                    className={`px-2 py-1 text-[10px] uppercase font-bold rounded border transition-colors ${processingCategory === cat
+                                                        ? 'bg-slate-700 text-slate-400 border-slate-600 cursor-not-allowed'
+                                                        : 'bg-slate-800 text-green-500 border-green-900/50 hover:bg-green-900/20 hover:border-green-800'
+                                                        }`}
                                                 >
                                                     {processingCategory === cat ? '...' : 'Calc All'}
                                                 </button>
-                                                <button
-                                                    onClick={() => onViewCategory(cat)}
-                                                    className="px-2 py-1 text-[10px] uppercase font-bold rounded border border-slate-700 text-slate-300 hover:text-white hover:border-slate-500"
-                                                >
-                                                    View
-                                                </button>
+                                                {isAdmin && (
+                                                    <button
+                                                        onClick={() => onViewCategory(cat)}
+                                                        className="px-2 py-1 text-[10px] uppercase font-bold rounded border border-slate-700 text-slate-300 hover:text-white hover:border-slate-500"
+                                                    >
+                                                        View
+                                                    </button>
+                                                )}
                                             </div>
                                         )}
                                     </div>
@@ -137,8 +140,8 @@ export default function LiveLinksMatrix({
                             const raceCats = getRaceCategories(race);
 
                             return (
-                                <tr 
-                                    key={race.id} 
+                                <tr
+                                    key={race.id}
                                     className="hover:bg-slate-800/50 transition-colors border-b border-slate-800 last:border-0"
                                 >
                                     <td className="p-4 border-r border-slate-800 sticky left-0 bg-slate-900 z-10 font-medium text-slate-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)]">
@@ -149,7 +152,7 @@ export default function LiveLinksMatrix({
                                             <span className="text-xs text-slate-500">
                                                 {new Date(race.date).toLocaleDateString()}
                                             </span>
-                                            {user && (
+                                            {isAdmin && (
                                                 <button
                                                     onClick={() => onViewResults(race.id)}
                                                     className="px-2 py-0.5 text-[10px] uppercase font-bold rounded border border-slate-700 text-slate-400 hover:text-white hover:border-slate-500 transition-colors"
@@ -163,17 +166,17 @@ export default function LiveLinksMatrix({
                                         const isAvailable = raceCats.has(cat);
                                         const urlOverlay = generateUrl(race.id, cat, config, races, undefined, false);
                                         const urlFull = generateUrl(race.id, cat, config, races, undefined, true);
-                                        
+
                                         return (
-                                            <td 
-                                                key={cat} 
+                                            <td
+                                                key={cat}
                                                 className="p-3 text-center border-r border-slate-800/50 last:border-0 min-w-[140px]"
                                             >
                                                 {isAvailable ? (
                                                     <div className="flex flex-col gap-2 items-center w-full">
                                                         <div className="grid grid-cols-[1fr_auto] gap-2 w-full">
-                                                            <Link 
-                                                                href={urlOverlay} 
+                                                            <Link
+                                                                href={urlOverlay}
                                                                 target="_blank"
                                                                 className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-white text-[10px] font-bold rounded transition-colors text-center truncate"
                                                             >
@@ -186,9 +189,9 @@ export default function LiveLinksMatrix({
                                                             >
                                                                 Copy
                                                             </button>
-                                                            
-                                                            <Link 
-                                                                href={urlFull} 
+
+                                                            <Link
+                                                                href={urlFull}
                                                                 target="_blank"
                                                                 className="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold rounded transition-colors text-center truncate"
                                                             >
@@ -202,15 +205,14 @@ export default function LiveLinksMatrix({
                                                                 Copy
                                                             </button>
                                                         </div>
-                                                        {user && (
-                                                            <button 
+                                                        {isAdmin && (
+                                                            <button
                                                                 onClick={() => onRefresh(race.id, cat)}
                                                                 disabled={!!processingKey}
-                                                                className={`w-full px-2 py-1 mt-1 text-[10px] uppercase font-bold rounded border transition-colors flex items-center justify-center ${
-                                                                    processingKey === `${race.id}-${cat}` 
-                                                                        ? 'bg-slate-700 text-slate-400 border-slate-600 cursor-wait' 
-                                                                        : 'bg-green-900/30 border-green-800 text-green-400 hover:bg-green-900/50 hover:text-green-300'
-                                                                }`}
+                                                                className={`w-full px-2 py-1 mt-1 text-[10px] uppercase font-bold rounded border transition-colors flex items-center justify-center ${processingKey === `${race.id}-${cat}`
+                                                                    ? 'bg-slate-700 text-slate-400 border-slate-600 cursor-wait'
+                                                                    : 'bg-green-900/30 border-green-800 text-green-400 hover:bg-green-900/50 hover:text-green-300'
+                                                                    }`}
                                                             >
                                                                 {processingKey === `${race.id}-${cat}` ? '...' : 'Calc'}
                                                             </button>
@@ -235,17 +237,17 @@ export default function LiveLinksMatrix({
                                 const latestRaceId = races.length > 0 ? races[races.length - 1].id : 'no-race';
                                 const urlOverlay = generateUrl(latestRaceId, cat, config, races, 'standings', false);
                                 const urlFull = generateUrl(latestRaceId, cat, config, races, 'standings', true);
-                                
+
                                 return (
-                                    <td 
-                                        key={cat} 
+                                    <td
+                                        key={cat}
                                         className="p-3 text-center border-r border-slate-800/50 last:border-0 min-w-[140px]"
                                     >
                                         {latestRaceId !== 'no-race' ? (
                                             <div className="flex flex-col gap-2 items-center w-full">
                                                 <div className="grid grid-cols-[1fr_auto] gap-2 w-full">
-                                                    <Link 
-                                                        href={urlOverlay} 
+                                                    <Link
+                                                        href={urlOverlay}
                                                         target="_blank"
                                                         className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-white text-[10px] font-bold rounded transition-colors text-center truncate"
                                                     >
@@ -258,9 +260,9 @@ export default function LiveLinksMatrix({
                                                     >
                                                         Copy
                                                     </button>
-                                                    
-                                                    <Link 
-                                                        href={urlFull} 
+
+                                                    <Link
+                                                        href={urlFull}
                                                         target="_blank"
                                                         className="px-2 py-1 bg-purple-600 hover:bg-purple-500 text-white text-[10px] font-bold rounded transition-colors text-center truncate"
                                                     >
@@ -285,7 +287,7 @@ export default function LiveLinksMatrix({
                     </tbody>
                 </table>
             </div>
-            
+
             <div className="mt-8 text-slate-500 text-sm text-center">
                 Click "Open" buttons to view in a new tab, or "Copy" buttons to paste into OBS/Streaming software.
             </div>

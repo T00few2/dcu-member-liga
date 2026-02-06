@@ -19,8 +19,8 @@ import {
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
 export default function LiveLinksPage() {
-    const { user } = useAuth();
-    
+    const { user, isAdmin } = useAuth();
+
     // Custom hooks for data and config
     const {
         config,
@@ -56,26 +56,26 @@ export default function LiveLinksPage() {
             alert('Please log in to calculate results.');
             return;
         }
-        
+
         const key = `${raceId}-${category}`;
         setProcessingKey(key);
 
         try {
             const token = await user.getIdToken();
-            
+
             const res = await fetch(`${API_URL}/races/${raceId}/results/refresh`, {
                 method: 'POST',
-                headers: { 
+                headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ 
+                body: JSON.stringify({
                     source: config.source,
                     filterRegistered: config.filterRegistered,
                     categoryFilter: category,
                 }),
             });
-            
+
             if (!res.ok) {
                 const data = await res.json();
                 alert(`Failed: ${data.message}`);
@@ -97,9 +97,9 @@ export default function LiveLinksPage() {
             alert('Please log in to calculate results.');
             return;
         }
-        
+
         setProcessingCategory(category);
-        
+
         try {
             const racesToUpdate = races.filter(race => {
                 const raceCats = getRaceCategories(race);
@@ -123,8 +123,8 @@ export default function LiveLinksPage() {
     }
 
     // Get currently viewing race
-    const viewingRace = viewingResultsId 
-        ? races.find(r => r.id === viewingResultsId) || null 
+    const viewingRace = viewingResultsId
+        ? races.find(r => r.id === viewingResultsId) || null
         : null;
 
     return (
@@ -163,6 +163,7 @@ export default function LiveLinksPage() {
                 onRefreshCategory={handleRefreshCategory}
                 onViewResults={setViewingResultsId}
                 onViewCategory={setViewingCategory}
+                isAdmin={isAdmin}
             />
 
             {/* Results Modal (Single Race) */}
