@@ -142,6 +142,7 @@ def get_profile():
             'requiredPublicResultsConsentVersion': policy_meta.get(POLICY_PUBLIC_RESULTS, {}).get('requiredVersion'),
             'weightVerificationStatus': user_data.get('weightVerificationStatus', 'none'),
             'weightVerificationVideoLink': user_data.get('weightVerificationVideoLink', ''),
+            'weightVerificationDeadline': user_data.get('weightVerificationDeadline', None),
             'verificationRequests': user_data.get('verificationRequests', [])
         }), 200
 

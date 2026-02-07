@@ -31,6 +31,7 @@ function RegisterContent() {
     // Verification Data
     const [weightVerificationStatus, setWeightVerificationStatus] = useState<'none' | 'pending' | 'submitted' | 'approved' | 'rejected'>('none');
     const [weightVerificationVideoLink, setWeightVerificationVideoLink] = useState('');
+    const [weightVerificationDeadline, setWeightVerificationDeadline] = useState<any>(null);
     const [verificationRequests, setVerificationRequests] = useState<any[]>([]);
 
     // Policy Versions
@@ -106,6 +107,7 @@ function RegisterContent() {
 
                         setWeightVerificationStatus(data.weightVerificationStatus || 'none');
                         setWeightVerificationVideoLink(data.weightVerificationVideoLink || '');
+                        setWeightVerificationDeadline(data.weightVerificationDeadline || null);
                         setVerificationRequests(data.verificationRequests || []);
 
                         setInitialData({ eLicense: data.eLicense, zwiftId: data.zwiftId });
@@ -339,6 +341,7 @@ function RegisterContent() {
                             <VerificationStatus
                                 status={weightVerificationStatus}
                                 videoLink={weightVerificationVideoLink}
+                                deadline={weightVerificationDeadline}
                                 requests={verificationRequests}
                                 refreshProfile={refreshProfile}
                             />

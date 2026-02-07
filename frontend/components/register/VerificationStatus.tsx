@@ -15,11 +15,11 @@ interface VerificationRequest {
 interface VerificationStatusProps {
     status: 'none' | 'pending' | 'submitted' | 'approved' | 'rejected';
     videoLink?: string;
-    requests?: VerificationRequest[]; // History
+    deadline?: any;
     refreshProfile: () => void;
 }
 
-export default function VerificationStatus({ status, videoLink, requests = [], refreshProfile }: VerificationStatusProps) {
+export default function VerificationStatus({ status, videoLink, deadline, requests = [], refreshProfile }: VerificationStatusProps) {
     const { user } = useAuth();
     const [linkInput, setLinkInput] = useState(videoLink || '');
     const [submitting, setSubmitting] = useState(false);
@@ -102,6 +102,7 @@ export default function VerificationStatus({ status, videoLink, requests = [], r
                     <p className="text-orange-700 dark:text-orange-300">
                         You have been selected for a random weight verification check.
                         Please record a weigh-in video and submit the link below.
+                        {deadline && <span className="block font-bold mt-1">Deadline: {new Date(deadline.seconds ? deadline.seconds * 1000 : deadline).toLocaleDateString()}</span>}
                     </p>
                 )}
                 {displayStatus === 'submitted' && (
@@ -130,7 +131,7 @@ export default function VerificationStatus({ status, videoLink, requests = [], r
                         <p><strong>Instructions:</strong></p>
                         <ol className="list-decimal pl-5 space-y-1">
                             <li>Record a video showing your face, you stepping on the scale, and the clear weight reading.</li>
-                            <li>Upload the video to YouTube (as "Unlisted") or Google Drive/Dropbox (Share &rarr; Anyone with link).</li>
+                            <li>Upload the video to YouTube (select "Unlisted" visibility) or Google Drive/Dropbox (Share &rarr; Anyone with link).</li>
                             <li>Paste the shareable link below.</li>
                         </ol>
                     </div>

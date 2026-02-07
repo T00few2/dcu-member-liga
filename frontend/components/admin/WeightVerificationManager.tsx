@@ -27,6 +27,7 @@ export default function WeightVerificationManager() {
 
     // Trigger State
     const [triggerPercent, setTriggerPercent] = useState(5);
+    const [deadlineDays, setDeadlineDays] = useState(7);
     const [triggering, setTriggering] = useState(false);
 
     // Lists State
@@ -80,7 +81,7 @@ export default function WeightVerificationManager() {
             const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/admin/verification/trigger`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ percentage: triggerPercent, deadlineDays: 7 })
+                body: JSON.stringify({ percentage: triggerPercent, deadlineDays })
             });
             const data = await res.json();
             if (res.ok) {
@@ -148,6 +149,17 @@ export default function WeightVerificationManager() {
                             />
                             <span className="absolute right-3 top-2 text-muted-foreground">%</span>
                         </div>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-muted-foreground mb-1">Deadline (Days)</label>
+                        <input
+                            type="number"
+                            min="1"
+                            max="30"
+                            value={deadlineDays}
+                            onChange={(e) => setDeadlineDays(Number(e.target.value))}
+                            className="w-24 p-2 bg-background border border-input rounded text-foreground"
+                        />
                     </div>
                     <button
                         onClick={handleTrigger}
