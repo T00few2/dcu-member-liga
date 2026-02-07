@@ -27,7 +27,7 @@ export default function WeightVerificationManager() {
 
     // Trigger State
     const [triggerPercent, setTriggerPercent] = useState(5);
-    const [deadlineDays, setDeadlineDays] = useState(7);
+    const [deadlineDays, setDeadlineDays] = useState(2);
     const [triggering, setTriggering] = useState(false);
 
     // Lists State
@@ -170,7 +170,7 @@ export default function WeightVerificationManager() {
                     </button>
                 </div>
                 <p className="text-sm text-muted-foreground mt-2">
-                    Selected riders will be notified and required to submit a weight verification video within 7 days.
+                    Selected riders will be notified and required to submit a weight verification video within 2 days.
                 </p>
             </div>
 

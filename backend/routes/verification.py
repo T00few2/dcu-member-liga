@@ -25,7 +25,7 @@ def trigger_verification():
     try:
         data = request.get_json()
         percentage = data.get('percentage', 5)
-        deadline_days = data.get('deadlineDays', 7)
+        deadline_days = data.get('deadlineDays', 2)
 
         # 1. Get all eligible users (registered, not currently pending/submitted)
         users_ref = db.collection('users')
