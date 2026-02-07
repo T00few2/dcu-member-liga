@@ -7,18 +7,19 @@ import LeagueManager from '@/components/admin/LeagueManager';
 import VerificationDashboard from '@/components/admin/VerificationDashboard';
 import TrainerManager from '@/components/admin/TrainerManager';
 import PolicyManager from '@/components/admin/PolicyManager';
+import WeightVerificationManager from '@/components/admin/WeightVerificationManager';
 
 export default function AdminPage() {
   const { user, loading: authLoading, isAdmin, refreshClaims } = useAuth();
   const router = useRouter();
-  
+
   // Top Level Tab State
-  const [activeSection, setActiveSection] = useState<'league' | 'verification' | 'trainers' | 'policies'>('league');
+  const [activeSection, setActiveSection] = useState<'league' | 'verification' | 'weight' | 'trainers' | 'policies'>('league');
 
   // Access Control
   useEffect(() => {
     if (!authLoading && !user) {
-        router.push('/');
+      router.push('/');
     }
   }, [user, authLoading, router]);
 
@@ -51,46 +52,54 @@ export default function AdminPage() {
     <div className="max-w-7xl mx-auto mt-8 px-4">
       <h1 className="text-3xl font-bold mb-2 text-foreground">Admin Dashboard</h1>
       <p className="text-muted-foreground mb-8">Manage races, settings, and rider verification.</p>
-      
+
       {/* Top Level Navigation */}
-      <div className="flex border-b border-border mb-8">
-          <button 
-            onClick={() => setActiveSection('league')}
-            className={`pb-4 px-6 text-lg font-medium transition ${activeSection === 'league' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
-          >
-              League Management
-          </button>
-          <button 
-            onClick={() => setActiveSection('verification')}
-            className={`pb-4 px-6 text-lg font-medium transition ${activeSection === 'verification' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
-          >
-              Verification
-          </button>
-          <button 
-            onClick={() => setActiveSection('trainers')}
-            className={`pb-4 px-6 text-lg font-medium transition ${activeSection === 'trainers' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
-          >
-              Trainers
-          </button>
-          <button 
-            onClick={() => setActiveSection('policies')}
-            className={`pb-4 px-6 text-lg font-medium transition ${activeSection === 'policies' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
-          >
-              Policies
-          </button>
+      <div className="flex border-b border-border mb-8 overflow-x-auto">
+        <button
+          onClick={() => setActiveSection('league')}
+          className={`pb-4 px-6 text-lg font-medium transition whitespace-nowrap ${activeSection === 'league' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          League Management
+        </button>
+        <button
+          onClick={() => setActiveSection('verification')}
+          className={`pb-4 px-6 text-lg font-medium transition whitespace-nowrap ${activeSection === 'verification' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          Performance Analysis
+        </button>
+        <button
+          onClick={() => setActiveSection('weight')}
+          className={`pb-4 px-6 text-lg font-medium transition whitespace-nowrap ${activeSection === 'weight' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          Weight Verification
+        </button>
+        <button
+          onClick={() => setActiveSection('trainers')}
+          className={`pb-4 px-6 text-lg font-medium transition whitespace-nowrap ${activeSection === 'trainers' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          Trainers
+        </button>
+        <button
+          onClick={() => setActiveSection('policies')}
+          className={`pb-4 px-6 text-lg font-medium transition whitespace-nowrap ${activeSection === 'policies' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          Policies
+        </button>
       </div>
 
       {/* Section Content */}
       <div className="min-h-[500px]">
-          {activeSection === 'league' ? (
-              <LeagueManager />
-          ) : activeSection === 'verification' ? (
-              <VerificationDashboard />
-          ) : activeSection === 'trainers' ? (
-              <TrainerManager />
-          ) : (
-              <PolicyManager user={user} />
-          )}
+        {activeSection === 'league' ? (
+          <LeagueManager />
+        ) : activeSection === 'verification' ? (
+          <VerificationDashboard />
+        ) : activeSection === 'weight' ? (
+          <WeightVerificationManager />
+        ) : activeSection === 'trainers' ? (
+          <TrainerManager />
+        ) : (
+          <PolicyManager user={user} />
+        )}
       </div>
     </div>
   );

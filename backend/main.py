@@ -20,6 +20,8 @@ def create_app():
     app.register_blueprint(integration_bp)
     app.register_blueprint(seed_bp)
     app.register_blueprint(policy_bp)
+    from routes.verification import verification_bp
+    app.register_blueprint(verification_bp)
     
     # Add CORS headers to all responses
     @app.after_request
