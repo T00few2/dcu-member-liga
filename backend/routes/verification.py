@@ -312,3 +312,42 @@ def get_active_requests():
         return jsonify({'requests': active}), 200
     except Exception as e:
         return jsonify({'message': str(e)}), 500
+
+@verification_bp.route('/admin/verification/approved', methods=['GET'])
+def get_approved_verifications():
+    """
+    Get list of users with 'approved' status.
+    """
+    try:
+        require_admin(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+        
+    try:
+        users_ref = db.collection('users')
+        docs = users_ref.where('weightVerificationStatus', '==', 'approved').limit(50).stream()
+        
+        approved = []
+        for doc in docs:
+            data = doc.to_dict()
+            requests = data.get('verificationRequests', [])
+            # Find the approved request (most recent one preferably)
+            # Sort requests by reviewedAt descending if possible, or just find the one with status approved
+            # For simplicity, we look for the last one with status == 'approved'
+            approved_req = next((r for r in reversed(requests) if r.get('status') == 'approved'), {})
+            
+            approved.append({
+                'id': doc.id,
+                'name': data.get('name', 'Unknown'),
+                'eLicense': data.get('eLicense', ''),
+                'club': data.get('club', ''),
+                'approvedAt': approved_req.get('reviewedAt'),
+                'approvedBy': approved_req.get('reviewerId', 'Admin')
+            })
+            
+        return jsonify({'approved': approved}), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500

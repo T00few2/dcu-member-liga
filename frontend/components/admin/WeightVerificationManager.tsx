@@ -21,6 +21,15 @@ interface ActiveRequest {
     deadline: string | any;
 }
 
+interface ApprovedVerification {
+    id: string;
+    name: string;
+    eLicense: string;
+    club: string;
+    approvedAt: string | any;
+    approvedBy: string;
+}
+
 export default function WeightVerificationManager() {
     const { user } = useAuth();
     const { showToast } = useToast();
@@ -33,6 +42,7 @@ export default function WeightVerificationManager() {
     // Lists State
     const [pendingReviews, setPendingReviews] = useState<PendingVerification[]>([]);
     const [activeRequests, setActiveRequests] = useState<ActiveRequest[]>([]);
+    const [approvedList, setApprovedList] = useState<ApprovedVerification[]>([]);
     const [loading, setLoading] = useState(true);
 
     // Review State
@@ -46,9 +56,10 @@ export default function WeightVerificationManager() {
             const token = await user.getIdToken();
             const headers = { 'Authorization': `Bearer ${token}` };
 
-            const [pendingRes, requestsRes] = await Promise.all([
+            const [pendingRes, requestsRes, approvedRes] = await Promise.all([
                 fetch(`${process.env.NEXT_PUBLIC_API_URL}/admin/verification/pending`, { headers }),
-                fetch(`${process.env.NEXT_PUBLIC_API_URL}/admin/verification/requests`, { headers })
+                fetch(`${process.env.NEXT_PUBLIC_API_URL}/admin/verification/requests`, { headers }),
+                fetch(`${process.env.NEXT_PUBLIC_API_URL}/admin/verification/approved`, { headers })
             ]);
 
             if (pendingRes.ok) {
@@ -58,6 +69,10 @@ export default function WeightVerificationManager() {
             if (requestsRes.ok) {
                 const data = await requestsRes.json();
                 setActiveRequests(data.requests || []);
+            }
+            if (approvedRes.ok) {
+                const data = await approvedRes.json();
+                setApprovedList(data.approved || []);
             }
         } catch (e) {
             console.error(e);
@@ -284,6 +299,38 @@ export default function WeightVerificationManager() {
                         </div>
                     )}
                 </div>
+            </div>
+
+
+            {/* APPROVED LIST */}
+            <div className="bg-card p-6 rounded-lg shadow border border-border">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl font-bold text-card-foreground">Approved Verifications ({approvedList.length})</h2>
+                </div>
+
+                {loading ? (
+                    <div className="text-center p-8 text-muted-foreground">Loading...</div>
+                ) : approvedList.length === 0 ? (
+                    <div className="text-center p-8 text-muted-foreground italic bg-muted/20 rounded">
+                        No approved verifications found.
+                    </div>
+                ) : (
+                    <div className="space-y-3 max-h-[500px] overflow-y-auto">
+                        {approvedList.map(req => (
+                            <div key={req.id} className="border border-border rounded p-3 bg-secondary/10 flex justify-between items-center">
+                                <div>
+                                    <div className="font-bold text-foreground">{req.name}</div>
+                                    <div className="text-xs text-muted-foreground">
+                                        {req.club || 'No Club'} • License: {req.eLicense}
+                                    </div>
+                                    <div className="text-xs text-green-600 dark:text-green-400 font-medium">
+                                        Approved: {new Date(req.approvedAt).toLocaleDateString()} by {req.approvedBy}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
         </div>
     );
