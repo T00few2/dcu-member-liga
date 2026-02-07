@@ -53,7 +53,7 @@ def trigger_verification():
         batch = db.batch()
         
         updated_count = 0
-        now = firestore.SERVER_TIMESTAMP
+        now = datetime.now().isoformat()
         
         for uid in selected_ids:
             doc_ref = users_ref.document(uid)
