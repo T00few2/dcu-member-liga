@@ -16,6 +16,7 @@ interface VerificationStatusProps {
     status: 'none' | 'pending' | 'submitted' | 'approved' | 'rejected';
     videoLink?: string;
     deadline?: any;
+    requests?: VerificationRequest[];
     refreshProfile: () => void;
 }
 
