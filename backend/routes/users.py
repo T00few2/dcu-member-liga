@@ -371,7 +371,8 @@ def get_participants():
                 'max90Rating': zr.get('max90Rating', 'N/A'),
                 'phenotype': zr.get('phenotype', 'N/A'),
                 'racingScore': zpro.get('racingScore', 'N/A'),
-                'stravaKms': strava.get('kms', '-')
+                'stravaKms': strava.get('kms', '-'),
+                'weightVerificationStatus': data.get('weightVerificationStatus', 'none')
             })
         
         return jsonify({'participants': participants}), 200
