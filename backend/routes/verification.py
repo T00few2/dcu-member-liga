@@ -280,3 +280,35 @@ def get_pending_verifications():
         return jsonify({'pending': pending}), 200
     except Exception as e:
         return jsonify({'message': str(e)}), 500
+
+@verification_bp.route('/admin/verification/requests', methods=['GET'])
+def get_active_requests():
+    """
+    Get list of users with 'pending' status (awaiting submission).
+    """
+    try:
+        require_admin(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+        
+    try:
+        users_ref = db.collection('users')
+        docs = users_ref.where('weightVerificationStatus', '==', 'pending').stream()
+        
+        active = []
+        for doc in docs:
+            data = doc.to_dict()
+            active.append({
+                'id': doc.id,
+                'name': data.get('name', 'Unknown'),
+                'eLicense': data.get('eLicense', ''),
+                'club': data.get('club', ''),
+                'deadline': data.get('weightVerificationDeadline')
+            })
+            
+        return jsonify({'requests': active}), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
