@@ -204,7 +204,27 @@ def review_verification():
         # Find the submitted request
         updated_requests = []
         found = False
-        reviewer_id = "Admin" # Could extract from token if we wanted specific admin ID
+        reviewer_id = "Admin"
+        try:
+            auth_header = request.headers.get('Authorization')
+            if auth_header:
+                id_token = auth_header.split('Bearer ')[1]
+                decoded = auth.verify_id_token(id_token)
+                admin_uid = decoded['uid']
+                
+                # Try to get admin's name
+                mapping_doc = db.collection('auth_mappings').document(admin_uid).get()
+                if mapping_doc.exists:
+                    admin_e_license = mapping_doc.to_dict().get('eLicense')
+                    admin_doc = db.collection('users').document(str(admin_e_license)).get()
+                else:
+                    admin_doc = db.collection('users').document(admin_uid).get()
+                
+                if admin_doc.exists:
+                    reviewer_id = admin_doc.to_dict().get('name', 'Admin')
+        except Exception as e:
+            print(f"Could not resolve admin name: {e}")
+            pass
         
         new_status = 'approved' if action == 'approve' else 'rejected'
         
