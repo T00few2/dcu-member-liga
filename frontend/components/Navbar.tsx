@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 
 export default function Navbar() {
-    const { user, signInWithGoogle, logOut, loading, isRegistered, needsConsentUpdate, isImpersonating, toggleImpersonation, isAdmin } = useAuth();
+    const { user, signInWithGoogle, logOut, loading, isRegistered, needsConsentUpdate, isImpersonating, toggleImpersonation, isAdmin, weightVerificationStatus } = useAuth();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
     const pathname = usePathname();
@@ -86,7 +86,7 @@ export default function Navbar() {
                                         <div className="relative">
                                             <button
                                                 onClick={() => setIsMenuOpen(!isMenuOpen)}
-                                                className="flex items-center gap-2 hover:text-slate-300 focus:outline-none"
+                                                className="flex items-center gap-2 hover:text-slate-300 focus:outline-none relative"
                                             >
                                                 {user.photoURL ? (
                                                     <img
@@ -98,6 +98,13 @@ export default function Navbar() {
                                                     <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center">
                                                         {user.email?.[0].toUpperCase()}
                                                     </div>
+                                                )}
+                                                {/* Notification Badge */}
+                                                {(weightVerificationStatus === 'pending' || weightVerificationStatus === 'rejected') && (
+                                                    <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                                                        <span className="relative inline-flex rounded-full h-3 w-3 bg-orange-500"></span>
+                                                    </span>
                                                 )}
                                             </button>
 
@@ -127,10 +134,13 @@ export default function Navbar() {
                                                         )}
                                                         <Link
                                                             href="/register"
-                                                            className="block px-4 py-2 text-sm hover:bg-slate-50"
+                                                            className="block px-4 py-2 text-sm hover:bg-slate-50 flex items-center justify-between"
                                                             onClick={() => setIsMenuOpen(false)}
                                                         >
-                                                            My Profile
+                                                            <span>My Profile</span>
+                                                            {(weightVerificationStatus === 'pending' || weightVerificationStatus === 'rejected') && (
+                                                                <span className="h-2 w-2 rounded-full bg-orange-500"></span>
+                                                            )}
                                                         </Link>
                                                         <button
                                                             onClick={() => {
@@ -193,8 +203,8 @@ export default function Navbar() {
                                     key={link.href}
                                     href={link.href}
                                     className={`px-4 py-3 rounded-lg transition-colors ${pathname === link.href
-                                            ? 'bg-blue-600 text-white font-medium'
-                                            : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                                        ? 'bg-blue-600 text-white font-medium'
+                                        : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                                         }`}
                                 >
                                     {link.label}

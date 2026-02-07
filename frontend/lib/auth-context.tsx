@@ -25,6 +25,7 @@ interface AuthContextType {
   refreshClaims: () => Promise<void>;
   isImpersonating: boolean;
   toggleImpersonation: () => void;
+  weightVerificationStatus: 'none' | 'pending' | 'submitted' | 'approved' | 'rejected';
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -41,6 +42,7 @@ const AuthContext = createContext<AuthContextType>({
   refreshClaims: async () => { },
   isImpersonating: false,
   toggleImpersonation: () => { },
+  weightVerificationStatus: 'none',
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -58,6 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [needsConsentUpdate, setNeedsConsentUpdate] = useState(false);
   const [requiredDataPolicyVersion, setRequiredDataPolicyVersion] = useState<string | null>(null);
   const [requiredPublicResultsConsentVersion, setRequiredPublicResultsConsentVersion] = useState<string | null>(null);
+  const [weightVerificationStatus, setWeightVerificationStatus] = useState<'none' | 'pending' | 'submitted' | 'approved' | 'rejected'>('none');
   const router = useRouter();
   const pathname = usePathname();
 
@@ -73,6 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.ok) {
         const data = await res.json();
         setIsRegistered(!!data.registered);
+        setWeightVerificationStatus(data.weightVerificationStatus || 'none');
         // Consent gate: backend is source of truth for required versions.
         const requiredPolicy = data.requiredDataPolicyVersion;
         const requiredPublic = data.requiredPublicResultsConsentVersion;
@@ -193,7 +197,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, isRegistered, isAdmin, needsConsentUpdate, requiredDataPolicyVersion, requiredPublicResultsConsentVersion, signInWithGoogle, logOut, refreshProfile, refreshClaims, isImpersonating, toggleImpersonation }}>
+    <AuthContext.Provider value={{ user, loading, isRegistered, isAdmin, needsConsentUpdate, requiredDataPolicyVersion, requiredPublicResultsConsentVersion, signInWithGoogle, logOut, refreshProfile, refreshClaims, isImpersonating, toggleImpersonation, weightVerificationStatus }}>
       {children}
     </AuthContext.Provider>
   );

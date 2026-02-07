@@ -132,7 +132,7 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
                         <p><strong>Instructions:</strong></p>
                         <ol className="list-decimal pl-5 space-y-1">
                             <li>Record a video showing your face, you stepping on the scale, and the clear weight reading.</li>
-                            <li>Upload the video to YouTube (select "Unlisted" visibility) or Google Drive/Dropbox (Share &rarr; Anyone with link).</li>
+                            <li>Upload the video to YouTube (select "Unlisted" visibility).</li>
                             <li>Paste the shareable link below.</li>
                         </ol>
                     </div>
