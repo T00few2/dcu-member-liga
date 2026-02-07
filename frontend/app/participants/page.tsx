@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 
 interface Participant {
   name: string;
+  club: string;
   eLicense: string;
   zwiftId?: string;
   category: string;
@@ -76,6 +77,7 @@ export default function ParticipantsPage() {
             <thead className="bg-muted/50 text-xs uppercase text-muted-foreground border-b border-border">
               <tr>
                 <th className="px-6 py-3 font-bold">Name</th>
+                <th className="px-6 py-3 font-bold">Club</th>
                 <th className="px-6 py-3 font-bold">Cat</th>
                 <th className="px-6 py-3 font-bold">FTP (ZP)</th>
                 <th className="px-6 py-3 font-bold">ZRS</th>
@@ -102,7 +104,10 @@ export default function ParticipantsPage() {
                       <div className="flex items-center gap-2">
                         {p.name}
                         {p.weightVerificationStatus === 'pending' && (
-                          <span title="Weight Verification: Pending" className="cursor-help text-lg">⚠️</span>
+                          <span title="Weight Verification: Pending Action" className="cursor-help text-lg">⚠️</span>
+                        )}
+                        {p.weightVerificationStatus === 'submitted' && (
+                          <span title="Weight Verification: In Review" className="cursor-help text-lg">⚠️</span>
                         )}
                         {p.weightVerificationStatus === 'approved' && (
                           <span title="Weight Verification: Approved" className="cursor-help text-lg">✅</span>
@@ -112,6 +117,7 @@ export default function ParticipantsPage() {
                         )}
                       </div>
                     </td>
+                    <td className="px-6 py-4 text-card-foreground">{p.club || '-'}</td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
                               ${p.category === 'A' ? 'bg-red-100 text-red-800' :
