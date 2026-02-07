@@ -140,6 +140,9 @@ def get_profile():
             'publicResultsConsentVersion': stored_public_results_version,
             'requiredDataPolicyVersion': policy_meta.get(POLICY_DATA_POLICY, {}).get('requiredVersion'),
             'requiredPublicResultsConsentVersion': policy_meta.get(POLICY_PUBLIC_RESULTS, {}).get('requiredVersion'),
+            'weightVerificationStatus': user_data.get('weightVerificationStatus', 'none'),
+            'weightVerificationVideoLink': user_data.get('weightVerificationVideoLink', ''),
+            'verificationRequests': user_data.get('verificationRequests', [])
         }), 200
 
     except Exception as e:
