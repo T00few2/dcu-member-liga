@@ -131,5 +131,25 @@ The backend includes a dedicated module (`routes/seed.py`) for generating realis
 
 ## Development
 *   **Requirements**: `requirements.txt`
-*   **Environment**: Requires `serviceAccountKey.json` for Firebase Admin access locally.
-*   **Credentials**: Sensitive credentials (`ZWIFT_USERNAME`, `ZWIFT_PASSWORD`, etc.) are loaded from `config.py` (ensure this file is secure/git-ignored if it contains secrets).
+
+## Data Inspection Tools
+
+A utility script is available for easily inspecting Firestore data and outputting it as JSON (friendly for AI agents).
+
+*   **Location**: `backend/scripts/inspect_data.py`
+*   **Usage**:
+    *   List collections: `python backend/scripts/inspect_data.py --list-collections`
+    *   Get collection data: `python backend/scripts/inspect_data.py --collection <NAME>`
+
+## Admin Management Tools
+
+Scripts are provided to manage user roles (specifically the `admin` custom claim) without direct database editing.
+
+*   **Location**: `backend/scripts/`
+*   **Check Admin Status**:
+    *   `python backend/scripts/get_user_claims.py --email <USER_EMAIL>`
+*   **Grant Admin Access**:
+    *   `python backend/scripts/set_admin_claim.py --email <USER_EMAIL> --admin true`
+*   **Revoke Admin Access**:
+    *   `python backend/scripts/set_admin_claim.py --email <USER_EMAIL> --admin false`
+

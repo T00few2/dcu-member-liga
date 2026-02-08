@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AuthProvider } from "@/lib/auth-context";
 import Navbar from "@/components/Navbar";
 import ToastProvider from "@/components/ToastProvider";
+import WeightVerificationModal from "@/components/WeightVerificationModal";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -23,6 +24,7 @@ export default function RootLayout({
       <body className={inter.className}>
         <AuthProvider>
           <ToastProvider>
+            <WeightVerificationModal />
             <Navbar />
             <main className="container mx-auto p-4 min-h-screen">
               {children}
