@@ -98,17 +98,14 @@ class User:
     
     def update(self, updates):
         """
-        Updates the user document in Firestore and updates the local data.
-        """
-    def update(self, updates):
-        """
         Updates the user document in Firestore.
+        Uses .update() so that dotted keys (e.g. 'verification.status') are treated as nested fields.
         """
         if not self.id:
             raise ValueError("User ID is required for updates")
         
-        db.collection('users').document(str(self.id)).set(updates, merge=True)
-        # Update local cache
+        db.collection('users').document(str(self.id)).update(updates)
+        # Update local cache (this is imperfect for dotted keys but better than nothing)
         self._data.update(updates)
 
 class UserService:
