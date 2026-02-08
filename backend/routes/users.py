@@ -421,7 +421,7 @@ def get_participants():
                 'phenotype': zr.get('phenotype', 'N/A'),
                 'racingScore': zpro.get('racingScore', 'N/A'),
                 'stravaKms': strava.get('kms', '-'),
-                'weightVerificationStatus': data.get('weightVerificationStatus', 'none')
+                'weightVerificationStatus': data.get('verification', {}).get('status', 'none')
             })
         
         return jsonify({'participants': participants}), 200

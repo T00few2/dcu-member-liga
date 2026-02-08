@@ -55,7 +55,7 @@ def trigger_verification():
                 continue
 
             # Skip if already pending or submitted
-            current_status = u.get('weightVerificationStatus', 'none')
+            current_status = u.get('verification', {}).get('status', 'none')
             if current_status in ['pending', 'submitted']:
                 continue
             eligible_riders.append(uid)
@@ -85,9 +85,11 @@ def trigger_verification():
             }
             
             updates = {
-                'weightVerificationStatus': 'pending',
-                'weightVerificationDeadline': deadline,
-                'verificationRequests': firestore.ArrayUnion([new_request])
+                'verification.status': 'pending',
+                'verification.currentRequest': new_request,
+                'verification.history': firestore.ArrayUnion([new_request]),
+                # Clean up legacy fields if they exist? Maybe separate script is safer.
+                # But let's stop writing them.
             }
             batch.update(doc_ref, updates)
             updated_count += 1
@@ -157,33 +159,38 @@ def submit_verification():
         user_data = user_doc.to_dict()
         
         # Check if they actually have a pending request
-        if user_data.get('weightVerificationStatus') != 'pending':
+        verification = user_data.get('verification', {})
+        if verification.get('status') != 'pending':
              return jsonify({'message': 'No pending verification request found.'}), 400
              
         # Find the pending request in history to update it
-        requests = user_data.get('verificationRequests', [])
+        requests = verification.get('history', [])
         # We need to find the one with status 'pending' (or the latest one)
         # Since ArrayUnion/Remove is hard for modifying objects, we read, modify, write.
         
         updated_requests = []
         found = False
+        current_req = verification.get('currentRequest', {})
+        
+        # Update current request object as well if it matches
+        if current_req.get('status') == 'pending':
+            current_req['status'] = 'submitted'
+            current_req['videoLink'] = video_link
+            current_req['submittedAt'] = datetime.now().isoformat()
+            found = True
+            
+        # Also update history entry
         for req in requests:
             if req.get('status') == 'pending' and req.get('type') == 'weight':
                 req['status'] = 'submitted'
                 req['videoLink'] = video_link
                 req['submittedAt'] = datetime.now().isoformat()
-                found = True
             updated_requests.append(req)
-            
-        if not found:
-             # Should not happen if status was pending but safety check
-             return jsonify({'message': 'Could not find the specific request object.'}), 500
 
         user_ref.update({
-            'weightVerificationStatus': 'submitted',
-            'weightVerificationVideoLink': video_link, # Quick access
-            'weightVerificationDate': firestore.SERVER_TIMESTAMP,
-            'verificationRequests': updated_requests
+            'verification.status': 'submitted',
+            'verification.currentRequest': current_req,
+            'verification.history': updated_requests
         })
 
         return jsonify({'message': 'Verification submitted successfully.'}), 200
@@ -221,7 +228,7 @@ def review_verification():
             return jsonify({'message': 'User not found'}), 404
             
         user_data = user_doc.to_dict()
-        requests = user_data.get('verificationRequests', [])
+        requests = user_data.get('verification', {}).get('history', [])
         
         # Find the submitted request
         updated_requests = []
@@ -266,8 +273,19 @@ def review_verification():
         
         for req in requests:
             if req.get('status') == 'submitted' and req.get('type') == 'weight':
+        now_iso = datetime.now().isoformat()
+        current_req = user_data.get('verification', {}).get('currentRequest', {})
+        if current_req.get('status') == 'submitted':
+             current_req['status'] = new_status
+             current_req['reviewedAt'] = now_iso
+             current_req['reviewerId'] = reviewer_id
+             if action == 'reject': current_req['rejectionReason'] = reason
+             found = True
+
+        for req in requests:
+            if req.get('status') == 'submitted' and req.get('type') == 'weight':
                 req['status'] = new_status
-                req['reviewedAt'] = datetime.now().isoformat()
+                req['reviewedAt'] = now_iso
                 req['reviewerId'] = reviewer_id
                 if action == 'reject':
                     req['rejectionReason'] = reason
@@ -278,8 +296,9 @@ def review_verification():
             return jsonify({'message': 'No submitted verification found to review.'}), 400
             
         updates = {
-            'weightVerificationStatus': new_status,
-            'verificationRequests': updated_requests
+            'verification.status': new_status,
+            'verification.history': updated_requests,
+            'verification.currentRequest': current_req
         }
         
         if action == 'reject':
