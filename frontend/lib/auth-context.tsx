@@ -84,9 +84,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setRequiredDataPolicyVersion(requiredPolicy || null);
         setRequiredPublicResultsConsentVersion(requiredPublic || null);
 
-        // If versions are missing, assume no update required.
-        const policyOk = !requiredPolicy || ((data.dataPolicyVersion === requiredPolicy) && !!data.acceptedDataPolicy);
-        const publicOk = !requiredPublic || ((data.publicResultsConsentVersion === requiredPublic) && !!data.acceptedPublicResults);
+        // Strict check: User must have accepted specific version required by system
+        // Note: We check 'registration.dataPolicy.version' or fallback to root for legacy if needed,
+        // but since we are cleaning up, we should look at what fetchProfile returns.
+        // The fetchProfile route already maps this for us.
+
+        const policyOk = !!requiredPolicy && (data.dataPolicyVersion === requiredPolicy) && !!data.acceptedDataPolicy;
+        const publicOk = !!requiredPublic && (data.publicResultsConsentVersion === requiredPublic) && !!data.acceptedPublicResults;
 
         setNeedsConsentUpdate(!(policyOk && publicOk));
       } else {

@@ -161,8 +161,8 @@ def get_profile():
             'acceptedCoC': registration.get('cocAccepted', user_data.get('acceptedCoC', False)),
             'acceptedDataPolicy': bool(registration.get('dataPolicy')) or user_data.get('acceptedDataPolicy', False),
             'acceptedPublicResults': bool(registration.get('publicResultsConsent')) or user_data.get('acceptedPublicResults', False),
-            'dataPolicyVersion': registration.get('dataPolicy', {}).get('version'),
-            'publicResultsConsentVersion': registration.get('publicResultsConsent', {}).get('version'),
+            'dataPolicyVersion': registration.get('dataPolicy', {}).get('version') or user_data.get('dataPolicy', {}).get('version'),
+            'publicResultsConsentVersion': registration.get('publicResultsConsent', {}).get('version') or user_data.get('publicResultsConsent', {}).get('version'),
             'requiredDataPolicyVersion': policy_meta.get(POLICY_DATA_POLICY, {}).get('requiredVersion'),
             'requiredPublicResultsConsentVersion': policy_meta.get(POLICY_PUBLIC_RESULTS, {}).get('requiredVersion'),
             'weightVerificationStatus': verification.get('status', 'none'),
@@ -365,17 +365,24 @@ def update_consents():
                 doc_id = str(e_license)
 
         updates = {
-            'acceptedDataPolicy': True,
-            'dataPolicy': {
+            'updatedAt': firestore.SERVER_TIMESTAMP,
+            'registration.dataPolicy': {
                 'version': data_policy_version,
                 'acceptedAt': firestore.SERVER_TIMESTAMP
             },
-            'acceptedPublicResults': True,
-            'publicResultsConsent': {
+            'registration.publicResultsConsent': {
                 'version': public_results_consent_version,
                 'acceptedAt': firestore.SERVER_TIMESTAMP
             },
-            'updatedAt': firestore.SERVER_TIMESTAMP
+            # Remove legacy root fields if they exist? Or just stop updating them.
+            # User wants clean schema.
+            # We should probably unset the root ones if we want to be super clean, 
+            # but Firestore delete is specific.
+            # For now, let's just update the correct location.
+            # Wait, the user provided JSON shows they Have acceptedDataPolicy: true at root.
+            # We should probably sync them or migrate them.
+            # But for this specific endpoint, let's write to the structure user prefers.
+            'registration.status': 'complete' # Re-affirm status
         }
 
         db.collection('users').document(doc_id).set(updates, merge=True)
