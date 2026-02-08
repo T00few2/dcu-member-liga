@@ -334,22 +334,26 @@ def get_pending_verifications():
     try:
         # Fetch users where status is 'submitted'
         users_ref = db.collection('users')
-        docs = users_ref.where('weightVerificationStatus', '==', 'submitted').stream()
+        docs = users_ref.where('verification.status', '==', 'submitted').stream()
         
         pending = []
         for doc in docs:
             data = doc.to_dict()
+            ver = data.get('verification', {})
             # Find the submitted request details
-            requests = data.get('verificationRequests', [])
-            active_req = next((r for r in requests if r.get('status') == 'submitted'), {})
+            requests = ver.get('history', [])
+            current = ver.get('currentRequest', {})
+            
+            # Prefer current request if it matches
+            active_req = current if current.get('status') == 'submitted' else next((r for r in requests if r.get('status') == 'submitted'), {})
             
             pending.append({
                 'id': doc.id,
                 'name': data.get('name', 'Unknown'),
                 'eLicense': data.get('eLicense', ''),
                 'club': data.get('club', ''),
-                'videoLink': data.get('weightVerificationVideoLink') or active_req.get('videoLink'),
-                'submittedAt': active_req.get('submittedAt') or data.get('weightVerificationDate')
+                'videoLink': active_req.get('videoLink'),
+                'submittedAt': active_req.get('submittedAt')
             })
             
         return jsonify({'pending': pending}), 200
@@ -371,17 +375,20 @@ def get_active_requests():
         
     try:
         users_ref = db.collection('users')
-        docs = users_ref.where('weightVerificationStatus', '==', 'pending').stream()
+        docs = users_ref.where('verification.status', '==', 'pending').stream()
         
         active = []
         for doc in docs:
             data = doc.to_dict()
+            ver = data.get('verification', {})
+            current = ver.get('currentRequest', {})
+            
             active.append({
                 'id': doc.id,
                 'name': data.get('name', 'Unknown'),
                 'eLicense': data.get('eLicense', ''),
                 'club': data.get('club', ''),
-                'deadline': data.get('weightVerificationDeadline')
+                'deadline': current.get('deadline')
             })
             
         return jsonify({'requests': active}), 200
@@ -403,16 +410,17 @@ def get_approved_verifications():
         
     try:
         users_ref = db.collection('users')
-        docs = users_ref.where('weightVerificationStatus', '==', 'approved').limit(50).stream()
+        docs = users_ref.where('verification.status', '==', 'approved').limit(50).stream()
         
         approved = []
         for doc in docs:
             data = doc.to_dict()
-            requests = data.get('verificationRequests', [])
+            ver = data.get('verification', {})
+            requests = ver.get('history', [])
+            current = ver.get('currentRequest', {})
+            
             # Find the approved request (most recent one preferably)
-            # Sort requests by reviewedAt descending if possible, or just find the one with status approved
-            # For simplicity, we look for the last one with status == 'approved'
-            approved_req = next((r for r in reversed(requests) if r.get('status') == 'approved'), {})
+            approved_req = current if current.get('status') == 'approved' else next((r for r in reversed(requests) if r.get('status') == 'approved'), {})
             
             approved.append({
                 'id': doc.id,
