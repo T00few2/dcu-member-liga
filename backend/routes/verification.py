@@ -53,7 +53,7 @@ def trigger_verification():
         now = datetime.now().isoformat()
         
         for uid in selected_ids:
-            doc_ref = users_ref.document(uid)
+            doc_ref = db.collection('users').document(uid)
             
             # Create new request object
             request_id = str(uuid.uuid4())
