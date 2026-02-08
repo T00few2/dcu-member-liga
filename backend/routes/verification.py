@@ -5,6 +5,7 @@ from authz import require_admin, AuthzError
 import uuid
 import random
 from datetime import datetime, timedelta
+from services.user_service import UserService
 
 verification_bp = Blueprint('verification', __name__)
 
@@ -28,37 +29,17 @@ def trigger_verification():
         deadline_days = data.get('deadlineDays', 2)
 
         # 1. Get all eligible users (registered, not currently pending/submitted)
-        users_ref = db.collection('users')
-        # We filter for users who are registered.
-        # Prefer new schema 'registration.status' = 'complete'
-        # But also support old field 'registrationComplete' = True for legacy
-        # Firestore OR queries are restricted, so we might need two queries or one big fetch.
-        # Given small user base (~1000), streaming all and filtering in memory is safest/easiest.
-        docs = users_ref.stream()
+        all_users = UserService.get_all_participants(limit=2000) # Fetch all active
         
         eligible_riders = []
-        for doc in docs:
-            u = doc.to_dict()
-            uid = doc.id
-            
-            # Check registration status (support both schemas)
-            is_registered = False
-            reg = u.get('registration', {})
-            if reg.get('status') == 'complete':
-                is_registered = True
-            elif u.get('registrationComplete') is True:
-                is_registered = True
-            elif u.get('verified') is True: # ultra-legacy
-                is_registered = True
-                
-            if not is_registered:
+        for user in all_users:
+            if not user.is_registered:
                 continue
 
             # Skip if already pending or submitted
-            current_status = u.get('verification', {}).get('status', 'none')
-            if current_status in ['pending', 'submitted']:
+            if user.verification_status in ['pending', 'submitted']:
                 continue
-            eligible_riders.append(uid)
+            eligible_riders.append(user.id)
 
         # 2. Select Random Sample
         count_to_select = max(1, int(len(eligible_riders) * (percentage / 100)))
@@ -137,40 +118,21 @@ def submit_verification():
         if not video_link:
             return jsonify({'message': 'Video link is required'}), 400
 
-        # Resolve user doc via Auth Mapping
-        mapping_doc = db.collection('auth_mappings').document(uid).get()
-        doc_id = uid  # Default if no mapping
-
-        if mapping_doc.exists:
-            m_data = mapping_doc.to_dict()
-            zwift_id = m_data.get('zwiftId')
-            e_license = m_data.get('eLicense')
-            
-            if zwift_id:
-                doc_id = str(zwift_id)
-            elif e_license:
-                doc_id = str(e_license)
-
-        user_ref = db.collection('users').document(doc_id)
-        user_doc = user_ref.get()
-        if not user_doc.exists:
+        # Resolve user
+        user = UserService.get_user_by_auth_uid(uid)
+        if not user:
              return jsonify({'message': 'User profile not found'}), 404
              
-        user_data = user_doc.to_dict()
-        
         # Check if they actually have a pending request
-        verification = user_data.get('verification', {})
-        if verification.get('status') != 'pending':
+        if user.verification_status != 'pending':
              return jsonify({'message': 'No pending verification request found.'}), 400
              
         # Find the pending request in history to update it
-        requests = verification.get('history', [])
-        # We need to find the one with status 'pending' (or the latest one)
-        # Since ArrayUnion/Remove is hard for modifying objects, we read, modify, write.
+        requests = user.verification_history
         
         updated_requests = []
         found = False
-        current_req = verification.get('currentRequest', {})
+        current_req = user.current_verification_request
         
         # Update current request object as well if it matches
         if current_req.get('status') == 'pending':
@@ -187,7 +149,7 @@ def submit_verification():
                 req['submittedAt'] = datetime.now().isoformat()
             updated_requests.append(req)
 
-        user_ref.update({
+        user.update({
             'verification.status': 'submitted',
             'verification.currentRequest': current_req,
             'verification.history': updated_requests
@@ -222,13 +184,12 @@ def review_verification():
         if action not in ['approve', 'reject']:
             return jsonify({'message': 'Invalid action'}), 400
             
-        user_ref = db.collection('users').document(str(target_user_id))
-        user_doc = user_ref.get()
-        if not user_doc.exists:
+        
+        user = UserService.get_user_by_id(target_user_id)
+        if not user:
             return jsonify({'message': 'User not found'}), 404
             
-        user_data = user_doc.to_dict()
-        requests = user_data.get('verification', {}).get('history', [])
+        requests = user.verification_history
         
         # Find the submitted request
         updated_requests = []
@@ -241,29 +202,11 @@ def review_verification():
                 decoded = auth.verify_id_token(id_token)
                 admin_uid = decoded['uid']
                 
-                # Try to get admin's name
-                mapping_doc = db.collection('auth_mappings').document(admin_uid).get()
-                admin_doc = None
-                
-                if mapping_doc.exists:
-                    m_data = mapping_doc.to_dict()
-                    zwift_id = m_data.get('zwiftId')
-                    e_license = m_data.get('eLicense')
-                    
-                    if zwift_id:
-                        admin_doc = db.collection('users').document(str(zwift_id)).get()
-                    elif e_license:
-                        admin_doc = db.collection('users').document(str(e_license)).get()
-                else:
-                    admin_doc = db.collection('users').document(admin_uid).get()
-                
-                if admin_doc and admin_doc.exists:
-                    reviewer_id = admin_doc.to_dict().get('name', 'Admin')
-                else:
-                    # Fallback check users/admin_uid just in case
-                    admin_doc = db.collection('users').document(admin_uid).get()
-                    if admin_doc.exists:
-                         reviewer_id = admin_doc.to_dict().get('name', 'Admin')
+                reviewer_id = "Admin"
+                if admin_uid:
+                     admin_user = UserService.get_user_by_auth_uid(admin_uid)
+                     if admin_user:
+                         reviewer_id = admin_user.name or 'Admin'
 
         except Exception as e:
             print(f"Could not resolve admin name: {e}")
@@ -274,7 +217,7 @@ def review_verification():
         for req in requests:
             if req.get('status') == 'submitted' and req.get('type') == 'weight':
         now_iso = datetime.now().isoformat()
-        current_req = user_data.get('verification', {}).get('currentRequest', {})
+        current_req = user.current_verification_request
         if current_req.get('status') == 'submitted':
              current_req['status'] = new_status
              current_req['reviewedAt'] = now_iso
@@ -295,11 +238,11 @@ def review_verification():
         if not found:
             return jsonify({'message': 'No submitted verification found to review.'}), 400
             
-        updates = {
+        user.update({
             'verification.status': new_status,
             'verification.history': updated_requests,
             'verification.currentRequest': current_req
-        }
+        })
         
         if action == 'reject':
              # If rejected, they might need to resubmit? 
@@ -311,7 +254,9 @@ def review_verification():
              # Let's keep it simple: Rejected is rejected.
              pass
              
-        user_ref.update(updates)
+             pass
+             # Updates applied via user.update() above
+
         
         return jsonify({'message': f'Verification {new_status}.'}), 200
 
@@ -332,26 +277,22 @@ def get_pending_verifications():
         return jsonify({'error': 'DB not available'}), 500
         
     try:
-        # Fetch users where status is 'submitted'
-        users_ref = db.collection('users')
-        docs = users_ref.where('verification.status', '==', 'submitted').stream()
+        users = UserService.get_pending_verifications()
         
         pending = []
-        for doc in docs:
-            data = doc.to_dict()
-            ver = data.get('verification', {})
+        for user in users:
             # Find the submitted request details
-            requests = ver.get('history', [])
-            current = ver.get('currentRequest', {})
+            requests = user.verification_history
+            current = user.current_verification_request
             
             # Prefer current request if it matches
             active_req = current if current.get('status') == 'submitted' else next((r for r in requests if r.get('status') == 'submitted'), {})
             
             pending.append({
-                'id': doc.id,
-                'name': data.get('name', 'Unknown'),
-                'eLicense': data.get('eLicense', ''),
-                'club': data.get('club', ''),
+                'id': user.id,
+                'name': user.name,
+                'eLicense': user.e_license,
+                'club': user.club,
                 'videoLink': active_req.get('videoLink'),
                 'submittedAt': active_req.get('submittedAt')
             })
@@ -374,20 +315,17 @@ def get_active_requests():
         return jsonify({'error': 'DB not available'}), 500
         
     try:
-        users_ref = db.collection('users')
-        docs = users_ref.where('verification.status', '==', 'pending').stream()
+        users = UserService.get_active_verification_requests()
         
         active = []
-        for doc in docs:
-            data = doc.to_dict()
-            ver = data.get('verification', {})
-            current = ver.get('currentRequest', {})
+        for user in users:
+            current = user.current_verification_request
             
             active.append({
-                'id': doc.id,
-                'name': data.get('name', 'Unknown'),
-                'eLicense': data.get('eLicense', ''),
-                'club': data.get('club', ''),
+                'id': user.id,
+                'name': user.name,
+                'eLicense': user.e_license,
+                'club': user.club,
                 'deadline': current.get('deadline')
             })
             
@@ -409,24 +347,21 @@ def get_approved_verifications():
         return jsonify({'error': 'DB not available'}), 500
         
     try:
-        users_ref = db.collection('users')
-        docs = users_ref.where('verification.status', '==', 'approved').limit(50).stream()
+        users = UserService.get_approved_verifications(limit=50)
         
         approved = []
-        for doc in docs:
-            data = doc.to_dict()
-            ver = data.get('verification', {})
-            requests = ver.get('history', [])
-            current = ver.get('currentRequest', {})
+        for user in users:
+            requests = user.verification_history
+            current = user.current_verification_request
             
             # Find the approved request (most recent one preferably)
             approved_req = current if current.get('status') == 'approved' else next((r for r in reversed(requests) if r.get('status') == 'approved'), {})
             
             approved.append({
-                'id': doc.id,
-                'name': data.get('name', 'Unknown'),
-                'eLicense': data.get('eLicense', ''),
-                'club': data.get('club', ''),
+                'id': user.id,
+                'name': user.name,
+                'eLicense': user.e_license,
+                'club': user.club,
                 'approvedAt': approved_req.get('reviewedAt'),
                 'approvedBy': approved_req.get('reviewerId', 'Admin')
             })

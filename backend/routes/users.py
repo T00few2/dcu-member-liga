@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from firebase_admin import auth, firestore
 from extensions import db, get_zwift_service, get_zp_service, strava_service, zr_service, get_zwift_game_service
 from services.policy_store import POLICY_DATA_POLICY, POLICY_PUBLIC_RESULTS, PolicyError, get_policy_meta
+from services.user_service import UserService
 
 users_bp = Blueprint('users', __name__)
 
@@ -89,30 +90,8 @@ def get_profile():
 
         print(f"[DEBUG] get_profile for UID: {uid}")
         
-        mapping_doc = db.collection('auth_mappings').document(uid).get()
-        if mapping_doc.exists:
-            print(f"[DEBUG] Mapping found for {uid}: {mapping_doc.to_dict()}")
-            zwift_id = mapping_doc.to_dict().get('zwiftId')
-            # Fallback for old mappings (eLicense)
-            if not zwift_id:
-                 old_elicense = mapping_doc.to_dict().get('eLicense')
-                 if old_elicense:
-                     print(f"[DEBUG] Using old eLicense key: {old_elicense}")
-                     user_doc = db.collection('users').document(str(old_elicense)).get()
-                 else:
-                     print(f"[DEBUG] Mapping exists but no keys. detailed fallback.")
-                     user_doc = db.collection('users').document(uid).get()
-            else:
-                 print(f"[DEBUG] Using ZwiftID key: {zwift_id}")
-                 user_doc = db.collection('users').document(str(zwift_id)).get()
-        else:
-            print(f"[DEBUG] No mapping found for {uid}")
-            user_doc = db.collection('users').document(uid).get()
-            
-        # Fallback: Query by authUid if doc not found
-        if not user_doc.exists:
-            print(f"User {uid} not found by direct lookup/mapping. Trying authUid query...")
-            docs = db.collection('users').where('authUid', '==', uid).limit(1).stream()
+        user = UserService.get_user_by_auth_uid(uid)
+
         # Always include currently required versions so clients can gate consistently,
         # even for brand new users without a profile document yet.
         try:
@@ -120,55 +99,33 @@ def get_profile():
         except PolicyError as e:
             return jsonify({'message': e.message}), e.status_code
 
-        if not user_doc.exists:
+        if not user:
             return jsonify({
                 'registered': False,
                 'requiredDataPolicyVersion': policy_meta.get(POLICY_DATA_POLICY, {}).get('requiredVersion'),
                 'requiredPublicResultsConsentVersion': policy_meta.get(POLICY_PUBLIC_RESULTS, {}).get('requiredVersion'),
             }), 200
         
-        user_data = user_doc.to_dict()
-        registration = user_data.get('registration', {})
-        verification = user_data.get('verification', {})
-        connections = user_data.get('connections', {})
-        equipment = user_data.get('equipment', {})
-        
-        # Backwards compatibility reading (if mix of old/new data during dev)
-        reg_status = registration.get('status')
-        if not reg_status:
-             # Try old fields
-             if user_data.get('verified'): reg_status = 'complete'
-             elif user_data.get('registrationComplete'): reg_status = 'complete'
-             elif user_data.get('name'): reg_status = 'draft'
-             else: reg_status = 'none'
-             
-        # Fallback for trainer
-        trainer = equipment.get('trainer')
-        if not trainer:
-            trainer = user_data.get('trainer', '')
-
-        is_registered = reg_status == 'complete'
-        
         return jsonify({
-            'registered': is_registered,
-            'hasDraft': reg_status == 'draft',
-            'eLicense': user_data.get('eLicense', ''),
-            'name': user_data.get('name', ''),
-            'zwiftId': user_data.get('zwiftId', ''),
-            'club': user_data.get('club', ''),
-            'trainer': trainer,
-            'stravaConnected': bool(connections.get('strava')) or bool(user_data.get('strava')),
-            'acceptedCoC': registration.get('cocAccepted', user_data.get('acceptedCoC', False)),
-            'acceptedDataPolicy': bool(registration.get('dataPolicy')),
-            'acceptedPublicResults': bool(registration.get('publicResultsConsent')),
-            'dataPolicyVersion': registration.get('dataPolicy', {}).get('version'),
-            'publicResultsConsentVersion': registration.get('publicResultsConsent', {}).get('version'),
+            'registered': user.is_registered,
+            'hasDraft': user.registration.get('status') == 'draft',
+            'eLicense': user.e_license,
+            'name': user.name,
+            'zwiftId': user.zwift_id,
+            'club': user.club,
+            'trainer': user.trainer,
+            'stravaConnected': bool(user._data.get('connections', {}).get('strava')) or bool(user._data.get('strava')),
+            'acceptedCoC': user.registration.get('cocAccepted', user._data.get('acceptedCoC', False)),
+            'acceptedDataPolicy': user.accepted_data_policy,
+            'acceptedPublicResults': user.accepted_public_results,
+            'dataPolicyVersion': user.data_policy_version,
+            'publicResultsConsentVersion': user.public_results_consent_version,
             'requiredDataPolicyVersion': policy_meta.get(POLICY_DATA_POLICY, {}).get('requiredVersion'),
             'requiredPublicResultsConsentVersion': policy_meta.get(POLICY_PUBLIC_RESULTS, {}).get('requiredVersion'),
-            'weightVerificationStatus': verification.get('status', 'none'),
-            'weightVerificationVideoLink': verification.get('currentRequest', {}).get('videoLink', ''),
-            'weightVerificationDeadline': verification.get('currentRequest', {}).get('deadline', None),
-            'verificationRequests': verification.get('history', [])
+            'weightVerificationStatus': user.verification_status,
+            'weightVerificationVideoLink': user.weight_verification_video_link,
+            'weightVerificationDeadline': user.weight_verification_deadline,
+            'verificationRequests': user.verification_history
         }), 200
 
     except Exception as e:
@@ -350,19 +307,8 @@ def update_consents():
         if not db:
             return jsonify({'message': 'Database not available'}), 500
 
-        # Resolve user doc (eLicense mapping if present)
-        mapping_doc = db.collection('auth_mappings').document(uid).get()
-        doc_id = uid  # Default to UID if no mapping found
-
-        if mapping_doc.exists:
-            m_data = mapping_doc.to_dict()
-            zwift_id = m_data.get('zwiftId')
-            e_license = m_data.get('eLicense')
-            
-            if zwift_id:
-                doc_id = str(zwift_id)
-            elif e_license:
-                doc_id = str(e_license)
+        user = UserService.get_user_by_auth_uid(uid)
+        doc_id = user.id if user else uid
 
         updates = {
             'updatedAt': firestore.SERVER_TIMESTAMP,
@@ -374,18 +320,10 @@ def update_consents():
                 'version': public_results_consent_version,
                 'acceptedAt': firestore.SERVER_TIMESTAMP
             },
-            # Remove legacy root fields if they exist? Or just stop updating them.
-            # User wants clean schema.
-            # We should probably unset the root ones if we want to be super clean, 
-            # but Firestore delete is specific.
-            # For now, let's just update the correct location.
-            # Wait, the user provided JSON shows they Have acceptedDataPolicy: true at root.
-            # We should probably sync them or migrate them.
-            # But for this specific endpoint, let's write to the structure user prefers.
             'registration.status': 'complete' # Re-affirm status
         }
 
-        db.collection('users').document(doc_id).set(updates, merge=True)
+        db.collection('users').document(str(doc_id)).set(updates, merge=True)
 
         return jsonify({'message': 'Consents updated'}), 200
     except Exception as e:
@@ -397,22 +335,22 @@ def get_participants():
          return jsonify({'error': 'DB not available'}), 500
     
     try:
-        users_ref = db.collection('users')
-        docs = users_ref.limit(100).stream()
-        
         participants = []
-        for doc in docs:
-            data = doc.to_dict()
+        # Use UserService to fetch all (or limit)
+        user_objects = UserService.get_all_participants(limit=100)
+        
+        for user in user_objects:
+            data = user._data
             zp = data.get('zwiftPower', {})
             zr = data.get('zwiftRacing', {})
             zpro = data.get('zwiftProfile', {})
             strava = data.get('stravaSummary', {})
             
             participants.append({
-                'name': data.get('name'),
-                'eLicense': data.get('eLicense'),
-                'zwiftId': data.get('zwiftId'),
-                'club': data.get('club', ''),
+                'name': user.name,
+                'eLicense': user.e_license,
+                'zwiftId': user.zwift_id,
+                'club': user.club,
                 'category': zp.get('category', 'N/A'),
                 'ftp': zp.get('ftp', 'N/A'),
                 'rating': zr.get('currentRating', 'N/A'),
@@ -421,7 +359,7 @@ def get_participants():
                 'phenotype': zr.get('phenotype', 'N/A'),
                 'racingScore': zpro.get('racingScore', 'N/A'),
                 'stravaKms': strava.get('kms', '-'),
-                'weightVerificationStatus': data.get('verification', {}).get('status', 'none')
+                'weightVerificationStatus': user.verification_status
             })
         
         return jsonify({'participants': participants}), 200

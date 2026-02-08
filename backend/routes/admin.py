@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
 from extensions import db, get_zwift_service, strava_service, get_zp_service
 from authz import require_admin, AuthzError
+from services.user_service import UserService
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -20,25 +21,17 @@ def verify_rider(rider_id):
 
     try:
         # Try fetching by ID (ZwiftID)
-        user_doc = db.collection('users').document(str(rider_id)).get()
-        if not user_doc.exists:
+        user = UserService.get_user_by_id(rider_id)
+        if not user:
              # Fallback: Try eLicense (backward compat or valid alt lookup)
              print(f"User not found by ID {rider_id}, trying eLicense lookup")
-             # This is tricky because eLicense isn't a key anymore for new users. 
-             # But let's assume if it fails it fails.
-             # Actually, if we want to support lookup by eLicense, we need a query.
-             docs = db.collection('users').where('eLicense', '==', str(rider_id)).limit(1).stream()
-             found = False
-             for doc in docs:
-                 user_doc = doc
-                 found = True
-                 break
-             if not found:
-                 return jsonify({'message': 'User not found'}), 404
+             user = UserService.get_user_by_elicense(rider_id)
+             
+        if not user:
+             return jsonify({'message': 'User not found'}), 404
         
-        user_data = user_doc.to_dict()
-        zwift_id = user_data.get('zwiftId')
-        e_license = user_data.get('eLicense')
+        zwift_id = user.zwift_id
+        e_license = user.e_license
         
         response_data = {'profile': {}, 'stravaActivities': [], 'zwiftPowerHistory': []}
 
@@ -59,7 +52,7 @@ def verify_rider(rider_id):
 
         # Strava
         # Need to handle new 'connections' group or old root level
-        strava_auth = user_data.get('connections', {}).get('strava') or user_data.get('strava')
+        strava_auth = user.strava_auth
         
         if strava_auth and e_license:
             try:
