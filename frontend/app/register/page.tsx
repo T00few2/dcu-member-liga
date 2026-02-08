@@ -183,7 +183,7 @@ function RegisterContent() {
     }, [zwiftId, initialData.zwiftId]);
 
     const handleConnectStrava = async () => {
-        if (!eLicense) { setError("Enter E-License first"); return; }
+        if (!eLicense && !zwiftId) { setError("Enter Zwift ID or E-License first"); return; }
         // Save temp state
         localStorage.setItem('temp_reg_name', name);
         localStorage.setItem('temp_reg_elicense', eLicense);
@@ -194,7 +194,7 @@ function RegisterContent() {
         try {
             const token = await user?.getIdToken();
             const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/strava/login`, {
-                method: 'POST', body: JSON.stringify({ eLicense }), headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+                method: 'POST', body: JSON.stringify({ eLicense, zwiftId }), headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
             });
             const data = await res.json();
             if (data.url) window.location.href = data.url;

@@ -8,8 +8,8 @@ admin_bp = Blueprint('admin', __name__)
 def verify_admin_auth():
     return require_admin(request)
 
-@admin_bp.route('/admin/verification/rider/<e_license>', methods=['GET'])
-def verify_rider(e_license):
+@admin_bp.route('/admin/verification/rider/<rider_id>', methods=['GET'])
+def verify_rider(rider_id):
     try:
         verify_admin_auth()
     except AuthzError as e:
@@ -19,12 +19,26 @@ def verify_rider(e_license):
             return jsonify({'error': 'DB not available'}), 500
 
     try:
-        user_doc = db.collection('users').document(str(e_license)).get()
+        # Try fetching by ID (ZwiftID)
+        user_doc = db.collection('users').document(str(rider_id)).get()
         if not user_doc.exists:
-            return jsonify({'message': 'User not found'}), 404
+             # Fallback: Try eLicense (backward compat or valid alt lookup)
+             print(f"User not found by ID {rider_id}, trying eLicense lookup")
+             # This is tricky because eLicense isn't a key anymore for new users. 
+             # But let's assume if it fails it fails.
+             # Actually, if we want to support lookup by eLicense, we need a query.
+             docs = db.collection('users').where('eLicense', '==', str(rider_id)).limit(1).stream()
+             found = False
+             for doc in docs:
+                 user_doc = doc
+                 found = True
+                 break
+             if not found:
+                 return jsonify({'message': 'User not found'}), 404
         
         user_data = user_doc.to_dict()
         zwift_id = user_data.get('zwiftId')
+        e_license = user_data.get('eLicense')
         
         response_data = {'profile': {}, 'stravaActivities': [], 'zwiftPowerHistory': []}
 
@@ -37,18 +51,31 @@ def verify_rider(e_license):
                     response_data['profile'] = {
                         'weight': round(profile.get('weight', 0) / 1000, 1) if profile.get('weight') else None,
                         'height': round(profile.get('height', 0) / 10, 0) if profile.get('height') else None,
-                        'maxHr': profile.get('heartRateMax', 0)
+                        'maxHr': profile.get('heartRateMax', 0),
+                        'img': profile.get('imageSrc')
                     }
             except Exception as e:
                 print(f"Zwift Profile Fetch Error: {e}")
 
         # Strava
-        try:
-            strava_raw = strava_service.get_activities(e_license)
-            if strava_raw and 'activities' in strava_raw:
-                response_data['stravaActivities'] = strava_raw['activities'] 
-        except Exception as e:
-            print(f"Strava Verification Fetch Error: {e}")
+        # Need to handle new 'connections' group or old root level
+        strava_auth = user_data.get('connections', {}).get('strava') or user_data.get('strava')
+        
+        if strava_auth and e_license:
+            try:
+                # We still rely on e_license for some Strava service internal logic? 
+                # Let's check strava_service.get_activities. It likely uses it to look up the token from DB if not provided.
+                # But here we effectively have the user doc.
+                # If strava_service expects e_license to look up the user again, that might be circular or redundant.
+                # Let's see if we can pass the auth dict or if we must rely on legacy lookup.
+                # For now, pass e_license as it was before, assuming the service handles the lookup.
+                # CAUTION: If the service relies on eLicense key lookup, it might fail if we changed keys!
+                # We need to check strava_service.py next.
+                strava_raw = strava_service.get_activities(e_license)
+                if strava_raw and 'activities' in strava_raw:
+                    response_data['stravaActivities'] = strava_raw['activities'] 
+            except Exception as e:
+                print(f"Strava Verification Fetch Error: {e}")
 
         # ZwiftPower
         if zwift_id:

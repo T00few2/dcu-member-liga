@@ -87,14 +87,21 @@ def get_profile():
         if not db:
              return jsonify({'message': 'Database not available'}), 500
 
-        mapping_doc = db.collection('auth_mappings').document(uid).get()
-        
         if mapping_doc.exists:
-            e_license = mapping_doc.to_dict().get('eLicense')
-            user_doc = db.collection('users').document(str(e_license)).get()
+            zwift_id = mapping_doc.to_dict().get('zwiftId')
+            # Fallback for old mappings (eLicense)
+            if not zwift_id:
+                 old_elicense = mapping_doc.to_dict().get('eLicense')
+                 if old_elicense:
+                     # This is an old user, we might need to handle this or just try to fetch by eLicense
+                     # But for now let's assume Migration or Re-seed
+                     user_doc = db.collection('users').document(str(old_elicense)).get()
+                 else:
+                     user_doc = db.collection('users').document(uid).get()
+            else:
+                 user_doc = db.collection('users').document(str(zwift_id)).get()
         else:
             user_doc = db.collection('users').document(uid).get()
-            e_license = None
         
         # Always include currently required versions so clients can gate consistently,
         # even for brand new users without a profile document yet.
@@ -111,39 +118,47 @@ def get_profile():
             }), 200
         
         user_data = user_doc.to_dict()
-        registration_complete = user_data.get('registrationComplete', user_data.get('verified', False))
+        registration = user_data.get('registration', {})
+        verification = user_data.get('verification', {})
+        connections = user_data.get('connections', {})
+        equipment = user_data.get('equipment', {})
         
-        stored_data_policy_version = (
-            user_data.get('dataPolicy', {}).get('version')
-            if isinstance(user_data.get('dataPolicy'), dict)
-            else None
-        )
-        stored_public_results_version = (
-            user_data.get('publicResultsConsent', {}).get('version')
-            if isinstance(user_data.get('publicResultsConsent'), dict)
-            else None
-        )
+        # Backwards compatibility reading (if mix of old/new data during dev)
+        reg_status = registration.get('status')
+        if not reg_status:
+             # Try old fields
+             if user_data.get('verified'): reg_status = 'complete'
+             elif user_data.get('registrationComplete'): reg_status = 'complete'
+             elif user_data.get('name'): reg_status = 'draft'
+             else: reg_status = 'none'
+             
+        # Fallback for trainer
+        trainer = equipment.get('trainer')
+        if not trainer:
+            trainer = user_data.get('trainer', '')
 
+        is_registered = reg_status == 'complete'
+        
         return jsonify({
-            'registered': registration_complete,
-            'hasDraft': not registration_complete and user_data.get('name'),
+            'registered': is_registered,
+            'hasDraft': reg_status == 'draft',
             'eLicense': user_data.get('eLicense', ''),
             'name': user_data.get('name', ''),
             'zwiftId': user_data.get('zwiftId', ''),
             'club': user_data.get('club', ''),
-            'trainer': user_data.get('trainer', ''),
-            'stravaConnected': bool(user_data.get('strava_access_token')) or bool(user_data.get('strava')),
-            'acceptedCoC': user_data.get('acceptedCoC', False),
-            'acceptedDataPolicy': user_data.get('acceptedDataPolicy', False),
-            'acceptedPublicResults': user_data.get('acceptedPublicResults', False),
-            'dataPolicyVersion': stored_data_policy_version,
-            'publicResultsConsentVersion': stored_public_results_version,
+            'trainer': trainer,
+            'stravaConnected': bool(connections.get('strava')) or bool(user_data.get('strava')),
+            'acceptedCoC': registration.get('cocAccepted', user_data.get('acceptedCoC', False)),
+            'acceptedDataPolicy': bool(registration.get('dataPolicy')) or user_data.get('acceptedDataPolicy', False),
+            'acceptedPublicResults': bool(registration.get('publicResultsConsent')) or user_data.get('acceptedPublicResults', False),
+            'dataPolicyVersion': registration.get('dataPolicy', {}).get('version'),
+            'publicResultsConsentVersion': registration.get('publicResultsConsent', {}).get('version'),
             'requiredDataPolicyVersion': policy_meta.get(POLICY_DATA_POLICY, {}).get('requiredVersion'),
             'requiredPublicResultsConsentVersion': policy_meta.get(POLICY_PUBLIC_RESULTS, {}).get('requiredVersion'),
-            'weightVerificationStatus': user_data.get('weightVerificationStatus', 'none'),
-            'weightVerificationVideoLink': user_data.get('weightVerificationVideoLink', ''),
-            'weightVerificationDeadline': user_data.get('weightVerificationDeadline', None),
-            'verificationRequests': user_data.get('verificationRequests', [])
+            'weightVerificationStatus': verification.get('status', 'none'),
+            'weightVerificationVideoLink': verification.get('currentRequest', {}).get('videoLink', ''),
+            'weightVerificationDeadline': verification.get('currentRequest', {}).get('deadline', None),
+            'verificationRequests': verification.get('history', [])
         }), 200
 
     except Exception as e:
@@ -203,36 +218,43 @@ def signup():
         if db:
             user_data = {
                 'authUid': uid,
-                'updatedAt': firestore.SERVER_TIMESTAMP
+                'updatedAt': firestore.SERVER_TIMESTAMP,
+                'zwiftId': zwift_id,
             }
             if name: user_data['name'] = name
             if e_license: user_data['eLicense'] = e_license
-            if zwift_id: user_data['zwiftId'] = zwift_id
             if club: user_data['club'] = club
-            if trainer: user_data['trainer'] = trainer
             
-            user_data['acceptedCoC'] = request_json.get('acceptedCoC', False)
-            user_data['acceptedDataPolicy'] = accepted_data_policy
+            # Equipment Group
+            if trainer: 
+                user_data['equipment'] = {'trainer': trainer}
+            
+            # Registration Group
+            registration = {
+                'cocAccepted': request_json.get('acceptedCoC', False)
+            }
+            
             if accepted_data_policy:
-                user_data['dataPolicy'] = {
+                registration['dataPolicy'] = {
                     'version': data_policy_version,
                     'acceptedAt': firestore.SERVER_TIMESTAMP
                 }
 
-            user_data['acceptedPublicResults'] = accepted_public_results
             if accepted_public_results:
-                user_data['publicResultsConsent'] = {
+                registration['publicResultsConsent'] = {
                     'version': public_results_consent_version,
                     'acceptedAt': firestore.SERVER_TIMESTAMP
                 }
             
             if is_draft:
-                user_data['registrationComplete'] = False
+                registration['status'] = 'draft'
             else:
-                user_data['verified'] = True
-                user_data['registrationComplete'] = True
+                registration['status'] = 'complete'
+                
+            user_data['registration'] = registration
             
-            doc_id = str(e_license) if e_license else uid
+            # Use Zwift ID as the document ID (primary key)
+            doc_id = str(zwift_id) if zwift_id else uid
             doc_ref = db.collection('users').document(doc_id)
             
             prev_data = {}
@@ -243,33 +265,37 @@ def signup():
             except Exception:
                 pass
 
-            prev_registered = bool(prev_data.get('registrationComplete', prev_data.get('verified', False)))
-            prev_zwift_id = prev_data.get('zwiftId')
+            prev_reg_status = prev_data.get('registration', {}).get('status')
+            is_newly_registered = not is_draft and prev_reg_status != 'complete'
+            
             doc_ref.set(user_data, merge=True)
 
-            if not is_draft and e_license and str(doc_id) == str(e_license) and uid:
+            # Handle Draft Migration (if user started as draft with UID key)
+            if not is_draft and zwift_id and uid:
                 draft_doc = db.collection('users').document(uid).get()
-                if draft_doc.exists:
+                if draft_doc.exists and draft_doc.id != str(zwift_id):
                     draft_data = draft_doc.to_dict() or {}
-                    if draft_data.get('strava'):
-                        doc_ref.set({'strava': draft_data.get('strava')}, merge=True)
-                        try:
-                            db.collection('users').document(uid).delete()
-                        except Exception:
-                            pass
+                    # Migrate connections if any
+                    if 'connections' in draft_data:
+                         doc_ref.set({'connections': draft_data['connections']}, merge=True)
+                    try:
+                        db.collection('users').document(uid).delete()
+                    except Exception:
+                        pass
 
-            if e_license:
+            # Update Auth Mapping to point to Zwift ID
+            if zwift_id:
                 auth_map_ref = db.collection('auth_mappings').document(uid)
                 auth_map_ref.set({
-                    'eLicense': e_license,
+                    'zwiftId': zwift_id,
                     'lastLogin': firestore.SERVER_TIMESTAMP
                 }, merge=True)
             
-            if not is_draft and zwift_id and e_license and (not prev_registered or str(prev_zwift_id) != str(zwift_id)):
+            if not is_draft and zwift_id and is_newly_registered:
                 update_rider_stats(e_license, zwift_id)
         
         return jsonify({
-            'message': 'Progress saved' if is_draft else ('Profile updated' if prev_registered else 'Signup successful'),
+            'message': 'Progress saved' if is_draft else ('Profile updated' if not is_newly_registered else 'Signup successful'),
             'verified': not is_draft,
             'draft': is_draft,
             'user': {'name': name, 'eLicense': e_license, 'zwiftId': zwift_id}

@@ -61,14 +61,15 @@ def seed_participants():
                 'zwiftId': zwift_id,
                 'name': name,
                 'club': random.choice(clubs),
+                'equipment': {'trainer': 'Wahoo Kickr Core'},
                 'isTestData': True,
-                'registrationComplete': True,
+                'registration': {'status': 'complete'},
                 'verified': True,
-                'category': assigned_category,
                 'zwiftPower': {'category': assigned_category},
                 'createdAt': firestore.SERVER_TIMESTAMP
             }
-            db.collection('users').document(e_license).set(user_data)
+            # Use Zwift ID as key
+            db.collection('users').document(zwift_id).set(user_data)
             created.append({'eLicense': e_license, 'name': name, 'zwiftId': zwift_id, 'category': assigned_category})
         
         return jsonify({'message': f'Created {len(created)} test participants', 'participants': created}), 201

@@ -26,7 +26,9 @@ def strava_login_post():
         return jsonify({'message': 'Unauthorized'}), 401
 
     body = request.get_json(silent=True) or {}
+    # We can pass eLicense or ZwiftID for context, but mainly rely on UID mapping later
     e_license = body.get('eLicense')
+    zwift_id = body.get('zwiftId')
 
     if not db:
         return jsonify({'error': 'DB not available'}), 500
@@ -35,6 +37,7 @@ def strava_login_post():
     db.collection('strava_oauth_states').document(state).set({
         'uid': uid,
         'eLicense': e_license,
+        'zwiftId': zwift_id,
         'createdAt': firestore.SERVER_TIMESTAMP
     })
 
@@ -59,37 +62,56 @@ def strava_callback():
     
     state_data = state_doc.to_dict() or {}
     uid = state_data.get('uid')
-    e_license = state_data.get('eLicense')
+    
+    # Try to find the real user document from auth_mappings
+    user_doc_ref = None
+    
+    mapping_doc = db.collection('auth_mappings').document(uid).get()
+    if mapping_doc.exists:
+        mapping_data = mapping_doc.to_dict()
+        # Check for new primary key (ZwiftID)
+        mapped_zwift_id = mapping_data.get('zwiftId')
+        if mapped_zwift_id:
+            user_doc_ref = db.collection('users').document(str(mapped_zwift_id))
+        else:
+            # Fallback to old eLicense key
+            mapped_elicense = mapping_data.get('eLicense')
+            if mapped_elicense:
+                user_doc_ref = db.collection('users').document(str(mapped_elicense))
+    
+    if not user_doc_ref:
+         # Fallback: Just update the UID doc (drafts/unregistered)
+         user_doc_ref = db.collection('users').document(uid)
 
     try:
         status_code, token_data = strava_service.exchange_code_for_tokens(code)
         if status_code != 200:
             return jsonify({'message': 'Failed to get Strava tokens'}), 500
 
-        user_ref = db.collection('users').document(str(uid))
-        user_ref.set({
-            'strava': {
+        # Check existing data structure to decide where to put tokens
+        user_doc = user_doc_ref.get()
+        user_data = user_doc.to_dict() or {}
+        
+        updates = {}
+        
+        if 'connections' in user_data or 'registration' in user_data:
+             updates['connections.strava'] = {
                 'athlete_id': token_data.get('athlete', {}).get('id'),
                 'access_token': token_data.get('access_token'),
                 'refresh_token': token_data.get('refresh_token'),
                 'expires_at': token_data.get('expires_at')
-            },
-            'updatedAt': firestore.SERVER_TIMESTAMP
-        }, merge=True)
-
-        if e_license:
-            mapping_doc = db.collection('auth_mappings').document(uid).get()
-            mapped_elicense = mapping_doc.to_dict().get('eLicense') if mapping_doc.exists else None
-            if mapped_elicense and str(mapped_elicense) == str(e_license):
-                db.collection('users').document(str(e_license)).set({
-                    'strava': {
-                        'athlete_id': token_data.get('athlete', {}).get('id'),
-                        'access_token': token_data.get('access_token'),
-                        'refresh_token': token_data.get('refresh_token'),
-                        'expires_at': token_data.get('expires_at')
-                    },
-                    'updatedAt': firestore.SERVER_TIMESTAMP
-                }, merge=True)
+             }
+        else:
+             # Legacy structure
+             updates['strava'] = {
+                'athlete_id': token_data.get('athlete', {}).get('id'),
+                'access_token': token_data.get('access_token'),
+                'refresh_token': token_data.get('refresh_token'),
+                'expires_at': token_data.get('expires_at')
+             }
+        
+        updates['updatedAt'] = firestore.SERVER_TIMESTAMP
+        user_doc_ref.update(updates)
 
     finally:
         try: state_ref.delete()
@@ -111,30 +133,38 @@ def strava_deauthorize():
 
     if not db: return jsonify({'error': 'DB not available'}), 500
 
-    access_token = None
-    user_doc = db.collection('users').document(str(uid)).get()
-    if user_doc.exists:
-        user_data = user_doc.to_dict() or {}
-        access_token = (user_data.get('strava') or {}).get('access_token')
-
-    mapped_elicense = None
+    # Locate user doc via mapping
+    user_doc_ref = None
     mapping_doc = db.collection('auth_mappings').document(uid).get()
     if mapping_doc.exists:
-        mapped_elicense = (mapping_doc.to_dict() or {}).get('eLicense')
-        if not access_token and mapped_elicense:
-            el_doc = db.collection('users').document(str(mapped_elicense)).get()
-            if el_doc.exists:
-                el_data = el_doc.to_dict() or {}
-                access_token = (el_data.get('strava') or {}).get('access_token')
+        mapping_data = mapping_doc.to_dict()
+        if mapping_data.get('zwiftId'):
+            user_doc_ref = db.collection('users').document(str(mapping_data.get('zwiftId')))
+        elif mapping_data.get('eLicense'):
+             user_doc_ref = db.collection('users').document(str(mapping_data.get('eLicense')))
+    
+    if not user_doc_ref:
+        user_doc_ref = db.collection('users').document(uid)
+
+    access_token = None
+    user_doc = user_doc_ref.get()
+    if user_doc.exists:
+        user_data = user_doc.to_dict() or {}
+        # Check new location first
+        access_token = (user_data.get('connections') or {}).get('strava', {}).get('access_token')
+        # Check legacy location
+        if not access_token:
+             access_token = (user_data.get('strava') or {}).get('access_token')
 
     revoked = strava_service.deauthorize(access_token) if access_token else False
 
-    try: db.collection('users').document(str(uid)).set({'strava': firestore.DELETE_FIELD}, merge=True)
+    try: 
+        # Remove from both locations to be safe
+        user_doc_ref.update({
+            'connections.strava': firestore.DELETE_FIELD, 
+            'strava': firestore.DELETE_FIELD
+        })
     except: pass
-    
-    if mapped_elicense:
-        try: db.collection('users').document(str(mapped_elicense)).set({'strava': firestore.DELETE_FIELD}, merge=True)
-        except: pass
 
     return jsonify({'message': 'Strava disconnected', 'revoked': revoked}), 200
 

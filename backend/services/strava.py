@@ -7,7 +7,20 @@ class StravaService:
     def __init__(self, db):
         self.db = db
 
-    def _refresh_token(self, e_license, refresh_token):
+    def _get_user_ref(self, rider_id):
+        # Helper to find user doc by ID (ZwiftID) or eLicense
+        doc = self.db.collection('users').document(str(rider_id)).get()
+        if doc.exists:
+            return self.db.collection('users').document(str(rider_id)), doc.to_dict()
+        
+        # Fallback to eLicense lookup
+        docs = self.db.collection('users').where('eLicense', '==', str(rider_id)).limit(1).stream()
+        for d in docs:
+            return self.db.collection('users').document(d.id), d.to_dict()
+            
+        return None, None
+
+    def _refresh_token(self, rider_id, refresh_token):
         token_url = "https://www.strava.com/oauth/token"
         payload = {
             'client_id': STRAVA_CLIENT_ID,
@@ -21,17 +34,30 @@ class StravaService:
             data = res.json()
             
             if res.status_code != 200:
-                # Never log token payloads; Strava responses can include sensitive fields.
                 print(f"Failed to refresh token: HTTP {res.status_code}")
                 return None
             
             if self.db:
-                user_ref = self.db.collection('users').document(str(e_license))
-                user_ref.update({
-                    'strava.access_token': data['access_token'],
-                    'strava.refresh_token': data['refresh_token'],
-                    'strava.expires_at': data['expires_at']
-                })
+                user_ref, user_data = self._get_user_ref(rider_id)
+                if user_ref:
+                    # Check if using new 'connections' group or legacy root
+                    if 'connections' in user_data or 'registration' in user_data:
+                         user_ref.set({
+                            'connections': {
+                                'strava': {
+                                    'access_token': data['access_token'],
+                                    'refresh_token': data['refresh_token'],
+                                    'expires_at': data['expires_at']
+                                }
+                            }
+                        }, merge=True)
+                    else:
+                        # Legacy fallback
+                        user_ref.update({
+                            'strava.access_token': data['access_token'],
+                            'strava.refresh_token': data['refresh_token'],
+                            'strava.expires_at': data['expires_at']
+                        })
                 
             return data['access_token']
         except Exception as e:
@@ -66,10 +92,6 @@ class StravaService:
         return res.status_code, data
 
     def deauthorize(self, access_token):
-        """
-        Revoke an athlete's authorization for this app.
-        Strava endpoint: POST https://www.strava.com/oauth/deauthorize
-        """
         if not access_token:
             return False
         try:
@@ -82,17 +104,17 @@ class StravaService:
             print(f"Error deauthorizing Strava token: {e}")
             return False
 
-    def _get_valid_token(self, e_license):
-        if not e_license or not self.db:
+    def _get_valid_token(self, rider_id):
+        if not rider_id or not self.db:
             return None
             
         try:
-            user_doc = self.db.collection('users').document(str(e_license)).get()
-            if not user_doc.exists:
+            _, user_data = self._get_user_ref(rider_id)
+            if not user_data:
                 return None
                 
-            user_data = user_doc.to_dict()
-            strava_auth = user_data.get('strava')
+            # Support both new 'connections.strava' and legacy root 'strava'
+            strava_auth = user_data.get('connections', {}).get('strava') or user_data.get('strava')
             
             if not strava_auth:
                 return None
@@ -103,8 +125,8 @@ class StravaService:
             
             # Check expiry (add buffer of 5 minutes)
             if expires_at and time.time() > (expires_at - 300):
-                print(f"Token expired for {e_license}, refreshing...")
-                new_token = self._refresh_token(e_license, refresh_token)
+                print(f"Token expired for {rider_id}, refreshing...")
+                new_token = self._refresh_token(rider_id, refresh_token)
                 if new_token:
                     return new_token
                 return None
@@ -114,11 +136,11 @@ class StravaService:
             print(f"Error getting valid token: {e}")
             return None
 
-    def get_activities(self, e_license):
+    def get_activities(self, rider_id):
         strava_kms = "Not Connected"
         recent_activities = []
         
-        access_token = self._get_valid_token(e_license)
+        access_token = self._get_valid_token(rider_id)
         
         if access_token:
             try:
@@ -153,15 +175,12 @@ class StravaService:
             'activities': recent_activities
         }
 
-    def get_activity_streams(self, e_license, activity_id):
-        access_token = self._get_valid_token(e_license)
+    def get_activity_streams(self, rider_id, activity_id):
+        access_token = self._get_valid_token(rider_id)
         if not access_token:
             return None
             
         try:
-            # Fetch streams: time, watts, cadence, heartrate
-            # We deliberately do NOT use key_by_type=true, so we get the standard array format
-            # that the frontend expects: [{type: 'time', data: ...}, {type: 'watts', data: ...}]
             url = f"https://www.strava.com/api/v3/activities/{activity_id}/streams?keys=time,watts,cadence,heartrate,altitude"
             res = requests.get(url, headers={'Authorization': f"Bearer {access_token}"})
             
