@@ -40,10 +40,24 @@ def test_user_service():
         print(f"Is Verified: {user.is_verified}")
         print(f"Requests history count: {len(user.verification_history)}")
         print(f"Strava Auth: {user.strava_auth}")
+
+        # Simulate get_profile JSON
+        print("\n--- Simulated Profile JSON ---")
+        profile_json = {
+            'name': user.name,
+            'verification': user.verification,
+            'verification_status': user.verification_status,
+            'is_verified': user.is_verified,
+            'history': user.verification_history,
+            'currentRequest': user.current_verification_request,
+            'strava': user.strava_auth
+        }
+        import json
+        print(json.dumps(profile_json, default=str, indent=2))
         
         # Test eLicense lookup
         if user.e_license:
-            print(f"Testing eLicense lookup for {user.e_license}...")
+            print(f"\nTesting eLicense lookup for {user.e_license}...")
             user_by_license = UserService.get_user_by_elicense(user.e_license)
             if user_by_license and user_by_license.id == user.id:
                  print("eLicense lookup SUCCESS")
