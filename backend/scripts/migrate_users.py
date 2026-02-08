@@ -15,8 +15,11 @@ def migrate_user(doc, db, dry_run=True):
     doc_id = doc.id
     name = user_data.get('name', 'Unknown')
     
+    print(f"\n[CHECK] Processing {name} (DocID: {doc_id})")
+    
     # 1. Identify Target Key (Zwift ID)
     zwift_id = user_data.get('zwiftId')
+    print(f"  - Found ZwiftID: {zwift_id} (Type: {type(zwift_id)})")
     
     # Needs migration if:
     # A) Key is NOT Zwift ID (e.g. key is eLicense or UID)
@@ -25,16 +28,17 @@ def migrate_user(doc, db, dry_run=True):
     is_zwift_key = str(doc_id) == str(zwift_id)
     has_new_schema = 'registration' in user_data and 'status' in user_data['registration']
     
+    print(f"  - Is Zwift Key: {is_zwift_key}")
+    print(f"  - Has New Schema: {has_new_schema}")
+    
     if is_zwift_key and has_new_schema:
-        print(f"[SKIP] {name} ({doc_id}) already migrated.")
+        print(f"  -> [SKIP] Already migrated.")
         return False
 
-    print(f"[MIGRATE] Processing {name} (Current Key: {doc_id}) -> ZwiftID: {zwift_id}")
+    print(f"  -> [MIGRATE] STARTING MIGRATION -> ZwiftID: {zwift_id}")
     
     if not zwift_id:
-        print(f"  [WARN] No Zwift ID found for {doc_id}. Skipping re-keying (might update schema in-place if possible).")
-        # If no Zwift ID, we can't re-key securely. Maybe just update schema in place?
-        # But if it's a draft, it might be fine.
+        print(f"  [WARN] No Zwift ID found for {doc_id}. Keeping existing key.")
         target_key = doc_id
     else:
         target_key = str(zwift_id)

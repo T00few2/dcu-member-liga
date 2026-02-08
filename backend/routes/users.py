@@ -87,22 +87,32 @@ def get_profile():
         if not db:
              return jsonify({'message': 'Database not available'}), 500
 
+        print(f"[DEBUG] get_profile for UID: {uid}")
+        
+        mapping_doc = db.collection('auth_mappings').document(uid).get()
         if mapping_doc.exists:
+            print(f"[DEBUG] Mapping found for {uid}: {mapping_doc.to_dict()}")
             zwift_id = mapping_doc.to_dict().get('zwiftId')
             # Fallback for old mappings (eLicense)
             if not zwift_id:
                  old_elicense = mapping_doc.to_dict().get('eLicense')
                  if old_elicense:
-                     # This is an old user, we might need to handle this or just try to fetch by eLicense
-                     # But for now let's assume Migration or Re-seed
+                     print(f"[DEBUG] Using old eLicense key: {old_elicense}")
                      user_doc = db.collection('users').document(str(old_elicense)).get()
                  else:
+                     print(f"[DEBUG] Mapping exists but no keys. detailed fallback.")
                      user_doc = db.collection('users').document(uid).get()
             else:
+                 print(f"[DEBUG] Using ZwiftID key: {zwift_id}")
                  user_doc = db.collection('users').document(str(zwift_id)).get()
         else:
+            print(f"[DEBUG] No mapping found for {uid}")
             user_doc = db.collection('users').document(uid).get()
-        
+            
+        # Fallback: Query by authUid if doc not found
+        if not user_doc.exists:
+            print(f"User {uid} not found by direct lookup/mapping. Trying authUid query...")
+            docs = db.collection('users').where('authUid', '==', uid).limit(1).stream()
         # Always include currently required versions so clients can gate consistently,
         # even for brand new users without a profile document yet.
         try:
