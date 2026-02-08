@@ -103,7 +103,18 @@ class ResultsProcessor:
         for doc in users_docs:
             data = doc.to_dict()
             zid = data.get('zwiftId')
-            if zid:
+            
+            # Check registration status (support both schemas)
+            is_registered = False
+            reg = data.get('registration', {})
+            if reg.get('status') == 'complete':
+                is_registered = True
+            elif data.get('registrationComplete') is True:
+                is_registered = True
+            elif data.get('verified') is True: # ultra-legacy
+                is_registered = True
+                
+            if zid and is_registered:
                 registered_riders[str(zid)] = data
         
         print(f"Found {len(registered_riders)} registered riders in database.")

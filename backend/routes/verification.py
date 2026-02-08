@@ -29,15 +29,31 @@ def trigger_verification():
 
         # 1. Get all eligible users (registered, not currently pending/submitted)
         users_ref = db.collection('users')
-        # We can filters for users who are registered.
-        # Note: Filtering by multiple fields might require index. 
-        # For a small liga, fetching all and filtering in memory is acceptable and safer.
-        docs = users_ref.where('registrationComplete', '==', True).stream()
+        # We filter for users who are registered.
+        # Prefer new schema 'registration.status' = 'complete'
+        # But also support old field 'registrationComplete' = True for legacy
+        # Firestore OR queries are restricted, so we might need two queries or one big fetch.
+        # Given small user base (~1000), streaming all and filtering in memory is safest/easiest.
+        docs = users_ref.stream()
         
         eligible_riders = []
         for doc in docs:
             u = doc.to_dict()
             uid = doc.id
+            
+            # Check registration status (support both schemas)
+            is_registered = False
+            reg = u.get('registration', {})
+            if reg.get('status') == 'complete':
+                is_registered = True
+            elif u.get('registrationComplete') is True:
+                is_registered = True
+            elif u.get('verified') is True: # ultra-legacy
+                is_registered = True
+                
+            if not is_registered:
+                continue
+
             # Skip if already pending or submitted
             current_status = u.get('weightVerificationStatus', 'none')
             if current_status in ['pending', 'submitted']:
@@ -119,13 +135,19 @@ def submit_verification():
         if not video_link:
             return jsonify({'message': 'Video link is required'}), 400
 
-        # Resolve eLicense doc if needed (Auth Mapping)
+        # Resolve user doc via Auth Mapping
         mapping_doc = db.collection('auth_mappings').document(uid).get()
+        doc_id = uid  # Default if no mapping
+
         if mapping_doc.exists:
-            e_license = mapping_doc.to_dict().get('eLicense')
-            doc_id = str(e_license)
-        else:
-            doc_id = uid
+            m_data = mapping_doc.to_dict()
+            zwift_id = m_data.get('zwiftId')
+            e_license = m_data.get('eLicense')
+            
+            if zwift_id:
+                doc_id = str(zwift_id)
+            elif e_license:
+                doc_id = str(e_license)
 
         user_ref = db.collection('users').document(doc_id)
         user_doc = user_ref.get()
@@ -186,7 +208,7 @@ def review_verification():
         
     try:
         data = request.get_json()
-        target_user_id = data.get('userId') # This is likely eLicense or UID
+        target_user_id = data.get('userId') # This is likely ZwiftID or eLicense or UID
         action = data.get('action')
         reason = data.get('reason', '')
         
@@ -214,14 +236,28 @@ def review_verification():
                 
                 # Try to get admin's name
                 mapping_doc = db.collection('auth_mappings').document(admin_uid).get()
+                admin_doc = None
+                
                 if mapping_doc.exists:
-                    admin_e_license = mapping_doc.to_dict().get('eLicense')
-                    admin_doc = db.collection('users').document(str(admin_e_license)).get()
+                    m_data = mapping_doc.to_dict()
+                    zwift_id = m_data.get('zwiftId')
+                    e_license = m_data.get('eLicense')
+                    
+                    if zwift_id:
+                        admin_doc = db.collection('users').document(str(zwift_id)).get()
+                    elif e_license:
+                        admin_doc = db.collection('users').document(str(e_license)).get()
                 else:
                     admin_doc = db.collection('users').document(admin_uid).get()
                 
-                if admin_doc.exists:
+                if admin_doc and admin_doc.exists:
                     reviewer_id = admin_doc.to_dict().get('name', 'Admin')
+                else:
+                    # Fallback check users/admin_uid just in case
+                    admin_doc = db.collection('users').document(admin_uid).get()
+                    if admin_doc.exists:
+                         reviewer_id = admin_doc.to_dict().get('name', 'Admin')
+
         except Exception as e:
             print(f"Could not resolve admin name: {e}")
             pass

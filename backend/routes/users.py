@@ -352,11 +352,17 @@ def update_consents():
 
         # Resolve user doc (eLicense mapping if present)
         mapping_doc = db.collection('auth_mappings').document(uid).get()
+        doc_id = uid  # Default to UID if no mapping found
+
         if mapping_doc.exists:
-            e_license = mapping_doc.to_dict().get('eLicense')
-            doc_id = str(e_license) if e_license else uid
-        else:
-            doc_id = uid
+            m_data = mapping_doc.to_dict()
+            zwift_id = m_data.get('zwiftId')
+            e_license = m_data.get('eLicense')
+            
+            if zwift_id:
+                doc_id = str(zwift_id)
+            elif e_license:
+                doc_id = str(e_license)
 
         updates = {
             'acceptedDataPolicy': True,
