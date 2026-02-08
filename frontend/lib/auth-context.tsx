@@ -80,10 +80,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Consent gate: backend is source of truth for required versions.
         const requiredPolicy = data.requiredDataPolicyVersion;
         const requiredPublic = data.requiredPublicResultsConsentVersion;
+
         setRequiredDataPolicyVersion(requiredPolicy || null);
         setRequiredPublicResultsConsentVersion(requiredPublic || null);
-        const policyOk = !!requiredPolicy && (data.dataPolicyVersion === requiredPolicy) && !!data.acceptedDataPolicy;
-        const publicOk = !!requiredPublic && (data.publicResultsConsentVersion === requiredPublic) && !!data.acceptedPublicResults;
+
+        // If versions are missing, assume no update required.
+        const policyOk = !requiredPolicy || ((data.dataPolicyVersion === requiredPolicy) && !!data.acceptedDataPolicy);
+        const publicOk = !requiredPublic || ((data.publicResultsConsentVersion === requiredPublic) && !!data.acceptedPublicResults);
+
         setNeedsConsentUpdate(!(policyOk && publicOk));
       } else {
         setIsRegistered(false);
