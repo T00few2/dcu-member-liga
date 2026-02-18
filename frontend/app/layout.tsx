@@ -12,6 +12,14 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "DCU Member League",
   description: "E-cycling league for DCU members",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "DCU League",
+  },
+  icons: {
+    apple: "/app_icon.png",
+  },
 };
 
 export default function RootLayout({
