@@ -21,11 +21,12 @@ interface VerificationStatusProps {
 }
 
 export default function VerificationStatus({ status, videoLink, deadline, requests = [], refreshProfile }: VerificationStatusProps) {
-    const { user } = useAuth();
+    const { user, requestNotificationPermission } = useAuth();
     const [linkInput, setLinkInput] = useState(videoLink || '');
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [permissionGranted, setPermissionGranted] = useState(typeof Notification !== 'undefined' ? Notification.permission === 'granted' : false);
 
     const activeRequest = requests.find(r => r.status === 'pending');
     const displayStatus = status === 'none' && activeRequest ? 'pending' : status;
@@ -120,6 +121,29 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
                     <p className="text-red-700 dark:text-red-300">
                         Your verification was rejected. Please contact an admin or wait for a new request.
                     </p>
+                )}
+
+                {/* Notification Permission Request for PWA Badge */}
+                {typeof window !== 'undefined' && 'Notification' in window && !permissionGranted && (
+                    <div className="mt-4 pt-4 border-t border-black/5 dark:border-white/5">
+                        <p className="text-sm opacity-80 mb-2">
+                            To show the notification dot on your home screen icon, please enable notifications.
+                        </p>
+                        <button
+                            onClick={async () => {
+                                const granted = await requestNotificationPermission();
+                                if (granted) setPermissionGranted(true);
+                            }}
+                            className="text-xs bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 px-3 py-1.5 rounded transition-colors"
+                        >
+                            Enable App Notifications
+                        </button>
+                    </div>
+                )}
+                {permissionGranted && (
+                    <div className="mt-4 pt-4 border-t border-black/5 dark:border-white/5 opacity-60 text-xs italic">
+                        App notifications enabled for home screen icon badging.
+                    </div>
                 )}
             </div>
 

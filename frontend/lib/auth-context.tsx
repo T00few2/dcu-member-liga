@@ -26,6 +26,7 @@ interface AuthContextType {
   isImpersonating: boolean;
   toggleImpersonation: () => void;
   weightVerificationStatus: 'none' | 'pending' | 'submitted' | 'approved' | 'rejected';
+  requestNotificationPermission: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -43,6 +44,7 @@ const AuthContext = createContext<AuthContextType>({
   isImpersonating: false,
   toggleImpersonation: () => { },
   weightVerificationStatus: 'none',
+  requestNotificationPermission: async () => false,
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -77,21 +79,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const data = await res.json();
         setIsRegistered(!!data.registered);
         setWeightVerificationStatus(data.weightVerificationStatus || 'none');
-        // Consent gate: backend is source of truth for required versions.
         const requiredPolicy = data.requiredDataPolicyVersion;
         const requiredPublic = data.requiredPublicResultsConsentVersion;
-
         setRequiredDataPolicyVersion(requiredPolicy || null);
         setRequiredPublicResultsConsentVersion(requiredPublic || null);
-
-        // Strict check: User must have accepted specific version required by system
-        // Note: We check 'registration.dataPolicy.version' or fallback to root for legacy if needed,
-        // but since we are cleaning up, we should look at what fetchProfile returns.
-        // The fetchProfile route already maps this for us.
-
         const policyOk = !!requiredPolicy && (data.dataPolicyVersion === requiredPolicy) && !!data.acceptedDataPolicy;
         const publicOk = !!requiredPublic && (data.publicResultsConsentVersion === requiredPublic) && !!data.acceptedPublicResults;
-
         setNeedsConsentUpdate(!(policyOk && publicOk));
       } else {
         setIsRegistered(false);
@@ -135,17 +128,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       setLoading(false);
     });
-
     return () => unsubscribe();
   }, [fetchProfile, fetchClaims]);
 
-  // Global consent gate: if signed in and consents are outdated, redirect to /consent.
-  // Allow accessing /consent and policy pages so user can review and accept.
   useEffect(() => {
     if (loading) return;
     if (!user) return;
     if (!needsConsentUpdate) return;
-
     const allowed = pathname === '/consent' || pathname === '/datapolitik' || pathname === '/offentliggoerelse';
     if (!allowed) {
       router.push('/consent');
@@ -158,9 +147,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (typeof navigator !== 'undefined' && 'setAppBadge' in navigator) {
         try {
           if (user && (weightVerificationStatus === 'pending' || weightVerificationStatus === 'rejected')) {
-            // Set badge. Passing no argument shows a generic dot on some systems, 
-            // but many browsers require a number. 1 represents one "alert".
-            // @ts-ignore - Web Badging API might not be in the TS types yet
+            // @ts-ignore
             await navigator.setAppBadge(1);
           } else {
             // @ts-ignore
@@ -171,7 +158,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
     };
-
     updateBadge();
   }, [user, weightVerificationStatus]);
 
@@ -183,7 +169,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshClaims = async () => {
     if (user) {
-      // Force token refresh so newly set custom claims are picked up immediately.
       await user.getIdToken(true);
       await fetchClaims(user);
     }
@@ -227,8 +212,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const requestNotificationPermission = async () => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      try {
+        const permission = await Notification.requestPermission();
+        return permission === 'granted';
+      } catch (error) {
+        console.error("Error requesting notification permission:", error);
+        return false;
+      }
+    }
+    return false;
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, isRegistered, isAdmin, needsConsentUpdate, requiredDataPolicyVersion, requiredPublicResultsConsentVersion, signInWithGoogle, logOut, refreshProfile, refreshClaims, isImpersonating, toggleImpersonation, weightVerificationStatus }}>
+    <AuthContext.Provider value={{
+      user, loading, isRegistered, isAdmin, needsConsentUpdate,
+      requiredDataPolicyVersion, requiredPublicResultsConsentVersion,
+      signInWithGoogle, logOut, refreshProfile, refreshClaims,
+      isImpersonating, toggleImpersonation, weightVerificationStatus,
+      requestNotificationPermission
+    }}>
       {children}
     </AuthContext.Provider>
   );
