@@ -312,15 +312,17 @@ def update_consents():
 
         updates = {
             'updatedAt': firestore.SERVER_TIMESTAMP,
-            'registration.dataPolicy': {
-                'version': data_policy_version,
-                'acceptedAt': firestore.SERVER_TIMESTAMP
-            },
-            'registration.publicResultsConsent': {
-                'version': public_results_consent_version,
-                'acceptedAt': firestore.SERVER_TIMESTAMP
-            },
-            'registration.status': 'complete' # Re-affirm status
+            'registration': {
+                'dataPolicy': {
+                    'version': data_policy_version,
+                    'acceptedAt': firestore.SERVER_TIMESTAMP
+                },
+                'publicResultsConsent': {
+                    'version': public_results_consent_version,
+                    'acceptedAt': firestore.SERVER_TIMESTAMP
+                },
+                'status': 'complete' # Re-affirm status
+            }
         }
 
         db.collection('users').document(str(doc_id)).set(updates, merge=True)
