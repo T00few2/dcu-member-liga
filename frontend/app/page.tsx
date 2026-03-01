@@ -5,35 +5,35 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 interface Segment {
-  id: string;
-  name: string;
-  count: number;
-  direction: string;
-  lap: number;
-  key?: string;
+    id: string;
+    name: string;
+    count: number;
+    direction: string;
+    lap: number;
+    key?: string;
 }
 
 interface Race {
-  id: string;
-  name: string;
-  date: string;
-  routeId: string;
-  routeName: string;
-  map: string;
-  laps: number;
-  totalDistance: number;
-  totalElevation: number;
-  eventId?: string;
-  eventSecret?: string;
-  sprints?: Segment[];
-  eventMode?: 'single' | 'multi';
-  eventConfiguration?: {
-      customCategory: string;
-      laps?: number;
-      sprints?: Segment[];
-      eventId: string;
-      eventSecret?: string;
-  }[];
+    id: string;
+    name: string;
+    date: string;
+    routeId: string;
+    routeName: string;
+    map: string;
+    laps: number;
+    totalDistance: number;
+    totalElevation: number;
+    eventId?: string;
+    eventSecret?: string;
+    sprints?: Segment[];
+    eventMode?: 'single' | 'multi';
+    eventConfiguration?: {
+        customCategory: string;
+        laps?: number;
+        sprints?: Segment[];
+        eventId: string;
+        eventSecret?: string;
+    }[];
 }
 
 const getZwiftInsiderUrl = (routeName: string) => {
@@ -48,279 +48,437 @@ const getZwiftInsiderUrl = (routeName: string) => {
 };
 
 export default function Home() {
-  const { user, signInWithGoogle, isRegistered } = useAuth();
-  const [nextRace, setNextRace] = useState<Race | null>(null);
+    const { user, signInWithGoogle, isRegistered, loading } = useAuth();
+    const [nextRace, setNextRace] = useState<Race | null>(null);
 
-  useEffect(() => {
-      const fetchNextRace = async () => {
-          if (!user || !isRegistered) return;
-          try {
-              const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-              const token = await user.getIdToken();
-              const res = await fetch(`${apiUrl}/races`, {
-                  headers: { 'Authorization': `Bearer ${token}` }
-              });
-              if (res.ok) {
-                  const data = await res.json();
-                  const now = new Date();
-                  const upcoming = (data.races || [])
-                      .filter((r: Race) => new Date(r.date) > now)
-                      .sort((a: Race, b: Race) => new Date(a.date).getTime() - new Date(b.date).getTime());
-                  
-                  if (upcoming.length > 0) {
-                      setNextRace(upcoming[0]);
-                  }
-              }
-          } catch (e) {
-              console.error('Error fetching next race', e);
-          }
-      };
-      fetchNextRace();
-  }, [user, isRegistered]);
+    useEffect(() => {
+        const fetchNextRace = async () => {
+            if (!user || !isRegistered) return;
+            try {
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+                const token = await user.getIdToken();
+                const res = await fetch(`${apiUrl}/races`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    const now = new Date();
+                    const upcoming = (data.races || [])
+                        .filter((r: Race) => new Date(r.date) > now)
+                        .sort((a: Race, b: Race) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-  return (
-    <div className="flex flex-col items-center justify-center py-20 text-center px-4">
-      <h1 className="text-4xl font-bold mb-4 text-foreground">Welcome to DCU Member League</h1>
-      <p className="text-xl mb-8 max-w-2xl text-foreground opacity-80">
-        The official e-cycling league for DCU members. Join the competition, view participants, and track race results.
-      </p>
-      
-      {!user ? (
-        <div className="bg-card text-card-foreground p-8 rounded-lg shadow-md border border-border max-w-md w-full">
-          <h2 className="text-2xl font-semibold mb-4">Join the League</h2>
-          <p className="text-muted-foreground mb-6">Sign in to register your license and view your stats.</p>
-          <button 
-            onClick={signInWithGoogle}
-            className="w-full bg-primary text-primary-foreground py-3 px-4 rounded-lg font-medium hover:opacity-90 transition-colors flex items-center justify-center gap-2"
-          >
-            <svg className="w-5 h-5" viewBox="0 0 24 24">
-              <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-              <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-              <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-              <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-            </svg>
-            Sign in with Google
-          </button>
-        </div>
-      ) : (
-        <div className="w-full max-w-4xl space-y-8">
-            {nextRace && (
-                <div>
-                    <div className="flex justify-between items-end mb-2">
-                        <div className="text-primary text-sm font-bold uppercase tracking-wider">Next Race</div>
-                        <Link 
-                            href="/schedule" 
-                            className="text-sm text-primary hover:underline"
-                        >
-                            View Full Schedule &rarr;
-                        </Link>
+                    if (upcoming.length > 0) {
+                        setNextRace(upcoming[0]);
+                    }
+                }
+            } catch (e) {
+                console.error('Error fetching next race', e);
+            }
+        };
+        fetchNextRace();
+    }, [user, isRegistered]);
+
+    if (loading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center">
+                <div className="animate-pulse flex flex-col items-center gap-4">
+                    <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin"></div>
+                    <p className="text-muted-foreground text-sm font-medium">Loading...</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (!user) {
+        return (
+            <div className="w-screen relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] -mt-4 overflow-x-hidden text-foreground bg-background">
+                {/* Animated Hero Section with Video */}
+                <div className="relative w-full min-h-[85vh] flex flex-col items-center justify-center overflow-hidden bg-black">
+                    {/* Background Video */}
+                    {/* For instant loading, place your video file at frontend/public/hero-video.mp4 */}
+                    <video
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        preload="auto"
+                        className="absolute inset-0 w-full h-full object-cover z-0 opacity-50 mix-blend-screen bg-black"
+                    >
+                        <source src="/hero-video.mp4" type="video/mp4" />
+                    </video>
+
+                    {/* Gradient Overlay */}
+                    <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/50 to-background/95 z-0"></div>
+
+                    {/* Dynamic CSS Shapes */}
+                    <div className="absolute top-1/4 left-1/4 w-[30rem] h-[30rem] bg-primary/20 rounded-full mix-blend-screen filter blur-[120px] animate-pulse z-0"></div>
+                    <div className="absolute bottom-1/4 right-1/4 w-[30rem] h-[30rem] bg-[#fc6719]/20 rounded-full mix-blend-screen filter blur-[120px] animate-pulse [animation-delay:2s] z-0"></div>
+
+                    {/* Content */}
+                    <div className="relative z-10 flex flex-col items-center text-center px-4 mt-16 max-w-5xl mx-auto">
+                        {/* Badge */}
+                        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/20 text-primary border border-primary/30 text-sm font-medium mb-8 backdrop-blur-sm animate-in fade-in slide-in-from-bottom-4 duration-1000">
+                            <span className="relative flex h-2.5 w-2.5">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary"></span>
+                            </span>
+                            Official E-Cycling League
+                        </div>
+
+                        <h1 className="text-5xl md:text-7xl font-extrabold mb-6 tracking-tight text-white drop-shadow-lg pb-2 animate-in fade-in zoom-in-95 duration-1000 delay-150 fill-mode-both">
+                            Welcome to the <br />
+                            <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-[#fc6719]">
+                                DCU Member League
+                            </span>
+                        </h1>
+
+                        <p className="text-xl md:text-2xl mb-12 max-w-2xl text-slate-300 drop-shadow animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-300 fill-mode-both font-light">
+                            The premier competitive virtual cycling experience for all members of the Danish Cycling Union.
+                        </p>
+
+                        {/* Action Cards */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-500 fill-mode-both">
+                            {/* Non-Member Card */}
+                            <div className="bg-card/80 backdrop-blur-md border border-border/50 text-card-foreground p-8 rounded-2xl shadow-2xl flex flex-col hover:-translate-y-1 hover:shadow-primary/10 transition-all duration-300 relative overflow-hidden group text-left text-base">
+                                <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                <h2 className="text-2xl font-bold mb-3">Not in a club yet?</h2>
+                                <p className="text-muted-foreground mb-8 flex-grow">
+                                    You must be a member of a DCU club to participate. Find a club near you, join the community, and then enter the league.
+                                </p>
+                                <a
+                                    href="https://www.cyklingdanmark.dk/klubber" // Placeholder URL
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="w-full bg-secondary text-secondary-foreground py-3.5 px-4 rounded-xl font-semibold hover:bg-secondary/80 transition-all flex items-center justify-center gap-2 border border-border"
+                                >
+                                    Find a DCU Club &rarr;
+                                </a>
+                            </div>
+
+                            {/* Member Card */}
+                            <div className="bg-gradient-to-br from-card/95 to-card/80 backdrop-blur-xl border border-primary/30 text-card-foreground p-8 rounded-2xl shadow-2xl flex flex-col hover:-translate-y-1 hover:shadow-primary/20 transition-all duration-300 relative overflow-hidden group text-left text-base">
+                                <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                <div className="absolute -right-10 -top-10 w-32 h-32 bg-primary/20 rounded-full blur-3xl"></div>
+                                <h2 className="text-2xl font-bold mb-3 text-foreground">Already a DCU member?</h2>
+                                <p className="text-muted-foreground mb-8 flex-grow">
+                                    Sign in with your Google account to register your DCU license, join upcoming races, and track your statistics.
+                                </p>
+                                <button
+                                    onClick={signInWithGoogle}
+                                    className="w-full bg-primary text-primary-foreground py-3.5 px-4 rounded-xl font-bold hover:shadow-[0_0_20px_rgba(252,103,25,0.4)] hover:-translate-y-0.5 transition-all flex items-center justify-center gap-3 relative overflow-hidden"
+                                >
+                                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full hover:animate-[shimmer_1.5s_infinite]"></div>
+                                    <svg className="w-5 h-5 relative z-10" viewBox="0 0 24 24">
+                                        <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                                        <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                                        <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                                        <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                                    </svg>
+                                    <span className="relative z-10">Join the League</span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
-                    <div className="bg-card border border-border rounded-lg shadow-sm overflow-hidden p-6 text-left">
-                        <div className="flex flex-col md:flex-row justify-between md:items-start gap-4 mb-4">
-                            <div>
-                                <div className="text-sm font-medium text-primary mb-1">
-                                    {new Date(nextRace.date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+
+                    {/* Scroll Indicator */}
+                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center text-white/50 animate-bounce">
+                        <span className="text-xs uppercase tracking-widest mb-2 font-medium">Discover More</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M19 12l-7 7-7-7" /></svg>
+                    </div>
+                </div>
+
+                {/* Secondary Section - Community & Info */}
+                <div className="w-full py-24 px-4 border-t border-border bg-background relative z-10">
+                    <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+                        <div>
+                            <h2 className="text-3xl md:text-4xl font-bold mb-6">Join the E-Cycling Community</h2>
+                            <p className="text-lg text-muted-foreground mb-6">
+                                Experience the thrill of competitive racing from your living room. The DCU Member League connects riders across Denmark in organized, structured, and fair virtual races on Zwift.
+                            </p>
+                            <div className="space-y-6 mb-8 text-base">
+                                <div className="flex items-start gap-4">
+                                    <div className="bg-primary/10 p-2.5 rounded-xl text-primary mt-1 shadow-sm">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
+                                    </div>
+                                    <div>
+                                        <h4 className="font-semibold text-lg text-foreground">Official DCU Racing</h4>
+                                        <p className="text-muted-foreground">Races follow standard DCU regulations tailored for the virtual environment ensuring fair play.</p>
+                                    </div>
                                 </div>
-                                <h3 className="text-2xl font-bold text-card-foreground">{nextRace.name}</h3>
-                                <div className="text-muted-foreground text-sm mt-1">
-                                    Start: {new Date(nextRace.date).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
-                                </div>
-                            </div>
-                            <div className="bg-muted/30 px-4 py-2 rounded-lg text-right">
-                                <div className="font-semibold text-card-foreground">{nextRace.map}</div>
-                                <div className="text-sm text-muted-foreground flex items-center justify-end gap-1">
-                                    {nextRace.routeName}
-                                    <a 
-                                        href={getZwiftInsiderUrl(nextRace.routeName)} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="text-xs text-primary hover:underline"
-                                        title="View on ZwiftInsider"
-                                    >
-                                        (Info ↗)
-                                    </a>
+                                <div className="flex items-start gap-4">
+                                    <div className="bg-primary/10 p-2.5 rounded-xl text-primary mt-1 shadow-sm">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+                                    </div>
+                                    <div>
+                                        <h4 className="font-semibold text-lg text-foreground">Club Rivalries</h4>
+                                        <p className="text-muted-foreground">Represent your real-world club and compete in individual and team classifications throughout the season.</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-4 mb-6 text-sm">
-                            <div className="bg-muted/20 p-3 rounded text-center">
-                                <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Distance</div>
-                                <div className="font-semibold text-card-foreground">{nextRace.totalDistance} km</div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                            {/* Social Links */}
+                            <a href="https://www.facebook.com/groups/edcudk" target="_blank" rel="noopener noreferrer" className="p-6 rounded-2xl border border-border/60 bg-card/50 hover:bg-card hover:border-blue-500/50 hover:shadow-lg hover:shadow-blue-500/10 transition-all group flex flex-col justify-between h-44">
+                                <div className="text-blue-500 mb-4 bg-blue-500/10 w-fit p-3 rounded-xl group-hover:scale-110 transition-transform">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" /></svg>
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-bold text-foreground group-hover:text-blue-500 transition-colors">Facebook Group</h3>
+                                    <p className="text-sm text-muted-foreground mt-1">Join the discussion</p>
+                                </div>
+                            </a>
+
+                            <a href="https://discord.gg/your-discord-link" target="_blank" rel="noopener noreferrer" className="p-6 rounded-2xl border border-border/60 bg-card/50 hover:bg-card hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-500/10 transition-all group flex flex-col justify-between h-44">
+                                <div className="text-indigo-500 mb-4 bg-indigo-500/10 w-fit p-3 rounded-xl group-hover:scale-110 transition-transform">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12c0-5.52-4.48-10-10-10S2 6.48 2 12c0 4.84 3.44 8.87 8 9.8V15H8v-3h2V9.5C10 7.57 11.57 6 13.5 6H16v3h-2c-.55 0-1 .45-1 1v2h3v3h-3v6.95c5.05-.5 9-4.76 9-9.95z" /></svg>
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-bold text-foreground group-hover:text-indigo-500 transition-colors">Discord Server</h3>
+                                    <p className="text-sm text-muted-foreground mt-1">Live race chat & support</p>
+                                </div>
+                            </a>
+
+                            <a href="https://www.cyklingdanmark.dk/e-cykling" target="_blank" rel="noopener noreferrer" className="p-6 rounded-2xl border border-border/60 bg-card/50 hover:bg-card hover:border-primary/50 hover:shadow-lg hover:shadow-primary/10 transition-all group flex flex-col justify-between h-44 sm:col-span-2">
+                                <div className="text-primary mb-4 bg-primary/10 w-fit p-3 rounded-xl group-hover:scale-110 transition-transform">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></svg>
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-bold text-foreground group-hover:text-primary transition-colors">DCU E-Cycling Rules</h3>
+                                    <p className="text-sm text-muted-foreground mt-1">Read the complete rulebook and technical guide before racing.</p>
+                                </div>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex flex-col items-center justify-center py-10 md:py-20 text-center px-4 w-full animate-in fade-in duration-500">
+            <h1 className="text-4xl font-bold mb-4 text-foreground">Welcome to DCU Member League</h1>
+            <p className="text-xl mb-8 max-w-2xl text-foreground opacity-80">
+                The official e-cycling league for DCU members. Join the competition, view participants, and track race results.
+            </p>
+
+            <div className="w-full max-w-4xl space-y-8">
+                {nextRace && (
+                    <div>
+                        <div className="flex justify-between items-end mb-2">
+                            <div className="text-primary text-sm font-bold uppercase tracking-wider">Next Race</div>
+                            <Link
+                                href="/schedule"
+                                className="text-sm text-primary hover:underline"
+                            >
+                                View Full Schedule &rarr;
+                            </Link>
+                        </div>
+                        <div className="bg-card border border-border rounded-lg shadow-sm overflow-hidden p-6 text-left">
+                            <div className="flex flex-col md:flex-row justify-between md:items-start gap-4 mb-4">
+                                <div>
+                                    <div className="text-sm font-medium text-primary mb-1">
+                                        {new Date(nextRace.date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                                    </div>
+                                    <h3 className="text-2xl font-bold text-card-foreground">{nextRace.name}</h3>
+                                    <div className="text-muted-foreground text-sm mt-1">
+                                        Start: {new Date(nextRace.date).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                                    </div>
+                                </div>
+                                <div className="bg-muted/30 px-4 py-2 rounded-lg text-right">
+                                    <div className="font-semibold text-card-foreground">{nextRace.map}</div>
+                                    <div className="text-sm text-muted-foreground flex items-center justify-end gap-1">
+                                        {nextRace.routeName}
+                                        <a
+                                            href={getZwiftInsiderUrl(nextRace.routeName)}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-xs text-primary hover:underline"
+                                            title="View on ZwiftInsider"
+                                        >
+                                            (Info ↗)
+                                        </a>
+                                    </div>
+                                </div>
                             </div>
-                            <div className="bg-muted/20 p-3 rounded text-center">
-                                <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Elevation</div>
-                                <div className="font-semibold text-card-foreground">{nextRace.totalElevation} m</div>
-                            </div>
-                            <div className="bg-muted/20 p-3 rounded text-center flex flex-col justify-center">
-                                <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Laps</div>
-                                <div className="font-semibold text-card-foreground flex justify-center items-center h-full">
-                                    {(() => {
-                                        if (nextRace.eventMode === 'multi' && nextRace.eventConfiguration) {
-                                            const uniqueLaps = Array.from(new Set(nextRace.eventConfiguration.map(c => c.laps || nextRace.laps)));
-                                            if (uniqueLaps.length > 1) {
-                                                return (
-                                                    <div className="flex flex-col text-xs">
-                                                        {nextRace.eventConfiguration.map(c => (
-                                                            <span key={c.customCategory}>{c.customCategory}: {c.laps || nextRace.laps}</span>
-                                                        ))}
-                                                    </div>
-                                                );
-                                            } else if (uniqueLaps.length === 1 && uniqueLaps[0] !== nextRace.laps) {
-                                                return <>{uniqueLaps[0]}</>;
+
+                            <div className="grid grid-cols-3 gap-4 mb-6 text-sm">
+                                <div className="bg-muted/20 p-3 rounded text-center">
+                                    <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Distance</div>
+                                    <div className="font-semibold text-card-foreground">{nextRace.totalDistance} km</div>
+                                </div>
+                                <div className="bg-muted/20 p-3 rounded text-center">
+                                    <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Elevation</div>
+                                    <div className="font-semibold text-card-foreground">{nextRace.totalElevation} m</div>
+                                </div>
+                                <div className="bg-muted/20 p-3 rounded text-center flex flex-col justify-center">
+                                    <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Laps</div>
+                                    <div className="font-semibold text-card-foreground flex justify-center items-center h-full">
+                                        {(() => {
+                                            if (nextRace.eventMode === 'multi' && nextRace.eventConfiguration) {
+                                                const uniqueLaps = Array.from(new Set(nextRace.eventConfiguration.map(c => c.laps || nextRace.laps)));
+                                                if (uniqueLaps.length > 1) {
+                                                    return (
+                                                        <div className="flex flex-col text-xs">
+                                                            {nextRace.eventConfiguration.map(c => (
+                                                                <span key={c.customCategory}>{c.customCategory}: {c.laps || nextRace.laps}</span>
+                                                            ))}
+                                                        </div>
+                                                    );
+                                                } else if (uniqueLaps.length === 1 && uniqueLaps[0] !== nextRace.laps) {
+                                                    return <>{uniqueLaps[0]}</>;
+                                                }
                                             }
-                                        }
-                                        return <>{nextRace.laps}</>;
-                                    })()}
+                                            return <>{nextRace.laps}</>;
+                                        })()}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
 
-                        {(() => {
-                            // Determine Sprints Display Logic Inline
-                            if (nextRace.eventMode === 'multi' && nextRace.eventConfiguration) {
-                                return (
-                                    <div className="border-t border-border pt-4 mb-6">
-                                        <h4 className="text-sm font-semibold text-card-foreground mb-3">Points Sprints</h4>
-                                        <div className="space-y-4">
-                                            {nextRace.eventConfiguration.map((config, idx) => {
-                                                const catSprints = config.sprints || [];
-                                                if (catSprints.length === 0) return null;
-                                                
-                                                const sprintsByLap = catSprints.reduce((acc, seg) => {
-                                                    const lap = seg.lap || 1;
-                                                    if (!acc[lap]) acc[lap] = [];
-                                                    acc[lap].push(seg);
-                                                    return acc;
-                                                }, {} as Record<number, Segment[]>);
+                            {(() => {
+                                // Determine Sprints Display Logic Inline
+                                if (nextRace.eventMode === 'multi' && nextRace.eventConfiguration) {
+                                    return (
+                                        <div className="border-t border-border pt-4 mb-6">
+                                            <h4 className="text-sm font-semibold text-card-foreground mb-3">Points Sprints</h4>
+                                            <div className="space-y-4">
+                                                {nextRace.eventConfiguration.map((config, idx) => {
+                                                    const catSprints = config.sprints || [];
+                                                    if (catSprints.length === 0) return null;
 
-                                                return (
-                                                    <div key={idx} className="text-sm">
-                                                        <div className="font-semibold text-xs uppercase text-muted-foreground mb-2 border-b border-border pb-1">
-                                                            {config.customCategory}
-                                                        </div>
-                                                        <div className="space-y-2">
-                                                            {Object.keys(sprintsByLap).sort((a,b) => parseInt(a)-parseInt(b)).map(lapKey => {
-                                                                const lapNum = parseInt(lapKey);
-                                                                return (
-                                                                    <div key={lapNum} className="flex flex-col sm:flex-row gap-2 sm:gap-4 text-xs">
-                                                                        <div className="w-12 font-medium text-muted-foreground shrink-0">Lap {lapNum}</div>
-                                                                        <div className="flex-1 flex flex-wrap gap-2">
-                                                                            {sprintsByLap[lapNum].sort((a,b) => a.count - b.count).map((seg, sIdx) => (
-                                                                                <span key={sIdx} className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-secondary text-secondary-foreground border border-border">
-                                                                                    {seg.name}
-                                                                                </span>
-                                                                            ))}
+                                                    const sprintsByLap = catSprints.reduce((acc, seg) => {
+                                                        const lap = seg.lap || 1;
+                                                        if (!acc[lap]) acc[lap] = [];
+                                                        acc[lap].push(seg);
+                                                        return acc;
+                                                    }, {} as Record<number, Segment[]>);
+
+                                                    return (
+                                                        <div key={idx} className="text-sm">
+                                                            <div className="font-semibold text-xs uppercase text-muted-foreground mb-2 border-b border-border pb-1">
+                                                                {config.customCategory}
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                                {Object.keys(sprintsByLap).sort((a, b) => parseInt(a) - parseInt(b)).map(lapKey => {
+                                                                    const lapNum = parseInt(lapKey);
+                                                                    return (
+                                                                        <div key={lapNum} className="flex flex-col sm:flex-row gap-2 sm:gap-4 text-xs">
+                                                                            <div className="w-12 font-medium text-muted-foreground shrink-0">Lap {lapNum}</div>
+                                                                            <div className="flex-1 flex flex-wrap gap-2">
+                                                                                {sprintsByLap[lapNum].sort((a, b) => a.count - b.count).map((seg, sIdx) => (
+                                                                                    <span key={sIdx} className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-secondary text-secondary-foreground border border-border">
+                                                                                        {seg.name}
+                                                                                    </span>
+                                                                                ))}
+                                                                            </div>
                                                                         </div>
-                                                                    </div>
-                                                                );
-                                                            })}
+                                                                    );
+                                                                })}
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                );
-                                            })}
+                                                    );
+                                                })}
+                                            </div>
                                         </div>
-                                    </div>
-                                );
-                            } else if (nextRace.sprints && nextRace.sprints.length > 0) {
-                                // Legacy Single Mode
-                                return (
-                                    <div className="border-t border-border pt-4 mb-6">
-                                        <h4 className="text-sm font-semibold text-card-foreground mb-3">Points Sprints</h4>
-                                        <div className="space-y-3">
-                                            {/* Group by lap for display */}
-                                            {Object.entries(
-                                                nextRace.sprints.reduce((acc, seg) => {
-                                                    const lap = seg.lap || 1;
-                                                    if (!acc[lap]) acc[lap] = [];
-                                                    acc[lap].push(seg);
-                                                    return acc;
-                                                }, {} as Record<number, Segment[]>)
-                                            )
-                                            .sort(([a], [b]) => parseInt(a) - parseInt(b))
-                                            .map(([lapKey, segments]) => (
-                                                <div key={lapKey} className="flex flex-col sm:flex-row gap-2 sm:gap-8 text-sm">
-                                                    <div className="w-16 font-medium text-muted-foreground shrink-0">Lap {lapKey}</div>
-                                                    <div className="flex-1 flex flex-wrap gap-2">
-                                                        {segments.sort((a, b) => a.count - b.count).map((seg, idx) => (
-                                                            <span key={idx} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
-                                                                {seg.name}
-                                                            </span>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            ))}
+                                    );
+                                } else if (nextRace.sprints && nextRace.sprints.length > 0) {
+                                    // Legacy Single Mode
+                                    return (
+                                        <div className="border-t border-border pt-4 mb-6">
+                                            <h4 className="text-sm font-semibold text-card-foreground mb-3">Points Sprints</h4>
+                                            <div className="space-y-3">
+                                                {/* Group by lap for display */}
+                                                {Object.entries(
+                                                    nextRace.sprints.reduce((acc, seg) => {
+                                                        const lap = seg.lap || 1;
+                                                        if (!acc[lap]) acc[lap] = [];
+                                                        acc[lap].push(seg);
+                                                        return acc;
+                                                    }, {} as Record<number, Segment[]>)
+                                                )
+                                                    .sort(([a], [b]) => parseInt(a) - parseInt(b))
+                                                    .map(([lapKey, segments]) => (
+                                                        <div key={lapKey} className="flex flex-col sm:flex-row gap-2 sm:gap-8 text-sm">
+                                                            <div className="w-16 font-medium text-muted-foreground shrink-0">Lap {lapKey}</div>
+                                                            <div className="flex-1 flex flex-wrap gap-2">
+                                                                {segments.sort((a, b) => a.count - b.count).map((seg, idx) => (
+                                                                    <span key={idx} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                                                                        {seg.name}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                            </div>
                                         </div>
-                                    </div>
-                                );
-                            }
-                            return null;
-                        })()}
+                                    );
+                                }
+                                return null;
+                            })()}
 
-                        {nextRace.eventMode === 'multi' ? (
-                            <div className="flex flex-col gap-2">
-                                {nextRace.eventConfiguration?.map((config, i) => (
-                                    <a 
-                                        key={i}
-                                        href={`https://www.zwift.com/eu/events/view/${config.eventId}${config.eventSecret ? `?eventSecret=${config.eventSecret}` : ''}`}
+                            {nextRace.eventMode === 'multi' ? (
+                                <div className="flex flex-col gap-2">
+                                    {nextRace.eventConfiguration?.map((config, i) => (
+                                        <a
+                                            key={i}
+                                            href={`https://www.zwift.com/eu/events/view/${config.eventId}${config.eventSecret ? `?eventSecret=${config.eventSecret}` : ''}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="block w-full bg-[#fc6719] hover:bg-[#d9530e] text-white font-bold py-2 px-4 rounded-lg text-center transition shadow-md flex items-center justify-center gap-2 text-sm"
+                                        >
+                                            <span>Race Pass: {config.customCategory}</span>
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                                                <polyline points="15 3 21 3 21 9"></polyline>
+                                                <line x1="10" y1="14" x2="21" y2="3"></line>
+                                            </svg>
+                                        </a>
+                                    ))}
+                                </div>
+                            ) : (
+                                nextRace.eventId && (
+                                    <a
+                                        href={`https://www.zwift.com/eu/events/view/${nextRace.eventId}${nextRace.eventSecret ? `?eventSecret=${nextRace.eventSecret}` : ''}`}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="block w-full bg-[#fc6719] hover:bg-[#d9530e] text-white font-bold py-2 px-4 rounded-lg text-center transition shadow-md flex items-center justify-center gap-2 text-sm"
+                                        className="block w-full bg-[#fc6719] hover:bg-[#d9530e] text-white font-bold py-3 px-4 rounded-lg text-center transition shadow-md flex items-center justify-center gap-2"
                                     >
-                                        <span>Race Pass: {config.customCategory}</span>
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <span>Race Pass</span>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                             <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
                                             <polyline points="15 3 21 3 21 9"></polyline>
                                             <line x1="10" y1="14" x2="21" y2="3"></line>
                                         </svg>
                                     </a>
-                                ))}
-                            </div>
-                        ) : (
-                            nextRace.eventId && (
-                                <a 
-                                    href={`https://www.zwift.com/eu/events/view/${nextRace.eventId}${nextRace.eventSecret ? `?eventSecret=${nextRace.eventSecret}` : ''}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="block w-full bg-[#fc6719] hover:bg-[#d9530e] text-white font-bold py-3 px-4 rounded-lg text-center transition shadow-md flex items-center justify-center gap-2"
-                                >
-                                    <span>Race Pass</span>
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                                        <polyline points="15 3 21 3 21 9"></polyline>
-                                        <line x1="10" y1="14" x2="21" y2="3"></line>
-                                    </svg>
-                                </a>
-                            )
-                        )}
+                                )
+                            )}
+                        </div>
                     </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <Link href="/participants" className="p-6 border border-border rounded-lg shadow-sm hover:shadow-md transition bg-card text-card-foreground group text-left">
+                        <h2 className="text-2xl font-semibold mb-2 group-hover:text-primary">Participants &rarr;</h2>
+                        <p className="text-muted-foreground">
+                            Check out the competition.
+                        </p>
+                    </Link>
+
+                    <Link href="/results" className="p-6 border border-border rounded-lg shadow-sm hover:shadow-md transition bg-card text-card-foreground group text-left">
+                        <h2 className="text-2xl font-semibold mb-2 group-hover:text-primary">Results &rarr;</h2>
+                        <p className="text-muted-foreground">
+                            View race results and league standings.
+                        </p>
+                    </Link>
+
+                    <Link href="/stats" className="p-6 border border-border rounded-lg shadow-sm hover:shadow-md transition bg-card text-card-foreground group text-left md:col-span-2">
+                        <h2 className="text-2xl font-semibold mb-2 group-hover:text-primary">My Stats &rarr;</h2>
+                        <p className="text-muted-foreground">
+                            Compare your performance against other riders.
+                        </p>
+                    </Link>
                 </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Link href="/participants" className="p-6 border border-border rounded-lg shadow-sm hover:shadow-md transition bg-card text-card-foreground group text-left">
-                    <h2 className="text-2xl font-semibold mb-2 group-hover:text-primary">Participants &rarr;</h2>
-                    <p className="text-muted-foreground">
-                    Check out the competition.
-                    </p>
-                </Link>
-                
-                <Link href="/results" className="p-6 border border-border rounded-lg shadow-sm hover:shadow-md transition bg-card text-card-foreground group text-left">
-                    <h2 className="text-2xl font-semibold mb-2 group-hover:text-primary">Results &rarr;</h2>
-                    <p className="text-muted-foreground">
-                    View race results and league standings.
-                    </p>
-                </Link>
-
-                <Link href="/stats" className="p-6 border border-border rounded-lg shadow-sm hover:shadow-md transition bg-card text-card-foreground group text-left md:col-span-2">
-                    <h2 className="text-2xl font-semibold mb-2 group-hover:text-primary">My Stats &rarr;</h2>
-                    <p className="text-muted-foreground">
-                    Compare your performance against other riders.
-                    </p>
-                </Link>
             </div>
         </div>
-      )}
-    </div>
-  );
+    );
 }
