@@ -1,102 +1,115 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #0f172a; /* Slate-900 */
-  
-  --card: #ffffff;
-  --card-foreground: #0f172a;
-  
-  --popover: #ffffff;
-  --popover-foreground: #0f172a;
-  
-  --primary: #2563eb; /* Blue-600 */
-  --primary-foreground: #ffffff;
-  
-  --secondary: #f1f5f9; /* Slate-100 */
-  --secondary-foreground: #0f172a;
-  
-  --muted: #f1f5f9; /* Slate-100 */
-  --muted-foreground: #64748b; /* Slate-500 */
-  
-  --accent: #f1f5f9; /* Slate-100 */
-  --accent-foreground: #0f172a;
-  
-  --destructive: #ef4444; /* Red-500 */
-  --destructive-foreground: #ffffff;
+  /* Brand Neutrals & Backgrounds */
+  --brand-white: #ffffff;
+  --brand-lighter: #f8f8f8;
+  --brand-light: #e9e9e9;
+  --brand-default: #e7e3d6;
+  --brand-dark: #313131;
+  --brand-darker: #212121;
 
-  --border: #e2e8f0; /* Slate-200 */
-  --input: #e2e8f0;
-  --ring: #2563eb;
-  
+  /* Base Application Colors */
+  --background: var(--brand-lighter);
+  --foreground: var(--brand-darker);
+
+  /* Primary Brand Colors */
+  --primary: #c00418;
+  /* Strong Red */
+  --primary-foreground: var(--brand-white);
+
+  --secondary: #122f3b;
+  /* Deep Blue/Teal */
+  --secondary-foreground: var(--brand-white);
+
+  --tertiary: #bb8c32;
+  /* Golden Brown */
+  --tertiary-foreground: var(--brand-darker);
+
+  --quaternary: #5b6635;
+  /* Olive Green */
+  --quaternary-foreground: var(--brand-white);
+
+  /* UI Elements */
+  --card: var(--brand-white);
+  --card-foreground: var(--brand-darker);
+
+  --popover: var(--brand-white);
+  --popover-foreground: var(--brand-darker);
+
+  --muted: var(--brand-light);
+  --muted-foreground: var(--brand-dark);
+
+  --accent: var(--brand-default);
+  --accent-foreground: var(--brand-darker);
+
+  --destructive: #ef4444;
+  --destructive-foreground: var(--brand-white);
+
+  --border: var(--brand-light);
+  --input: var(--brand-light);
+  --ring: var(--primary);
+
   --radius: 0.5rem;
+
+  /* Live Pages (Always Dark) */
+  --live-background: #0f172a;
+  --live-foreground: #f8fafc;
+  --live-panel-bg: #1e293b;
+  --live-border: #334155;
+  --live-text-muted: #94a3b8;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #020617; /* Slate-950 */
-    --foreground: #f8fafc; /* Slate-50 */
-    
-    --card: #0f172a; /* Slate-900 */
-    --card-foreground: #f8fafc;
-    
-    --popover: #0f172a;
-    --popover-foreground: #f8fafc;
-    
-    --primary: #3b82f6; /* Blue-500 */
-    --primary-foreground: #ffffff;
-    
-    --secondary: #1e293b; /* Slate-800 */
-    --secondary-foreground: #f8fafc;
-    
-    --muted: #1e293b; /* Slate-800 */
-    --muted-foreground: #94a3b8; /* Slate-400 */
-    
-    --accent: #1e293b; /* Slate-800 */
-    --accent-foreground: #f8fafc;
-    
-    --destructive: #7f1d1d; /* Red-900 */
-    --destructive-foreground: #f8fafc;
-    
-    --border: #1e293b; /* Slate-800 */
-    --input: #1e293b;
-    --ring: #3b82f6;
-  }
-}
+@custom-variant dark (&:where(.never));
 
-@theme inline {
+@theme {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  
+
+  /* Brand Colors */
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
-  
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
-  
+  --color-tertiary: var(--tertiary);
+  --color-tertiary-foreground: var(--tertiary-foreground);
+  --color-quaternary: var(--quaternary);
+  --color-quaternary-foreground: var(--quaternary-foreground);
+
+  /* Brand Neutrals */
+  --color-brand-white: var(--brand-white);
+  --color-brand-lighter: var(--brand-lighter);
+  --color-brand-light: var(--brand-light);
+  --color-brand-default: var(--brand-default);
+  --color-brand-dark: var(--brand-dark);
+  --color-brand-darker: var(--brand-darker);
+
+  /* UI Elements */
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
-  
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
-  
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
-  
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  
+
   --radius: var(--radius);
-  
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Live Pages Colors */
+  --color-live-bg: var(--live-background);
+  --color-live-fg: var(--live-foreground);
+  --color-live-panel: var(--live-panel-bg);
+  --color-live-border: var(--live-border);
+  --color-live-muted: var(--live-text-muted);
 }
 
 body {

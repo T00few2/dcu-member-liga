@@ -38,7 +38,7 @@ export default function RaceList({
             <div className="flex flex-col gap-4 p-6 border-b border-border">
                 <div className="flex justify-between items-end">
                     <h2 className="text-xl font-semibold text-card-foreground">Scheduled Races</h2>
-                    
+
                     <div className="flex flex-col gap-2 items-end">
                         <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
                             Results Fetch Options
@@ -46,7 +46,7 @@ export default function RaceList({
                         <div className="flex items-center gap-4 p-2 bg-muted/30 rounded-lg border border-border/50">
                             <div className="flex items-center gap-2">
                                 <label className="text-sm text-muted-foreground font-medium">Category:</label>
-                                <select 
+                                <select
                                     value={categoryFilter}
                                     onChange={(e) => onCategoryFilterChange(e.target.value)}
                                     className="bg-background border border-input rounded px-2 py-1 text-sm font-medium text-foreground focus:ring-1 focus:ring-primary"
@@ -58,7 +58,7 @@ export default function RaceList({
                             </div>
                             <div className="flex items-center gap-2">
                                 <label className="text-sm text-muted-foreground font-medium">Source:</label>
-                                <select 
+                                <select
                                     value={resultSource}
                                     onChange={(e) => onResultSourceChange(e.target.value as ResultSource)}
                                     className="bg-background border border-input rounded px-2 py-1 text-sm font-medium text-foreground focus:ring-1 focus:ring-primary"
@@ -69,7 +69,7 @@ export default function RaceList({
                                 </select>
                             </div>
                             <label className="flex items-center gap-2 cursor-pointer border-l border-border pl-4">
-                                <input 
+                                <input
                                     type="checkbox"
                                     checked={filterRegistered}
                                     onChange={(e) => onFilterRegisteredChange(e.target.checked)}
@@ -95,10 +95,10 @@ export default function RaceList({
                     </thead>
                     <tbody className="divide-y divide-border">
                         {races.map(race => (
-                            <tr 
-                                key={race.id} 
-                                className={editingRaceId === race.id 
-                                    ? 'bg-primary/5' 
+                            <tr
+                                key={race.id}
+                                className={editingRaceId === race.id
+                                    ? 'bg-primary/5'
                                     : 'hover:bg-muted/20 transition'
                                 }
                             >
@@ -123,24 +123,24 @@ export default function RaceList({
                                     )}
                                 </td>
                                 <td className="px-6 py-4 text-muted-foreground">
-                                    {race.sprints 
-                                        ? race.sprints.length 
+                                    {race.sprints
+                                        ? race.sprints.length
                                         : (race.selectedSegments ? race.selectedSegments.length : 0)
                                     } selected
                                 </td>
                                 <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
                                     {(race.eventId || (race.eventConfiguration && race.eventConfiguration.length > 0)) && (
                                         <>
-                                            <button 
+                                            <button
                                                 onClick={() => onRefreshResults(race.id)}
                                                 disabled={status === 'refreshing'}
                                                 className="text-green-600 hover:text-green-700 dark:text-green-400 font-medium px-2 py-1"
                                             >
                                                 Calc
                                             </button>
-                                            <button 
+                                            <button
                                                 onClick={() => onViewResults(race.id)}
-                                                className="text-blue-600 hover:text-blue-700 dark:text-blue-400 font-medium px-2 py-1"
+                                                className="text-primary hover:text-primary/80 font-medium px-2 py-1"
                                             >
                                                 View
                                             </button>
@@ -148,13 +148,13 @@ export default function RaceList({
                                     )}
                                 </td>
                                 <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
-                                    <button 
+                                    <button
                                         onClick={() => onEdit(race)}
                                         className="text-primary hover:text-primary/80 font-medium px-2 py-1"
                                     >
                                         Edit
                                     </button>
-                                    <button 
+                                    <button
                                         onClick={() => onDelete(race.id)}
                                         className="text-destructive hover:text-destructive/80 font-medium px-2 py-1"
                                     >

@@ -100,8 +100,8 @@ export default function LiveLinksMatrix({
             <div className="overflow-x-auto rounded-lg border border-slate-700 shadow-xl">
                 <table className="w-full text-left border-collapse">
                     <thead>
-                        <tr className="bg-slate-800 text-slate-400 uppercase tracking-wider text-sm">
-                            <th className="p-4 border-b border-slate-700 sticky left-0 bg-slate-800 z-10 w-64 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)]">
+                        <tr className="bg-live-panel text-live-muted uppercase tracking-wider text-sm">
+                            <th className="p-4 border-b border-live-border sticky left-0 bg-live-panel z-10 w-64 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)]">
                                 Race
                             </th>
                             {allCategories.map(cat => (
@@ -135,16 +135,16 @@ export default function LiveLinksMatrix({
                             ))}
                         </tr>
                     </thead>
-                    <tbody className="bg-slate-900/50">
+                    <tbody className="bg-live-bg/50">
                         {races.map((race) => {
                             const raceCats = getRaceCategories(race);
 
                             return (
                                 <tr
                                     key={race.id}
-                                    className="hover:bg-slate-800/50 transition-colors border-b border-slate-800 last:border-0"
+                                    className="hover:bg-live-panel/50 transition-colors border-b border-live-panel last:border-0"
                                 >
-                                    <td className="p-4 border-r border-slate-800 sticky left-0 bg-slate-900 z-10 font-medium text-slate-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)]">
+                                    <td className="p-4 border-r border-live-panel sticky left-0 bg-live-bg z-10 font-medium text-live-fg shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)]">
                                         <div className="truncate w-64" title={race.name}>
                                             {race.name}
                                         </div>
@@ -229,8 +229,8 @@ export default function LiveLinksMatrix({
                         })}
 
                         {/* League Standings Row */}
-                        <tr className="border-t-2 border-slate-700 bg-slate-800/80">
-                            <td className="p-4 border-r border-slate-800 sticky left-0 bg-slate-800 z-10 font-bold text-slate-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)]">
+                        <tr className="border-t-2 border-live-border bg-live-panel/80">
+                            <td className="p-4 border-r border-live-panel sticky left-0 bg-live-panel z-10 font-bold text-live-fg shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)]">
                                 League Standings
                             </td>
                             {allCategories.map(cat => {

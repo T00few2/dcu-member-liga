@@ -126,7 +126,7 @@ export default function WeightVerificationModal() {
                                     value={linkInput}
                                     onChange={(e) => setLinkInput(e.target.value)}
                                     placeholder="https://..."
-                                    className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-primary"
                                     autoFocus
                                 />
                             </div>
@@ -141,7 +141,7 @@ export default function WeightVerificationModal() {
                                 <button
                                     onClick={handleSubmit}
                                     disabled={submitting || !linkInput}
-                                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded font-medium disabled:opacity-50 transition-colors"
+                                    className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground py-2 px-4 rounded font-medium disabled:opacity-50 transition-colors"
                                 >
                                     {submitting ? 'Submitting...' : 'Submit Verification'}
                                 </button>
@@ -173,7 +173,7 @@ export default function WeightVerificationModal() {
                 {/* Footer instructions link */}
                 {!success && (
                     <div className="bg-slate-50 dark:bg-slate-800/50 p-3 text-center border-t border-slate-100 dark:border-slate-800">
-                        <Link href="/register" className="text-xs text-blue-600 hover:underline" onClick={() => setIsOpen(false)}>
+                        <Link href="/register" className="text-xs text-primary hover:underline" onClick={() => setIsOpen(false)}>
                             View verification instructions
                         </Link>
                     </div>

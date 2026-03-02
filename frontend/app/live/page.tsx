@@ -128,8 +128,8 @@ export default function LiveLinksPage() {
         : null;
 
     return (
-        <div className="min-h-screen bg-slate-900 text-slate-100 p-8 font-sans">
-            <h1 className="text-3xl font-bold mb-8 text-blue-400">Live Dashboard Generator</h1>
+        <div className="min-h-screen bg-live-bg text-live-fg p-8 font-sans">
+            <h1 className="text-3xl font-bold mb-8 text-primary">Live Dashboard Generator</h1>
 
             {/* Configuration Panel */}
             <ConfigPanel

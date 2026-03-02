@@ -158,7 +158,7 @@ export default function ParticipantsPage() {
                             href={`https://zwiftpower.com/profile.php?z=${p.zwiftId}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-blue-500 hover:text-blue-600 transition-colors"
+                            className="text-primary hover:text-primary/80 transition-colors"
                             title="ZwiftPower Profile"
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

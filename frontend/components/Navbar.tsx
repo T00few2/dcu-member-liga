@@ -41,7 +41,7 @@ export default function Navbar() {
 
     return (
         <>
-            <nav className="bg-slate-900 text-white p-4 sticky top-0 z-40 shadow-md">
+            <nav className="bg-primary text-white p-4 sticky top-0 z-40 shadow-md">
                 <div className="container mx-auto flex justify-between items-center">
 
                     <div className="flex items-center gap-4">
@@ -73,7 +73,7 @@ export default function Navbar() {
                                                     <Link
                                                         key={link.href}
                                                         href={link.href}
-                                                        className={`hover:text-slate-300 text-sm font-medium transition-colors ${pathname === link.href ? 'text-white' : 'text-slate-400'
+                                                        className={`hover:bg-white/10 px-3 py-2 rounded-md text-sm transition-colors ${pathname === link.href ? 'text-white font-bold' : 'text-white/90 font-medium'
                                                             }`}
                                                     >
                                                         {link.label}
@@ -95,15 +95,15 @@ export default function Navbar() {
                                                         className="w-8 h-8 rounded-full border border-slate-600"
                                                     />
                                                 ) : (
-                                                    <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center">
+                                                    <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
                                                         {user.email?.[0].toUpperCase()}
                                                     </div>
                                                 )}
                                                 {/* Notification Badge */}
                                                 {(weightVerificationStatus === 'pending' || weightVerificationStatus === 'rejected') && (
                                                     <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-                                                        <span className="relative inline-flex rounded-full h-3 w-3 bg-orange-500"></span>
+                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-tertiary opacity-75"></span>
+                                                        <span className="relative inline-flex rounded-full h-3 w-3 bg-tertiary"></span>
                                                     </span>
                                                 )}
                                             </button>
@@ -126,7 +126,7 @@ export default function Navbar() {
                                                                     toggleImpersonation();
                                                                     setIsMenuOpen(false);
                                                                 }}
-                                                                className={`block w-full text-left px-4 py-2 text-sm hover:bg-slate-50 border-b border-slate-100 ${isImpersonating ? 'text-orange-600 font-bold' : 'text-blue-600'
+                                                                className={`block w-full text-left px-4 py-2 text-sm hover:bg-slate-50 border-b border-slate-100 ${isImpersonating ? 'text-tertiary font-bold' : 'text-primary'
                                                                     }`}
                                                             >
                                                                 {isImpersonating ? 'Exit User View' : 'View as User'}
@@ -139,7 +139,7 @@ export default function Navbar() {
                                                         >
                                                             <span>My Profile</span>
                                                             {(weightVerificationStatus === 'pending' || weightVerificationStatus === 'rejected') && (
-                                                                <span className="h-2 w-2 rounded-full bg-orange-500"></span>
+                                                                <span className="h-2 w-2 rounded-full bg-tertiary"></span>
                                                             )}
                                                         </Link>
                                                         <button
@@ -159,7 +159,7 @@ export default function Navbar() {
                                 ) : (
                                     <button
                                         onClick={signInWithGoogle}
-                                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium transition-colors"
+                                        className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded text-sm font-medium transition-colors"
                                     >
                                         Log In
                                     </button>
@@ -203,7 +203,7 @@ export default function Navbar() {
                                     key={link.href}
                                     href={link.href}
                                     className={`px-4 py-3 rounded-lg transition-colors ${pathname === link.href
-                                        ? 'bg-blue-600 text-white font-medium'
+                                        ? 'bg-primary text-primary-foreground font-medium'
                                         : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                                         }`}
                                 >

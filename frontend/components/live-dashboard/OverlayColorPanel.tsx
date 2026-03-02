@@ -20,7 +20,7 @@ function ColorInput({ label, value, defaultColor, placeholder, onChange }: Color
                     type="color"
                     value={value || defaultColor}
                     onChange={(e) => onChange(e.target.value)}
-                    className="h-9 w-9 p-0 border border-slate-700 rounded bg-slate-900"
+                    className="h-9 w-9 p-0 border border-live-border rounded bg-live-bg"
                     title={`Pick ${label.toLowerCase()}`}
                 />
                 <input
@@ -28,7 +28,7 @@ function ColorInput({ label, value, defaultColor, placeholder, onChange }: Color
                     value={value}
                     onChange={(e) => onChange(e.target.value)}
                     placeholder={placeholder}
-                    className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full bg-live-bg border border-live-border rounded px-3 py-2 text-live-fg focus:ring-2 focus:ring-primary outline-none"
                 />
             </div>
         </div>
@@ -57,11 +57,11 @@ export default function OverlayColorPanel({
     updateConfig,
 }: OverlayColorPanelProps) {
     return (
-        <div className="bg-slate-800 rounded-lg border border-slate-700 mb-8">
+        <div className="bg-live-panel rounded-lg border border-live-border mb-8">
             <details className="group">
                 <summary className="list-none cursor-pointer select-none px-6 py-4 flex items-center justify-between">
                     <div>
-                        <h2 className="text-xl font-semibold text-slate-200">
+                        <h2 className="text-xl font-semibold text-live-fg">
                             Overlay Colors (OBS / Non-Full)
                         </h2>
                         <p className="text-xs text-slate-400 mt-1">
@@ -72,7 +72,7 @@ export default function OverlayColorPanel({
                         ▾
                     </span>
                 </summary>
-                
+
                 <div className="px-6 pb-6 pt-2 border-t border-slate-700">
                     {/* Palette Buttons */}
                     <div className="flex flex-wrap gap-2 mb-4">
@@ -123,7 +123,7 @@ export default function OverlayColorPanel({
                                 value={schemeName}
                                 onChange={(e) => onSchemeNameChange(e.target.value)}
                                 placeholder="Scheme name"
-                                className="min-w-[220px] bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                className="min-w-[220px] bg-live-bg border border-live-border rounded px-3 py-2 text-live-fg text-sm focus:ring-2 focus:ring-primary outline-none"
                             />
                             <button
                                 onClick={onSaveScheme}

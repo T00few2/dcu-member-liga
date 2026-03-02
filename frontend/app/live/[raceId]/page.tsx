@@ -28,7 +28,7 @@ export default function LiveResultsPage() {
     const includeBanner = bannerParam !== 'false';
     const bannerSrc = includeBanner ? (bannerParam || '/live/banner.PNG') : '';
     const backgroundSrc = searchParams.get('bg') || '/live/background.jpg';
-    
+
     // Parse limit
     const rawLimit = searchParams.get('limit');
     let limit = 10;
@@ -36,7 +36,7 @@ export default function LiveResultsPage() {
         const parsed = parseInt(rawLimit);
         if (!isNaN(parsed) && parsed > 0) limit = parsed;
     }
-    
+
     const autoScroll = searchParams.get('scroll') === 'true';
     const showSprints = searchParams.get('sprints') !== 'false';
     const showLastSprint = searchParams.get('lastSprint') === 'true';
@@ -65,7 +65,7 @@ export default function LiveResultsPage() {
     // --- Hooks ---
     const { race, loading, error } = useLiveRace(raceId);
     const { standings, bestRacesCount, allRaces, leagueName } = useLiveStandings();
-    
+
     // View Mode
     const containerRef = useRef<HTMLDivElement>(null);
     const { viewMode } = useViewMode({
@@ -107,16 +107,16 @@ export default function LiveResultsPage() {
                 }
             }
         }
-        
+
         if (!displayCategory && race.results) {
-             const categories = Object.keys(race.results);
-             if (categories.length > 0) {
-                 displayCategory = categories[0];
-             }
+            const categories = Object.keys(race.results);
+            if (categories.length > 0) {
+                displayCategory = categories[0];
+            }
         }
     }
     const category = displayCategory || 'A';
-    
+
     let headerTitle = titleParam || leagueName || 'League';
 
     const renderContent = () => {
@@ -124,7 +124,7 @@ export default function LiveResultsPage() {
         const standingsForCategory = standings[category] || [];
         const raceKey = race.id || raceId;
         const leaguePointsByZwiftId = new Map<string, number>();
-        
+
         standingsForCategory.forEach(entry => {
             const match = entry.results?.find(r => r.raceId === raceKey);
             if (match) {
@@ -134,8 +134,8 @@ export default function LiveResultsPage() {
 
         if (viewMode === 'race') {
             return (
-                <RaceResultsTable 
-                    race={race} 
+                <RaceResultsTable
+                    race={race}
                     results={race.results?.[category] || []}
                     category={category}
                     config={{ showSprints, showLastSprint, isFull, nameMax }}
@@ -170,7 +170,7 @@ export default function LiveResultsPage() {
     };
 
     // --- Layout ---
-    
+
     if (isFull) {
         return (
             <div className="fixed inset-0 z-50 overflow-hidden font-sans text-white">
@@ -213,7 +213,7 @@ export default function LiveResultsPage() {
                     >
                         {fitToScreen ? (
                             <div className="flex-1 relative">
-                                <div 
+                                <div
                                     ref={tableWrapperRef}
                                     className={`absolute top-0 left-0 right-0 mx-auto rounded-xl border border-slate-700/70 bg-slate-600/25 shadow-2xl backdrop-blur ${race.type === 'points' && isFull ? 'max-w-[95%]' : 'max-w-6xl'}`}
                                     style={{
@@ -226,7 +226,7 @@ export default function LiveResultsPage() {
                                 </div>
                             </div>
                         ) : (
-                            <div 
+                            <div
                                 ref={tableWrapperRef}
                                 className={`mx-auto rounded-xl border border-slate-700/70 bg-slate-600/25 shadow-2xl backdrop-blur ${race.type === 'points' && isFull ? 'max-w-[95%]' : 'max-w-6xl'}`}
                             >
@@ -257,22 +257,21 @@ export default function LiveResultsPage() {
 
     // Windowed / Overlay Mode
     return (
-        <div 
-            className={`fixed inset-0 z-50 overflow-hidden font-sans ${
-                isTransparent ? 'bg-transparent' : 'bg-slate-900'
-            }`}
+        <div
+            className={`fixed inset-0 z-50 overflow-hidden font-sans ${isTransparent ? 'bg-transparent' : 'bg-live-bg'
+                }`}
             style={{
                 backgroundColor: !isTransparent ? resolveColor(overlay.background) : undefined,
                 color: resolveColor(overlay.text)
             }}
         >
-            <div 
+            <div
                 ref={containerRef}
                 className={`h-full w-full overflow-auto ${autoScroll ? 'scrollbar-hide' : ''}`}
             >
                 <div className="p-0">
                     <div
-                        className="sticky top-0 z-20 bg-slate-900/90 text-center py-2 border-b border-slate-700"
+                        className="sticky top-0 z-20 bg-live-bg/90 text-center py-2 border-b border-live-border"
                         style={{
                             backgroundColor: resolveColor(overlay.headerBg, overlay.background),
                             borderColor: resolveColor(overlay.border),
@@ -292,7 +291,7 @@ export default function LiveResultsPage() {
                     {renderContent()}
                 </div>
             </div>
-            
+
             <style jsx global>{`
                 .site-footer { display: none !important; }
                 .scrollbar-hide::-webkit-scrollbar { display: none; }

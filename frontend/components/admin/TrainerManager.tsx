@@ -96,7 +96,7 @@ export default function TrainerManager() {
       const idToken = await user.getIdToken();
 
       const method = editingTrainer ? 'PUT' : 'POST';
-      const url = editingTrainer 
+      const url = editingTrainer
         ? `${apiUrl}/trainers/${editingTrainer.id}`
         : `${apiUrl}/trainers`;
 
@@ -243,7 +243,7 @@ export default function TrainerManager() {
                     </button>
                     <button
                       onClick={() => handleApproveRequest(request.id, true)}
-                      className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+                      className="px-3 py-1 bg-primary text-primary-foreground rounded hover:bg-primary/90 text-sm"
                     >
                       Approve (Dual Rec.)
                     </button>
