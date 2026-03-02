@@ -34,7 +34,7 @@ export default function RootLayout({
           <ToastProvider>
             <WeightVerificationModal />
             <Navbar />
-            <main className="container mx-auto p-4 min-h-screen">
+            <main className="min-h-screen">
               {children}
             </main>
             <footer className="site-footer bg-slate-100 p-4 text-center text-slate-600 text-sm">

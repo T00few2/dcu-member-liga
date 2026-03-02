@@ -91,7 +91,7 @@ export default function Home() {
 
     if (!user) {
         return (
-            <div className="w-screen relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] -mt-4 overflow-x-hidden text-foreground bg-background">
+            <div className="w-full relative -mt-4 text-foreground bg-background">
                 {/* Animated Hero Section with Video */}
                 <div className="relative w-full min-h-[85vh] flex flex-col items-center justify-center overflow-hidden bg-black">
                     {/* Background Video */}
@@ -258,7 +258,7 @@ export default function Home() {
     }
 
     return (
-        <div className="flex flex-col items-center justify-center py-10 md:py-20 text-center px-4 w-full animate-in fade-in duration-500">
+        <div className="container mx-auto p-4 flex flex-col items-center justify-center py-10 md:py-20 text-center w-full animate-in fade-in duration-500">
             <h1 className="text-4xl font-bold mb-4 text-foreground">Welcome to DCU Member League</h1>
             <p className="text-xl mb-8 max-w-2xl text-foreground opacity-80">
                 The official e-cycling league for DCU members. Join the competition, view participants, and track race results.
