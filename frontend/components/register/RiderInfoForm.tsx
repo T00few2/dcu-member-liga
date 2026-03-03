@@ -62,6 +62,7 @@ export default function RiderInfoForm({
     // Club State
     const [clubSearch, setClubSearch] = useState('');
     const [showClubList, setShowClubList] = useState(false);
+    const [isDropdownOpenedWithoutTyping, setIsDropdownOpenedWithoutTyping] = useState(false);
     const clubListRef = useRef<HTMLDivElement>(null);
 
     // Trainer State
@@ -122,12 +123,19 @@ export default function RiderInfoForm({
                                 value={clubSearch}
                                 onChange={(e) => {
                                     if (!readOnly) {
+                                        setIsDropdownOpenedWithoutTyping(false);
                                         setClubSearch(e.target.value);
                                         setClub(e.target.value);
                                         setShowClubList(true);
                                     }
                                 }}
-                                onFocus={() => !readOnly && setShowClubList(true)}
+                                onFocus={(e) => {
+                                    if (!readOnly) {
+                                        e.target.select();
+                                        setIsDropdownOpenedWithoutTyping(true);
+                                        setShowClubList(true);
+                                    }
+                                }}
                                 disabled={readOnly}
                                 placeholder={readOnly ? club : "Søg efter din klub..."}
                                 className="w-full p-3 border border-input rounded-lg focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all text-foreground bg-background placeholder-muted-foreground disabled:opacity-50"
@@ -137,7 +145,7 @@ export default function RiderInfoForm({
                                 <div className="absolute z-10 w-full mt-1 max-h-60 overflow-y-auto bg-background border border-border rounded-lg shadow-lg">
                                     {(() => {
                                         const searchLower = clubSearch.toLowerCase();
-                                        const filtered = clubs.filter(c =>
+                                        const filtered = isDropdownOpenedWithoutTyping ? clubs : clubs.filter(c =>
                                             c.name.toLowerCase().includes(searchLower) ||
                                             c.type.toLowerCase().includes(searchLower) ||
                                             c.district.toLowerCase().includes(searchLower)
@@ -148,7 +156,7 @@ export default function RiderInfoForm({
                                                 <div className="p-2">
                                                     <div className="p-3 text-sm text-muted-foreground">Ingen klubber fundet</div>
                                                     <button
-                                                        onClick={() => { setClub('None'); setClubSearch('None'); setShowClubList(false); }}
+                                                        onClick={() => { setClub('None'); setClubSearch('None'); setShowClubList(false); setIsDropdownOpenedWithoutTyping(false); }}
                                                         className="w-full p-3 text-left hover:bg-secondary/50 border-t border-border"
                                                     >
                                                         Ingen (Ingen klub)
@@ -162,7 +170,7 @@ export default function RiderInfoForm({
                                                 {filtered.map((c, idx) => (
                                                     <button
                                                         key={idx}
-                                                        onClick={() => { setClub(c.name); setClubSearch(c.name); setShowClubList(false); }}
+                                                        onClick={() => { setClub(c.name); setClubSearch(c.name); setShowClubList(false); setIsDropdownOpenedWithoutTyping(false); }}
                                                         className="w-full p-3 text-left hover:bg-secondary/50 border-b border-border last:border-b-0"
                                                     >
                                                         <div className="font-medium text-foreground">{c.name}</div>
@@ -170,7 +178,7 @@ export default function RiderInfoForm({
                                                     </button>
                                                 ))}
                                                 <button
-                                                    onClick={() => { setClub('None'); setClubSearch('None'); setShowClubList(false); }}
+                                                    onClick={() => { setClub('None'); setClubSearch('None'); setShowClubList(false); setIsDropdownOpenedWithoutTyping(false); }}
                                                     className="w-full p-3 text-left hover:bg-secondary/50 border-t border-border bg-secondary/20 text-foreground"
                                                 >
                                                     Ingen (Ingen klub)
@@ -182,7 +190,7 @@ export default function RiderInfoForm({
                             )}
                             {club && !readOnly && (
                                 <button
-                                    onClick={() => { setClub(''); setClubSearch(''); setShowClubList(true); }}
+                                    onClick={() => { setClub(''); setClubSearch(''); setShowClubList(true); setIsDropdownOpenedWithoutTyping(true); }}
                                     className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                                     type="button"
                                 >
