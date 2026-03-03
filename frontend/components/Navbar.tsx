@@ -73,7 +73,7 @@ export default function Navbar() {
                                                     <Link
                                                         key={link.href}
                                                         href={link.href}
-                                                        className={`hover:bg-white/10 px-3 py-2 rounded-md text-sm transition-colors ${pathname === link.href ? 'text-white font-bold' : 'text-white/90 font-medium'
+                                                        className={`hover:bg-white/10 px-3 py-2 rounded-md text-base transition-colors ${pathname === link.href ? 'text-white font-bold' : 'text-white/90 font-bold'
                                                             }`}
                                                     >
                                                         {link.label}
