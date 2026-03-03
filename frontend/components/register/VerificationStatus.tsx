@@ -179,7 +179,7 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
                         <button
                             onClick={handleSubmit}
                             disabled={submitting || !linkInput}
-                            className="w-full py-3 bg-primary text-primary-foreground font-bold rounded hover:bg-primary/90 transition-colors disabled:opacity-50"
+                            className="w-full py-3 bg-primary text-primary-foreground font-bold rounded hover:bg-primary-dark transition-colors disabled:opacity-50"
                         >
                             {submitting ? 'Indsender...' : 'Indsend bekræftelse'}
                         </button>

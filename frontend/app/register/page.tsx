@@ -407,7 +407,7 @@ function RegisterContent() {
                     <button
                         onClick={() => saveData(false)}
                         disabled={submitting}
-                        className="px-6 py-2 bg-primary text-primary-foreground font-bold rounded-lg hover:bg-primary/90 disabled:opacity-50"
+                        className="px-6 py-2 bg-primary text-primary-foreground font-bold rounded-lg hover:bg-primary-dark disabled:opacity-50"
                     >
                         {submitting ? 'Gemmer...' : 'Gem ændringer'}
                     </button>
@@ -425,7 +425,7 @@ function RegisterContent() {
                             <button
                                 onClick={() => setCurrentStep(prev => prev + 1)}
                                 disabled={currentStep === 0 ? !step0Valid : !step1Valid}
-                                className="px-6 py-2 bg-primary text-primary-foreground font-bold rounded-lg hover:bg-primary/90 disabled:opacity-50"
+                                className="px-6 py-2 bg-primary text-primary-foreground font-bold rounded-lg hover:bg-primary-dark disabled:opacity-50"
                             >
                                 Næste
                             </button>

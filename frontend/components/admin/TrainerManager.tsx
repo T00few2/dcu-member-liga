@@ -243,7 +243,7 @@ export default function TrainerManager() {
                     </button>
                     <button
                       onClick={() => handleApproveRequest(request.id, true)}
-                      className="px-3 py-1 bg-primary text-primary-foreground rounded hover:bg-primary/90 text-sm"
+                      className="px-3 py-1 bg-primary text-primary-foreground rounded hover:bg-primary-dark text-sm"
                     >
                       Approve (Dual Rec.)
                     </button>

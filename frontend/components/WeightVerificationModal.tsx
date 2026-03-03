@@ -141,7 +141,7 @@ export default function WeightVerificationModal() {
                                 <button
                                     onClick={handleSubmit}
                                     disabled={submitting || !linkInput}
-                                    className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground py-2 px-4 rounded font-medium disabled:opacity-50 transition-colors"
+                                    className="flex-1 bg-primary hover:bg-primary-dark text-primary-foreground py-2 px-4 rounded font-medium disabled:opacity-50 transition-colors"
                                 >
                                     {submitting ? 'Submitting...' : 'Submit Verification'}
                                 </button>

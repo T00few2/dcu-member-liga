@@ -3,6 +3,8 @@
 import { useAuth } from "@/lib/auth-context";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import ECyclingClubsModal from '@/components/ECyclingClubsModal';
+import CodeOfConductModal from '@/components/CodeOfConductModal';
 
 interface Segment {
     id: string;
@@ -50,6 +52,8 @@ const getZwiftInsiderUrl = (routeName: string) => {
 export default function Home() {
     const { user, signInWithGoogle, isRegistered, loading } = useAuth();
     const [nextRace, setNextRace] = useState<Race | null>(null);
+    const [showClubsModal, setShowClubsModal] = useState(false);
+    const [showCoCModal, setShowCoCModal] = useState(false);
 
     useEffect(() => {
         const fetchNextRace = async () => {
@@ -150,19 +154,18 @@ export default function Home() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl mx-auto">
                         {/* Non-Member Card */}
                         <div className="bg-card/80 backdrop-blur-md border border-border/50 text-card-foreground p-8 rounded-2xl shadow-2xl flex flex-col hover:-translate-y-1 hover:shadow-primary/10 transition-all duration-300 relative overflow-hidden group text-left text-base">
-                            <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                            <h2 className="text-2xl font-bold mb-3">Ikke medlem af en klub endnu?</h2>
-                            <p className="text-muted-foreground mb-8 flex-grow">
-                                Du skal være medlem af en DCU-klub for at deltage. Find en klub nær dig, bliv en del af fællesskabet, og tilmeld dig derefter ligaen.
+                            <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity z-0 pointer-events-none"></div>
+                            <h2 className="text-2xl font-bold mb-3 relative z-10">Ikke medlem af en klub endnu?</h2>
+                            <p className="text-muted-foreground mb-8 flex-grow relative z-10">
+                                Deltagelse kræver medlemskab af en DCU-klub. Vælg mellem en dedikeret E-cykling klub eller en fysisk cykelklub.
                             </p>
-                            <a
-                                href="https://www.cyklingdanmark.dk/klubber" // Placeholder URL
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="w-full bg-secondary text-secondary-foreground py-3.5 px-4 rounded-xl font-semibold hover:bg-secondary/80 transition-all flex items-center justify-center gap-2 border border-border"
+
+                            <button
+                                onClick={() => setShowClubsModal(true)}
+                                className="w-full bg-secondary text-secondary-foreground py-3.5 px-4 rounded-xl font-semibold hover:bg-secondary/80 transition-all flex items-center justify-center gap-2 border border-border relative z-10"
                             >
                                 Find en DCU-klub &rarr;
-                            </a>
+                            </button>
                         </div>
 
                         {/* Member Card */}
@@ -190,11 +193,10 @@ export default function Home() {
                     </div>
                 </div>
 
-                {/* Secondary Section - Community & Info */}
                 <div className="w-full py-24 px-4 bg-[#E7E3D6] text-slate-900 relative z-10 overflow-hidden mt-12">
                     {/* Decorative Sand Blob */}
-                    <div className="absolute top-0 -left-64 md:-left-20 w-[600px] h-[800px] bg-[#F1EFE7] rounded-full pointer-events-none z-0 rotate-12"></div>
-                    <div className="absolute -bottom-20 right-0 w-[400px] h-[400px] bg-[#F1EFE7] rounded-full pointer-events-none z-0 -rotate-12 translate-x-1/2"></div>
+                    <div className="absolute top-0 left-0 -translate-x-1/2 -translate-y-1/4 w-[600px] h-[600px] sm:w-[800px] sm:h-[800px] bg-[#F1EFE7] rounded-full pointer-events-none z-0"></div>
+                    <div className="absolute bottom-0 right-0 translate-x-1/3 translate-y-1/4 w-[400px] h-[400px] sm:w-[600px] sm:h-[600px] bg-[#F1EFE7] rounded-full pointer-events-none z-0"></div>
 
                     <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-16 items-center relative z-20">
                         <div>
@@ -248,18 +250,24 @@ export default function Home() {
                                 </div>
                             </a>
 
-                            <a href="https://www.cyklingdanmark.dk/e-cykling" target="_blank" rel="noopener noreferrer" className="p-6 rounded-2xl border border-border/60 bg-card/50 hover:bg-card hover:border-primary/50 hover:shadow-lg hover:shadow-primary/10 transition-all group flex flex-col justify-between h-44 sm:col-span-2">
+                            <button
+                                onClick={() => setShowCoCModal(true)}
+                                className="p-6 rounded-2xl border border-border/60 bg-card/50 hover:bg-card hover:border-primary/50 hover:shadow-lg hover:shadow-primary/10 transition-all group flex flex-col justify-between h-44 sm:col-span-2 text-left"
+                            >
                                 <div className="text-primary mb-4 bg-primary/10 w-fit p-3 rounded-xl group-hover:scale-110 transition-transform">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></svg>
                                 </div>
                                 <div>
-                                    <h3 className="text-lg font-bold text-foreground group-hover:text-primary transition-colors">DCU E-cykling Regler</h3>
-                                    <p className="text-sm text-muted-foreground mt-1">Læs det fulde reglement og den tekniske vejledning inden du kører løb.</p>
+                                    <h3 className="text-lg font-bold text-foreground group-hover:text-primary transition-colors">DCU Code of Conduct</h3>
+                                    <p className="text-sm text-muted-foreground mt-1">Læs reglerne for fair play, respekt og god sportsånd i ligaen.</p>
                                 </div>
-                            </a>
+                            </button>
                         </div>
                     </div>
                 </div>
+
+                <ECyclingClubsModal isOpen={showClubsModal} onClose={() => setShowClubsModal(false)} />
+                <CodeOfConductModal isOpen={showCoCModal} onClose={() => setShowCoCModal(false)} />
             </div >
         );
     }
@@ -452,7 +460,7 @@ export default function Home() {
                                                 href={`https://www.zwift.com/eu/events/view/${config.eventId}${config.eventSecret ? `?eventSecret=${config.eventSecret}` : ''}`}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
-                                                className="block w-full bg-primary hover:bg-primary/90 text-white font-bold py-2 px-4 rounded-lg text-center transition shadow-md flex items-center justify-center gap-2 text-sm"
+                                                className="block w-full bg-primary hover:bg-primary-dark text-white font-bold py-2 px-4 rounded-lg text-center transition shadow-md flex items-center justify-center gap-2 text-sm"
                                             >
                                                 <span>Løbspas: {config.customCategory}</span>
                                                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -469,7 +477,7 @@ export default function Home() {
                                             href={`https://www.zwift.com/eu/events/view/${nextRace.eventId}${nextRace.eventSecret ? `?eventSecret=${nextRace.eventSecret}` : ''}`}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="block w-full bg-primary hover:bg-primary/90 text-white font-bold py-3 px-4 rounded-lg text-center transition shadow-md flex items-center justify-center gap-2"
+                                            className="block w-full bg-primary hover:bg-primary-dark text-white font-bold py-3 px-4 rounded-lg text-center transition shadow-md flex items-center justify-center gap-2"
                                         >
                                             <span>Løbspas</span>
                                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -547,7 +555,11 @@ export default function Home() {
                         </a>
                     </div>
                 </div>
+                {/* Code of Conduct Modal Background */}
+                <CodeOfConductModal isOpen={showCoCModal} onClose={() => setShowCoCModal(false)} />
             </div>
+
+            <ECyclingClubsModal isOpen={showClubsModal} onClose={() => setShowClubsModal(false)} />
         </div>
     );
 }

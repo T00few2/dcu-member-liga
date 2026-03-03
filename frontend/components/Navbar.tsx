@@ -159,7 +159,7 @@ export default function Navbar() {
                                 ) : (
                                     <button
                                         onClick={signInWithGoogle}
-                                        className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded text-sm font-medium transition-colors"
+                                        className="bg-primary hover:bg-primary-dark text-primary-foreground px-4 py-2 rounded text-sm font-bold transition-colors"
                                     >
                                         Log ind
                                     </button>

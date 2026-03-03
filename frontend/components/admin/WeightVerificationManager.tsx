@@ -179,7 +179,7 @@ export default function WeightVerificationManager() {
                     <button
                         onClick={handleTrigger}
                         disabled={triggering}
-                        className="bg-primary text-primary-foreground px-4 py-2 rounded font-bold hover:bg-primary/90 disabled:opacity-50"
+                        className="bg-primary text-primary-foreground px-4 py-2 rounded font-bold hover:bg-primary-dark disabled:opacity-50"
                     >
                         {triggering ? 'Triggering...' : 'Start Verification Wave'}
                     </button>

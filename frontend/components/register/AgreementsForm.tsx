@@ -133,7 +133,7 @@ export default function AgreementsForm({
                                     setShowCoCModal(false);
                                 }}
                                 disabled={readOnly}
-                                className="px-5 py-2 bg-primary text-primary-foreground font-bold rounded hover:bg-primary/90 transition-colors"
+                                className="px-5 py-2 bg-primary text-primary-foreground font-bold rounded hover:bg-primary-dark transition-colors"
                             >
                                 Jeg accepterer
                             </button>
