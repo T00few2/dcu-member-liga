@@ -103,7 +103,7 @@ export default function SchedulePage() {
     }, [user, isRegistered]);
 
     if (authLoading || loading) {
-        return <div className="p-8 text-center text-muted-foreground">Loading schedule...</div>;
+        return <div className="p-8 text-center text-muted-foreground">Indlæser kalender...</div>;
     }
 
     if (!isRegistered) return null;
@@ -158,7 +158,7 @@ export default function SchedulePage() {
                                         const lapNum = parseInt(lapKey);
                                         return (
                                             <div key={lapNum} className="flex flex-col sm:flex-row gap-2 sm:gap-4 text-xs">
-                                                <div className="w-12 font-medium text-muted-foreground shrink-0">Lap {lapNum}</div>
+                                                <div className="w-12 font-medium text-muted-foreground shrink-0">Omgang {lapNum}</div>
                                                 <div className="flex-1 flex flex-wrap gap-2">
                                                     {sprintsByLap[lapNum].sort((a, b) => a.count - b.count).map((seg, sIdx) => (
                                                         <span key={sIdx} className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-secondary text-secondary-foreground border border-border">
@@ -190,7 +190,7 @@ export default function SchedulePage() {
                         const lapNum = parseInt(lapKey);
                         return (
                             <div key={lapNum} className="flex flex-col sm:flex-row gap-2 sm:gap-8 text-sm">
-                                <div className="w-16 font-medium text-muted-foreground shrink-0">Lap {lapNum}</div>
+                                <div className="w-16 font-medium text-muted-foreground shrink-0">Omgang {lapNum}</div>
                                 <div className="flex-1 flex flex-wrap gap-2">
                                     {sprintsByLap[lapNum].sort((a, b) => a.count - b.count).map((seg, idx) => (
                                         <span key={idx} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
@@ -227,7 +227,7 @@ export default function SchedulePage() {
                                             rel="noopener noreferrer"
                                             className="text-xs bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20 px-2 py-1 rounded hover:bg-orange-500/20 transition-colors"
                                         >
-                                            Event: {config.customCategory} ↗
+                                            Begivenhed: {config.customCategory} ↗
                                         </a>
                                     ))}
                                 </div>
@@ -239,7 +239,7 @@ export default function SchedulePage() {
                                         rel="noopener noreferrer"
                                         className="inline-block mt-2 text-xs bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20 px-2 py-1 rounded hover:bg-orange-500/20 transition-colors"
                                     >
-                                        View Event on Zwift ↗
+                                        Se begivenhed på Zwift ↗
                                     </a>
                                 )
                             )}
@@ -267,11 +267,11 @@ export default function SchedulePage() {
                             <div className="font-semibold text-card-foreground">{race.totalDistance} km</div>
                         </div>
                         <div className="bg-muted/20 p-3 rounded text-center">
-                            <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Elevation</div>
+                            <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Højdemeter</div>
                             <div className="font-semibold text-card-foreground">{race.totalElevation} m</div>
                         </div>
                         <div className="bg-muted/20 p-3 rounded text-center flex flex-col justify-center">
-                            <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Laps</div>
+                            <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Omgange</div>
                             <div className="font-semibold text-card-foreground flex justify-center items-center h-full">
                                 {lapsDisplay}
                             </div>
@@ -280,7 +280,7 @@ export default function SchedulePage() {
 
                     {sprintsContent && (
                         <div className="border-t border-border pt-4">
-                            <h4 className="text-sm font-semibold text-card-foreground mb-3">Points Sprints</h4>
+                            <h4 className="text-sm font-semibold text-card-foreground mb-3">Pointsprint</h4>
                             {sprintsContent}
                         </div>
                     )}
@@ -291,13 +291,13 @@ export default function SchedulePage() {
 
     return (
         <div className="max-w-4xl mx-auto px-4 py-8">
-            <h1 className="text-3xl font-bold mb-8 text-foreground">League Schedule</h1>
+            <h1 className="text-3xl font-bold mb-8 text-foreground">Ligakalender</h1>
 
             {futureRaces.length > 0 && (
                 <div className="mb-12">
                     <h2 className="text-xl font-semibold mb-6 text-muted-foreground flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                        Upcoming Races
+                        Kommende løb
                     </h2>
                     {futureRaces.map(race => (
                         <RaceCard key={race.id} race={race} />
@@ -309,7 +309,7 @@ export default function SchedulePage() {
                 <div>
                     <h2 className="text-xl font-semibold mb-6 text-muted-foreground flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-slate-400"></span>
-                        Past Races
+                        Tidligere løb
                     </h2>
                     {pastRaces.map(race => (
                         <RaceCard key={race.id} race={race} isPast={true} />
@@ -319,7 +319,7 @@ export default function SchedulePage() {
 
             {races.length === 0 && (
                 <div className="text-center py-12 bg-card rounded-lg border border-border">
-                    <p className="text-muted-foreground">No races scheduled yet.</p>
+                    <p className="text-muted-foreground">Ingen planlagte løb endnu.</p>
                 </div>
             )}
         </div>

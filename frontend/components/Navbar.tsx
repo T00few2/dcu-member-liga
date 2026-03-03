@@ -31,10 +31,10 @@ export default function Navbar() {
     }, [isDrawerOpen]);
 
     const navLinks = [
-        { href: '/participants', label: 'Participants' },
-        { href: '/schedule', label: 'Schedule' },
-        { href: '/results', label: 'Results' },
-        { href: '/stats', label: 'Stats' },
+        { href: '/participants', label: 'Deltagere' },
+        { href: '/schedule', label: 'Kalender' },
+        { href: '/results', label: 'Resultater' },
+        { href: '/stats', label: 'Statistik' },
     ];
 
     if (hideNavbar) return null;
@@ -129,7 +129,7 @@ export default function Navbar() {
                                                                 className={`block w-full text-left px-4 py-2 text-sm hover:bg-slate-50 border-b border-slate-100 ${isImpersonating ? 'text-tertiary font-bold' : 'text-primary'
                                                                     }`}
                                                             >
-                                                                {isImpersonating ? 'Exit User View' : 'View as User'}
+                                                                {isImpersonating ? 'Afslut brugervisning' : 'Vis som bruger'}
                                                             </button>
                                                         )}
                                                         <Link
@@ -137,7 +137,7 @@ export default function Navbar() {
                                                             className="block px-4 py-2 text-sm hover:bg-slate-50 flex items-center justify-between"
                                                             onClick={() => setIsMenuOpen(false)}
                                                         >
-                                                            <span>My Profile</span>
+                                                            <span>Min Profil</span>
                                                             {(weightVerificationStatus === 'pending' || weightVerificationStatus === 'rejected') && (
                                                                 <span className="h-2 w-2 rounded-full bg-tertiary"></span>
                                                             )}
@@ -149,7 +149,7 @@ export default function Navbar() {
                                                             }}
                                                             className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-slate-50"
                                                         >
-                                                            Log Out
+                                                            Log ud
                                                         </button>
                                                     </div>
                                                 </>
@@ -161,7 +161,7 @@ export default function Navbar() {
                                         onClick={signInWithGoogle}
                                         className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded text-sm font-medium transition-colors"
                                     >
-                                        Log In
+                                        Log ind
                                     </button>
                                 )}
                             </>
@@ -216,7 +216,7 @@ export default function Navbar() {
                                     href="/register"
                                     className="block px-4 py-3 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg"
                                 >
-                                    My Profile
+                                    Min Profil
                                 </Link>
                                 <button
                                     onClick={() => {
@@ -225,7 +225,7 @@ export default function Navbar() {
                                     }}
                                     className="w-full text-left px-4 py-3 text-red-400 hover:bg-slate-800 hover:text-red-300 rounded-lg"
                                 >
-                                    Log Out
+                                    Log ud
                                 </button>
                             </div>
                         </div>

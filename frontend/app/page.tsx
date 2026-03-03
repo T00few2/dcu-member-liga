@@ -122,24 +122,24 @@ export default function Home() {
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
                                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary"></span>
                             </span>
-                            Official E-Cycling League
+                            Officiel E-Cykling Liga
                         </div>
 
                         <h1 className="text-5xl md:text-7xl font-extrabold mb-6 tracking-tight text-white drop-shadow-lg pb-2 animate-in fade-in zoom-in-95 duration-1000 delay-150 fill-mode-both">
-                            Welcome to the <br />
+                            Velkommen til <br />
                             <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-white">
                                 DCU Member League
                             </span>
                         </h1>
 
                         <p className="text-xl md:text-2xl max-w-2xl text-slate-300 drop-shadow animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-300 fill-mode-both font-light">
-                            The premier competitive virtual cycling experience for all members of the Danish Cycling Union.
+                            Den førende kompetitive virtuelle cykeloplevelse for alle medlemmer af Danmarks Cykle Union.
                         </p>
                     </div>
 
                     {/* Scroll Indicator */}
                     <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center text-white/50 animate-bounce">
-                        <span className="text-xs uppercase tracking-widest mb-2 font-medium">Discover More</span>
+                        <span className="text-xs uppercase tracking-widest mb-2 font-medium">Læs mere</span>
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M19 12l-7 7-7-7" /></svg>
                     </div>
                 </div>
@@ -151,9 +151,9 @@ export default function Home() {
                         {/* Non-Member Card */}
                         <div className="bg-card/80 backdrop-blur-md border border-border/50 text-card-foreground p-8 rounded-2xl shadow-2xl flex flex-col hover:-translate-y-1 hover:shadow-primary/10 transition-all duration-300 relative overflow-hidden group text-left text-base">
                             <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                            <h2 className="text-2xl font-bold mb-3">Not in a club yet?</h2>
+                            <h2 className="text-2xl font-bold mb-3">Ikke medlem af en klub endnu?</h2>
                             <p className="text-muted-foreground mb-8 flex-grow">
-                                You must be a member of a DCU club to participate. Find a club near you, join the community, and then enter the league.
+                                Du skal være medlem af en DCU-klub for at deltage. Find en klub nær dig, bliv en del af fællesskabet, og tilmeld dig derefter ligaen.
                             </p>
                             <a
                                 href="https://www.cyklingdanmark.dk/klubber" // Placeholder URL
@@ -161,7 +161,7 @@ export default function Home() {
                                 rel="noopener noreferrer"
                                 className="w-full bg-secondary text-secondary-foreground py-3.5 px-4 rounded-xl font-semibold hover:bg-secondary/80 transition-all flex items-center justify-center gap-2 border border-border"
                             >
-                                Find a DCU Club &rarr;
+                                Find en DCU-klub &rarr;
                             </a>
                         </div>
 
@@ -169,9 +169,9 @@ export default function Home() {
                         <div className="bg-gradient-to-br from-card/95 to-card/80 backdrop-blur-xl border border-primary/30 text-card-foreground p-8 rounded-2xl shadow-2xl flex flex-col hover:-translate-y-1 hover:shadow-primary/20 transition-all duration-300 relative overflow-hidden group text-left text-base">
                             <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                             <div className="absolute -right-10 -top-10 w-32 h-32 bg-primary/20 rounded-full blur-3xl"></div>
-                            <h2 className="text-2xl font-bold mb-3 text-foreground">Already a DCU member?</h2>
+                            <h2 className="text-2xl font-bold mb-3 text-foreground">Allerede DCU-medlem?</h2>
                             <p className="text-muted-foreground mb-8 flex-grow">
-                                Sign in with your Google account to register your DCU license, join upcoming races, and track your statistics.
+                                Log ind med din Google-konto for at registrere din DCU-licens, deltage i kommende løb, og følge din statistik.
                             </p>
                             <button
                                 onClick={signInWithGoogle}
@@ -184,7 +184,7 @@ export default function Home() {
                                     <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
                                     <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
                                 </svg>
-                                <span className="relative z-10">Join the League</span>
+                                <span className="relative z-10">Tilmeld dig ligaen</span>
                             </button>
                         </div>
                     </div>
@@ -198,9 +198,9 @@ export default function Home() {
 
                     <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-16 items-center relative z-20">
                         <div>
-                            <h2 className="text-3xl md:text-4xl font-bold mb-6">Join the E-Cycling Community</h2>
+                            <h2 className="text-3xl md:text-4xl font-bold mb-6">Bliv en del af E-cykling fællesskabet</h2>
                             <p className="text-lg text-muted-foreground mb-6">
-                                Experience the thrill of competitive racing from your living room. The DCU Member League connects riders across Denmark in organized, structured, and fair virtual races on Zwift.
+                                Oplev spændingen ved kompetitivt cykelløb fra din stue. DCU Member Ligaen forbinder ryttere på tværs af Danmark i organiserede, strukturerede og fair virtuelle løb på Zwift.
                             </p>
                             <div className="space-y-6 mb-8 text-base">
                                 <div className="flex items-start gap-4">
@@ -208,8 +208,8 @@ export default function Home() {
                                         <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
                                     </div>
                                     <div>
-                                        <h4 className="font-semibold text-lg text-foreground">Official DCU Racing</h4>
-                                        <p className="text-muted-foreground">Races follow standard DCU regulations tailored for the virtual environment ensuring fair play.</p>
+                                        <h4 className="font-semibold text-lg text-foreground">Officielle DCU Cykelløb</h4>
+                                        <p className="text-muted-foreground">Løbene følger de standardmæssige DCU-regulativer, tilpasset det virtuelle miljø for at sikre fair play.</p>
                                     </div>
                                 </div>
                                 <div className="flex items-start gap-4">
@@ -217,8 +217,8 @@ export default function Home() {
                                         <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
                                     </div>
                                     <div>
-                                        <h4 className="font-semibold text-lg text-foreground">Club Rivalries</h4>
-                                        <p className="text-muted-foreground">Represent your real-world club and compete in individual and team classifications throughout the season.</p>
+                                        <h4 className="font-semibold text-lg text-foreground">Klubrivaliseringer</h4>
+                                        <p className="text-muted-foreground">Repræsentér din fysiske cykelklub og konkurrér i både individuelle og holdklassementer gennem hele sæsonen.</p>
                                     </div>
                                 </div>
                             </div>
@@ -231,8 +231,8 @@ export default function Home() {
                                     <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" /></svg>
                                 </div>
                                 <div>
-                                    <h3 className="text-lg font-bold text-foreground group-hover:text-blue-500 transition-colors">Facebook Group</h3>
-                                    <p className="text-sm text-muted-foreground mt-1">Join the discussion</p>
+                                    <h3 className="text-lg font-bold text-foreground group-hover:text-blue-500 transition-colors">Facebook Gruppe</h3>
+                                    <p className="text-sm text-muted-foreground mt-1">Deltag i debatten</p>
                                 </div>
                             </a>
 
@@ -244,7 +244,7 @@ export default function Home() {
                                 </div>
                                 <div>
                                     <h3 className="text-lg font-bold text-foreground group-hover:text-indigo-500 transition-colors">Discord Server</h3>
-                                    <p className="text-sm text-muted-foreground mt-1">Live race chat & support</p>
+                                    <p className="text-sm text-muted-foreground mt-1">Live løbschat & support</p>
                                 </div>
                             </a>
 
@@ -253,8 +253,8 @@ export default function Home() {
                                     <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></svg>
                                 </div>
                                 <div>
-                                    <h3 className="text-lg font-bold text-foreground group-hover:text-primary transition-colors">DCU E-Cycling Rules</h3>
-                                    <p className="text-sm text-muted-foreground mt-1">Read the complete rulebook and technical guide before racing.</p>
+                                    <h3 className="text-lg font-bold text-foreground group-hover:text-primary transition-colors">DCU E-cykling Regler</h3>
+                                    <p className="text-sm text-muted-foreground mt-1">Læs det fulde reglement og den tekniske vejledning inden du kører løb.</p>
                                 </div>
                             </a>
                         </div>
@@ -277,13 +277,13 @@ export default function Home() {
 
                 <div className="relative z-10 flex flex-col items-center text-center px-4 mt-8 max-w-5xl mx-auto">
                     <h1 className="text-5xl md:text-6xl font-extrabold mb-4 tracking-tight text-white drop-shadow-lg pb-2 animate-in fade-in zoom-in-95 duration-1000">
-                        Welcome back,<br />
+                        Velkommen tilbage,<br />
                         <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-white">
-                            {user.displayName?.split(' ')[0] || 'Rider'}
+                            {user.displayName?.split(' ')[0] || 'Rytter'}
                         </span>
                     </h1>
                     <p className="text-xl mb-8 max-w-2xl text-slate-300 font-light drop-shadow animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-150">
-                        Your dashboard for the DCU Member League.
+                        Dit dashboard for DCU Member League.
                     </p>
                 </div>
             </div>
@@ -294,12 +294,12 @@ export default function Home() {
                     {nextRace && (
                         <div>
                             <div className="flex justify-between items-end mb-2">
-                                <div className="text-primary text-sm font-bold uppercase tracking-wider">Next Race</div>
+                                <div className="text-primary text-sm font-bold uppercase tracking-wider">Næste Løb</div>
                                 <Link
                                     href="/schedule"
                                     className="text-sm text-primary hover:underline"
                                 >
-                                    View Full Schedule &rarr;
+                                    Se hele løbskalenderen &rarr;
                                 </Link>
                             </div>
                             <div className="bg-card border border-border rounded-lg shadow-sm overflow-hidden p-6 text-left">
@@ -336,11 +336,11 @@ export default function Home() {
                                         <div className="font-semibold text-card-foreground">{nextRace.totalDistance} km</div>
                                     </div>
                                     <div className="bg-muted/20 p-3 rounded text-center">
-                                        <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Elevation</div>
+                                        <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Højdemeter</div>
                                         <div className="font-semibold text-card-foreground">{nextRace.totalElevation} m</div>
                                     </div>
                                     <div className="bg-muted/20 p-3 rounded text-center flex flex-col justify-center">
-                                        <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Laps</div>
+                                        <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Omgange</div>
                                         <div className="font-semibold text-card-foreground flex justify-center items-center h-full">
                                             {(() => {
                                                 if (nextRace.eventMode === 'multi' && nextRace.eventConfiguration) {
@@ -368,7 +368,7 @@ export default function Home() {
                                     if (nextRace.eventMode === 'multi' && nextRace.eventConfiguration) {
                                         return (
                                             <div className="border-t border-border pt-4 mb-6">
-                                                <h4 className="text-sm font-semibold text-card-foreground mb-3">Points Sprints</h4>
+                                                <h4 className="text-sm font-semibold text-card-foreground mb-3">Pointsprint</h4>
                                                 <div className="space-y-4">
                                                     {nextRace.eventConfiguration.map((config, idx) => {
                                                         const catSprints = config.sprints || [];
@@ -391,7 +391,7 @@ export default function Home() {
                                                                         const lapNum = parseInt(lapKey);
                                                                         return (
                                                                             <div key={lapNum} className="flex flex-col sm:flex-row gap-2 sm:gap-4 text-xs">
-                                                                                <div className="w-12 font-medium text-muted-foreground shrink-0">Lap {lapNum}</div>
+                                                                                <div className="w-12 font-medium text-muted-foreground shrink-0">Omgang {lapNum}</div>
                                                                                 <div className="flex-1 flex flex-wrap gap-2">
                                                                                     {sprintsByLap[lapNum].sort((a, b) => a.count - b.count).map((seg, sIdx) => (
                                                                                         <span key={sIdx} className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-secondary text-secondary-foreground border border-border">
@@ -413,7 +413,7 @@ export default function Home() {
                                         // Legacy Single Mode
                                         return (
                                             <div className="border-t border-border pt-4 mb-6">
-                                                <h4 className="text-sm font-semibold text-card-foreground mb-3">Points Sprints</h4>
+                                                <h4 className="text-sm font-semibold text-card-foreground mb-3">Pointsprint</h4>
                                                 <div className="space-y-3">
                                                     {/* Group by lap for display */}
                                                     {Object.entries(
@@ -427,7 +427,7 @@ export default function Home() {
                                                         .sort(([a], [b]) => parseInt(a) - parseInt(b))
                                                         .map(([lapKey, segments]) => (
                                                             <div key={lapKey} className="flex flex-col sm:flex-row gap-2 sm:gap-8 text-sm">
-                                                                <div className="w-16 font-medium text-muted-foreground shrink-0">Lap {lapKey}</div>
+                                                                <div className="w-16 font-medium text-muted-foreground shrink-0">Omgang {lapKey}</div>
                                                                 <div className="flex-1 flex flex-wrap gap-2">
                                                                     {segments.sort((a, b) => a.count - b.count).map((seg, idx) => (
                                                                         <span key={idx} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
@@ -454,7 +454,7 @@ export default function Home() {
                                                 rel="noopener noreferrer"
                                                 className="block w-full bg-primary hover:bg-primary/90 text-white font-bold py-2 px-4 rounded-lg text-center transition shadow-md flex items-center justify-center gap-2 text-sm"
                                             >
-                                                <span>Race Pass: {config.customCategory}</span>
+                                                <span>Løbspas: {config.customCategory}</span>
                                                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                                     <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
                                                     <polyline points="15 3 21 3 21 9"></polyline>
@@ -471,7 +471,7 @@ export default function Home() {
                                             rel="noopener noreferrer"
                                             className="block w-full bg-primary hover:bg-primary/90 text-white font-bold py-3 px-4 rounded-lg text-center transition shadow-md flex items-center justify-center gap-2"
                                         >
-                                            <span>Race Pass</span>
+                                            <span>Løbspas</span>
                                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                                 <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
                                                 <polyline points="15 3 21 3 21 9"></polyline>
@@ -486,23 +486,23 @@ export default function Home() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <Link href="/participants" className="p-6 border border-border rounded-lg shadow-sm hover:shadow-md transition bg-card text-card-foreground group text-left">
-                            <h2 className="text-2xl font-semibold mb-2 group-hover:text-primary">Participants &rarr;</h2>
+                            <h2 className="text-2xl font-semibold mb-2 group-hover:text-primary">Deltagere &rarr;</h2>
                             <p className="text-muted-foreground">
-                                Check out the competition.
+                                Tjek hvem der stiller til start.
                             </p>
                         </Link>
 
                         <Link href="/results" className="p-6 border border-border rounded-lg shadow-sm hover:shadow-md transition bg-card text-card-foreground group text-left">
-                            <h2 className="text-2xl font-semibold mb-2 group-hover:text-primary">Results &rarr;</h2>
+                            <h2 className="text-2xl font-semibold mb-2 group-hover:text-primary">Resultater &rarr;</h2>
                             <p className="text-muted-foreground">
-                                View race results and league standings.
+                                Se løbsresultater og ligastillingen.
                             </p>
                         </Link>
 
                         <Link href="/stats" className="p-6 border border-border rounded-lg shadow-sm hover:shadow-md transition bg-card text-card-foreground group text-left md:col-span-2">
-                            <h2 className="text-2xl font-semibold mb-2 group-hover:text-primary">My Stats &rarr;</h2>
+                            <h2 className="text-2xl font-semibold mb-2 group-hover:text-primary">Min Statistik &rarr;</h2>
                             <p className="text-muted-foreground">
-                                Compare your performance against other riders.
+                                Sammenlign din præstation med andre ryttere.
                             </p>
                         </Link>
                     </div>
@@ -517,9 +517,9 @@ export default function Home() {
 
                 <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-16 items-center relative z-20">
                     <div>
-                        <h2 className="text-3xl md:text-4xl font-bold mb-6">Join the Community</h2>
+                        <h2 className="text-3xl md:text-4xl font-bold mb-6">Bliv en del af fællesskabet</h2>
                         <p className="text-lg text-muted-foreground mb-6">
-                            Connect with other riders across Denmark, follow the official news, and participate in live race chat during the DCU Member League.
+                            Forbind med andre ryttere på tværs af Danmark, følg de officielle nyheder, og deltag i live løbschat under DCU Member League.
                         </p>
                     </div>
 
@@ -529,8 +529,8 @@ export default function Home() {
                                 <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" /></svg>
                             </div>
                             <div>
-                                <h3 className="text-lg font-bold text-foreground group-hover:text-blue-500 transition-colors">Facebook Page</h3>
-                                <p className="text-sm text-muted-foreground mt-1">Official DCU E-Cykling News</p>
+                                <h3 className="text-lg font-bold text-foreground group-hover:text-blue-500 transition-colors">Facebook Side</h3>
+                                <p className="text-sm text-muted-foreground mt-1">Officielle DCU E-cykling Nyheder</p>
                             </div>
                         </a>
 
@@ -542,7 +542,7 @@ export default function Home() {
                             </div>
                             <div>
                                 <h3 className="text-lg font-bold text-foreground group-hover:text-indigo-500 transition-colors">Discord Server</h3>
-                                <p className="text-sm text-muted-foreground mt-1">Live race chat & support</p>
+                                <p className="text-sm text-muted-foreground mt-1">Live løbschat & support</p>
                             </div>
                         </a>
                     </div>

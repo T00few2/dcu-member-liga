@@ -42,14 +42,14 @@ export default function AgreementsForm({
                             Code of Conduct
                         </label>
                         <p className="text-sm text-muted-foreground mt-1">
-                            I agree to follow the DCU E-Cycling Code of Conduct (Etisk Kodeks).
+                            Jeg accepterer at følge DCU E-cykling Etisk Kodeks.
                         </p>
                         <button
                             type="button"
                             onClick={() => setShowCoCModal(true)}
                             className="text-xs text-primary hover:underline mt-2 font-medium"
                         >
-                            Read Code of Conduct
+                            Læs Etisk Kodeks
                         </button>
                     </div>
                 </div>
@@ -70,10 +70,10 @@ export default function AgreementsForm({
                     </div>
                     <div>
                         <label htmlFor="data-check" className="font-semibold text-card-foreground cursor-pointer">
-                            Please accept the Data Policy
+                            Accepter venligst Datapolitikken
                         </label>
                         <p className="text-sm text-muted-foreground mt-1">
-                            I accept how personal data is processed as described in the <Link href="/datapolitik" target="_blank" className="text-primary hover:underline">Data Policy</Link>.
+                            Jeg accepterer, hvordan persondata behandles som beskrevet i <Link href="/datapolitik" target="_blank" className="text-primary hover:underline">Datapolitikken</Link>.
                         </p>
                     </div>
                 </div>
@@ -94,10 +94,10 @@ export default function AgreementsForm({
                     </div>
                     <div>
                         <label htmlFor="public-check" className="font-semibold text-card-foreground cursor-pointer">
-                            Publication of Results
+                            Offentliggørelse af resultater
                         </label>
                         <p className="text-sm text-muted-foreground mt-1">
-                            I consent to having my name and results published on this website and DCU platforms as described in <Link href="/offentliggoerelse" target="_blank" className="text-primary hover:underline">Notification of Publication</Link>.
+                            Jeg giver samtykke til, at mit navn og resultater offentliggøres på denne hjemmeside og DCU-platforme som beskrevet i <Link href="/offentliggoerelse" target="_blank" className="text-primary hover:underline">bekendtgørelsen for offentliggørelse</Link>.
                         </p>
                     </div>
                 </div>
@@ -111,21 +111,21 @@ export default function AgreementsForm({
                             <h2 className="text-2xl font-bold text-card-foreground">DCU E-Cycling Code of Conduct</h2>
                         </div>
                         <div className="p-6 overflow-y-auto prose dark:prose-invert max-w-none">
-                            <p>Here you will find the rules for fair play, respect, and good sportsmanship.</p>
+                            <p>Her finder du reglerne for fair play, respekt og god sportsånd.</p>
                             <ul>
-                                <li>Be respectful to other riders and organizers.</li>
-                                <li>No cheating or manipulation of equipment/data.</li>
-                                <li>Use accurate weight and height measurements.</li>
-                                <li>Follow the instructions of race officials.</li>
+                                <li>Vær respektfuld overfor andre ryttere og arrangører.</li>
+                                <li>Snyd eller manipulation af udstyr/data er ikke tilladt.</li>
+                                <li>Brug korrekte mål for vægt og højde.</li>
+                                <li>Følg instruktioner fra løbets ledelse.</li>
                             </ul>
-                            <p>Failure to comply may result in disqualification or bans.</p>
+                            <p>Manglende overholdelse kan resultere i diskvalifikation eller karantæne.</p>
                         </div>
                         <div className="p-6 border-t border-border flex justify-end gap-3">
                             <button
                                 onClick={() => setShowCoCModal(false)}
                                 className="px-5 py-2 text-muted-foreground hover:text-foreground font-medium"
                             >
-                                Close
+                                Luk
                             </button>
                             <button
                                 onClick={() => {
@@ -135,7 +135,7 @@ export default function AgreementsForm({
                                 disabled={readOnly}
                                 className="px-5 py-2 bg-primary text-primary-foreground font-bold rounded hover:bg-primary/90 transition-colors"
                             >
-                                I Agree
+                                Jeg accepterer
                             </button>
                         </div>
                     </div>

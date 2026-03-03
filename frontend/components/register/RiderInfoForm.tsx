@@ -97,22 +97,22 @@ export default function RiderInfoForm({
 
                 {/* Name */}
                 <div>
-                    <label className="block font-semibold text-card-foreground mb-1">Full Name</label>
+                    <label className="block font-semibold text-card-foreground mb-1">Fulde navn</label>
                     <input
                         type="text"
                         value={name}
                         onChange={e => !readOnly && setName(e.target.value)}
                         disabled={readOnly}
                         className="w-full p-3 border border-input rounded-lg focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all text-foreground bg-background placeholder-muted-foreground disabled:opacity-50"
-                        placeholder="Your Name"
+                        placeholder="Dit navn"
                     />
                 </div>
 
                 {/* Club */}
                 <div>
-                    <label className="block font-semibold text-card-foreground mb-1">DCU Club</label>
+                    <label className="block font-semibold text-card-foreground mb-1">DCU Klub</label>
                     {loadingClubs ? (
-                        <p className="text-sm text-muted-foreground">Loading clubs...</p>
+                        <p className="text-sm text-muted-foreground">Indlæser klubber...</p>
                     ) : clubsError ? (
                         <p className="text-sm text-red-600">{clubsError}</p>
                     ) : (
@@ -129,7 +129,7 @@ export default function RiderInfoForm({
                                 }}
                                 onFocus={() => !readOnly && setShowClubList(true)}
                                 disabled={readOnly}
-                                placeholder={readOnly ? club : "Search for your club..."}
+                                placeholder={readOnly ? club : "Søg efter din klub..."}
                                 className="w-full p-3 border border-input rounded-lg focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all text-foreground bg-background placeholder-muted-foreground disabled:opacity-50"
                             />
 
@@ -146,12 +146,12 @@ export default function RiderInfoForm({
                                         if (filtered.length === 0 && searchLower) {
                                             return (
                                                 <div className="p-2">
-                                                    <div className="p-3 text-sm text-muted-foreground">No clubs found</div>
+                                                    <div className="p-3 text-sm text-muted-foreground">Ingen klubber fundet</div>
                                                     <button
                                                         onClick={() => { setClub('None'); setClubSearch('None'); setShowClubList(false); }}
                                                         className="w-full p-3 text-left hover:bg-secondary/50 border-t border-border"
                                                     >
-                                                        None (No club)
+                                                        Ingen (Ingen klub)
                                                     </button>
                                                 </div>
                                             );
@@ -173,7 +173,7 @@ export default function RiderInfoForm({
                                                     onClick={() => { setClub('None'); setClubSearch('None'); setShowClubList(false); }}
                                                     className="w-full p-3 text-left hover:bg-secondary/50 border-t border-border bg-secondary/20 text-foreground"
                                                 >
-                                                    None (No club)
+                                                    Ingen (Ingen klub)
                                                 </button>
                                             </>
                                         );
@@ -197,7 +197,7 @@ export default function RiderInfoForm({
                 <div>
                     <label className="block font-semibold text-card-foreground mb-1">Zwift ID</label>
                     <p className="text-sm text-muted-foreground mb-2">
-                        Find your ID at <a href="https://zwiftpower.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">ZwiftPower</a> or your profile URL settings.
+                        Find dit ID på <a href="https://zwiftpower.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">ZwiftPower</a> eller i dine profil URL indstillinger.
                     </p>
 
                     <div className="flex gap-2 items-start">
@@ -219,7 +219,7 @@ export default function RiderInfoForm({
                                 className="px-4 py-2 bg-green-100 text-green-700 border border-green-200 rounded-lg font-bold text-sm disabled:opacity-50"
                                 disabled={readOnly}
                             >
-                                Verified ✓
+                                Bekræftet ✓
                             </button>
                         ) : (
                             <button
@@ -227,7 +227,7 @@ export default function RiderInfoForm({
                                 disabled={verifyingZwift || !zwiftId || readOnly}
                                 className="px-4 py-2 bg-primary text-primary-foreground rounded-lg font-bold text-sm hover:bg-primary/90 disabled:opacity-50"
                             >
-                                {verifyingZwift ? '...' : 'Verify'}
+                                {verifyingZwift ? '...' : 'Bekræft'}
                             </button>
                         )}
                     </div>
@@ -235,19 +235,19 @@ export default function RiderInfoForm({
                     {/* Confirmation Prompt */}
                     {zwiftName && !zwiftVerified && !readOnly && (
                         <div className="mt-3 p-3 bg-secondary rounded-lg border border-secondary-foreground/10">
-                            <p className="text-sm mb-2 text-card-foreground">Is this you? <strong>{zwiftName}</strong></p>
+                            <p className="text-sm mb-2 text-card-foreground">Er det dig? <strong>{zwiftName}</strong></p>
                             <div className="flex gap-2">
                                 <button
                                     onClick={confirmZwiftIdentity}
                                     className="px-3 py-1 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700"
                                 >
-                                    Yes, that's me
+                                    Ja, det er mig
                                 </button>
                                 <button
                                     onClick={() => setZwiftId('')}
                                     className="px-3 py-1 bg-gray-300 text-gray-800 rounded-lg text-sm hover:bg-gray-400"
                                 >
-                                    No
+                                    Nej
                                 </button>
                             </div>
                         </div>
@@ -271,7 +271,7 @@ export default function RiderInfoForm({
                             placeholder="e.g. 10123456"
                         />
                         {checkingLicense && (
-                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">Checking...</span>
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">Tjekker...</span>
                         )}
                     </div>
                     {licenseCheckMessage && (
@@ -283,9 +283,9 @@ export default function RiderInfoForm({
 
                 {/* Trainer */}
                 <div>
-                    <label className="block font-semibold text-card-foreground mb-1">Trainer / Powermeter</label>
+                    <label className="block font-semibold text-card-foreground mb-1">Hometrainer / Wattmåler</label>
                     {loadingTrainers ? (
-                        <p className="text-sm text-muted-foreground">Loading trainers...</p>
+                        <p className="text-sm text-muted-foreground">Indlæser hometrainere...</p>
                     ) : trainersError ? (
                         <p className="text-sm text-red-600">{trainersError}</p>
                     ) : (
@@ -296,17 +296,17 @@ export default function RiderInfoForm({
                                 disabled={readOnly}
                                 className="w-full p-3 border border-input rounded-lg focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all text-foreground bg-background disabled:opacity-50"
                             >
-                                <option value="">Select trainer/powermeter</option>
-                                <optgroup label="✓ Approved Trainers">
+                                <option value="">Vælg hometrainer/wattmåler</option>
+                                <optgroup label="✓ Godkendte hometrainere">
                                     {trainers.filter(t => t.status === 'approved').map((t) => (
                                         <option key={t.id} value={t.name}>
-                                            {t.name} {t.dualRecordingRequired ? '(Dual Recording Required)' : ''}
+                                            {t.name} {t.dualRecordingRequired ? '(Dual Recording påkrævet)' : ''}
                                         </option>
                                     ))}
                                 </optgroup>
-                                <optgroup label="✗ Not Approved" disabled>
+                                <optgroup label="✗ Ikke godkendt" disabled>
                                     {trainers.filter(t => t.status === 'not_approved').map((t) => (
-                                        <option key={t.id} value="" disabled>{t.name} - NOT APPROVED</option>
+                                        <option key={t.id} value="" disabled>{t.name} - IKKE GODKENDT</option>
                                     ))}
                                 </optgroup>
                             </select>
@@ -314,7 +314,7 @@ export default function RiderInfoForm({
                             {trainer && trainers.find(t => t.name === trainer)?.dualRecordingRequired && (
                                 <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
                                     <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                                        ⚠️ <strong>Dual Recording Required:</strong> You must record verification.
+                                        ⚠️ <strong>Dual Recording påkrævet:</strong> Du skal optage bekræftelsesvideo.
                                     </p>
                                 </div>
                             )}
@@ -324,7 +324,7 @@ export default function RiderInfoForm({
                                     onClick={() => setRequestingTrainer(true)}
                                     className="text-sm text-primary hover:underline"
                                 >
-                                    Don't see your trainer? Request approval →
+                                    Kan du ikke finde din hometrainer? Anmod om godkendelse →
                                 </button>
                             )}
                         </div>
@@ -335,30 +335,30 @@ export default function RiderInfoForm({
                 {requestingTrainer && (
                     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
                         <div className="bg-card p-6 rounded-lg max-w-md w-full shadow-xl border border-border">
-                            <h3 className="text-lg font-bold mb-4 text-card-foreground">Request Trainer Approval</h3>
+                            <h3 className="text-lg font-bold mb-4 text-card-foreground">Anmod om hometrainer godkendelse</h3>
                             <p className="text-sm text-muted-foreground mb-4">
-                                Please enter the full name of your trainer or powermeter. We will review it shortly.
+                                Indtast venligst det fulde navn på din hometrainer eller wattmåler. Vi vil derefter gennemgå den.
                             </p>
                             <input
                                 type="text"
                                 value={newTrainerName}
                                 onChange={e => setNewTrainerName(e.target.value)}
                                 className="w-full p-2 border border-input rounded mb-4 bg-background text-foreground"
-                                placeholder="e.g. Wahoo Kickr Core"
+                                placeholder="f.eks. Wahoo Kickr Core"
                             />
                             <div className="flex justify-end gap-2">
                                 <button
                                     onClick={() => setRequestingTrainer(false)}
                                     className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground"
                                 >
-                                    Cancel
+                                    Annuller
                                 </button>
                                 <button
                                     onClick={handleTrainerRequest}
                                     disabled={!newTrainerName.trim()}
                                     className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50"
                                 >
-                                    Submit Request
+                                    Send anmodning
                                 </button>
                             </div>
                         </div>

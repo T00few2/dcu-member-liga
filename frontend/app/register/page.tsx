@@ -115,7 +115,7 @@ function RegisterContent() {
                         setIsRegistered(data.registered);
 
                         if (data.hasDraft && !data.registered) {
-                            setMessage('Welcome back! Draft loaded.');
+                            setMessage('Velkommen tilbage! Kladde indlæst.');
                         }
                     } else if (user.displayName) {
                         setName(user.displayName);
@@ -134,7 +134,7 @@ function RegisterContent() {
     useEffect(() => {
         if (stravaStatusParam === 'connected') {
             setStravaConnected(true);
-            setMessage('Strava connected successfully!');
+            setMessage('Strava forbundet med succes!');
             // Restore temp info
             const tempName = localStorage.getItem('temp_reg_name');
             if (tempName) {
@@ -245,8 +245,8 @@ function RegisterContent() {
             if (!res.ok) throw new Error(data.message);
 
             setInitialData({ eLicense, zwiftId });
-            setMessage(isDraft ? 'Progress saved.' : 'Profile updated!');
-            showToast(isDraft ? 'Progress saved' : 'Saved!', 'success');
+            setMessage(isDraft ? 'Kladde gemt.' : 'Profil opdateret!');
+            showToast(isDraft ? 'Kladde gemt' : 'Gemt!', 'success');
 
             if (!isDraft) {
                 setIsRegistered(true);
@@ -263,7 +263,7 @@ function RegisterContent() {
 
     // --- Render ---
 
-    if (authLoading || fetchingProfile) return <div className="p-8 text-center text-muted-foreground">Loading profile...</div>;
+    if (authLoading || fetchingProfile) return <div className="p-8 text-center text-muted-foreground">Indlæser profil...</div>;
 
     const TabButton = ({ id, label, active, warning = false }: any) => (
         <button
@@ -279,7 +279,7 @@ function RegisterContent() {
         <div className="max-w-2xl mx-auto mt-10 p-8 bg-card rounded-lg shadow-md border border-border">
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-3xl font-bold text-card-foreground">
-                    {isRegistered ? 'Rider Profile' : 'Registration'}
+                    {isRegistered ? 'Rytterprofil' : 'Tilmelding'}
                 </h1>
                 {!isRegistered && (
                     <button
@@ -287,7 +287,7 @@ function RegisterContent() {
                         disabled={savingProgress}
                         className="text-sm text-muted-foreground hover:text-primary underline"
                     >
-                        {savingProgress ? 'Saving...' : 'Save Draft'}
+                        {savingProgress ? 'Gemmer...' : 'Gem kladde'}
                     </button>
                 )}
             </div>
@@ -299,12 +299,12 @@ function RegisterContent() {
             {isRegistered && (
                 <>
                     <div className="flex gap-2 mb-6 border-b border-border">
-                        <TabButton id="info" label="Rider Info" active={activeTab === 'info'} />
-                        <TabButton id="connections" label="Connections" active={activeTab === 'connections'} />
-                        <TabButton id="agreements" label="Agreements" active={activeTab === 'agreements'} />
+                        <TabButton id="info" label="Rytterinfo" active={activeTab === 'info'} />
+                        <TabButton id="connections" label="Forbindelser" active={activeTab === 'connections'} />
+                        <TabButton id="agreements" label="Aftaler" active={activeTab === 'agreements'} />
                         <TabButton
                             id="verification"
-                            label="Verification"
+                            label="Bekræftelse"
                             active={activeTab === 'verification'}
                             warning={weightVerificationStatus === 'pending'}
                         />
@@ -364,7 +364,7 @@ function RegisterContent() {
                     <div className="min-h-[300px]">
                         {currentStep === 0 && (
                             <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-                                <h2 className="text-xl font-semibold mb-4 text-card-foreground">Rider Information</h2>
+                                <h2 className="text-xl font-semibold mb-4 text-card-foreground">Rytterinformation</h2>
                                 <RiderInfoForm
                                     name={name} setName={setName} eLicense={eLicense} setELicense={setELicense}
                                     club={club} setClub={setClub} trainer={trainer} setTrainer={setTrainer}
@@ -381,7 +381,7 @@ function RegisterContent() {
                         )}
                         {currentStep === 1 && (
                             <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-                                <h2 className="text-xl font-semibold mb-4 text-card-foreground">Connect Accounts</h2>
+                                <h2 className="text-xl font-semibold mb-4 text-card-foreground">Forbind konti</h2>
                                 <ConnectionsForm
                                     stravaConnected={stravaConnected} handleConnectStrava={handleConnectStrava} handleDisconnectStrava={handleDisconnectStrava}
                                 />
@@ -389,7 +389,7 @@ function RegisterContent() {
                         )}
                         {currentStep === 2 && (
                             <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-                                <h2 className="text-xl font-semibold mb-4 text-card-foreground">Agreements</h2>
+                                <h2 className="text-xl font-semibold mb-4 text-card-foreground">Aftaler</h2>
                                 <AgreementsForm
                                     acceptedCoC={acceptedCoC} setAcceptedCoC={setAcceptedCoC}
                                     acceptedDataPolicy={acceptedDataPolicy} setAcceptedDataPolicy={setAcceptedDataPolicy}
@@ -409,7 +409,7 @@ function RegisterContent() {
                         disabled={submitting}
                         className="px-6 py-2 bg-primary text-primary-foreground font-bold rounded-lg hover:bg-primary/90 disabled:opacity-50"
                     >
-                        {submitting ? 'Saving...' : 'Save Changes'}
+                        {submitting ? 'Gemmer...' : 'Gem ændringer'}
                     </button>
                 ) : (
                     <>
@@ -418,7 +418,7 @@ function RegisterContent() {
                                 onClick={() => setCurrentStep(prev => prev - 1)}
                                 className="px-6 py-2 border border-border rounded-lg hover:bg-secondary transition-colors"
                             >
-                                Back
+                                Tilbage
                             </button>
                         )}
                         {currentStep < 2 ? (
@@ -427,7 +427,7 @@ function RegisterContent() {
                                 disabled={currentStep === 0 ? !step0Valid : !step1Valid}
                                 className="px-6 py-2 bg-primary text-primary-foreground font-bold rounded-lg hover:bg-primary/90 disabled:opacity-50"
                             >
-                                Next
+                                Næste
                             </button>
                         ) : (
                             <button
@@ -435,7 +435,7 @@ function RegisterContent() {
                                 disabled={submitting || !step2Valid}
                                 className="px-8 py-2 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 disabled:opacity-50"
                             >
-                                {submitting ? 'Registering...' : 'Complete Registration'}
+                                {submitting ? 'Tilmelder...' : 'Gennemfør tilmelding'}
                             </button>
                         )}
                     </>
@@ -447,7 +447,7 @@ function RegisterContent() {
 
 export default function RegisterPage() {
     return (
-        <Suspense fallback={<div className="p-8 text-center text-muted-foreground">Loading...</div>}>
+        <Suspense fallback={<div className="p-8 text-center text-muted-foreground">Indlæser...</div>}>
             <RegisterContent />
         </Suspense>
     );

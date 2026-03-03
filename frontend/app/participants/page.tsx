@@ -50,10 +50,10 @@ export default function ParticipantsPage() {
           const data = await res.json();
           setParticipants(data.participants || []);
         } else {
-          setError('Could not fetch participants');
+          setError('Kunne ikke hente deltagere');
         }
       } catch (e) {
-        setError('Network error');
+        setError('Netværksfejl');
       } finally {
         setLoading(false);
       }
@@ -62,39 +62,39 @@ export default function ParticipantsPage() {
     fetchParticipants();
   }, [user, isRegistered]);
 
-  if (authLoading || loading) return <div className="p-8 text-center text-muted-foreground">Loading participants...</div>;
+  if (authLoading || loading) return <div className="p-8 text-center text-muted-foreground">Indlæser deltagere...</div>;
 
   if (error) return <div className="p-8 text-center text-red-600">{error}</div>;
 
   return (
     <div className="max-w-7xl mx-auto mt-8 px-4">
-      <h1 className="text-3xl font-bold mb-2 text-foreground">Participants</h1>
-      <p className="text-muted-foreground mb-8">All registered riders in the league.</p>
+      <h1 className="text-3xl font-bold mb-2 text-foreground">Deltagere</h1>
+      <p className="text-muted-foreground mb-8">Alle tilmeldte ryttere i ligaen.</p>
 
       <div className="bg-card rounded-lg shadow overflow-hidden border border-border">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm text-muted-foreground">
             <thead className="bg-muted/50 text-xs uppercase text-muted-foreground border-b border-border">
               <tr>
-                <th className="px-6 py-3 font-bold">Name</th>
-                <th className="px-6 py-3 font-bold">Club</th>
-                <th className="px-6 py-3 font-bold">Cat</th>
+                <th className="px-6 py-3 font-bold">Navn</th>
+                <th className="px-6 py-3 font-bold">Klub</th>
+                <th className="px-6 py-3 font-bold">Kat</th>
                 <th className="px-6 py-3 font-bold">FTP (ZP)</th>
                 <th className="px-6 py-3 font-bold">ZRS</th>
                 <th className="px-6 py-3 font-bold">vELO</th>
                 <th className="px-6 py-3 font-bold">vELO max30</th>
                 <th className="px-6 py-3 font-bold">vELO max90</th>
-                <th className="px-6 py-3 font-bold">Phenotype</th>
-                <th className="px-6 py-3 font-bold">Strava (10 rides)</th>
-                <th className="px-6 py-3 font-bold">Profile Links</th>
-                <th className="px-6 py-3 font-bold text-right">E-License</th>
+                <th className="px-6 py-3 font-bold">Fænotype</th>
+                <th className="px-6 py-3 font-bold">Strava (10 ture)</th>
+                <th className="px-6 py-3 font-bold">Profillinks</th>
+                <th className="px-6 py-3 font-bold text-right">E-Licens</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {participants.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="px-6 py-8 text-center text-muted-foreground">
-                    No participants found yet.
+                    Ingen deltagere fundet endnu.
                   </td>
                 </tr>
               ) : (
@@ -104,16 +104,16 @@ export default function ParticipantsPage() {
                       <div className="flex items-center gap-2">
                         {p.name}
                         {p.weightVerificationStatus === 'pending' && (
-                          <span title="Weight Verification: Pending Action" className="cursor-help text-lg">⚠️</span>
+                          <span title="Vægtbekræftelse: Afventer handling" className="cursor-help text-lg">⚠️</span>
                         )}
                         {p.weightVerificationStatus === 'submitted' && (
-                          <span title="Weight Verification: In Review" className="cursor-help text-lg">⚠️</span>
+                          <span title="Vægtbekræftelse: Til gennemsyn" className="cursor-help text-lg">⚠️</span>
                         )}
                         {p.weightVerificationStatus === 'approved' && (
-                          <span title="Weight Verification: Approved" className="cursor-help text-lg">✅</span>
+                          <span title="Vægtbekræftelse: Godkendt" className="cursor-help text-lg">✅</span>
                         )}
                         {p.weightVerificationStatus === 'rejected' && (
-                          <span title="Weight Verification: Rejected" className="cursor-help text-lg">❌</span>
+                          <span title="Vægtbekræftelse: Afvist" className="cursor-help text-lg">❌</span>
                         )}
                       </div>
                     </td>
