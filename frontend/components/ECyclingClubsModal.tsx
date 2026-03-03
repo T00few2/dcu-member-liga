@@ -30,17 +30,22 @@ export default function ECyclingClubsModal({ isOpen, onClose }: ECyclingClubsMod
         {
             name: "Copenhagen Virtual Cycling Club (CVC)",
             url: "https://virtualcycling.dk/",
-            description: "En dedikeret dansk e-cykling klub med fokus på et stærkt fællesskab på Zwift for både motion og konkurrence."
+            description: "E-cykel klub i København med egne træningslokaler og instruktører for både motion og konkurrence."
         },
         {
             name: "Danish Zwift Racers (DZR)",
             url: "https://www.dzrracingseries.com/",
-            description: "Danmarks største fællesskab for e-cykling, der tilbyder virtuelle løb, struktureret træning og en fantastisk holdånd."
+            description: "Landsdækkende dedikeret e-cykel klub med fokus på løb og træning på Zwift."
+        },
+        {
+            name: "Den Blå Mur",
+            url: "https://www.facebook.com/denblaamur/?locale=da_DK",
+            description: "Et dedikeret e-cykling fællesskab for kvinder, der fokuserer på inklusion og stærkt sammenhold gennem ugentlige sociale Zwift-rides med plads til alle niveauer."
         },
         {
             name: "eCykle Klub Danmark (eCKD)",
             url: "https://ecykleklub.dk/",
-            description: "Et landsdækkende fællesskab omkring e-cykling med plads til alle niveauer, fra motionister til eliten."
+            description: "Et landsdækkende fællesskab omkring e-cykling på tværs af niveauer og platforme."
         },
         {
             name: "Stjær E-Cycling",

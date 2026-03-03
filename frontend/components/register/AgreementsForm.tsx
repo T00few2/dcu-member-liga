@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
+import CodeOfConductModal from '@/components/CodeOfConductModal';
+import PolicyModal from '@/components/PolicyModal';
 
 interface AgreementsFormProps {
     acceptedCoC: boolean;
@@ -20,6 +21,8 @@ export default function AgreementsForm({
     readOnly = false
 }: AgreementsFormProps) {
     const [showCoCModal, setShowCoCModal] = useState(false);
+    const [showDataPolicyModal, setShowDataPolicyModal] = useState(false);
+    const [showPublicResultsModal, setShowPublicResultsModal] = useState(false);
 
     return (
         <div className="space-y-6">
@@ -73,7 +76,14 @@ export default function AgreementsForm({
                             Accepter venligst Datapolitikken
                         </label>
                         <p className="text-sm text-muted-foreground mt-1">
-                            Jeg accepterer, hvordan persondata behandles som beskrevet i <Link href="/datapolitik" target="_blank" className="text-primary hover:underline">Datapolitikken</Link>.
+                            Jeg accepterer, hvordan persondata behandles som beskrevet i{' '}
+                            <button
+                                type="button"
+                                onClick={() => setShowDataPolicyModal(true)}
+                                className="text-primary hover:underline font-medium"
+                            >
+                                Datapolitikken
+                            </button>.
                         </p>
                     </div>
                 </div>
@@ -97,50 +107,53 @@ export default function AgreementsForm({
                             Offentliggørelse af resultater
                         </label>
                         <p className="text-sm text-muted-foreground mt-1">
-                            Jeg giver samtykke til, at mit navn og resultater offentliggøres på denne hjemmeside og DCU-platforme som beskrevet i <Link href="/offentliggoerelse" target="_blank" className="text-primary hover:underline">bekendtgørelsen for offentliggørelse</Link>.
+                            Jeg giver samtykke til, at mit navn og resultater offentliggøres på denne hjemmeside og DCU-platforme som beskrevet i{' '}
+                            <button
+                                type="button"
+                                onClick={() => setShowPublicResultsModal(true)}
+                                className="text-primary hover:underline font-medium"
+                            >
+                                bekendtgørelsen for offentliggørelse
+                            </button>.
                         </p>
                     </div>
                 </div>
             </div>
 
             {/* CoC Modal */}
-            {showCoCModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-                    <div className="bg-card w-full max-w-2xl max-h-[80vh] rounded-lg shadow-xl flex flex-col border border-border">
-                        <div className="p-6 border-b border-border">
-                            <h2 className="text-2xl font-bold text-card-foreground">DCU E-Cycling Code of Conduct</h2>
-                        </div>
-                        <div className="p-6 overflow-y-auto prose dark:prose-invert max-w-none">
-                            <p>Her finder du reglerne for fair play, respekt og god sportsånd.</p>
-                            <ul>
-                                <li>Vær respektfuld overfor andre ryttere og arrangører.</li>
-                                <li>Snyd eller manipulation af udstyr/data er ikke tilladt.</li>
-                                <li>Brug korrekte mål for vægt og højde.</li>
-                                <li>Følg instruktioner fra løbets ledelse.</li>
-                            </ul>
-                            <p>Manglende overholdelse kan resultere i diskvalifikation eller karantæne.</p>
-                        </div>
-                        <div className="p-6 border-t border-border flex justify-end gap-3">
-                            <button
-                                onClick={() => setShowCoCModal(false)}
-                                className="px-5 py-2 text-muted-foreground hover:text-foreground font-medium"
-                            >
-                                Luk
-                            </button>
-                            <button
-                                onClick={() => {
-                                    if (!readOnly) setAcceptedCoC(true);
-                                    setShowCoCModal(false);
-                                }}
-                                disabled={readOnly}
-                                className="px-5 py-2 bg-primary text-primary-foreground font-bold rounded hover:bg-primary-dark transition-colors"
-                            >
-                                Jeg accepterer
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <CodeOfConductModal
+                isOpen={showCoCModal}
+                onClose={() => setShowCoCModal(false)}
+                onAccept={() => {
+                    if (!readOnly) setAcceptedCoC(true);
+                    setShowCoCModal(false);
+                }}
+                disableAccept={readOnly}
+            />
+
+            {/* Data Policy Modal */}
+            <PolicyModal
+                isOpen={showDataPolicyModal}
+                onClose={() => setShowDataPolicyModal(false)}
+                policyEndpoint="dataPolicy"
+                onAccept={() => {
+                    if (!readOnly) setAcceptedDataPolicy(true);
+                    setShowDataPolicyModal(false);
+                }}
+                disableAccept={readOnly}
+            />
+
+            {/* Public Results Modal */}
+            <PolicyModal
+                isOpen={showPublicResultsModal}
+                onClose={() => setShowPublicResultsModal(false)}
+                policyEndpoint="publicResultsConsent"
+                onAccept={() => {
+                    if (!readOnly) setAcceptedPublicResults(true);
+                    setShowPublicResultsModal(false);
+                }}
+                disableAccept={readOnly}
+            />
         </div>
     );
 }
