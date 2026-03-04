@@ -7,21 +7,29 @@ export const metadata = {
 
 export default function InfoPage() {
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-[#0B1121] overflow-hidden">
-            {/* Hero Section */}
-            <div className="bg-primary text-white py-16 md:py-24 relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-br from-primary-dark/50 to-transparent"></div>
-                <div className="container mx-auto px-4 text-center max-w-4xl relative z-10">
-                    <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold mb-6 tracking-tight">Om E-cykling</h1>
-                    <p className="text-lg md:text-xl opacity-90 max-w-2xl mx-auto font-medium">
+        <div className="w-full relative -mt-4 text-foreground bg-background">
+            {/* Animated Hero Section with Video */}
+            <div className="relative w-full min-h-[50vh] flex flex-col items-center justify-center overflow-hidden bg-black pb-16 pt-8">
+                <video autoPlay loop muted playsInline preload="auto" className="absolute inset-0 w-full h-full object-cover z-0 opacity-40 mix-blend-screen bg-black">
+                    <source src="/hero-video.mp4" type="video/mp4" />
+                </video>
+                <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/50 to-background/95 z-0"></div>
+                <div className="absolute top-1/4 left-1/4 w-[30rem] h-[30rem] bg-primary/20 rounded-full mix-blend-screen filter blur-[120px] animate-pulse z-0"></div>
+                <div className="absolute bottom-1/4 right-1/4 w-[30rem] h-[30rem] bg-white/10 rounded-full mix-blend-screen filter blur-[120px] animate-pulse [animation-delay:2s] z-0"></div>
+
+                <div className="relative z-10 flex flex-col items-center text-center px-4 mt-8 max-w-5xl mx-auto">
+                    <h1 className="text-5xl md:text-6xl font-extrabold mb-4 tracking-tight text-white drop-shadow-lg pb-2 animate-in fade-in zoom-in-95 duration-1000">
+                        Om <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-white">E-cykling</span>
+                    </h1>
+                    <p className="text-xl mb-8 max-w-2xl text-slate-300 font-light drop-shadow animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-150">
                         E-cykling er en af de hurtigst voksende cykeldiscipliner. Her kan du træne og køre løb mod andre ryttere hjemme fra din stue.
                     </p>
                 </div>
             </div>
 
             {/* Content */}
-            <div className="container mx-auto px-4 py-12 max-w-4xl">
-                <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-none border border-slate-100 dark:border-slate-700 p-8 md:p-12 space-y-12">
+            <div className="container mx-auto px-4 -mt-12 relative z-20 pb-20 animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-300 max-w-4xl">
+                <div className="bg-card dark:bg-slate-800 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-none border border-border dark:border-slate-700 p-8 md:p-12 space-y-12">
 
                     <section>
                         <div className="flex items-center gap-3 mb-4 border-b border-slate-100 dark:border-slate-700 pb-3">

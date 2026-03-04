@@ -30,9 +30,6 @@ export default function Navbar() {
         };
     }, [isDrawerOpen]);
 
-    const publicNavLinks = [
-        { href: '/info', label: 'Info' },
-    ];
 
     const authNavLinks = [
         { href: '/participants', label: 'Deltagere' },
@@ -62,22 +59,6 @@ export default function Navbar() {
 
                         <div className="flex items-center gap-6">
                             <Link href="/" className="text-xl font-bold">DCU Member League</Link>
-
-                            {/* Public Desktop Navigation Links */}
-                            <div className="hidden md:flex items-center gap-6">
-                                {publicNavLinks.map(link => (
-                                    <Link
-                                        key={link.href}
-                                        href={link.href}
-                                        className={`hover:bg-white/10 px-3 py-2 rounded-md text-base transition-colors flex items-center gap-2 ${pathname === link.href ? 'text-white font-bold' : 'text-white/90 font-bold'}`}
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                        </svg>
-                                        {link.label}
-                                    </Link>
-                                ))}
-                            </div>
                         </div>
                     </div>
 
@@ -153,6 +134,13 @@ export default function Navbar() {
                                                             </button>
                                                         )}
                                                         <Link
+                                                            href="/info"
+                                                            className="block px-4 py-2 text-sm hover:bg-slate-50 flex items-center justify-between"
+                                                            onClick={() => setIsMenuOpen(false)}
+                                                        >
+                                                            <span>Info</span>
+                                                        </Link>
+                                                        <Link
                                                             href="/register"
                                                             className="block px-4 py-2 text-sm hover:bg-slate-50 flex items-center justify-between"
                                                             onClick={() => setIsMenuOpen(false)}
@@ -177,12 +165,17 @@ export default function Navbar() {
                                         </div>
                                     </div>
                                 ) : (
-                                    <button
-                                        onClick={signInWithGoogle}
-                                        className="bg-primary hover:bg-primary-dark text-primary-foreground px-4 py-2 rounded text-sm font-bold transition-colors"
-                                    >
-                                        Log ind
-                                    </button>
+                                    <div className="flex items-center gap-4">
+                                        <Link href="/info" className={`text-base transition-colors ${pathname === '/info' ? 'text-white font-bold' : 'text-white/90 font-bold hover:text-white'}`}>
+                                            Info
+                                        </Link>
+                                        <button
+                                            onClick={signInWithGoogle}
+                                            className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded text-sm font-bold transition-colors shadow-sm"
+                                        >
+                                            Log ind
+                                        </button>
+                                    </div>
                                 )}
                             </>
                         )}
@@ -217,20 +210,7 @@ export default function Navbar() {
                     </div>
 
                     <div className="flex flex-col p-4 space-y-4">
-                        {publicNavLinks.map(link => (
-                            <Link
-                                key={link.href}
-                                href={link.href}
-                                className={`px-4 py-3 rounded-lg transition-colors flex items-center gap-2 ${pathname === link.href
-                                    ? 'bg-primary text-primary-foreground font-medium'
-                                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                                    }`}
-                                onClick={() => setIsDrawerOpen(false)}
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                {link.label}
-                            </Link>
-                        ))}
+
 
                         {user && isRegistered && !needsConsentUpdate && authNavLinks.map(link => (
                             <Link
@@ -248,6 +228,13 @@ export default function Navbar() {
 
                         {user ? (
                             <div className="border-t border-slate-800 pt-4 mt-4">
+                                <Link
+                                    href="/info"
+                                    className="block px-4 py-3 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg"
+                                    onClick={() => setIsDrawerOpen(false)}
+                                >
+                                    Info
+                                </Link>
                                 <Link
                                     href="/register"
                                     className="block px-4 py-3 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg"
@@ -267,6 +254,13 @@ export default function Navbar() {
                             </div>
                         ) : (
                             <div className="border-t border-slate-800 pt-4 mt-4">
+                                <Link
+                                    href="/info"
+                                    className="block px-4 py-3 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg"
+                                    onClick={() => setIsDrawerOpen(false)}
+                                >
+                                    Info
+                                </Link>
                                 <button
                                     onClick={() => {
                                         signInWithGoogle();
