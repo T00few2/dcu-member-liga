@@ -39,7 +39,7 @@ export default function WeightVerificationModal() {
         if (!user || !linkInput) return;
 
         if (!linkInput.startsWith('http')) {
-            setError('Please enter a valid URL (starting with http:// or https://)');
+            setError('Indtast venligst en gyldig URL (skal starte med http:// eller https://)');
             return;
         }
 
@@ -60,9 +60,9 @@ export default function WeightVerificationModal() {
             });
 
             const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'Failed to submit verification');
+            if (!res.ok) throw new Error(data.message || 'Kunne ikke indsende bekræftelsen');
 
-            setSuccess('Verification submitted successfully!');
+            setSuccess('Bekræftelsen blev indsendt med succes!');
 
             // Refresh profile to update status context
             await refreshProfile();
@@ -93,14 +93,14 @@ export default function WeightVerificationModal() {
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                                 </svg>
-                                Verification Rejected
+                                Bekræftelse Afvist
                             </>
                         ) : (
                             <>
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
                                 </svg>
-                                Weight Verification Required
+                                Vægtbekræftelse Påkrævet
                             </>
                         )}
                     </h2>
@@ -110,8 +110,8 @@ export default function WeightVerificationModal() {
                 <div className="p-6 space-y-4">
                     <p className="text-slate-600 dark:text-slate-300 text-sm">
                         {weightVerificationStatus === 'rejected'
-                            ? "Your previous verification was rejected. Please review the requirements and submit a new video."
-                            : "You have been selected for a random weight verification check. Please submit a video of your weigh-in to continue racing."
+                            ? "Din tidligere bekræftelse blev afvist. Gennemgå venligst kravene og indsend en ny video."
+                            : "Du er blevet udtrukket til en stikprøve af din vægt. Indsend venligst en video af din indvejning for at fortsætte med at køre race."
                         }
                     </p>
 
@@ -119,7 +119,7 @@ export default function WeightVerificationModal() {
                         <div className="space-y-4">
                             <div>
                                 <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                                    Video Link (YouTube/Drive/etc)
+                                    Videolink (YouTube/Drive/osv.)
                                 </label>
                                 <input
                                     type="url"
@@ -143,13 +143,13 @@ export default function WeightVerificationModal() {
                                     disabled={submitting || !linkInput}
                                     className="flex-1 bg-primary hover:bg-primary-dark text-primary-foreground py-2 px-4 rounded font-medium disabled:opacity-50 transition-colors"
                                 >
-                                    {submitting ? 'Submitting...' : 'Submit Verification'}
+                                    {submitting ? 'Indsender...' : 'Indsend Bekræftelse'}
                                 </button>
                                 <button
                                     onClick={handleDismiss}
                                     className="px-4 py-2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 font-medium transition-colors"
                                 >
-                                    Later
+                                    Senere
                                 </button>
                             </div>
                         </div>
@@ -161,10 +161,10 @@ export default function WeightVerificationModal() {
                                 </svg>
                             </div>
                             <h3 className="text-lg font-medium text-slate-900 dark:text-white">
-                                Submitted!
+                                Indsendt!
                             </h3>
                             <p className="text-sm text-slate-500 dark:text-slate-400">
-                                Thanks for verifying. An admin will review your video shortly.
+                                Tak for din bekræftelse. En administrator vil gennemgå din video snarest.
                             </p>
                         </div>
                     )}
@@ -174,7 +174,7 @@ export default function WeightVerificationModal() {
                 {!success && (
                     <div className="bg-slate-50 dark:bg-slate-800/50 p-3 text-center border-t border-slate-100 dark:border-slate-800">
                         <Link href="/register" className="text-xs text-primary hover:underline" onClick={() => setIsOpen(false)}>
-                            View verification instructions
+                            Se vejledning til bekræftelse
                         </Link>
                     </div>
                 )}
