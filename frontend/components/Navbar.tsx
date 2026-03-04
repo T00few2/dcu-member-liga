@@ -30,7 +30,11 @@ export default function Navbar() {
         };
     }, [isDrawerOpen]);
 
-    const navLinks = [
+    const publicNavLinks = [
+        { href: '/info', label: 'Info' },
+    ];
+
+    const authNavLinks = [
         { href: '/participants', label: 'Deltagere' },
         { href: '/schedule', label: 'Kalender' },
         { href: '/results', label: 'Resultater' },
@@ -46,19 +50,35 @@ export default function Navbar() {
 
                     <div className="flex items-center gap-4">
                         {/* Mobile Menu Button */}
-                        {user && isRegistered && (
-                            <button
-                                onClick={() => setIsDrawerOpen(true)}
-                                className="md:hidden text-white p-1 -ml-2 hover:bg-slate-800 rounded focus:outline-none"
-                                aria-label="Open menu"
-                            >
-                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                                </svg>
-                            </button>
-                        )}
+                        <button
+                            onClick={() => setIsDrawerOpen(true)}
+                            className="md:hidden text-white p-1 -ml-2 hover:bg-slate-800 rounded focus:outline-none"
+                            aria-label="Open menu"
+                        >
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                            </svg>
+                        </button>
 
-                        <Link href="/" className="text-xl font-bold">DCU Member League</Link>
+                        <div className="flex items-center gap-6">
+                            <Link href="/" className="text-xl font-bold">DCU Member League</Link>
+
+                            {/* Public Desktop Navigation Links */}
+                            <div className="hidden md:flex items-center gap-6">
+                                {publicNavLinks.map(link => (
+                                    <Link
+                                        key={link.href}
+                                        href={link.href}
+                                        className={`hover:bg-white/10 px-3 py-2 rounded-md text-base transition-colors flex items-center gap-2 ${pathname === link.href ? 'text-white font-bold' : 'text-white/90 font-bold'}`}
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                        {link.label}
+                                    </Link>
+                                ))}
+                            </div>
+                        </div>
                     </div>
 
                     <div className="flex items-center gap-4">
@@ -69,7 +89,7 @@ export default function Navbar() {
                                         {/* Desktop Navigation Links */}
                                         {isRegistered && !needsConsentUpdate && (
                                             <div className="hidden md:flex items-center gap-6">
-                                                {navLinks.map(link => (
+                                                {authNavLinks.map(link => (
                                                     <Link
                                                         key={link.href}
                                                         href={link.href}
@@ -171,50 +191,67 @@ export default function Navbar() {
             </nav>
 
             {/* Mobile Side Drawer */}
-            {user && isRegistered && (
-                <>
-                    {/* Backdrop */}
-                    <div
-                        className={`fixed inset-0 bg-black/50 z-40 transition-opacity duration-300 md:hidden ${isDrawerOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-                            }`}
-                        onClick={() => setIsDrawerOpen(false)}
-                    />
+            <>
+                {/* Backdrop */}
+                <div
+                    className={`fixed inset-0 bg-black/50 z-40 transition-opacity duration-300 md:hidden ${isDrawerOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+                        }`}
+                    onClick={() => setIsDrawerOpen(false)}
+                />
 
-                    {/* Drawer Panel */}
-                    <div
-                        className={`fixed top-0 left-0 h-full w-64 bg-slate-900 text-white z-50 transform transition-transform duration-300 ease-in-out shadow-2xl md:hidden ${isDrawerOpen ? 'translate-x-0' : '-translate-x-full'
-                            }`}
-                    >
-                        <div className="p-4 border-b border-slate-800 flex justify-between items-center">
-                            <span className="font-bold text-lg">Menu</span>
-                            <button
+                {/* Drawer Panel */}
+                <div
+                    className={`fixed top-0 left-0 h-full w-64 bg-slate-900 text-white z-50 transform transition-transform duration-300 ease-in-out shadow-2xl md:hidden ${isDrawerOpen ? 'translate-x-0' : '-translate-x-full'
+                        }`}
+                >
+                    <div className="p-4 border-b border-slate-800 flex justify-between items-center">
+                        <span className="font-bold text-lg">Menu</span>
+                        <button
+                            onClick={() => setIsDrawerOpen(false)}
+                            className="text-slate-400 hover:text-white"
+                        >
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+
+                    <div className="flex flex-col p-4 space-y-4">
+                        {publicNavLinks.map(link => (
+                            <Link
+                                key={link.href}
+                                href={link.href}
+                                className={`px-4 py-3 rounded-lg transition-colors flex items-center gap-2 ${pathname === link.href
+                                    ? 'bg-primary text-primary-foreground font-medium'
+                                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                                    }`}
                                 onClick={() => setIsDrawerOpen(false)}
-                                className="text-slate-400 hover:text-white"
                             >
-                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
-                        </div>
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                {link.label}
+                            </Link>
+                        ))}
 
-                        <div className="flex flex-col p-4 space-y-4">
-                            {navLinks.map(link => (
-                                <Link
-                                    key={link.href}
-                                    href={link.href}
-                                    className={`px-4 py-3 rounded-lg transition-colors ${pathname === link.href
-                                        ? 'bg-primary text-primary-foreground font-medium'
-                                        : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                                        }`}
-                                >
-                                    {link.label}
-                                </Link>
-                            ))}
+                        {user && isRegistered && !needsConsentUpdate && authNavLinks.map(link => (
+                            <Link
+                                key={link.href}
+                                href={link.href}
+                                className={`px-4 py-3 rounded-lg transition-colors ${pathname === link.href
+                                    ? 'bg-primary text-primary-foreground font-medium'
+                                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                                    }`}
+                                onClick={() => setIsDrawerOpen(false)}
+                            >
+                                {link.label}
+                            </Link>
+                        ))}
 
+                        {user ? (
                             <div className="border-t border-slate-800 pt-4 mt-4">
                                 <Link
                                     href="/register"
                                     className="block px-4 py-3 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg"
+                                    onClick={() => setIsDrawerOpen(false)}
                                 >
                                     Min Profil
                                 </Link>
@@ -228,10 +265,22 @@ export default function Navbar() {
                                     Log ud
                                 </button>
                             </div>
-                        </div>
+                        ) : (
+                            <div className="border-t border-slate-800 pt-4 mt-4">
+                                <button
+                                    onClick={() => {
+                                        signInWithGoogle();
+                                        setIsDrawerOpen(false);
+                                    }}
+                                    className="w-full text-left px-4 py-3 text-white hover:bg-slate-800 rounded-lg font-bold"
+                                >
+                                    Log ind
+                                </button>
+                            </div>
+                        )}
                     </div>
-                </>
-            )}
+                </div>
+            </>
         </>
     );
 }
