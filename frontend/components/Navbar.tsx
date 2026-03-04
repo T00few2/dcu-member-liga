@@ -170,7 +170,10 @@ export default function Navbar() {
                                             Info
                                         </Link>
                                         <button
-                                            onClick={signInWithGoogle}
+                                            onClick={() => {
+                                                sessionStorage.setItem('authIntent', 'login');
+                                                signInWithGoogle();
+                                            }}
                                             className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded text-sm font-bold transition-colors shadow-sm"
                                         >
                                             Log ind
@@ -263,6 +266,7 @@ export default function Navbar() {
                                 </Link>
                                 <button
                                     onClick={() => {
+                                        sessionStorage.setItem('authIntent', 'login');
                                         signInWithGoogle();
                                         setIsDrawerOpen(false);
                                     }}

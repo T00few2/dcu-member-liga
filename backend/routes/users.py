@@ -109,6 +109,7 @@ def get_profile():
         return jsonify({
             'registered': user.is_registered,
             'hasDraft': user.registration.get('status') == 'draft',
+            'welcomeSeen': user._data.get('welcomeSeen', False),
             'eLicense': user.e_license,
             'name': user.name,
             'zwiftId': user.zwift_id,
@@ -330,6 +331,31 @@ def update_consents():
         db.collection('users').document(str(doc_id)).set(updates, merge=True)
 
         return jsonify({'message': 'Consents updated'}), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+
+@users_bp.route('/welcome-seen', methods=['POST'])
+def set_welcome_seen():
+    try:
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'message': 'Missing authorization'}), 401
+        
+        id_token = auth_header.split('Bearer ')[1]
+        decoded_token = auth.verify_id_token(id_token)
+        uid = decoded_token['uid']
+        
+        if not db:
+            return jsonify({'message': 'Database not available'}), 500
+
+        user = UserService.get_user_by_auth_uid(uid)
+        if not user:
+            # Fallback if no user document exists yet
+            db.collection('users').document(uid).set({'welcomeSeen': True}, merge=True)
+        else:
+            db.collection('users').document(str(user.id)).set({'welcomeSeen': True}, merge=True)
+            
+        return jsonify({'message': 'Updated'}), 200
     except Exception as e:
         return jsonify({'message': str(e)}), 500
 

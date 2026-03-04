@@ -251,6 +251,7 @@ function RegisterContent() {
             if (!isDraft) {
                 setIsRegistered(true);
                 await refreshProfile();
+                router.push('/');
             }
         } catch (e: any) { setError(e.message); }
         finally { setSubmitting(false); setSavingProgress(false); }

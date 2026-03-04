@@ -17,6 +17,7 @@ interface AuthContextType {
   isRegistered: boolean;
   isAdmin: boolean;
   needsConsentUpdate: boolean;
+  hasSeenWelcomeModal: boolean;
   requiredDataPolicyVersion: string | null;
   requiredPublicResultsConsentVersion: string | null;
   signInWithGoogle: () => Promise<void>;
@@ -35,6 +36,7 @@ const AuthContext = createContext<AuthContextType>({
   isRegistered: false,
   isAdmin: false,
   needsConsentUpdate: false,
+  hasSeenWelcomeModal: false,
   requiredDataPolicyVersion: null,
   requiredPublicResultsConsentVersion: null,
   signInWithGoogle: async () => { },
@@ -60,6 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
   const isAdmin = realIsAdmin && !isImpersonating;
   const [needsConsentUpdate, setNeedsConsentUpdate] = useState(false);
+  const [hasSeenWelcomeModal, setHasSeenWelcomeModal] = useState(false);
   const [requiredDataPolicyVersion, setRequiredDataPolicyVersion] = useState<string | null>(null);
   const [requiredPublicResultsConsentVersion, setRequiredPublicResultsConsentVersion] = useState<string | null>(null);
   const [weightVerificationStatus, setWeightVerificationStatus] = useState<'none' | 'pending' | 'submitted' | 'approved' | 'rejected'>('none');
@@ -78,6 +81,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.ok) {
         const data = await res.json();
         setIsRegistered(!!data.registered);
+        setHasSeenWelcomeModal(!!data.welcomeSeen);
         setWeightVerificationStatus(data.weightVerificationStatus || 'none');
         const requiredPolicy = data.requiredDataPolicyVersion;
         const requiredPublic = data.requiredPublicResultsConsentVersion;
@@ -88,6 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setNeedsConsentUpdate(!(policyOk && publicOk));
       } else {
         setIsRegistered(false);
+        setHasSeenWelcomeModal(false);
         setNeedsConsentUpdate(false);
         setRequiredDataPolicyVersion(null);
         setRequiredPublicResultsConsentVersion(null);
@@ -95,6 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error("Error fetching profile:", error);
       setIsRegistered(false);
+      setHasSeenWelcomeModal(false);
       setNeedsConsentUpdate(false);
       setRequiredDataPolicyVersion(null);
       setRequiredPublicResultsConsentVersion(null);
@@ -123,6 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsImpersonating(false);
         localStorage.removeItem('isImpersonating');
         setNeedsConsentUpdate(false);
+        setHasSeenWelcomeModal(false);
         setRequiredDataPolicyVersion(null);
         setRequiredPublicResultsConsentVersion(null);
       }
@@ -134,12 +141,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (loading) return;
     if (!user) return;
-    if (!needsConsentUpdate) return;
-    const allowed = pathname === '/consent' || pathname === '/datapolitik' || pathname === '/offentliggoerelse';
-    if (!allowed) {
-      router.push('/consent');
+
+    // Unregistered users must complete the registration flow.
+    if (!isRegistered) {
+      const intent = typeof window !== 'undefined' ? sessionStorage.getItem('authIntent') : null;
+      if (intent === 'register' && pathname !== '/register') {
+        router.push('/register');
+        return;
+      }
+
+      const allowedUnregistered = pathname === '/' || pathname === '/register' || pathname === '/info' || pathname === '/datapolitik' || pathname === '/offentliggoerelse';
+      if (!allowedUnregistered) {
+        router.push('/register');
+      }
+      return;
     }
-  }, [loading, user, needsConsentUpdate, pathname, router]);
+
+    // Registered users must update their consent if required.
+    if (needsConsentUpdate) {
+      const allowedConsent = pathname === '/consent' || pathname === '/datapolitik' || pathname === '/offentliggoerelse';
+      if (!allowedConsent) {
+        router.push('/consent');
+      }
+      return;
+    }
+  }, [loading, user, isRegistered, needsConsentUpdate, pathname, router]);
 
   // App Icon Badging (Notification Dot)
   useEffect(() => {
@@ -205,6 +231,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsImpersonating(false);
       localStorage.removeItem('isImpersonating');
       setNeedsConsentUpdate(false);
+      setHasSeenWelcomeModal(false);
       setRequiredDataPolicyVersion(null);
       setRequiredPublicResultsConsentVersion(null);
     } catch (error) {
@@ -227,7 +254,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      user, loading, isRegistered, isAdmin, needsConsentUpdate,
+      user, loading, isRegistered, isAdmin, needsConsentUpdate, hasSeenWelcomeModal,
       requiredDataPolicyVersion, requiredPublicResultsConsentVersion,
       signInWithGoogle, logOut, refreshProfile, refreshClaims,
       isImpersonating, toggleImpersonation, weightVerificationStatus,
