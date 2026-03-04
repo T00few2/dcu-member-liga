@@ -119,11 +119,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setUser(user);
       if (user) {
+        setLoading(true);
+        setUser(user);
         await fetchProfile(user);
         await fetchClaims(user);
       } else {
+        setUser(null);
         setIsRegistered(false);
         setRealIsAdmin(false);
         setIsImpersonating(false);
