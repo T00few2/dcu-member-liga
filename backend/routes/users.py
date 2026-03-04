@@ -166,8 +166,8 @@ def signup():
             if not name:
                 return jsonify({'message': 'At least a name is required to save progress'}), 400
         else:
-            if not e_license or not name:
-                return jsonify({'message': 'Missing eLicense or name'}), 400
+            if not name:
+                return jsonify({'message': 'Missing name'}), 400
             if not accepted_data_policy:
                 return jsonify({'message': 'You must accept the data policy.'}), 400
             if not accepted_public_results:

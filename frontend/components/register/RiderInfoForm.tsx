@@ -262,7 +262,8 @@ export default function RiderInfoForm({
                     )}
                 </div>
 
-                {/* E-License */}
+                {/* E-License (Postponed for now) */}
+                {/* 
                 <div>
                     <label className="block font-semibold text-card-foreground mb-1">DCU E-License</label>
                     <div className="relative">
@@ -288,6 +289,7 @@ export default function RiderInfoForm({
                         </p>
                     )}
                 </div>
+                */}
 
                 {/* Trainer */}
                 <div>

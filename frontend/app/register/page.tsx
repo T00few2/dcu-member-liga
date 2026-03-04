@@ -183,7 +183,7 @@ function RegisterContent() {
     }, [zwiftId, initialData.zwiftId]);
 
     const handleConnectStrava = async () => {
-        if (!eLicense && !zwiftId) { setError("Enter Zwift ID or E-License first"); return; }
+        if (!zwiftId) { setError("Indtast Zwift ID først"); return; }
         // Save temp state
         localStorage.setItem('temp_reg_name', name);
         localStorage.setItem('temp_reg_elicense', eLicense);
@@ -257,7 +257,7 @@ function RegisterContent() {
     };
 
     // Validation
-    const step0Valid = !!name && !!club && !!trainer && !!eLicense && licenseAvailable;
+    const step0Valid = !!name && !!club && !!trainer;
     const step1Valid = !!zwiftId && zwiftVerified; // Strava optional
     const step2Valid = acceptedCoC && acceptedDataPolicy && acceptedPublicResults;
 
