@@ -253,13 +253,14 @@ def signup():
                     except Exception:
                         pass
 
-            # Update Auth Mapping to point to Zwift ID
-            if zwift_id:
-                auth_map_ref = db.collection('auth_mappings').document(uid)
-                auth_map_ref.set({
-                    'zwiftId': zwift_id,
-                    'lastLogin': firestore.SERVER_TIMESTAMP
-                }, merge=True)
+            # Update Auth Mapping
+            auth_map_data = {
+                'lastLogin': firestore.SERVER_TIMESTAMP
+            }
+            if zwift_id: auth_map_data['zwiftId'] = zwift_id
+            if e_license: auth_map_data['eLicense'] = e_license
+            
+            db.collection('auth_mappings').document(uid).set(auth_map_data, merge=True)
             
             if not is_draft and zwift_id and is_newly_registered:
                 update_rider_stats(e_license, zwift_id)
