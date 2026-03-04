@@ -143,6 +143,7 @@ def signup():
         try:
             decoded_token = auth.verify_id_token(id_token)
             uid = decoded_token['uid']
+            email = decoded_token.get('email')
         except Exception as auth_error:
             return jsonify({'message': f'Invalid session token: {str(auth_error)}'}), 401
 
@@ -185,6 +186,7 @@ def signup():
         if db:
             user_data = {
                 'authUid': uid,
+                'email': email,
                 'updatedAt': firestore.SERVER_TIMESTAMP,
                 'zwiftId': zwift_id,
             }
