@@ -242,18 +242,20 @@ export default function RiderInfoForm({
 
                     {/* Confirmation Prompt */}
                     {zwiftName && !zwiftVerified && !readOnly && (
-                        <div className="mt-3 p-3 bg-secondary rounded-lg border border-secondary-foreground/10">
-                            <p className="text-sm mb-2 text-card-foreground">Er det dig? <strong>{zwiftName}</strong></p>
+                        <div className="mt-3 p-4 bg-muted/30 rounded-lg border border-border">
+                            <p className="text-sm mb-3 text-foreground">
+                                Er det dig? <strong className="font-semibold">{zwiftName}</strong>
+                            </p>
                             <div className="flex gap-2">
                                 <button
                                     onClick={confirmZwiftIdentity}
-                                    className="px-3 py-1 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700"
+                                    className="px-4 py-2 bg-primary text-primary-foreground font-medium rounded-lg text-sm hover:bg-primary-dark transition-colors"
                                 >
                                     Ja, det er mig
                                 </button>
                                 <button
                                     onClick={() => setZwiftId('')}
-                                    className="px-3 py-1 bg-gray-300 text-gray-800 rounded-lg text-sm hover:bg-gray-400"
+                                    className="px-4 py-2 bg-secondary text-secondary-foreground font-medium rounded-lg text-sm hover:bg-secondary/80 transition-colors"
                                 >
                                     Nej
                                 </button>
