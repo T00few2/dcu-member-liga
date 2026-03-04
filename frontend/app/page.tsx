@@ -63,14 +63,14 @@ export default function Home() {
     const [showUnregisteredModal, setShowUnregisteredModal] = useState(false);
 
     useEffect(() => {
-        if (user && !isRegistered) {
+        if (!loading && user && !isRegistered) {
             const intent = sessionStorage.getItem('authIntent');
             if (intent === 'login') {
                 setShowUnregisteredModal(true);
                 logOut();
             }
         }
-    }, [user, isRegistered, logOut]);
+    }, [user, isRegistered, loading, logOut]);
 
     useEffect(() => {
         const fetchNextRace = async () => {
