@@ -1,8 +1,8 @@
 import Link from 'next/link';
 
 export const metadata = {
-    title: 'Info - E-cykling | DCU Member League',
-    description: 'Information om e-cykling og hvordan du deltager i DCU Member League.',
+    title: 'Info - E-cykling | DCU forårsliga',
+    description: 'Information om e-cykling og hvordan du deltager i DCU forårsliga.',
 };
 
 export default function InfoPage() {
@@ -90,7 +90,7 @@ export default function InfoPage() {
                                 </svg>
                             </div>
                             <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
-                                Deltagelse i DCU Member League
+                                Deltagelse i DCU forårsliga
                             </h2>
                         </div>
                         <p className="text-slate-600 dark:text-slate-300 leading-relaxed mb-6 text-lg">

@@ -149,7 +149,7 @@ export default function Home() {
                         <h1 className="text-5xl md:text-7xl font-extrabold mb-6 tracking-tight text-white drop-shadow-lg pb-2 animate-in fade-in zoom-in-95 duration-1000 delay-150 fill-mode-both">
                             Velkommen til <br />
                             <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-white">
-                                DCU Member League
+                                DCU forårsliga
                             </span>
                         </h1>
 
@@ -213,7 +213,7 @@ export default function Home() {
                         <div>
                             <h2 className="text-3xl md:text-4xl font-bold mb-6">Bliv en del af E-cykling fællesskabet</h2>
                             <p className="text-lg text-muted-foreground mb-6">
-                                Oplev spændingen ved kompetitivt cykelløb fra din stue. DCU Member Ligaen forbinder ryttere på tværs af Danmark i organiserede, strukturerede og fair virtuelle løb på Zwift.
+                                Oplev spændingen ved kompetitivt cykelløb fra din stue. DCU forårsligaen forbinder ryttere på tværs af Danmark i organiserede, strukturerede og fair virtuelle løb på Zwift.
                             </p>
                             <div className="space-y-6 mb-8 text-base">
                                 <div className="flex items-start gap-4">
@@ -322,7 +322,7 @@ export default function Home() {
                         </span>
                     </h1>
                     <p className="text-xl mb-8 max-w-2xl text-slate-300 font-light drop-shadow animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-150">
-                        Dit dashboard for DCU Member League.
+                        Dit dashboard for DCU forårsliga.
                     </p>
                 </div>
             </div>
@@ -558,7 +558,7 @@ export default function Home() {
                     <div>
                         <h2 className="text-3xl md:text-4xl font-bold mb-6">Bliv en del af fællesskabet</h2>
                         <p className="text-lg text-muted-foreground mb-6">
-                            Forbind med andre ryttere på tværs af Danmark, følg de officielle nyheder, og deltag i live løbschat under DCU Member League.
+                            Forbind med andre ryttere på tværs af Danmark, følg de officielle nyheder, og deltag i live løbschat under DCU forårsliga.
                         </p>
                     </div>
 

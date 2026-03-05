@@ -81,7 +81,7 @@ export default function WelcomeModal() {
                     <h2 className="text-xl sm:text-2xl font-bold mb-2 pr-8 text-foreground">Velkommen til platformen</h2>
 
                     <p className="text-muted-foreground text-sm mb-5 leading-relaxed">
-                        Denne webapplikation er bygget til at samle alt omkring DCU Member League ét sted, så du nemt kan få overblik over sæsonen.
+                        Denne webapplikation er bygget til at samle alt omkring DCU forårsliga ét sted, så du nemt kan få overblik over sæsonen.
                     </p>
 
                     {/* Features Grid */}

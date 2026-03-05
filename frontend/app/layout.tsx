@@ -10,12 +10,12 @@ import WeightVerificationModal from "@/components/WeightVerificationModal";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "DCU Member League",
-  description: "E-cycling league for DCU members",
+  title: "DCU forårsliga",
+  description: "E-cycling liga for DCU members",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "DCU League",
+    title: "DCU forårsliga",
   },
   icons: {
     apple: "/app_icon.png",
@@ -45,7 +45,7 @@ export default function RootLayout({
               <div className="relative z-10 flex flex-wrap gap-4 items-center justify-between container mx-auto px-4">
                 <div className="flex items-center text-white font-bold tracking-wide gap-1">
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
-                  DCU Member League
+                  DCU forårsliga
                 </div>
 
                 <div className="flex gap-4 font-semibold text-slate-400 ml-auto">

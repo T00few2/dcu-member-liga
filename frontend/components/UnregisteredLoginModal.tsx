@@ -53,7 +53,7 @@ export default function UnregisteredLoginModal({ isOpen, onClose, onStartRegistr
                         </div>
                         <h2 className="text-2xl font-bold mb-2">Ikke registreret endnu</h2>
                         <p className="text-muted-foreground text-sm leading-relaxed">
-                            Der findes ingen profil for denne Google-konto på DCU Member League. For at logge ind skal du først oprette dig som bruger.
+                            Der findes ingen profil for denne Google-konto på DCU forårsliga. For at logge ind skal du først oprette dig som bruger.
                         </p>
                     </div>
 

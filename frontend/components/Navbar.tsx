@@ -58,7 +58,7 @@ export default function Navbar() {
                         </button>
 
                         <div className="flex items-center gap-6">
-                            <Link href="/" className="text-xl font-bold">DCU Member League</Link>
+                            <Link href="/" className="text-xl font-bold">DCU forårsliga</Link>
                         </div>
                     </div>
 
