@@ -9,7 +9,7 @@ from routes.integration import integration_bp
 from routes.seed import seed_bp
 from routes.policy import policy_bp
 
-ALLOWED_ORIGINS = {'https://dansk-ecykling.dk'}
+ALLOWED_ORIGINS = {'https://dansk-ecykling.dk', 'https://www.dansk-ecykling.dk'}
 
 def get_cors_origin(origin: str | None) -> str | None:
     if not origin:
