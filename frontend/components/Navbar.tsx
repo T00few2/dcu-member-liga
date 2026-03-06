@@ -47,17 +47,6 @@ export default function Navbar() {
                 <div className="container mx-auto flex justify-between items-center">
 
                     <div className="flex items-center gap-4">
-                        {/* Mobile Menu Button */}
-                        <button
-                            onClick={() => setIsDrawerOpen(true)}
-                            className="md:hidden text-white p-1 -ml-2 hover:bg-slate-800 rounded focus:outline-none"
-                            aria-label="Open menu"
-                        >
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                            </svg>
-                        </button>
-
                         <div className="flex items-center gap-3">
                             <Image src="/DCU_logo_white.svg" alt="DCU Logo" width={36} height={36} priority />
                             <Link href="/" className="text-xl font-bold">DCU forårsliga</Link>
@@ -171,19 +160,20 @@ export default function Navbar() {
                                         <Link href="/info" className={`hidden md:inline text-base transition-colors ${pathname === '/info' ? 'text-white font-bold' : 'text-white/90 font-bold hover:text-white'}`}>
                                             Info
                                         </Link>
-                                        <button
-                                            onClick={() => {
-                                                sessionStorage.setItem('authIntent', 'login');
-                                                signInWithGoogle();
-                                            }}
-                                            className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded text-sm font-bold transition-colors shadow-sm"
-                                        >
-                                            Log ind
-                                        </button>
                                     </div>
                                 )}
                             </>
                         )}
+                        {/* Mobile Menu Button */}
+                        <button
+                            onClick={() => setIsDrawerOpen(true)}
+                            className="md:hidden text-white p-1 hover:bg-slate-800 rounded focus:outline-none"
+                            aria-label="Open menu"
+                        >
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                            </svg>
+                        </button>
                     </div>
                 </div>
             </nav>
