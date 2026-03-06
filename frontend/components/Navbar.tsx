@@ -85,8 +85,8 @@ export default function Navbar() {
                                             </div>
                                         )}
 
-                                        {/* User Menu Dropdown (Desktop & Mobile) */}
-                                        <div className="relative">
+                                        {/* User Menu Dropdown (Desktop only) */}
+                                        <div className="relative hidden md:block">
                                             <button
                                                 onClick={() => setIsMenuOpen(!isMenuOpen)}
                                                 className="flex items-center gap-2 hover:text-slate-300 focus:outline-none relative"
