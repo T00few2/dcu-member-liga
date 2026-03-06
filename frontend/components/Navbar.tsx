@@ -1,6 +1,7 @@
 'use client';
 
 import Link from "next/link";
+import Image from "next/image";
 import { useAuth } from "@/lib/auth-context";
 import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
@@ -63,6 +64,7 @@ export default function Navbar() {
                     </div>
 
                     <div className="flex items-center gap-4">
+                        <Image src="/DCU_red.svg" alt="DCU Logo" width={48} height={48} className="hidden md:block" priority />
                         {!loading && (
                             <>
                                 {user ? (
