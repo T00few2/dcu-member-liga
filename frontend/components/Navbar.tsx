@@ -85,8 +85,8 @@ export default function Navbar() {
                                             </div>
                                         )}
 
-                                        {/* User Menu Dropdown (Desktop only) */}
-                                        <div className="relative hidden md:block">
+                                        {/* User Menu Dropdown (Desktop & Mobile) */}
+                                        <div className="relative">
                                             <button
                                                 onClick={() => setIsMenuOpen(!isMenuOpen)}
                                                 className="flex items-center gap-2 hover:text-slate-300 focus:outline-none relative"
@@ -135,13 +135,6 @@ export default function Navbar() {
                                                                 {isImpersonating ? 'Afslut brugervisning' : 'Vis som bruger'}
                                                             </button>
                                                         )}
-                                                        <Link
-                                                            href="/info"
-                                                            className="block px-4 py-2 text-sm hover:bg-slate-50 flex items-center justify-between"
-                                                            onClick={() => setIsMenuOpen(false)}
-                                                        >
-                                                            <span>Info</span>
-                                                        </Link>
                                                         <Link
                                                             href="/register"
                                                             className="block px-4 py-2 text-sm hover:bg-slate-50 flex items-center justify-between"
