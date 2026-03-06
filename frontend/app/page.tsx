@@ -291,8 +291,9 @@ export default function Home() {
                 <UnregisteredLoginModal
                     isOpen={showUnregisteredModal}
                     onClose={() => { setShowUnregisteredModal(false); logOut(); }}
-                    onStartRegistration={() => {
+                    onStartRegistration={async () => {
                         setShowUnregisteredModal(false);
+                        await logOut();
                         setShowRegIntroModal(true);
                     }}
                 />
