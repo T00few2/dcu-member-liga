@@ -15,12 +15,6 @@ export default function ConsentPage() {
   const [message, setMessage] = useState('');
 
   useEffect(() => {
-    if (!loading && !user) {
-      router.push('/');
-    }
-  }, [loading, user, router]);
-
-  useEffect(() => {
     // If user already compliant, bounce away.
     if (!loading && user && !needsConsentUpdate) {
       router.push('/');

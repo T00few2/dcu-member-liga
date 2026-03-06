@@ -20,7 +20,9 @@ interface AuthContextType {
   hasSeenWelcomeModal: boolean;
   requiredDataPolicyVersion: string | null;
   requiredPublicResultsConsentVersion: string | null;
-  signInWithGoogle: () => Promise<void>;
+  authIntent: 'login' | 'register' | null;
+  clearAuthIntent: () => void;
+  signInWithGoogle: (intent?: 'login' | 'register') => Promise<void>;
   logOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   refreshClaims: () => Promise<void>;
@@ -39,6 +41,8 @@ const AuthContext = createContext<AuthContextType>({
   hasSeenWelcomeModal: false,
   requiredDataPolicyVersion: null,
   requiredPublicResultsConsentVersion: null,
+  authIntent: null,
+  clearAuthIntent: () => { },
   signInWithGoogle: async () => { },
   logOut: async () => { },
   refreshProfile: async () => { },
@@ -66,6 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [requiredDataPolicyVersion, setRequiredDataPolicyVersion] = useState<string | null>(null);
   const [requiredPublicResultsConsentVersion, setRequiredPublicResultsConsentVersion] = useState<string | null>(null);
   const [weightVerificationStatus, setWeightVerificationStatus] = useState<'none' | 'pending' | 'submitted' | 'approved' | 'rejected'>('none');
+  const [authIntent, setAuthIntent] = useState<'login' | 'register' | null>(null);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -142,12 +147,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (loading) return;
-    if (!user) return;
+
+    const publicRoutes = ['/', '/info', '/datapolitik', '/offentliggoerelse', '/register'];
+    const isPublicRoute = publicRoutes.includes(pathname) || pathname.startsWith('/live');
+
+    // Unauthenticated users can only access public routes.
+    if (!user) {
+      if (!isPublicRoute) router.push('/');
+      return;
+    }
 
     // Unregistered users must complete the registration flow.
     if (!isRegistered) {
-      const intent = typeof window !== 'undefined' ? sessionStorage.getItem('authIntent') : null;
-      if (intent === 'register' && pathname !== '/register') {
+      if (authIntent === 'register' && pathname !== '/register') {
         router.push('/register');
         return;
       }
@@ -167,7 +179,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       return;
     }
-  }, [loading, user, isRegistered, needsConsentUpdate, pathname, router]);
+  }, [loading, user, isRegistered, needsConsentUpdate, authIntent, pathname, router]);
 
   // App Icon Badging (Notification Dot)
   useEffect(() => {
@@ -216,11 +228,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [realIsAdmin]);
 
-  const signInWithGoogle = async () => {
+  const clearAuthIntent = () => setAuthIntent(null);
+
+  const signInWithGoogle = async (intent?: 'login' | 'register') => {
+    if (intent) setAuthIntent(intent);
     try {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
     } catch (error) {
+      setAuthIntent(null);
       console.error("Error signing in with Google", error);
     }
   };
@@ -258,7 +274,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider value={{
       user, loading, isRegistered, isAdmin, needsConsentUpdate, hasSeenWelcomeModal,
       requiredDataPolicyVersion, requiredPublicResultsConsentVersion,
-      signInWithGoogle, logOut, refreshProfile, refreshClaims,
+      authIntent, clearAuthIntent, signInWithGoogle, logOut, refreshProfile, refreshClaims,
       isImpersonating, toggleImpersonation, weightVerificationStatus,
       requestNotificationPermission
     }}>

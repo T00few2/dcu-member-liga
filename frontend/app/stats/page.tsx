@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { useRouter } from 'next/navigation';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
     ScatterChart, Scatter, ZAxis, Cell
@@ -58,7 +57,6 @@ interface CriticalPower {
 
 export default function MyStatsPage() {
     const { user, loading: authLoading, isRegistered } = useAuth();
-    const router = useRouter();
 
     const [races, setRaces] = useState<Race[]>([]);
     const [loading, setLoading] = useState(true);
@@ -72,18 +70,7 @@ export default function MyStatsPage() {
     const [statsMode, setStatsMode] = useState<'all' | 'club'>('all');
     const [teammates, setTeammates] = useState<string[]>([]);
 
-    // --- 1. Access Control & Fetch User Details ---
-    useEffect(() => {
-        if (!authLoading) {
-            if (!user) {
-                router.push('/');
-            } else if (!isRegistered) {
-                router.push('/register');
-            }
-        }
-    }, [user, authLoading, isRegistered, router]);
-
-    // --- 2. Fetch Races & User Profile ---
+    // --- 1. Fetch Races & User Profile ---
     useEffect(() => {
         const fetchData = async () => {
             if (!user) return;

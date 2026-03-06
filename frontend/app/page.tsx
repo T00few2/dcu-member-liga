@@ -54,7 +54,7 @@ const getZwiftInsiderUrl = (routeName: string) => {
 };
 
 export default function Home() {
-    const { user, signInWithGoogle, isRegistered, loading, logOut } = useAuth();
+    const { user, signInWithGoogle, isRegistered, loading, logOut, authIntent, clearAuthIntent } = useAuth();
     const router = useRouter();
     const [nextRace, setNextRace] = useState<Race | null>(null);
     const [showClubsModal, setShowClubsModal] = useState(false);
@@ -63,14 +63,12 @@ export default function Home() {
     const [showUnregisteredModal, setShowUnregisteredModal] = useState(false);
 
     useEffect(() => {
-        if (!loading && user && !isRegistered) {
-            const intent = sessionStorage.getItem('authIntent');
-            if (intent === 'login') {
-                setShowUnregisteredModal(true);
-                logOut();
-            }
+        if (!loading && user && !isRegistered && authIntent === 'login') {
+            setShowUnregisteredModal(true);
+            clearAuthIntent();
+            logOut();
         }
-    }, [user, isRegistered, loading, logOut]);
+    }, [user, isRegistered, loading, logOut, authIntent, clearAuthIntent]);
 
     useEffect(() => {
         const fetchNextRace = async () => {
@@ -282,19 +280,12 @@ export default function Home() {
                 <RegistrationIntroModal
                     isOpen={showRegIntroModal}
                     onClose={() => setShowRegIntroModal(false)}
-                    onContinue={() => {
-                        sessionStorage.setItem('authIntent', 'register');
-                        signInWithGoogle();
-                    }}
+                    onContinue={() => signInWithGoogle('register')}
                 />
                 <UnregisteredLoginModal
                     isOpen={showUnregisteredModal}
-                    onClose={() => {
-                        sessionStorage.removeItem('authIntent');
-                        setShowUnregisteredModal(false);
-                    }}
+                    onClose={() => setShowUnregisteredModal(false)}
                     onStartRegistration={() => {
-                        sessionStorage.removeItem('authIntent');
                         setShowUnregisteredModal(false);
                         setShowRegIntroModal(true);
                     }}
