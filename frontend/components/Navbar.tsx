@@ -58,13 +58,13 @@ export default function Navbar() {
                             </svg>
                         </button>
 
-                        <div className="flex items-center gap-6">
+                        <div className="flex items-center gap-3">
+                            <Image src="/DCU_red.svg" alt="DCU Logo" width={36} height={36} priority />
                             <Link href="/" className="text-xl font-bold">DCU forårsliga</Link>
                         </div>
                     </div>
 
                     <div className="flex items-center gap-4">
-                        <Image src="/DCU_red.svg" alt="DCU Logo" width={48} height={48} className="hidden md:block" priority />
                         {!loading && (
                             <>
                                 {user ? (
