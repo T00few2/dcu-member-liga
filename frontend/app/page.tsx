@@ -54,7 +54,7 @@ const getZwiftInsiderUrl = (routeName: string) => {
 };
 
 export default function Home() {
-    const { user, signInWithGoogle, isRegistered, loading, logOut, authIntent, clearAuthIntent } = useAuth();
+    const { user, signInWithGoogle, isRegistered, profileLoaded, loading, logOut, authIntent, clearAuthIntent } = useAuth();
     const router = useRouter();
     const [nextRace, setNextRace] = useState<Race | null>(null);
     const [showClubsModal, setShowClubsModal] = useState(false);
@@ -63,13 +63,13 @@ export default function Home() {
     const [showUnregisteredModal, setShowUnregisteredModal] = useState(false);
 
     useEffect(() => {
-        if (!loading && user && authIntent === 'login') {
+        if (profileLoaded && user && authIntent === 'login') {
             if (!isRegistered) {
                 setShowUnregisteredModal(true);
             }
             clearAuthIntent();
         }
-    }, [user, isRegistered, loading, authIntent, clearAuthIntent]);
+    }, [user, isRegistered, profileLoaded, authIntent, clearAuthIntent]);
 
     // Auto-close the modal if the profile resolves as registered (timing fix)
     useEffect(() => {
@@ -292,7 +292,7 @@ export default function Home() {
                 />
                 <UnregisteredLoginModal
                     isOpen={showUnregisteredModal}
-                    onClose={() => { setShowUnregisteredModal(false); logOut(); }}
+                    onClose={() => { setShowUnregisteredModal(false); if (!isRegistered) logOut(); }}
                     onStartRegistration={async () => {
                         setShowUnregisteredModal(false);
                         await logOut();

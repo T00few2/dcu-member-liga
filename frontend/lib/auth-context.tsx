@@ -26,6 +26,7 @@ interface AuthContextType {
   logOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   refreshClaims: () => Promise<void>;
+  profileLoaded: boolean;
   isImpersonating: boolean;
   toggleImpersonation: () => void;
   weightVerificationStatus: 'none' | 'pending' | 'submitted' | 'approved' | 'rejected';
@@ -47,6 +48,7 @@ const AuthContext = createContext<AuthContextType>({
   logOut: async () => { },
   refreshProfile: async () => { },
   refreshClaims: async () => { },
+  profileLoaded: false,
   isImpersonating: false,
   toggleImpersonation: () => { },
   weightVerificationStatus: 'none',
@@ -71,6 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [requiredPublicResultsConsentVersion, setRequiredPublicResultsConsentVersion] = useState<string | null>(null);
   const [weightVerificationStatus, setWeightVerificationStatus] = useState<'none' | 'pending' | 'submitted' | 'approved' | 'rejected'>('none');
   const [authIntent, setAuthIntent] = useState<'login' | 'register' | null>(null);
+  const [profileLoaded, setProfileLoaded] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -95,12 +98,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const policyOk = !!requiredPolicy && (data.dataPolicyVersion === requiredPolicy) && !!data.acceptedDataPolicy;
         const publicOk = !!requiredPublic && (data.publicResultsConsentVersion === requiredPublic) && !!data.acceptedPublicResults;
         setNeedsConsentUpdate(!(policyOk && publicOk));
+        setProfileLoaded(true);
       } else {
         setIsRegistered(false);
         setHasSeenWelcomeModal(false);
         setNeedsConsentUpdate(false);
         setRequiredDataPolicyVersion(null);
         setRequiredPublicResultsConsentVersion(null);
+        setProfileLoaded(true);
       }
     } catch (error) {
       console.error("Error fetching profile:", error);
@@ -109,6 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setNeedsConsentUpdate(false);
       setRequiredDataPolicyVersion(null);
       setRequiredPublicResultsConsentVersion(null);
+      setProfileLoaded(true);
     }
   }, []);
 
@@ -126,12 +132,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setLoading(true);
+        setProfileLoaded(false);
         setUser(user);
         await fetchProfile(user);
         await fetchClaims(user);
       } else {
         setUser(null);
         setIsRegistered(false);
+        setProfileLoaded(false);
         setRealIsAdmin(false);
         setIsImpersonating(false);
         localStorage.removeItem('isImpersonating');
@@ -273,7 +281,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      user, loading, isRegistered, isAdmin, needsConsentUpdate, hasSeenWelcomeModal,
+      user, loading, isRegistered, profileLoaded, isAdmin, needsConsentUpdate, hasSeenWelcomeModal,
       requiredDataPolicyVersion, requiredPublicResultsConsentVersion,
       authIntent, clearAuthIntent, signInWithGoogle, logOut, refreshProfile, refreshClaims,
       isImpersonating, toggleImpersonation, weightVerificationStatus,
