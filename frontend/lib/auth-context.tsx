@@ -228,7 +228,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [realIsAdmin]);
 
-  const clearAuthIntent = () => setAuthIntent(null);
+  const clearAuthIntent = useCallback(() => setAuthIntent(null), []);
 
   const signInWithGoogle = async (intent?: 'login' | 'register') => {
     if (intent) setAuthIntent(intent);
@@ -241,7 +241,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const logOut = async () => {
+  const logOut = useCallback(async () => {
     try {
       await firebaseSignOut(auth);
       setIsRegistered(false);
@@ -255,7 +255,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error("Error signing out", error);
     }
-  };
+  }, []);
 
   const requestNotificationPermission = async () => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
