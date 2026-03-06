@@ -63,8 +63,10 @@ export default function Home() {
     const [showUnregisteredModal, setShowUnregisteredModal] = useState(false);
 
     useEffect(() => {
-        if (!loading && user && !isRegistered && authIntent === 'login') {
-            setShowUnregisteredModal(true);
+        if (!loading && user && authIntent === 'login') {
+            if (!isRegistered) {
+                setShowUnregisteredModal(true);
+            }
             clearAuthIntent();
         }
     }, [user, isRegistered, loading, authIntent, clearAuthIntent]);
