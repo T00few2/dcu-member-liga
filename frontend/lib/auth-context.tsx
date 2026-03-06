@@ -244,6 +244,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logOut = useCallback(async () => {
     try {
       await firebaseSignOut(auth);
+      setAuthIntent(null);
       setIsRegistered(false);
       setRealIsAdmin(false);
       setIsImpersonating(false);
