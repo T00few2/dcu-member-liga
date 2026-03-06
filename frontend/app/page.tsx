@@ -66,9 +66,15 @@ export default function Home() {
         if (!loading && user && !isRegistered && authIntent === 'login') {
             setShowUnregisteredModal(true);
             clearAuthIntent();
-            logOut();
         }
-    }, [user, isRegistered, loading, logOut, authIntent, clearAuthIntent]);
+    }, [user, isRegistered, loading, authIntent, clearAuthIntent]);
+
+    // Auto-close the modal if the profile resolves as registered (timing fix)
+    useEffect(() => {
+        if (isRegistered && showUnregisteredModal) {
+            setShowUnregisteredModal(false);
+        }
+    }, [isRegistered, showUnregisteredModal]);
 
     useEffect(() => {
         const fetchNextRace = async () => {
@@ -284,7 +290,7 @@ export default function Home() {
                 />
                 <UnregisteredLoginModal
                     isOpen={showUnregisteredModal}
-                    onClose={() => setShowUnregisteredModal(false)}
+                    onClose={() => { setShowUnregisteredModal(false); logOut(); }}
                     onStartRegistration={() => {
                         setShowUnregisteredModal(false);
                         setShowRegIntroModal(true);
