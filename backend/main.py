@@ -1,5 +1,5 @@
 import functions_framework
-from flask import Flask
+from flask import Flask, request as flask_request
 from extensions import db
 from routes.races import races_bp
 from routes.league import league_bp
@@ -8,6 +8,17 @@ from routes.admin import admin_bp
 from routes.integration import integration_bp
 from routes.seed import seed_bp
 from routes.policy import policy_bp
+
+ALLOWED_ORIGINS = {'https://dansk-ecykling.dk'}
+
+def get_cors_origin(origin: str | None) -> str | None:
+    if not origin:
+        return None
+    if origin in ALLOWED_ORIGINS:
+        return origin
+    if origin.startswith('http://localhost:') or origin == 'http://localhost':
+        return origin
+    return None
 
 def create_app():
     app = Flask(__name__)
@@ -26,7 +37,11 @@ def create_app():
     # Add CORS headers to all responses
     @app.after_request
     def after_request(response):
-        response.headers.add('Access-Control-Allow-Origin', '*')
+        origin = flask_request.headers.get('Origin')
+        allowed = get_cors_origin(origin)
+        if allowed:
+            response.headers['Access-Control-Allow-Origin'] = allowed
+            response.headers['Vary'] = 'Origin'
         response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
         response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
         return response
@@ -54,11 +69,16 @@ def dcu_api(request):
     # but Flask might 405 an OPTIONS request if not explicitly defined on routes.
     # To be safe for "Global OPTIONS", we can check here.
     if request.method == 'OPTIONS':
+        origin = request.headers.get('Origin', '')
+        allowed = get_cors_origin(origin)
+        if not allowed:
+            return ('', 403, {})
         headers = {
-            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Origin': allowed,
             'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
             'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-            'Access-Control-Max-Age': '3600'
+            'Access-Control-Max-Age': '3600',
+            'Vary': 'Origin',
         }
         return ('', 204, headers)
 

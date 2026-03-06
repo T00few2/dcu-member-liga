@@ -258,8 +258,7 @@ export default function Navbar() {
                                 </Link>
                                 <button
                                     onClick={() => {
-                                        sessionStorage.setItem('authIntent', 'login');
-                                        signInWithGoogle();
+                                        signInWithGoogle('login');
                                         setIsDrawerOpen(false);
                                     }}
                                     className="w-full text-left px-4 py-3 text-white hover:bg-slate-800 rounded-lg font-bold"
