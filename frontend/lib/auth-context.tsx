@@ -142,7 +142,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (loading) return;
-    if (!user) return;
+
+    const publicRoutes = ['/', '/info', '/datapolitik', '/offentliggoerelse', '/register'];
+    const isPublicRoute = publicRoutes.includes(pathname) || pathname.startsWith('/live');
+
+    // Unauthenticated users can only access public routes.
+    if (!user) {
+      if (!isPublicRoute) router.push('/');
+      return;
+    }
 
     // Unregistered users must complete the registration flow.
     if (!isRegistered) {

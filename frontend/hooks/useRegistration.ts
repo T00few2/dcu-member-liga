@@ -66,10 +66,6 @@ export function useRegistration() {
     // --- Effects ---
 
     useEffect(() => {
-        if (!authLoading && !user) router.push('/');
-    }, [user, authLoading, router]);
-
-    useEffect(() => {
         fetch(`${API_URL}/clubs`)
             .then(res => res.json())
             .then(d => { setClubs(d.clubs || []); setLoadingClubs(false); })

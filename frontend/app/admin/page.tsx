@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { useRouter } from 'next/navigation';
 import LeagueManager from '@/components/admin/LeagueManager';
 import VerificationDashboard from '@/components/admin/VerificationDashboard';
 import TrainerManager from '@/components/admin/TrainerManager';
@@ -11,17 +10,9 @@ import WeightVerificationManager from '@/components/admin/WeightVerificationMana
 
 export default function AdminPage() {
   const { user, loading: authLoading, isAdmin, refreshClaims } = useAuth();
-  const router = useRouter();
 
   // Top Level Tab State
   const [activeSection, setActiveSection] = useState<'league' | 'verification' | 'weight' | 'trainers' | 'policies'>('league');
-
-  // Access Control
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/');
-    }
-  }, [user, authLoading, router]);
 
   if (authLoading) return <div className="p-8 text-center">Loading...</div>;
   if (!user) return null;

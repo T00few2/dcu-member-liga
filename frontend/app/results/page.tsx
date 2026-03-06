@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 
@@ -67,7 +66,6 @@ interface StandingEntry {
 
 export default function ResultsPage() {
     const { user, loading: authLoading, isRegistered } = useAuth();
-    const router = useRouter();
 
     const [races, setRaces] = useState<Race[]>([]);
     const [standings, setStandings] = useState<Record<string, StandingEntry[]>>({});
@@ -81,17 +79,6 @@ export default function ResultsPage() {
     // Standings UI State
     const [standingsCategory, setStandingsCategory] = useState<string>('A');
     const [bestRacesCount, setBestRacesCount] = useState<number>(5);
-
-    // Access Control
-    useEffect(() => {
-        if (!authLoading) {
-            if (!user) {
-                router.push('/');
-            } else if (!isRegistered) {
-                router.push('/register');
-            }
-        }
-    }, [user, authLoading, isRegistered, router]);
 
     // Fetch Data
     useEffect(() => {

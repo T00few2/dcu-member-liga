@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { useRouter } from 'next/navigation';
 
 interface Segment {
     id: string;
@@ -59,19 +58,8 @@ const getZwiftEventUrl = (eventId: string, eventSecret?: string) => {
 
 export default function SchedulePage() {
     const { user, loading: authLoading, isRegistered } = useAuth();
-    const router = useRouter();
     const [races, setRaces] = useState<Race[]>([]);
     const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        if (!authLoading) {
-            if (!user) {
-                router.push('/');
-            } else if (!isRegistered) {
-                router.push('/register');
-            }
-        }
-    }, [user, authLoading, isRegistered, router]);
 
     useEffect(() => {
         const fetchRaces = async () => {

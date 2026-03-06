@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { useRouter } from 'next/navigation';
 
 interface Participant {
   name: string;
@@ -25,18 +24,6 @@ export default function ParticipantsPage() {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const router = useRouter();
-
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/');
-      return;
-    }
-    if (!authLoading && user && !isRegistered) {
-      router.push('/register');
-      return;
-    }
-  }, [user, authLoading, isRegistered, router]);
 
   useEffect(() => {
     if (!user || !isRegistered) return;
