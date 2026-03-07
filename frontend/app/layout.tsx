@@ -7,6 +7,7 @@ import { AuthProvider } from "@/lib/auth-context";
 import Navbar from "@/components/Navbar";
 import ToastProvider from "@/components/ToastProvider";
 import WeightVerificationModal from "@/components/WeightVerificationModal";
+import { Analytics } from "@vercel/analytics/next";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -62,6 +63,7 @@ export default function RootLayout({
             </footer>
           </ToastProvider>
         </AuthProvider>
+        <Analytics />
       </body>
     </html>
   );
