@@ -160,7 +160,7 @@ export default function ResultsPage() {
     const currentStandings = useMemo<ProcessedRider[]>(() => {
         return (standings[displayStandingsCategory] || [])
             .map(rider => {
-                const sorted = [...rider.results].sort((a, b) => b.points - a.points);
+                const sorted = [...(rider.results ?? [])].sort((a, b) => b.points - a.points);
                 const countingRaceIds = new Set(sorted.slice(0, bestRacesCount).map(r => r.raceId));
                 const calculatedTotal = sorted.slice(0, bestRacesCount).reduce((sum, r) => sum + r.points, 0);
                 return { ...rider, calculatedTotal, countingRaceIds };

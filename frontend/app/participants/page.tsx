@@ -32,7 +32,10 @@ export default function ParticipantsPage() {
 
     const fetchParticipants = async () => {
       try {
-        const res = await fetch(`${API_URL}/participants?limit=2000`);
+        const token = await user.getIdToken();
+        const res = await fetch(`${API_URL}/participants?limit=2000`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
 
         if (res.ok) {
           const data = await res.json();
