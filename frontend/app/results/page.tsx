@@ -528,7 +528,7 @@ export default function ResultsPage() {
                                                     if (val !== undefined && val !== null) {
                                                         if (best) {
                                                             // It's a split time
-                                                            const diff = val - best;
+                                                            const diff = (val as number) - best;
                                                             if (diff === 0) displayVal = <span className="text-green-600 dark:text-green-400 font-bold">0.00</span>;
                                                             else displayVal = <span className="text-red-500 dark:text-red-400">+{formatGap(diff)}</span>;
                                                         } else {
