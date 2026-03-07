@@ -88,8 +88,6 @@ def get_profile():
         if not db:
              return jsonify({'message': 'Database not available'}), 500
 
-        print(f"[DEBUG] get_profile for UID: {uid}")
-        
         user = UserService.get_user_by_auth_uid(uid)
 
         # Always include currently required versions so clients can gate consistently,
