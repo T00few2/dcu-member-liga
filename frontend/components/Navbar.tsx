@@ -193,7 +193,7 @@ export default function Navbar() {
 
                 {/* Drawer Panel */}
                 <div
-                    className={`fixed top-0 left-0 h-full w-64 bg-slate-900 text-white z-50 transform transition-transform duration-300 ease-in-out shadow-2xl md:hidden ${isDrawerOpen ? 'translate-x-0' : '-translate-x-full'
+                    className={`fixed top-0 right-0 h-full w-64 bg-slate-900 text-white z-50 transform transition-transform duration-300 ease-in-out shadow-2xl md:hidden ${isDrawerOpen ? 'translate-x-0' : 'translate-x-full'
                         }`}
                 >
                     <div className="p-4 border-b border-slate-800 flex justify-between items-center">
