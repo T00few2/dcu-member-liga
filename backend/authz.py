@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from flask import Request
 from firebase_admin import auth
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -31,7 +34,8 @@ def verify_user_token(request: Request) -> Dict[str, Any]:
     try:
         decoded = auth.verify_id_token(token)
         return decoded
-    except Exception:
+    except Exception as exc:
+        logger.warning(f"Token verification failed: {exc}")
         raise AuthzError("Unauthorized", 401)
 
 

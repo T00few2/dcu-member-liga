@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from firebase_admin import auth, firestore
+from firebase_admin import firestore
 from extensions import db, get_zwift_service, get_zp_service, strava_service, zr_service, get_zwift_game_service
 from services.policy_store import POLICY_DATA_POLICY, POLICY_PUBLIC_RESULTS, PolicyError, get_policy_meta
 from services.user_service import UserService
@@ -82,12 +82,10 @@ def update_rider_stats(e_license, zwift_id):
 @users_bp.route('/profile', methods=['GET'])
 def get_profile():
     try:
-        auth_header = request.headers.get('Authorization')
-        if not auth_header or not auth_header.startswith('Bearer '):
-            return jsonify({'message': 'Missing or invalid Authorization header'}), 401
-        
-        id_token = auth_header.split('Bearer ')[1]
-        decoded_token = auth.verify_id_token(id_token)
+        try:
+            decoded_token = verify_user_token(request)
+        except AuthzError as e:
+            return jsonify({'message': e.message}), e.status_code
         uid = decoded_token['uid']
 
         if not db:
@@ -139,17 +137,12 @@ def get_profile():
 @users_bp.route('/signup', methods=['POST'])
 def signup():
     try:
-        auth_header = request.headers.get('Authorization')
-        if not auth_header or not auth_header.startswith('Bearer '):
-            return jsonify({'message': 'Missing or invalid Authorization header'}), 401
-        
-        id_token = auth_header.split('Bearer ')[1]
         try:
-            decoded_token = auth.verify_id_token(id_token)
-            uid = decoded_token['uid']
-            email = decoded_token.get('email')
-        except Exception as auth_error:
-            return jsonify({'message': f'Invalid session token: {str(auth_error)}'}), 401
+            decoded_token = verify_user_token(request)
+        except AuthzError as e:
+            return jsonify({'message': e.message}), e.status_code
+        uid = decoded_token['uid']
+        email = decoded_token.get('email')
 
         request_json = request.get_json(silent=True)
         if not request_json:
@@ -272,6 +265,7 @@ def signup():
             'user': {'name': name, 'eLicense': e_license, 'zwiftId': zwift_id}
         }), 200
     except Exception as e:
+        logger.error(f"Signup Error: {e}")
         return jsonify({'message': str(e)}), 500
 
 
@@ -282,12 +276,10 @@ def update_consents():
     Requires a valid Firebase ID token.
     """
     try:
-        auth_header = request.headers.get('Authorization')
-        if not auth_header or not auth_header.startswith('Bearer '):
-            return jsonify({'message': 'Missing or invalid Authorization header'}), 401
-
-        id_token = auth_header.split('Bearer ')[1]
-        decoded_token = auth.verify_id_token(id_token)
+        try:
+            decoded_token = verify_user_token(request)
+        except AuthzError as e:
+            return jsonify({'message': e.message}), e.status_code
         uid = decoded_token['uid']
 
         request_json = request.get_json(silent=True) or {}
@@ -333,17 +325,16 @@ def update_consents():
 
         return jsonify({'message': 'Consents updated'}), 200
     except Exception as e:
+        logger.error(f"Consents Error: {e}")
         return jsonify({'message': str(e)}), 500
 
 @users_bp.route('/welcome-seen', methods=['POST'])
 def set_welcome_seen():
     try:
-        auth_header = request.headers.get('Authorization')
-        if not auth_header or not auth_header.startswith('Bearer '):
-            return jsonify({'message': 'Missing authorization'}), 401
-        
-        id_token = auth_header.split('Bearer ')[1]
-        decoded_token = auth.verify_id_token(id_token)
+        try:
+            decoded_token = verify_user_token(request)
+        except AuthzError as e:
+            return jsonify({'message': e.message}), e.status_code
         uid = decoded_token['uid']
         
         if not db:
@@ -358,6 +349,7 @@ def set_welcome_seen():
             
         return jsonify({'message': 'Updated'}), 200
     except Exception as e:
+        logger.error(f"Welcome-seen Error: {e}")
         return jsonify({'message': str(e)}), 500
 
 @users_bp.route('/participants', methods=['GET'])
@@ -412,19 +404,17 @@ def get_stats():
     e_license = request.args.get('eLicense')
     
     if not e_license:
-        auth_header = request.headers.get('Authorization')
-        if auth_header and auth_header.startswith('Bearer '):
-            try:
-                id_token = auth_header.split('Bearer ')[1]
-                decoded_token = auth.verify_id_token(id_token)
-                uid = decoded_token['uid']
-                
-                if db:
-                    mapping_doc = db.collection('auth_mappings').document(uid).get()
-                    if mapping_doc.exists:
-                        e_license = mapping_doc.to_dict().get('eLicense')
-            except Exception as e:
-                logger.error(f"Token verification failed in stats: {e}")
+        try:
+            decoded_token = verify_user_token(request)
+            uid = decoded_token['uid']
+            if db:
+                mapping_doc = db.collection('auth_mappings').document(uid).get()
+                if mapping_doc.exists:
+                    e_license = mapping_doc.to_dict().get('eLicense')
+        except AuthzError:
+            pass  # Unauthenticated access is allowed for this endpoint
+        except Exception as e:
+            logger.error(f"Token lookup failed in stats: {e}")
     
     strava_data = {'kms': 'Not Connected', 'activities': []}
     zp_data = {'category': 'N/A', 'ftp': 'N/A'}
@@ -520,16 +510,17 @@ def verify_zwift_id(zwift_id):
     try:
         zwift_service = get_zwift_service()
         profile = zwift_service.get_profile(int(zwift_id))
-        
+
         if not profile:
             return jsonify({'message': 'Rider not found'}), 404
-        
+
         return jsonify({
             'firstName': profile.get('firstName'),
             'lastName': profile.get('lastName'),
             'id': profile.get('id')
         }), 200
     except Exception as e:
+        logger.error(f"Zwift verify error for {zwift_id}: {e}")
         return jsonify({'message': str(e)}), 500
 
 @users_bp.route('/verify/elicense/<e_license>', methods=['GET'])
@@ -541,4 +532,5 @@ def verify_elicense(e_license):
         doc = db.collection('users').document(str(e_license)).get()
         return jsonify({'available': not doc.exists}), 200
     except Exception as e:
+        logger.error(f"eLicense verify error for {e_license}: {e}")
         return jsonify({'message': str(e)}), 500

@@ -1,10 +1,16 @@
+import logging
+import datetime
+
 from flask import Blueprint, request, jsonify, redirect
-from firebase_admin import auth, firestore
+from firebase_admin import firestore
 from extensions import db, strava_service, get_zwift_game_service
 from config import FRONTEND_URL
+from authz import verify_user_token, AuthzError
 import secrets
 import requests
 from bs4 import BeautifulSoup
+
+logger = logging.getLogger(__name__)
 
 integration_bp = Blueprint('integration', __name__)
 
@@ -16,15 +22,11 @@ def strava_login_get():
 
 @integration_bp.route('/strava/login', methods=['POST'])
 def strava_login_post():
-    auth_header = request.headers.get('Authorization')
-    if not auth_header or not auth_header.startswith('Bearer '):
-        return jsonify({'message': 'Unauthorized'}), 401
     try:
-        id_token = auth_header.split('Bearer ')[1]
-        decoded = auth.verify_id_token(id_token)
-        uid = decoded['uid']
-    except Exception:
-        return jsonify({'message': 'Unauthorized'}), 401
+        decoded = verify_user_token(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+    uid = decoded['uid']
 
     body = request.get_json(silent=True) or {}
     # We can pass eLicense or ZwiftID for context, but mainly rely on UID mapping later
@@ -63,7 +65,15 @@ def strava_callback():
     
     state_data = state_doc.to_dict() or {}
     uid = state_data.get('uid')
-    
+
+    # Reject states older than 10 minutes
+    created_at = state_data.get('createdAt')
+    if created_at:
+        age = datetime.datetime.now(datetime.timezone.utc) - created_at
+        if age.total_seconds() > 600:
+            state_ref.delete()
+            return jsonify({'message': 'OAuth state expired, please try again'}), 400
+
     # Try to find the real user document from auth_mappings
     user_doc_ref = None
     
@@ -105,22 +115,20 @@ def strava_callback():
         }, merge=True)
 
     finally:
-        try: state_ref.delete()
-        except: pass
+        try:
+            state_ref.delete()
+        except Exception as e:
+            logger.warning(f"Failed to delete OAuth state document: {e}")
 
     return redirect(f"{FRONTEND_URL}/register?strava=connected")
 
 @integration_bp.route('/strava/deauthorize', methods=['POST'])
 def strava_deauthorize():
-    auth_header = request.headers.get('Authorization')
-    if not auth_header or not auth_header.startswith('Bearer '):
-        return jsonify({'message': 'Unauthorized'}), 401
     try:
-        id_token = auth_header.split('Bearer ')[1]
-        decoded = auth.verify_id_token(id_token)
-        uid = decoded['uid']
-    except Exception:
-        return jsonify({'message': 'Unauthorized'}), 401
+        decoded = verify_user_token(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+    uid = decoded['uid']
 
     if not db: return jsonify({'error': 'DB not available'}), 500
 
@@ -153,13 +161,15 @@ def strava_deauthorize():
             token_doc = db.collection('strava_tokens').document(user_doc_ref.id).get()
             if token_doc.exists:
                 access_token = (token_doc.to_dict() or {}).get('access_token')
-        except: pass
+        except Exception as e:
+            logger.warning(f"Failed to fetch Strava tokens doc: {e}")
 
     revoked = strava_service.deauthorize(access_token) if access_token else False
 
     try:
         db.collection('strava_tokens').document(user_doc_ref.id).delete()
-    except: pass
+    except Exception as e:
+        logger.warning(f"Failed to delete Strava tokens doc: {e}")
 
     try:
         # Remove legacy token fields from user doc if they still exist
@@ -167,7 +177,8 @@ def strava_deauthorize():
             'connections.strava': firestore.DELETE_FIELD,
             'strava': firestore.DELETE_FIELD,
         })
-    except: pass
+    except Exception as e:
+        logger.warning(f"Failed to clean up Strava fields from user doc: {e}")
 
     return jsonify({'message': 'Strava disconnected', 'revoked': revoked}), 200
 

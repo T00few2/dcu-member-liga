@@ -18,12 +18,19 @@ ZWIFT_PASSWORD = os.getenv('ZWIFT_PASSWORD')
 ZR_AUTH_KEY = os.getenv('ZR_AUTH_KEY')
 ZR_BASE_URL = os.getenv('ZR_BASE_URL', 'https://api.zwiftracing.app/api')
 
-# Validate essential config
-if not STRAVA_CLIENT_ID or not STRAVA_CLIENT_SECRET:
-    logger.warning("Warning: STRAVA_CLIENT_ID or STRAVA_CLIENT_SECRET is missing.")
+# Critical secrets — raise immediately so the app fails loudly at startup
+_required = [(n, v) for n, v in [('ZWIFT_USERNAME', ZWIFT_USERNAME), ('ZWIFT_PASSWORD', ZWIFT_PASSWORD)] if not v]
+if _required:
+    raise ValueError(
+        f"Required config missing: {', '.join(n for n, _ in _required)}. "
+        "Set these variables in your .env file before starting the server."
+    )
 
-if not ZWIFT_USERNAME or not ZWIFT_PASSWORD:
-    logger.warning("Warning: ZWIFT_USERNAME or ZWIFT_PASSWORD is missing.")
-
-if not ZR_AUTH_KEY:
-    logger.warning("Warning: ZR_AUTH_KEY is missing. ZwiftRacing integration will fail.")
+# Optional integrations — warn but allow startup without them
+for _name, _val, _hint in [
+    ('STRAVA_CLIENT_ID', STRAVA_CLIENT_ID, 'Strava OAuth will be unavailable.'),
+    ('STRAVA_CLIENT_SECRET', STRAVA_CLIENT_SECRET, 'Strava OAuth will be unavailable.'),
+    ('ZR_AUTH_KEY', ZR_AUTH_KEY, 'ZwiftRacing integration will fail.'),
+]:
+    if not _val:
+        logger.warning(f"Optional config '{_name}' is not set. {_hint}")
