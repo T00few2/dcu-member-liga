@@ -29,7 +29,7 @@ export function useRegistration() {
     const [weightVerificationStatus, setWeightVerificationStatus] = useState<'none' | 'pending' | 'submitted' | 'approved' | 'rejected'>('none');
     const [weightVerificationVideoLink, setWeightVerificationVideoLink] = useState('');
     const [weightVerificationDeadline, setWeightVerificationDeadline] = useState<{ seconds: number; nanoseconds: number } | string | null>(null);
-    const [verificationRequests, setVerificationRequests] = useState<{ status: string; requestedAt?: string; videoLink?: string; notes?: string }[]>([]);
+    const [verificationRequests, setVerificationRequests] = useState<{ requestId: string; status: 'pending' | 'submitted' | 'approved' | 'rejected'; requestedAt?: { seconds: number } | string | null; videoLink?: string; rejectionReason?: string; deadline?: { seconds: number } | string | null }[]>([]);
 
     // Policy Versions
     const [requiredDataPolicyVersion, setRequiredDataPolicyVersion] = useState<string | null>(null);
