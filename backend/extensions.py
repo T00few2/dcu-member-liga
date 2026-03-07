@@ -10,6 +10,10 @@ from services.zwift_game import ZwiftGameService
 from config import ZWIFT_USERNAME, ZWIFT_PASSWORD
 
 # --- Database Initialization ---
+import logging
+
+logger = logging.getLogger(__name__)
+
 db = None
 try:
     if not firebase_admin._apps:
@@ -22,7 +26,7 @@ try:
             
     db = firestore.client()
 except Exception as e:
-    print(f"Warning: Firebase could not be initialized. Database operations will fail. Error: {e}")
+    logger.warning(f"Warning: Firebase could not be initialized. Database operations will fail. Error: {e}")
 
 # --- Service Singletons & Factories ---
 
@@ -47,7 +51,7 @@ def get_zp_service():
     if _zp_service_instance and (now - _zp_service_timestamp < SESSION_VALIDITY):
         return _zp_service_instance
 
-    print("Creating new ZwiftPower session.")
+    logger.info("Creating new ZwiftPower session.")
     service = ZwiftPowerService(ZWIFT_USERNAME, ZWIFT_PASSWORD)
     try:
         service.login()
@@ -55,7 +59,7 @@ def get_zp_service():
         _zp_service_timestamp = now
         return service
     except Exception as e:
-        print(f"Failed to initialize ZwiftPower session: {e}")
+        logger.error(f"Failed to initialize ZwiftPower session: {e}")
         return service
 
 # Zwift API Cache
@@ -73,7 +77,7 @@ def get_zwift_service():
         except Exception:
             pass
 
-    print("Creating new Zwift service session.")
+    logger.info("Creating new Zwift service session.")
     service = ZwiftService(ZWIFT_USERNAME, ZWIFT_PASSWORD)
     try:
         service.authenticate()
@@ -81,7 +85,7 @@ def get_zwift_service():
         _zwift_service_timestamp = now
         return service
     except Exception as e:
-        print(f"Failed to initialize Zwift session: {e}")
+        logger.error(f"Failed to initialize Zwift session: {e}")
         return service
 
 def get_zwift_game_service():

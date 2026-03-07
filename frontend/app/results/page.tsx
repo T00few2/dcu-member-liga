@@ -5,10 +5,10 @@ import { useAuth } from '@/lib/auth-context';
 import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { API_URL } from '@/lib/api';
-import { formatDateShort } from '@/lib/formatDate';
-import type { Race, Sprint, CategoryConfig, ResultEntry, StandingEntry } from '@/types/live';
+import type { Race, Sprint, ResultEntry, StandingEntry } from '@/types/live';
+import StandingsTable from './_components/StandingsTable';
+import RaceResultsTable from './_components/RaceResultsTable';
 
-// Locally computed extension — countingRaceIds is derived during standings processing
 type ProcessedRider = StandingEntry & { calculatedTotal: number; countingRaceIds: Set<string> };
 
 export default function ResultsPage() {
@@ -18,28 +18,22 @@ export default function ResultsPage() {
     const [standings, setStandings] = useState<Record<string, StandingEntry[]>>({});
     const [loading, setLoading] = useState(true);
 
-    // UI State
     const [activeTab, setActiveTab] = useState<'standings' | 'results'>('standings');
     const [selectedRaceId, setSelectedRaceId] = useState<string>('');
     const [selectedCategory, setSelectedCategory] = useState<string>('A');
-
-    // Standings UI State
     const [standingsCategory, setStandingsCategory] = useState<string>('A');
     const [bestRacesCount, setBestRacesCount] = useState<number>(5);
 
-    // Fetch Data
     useEffect(() => {
         const fetchData = async () => {
             if (!user) return;
             try {
                 const token = await user.getIdToken();
 
-                // Fetch Races
                 const racesRes = await fetch(`${API_URL}/races`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
 
-                // Fetch Standings
                 const [standingsRes, settingsRes] = await Promise.all([
                     fetch(`${API_URL}/league/standings`, { headers: { 'Authorization': `Bearer ${token}` } }),
                     fetch(`${API_URL}/league/settings`, { headers: { 'Authorization': `Bearer ${token}` } })
@@ -58,15 +52,12 @@ export default function ResultsPage() {
                         new Date(a.date).getTime() - new Date(b.date).getTime()
                     );
                     setRaces(sorted);
-                    if (sorted.length > 0) {
-                        setSelectedRaceId(sorted[0].id);
-                    }
+                    if (sorted.length > 0) setSelectedRaceId(sorted[0].id);
                 }
 
                 if (standingsRes.ok) {
                     const data = await standingsRes.json();
                     setStandings(data.standings || {});
-                    // Set initial standings category if available
                     const cats = Object.keys(data.standings || {});
                     if (cats.length > 0 && !cats.includes(standingsCategory)) {
                         setStandingsCategory(cats.sort()[0]);
@@ -79,132 +70,57 @@ export default function ResultsPage() {
             }
         };
 
-        if (user && isRegistered) {
-            fetchData();
-        }
+        if (user && isRegistered) fetchData();
     }, [user, isRegistered]);
 
-    // Live Updates for Selected Race - always subscribe when a race is selected
     useEffect(() => {
         if (!selectedRaceId) return;
-
-        // Subscribe to the race document for real-time updates
-        const unsubscribe = onSnapshot(doc(db, 'races', selectedRaceId), (docSnapshot) => {
-            if (docSnapshot.exists()) {
-                const updatedData = docSnapshot.data();
-                const updatedRace = { ...updatedData, id: docSnapshot.id } as Race;
-
-                setRaces(prev => prev.map(r => r.id === updatedRace.id ? { ...r, ...updatedRace } : r));
+        const unsubscribe = onSnapshot(doc(db, 'races', selectedRaceId), (snap) => {
+            if (snap.exists()) {
+                const updated = { ...snap.data(), id: snap.id } as Race;
+                setRaces(prev => prev.map(r => r.id === updated.id ? { ...r, ...updated } : r));
             }
-        }, (error) => {
-            console.error("Error listening to race updates:", error);
-        });
-
+        }, (err) => console.error('Error listening to race updates:', err));
         return () => unsubscribe();
     }, [selectedRaceId]);
 
-    // Live Updates for Standings
     useEffect(() => {
-        // Subscribe to the league standings document
-        const unsubscribe = onSnapshot(doc(db, 'league', 'standings'), (docSnapshot) => {
-            if (docSnapshot.exists()) {
-                const data = docSnapshot.data();
-                if (data.standings) {
-                    setStandings(data.standings);
-                }
+        const unsubscribe = onSnapshot(doc(db, 'league', 'standings'), (snap) => {
+            if (snap.exists()) {
+                const data = snap.data();
+                if (data.standings) setStandings(data.standings);
             }
-        }, (error) => {
-            console.error("Error listening to standings updates:", error);
-        });
-
+        }, (err) => console.error('Error listening to standings updates:', err));
         return () => unsubscribe();
     }, []);
 
-    const formatTime = (ms: number) => {
-        if (!ms) return '-';
-        const roundedMs = Math.round(ms / 10) * 10;
-        const totalSeconds = Math.floor(roundedMs / 1000);
-        const hours = Math.floor(totalSeconds / 3600);
-        const minutes = Math.floor((totalSeconds % 3600) / 60);
-        const seconds = totalSeconds % 60;
-        const millis = roundedMs % 1000;
+    if (authLoading || loading) {
+        return <div className="p-8 text-center text-muted-foreground">Indlæser resultater...</div>;
+    }
 
-        const pad = (n: number) => n.toString().padStart(2, '0');
-        const padMs = (n: number) => Math.floor(n / 10).toString().padStart(2, '0');
+    // --- Derived data ---
 
-        if (hours > 0) {
-            return `${hours}:${pad(minutes)}:${pad(seconds)}.${padMs(millis)}`;
-        }
-        return `${pad(minutes)}:${pad(seconds)}.${padMs(millis)}`;
-    };
-
-    const formatGap = (ms: number) => {
-        const roundedMs = Math.round(ms / 10) * 10;
-        const totalSeconds = Math.floor(roundedMs / 1000);
-        const minutes = Math.floor(totalSeconds / 60);
-        const seconds = totalSeconds % 60;
-        const millis = roundedMs % 1000;
-
-        const pad = (n: number) => n.toString().padStart(2, '0');
-        const padMs = (n: number) => Math.floor(n / 10).toString().padStart(2, '0');
-
-        if (minutes > 0) {
-            return `${minutes}:${pad(seconds)}.${padMs(millis)}`;
-        }
-        return `${seconds}.${padMs(millis)}`;
-    };
-
-    if (authLoading || loading) return <div className="p-8 text-center text-muted-foreground">Indlæser resultater...</div>;
-
-    // --- Derived Data ---
-
-    // Race Results Data
     const selectedRace = races.find(r => r.id === selectedRaceId);
 
-    // Sort available categories
+    // Available race categories
     let availableRaceCategories: string[] = [];
-
     if (selectedRace?.results && Object.keys(selectedRace.results).length > 0) {
         availableRaceCategories = Object.keys(selectedRace.results);
     } else if (selectedRace?.eventMode === 'multi' && selectedRace.eventConfiguration) {
-        // Use configured categories if no results yet
-        availableRaceCategories = selectedRace.eventConfiguration
-            .map(c => c.customCategory)
-            .filter(Boolean);
-    } else if (selectedRace?.singleModeCategories && selectedRace.singleModeCategories.length > 0) {
-        // Use configured single mode categories if no results yet
-        availableRaceCategories = selectedRace.singleModeCategories
-            .map(c => c.category)
-            .filter(Boolean);
+        availableRaceCategories = selectedRace.eventConfiguration.map(c => c.customCategory).filter(Boolean);
+    } else if (selectedRace?.singleModeCategories?.length) {
+        availableRaceCategories = selectedRace.singleModeCategories.map(c => c.category).filter(Boolean);
     } else {
-        // Fallback default
         availableRaceCategories = ['A', 'B', 'C', 'D', 'E'];
     }
 
+    // Sort race categories by configured order
     if (selectedRace?.eventMode === 'multi' && selectedRace.eventConfiguration) {
-        // Create a map of category -> index
-        const orderMap = new Map();
-        selectedRace.eventConfiguration.forEach((cfg, idx) => {
-            if (cfg.customCategory) orderMap.set(cfg.customCategory, idx);
-        });
-
-        availableRaceCategories.sort((a, b) => {
-            const idxA = orderMap.has(a) ? orderMap.get(a) : 999;
-            const idxB = orderMap.has(b) ? orderMap.get(b) : 999;
-            return idxA - idxB;
-        });
-    } else if (selectedRace?.singleModeCategories && selectedRace.singleModeCategories.length > 0) {
-        // Use order from singleModeCategories
-        const orderMap = new Map();
-        selectedRace.singleModeCategories.forEach((cfg, idx) => {
-            if (cfg.category) orderMap.set(cfg.category, idx);
-        });
-
-        availableRaceCategories.sort((a, b) => {
-            const idxA = orderMap.has(a) ? orderMap.get(a) : 999;
-            const idxB = orderMap.has(b) ? orderMap.get(b) : 999;
-            return idxA - idxB;
-        });
+        const orderMap = new Map(selectedRace.eventConfiguration.map((cfg, idx) => [cfg.customCategory, idx]));
+        availableRaceCategories.sort((a, b) => (orderMap.get(a) ?? 999) - (orderMap.get(b) ?? 999));
+    } else if (selectedRace?.singleModeCategories?.length) {
+        const orderMap = new Map(selectedRace.singleModeCategories.map((cfg, idx) => [cfg.category, idx]));
+        availableRaceCategories.sort((a, b) => (orderMap.get(a) ?? 999) - (orderMap.get(b) ?? 999));
     } else {
         availableRaceCategories.sort();
     }
@@ -212,42 +128,26 @@ export default function ResultsPage() {
     const displayRaceCategory = (selectedRace?.results && !availableRaceCategories.includes(selectedCategory) && availableRaceCategories.length > 0)
         ? availableRaceCategories[0]
         : selectedCategory;
+
     const raceResults = selectedRace?.results?.[displayRaceCategory] || [];
 
-    // Determine laps for display
-    // If multi-event, look for specific category config overrides
     let displayLaps = selectedRace?.laps;
     if (selectedRace?.eventMode === 'multi' && selectedRace.eventConfiguration) {
-        const config = selectedRace.eventConfiguration.find(c => c.customCategory === displayRaceCategory);
-        if (config && config.laps) {
-            displayLaps = config.laps;
-        }
-    } else if (selectedRace?.singleModeCategories && selectedRace.singleModeCategories.length > 0) {
-        // Check single mode category config for laps override
-        const config = selectedRace.singleModeCategories.find(c => c.category === displayRaceCategory);
-        if (config && config.laps) {
-            displayLaps = config.laps;
-        }
+        const cfg = selectedRace.eventConfiguration.find(c => c.customCategory === displayRaceCategory);
+        if (cfg?.laps) displayLaps = cfg.laps;
+    } else if (selectedRace?.singleModeCategories?.length) {
+        const cfg = selectedRace.singleModeCategories.find(c => c.category === displayRaceCategory);
+        if (cfg?.laps) displayLaps = cfg.laps;
     }
-    // Standings Data
-    let availableStandingsCategories = Object.keys(standings).length > 0
-        ? Object.keys(standings)
-        : ['A', 'B', 'C', 'D', 'E'];
 
-    // Apply custom sorting based on the latest race configuration
-    const referenceRace = [...races].reverse().find(r => r.eventMode === 'multi' && r.eventConfiguration && r.eventConfiguration.length > 0);
-
-    if (referenceRace && referenceRace.eventConfiguration) {
-        const orderMap = new Map();
-        referenceRace.eventConfiguration.forEach((cfg, idx) => {
-            if (cfg.customCategory) orderMap.set(cfg.customCategory, idx);
-        });
-
+    // Available standings categories
+    let availableStandingsCategories = Object.keys(standings).length > 0 ? Object.keys(standings) : ['A', 'B', 'C', 'D', 'E'];
+    const referenceRace = [...races].reverse().find(r => r.eventMode === 'multi' && r.eventConfiguration?.length);
+    if (referenceRace?.eventConfiguration) {
+        const orderMap = new Map(referenceRace.eventConfiguration.map((cfg, idx) => [cfg.customCategory, idx]));
         availableStandingsCategories.sort((a, b) => {
-            const idxA = orderMap.has(a) ? orderMap.get(a) : 999;
-            const idxB = orderMap.has(b) ? orderMap.get(b) : 999;
-            if (idxA === idxB) return a.localeCompare(b);
-            return idxA - idxB;
+            const diff = (orderMap.get(a) ?? 999) - (orderMap.get(b) ?? 999);
+            return diff !== 0 ? diff : a.localeCompare(b);
         });
     } else {
         availableStandingsCategories.sort();
@@ -257,20 +157,17 @@ export default function ResultsPage() {
         ? availableStandingsCategories[0]
         : standingsCategory;
 
-    // Calculate standings with only best X races counting (memoised to avoid re-sorting on every render)
     const currentStandings = useMemo<ProcessedRider[]>(() => {
-        const rawStandings = standings[displayStandingsCategory] || [];
-        return rawStandings
+        return (standings[displayStandingsCategory] || [])
             .map(rider => {
-                const sortedResults = [...rider.results].sort((a, b) => b.points - a.points);
-                const countingRaceIds = new Set(sortedResults.slice(0, bestRacesCount).map(r => r.raceId));
-                const calculatedTotal = sortedResults.slice(0, bestRacesCount).reduce((sum, r) => sum + r.points, 0);
+                const sorted = [...rider.results].sort((a, b) => b.points - a.points);
+                const countingRaceIds = new Set(sorted.slice(0, bestRacesCount).map(r => r.raceId));
+                const calculatedTotal = sorted.slice(0, bestRacesCount).reduce((sum, r) => sum + r.points, 0);
                 return { ...rider, calculatedTotal, countingRaceIds };
             })
             .sort((a, b) => b.calculatedTotal - a.calculatedTotal);
     }, [standings, displayStandingsCategory, bestRacesCount]);
 
-    // Build sprint column order and best split times (memoised — depends on race selection and results)
     const { sprintColumns, bestSplitTimes } = useMemo(() => {
         const allSprintKeys = new Set<string>();
         raceResults.forEach(r => {
@@ -290,19 +187,16 @@ export default function ResultsPage() {
 
         const columns: string[] = [];
         orderedSprints.forEach(s => {
-            const foundKey = [s.key, `${s.id}_${s.count}`, s.id].filter(Boolean).find(k => allSprintKeys.has(k!)) as string | undefined;
-            if (foundKey) { columns.push(foundKey); allSprintKeys.delete(foundKey); }
+            const key = [s.key, `${s.id}_${s.count}`, s.id].filter(Boolean).find(k => allSprintKeys.has(k!)) as string | undefined;
+            if (key) { columns.push(key); allSprintKeys.delete(key); }
         });
-        const remaining = Array.from(allSprintKeys).sort();
 
-        const finalColumns = [...columns, ...remaining];
+        const finalColumns = [...columns, ...Array.from(allSprintKeys).sort()];
         const splitTimes: Record<string, number> = {};
         finalColumns.forEach(key => {
             const sample = raceResults.find(r => r.sprintDetails?.[key])?.sprintDetails?.[key];
             if (typeof sample === 'number' && sample > 1_000_000) {
-                const times = raceResults
-                    .map(r => r.sprintDetails?.[key])
-                    .filter((v): v is number => typeof v === 'number' && v > 0);
+                const times = raceResults.map(r => r.sprintDetails?.[key]).filter((v): v is number => typeof v === 'number' && v > 0);
                 if (times.length > 0) splitTimes[key] = Math.min(...times);
             }
         });
@@ -310,36 +204,25 @@ export default function ResultsPage() {
         return { sprintColumns: finalColumns, bestSplitTimes: splitTimes };
     }, [selectedRace, raceResults, displayRaceCategory]);
 
-    const getSprintHeader = (key: string) => {
-        // Find source sprint list again (could refactor to share)
+    const getSprintHeader = (key: string): string => {
         let sourceSprints: Sprint[] = [];
         if (selectedRace?.eventMode === 'multi' && selectedRace.eventConfiguration) {
             const catConfig = selectedRace.eventConfiguration.find(c => c.customCategory === displayRaceCategory);
-            if (catConfig && catConfig.sprints) sourceSprints = catConfig.sprints;
-            else sourceSprints = selectedRace.sprints || [];
-        } else if (selectedRace?.singleModeCategories && selectedRace.singleModeCategories.length > 0) {
-            // Check single mode category config for sprints
+            sourceSprints = catConfig?.sprints ?? selectedRace.sprints ?? [];
+        } else if (selectedRace?.singleModeCategories?.length) {
             const catConfig = selectedRace.singleModeCategories.find(c => c.category === displayRaceCategory);
-            if (catConfig && catConfig.sprints) sourceSprints = catConfig.sprints;
-            else sourceSprints = selectedRace?.sprints || [];
+            sourceSprints = catConfig?.sprints ?? selectedRace?.sprints ?? [];
         } else {
-            sourceSprints = selectedRace?.sprints || [];
+            sourceSprints = selectedRace?.sprints ?? [];
         }
 
         if (sourceSprints.length === 0) return key.replace(/_/g, ' ');
-
-        // Try matching key, ID_COUNT, or just ID
         const sprint = sourceSprints.find(s => s.key === key || `${s.id}_${s.count}` === key || s.id === key);
+        if (sprint) return `${sprint.name} #${sprint.count}`;
 
-        if (sprint) {
-            return `${sprint.name} #${sprint.count}`;
-        }
-        // Fallback: try to look up by ID/Count parsing if key format is ID_COUNT
         const parts = key.split('_');
         if (parts.length >= 2) {
-            const id = parts[0];
-            const count = parseInt(parts[1]);
-            const match = sourceSprints.find(s => s.id == id && s.count == count);
+            const match = sourceSprints.find(s => s.id == parts[0] && s.count == parseInt(parts[1]));
             if (match) return `${match.name} #${match.count}`;
         }
         return key.replace(/_/g, ' ');
@@ -349,7 +232,6 @@ export default function ResultsPage() {
         <div className="max-w-6xl mx-auto px-4 py-8">
             <h1 className="text-3xl font-bold mb-8 text-foreground">Resultater & Stilling</h1>
 
-            {/* Main Tabs */}
             <div className="flex gap-4 mb-8 border-b border-border">
                 <button
                     onClick={() => setActiveTab('standings')}
@@ -365,209 +247,33 @@ export default function ResultsPage() {
                 </button>
             </div>
 
-            {/* LEAGUE STANDINGS TAB */}
             {activeTab === 'standings' && (
-                <div className="space-y-6">
-                    <div className="flex justify-between items-center mb-4">
-                        <h2 className="text-xl font-semibold text-card-foreground">Førertavle</h2>
-                        <div className="flex gap-2 bg-muted/20 rounded p-1 overflow-x-auto">
-                            {availableStandingsCategories.map(cat => (
-                                <button
-                                    key={cat}
-                                    onClick={() => setStandingsCategory(cat)}
-                                    className={`px-3 py-1 text-sm rounded transition-colors whitespace-nowrap ${displayStandingsCategory === cat
-                                        ? 'bg-primary text-primary-foreground shadow-sm'
-                                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                                        }`}
-                                >
-                                    {cat}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="bg-card border border-border rounded-lg overflow-hidden shadow-sm">
-                        {currentStandings.length > 0 ? (
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left text-sm whitespace-nowrap">
-                                    <thead className="bg-[#E7E3D6] text-slate-800 border-b-2 border-slate-300">
-                                        <tr>
-                                            <th className="px-4 py-3 w-12 text-center">Rang</th>
-                                            <th className="px-4 py-3">Rytter</th>
-                                            <th className="px-4 py-3 text-center">Løb</th>
-                                            {races.map((race) => (
-                                                <th key={race.id} className="px-2 py-3 text-center text-xs font-medium text-muted-foreground whitespace-normal min-w-[60px]" title={formatDateShort(race.date)}>
-                                                    {race.name}
-                                                </th>
-                                            ))}
-                                            <th className="px-4 py-3 text-right font-bold text-primary">Samlede point</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-border">
-                                        {currentStandings.map((rider, idx) => (
-                                            <tr key={rider.zwiftId} className="hover:bg-muted/20 transition odd:bg-transparent even:bg-[#f1efe7]">
-                                                <td className="px-4 py-3 text-center font-medium text-muted-foreground">
-                                                    {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
-                                                </td>
-                                                <td className="px-4 py-3 font-medium text-card-foreground">{rider.name}</td>
-                                                <td className="px-4 py-3 text-center text-muted-foreground">{rider.raceCount}</td>
-                                                {races.map(race => {
-                                                    const result = rider.results.find(r => r.raceId === race.id);
-                                                    const isCounting = rider.countingRaceIds.has(race.id);
-                                                    return (
-                                                        <td
-                                                            key={race.id}
-                                                            className={`px-2 py-3 text-center text-sm ${result
-                                                                ? isCounting
-                                                                    ? 'text-foreground font-medium'
-                                                                    : 'text-muted-foreground/50 line-through'
-                                                                : 'text-muted-foreground'
-                                                                }`}
-                                                            title={result && !isCounting ? 'Tæller ikke (uden for top 5)' : undefined}
-                                                        >
-                                                            {result ? result.points : '-'}
-                                                        </td>
-                                                    );
-                                                })}
-                                                <td className="px-4 py-3 text-right font-bold text-foreground text-lg">{rider.calculatedTotal}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        ) : (
-                            <div className="p-12 text-center text-muted-foreground">
-                                Ingen stilling tilgængelig endnu.
-                            </div>
-                        )}
-                    </div>
-                </div>
+                <StandingsTable
+                    currentStandings={currentStandings}
+                    races={races}
+                    availableStandingsCategories={availableStandingsCategories}
+                    displayStandingsCategory={displayStandingsCategory}
+                    standingsCategory={standingsCategory}
+                    setStandingsCategory={setStandingsCategory}
+                />
             )}
 
-            {/* RACE RESULTS TAB */}
             {activeTab === 'results' && (
-                <div className="space-y-6">
-                    {/* Race Selector */}
-                    <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between bg-card border border-border p-4 rounded-lg shadow-sm">
-                        <div className="flex flex-col gap-1 w-full sm:w-auto">
-                            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Vælg løb</label>
-                            <select
-                                value={selectedRaceId}
-                                onChange={(e) => setSelectedRaceId(e.target.value)}
-                                className="bg-background border border-input rounded px-3 py-2 text-foreground font-medium w-full sm:w-80"
-                            >
-                                {races.map(r => (
-                                    <option key={r.id} value={r.id}>
-                                        {formatDateShort(r.date)} - {r.name}
-                                    </option>
-                                ))}
-                                {races.length === 0 && <option>Ingen løb fundet</option>}
-                            </select>
-                        </div>
-
-                        {selectedRace && (
-                            <div className="text-right hidden sm:block">
-                                <div className="text-sm font-medium text-card-foreground">{selectedRace.map}</div>
-                                <div className="text-xs text-muted-foreground">{selectedRace.routeName} • {displayLaps} omgange</div>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Category Tabs */}
-                    <div className="flex gap-2 border-b border-border pb-1 overflow-x-auto">
-                        {availableRaceCategories.map(cat => (
-                            <button
-                                key={cat}
-                                onClick={() => setSelectedCategory(cat)}
-                                className={`px-4 py-2 rounded-t-md font-bold text-sm transition-colors whitespace-nowrap ${displayRaceCategory === cat
-                                    ? 'bg-primary text-primary-foreground'
-                                    : 'bg-muted/30 text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-                                    }`}
-                            >
-                                {cat}
-                            </button>
-                        ))}
-                    </div>
-
-                    {/* Results Table */}
-                    <div className="bg-card border border-border rounded-lg overflow-hidden shadow-sm">
-                        {raceResults.length > 0 ? (
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left text-sm whitespace-nowrap">
-                                    <thead className="bg-[#E7E3D6] text-slate-800 border-b-2 border-slate-300">
-                                        <tr>
-                                            <th className="px-4 py-3 w-12 text-center">Pos</th>
-                                            <th className="px-4 py-3">Rytter</th>
-                                            <th className="px-4 py-3 text-right">Tid</th>
-                                            {/* Dynamic Sprint Columns */}
-                                            {sprintColumns.map(sprintKey => (
-                                                <th
-                                                    key={sprintKey}
-                                                    className="px-2 py-3 text-center text-xs uppercase tracking-wider text-muted-foreground/70 whitespace-normal sm:max-w-[120px] min-w-[80px]"
-                                                >
-                                                    {getSprintHeader(sprintKey)}
-                                                </th>
-                                            ))}
-                                            <th className="px-4 py-3 text-right text-muted-foreground/70">Målpoint</th>
-                                            <th className="px-4 py-3 text-right font-bold text-primary">Total point</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-border">
-                                        {raceResults.map((rider, idx) => (
-                                            <tr key={rider.zwiftId} className="hover:bg-muted/20 transition odd:bg-transparent even:bg-[#f1efe7]">
-                                                <td className="px-4 py-3 text-center font-medium text-muted-foreground">{idx + 1}</td>
-                                                <td className="px-4 py-3 font-medium text-card-foreground">{rider.name}</td>
-                                                <td className="px-4 py-3 text-right font-mono text-muted-foreground">{formatTime(rider.finishTime)}</td>
-                                                {/* Dynamic Sprint Data */}
-                                                {sprintColumns.map(sprintKey => {
-                                                    const val = rider.sprintDetails?.[sprintKey];
-                                                    const best = bestSplitTimes[sprintKey];
-
-                                                    let displayVal: React.ReactNode = '-';
-
-                                                    if (val !== undefined && val !== null) {
-                                                        if (best) {
-                                                            // It's a split time
-                                                            const diff = val - best;
-                                                            if (diff === 0) displayVal = <span className="text-green-600 dark:text-green-400 font-bold">0.00</span>;
-                                                            else displayVal = <span className="text-red-500 dark:text-red-400">+{formatGap(diff)}</span>;
-                                                        } else {
-                                                            // It's points
-                                                            displayVal = val;
-                                                        }
-                                                    }
-
-                                                    return (
-                                                        <td key={sprintKey} className="px-4 py-3 text-center text-muted-foreground">
-                                                            {displayVal}
-                                                        </td>
-                                                    );
-                                                })}
-                                                <td className="px-4 py-3 text-right text-muted-foreground font-medium">{rider.finishPoints}</td>
-                                                <td className="px-4 py-3 text-right font-bold text-foreground">{rider.totalPoints}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        ) : (
-                            <div className="p-12 text-center">
-                                <p className="text-muted-foreground mb-4">
-                                    Ingen resultater tilgængelige for <span className="font-semibold text-foreground">{selectedRace?.name}</span> ({displayRaceCategory})
-                                </p>
-                                {selectedRace?.eventId || (selectedRace?.eventConfiguration && selectedRace.eventConfiguration.length > 0) ? (
-                                    <div className="inline-block px-4 py-2 bg-primary/10 text-primary rounded text-sm">
-                                        Resultatbehandling afventer eller er ufuldstændig. Prøv igen senere.
-                                    </div>
-                                ) : (
-                                    <div className="inline-block px-4 py-2 bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 rounded text-sm">
-                                        Begivenheds-ID er endnu ikke tilføjet. Resultater kan ikke hentes.
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                </div>
+                <RaceResultsTable
+                    races={races}
+                    selectedRaceId={selectedRaceId}
+                    setSelectedRaceId={setSelectedRaceId}
+                    selectedRace={selectedRace}
+                    availableRaceCategories={availableRaceCategories}
+                    displayRaceCategory={displayRaceCategory}
+                    selectedCategory={selectedCategory}
+                    setSelectedCategory={setSelectedCategory}
+                    displayLaps={displayLaps}
+                    raceResults={raceResults}
+                    sprintColumns={sprintColumns}
+                    bestSplitTimes={bestSplitTimes}
+                    getSprintHeader={getSprintHeader}
+                />
             )}
         </div>
     );

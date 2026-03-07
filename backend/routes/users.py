@@ -3,6 +3,11 @@ from firebase_admin import auth, firestore
 from extensions import db, get_zwift_service, get_zp_service, strava_service, zr_service, get_zwift_game_service
 from services.policy_store import POLICY_DATA_POLICY, POLICY_PUBLIC_RESULTS, PolicyError, get_policy_meta
 from services.user_service import UserService
+from authz import verify_user_token, AuthzError
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 users_bp = Blueprint('users', __name__)
 
@@ -10,7 +15,7 @@ def update_rider_stats(e_license, zwift_id):
     if not db or not e_license or not zwift_id:
         return None
     
-    print(f"Fetching stats for {e_license} (ZwiftID: {zwift_id})")
+    logger.info(f"Fetching stats for {e_license} (ZwiftID: {zwift_id})")
     updates = {}
     
     # 1. ZwiftPower
@@ -25,7 +30,7 @@ def update_rider_stats(e_license, zwift_id):
                 'updatedAt': firestore.SERVER_TIMESTAMP
             }
     except Exception as e:
-        print(f"ZP Fetch Error: {e}")
+        logger.error(f"ZP Fetch Error: {e}")
 
     # 2. ZwiftRacing
     try:
@@ -41,7 +46,7 @@ def update_rider_stats(e_license, zwift_id):
                 'updatedAt': firestore.SERVER_TIMESTAMP
             }
     except Exception as e:
-         print(f"ZR Fetch Error: {e}")
+         logger.error(f"ZR Fetch Error: {e}")
 
     # 3. Zwift Profile
     try:
@@ -56,7 +61,7 @@ def update_rider_stats(e_license, zwift_id):
                 'updatedAt': firestore.SERVER_TIMESTAMP
              }
     except Exception as e:
-         print(f"Zwift Fetch Error: {e}")
+         logger.error(f"Zwift Fetch Error: {e}")
          
     # 4. Strava (Summary only)
     try:
@@ -67,7 +72,7 @@ def update_rider_stats(e_license, zwift_id):
                 'updatedAt': firestore.SERVER_TIMESTAMP
             }
     except Exception as e:
-        print(f"Strava Fetch Error: {e}")
+        logger.error(f"Strava Fetch Error: {e}")
          
     if updates:
         db.collection('users').document(str(e_license)).set(updates, merge=True)
@@ -128,7 +133,7 @@ def get_profile():
         }), 200
 
     except Exception as e:
-        print(f"Profile Error: {e}")
+        logger.error(f"Profile Error: {e}")
         return jsonify({'message': str(e)}), 500
 
 @users_bp.route('/signup', methods=['POST'])
@@ -224,19 +229,16 @@ def signup():
             # Use Zwift ID as the document ID (primary key)
             doc_id = str(zwift_id) if zwift_id else uid
             doc_ref = db.collection('users').document(doc_id)
-            
-            prev_data = {}
-            try:
-                prev_doc = doc_ref.get()
-                if prev_doc.exists:
-                    prev_data = prev_doc.to_dict() or {}
-            except Exception:
-                pass
 
-            prev_reg_status = prev_data.get('registration', {}).get('status')
-            is_newly_registered = not is_draft and prev_reg_status != 'complete'
-            
-            doc_ref.set(user_data, merge=True)
+            @firestore.transactional
+            def _promote_registration(transaction, ref, data):
+                prev_doc = ref.get(transaction=transaction)
+                prev_reg_status = (prev_doc.to_dict() or {}).get('registration', {}).get('status') if prev_doc.exists else None
+                newly_registered = not is_draft and prev_reg_status != 'complete'
+                transaction.set(ref, data, merge=True)
+                return newly_registered
+
+            is_newly_registered = _promote_registration(db.transaction(), doc_ref, user_data)
 
             # Handle Draft Migration (if user started as draft with UID key)
             if not is_draft and zwift_id and uid:
@@ -360,6 +362,11 @@ def set_welcome_seen():
 
 @users_bp.route('/participants', methods=['GET'])
 def get_participants():
+    try:
+        verify_user_token(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
     if not db:
          return jsonify({'error': 'DB not available'}), 500
 
@@ -397,7 +404,7 @@ def get_participants():
         
         return jsonify({'participants': participants}), 200
     except Exception as e:
-        print(f"Participants List Error: {e}")
+        logger.error(f"Participants List Error: {e}")
         return jsonify({'message': str(e)}), 500
 
 @users_bp.route('/stats', methods=['GET'])
@@ -417,7 +424,7 @@ def get_stats():
                     if mapping_doc.exists:
                         e_license = mapping_doc.to_dict().get('eLicense')
             except Exception as e:
-                print(f"Token verification failed in stats: {e}")
+                logger.error(f"Token verification failed in stats: {e}")
     
     strava_data = {'kms': 'Not Connected', 'activities': []}
     zp_data = {'category': 'N/A', 'ftp': 'N/A'}
@@ -445,7 +452,7 @@ def get_stats():
                                 'ftp': rider_info.get('ftp', 'N/A'),
                             }
                     except Exception as zp_e:
-                            print(f"ZwiftPower fetch error: {zp_e}")
+                            logger.error(f"ZwiftPower fetch error: {zp_e}")
 
                     try:
                         zr_json = zr_service.get_rider_data(str(zwift_id))
@@ -463,7 +470,7 @@ def get_stats():
                                 'dnfs': race.get('dnfs', 0)
                             }
                     except Exception as zr_e:
-                        print(f"ZwiftRacing fetch error: {zr_e}")
+                        logger.error(f"ZwiftRacing fetch error: {zr_e}")
 
                     try:
                         zwift_service = get_zwift_service()
@@ -479,10 +486,10 @@ def get_stats():
                                 'racingScore': profile.get('competitionMetrics', {}).get('racingScore', 'N/A')
                             }
                     except Exception as z_e:
-                            print(f"Zwift API fetch error: {z_e}")
+                            logger.error(f"Zwift API fetch error: {z_e}")
 
         except Exception as e:
-            print(f"Error fetching stats: {e}")
+            logger.error(f"Error fetching stats: {e}")
     
     stats_data = {
         'stats': [

@@ -29,7 +29,7 @@ class ResultsProcessor:
         if not self.db:
             raise Exception("Database not available")
 
-        print(f"Processing results for race: {race_id} (Mode: {fetch_mode}, Filter: {filter_registered}, Cat: {category_filter})")
+        logger.info(f"Processing results for race: {race_id} (Mode: {fetch_mode}, Filter: {filter_registered}, Cat: {category_filter})")
 
         # 1. Fetch Race Config
         race_doc = self.db.collection('races').document(race_id).get()
@@ -45,7 +45,7 @@ class ResultsProcessor:
 
         if event_config and len(event_config) > 0:
             # Multi-Event Mode
-            print("Using Multi-Event Configuration")
+            logger.info("Using Multi-Event Configuration")
             for cfg in event_config:
                 event_sources.append({
                     'id': cfg.get('eventId'),
@@ -61,10 +61,10 @@ class ResultsProcessor:
             global_sprints = race_data.get('sprints', [])
             
             if event_id:
-                print("Using Single Event Configuration")
+                logger.info("Using Single Event Configuration")
                 category_config_map = {}
                 if single_mode_categories:
-                    print(f"  Found {len(single_mode_categories)} per-category configurations")
+                    logger.info(f"  Found {len(single_mode_categories)} per-category configurations")
                     for cat_cfg in single_mode_categories:
                         cat_name = cat_cfg.get('category')
                         if cat_name:
@@ -117,7 +117,7 @@ class ResultsProcessor:
             if zid and is_registered:
                 registered_riders[str(zid)] = data
         
-        print(f"Found {len(registered_riders)} registered riders in database.")
+        logger.info(f"Found {len(registered_riders)} registered riders in database.")
 
         # 4. Process Each Source
         all_results = race_data.get('results', {})
@@ -148,7 +148,7 @@ class ResultsProcessor:
         try:
             self.save_league_standings(override_race_id=race_id, override_race_data=race_data)
         except Exception as e:
-            print(f"Error updating league standings: {e}")
+            logger.error(f"Error updating league standings: {e}")
 
         return all_results
 
@@ -158,7 +158,7 @@ class ResultsProcessor:
             'standings': standings,
             'updatedAt': firestore.SERVER_TIMESTAMP
         }, merge=True)
-        print("Updated league standings document.")
+        logger.info("Updated league standings document.")
         return standings
 
     def recalculate_race_points(self, race_id):
@@ -168,7 +168,7 @@ class ResultsProcessor:
         if not self.db:
             raise Exception("Database not available")
         
-        print(f"Recalculating points for race: {race_id}")
+        logger.info(f"Recalculating points for race: {race_id}")
         
         race_doc = self.db.collection('races').document(race_id).get()
         if not race_doc.exists:
@@ -178,7 +178,7 @@ class ResultsProcessor:
         results = race_data.get('results', {})
         
         if not results:
-            print("  No results to recalculate")
+            logger.info("  No results to recalculate")
             return results
         
         settings_doc = self.db.collection('league').document('settings').get()
@@ -192,7 +192,7 @@ class ResultsProcessor:
         updated_results = {}
         
         for category, riders in results.items():
-            print(f"  Processing category {category} ({len(riders)} riders)")
+            logger.info(f"  Processing category {category} ({len(riders)} riders)")
             category_config = self._get_category_config(race_data, category)
             updated_riders = scorer.calculate_results(riders, category_config, segment_efforts_map=None)
             updated_results[category] = updated_riders
@@ -206,9 +206,9 @@ class ResultsProcessor:
         try:
             self.save_league_standings(override_race_id=race_id, override_race_data=race_data)
         except Exception as e:
-            print(f"Error updating league standings: {e}")
+            logger.error(f"Error updating league standings: {e}")
         
-        print(f"  Recalculation complete for {len(updated_results)} categories")
+        logger.info(f"  Recalculation complete for {len(updated_results)} categories")
         return updated_results
 
     def calculate_league_standings(self, override_race_id=None, override_race_data=None):
@@ -222,7 +222,7 @@ class ResultsProcessor:
             settings_doc = self.db.collection('league').document('settings').get()
             settings = settings_doc.to_dict() if settings_doc.exists else {}
         except Exception as e:
-            print(f"Error fetching settings: {e}")
+            logger.error(f"Error fetching settings: {e}")
             settings = {}
 
         try:
@@ -235,7 +235,7 @@ class ResultsProcessor:
                 data['id'] = doc.id
                 races_data.append(data)
         except Exception as e:
-            print(f"Error fetching races: {e}")
+            logger.error(f"Error fetching races: {e}")
             return {}
 
         engine = LeagueEngine(settings)
@@ -252,16 +252,16 @@ class ResultsProcessor:
         if not event_id:
             return
 
-        print(f"Processing Event Source: {event_id} (Target Cat: {custom_category or 'Auto'})")
+        logger.info(f"Processing Event Source: {event_id} (Target Cat: {custom_category or 'Auto'})")
 
         try:
             event_info = self.zwift_fetcher.get_event_info(event_id, event_secret)
         except Exception as e:
-            print(f"Failed to fetch event info for {event_id}: {e}")
+            logger.error(f"Failed to fetch event info for {event_id}: {e}")
             return
 
         subgroups = self.zwift_fetcher.extract_subgroups(event_info)
-        print(f"  Found {len(subgroups)} subgroups.")
+        logger.info(f"  Found {len(subgroups)} subgroups.")
         
         custom_cat_finishers = []
         custom_cat_segment_efforts = {}
@@ -301,7 +301,7 @@ class ResultsProcessor:
                 cat_cfg = category_config_map[category_label]
                 if cat_cfg.get('sprints'):
                     category_sprints = cat_cfg['sprints']
-                    print(f"    Using per-category sprints for {category_label}: {len(category_sprints)} sprints")
+                    logger.info(f"    Using per-category sprints for {category_label}: {len(category_sprints)} sprints")
                 if cat_cfg.get('segmentType'):
                     category_segment_type = cat_cfg['segmentType']
             
@@ -321,12 +321,12 @@ class ResultsProcessor:
                 custom_cat_segment_efforts.update(segment_efforts)
             else:
                 if category_config_map and category_label not in category_config_map:
-                    print(f"    Skipping category {category_label} (not in configured categories)")
+                    logger.info(f"    Skipping category {category_label} (not in configured categories)")
                     continue
                 
                 processed_batch = scorer.calculate_results(finishers, category_config, segment_efforts)
                 all_results[category_label] = processed_batch
-                print(f"    Saved {len(processed_batch)} results to {category_label}")
+                logger.info(f"    Saved {len(processed_batch)} results to {category_label}")
 
         if custom_category and custom_cat_finishers:
             cat_config = self._get_category_config(race_data, custom_category)
@@ -335,7 +335,7 @@ class ResultsProcessor:
             
             processed_batch = scorer.calculate_results(custom_cat_finishers, cat_config, custom_cat_segment_efforts)
             all_results[custom_category] = processed_batch
-            print(f"    Saved {len(processed_batch)} merged results to {custom_category}")
+            logger.info(f"    Saved {len(processed_batch)} merged results to {custom_category}")
 
     def _get_category_config(self, race_data, category):
         """Helper to build a config dict for RaceScorer from race_data"""

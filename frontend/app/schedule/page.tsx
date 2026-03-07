@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import type { Race } from '@/types/live';
+import type { Race, Sprint } from '@/types/live';
 import { API_URL } from '@/lib/api';
 import { formatDateLong, formatTimeWithTz } from '@/lib/formatDate';
 
@@ -104,7 +104,7 @@ export default function SchedulePage() {
                             if (!acc[lap]) acc[lap] = [];
                             acc[lap].push(seg);
                             return acc;
-                        }, {} as Record<number, Segment[]>);
+                        }, {} as Record<number, Sprint[]>);
 
                         return (
                             <div key={idx} className="text-sm">
@@ -140,7 +140,7 @@ export default function SchedulePage() {
                 if (!acc[lap]) acc[lap] = [];
                 acc[lap].push(seg);
                 return acc;
-            }, {} as Record<number, Segment[]>);
+            }, {} as Record<number, Sprint[]>);
 
             sprintsContent = (
                 <div className="space-y-3">
@@ -207,7 +207,7 @@ export default function SchedulePage() {
                             <div className="text-sm text-muted-foreground flex items-center justify-end gap-1">
                                 {race.routeName}
                                 <a
-                                    href={getZwiftInsiderUrl(race.routeName)}
+                                    href={getZwiftInsiderUrl(race.routeName ?? '')}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="text-xs text-primary hover:underline"

@@ -7,7 +7,7 @@ import { fromTimestamp } from '@/lib/formatDate';
 
 interface VerificationRequest {
     requestId: string;
-    requestedAt: { seconds: number } | string | null;
+    requestedAt?: { seconds: number } | string | null;
     status: 'pending' | 'submitted' | 'approved' | 'rejected';
     videoLink?: string;
     rejectionReason?: string;

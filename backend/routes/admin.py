@@ -5,6 +5,10 @@ from extensions import db, get_zwift_service, strava_service, get_zp_service
 from authz import require_admin, AuthzError
 from services.user_service import UserService
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 admin_bp = Blueprint('admin', __name__)
 
 def verify_admin_auth():
@@ -25,7 +29,7 @@ def verify_rider(rider_id):
         user = UserService.get_user_by_id(rider_id)
         if not user:
              # Fallback: Try eLicense (backward compat or valid alt lookup)
-             print(f"User not found by ID {rider_id}, trying eLicense lookup")
+             logger.info(f"User not found by ID {rider_id}, trying eLicense lookup")
              user = UserService.get_user_by_elicense(rider_id)
              
         if not user:
@@ -70,14 +74,14 @@ def verify_rider(rider_id):
                     'img': profile.get('imageSrc')
                 }
         except Exception as e:
-            print(f"Zwift Profile Fetch Error: {e}")
+            logger.error(f"Zwift Profile Fetch Error: {e}")
 
         try:
             strava_raw = futures['strava'].result()
             if strava_raw and 'activities' in strava_raw:
                 response_data['stravaActivities'] = strava_raw['activities']
         except Exception as e:
-            print(f"Strava Verification Fetch Error: {e}")
+            logger.error(f"Strava Verification Fetch Error: {e}")
 
         try:
             zp_json = futures['zp'].result()
@@ -130,7 +134,7 @@ def verify_rider(rider_id):
                 history.sort(key=lambda x: x['date'], reverse=True)
                 response_data['zwiftPowerHistory'] = history
         except Exception as e:
-            print(f"ZP Verification Fetch Error: {e}")
+            logger.error(f"ZP Verification Fetch Error: {e}")
 
         return jsonify(response_data), 200
     except Exception as e:

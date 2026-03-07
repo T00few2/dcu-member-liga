@@ -103,10 +103,19 @@ class User:
         """
         if not self.id:
             raise ValueError("User ID is required for updates")
-        
+
         db.collection('users').document(str(self.id)).update(updates)
-        # Update local cache (this is imperfect for dotted keys but better than nothing)
-        self._data.update(updates)
+
+        # Mirror changes into the local cache, expanding dotted keys into nested dicts.
+        for key, value in updates.items():
+            parts = key.split('.')
+            if len(parts) == 1:
+                self._data[key] = value
+            else:
+                d = self._data
+                for part in parts[:-1]:
+                    d = d.setdefault(part, {})
+                d[parts[-1]] = value
 
 class UserService:
     @staticmethod
@@ -168,5 +177,10 @@ class UserService:
     
     @staticmethod
     def get_all_participants(limit=100):
-        docs = db.collection('users').limit(limit).stream()
+        docs = (
+            db.collection('users')
+            .where('registration.status', '==', 'complete')
+            .limit(limit)
+            .stream()
+        )
         return [User(doc_snapshot=doc) for doc in docs]

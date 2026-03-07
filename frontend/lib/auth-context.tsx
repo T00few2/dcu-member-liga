@@ -61,12 +61,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [isRegistered, setIsRegistered] = useState(false);
   const [realIsAdmin, setRealIsAdmin] = useState(false);
-  const [isImpersonating, setIsImpersonating] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('isImpersonating') === 'true';
-    }
-    return false;
-  });
+  const [isImpersonating, setIsImpersonating] = useState(false);
   const isAdmin = realIsAdmin && !isImpersonating;
   const [needsConsentUpdate, setNeedsConsentUpdate] = useState(false);
   const [hasSeenWelcomeModal, setHasSeenWelcomeModal] = useState(false);
@@ -142,7 +137,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setProfileLoaded(false);
         setRealIsAdmin(false);
         setIsImpersonating(false);
-        localStorage.removeItem('isImpersonating');
         setNeedsConsentUpdate(false);
         setHasSeenWelcomeModal(false);
         setRequiredDataPolicyVersion(null);
@@ -224,15 +218,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const toggleImpersonation = useCallback(() => {
     if (realIsAdmin) {
-      setIsImpersonating(prev => {
-        const newValue = !prev;
-        if (newValue) {
-          localStorage.setItem('isImpersonating', 'true');
-        } else {
-          localStorage.removeItem('isImpersonating');
-        }
-        return newValue;
-      });
+      setIsImpersonating(prev => !prev);
     }
   }, [realIsAdmin]);
 
@@ -256,7 +242,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsRegistered(false);
       setRealIsAdmin(false);
       setIsImpersonating(false);
-      localStorage.removeItem('isImpersonating');
       setNeedsConsentUpdate(false);
       setHasSeenWelcomeModal(false);
       setRequiredDataPolicyVersion(null);
