@@ -10,7 +10,7 @@ import RegistrationIntroModal from '@/components/RegistrationIntroModal';
 import WelcomeModal from '@/components/WelcomeModal';
 import UnregisteredLoginModal from '@/components/UnregisteredLoginModal';
 import { useRouter } from "next/navigation";
-import type { Race } from '@/types/live';
+import type { Race, Sprint } from '@/types/live';
 
 const getZwiftInsiderUrl = (routeName: string) => {
     if (!routeName) return '#';
@@ -387,7 +387,7 @@ export default function Home() {
                                                             if (!acc[lap]) acc[lap] = [];
                                                             acc[lap].push(seg);
                                                             return acc;
-                                                        }, {} as Record<number, Segment[]>);
+                                                        }, {} as Record<number, Sprint[]>);
 
                                                         return (
                                                             <div key={idx} className="text-sm">
@@ -430,7 +430,7 @@ export default function Home() {
                                                             if (!acc[lap]) acc[lap] = [];
                                                             acc[lap].push(seg);
                                                             return acc;
-                                                        }, {} as Record<number, Segment[]>)
+                                                        }, {} as Record<number, Sprint[]>)
                                                     )
                                                         .sort(([a], [b]) => parseInt(a) - parseInt(b))
                                                         .map(([lapKey, segments]) => (
