@@ -1,17 +1,23 @@
+from __future__ import annotations
+
 import logging
 from datetime import datetime
+from typing import Any
+
+from models import RiderResult
 
 logger = logging.getLogger('ZwiftFetcher')
 
+
 class ZwiftFetcher:
-    def __init__(self, zwift_service):
+    def __init__(self, zwift_service: Any) -> None:
         self.zwift = zwift_service
 
-    def get_event_info(self, event_id, event_secret):
+    def get_event_info(self, event_id: str, event_secret: str) -> dict[str, Any]:
         return self.zwift.get_event_info(event_id, event_secret)
 
-    def extract_subgroups(self, event_info):
-        result = []
+    def extract_subgroups(self, event_info: dict[str, Any]) -> list[dict[str, Any]]:
+        result: list[dict[str, Any]] = []
         event_name = event_info.get("name", "")
         for subgroup in event_info.get("eventSubgroups", []):
             result.append({
@@ -24,20 +30,27 @@ class ZwiftFetcher:
             })
         return result
 
-    def fetch_finishers(self, subgroup_id, event_secret, fetch_mode, filter_registered, registered_riders):
+    def fetch_finishers(
+        self,
+        subgroup_id: str,
+        event_secret: str,
+        fetch_mode: str,
+        filter_registered: bool,
+        registered_riders: dict[str, Any],
+    ) -> list[RiderResult]:
         """
         Fetches participants/finishers for a subgroup and maps them to registered riders.
         """
-        finishers = []
+        finishers: list[RiderResult] = []
         if fetch_mode == 'finishers':
             finish_results_raw = self.zwift.get_event_results(subgroup_id, event_secret=event_secret)
-            
+
             for entry in finish_results_raw:
                 profile = entry.get('profileData', {})
                 zid = str(profile.get('id') or entry.get('profileId'))
-                
+
                 # Helper to build finisher object
-                finisher = {
+                finisher: RiderResult = {
                     'zwiftId': zid,
                     'finishTime': entry.get('activityData', {}).get('durationInMilliseconds', 0),
                     'flaggedCheating': entry.get('flaggedCheating', False),
@@ -47,19 +60,17 @@ class ZwiftFetcher:
 
                 if zid in registered_riders:
                     finisher['name'] = registered_riders[zid].get('name')
-                    finisher['info'] = registered_riders[zid]
                     finishers.append(finisher)
                 elif not filter_registered:
                     finisher['name'] = f"{profile.get('firstName', '')} {profile.get('lastName', '')}".strip()
-                    finisher['info'] = {}
                     finishers.append(finisher)
-            
+
             finishers.sort(key=lambda x: x['finishTime'])
-            
+
         else:
             is_joined = (fetch_mode == 'joined')
             participants_raw = self.zwift.get_event_participants(subgroup_id, joined=is_joined)
-            
+
             for p in participants_raw:
                 zid = str(p.get('id'))
                 finisher = {
@@ -72,23 +83,26 @@ class ZwiftFetcher:
 
                 if zid in registered_riders:
                     finisher['name'] = registered_riders[zid].get('name')
-                    finisher['info'] = registered_riders[zid]
                     finishers.append(finisher)
                 elif not filter_registered:
                     finisher['name'] = f"{p.get('firstName', '')} {p.get('lastName', '')}".strip()
-                    finisher['info'] = {}
                     finishers.append(finisher)
-            
+
             finishers.sort(key=lambda x: x['name'])
-            
+
         return finishers
 
-    def fetch_segment_efforts(self, segment_ids, start_time, end_time):
+    def fetch_segment_efforts(
+        self,
+        segment_ids: set[str | int],
+        start_time: datetime,
+        end_time: datetime,
+    ) -> dict[str | int, Any]:
         """
         Fetches results for a list of segments within a time window.
         Returns a dictionary: { segment_id: raw_results }
         """
-        results = {}
+        results: dict[str | int, Any] = {}
         for seg_id in segment_ids:
             try:
                 raw = self.zwift.get_segment_results(seg_id, from_date=start_time, to_date=end_time)
