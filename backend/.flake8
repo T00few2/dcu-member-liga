@@ -1,0 +1,40 @@
+[flake8]
+max-line-length = 120
+exclude = segment_results_pb2.py,scripts/
+
+# Pre-existing style issues ignored to keep CI focused on logic errors.
+# Address these incrementally over time.
+extend-ignore =
+    E111,
+    E114,
+    E117,
+    E125,
+    E127,
+    E128,
+    E221,
+    E261,
+    E302,
+    E303,
+    E305,
+    E402,
+    E501,
+    E701,
+    E722,
+    W291,
+    W293,
+    W391
+
+per-file-ignores =
+    main.py: F401
+    routes/races.py: F401
+    services/strava.py: F401
+    services/user_service.py: F401
+    services/zwift.py: F401,F541
+    services/zwift_game.py: F401,F841
+    services/zwiftpower.py: F401
+    services/results/zwift_fetcher.py: F401
+    services/results_processor.py: F401
+    services/results/league_engine.py: F841
+    services/results/race_scorer.py: F841
+    routes/verification.py: F841
+    tests/test_league_engine.py: F401
