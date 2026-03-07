@@ -215,7 +215,7 @@ def refresh_results(race_id):
         
         req_data = request.get_json(silent=True) or {}
         fetch_mode = req_data.get('source', 'finishers')
-        filter_registered = req_data.get('filterRegistered', True)
+        filter_registered = req_data.get('filterRegistered', False)
         category_filter = req_data.get('categoryFilter', 'All')
         
         results = processor.process_race_results(
