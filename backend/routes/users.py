@@ -3,6 +3,7 @@ from firebase_admin import auth, firestore
 from extensions import db, get_zwift_service, get_zp_service, strava_service, zr_service, get_zwift_game_service
 from services.policy_store import POLICY_DATA_POLICY, POLICY_PUBLIC_RESULTS, PolicyError, get_policy_meta
 from services.user_service import UserService
+from authz import verify_user_token, AuthzError
 
 users_bp = Blueprint('users', __name__)
 
@@ -224,19 +225,16 @@ def signup():
             # Use Zwift ID as the document ID (primary key)
             doc_id = str(zwift_id) if zwift_id else uid
             doc_ref = db.collection('users').document(doc_id)
-            
-            prev_data = {}
-            try:
-                prev_doc = doc_ref.get()
-                if prev_doc.exists:
-                    prev_data = prev_doc.to_dict() or {}
-            except Exception:
-                pass
 
-            prev_reg_status = prev_data.get('registration', {}).get('status')
-            is_newly_registered = not is_draft and prev_reg_status != 'complete'
-            
-            doc_ref.set(user_data, merge=True)
+            @firestore.transactional
+            def _promote_registration(transaction, ref, data):
+                prev_doc = ref.get(transaction=transaction)
+                prev_reg_status = (prev_doc.to_dict() or {}).get('registration', {}).get('status') if prev_doc.exists else None
+                newly_registered = not is_draft and prev_reg_status != 'complete'
+                transaction.set(ref, data, merge=True)
+                return newly_registered
+
+            is_newly_registered = _promote_registration(db.transaction(), doc_ref, user_data)
 
             # Handle Draft Migration (if user started as draft with UID key)
             if not is_draft and zwift_id and uid:
@@ -360,6 +358,11 @@ def set_welcome_seen():
 
 @users_bp.route('/participants', methods=['GET'])
 def get_participants():
+    try:
+        verify_user_token(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
     if not db:
          return jsonify({'error': 'DB not available'}), 500
 

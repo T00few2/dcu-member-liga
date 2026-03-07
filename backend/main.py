@@ -12,6 +12,7 @@ from routes.policy import policy_bp
 
 ALLOWED_ORIGINS = {'https://dansk-ecykling.dk', 'https://www.dansk-ecykling.dk'}
 _ALLOW_LOCALHOST = os.environ.get('ALLOW_LOCALHOST', 'false').lower() == 'true'
+_SEED_ENABLED = os.environ.get('SEED_ENABLED', 'false').lower() == 'true'
 
 def get_cors_origin(origin: str | None) -> str | None:
     if not origin:
@@ -31,7 +32,8 @@ def create_app():
     app.register_blueprint(users_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(integration_bp)
-    app.register_blueprint(seed_bp)
+    if _SEED_ENABLED:
+        app.register_blueprint(seed_bp)
     app.register_blueprint(policy_bp)
     from routes.verification import verification_bp
     app.register_blueprint(verification_bp)
