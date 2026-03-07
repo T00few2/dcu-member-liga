@@ -1,6 +1,10 @@
 
 from datetime import datetime, timezone
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 class LeagueEngine:
     def __init__(self, settings):
         """
@@ -23,7 +27,7 @@ class LeagueEngine:
         override_race_id: ID of race to override.
         override_race_data: Data to use for the override race.
         """
-        print(f"Calculating league standings (Best {self.best_races_count} races)...")
+        logger.info(f"Calculating league standings (Best {self.best_races_count} races)...")
         
         league_table = {} # { category: { zwiftId: { ... } } }
         race_count = 0
@@ -42,7 +46,7 @@ class LeagueEngine:
                      # or fallback to empty list if missing.
                      race_data['manualDQs'] = race_data.get('manualDQs', [])
                 
-                print(f"  Using fresh data for race {race_id} (Override). Manual DQs: {len(race_data.get('manualDQs', []))}")
+                logger.info(f"  Using fresh data for race {race_id} (Override). Manual DQs: {len(race_data.get('manualDQs', []))}")
 
             results = race_data.get('results', {})
             race_date = self._get_race_datetime(race_data)
@@ -103,7 +107,7 @@ class LeagueEngine:
                             entry['lastRaceDate'] = race_date
                             entry['lastRacePoints'] = points
 
-        print(f"Processed {race_count} races for standings.")
+        logger.info(f"Processed {race_count} races for standings.")
 
         # Convert to sorted lists
         final_standings = {}

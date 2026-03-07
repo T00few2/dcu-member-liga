@@ -4,8 +4,12 @@ from extensions import db
 from authz import require_admin, AuthzError
 import uuid
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from services.user_service import UserService
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 verification_bp = Blueprint('verification', __name__)
 
@@ -46,11 +50,11 @@ def trigger_verification():
         selected_ids = random.sample(eligible_riders, min(len(eligible_riders), count_to_select))
 
         # 3. Update User Docs
-        deadline = datetime.now() + timedelta(days=deadline_days)
+        deadline = datetime.now(timezone.utc) + timedelta(days=deadline_days)
         batch = db.batch()
         
         updated_count = 0
-        now = datetime.now().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         
         for uid in selected_ids:
             doc_ref = db.collection('users').document(uid)
@@ -138,7 +142,7 @@ def submit_verification():
         if current_req.get('status') == 'pending':
             current_req['status'] = 'submitted'
             current_req['videoLink'] = video_link
-            current_req['submittedAt'] = datetime.now().isoformat()
+            current_req['submittedAt'] = datetime.now(timezone.utc).isoformat()
             found = True
             
         # Also update history entry
@@ -146,7 +150,7 @@ def submit_verification():
             if req.get('status') == 'pending' and req.get('type') == 'weight':
                 req['status'] = 'submitted'
                 req['videoLink'] = video_link
-                req['submittedAt'] = datetime.now().isoformat()
+                req['submittedAt'] = datetime.now(timezone.utc).isoformat()
             updated_requests.append(req)
 
         user.update({
@@ -209,12 +213,12 @@ def review_verification():
                          reviewer_id = admin_user.name or 'Admin'
 
         except Exception as e:
-            print(f"Could not resolve admin name: {e}")
+            logger.error(f"Could not resolve admin name: {e}")
             pass
         
         new_status = 'approved' if action == 'approve' else 'rejected'
 
-        now_iso = datetime.now().isoformat()
+        now_iso = datetime.now(timezone.utc).isoformat()
         current_req = user.current_verification_request
         if current_req.get('status') == 'submitted':
              current_req['status'] = new_status

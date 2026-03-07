@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, redirect
 from firebase_admin import auth, firestore
 from extensions import db, strava_service, get_zwift_game_service
+from config import FRONTEND_URL
 import secrets
 import requests
 from bs4 import BeautifulSoup
@@ -88,36 +89,26 @@ def strava_callback():
         if status_code != 200:
             return jsonify({'message': 'Failed to get Strava tokens'}), 500
 
-        # Check existing data structure to decide where to put tokens
-        user_doc = user_doc_ref.get()
-        user_data = user_doc.to_dict() or {}
-        
-        updates = {}
-        
-        if 'connections' in user_data or 'registration' in user_data:
-             updates['connections.strava'] = {
-                'athlete_id': token_data.get('athlete', {}).get('id'),
-                'access_token': token_data.get('access_token'),
-                'refresh_token': token_data.get('refresh_token'),
-                'expires_at': token_data.get('expires_at')
-             }
-        else:
-             # Legacy structure
-             updates['strava'] = {
-                'athlete_id': token_data.get('athlete', {}).get('id'),
-                'access_token': token_data.get('access_token'),
-                'refresh_token': token_data.get('refresh_token'),
-                'expires_at': token_data.get('expires_at')
-             }
-        
-        updates['updatedAt'] = firestore.SERVER_TIMESTAMP
-        user_doc_ref.update(updates)
+        # Store tokens in the dedicated collection, keyed by the user doc ID
+        token_ref = db.collection('strava_tokens').document(user_doc_ref.id)
+        token_ref.set({
+            'athlete_id': token_data.get('athlete', {}).get('id'),
+            'access_token': token_data.get('access_token'),
+            'refresh_token': token_data.get('refresh_token'),
+            'expires_at': token_data.get('expires_at'),
+        }, merge=True)
+
+        # Record that Strava is connected in the user doc (no tokens here)
+        user_doc_ref.set({
+            'connections': {'strava': {'athlete_id': token_data.get('athlete', {}).get('id')}},
+            'updatedAt': firestore.SERVER_TIMESTAMP,
+        }, merge=True)
 
     finally:
         try: state_ref.delete()
         except: pass
 
-    return redirect("https://dcu-member-liga.vercel.app/register?strava=connected")
+    return redirect(f"{FRONTEND_URL}/register?strava=connected")
 
 @integration_bp.route('/strava/deauthorize', methods=['POST'])
 def strava_deauthorize():
@@ -156,13 +147,25 @@ def strava_deauthorize():
         if not access_token:
              access_token = (user_data.get('strava') or {}).get('access_token')
 
+    # Also check strava_tokens collection for the access token
+    if not access_token:
+        try:
+            token_doc = db.collection('strava_tokens').document(user_doc_ref.id).get()
+            if token_doc.exists:
+                access_token = (token_doc.to_dict() or {}).get('access_token')
+        except: pass
+
     revoked = strava_service.deauthorize(access_token) if access_token else False
 
-    try: 
-        # Remove from both locations to be safe
+    try:
+        db.collection('strava_tokens').document(user_doc_ref.id).delete()
+    except: pass
+
+    try:
+        # Remove legacy token fields from user doc if they still exist
         user_doc_ref.update({
-            'connections.strava': firestore.DELETE_FIELD, 
-            'strava': firestore.DELETE_FIELD
+            'connections.strava': firestore.DELETE_FIELD,
+            'strava': firestore.DELETE_FIELD,
         })
     except: pass
 

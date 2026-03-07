@@ -6,6 +6,10 @@ from datetime import datetime
 from authz import require_admin, AuthzError
 import re
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 _DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 
 races_bp = Blueprint('races', __name__)
@@ -189,7 +193,7 @@ def update_sprint_data(race_id, category):
         }), 200
         
     except Exception as e:
-        print(f"Sprint data update error: {e}")
+        logger.error(f"Sprint data update error: {e}")
         return jsonify({'message': str(e)}), 500
 
 
@@ -222,5 +226,5 @@ def refresh_results(race_id):
         
         return jsonify({'message': f'Results calculated (Mode: {fetch_mode}, Cat: {category_filter})', 'results': results}), 200
     except Exception as e:
-        print(f"Results Processing Error: {e}")
+        logger.error(f"Results Processing Error: {e}")
         return jsonify({'message': str(e)}), 500
