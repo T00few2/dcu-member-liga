@@ -11,9 +11,15 @@ import { Analytics } from "@vercel/analytics/next";
 
 const inter = Inter({ subsets: ["latin"] });
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://www.dansk-ecykling.dk";
+
 export const metadata: Metadata = {
-  title: "DCU forårsliga",
-  description: "E-cycling liga for DCU members",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: "DCU forårsliga",
+    template: "%s | DCU forårsliga",
+  },
+  description: "E-cycling liga for DCU-medlemmer. Kør virtuelle løb på Zwift og konkurrér om ligaen.",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
@@ -22,6 +28,28 @@ export const metadata: Metadata = {
   icons: {
     icon: "/favicon.svg",
     apple: "/apple-touch-icon.png",
+  },
+  openGraph: {
+    type: "website",
+    siteName: "DCU forårsliga",
+    title: "DCU forårsliga",
+    description: "E-cycling liga for DCU-medlemmer. Kør virtuelle løb på Zwift og konkurrér om ligaen.",
+    locale: "da_DK",
+    url: siteUrl,
+    images: [
+      {
+        url: "/icon-512.png",
+        width: 512,
+        height: 512,
+        alt: "DCU forårsliga",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary",
+    title: "DCU forårsliga",
+    description: "E-cycling liga for DCU-medlemmer. Kør virtuelle løb på Zwift og konkurrér om ligaen.",
+    images: ["/icon-512.png"],
   },
 };
 
