@@ -1,8 +1,13 @@
 import Link from 'next/link';
 
 export const metadata = {
-    title: 'Info - E-cykling | DCU forårsliga',
-    description: 'Information om e-cykling og hvordan du deltager i DCU forårsliga.',
+    title: 'Om E-cykling og ligaen',
+    description: 'Information om e-cykling, udstyr og hvordan du deltager i DCU forårsliga på Zwift.',
+    openGraph: {
+        title: 'DCU forårsliga – Om E-cykling',
+        description: 'Information om e-cykling, udstyr og hvordan du deltager i DCU forårsliga på Zwift.',
+        url: '/info',
+    },
 };
 
 export default function InfoPage() {
