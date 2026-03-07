@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
 from extensions import db, get_zwift_service, strava_service, get_zp_service
@@ -32,104 +33,104 @@ def verify_rider(rider_id):
         
         zwift_id = user.zwift_id
         e_license = user.e_license
-        
+        strava_auth = user.strava_auth
+
         response_data = {'profile': {}, 'stravaActivities': [], 'zwiftPowerHistory': []}
 
-        # Zwift Profile
-        if zwift_id:
-            try:
-                zwift_service = get_zwift_service()
-                profile = zwift_service.get_profile(int(zwift_id))
-                if profile:
-                    response_data['profile'] = {
-                        'weight': round(profile.get('weight', 0) / 1000, 1) if profile.get('weight') else None,
-                        'height': round(profile.get('height', 0) / 10, 0) if profile.get('height') else None,
-                        'maxHr': profile.get('heartRateMax', 0),
-                        'img': profile.get('imageSrc')
-                    }
-            except Exception as e:
-                print(f"Zwift Profile Fetch Error: {e}")
+        def fetch_zwift_profile():
+            if not zwift_id:
+                return None
+            zwift_service = get_zwift_service()
+            return zwift_service.get_profile(int(zwift_id))
 
-        # Strava
-        # Need to handle new 'connections' group or old root level
-        strava_auth = user.strava_auth
-        
-        if strava_auth and e_license:
-            try:
-                # We still rely on e_license for some Strava service internal logic? 
-                # Let's check strava_service.get_activities. It likely uses it to look up the token from DB if not provided.
-                # But here we effectively have the user doc.
-                # If strava_service expects e_license to look up the user again, that might be circular or redundant.
-                # Let's see if we can pass the auth dict or if we must rely on legacy lookup.
-                # For now, pass e_license as it was before, assuming the service handles the lookup.
-                # CAUTION: If the service relies on eLicense key lookup, it might fail if we changed keys!
-                # We need to check strava_service.py next.
-                strava_raw = strava_service.get_activities(e_license)
-                if strava_raw and 'activities' in strava_raw:
-                    response_data['stravaActivities'] = strava_raw['activities'] 
-            except Exception as e:
-                print(f"Strava Verification Fetch Error: {e}")
+        def fetch_strava():
+            if not strava_auth or not e_license:
+                return None
+            return strava_service.get_activities(e_license)
 
-        # ZwiftPower
-        if zwift_id:
-            try:
-                zp = get_zp_service()
-                zp_json = zp.get_rider_data_json(int(zwift_id))
-                
-                if zp_json and 'data' in zp_json:
-                    history = []
-                    for entry in zp_json['data']:
-                        # Simplify parsing logic for readability in this port
-                        # (Assume same helper logic as original or simplified)
-                        
-                        weight_val = entry.get('weight')
-                        if isinstance(weight_val, list) and len(weight_val) > 0: weight_val = float(weight_val[0])
-                        else: weight_val = float(weight_val) if weight_val else 0
+        def fetch_zp():
+            if not zwift_id:
+                return None
+            zp = get_zp_service()
+            return zp.get_rider_data_json(int(zwift_id))
 
-                        height_val = entry.get('height')
-                        if isinstance(height_val, list) and len(height_val) > 0: height_val = float(height_val[0])
-                        else: height_val = float(height_val) if height_val else 0
-                        
-                        avg_pwr = entry.get('avg_power')
-                        if isinstance(avg_pwr, list) and len(avg_pwr) > 0: avg_pwr = float(avg_pwr[0])
-                        else: avg_pwr = float(avg_pwr) if avg_pwr else 0
-                        
-                        avg_hr = entry.get('avg_hr')
-                        if isinstance(avg_hr, list) and len(avg_hr) > 0: avg_hr = float(avg_hr[0])
-                        else: avg_hr = float(avg_hr) if avg_hr else 0
-                        
-                        wkg = entry.get('avg_wkg')
-                        if isinstance(wkg, list) and len(wkg) > 0: wkg_val = float(wkg[0]) if wkg[0] else 0
-                        else: wkg_val = float(wkg) if wkg else 0
+        futures = {}
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            futures['profile'] = executor.submit(fetch_zwift_profile)
+            futures['strava'] = executor.submit(fetch_strava)
+            futures['zp'] = executor.submit(fetch_zp)
 
-                        cp_curve = {}
-                        for duration in ['w5', 'w15', 'w30', 'w60', 'w120', 'w300', 'w1200']:
-                            val = entry.get(duration)
-                            try:
-                                if isinstance(val, list) and len(val) > 0:
-                                    cp_curve[duration] = int(float(val[0])) if val[0] else 0
-                                else:
-                                    cp_curve[duration] = int(float(val)) if val else 0
-                            except:
-                                cp_curve[duration] = 0
+        try:
+            profile = futures['profile'].result()
+            if profile:
+                response_data['profile'] = {
+                    'weight': round(profile.get('weight', 0) / 1000, 1) if profile.get('weight') else None,
+                    'height': round(profile.get('height', 0) / 10, 0) if profile.get('height') else None,
+                    'maxHr': profile.get('heartRateMax', 0),
+                    'img': profile.get('imageSrc')
+                }
+        except Exception as e:
+            print(f"Zwift Profile Fetch Error: {e}")
 
-                        history.append({
-                            'date': entry.get('event_date', 0),
-                            'event_title': entry.get('event_title', 'Unknown Event'),
-                            'avg_watts': avg_pwr,
-                            'avg_hr': avg_hr,
-                            'wkg': wkg_val,
-                            'category': entry.get('category', ''),
-                            'weight': weight_val,
-                            'height': height_val,
-                            'cp_curve': cp_curve
-                        })
-                    
-                    history.sort(key=lambda x: x['date'], reverse=True)
-                    response_data['zwiftPowerHistory'] = history
-                    
-            except Exception as e:
-                print(f"ZP Verification Fetch Error: {e}")
+        try:
+            strava_raw = futures['strava'].result()
+            if strava_raw and 'activities' in strava_raw:
+                response_data['stravaActivities'] = strava_raw['activities']
+        except Exception as e:
+            print(f"Strava Verification Fetch Error: {e}")
+
+        try:
+            zp_json = futures['zp'].result()
+            if zp_json and 'data' in zp_json:
+                history = []
+                for entry in zp_json['data']:
+                    weight_val = entry.get('weight')
+                    if isinstance(weight_val, list) and len(weight_val) > 0: weight_val = float(weight_val[0])
+                    else: weight_val = float(weight_val) if weight_val else 0
+
+                    height_val = entry.get('height')
+                    if isinstance(height_val, list) and len(height_val) > 0: height_val = float(height_val[0])
+                    else: height_val = float(height_val) if height_val else 0
+
+                    avg_pwr = entry.get('avg_power')
+                    if isinstance(avg_pwr, list) and len(avg_pwr) > 0: avg_pwr = float(avg_pwr[0])
+                    else: avg_pwr = float(avg_pwr) if avg_pwr else 0
+
+                    avg_hr = entry.get('avg_hr')
+                    if isinstance(avg_hr, list) and len(avg_hr) > 0: avg_hr = float(avg_hr[0])
+                    else: avg_hr = float(avg_hr) if avg_hr else 0
+
+                    wkg = entry.get('avg_wkg')
+                    if isinstance(wkg, list) and len(wkg) > 0: wkg_val = float(wkg[0]) if wkg[0] else 0
+                    else: wkg_val = float(wkg) if wkg else 0
+
+                    cp_curve = {}
+                    for duration in ['w5', 'w15', 'w30', 'w60', 'w120', 'w300', 'w1200']:
+                        val = entry.get(duration)
+                        try:
+                            if isinstance(val, list) and len(val) > 0:
+                                cp_curve[duration] = int(float(val[0])) if val[0] else 0
+                            else:
+                                cp_curve[duration] = int(float(val)) if val else 0
+                        except (ValueError, TypeError):
+                            cp_curve[duration] = 0
+
+                    history.append({
+                        'date': entry.get('event_date', 0),
+                        'event_title': entry.get('event_title', 'Unknown Event'),
+                        'avg_watts': avg_pwr,
+                        'avg_hr': avg_hr,
+                        'wkg': wkg_val,
+                        'category': entry.get('category', ''),
+                        'weight': weight_val,
+                        'height': height_val,
+                        'cp_curve': cp_curve
+                    })
+
+                history.sort(key=lambda x: x['date'], reverse=True)
+                response_data['zwiftPowerHistory'] = history
+        except Exception as e:
+            print(f"ZP Verification Fetch Error: {e}")
 
         return jsonify(response_data), 200
     except Exception as e:
@@ -235,7 +236,7 @@ def request_trainer():
         id_token = auth_header.split('Bearer ')[1]
         decoded = auth.verify_id_token(id_token)
         uid = decoded['uid']
-    except:
+    except Exception:
         return jsonify({'message': 'Unauthorized'}), 401
     
     if not db: return jsonify({'error': 'DB not available'}), 500

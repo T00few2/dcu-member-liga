@@ -4,8 +4,27 @@ from extensions import db, get_zwift_service, get_zwift_game_service
 from services.results_processor import ResultsProcessor
 from datetime import datetime
 from authz import require_admin, AuthzError
+import re
+
+_DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 
 races_bp = Blueprint('races', __name__)
+
+def _validate_race_fields(data):
+    """Return an error string if required race fields are missing or invalid, else None."""
+    name = data.get('name', '')
+    date = data.get('date', '')
+    if not name or not isinstance(name, str) or len(name.strip()) == 0:
+        return 'Race name is required'
+    if len(name) > 200:
+        return 'Race name is too long (max 200 characters)'
+    if not date or not _DATE_RE.match(str(date)):
+        return 'Race date must be a valid YYYY-MM-DD string'
+    try:
+        datetime.strptime(str(date), '%Y-%m-%d')
+    except ValueError:
+        return 'Race date is not a valid calendar date'
+    return None
 
 def verify_admin_auth():
     # Backwards-compatible wrapper used throughout this file.
@@ -38,10 +57,11 @@ def create_race():
         return jsonify({'error': 'DB not available'}), 500
         
     try:
-        data = request.get_json()
-        if not data.get('name') or not data.get('date'):
-            return jsonify({'message': 'Missing required fields'}), 400
-            
+        data = request.get_json(silent=True) or {}
+        err = _validate_race_fields(data)
+        if err:
+            return jsonify({'message': err}), 400
+
         _, doc_ref = db.collection('races').add(data)
         return jsonify({'message': 'Race created', 'id': doc_ref.id}), 201
     except Exception as e:
@@ -74,9 +94,10 @@ def update_race(race_id):
         return jsonify({'error': 'DB not available'}), 500
     
     try:
-        data = request.get_json()
-        if not data.get('name') or not data.get('date'):
-            return jsonify({'message': 'Missing required fields'}), 400
+        data = request.get_json(silent=True) or {}
+        err = _validate_race_fields(data)
+        if err:
+            return jsonify({'message': err}), 400
 
         db.collection('races').document(race_id).update(data)
         return jsonify({'message': 'Race updated'}), 200

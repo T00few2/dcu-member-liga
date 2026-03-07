@@ -70,8 +70,8 @@ def get_zwift_service():
         try:
             _zwift_service_instance.ensure_valid_token()
             return _zwift_service_instance
-        except:
-            pass 
+        except Exception:
+            pass
 
     print("Creating new Zwift service session.")
     service = ZwiftService(ZWIFT_USERNAME, ZWIFT_PASSWORD)

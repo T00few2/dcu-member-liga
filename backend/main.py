@@ -1,3 +1,4 @@
+import os
 import functions_framework
 from flask import Flask, request as flask_request
 from extensions import db
@@ -10,13 +11,14 @@ from routes.seed import seed_bp
 from routes.policy import policy_bp
 
 ALLOWED_ORIGINS = {'https://dansk-ecykling.dk', 'https://www.dansk-ecykling.dk'}
+_ALLOW_LOCALHOST = os.environ.get('ALLOW_LOCALHOST', 'false').lower() == 'true'
 
 def get_cors_origin(origin: str | None) -> str | None:
     if not origin:
         return None
     if origin in ALLOWED_ORIGINS:
         return origin
-    if origin.startswith('http://localhost:') or origin == 'http://localhost':
+    if _ALLOW_LOCALHOST and (origin.startswith('http://localhost:') or origin == 'http://localhost'):
         return origin
     return None
 
