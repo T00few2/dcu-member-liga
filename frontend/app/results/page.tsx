@@ -94,11 +94,8 @@ export default function ResultsPage() {
         return () => unsubscribe();
     }, []);
 
-    if (authLoading || loading) {
-        return <div className="p-8 text-center text-muted-foreground">Indlæser resultater...</div>;
-    }
-
     // --- Derived data ---
+    // NOTE: All hooks (useMemo below) must be called before any early return to satisfy Rules of Hooks.
 
     const selectedRace = races.find(r => r.id === selectedRaceId);
 
@@ -203,6 +200,10 @@ export default function ResultsPage() {
 
         return { sprintColumns: finalColumns, bestSplitTimes: splitTimes };
     }, [selectedRace, raceResults, displayRaceCategory]);
+
+    if (authLoading || loading) {
+        return <div className="p-8 text-center text-muted-foreground">Indlæser resultater...</div>;
+    }
 
     const getSprintHeader = (key: string): string => {
         let sourceSprints: Sprint[] = [];
