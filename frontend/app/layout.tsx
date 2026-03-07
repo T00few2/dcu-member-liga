@@ -20,7 +20,8 @@ export const metadata: Metadata = {
     title: "DCU forårsliga",
   },
   icons: {
-    apple: "/app_icon.png",
+    icon: "/favicon.svg",
+    apple: "/apple-touch-icon.png",
   },
 };
 
