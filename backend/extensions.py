@@ -24,7 +24,7 @@ try:
             firebase_admin.initialize_app(cred)
         else:
             firebase_admin.initialize_app()
-            
+
     db = firestore.client()
 except Exception as e:
     logger.error(f"Firebase could not be initialized. Database operations will fail. Error: {e}")
@@ -45,6 +45,7 @@ _zp_service_instance = None
 _zp_service_timestamp = 0
 _zp_lock = threading.Lock()
 SESSION_VALIDITY = 3000  # 50 minutes
+
 
 def get_zp_service():
     global _zp_service_instance, _zp_service_timestamp
@@ -68,6 +69,7 @@ _zwift_service_instance = None
 _zwift_service_timestamp = 0
 _zwift_lock = threading.Lock()
 
+
 def get_zwift_service():
     global _zwift_service_instance, _zwift_service_timestamp
     now = time.time()
@@ -88,6 +90,7 @@ def get_zwift_service():
         except Exception as e:
             logger.error(f"Failed to initialize Zwift session: {e}")
         return service
+
 
 def get_zwift_game_service():
     return _zwift_game_service

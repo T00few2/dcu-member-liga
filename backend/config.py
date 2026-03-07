@@ -18,13 +18,19 @@ ZWIFT_PASSWORD = os.getenv('ZWIFT_PASSWORD')
 ZR_AUTH_KEY = os.getenv('ZR_AUTH_KEY')
 ZR_BASE_URL = os.getenv('ZR_BASE_URL', 'https://api.zwiftracing.app/api')
 
-# Critical secrets — raise immediately so the app fails loudly at startup
+# Critical secrets — raise at startup so the app fails loudly.
+# In CI (GitHub Actions sets CI=true automatically), downgrade to a warning
+# so tests can run without real credentials.
 _required = [(n, v) for n, v in [('ZWIFT_USERNAME', ZWIFT_USERNAME), ('ZWIFT_PASSWORD', ZWIFT_PASSWORD)] if not v]
 if _required:
-    raise ValueError(
-        f"Required config missing: {', '.join(n for n, _ in _required)}. "
-        "Set these variables in your .env file before starting the server."
-    )
+    _names = ', '.join(n for n, _ in _required)
+    if os.getenv('CI'):
+        logger.warning(f"Config missing in CI mode: {_names}. Zwift integrations will be unavailable.")
+    else:
+        raise ValueError(
+            f"Required config missing: {_names}. "
+            "Set these variables in your .env file before starting the server."
+        )
 
 # Optional integrations — warn but allow startup without them
 for _name, _val, _hint in [

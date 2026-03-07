@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
-from extensions import db, get_zwift_service, get_zp_service, strava_service, zr_service, get_zwift_game_service
+from extensions import db, get_zwift_service, get_zp_service, strava_service, zr_service
 from services.policy_store import POLICY_DATA_POLICY, POLICY_PUBLIC_RESULTS, PolicyError, get_policy_meta
 from services.user_service import UserService
 from authz import verify_user_token, AuthzError
