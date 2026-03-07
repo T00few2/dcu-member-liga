@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { useAuth } from '@/lib/auth-context';
+import { API_URL } from '@/lib/api';
 
 // Hooks
 import { useRaceForm } from '@/hooks/useRaceForm';
@@ -21,8 +22,6 @@ import {
     TestDataPanel,
     RawDataViewer,
 } from './league-manager';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
 export default function LeagueManager() {
     const { user, loading: authLoading } = useAuth();

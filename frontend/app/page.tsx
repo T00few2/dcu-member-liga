@@ -3,44 +3,14 @@
 import { useAuth } from "@/lib/auth-context";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { API_URL } from '@/lib/api';
 import ECyclingClubsModal from '@/components/ECyclingClubsModal';
 import CodeOfConductModal from '@/components/CodeOfConductModal';
 import RegistrationIntroModal from '@/components/RegistrationIntroModal';
 import WelcomeModal from '@/components/WelcomeModal';
 import UnregisteredLoginModal from '@/components/UnregisteredLoginModal';
 import { useRouter } from "next/navigation";
-
-interface Segment {
-    id: string;
-    name: string;
-    count: number;
-    direction: string;
-    lap: number;
-    key?: string;
-}
-
-interface Race {
-    id: string;
-    name: string;
-    date: string;
-    routeId: string;
-    routeName: string;
-    map: string;
-    laps: number;
-    totalDistance: number;
-    totalElevation: number;
-    eventId?: string;
-    eventSecret?: string;
-    sprints?: Segment[];
-    eventMode?: 'single' | 'multi';
-    eventConfiguration?: {
-        customCategory: string;
-        laps?: number;
-        sprints?: Segment[];
-        eventId: string;
-        eventSecret?: string;
-    }[];
-}
+import type { Race } from '@/types/live';
 
 const getZwiftInsiderUrl = (routeName: string) => {
     if (!routeName) return '#';
@@ -82,9 +52,8 @@ export default function Home() {
         const fetchNextRace = async () => {
             if (!user || !isRegistered) return;
             try {
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
                 const token = await user.getIdToken();
-                const res = await fetch(`${apiUrl}/races`, {
+                const res = await fetch(`${API_URL}/races`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 if (res.ok) {

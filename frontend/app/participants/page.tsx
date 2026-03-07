@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { API_URL } from '@/lib/api';
 
 interface Participant {
   name: string;
@@ -30,8 +31,7 @@ export default function ParticipantsPage() {
 
     const fetchParticipants = async () => {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-        const res = await fetch(`${apiUrl}/participants`);
+        const res = await fetch(`${API_URL}/participants`);
 
         if (res.ok) {
           const data = await res.json();

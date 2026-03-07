@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { API_URL } from '@/lib/api';
 
 interface Trainer {
   id: string;
@@ -43,18 +44,17 @@ export default function TrainerManager() {
     if (!user) return;
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
       const idToken = await user.getIdToken();
 
       // Fetch trainers
-      const trainersRes = await fetch(`${apiUrl}/trainers`);
+      const trainersRes = await fetch(`${API_URL}/trainers`);
       if (trainersRes.ok) {
         const trainersData = await trainersRes.json();
         setTrainers(trainersData.trainers || []);
       }
 
       // Fetch requests
-      const requestsRes = await fetch(`${apiUrl}/trainers/requests`, {
+      const requestsRes = await fetch(`${API_URL}/trainers/requests`, {
         headers: { 'Authorization': `Bearer ${idToken}` }
       });
       if (requestsRes.ok) {
@@ -92,13 +92,12 @@ export default function TrainerManager() {
     setError('');
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
       const idToken = await user.getIdToken();
 
       const method = editingTrainer ? 'PUT' : 'POST';
       const url = editingTrainer
-        ? `${apiUrl}/trainers/${editingTrainer.id}`
-        : `${apiUrl}/trainers`;
+        ? `${API_URL}/trainers/${editingTrainer.id}`
+        : `${API_URL}/trainers`;
 
       const res = await fetch(url, {
         method,
@@ -130,10 +129,9 @@ export default function TrainerManager() {
     if (!user || !confirm('Are you sure you want to delete this trainer?')) return;
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
       const idToken = await user.getIdToken();
 
-      const res = await fetch(`${apiUrl}/trainers/${trainerId}`, {
+      const res = await fetch(`${API_URL}/trainers/${trainerId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${idToken}` }
       });
@@ -152,10 +150,9 @@ export default function TrainerManager() {
     if (!user) return;
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
       const idToken = await user.getIdToken();
 
-      const res = await fetch(`${apiUrl}/trainers/requests/${requestId}/approve`, {
+      const res = await fetch(`${API_URL}/trainers/requests/${requestId}/approve`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -178,10 +175,9 @@ export default function TrainerManager() {
     if (!user || !confirm('Are you sure you want to reject this request?')) return;
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
       const idToken = await user.getIdToken();
 
-      const res = await fetch(`${apiUrl}/trainers/requests/${requestId}/reject`, {
+      const res = await fetch(`${API_URL}/trainers/requests/${requestId}/reject`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${idToken}` }
       });

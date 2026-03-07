@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { API_URL } from '@/lib/api';
 
 interface VerificationRequest {
     requestId: string;
@@ -45,10 +46,9 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
         setSuccess('');
 
         try {
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
             const idToken = await user.getIdToken();
 
-            const res = await fetch(`${apiUrl}/verification/submit`, {
+            const res = await fetch(`${API_URL}/verification/submit`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

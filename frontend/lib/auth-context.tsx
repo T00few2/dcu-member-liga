@@ -10,6 +10,7 @@ import {
 } from 'firebase/auth';
 import { auth } from './firebase';
 import { usePathname, useRouter } from 'next/navigation';
+import { API_URL } from './api';
 
 interface AuthContextType {
   user: User | null;
@@ -79,9 +80,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchProfile = useCallback(async (currentUser: User) => {
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
       const idToken = await currentUser.getIdToken();
-      const res = await fetch(`${apiUrl}/profile`, {
+      const res = await fetch(`${API_URL}/profile`, {
         headers: {
           'Authorization': `Bearer ${idToken}`
         }

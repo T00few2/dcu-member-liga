@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { API_URL } from '@/lib/api';
 
 // Hooks
 import { useOverlayConfig } from '@/hooks/useOverlayConfig';
@@ -15,8 +16,6 @@ import {
     LiveResultsModal,
     CategoryResultsModal,
 } from '@/components/live-dashboard';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
 export default function LiveLinksPage() {
     const { user, isAdmin } = useAuth();

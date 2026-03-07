@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
+import { API_URL } from '@/lib/api';
 
 export default function ConsentPage() {
   const { user, loading, needsConsentUpdate, refreshProfile, requiredDataPolicyVersion, requiredPublicResultsConsentVersion } = useAuth();
@@ -37,9 +38,8 @@ export default function ConsentPage() {
         return;
       }
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
       const idToken = await user.getIdToken();
-      const res = await fetch(`${apiUrl}/consents`, {
+      const res = await fetch(`${API_URL}/consents`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

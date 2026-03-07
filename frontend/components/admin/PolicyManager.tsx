@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { User } from 'firebase/auth';
 import MarkdownRenderer from '@/components/MarkdownRenderer';
+import { API_URL } from '@/lib/api';
 
 type PolicyMeta = {
   displayVersion: string;
@@ -26,8 +27,6 @@ type PolicyVersion = {
   changeSummary?: string;
   contentMdDa?: string;
 };
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
 export default function PolicyManager({ user }: { user: User }) {
   const [loading, setLoading] = useState(true);

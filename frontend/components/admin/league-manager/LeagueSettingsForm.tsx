@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { User } from 'firebase/auth';
 import type { LeagueSettings, LoadingStatus } from '@/types/admin';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+import { API_URL } from '@/lib/api';
 
 interface LeagueSettingsFormProps {
     user: User | null;

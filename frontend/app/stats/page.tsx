@@ -2,58 +2,13 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { API_URL } from '@/lib/api';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
     ScatterChart, Scatter, ZAxis, Cell
 } from 'recharts';
 
-// --- Types ---
-
-interface Race {
-    id: string;
-    name: string;
-    date: string;
-    routeId: string;
-    routeName: string;
-    laps: number;
-    results?: Record<string, ResultEntry[]>;
-    sprints?: Sprint[];
-}
-
-interface Sprint {
-    id: string;
-    name: string;
-    count: number;
-    key?: string;
-    direction?: string;
-}
-
-interface ResultEntry {
-    zwiftId: string;
-    name: string;
-    finishTime: number;
-    finishRank: number;
-    finishPoints: number;
-    sprintPoints: number;
-    totalPoints: number;
-    sprintDetails?: Record<string, number>;
-    // Newly added fields
-    sprintData?: Record<string, SprintPerformance>;
-    criticalP?: CriticalPower;
-}
-
-interface SprintPerformance {
-    avgPower: number;
-    time: number;
-    rank: number;
-}
-
-interface CriticalPower {
-    criticalP15Seconds: number;
-    criticalP1Minute: number;
-    criticalP5Minutes: number;
-    criticalP20Minutes: number;
-}
+import type { Race, Sprint, ResultEntry, SprintPerformance, CriticalPower } from '@/types/live';
 
 export default function MyStatsPage() {
     const { user, loading: authLoading, isRegistered } = useAuth();
@@ -75,11 +30,10 @@ export default function MyStatsPage() {
         const fetchData = async () => {
             if (!user) return;
             try {
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
                 const token = await user.getIdToken();
 
                 // Get User Profile to know ZwiftID
-                const profileRes = await fetch(`${apiUrl}/profile`, {
+                const profileRes = await fetch(`${API_URL}/profile`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 if (profileRes.ok) {
@@ -88,7 +42,7 @@ export default function MyStatsPage() {
                 }
 
                 // Get Races
-                const racesRes = await fetch(`${apiUrl}/races`, {
+                const racesRes = await fetch(`${API_URL}/races`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 if (racesRes.ok) {

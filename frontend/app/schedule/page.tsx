@@ -2,38 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
-
-interface Segment {
-    id: string;
-    name: string;
-    count: number;
-    direction: string;
-    lap: number;
-    key?: string;
-}
-
-interface Race {
-    id: string;
-    name: string;
-    date: string;
-    routeId: string;
-    routeName: string;
-    map: string;
-    laps: number;
-    totalDistance: number;
-    totalElevation: number;
-    sprints?: Segment[];
-    eventMode?: 'single' | 'multi';
-    eventConfiguration?: {
-        customCategory: string;
-        laps?: number;
-        sprints?: Segment[];
-        eventId: string;
-        eventSecret?: string;
-    }[];
-    eventId?: string; // Legacy/Single
-    eventSecret?: string; // Legacy/Single
-}
+import type { Race } from '@/types/live';
+import { API_URL } from '@/lib/api';
 
 const getZwiftInsiderUrl = (routeName: string) => {
     if (!routeName) return '#';
@@ -65,9 +35,8 @@ export default function SchedulePage() {
         const fetchRaces = async () => {
             if (!user) return;
             try {
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
                 const token = await user.getIdToken();
-                const res = await fetch(`${apiUrl}/races`, {
+                const res = await fetch(`${API_URL}/races`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 if (res.ok) {

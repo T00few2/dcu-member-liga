@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { API_URL } from '@/lib/api';
 
 export default function WelcomeModal() {
     const { user, isRegistered, loading, hasSeenWelcomeModal, refreshProfile } = useAuth();
@@ -34,8 +35,7 @@ export default function WelcomeModal() {
         if (dontShowAgain && user) {
             try {
                 const token = await user.getIdToken();
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-                await fetch(`${apiUrl}/welcome-seen`, {
+                await fetch(`${API_URL}/welcome-seen`, {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${token}`
