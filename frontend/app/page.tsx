@@ -326,7 +326,7 @@ export default function Home() {
                                         <div className="text-sm text-muted-foreground flex items-center justify-end gap-1">
                                             {nextRace.routeName}
                                             <a
-                                                href={getZwiftInsiderUrl(nextRace.routeName)}
+                                                href={getZwiftInsiderUrl(nextRace.routeName ?? '')}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="text-xs text-primary hover:underline"
