@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth-context';
 import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { API_URL } from '@/lib/api';
+import { formatDateShort } from '@/lib/formatDate';
 import type { Race, Sprint, CategoryConfig, ResultEntry, StandingEntry } from '@/types/live';
 
 // Locally computed extension — countingRaceIds is derived during standings processing
@@ -395,7 +396,7 @@ export default function ResultsPage() {
                                             <th className="px-4 py-3">Rytter</th>
                                             <th className="px-4 py-3 text-center">Løb</th>
                                             {races.map((race) => (
-                                                <th key={race.id} className="px-2 py-3 text-center text-xs font-medium text-muted-foreground whitespace-normal min-w-[60px]" title={new Date(race.date).toLocaleDateString('da-DK', { day: '2-digit', month: '2-digit', year: 'numeric' })}>
+                                                <th key={race.id} className="px-2 py-3 text-center text-xs font-medium text-muted-foreground whitespace-normal min-w-[60px]" title={formatDateShort(race.date)}>
                                                     {race.name}
                                                 </th>
                                             ))}
@@ -457,7 +458,7 @@ export default function ResultsPage() {
                             >
                                 {races.map(r => (
                                     <option key={r.id} value={r.id}>
-                                        {new Date(r.date).toLocaleDateString('da-DK', { day: '2-digit', month: '2-digit', year: 'numeric' })} - {r.name}
+                                        {formatDateShort(r.date)} - {r.name}
                                     </option>
                                 ))}
                                 {races.length === 0 && <option>Ingen løb fundet</option>}

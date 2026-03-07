@@ -362,11 +362,15 @@ def set_welcome_seen():
 def get_participants():
     if not db:
          return jsonify({'error': 'DB not available'}), 500
-    
+
     try:
         participants = []
-        # Use UserService to fetch all (or limit)
-        user_objects = UserService.get_all_participants(limit=100)
+        raw_limit = request.args.get('limit', '1000')
+        try:
+            fetch_limit = min(int(raw_limit), 2000)
+        except (ValueError, TypeError):
+            fetch_limit = 1000
+        user_objects = UserService.get_all_participants(limit=fetch_limit)
         
         for user in user_objects:
             data = user._data

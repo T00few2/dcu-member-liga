@@ -28,8 +28,8 @@ export function useRegistration() {
     // Verification Data
     const [weightVerificationStatus, setWeightVerificationStatus] = useState<'none' | 'pending' | 'submitted' | 'approved' | 'rejected'>('none');
     const [weightVerificationVideoLink, setWeightVerificationVideoLink] = useState('');
-    const [weightVerificationDeadline, setWeightVerificationDeadline] = useState<any>(null);
-    const [verificationRequests, setVerificationRequests] = useState<any[]>([]);
+    const [weightVerificationDeadline, setWeightVerificationDeadline] = useState<{ seconds: number; nanoseconds: number } | string | null>(null);
+    const [verificationRequests, setVerificationRequests] = useState<{ status: string; requestedAt?: string; videoLink?: string; notes?: string }[]>([]);
 
     // Policy Versions
     const [requiredDataPolicyVersion, setRequiredDataPolicyVersion] = useState<string | null>(null);

@@ -63,7 +63,9 @@ export default function RiderInfoForm({
     const [clubSearch, setClubSearch] = useState('');
     const [showClubList, setShowClubList] = useState(false);
     const [isDropdownOpenedWithoutTyping, setIsDropdownOpenedWithoutTyping] = useState(false);
+    const [focusedClubIndex, setFocusedClubIndex] = useState(-1);
     const clubListRef = useRef<HTMLDivElement>(null);
+    const clubInputRef = useRef<HTMLInputElement>(null);
 
     // Trainer State
     const [requestingTrainer, setRequestingTrainer] = useState(false);
@@ -84,6 +86,27 @@ export default function RiderInfoForm({
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
+
+    const handleClubKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, filteredClubs: Club[], selectClub: (c: Club | null) => void) => {
+        if (!showClubList) return;
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setFocusedClubIndex(i => Math.min(i + 1, filteredClubs.length)); // +1 for "Ingen" option
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setFocusedClubIndex(i => Math.max(i - 1, 0));
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (focusedClubIndex >= 0 && focusedClubIndex < filteredClubs.length) {
+                selectClub(filteredClubs[focusedClubIndex]);
+            } else if (focusedClubIndex === filteredClubs.length) {
+                selectClub(null); // "Ingen"
+            }
+        } else if (e.key === 'Escape') {
+            setShowClubList(false);
+            setFocusedClubIndex(-1);
+        }
+    };
 
     const handleTrainerRequest = () => {
         if (!newTrainerName.trim()) return;
@@ -118,81 +141,100 @@ export default function RiderInfoForm({
                         <p className="text-sm text-red-600">{clubsError}</p>
                     ) : (
                         <div className="relative" ref={clubListRef}>
-                            <input
-                                type="text"
-                                value={clubSearch}
-                                onChange={(e) => {
-                                    if (!readOnly) {
-                                        setIsDropdownOpenedWithoutTyping(false);
-                                        setClubSearch(e.target.value);
-                                        setClub(e.target.value);
-                                        setShowClubList(true);
-                                    }
-                                }}
-                                onFocus={(e) => {
-                                    if (!readOnly) {
-                                        e.target.select();
-                                        setIsDropdownOpenedWithoutTyping(true);
-                                        setShowClubList(true);
-                                    }
-                                }}
-                                disabled={readOnly}
-                                placeholder={readOnly ? club : "Søg efter din klub..."}
-                                className="w-full p-3 border border-input rounded-lg focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all text-foreground bg-background placeholder-muted-foreground disabled:opacity-50"
-                            />
+                            {(() => {
+                                const searchLower = clubSearch.toLowerCase();
+                                const filteredClubs = isDropdownOpenedWithoutTyping ? clubs : clubs.filter(c =>
+                                    c.name.toLowerCase().includes(searchLower) ||
+                                    c.type.toLowerCase().includes(searchLower) ||
+                                    c.district.toLowerCase().includes(searchLower)
+                                );
+                                const selectClub = (c: Club | null) => {
+                                    if (c) { setClub(c.name); setClubSearch(c.name); }
+                                    else { setClub('None'); setClubSearch('None'); }
+                                    setShowClubList(false);
+                                    setIsDropdownOpenedWithoutTyping(false);
+                                    setFocusedClubIndex(-1);
+                                };
+                                return (
+                                    <>
+                                        <input
+                                            ref={clubInputRef}
+                                            type="text"
+                                            value={clubSearch}
+                                            onChange={(e) => {
+                                                if (!readOnly) {
+                                                    setIsDropdownOpenedWithoutTyping(false);
+                                                    setClubSearch(e.target.value);
+                                                    setClub(e.target.value);
+                                                    setShowClubList(true);
+                                                    setFocusedClubIndex(-1);
+                                                }
+                                            }}
+                                            onFocus={(e) => {
+                                                if (!readOnly) {
+                                                    e.target.select();
+                                                    setIsDropdownOpenedWithoutTyping(true);
+                                                    setShowClubList(true);
+                                                }
+                                            }}
+                                            onKeyDown={(e) => !readOnly && handleClubKeyDown(e, filteredClubs, selectClub)}
+                                            disabled={readOnly}
+                                            placeholder={readOnly ? club : "Søg efter din klub..."}
+                                            className="w-full p-3 border border-input rounded-lg focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all text-foreground bg-background placeholder-muted-foreground disabled:opacity-50"
+                                            aria-autocomplete="list"
+                                            aria-expanded={showClubList}
+                                            role="combobox"
+                                        />
 
-                            {showClubList && !readOnly && (
-                                <div className="absolute z-10 w-full mt-1 max-h-60 overflow-y-auto bg-background border border-border rounded-lg shadow-lg">
-                                    {(() => {
-                                        const searchLower = clubSearch.toLowerCase();
-                                        const filtered = isDropdownOpenedWithoutTyping ? clubs : clubs.filter(c =>
-                                            c.name.toLowerCase().includes(searchLower) ||
-                                            c.type.toLowerCase().includes(searchLower) ||
-                                            c.district.toLowerCase().includes(searchLower)
-                                        );
+                                        {showClubList && !readOnly && (
+                                            <div className="absolute z-10 w-full mt-1 max-h-60 overflow-y-auto bg-background border border-border rounded-lg shadow-lg" role="listbox">
+                                                {filteredClubs.length === 0 && searchLower ? (
+                                                    <div className="p-2">
+                                                        <div className="p-3 text-sm text-muted-foreground">Ingen klubber fundet</div>
+                                                        <button
+                                                            onClick={() => selectClub(null)}
+                                                            className={`w-full p-3 text-left border-t border-border ${focusedClubIndex === 0 ? 'bg-secondary/70' : 'hover:bg-secondary/50'}`}
+                                                            role="option"
+                                                        >
+                                                            Ingen (Ingen klub)
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        {filteredClubs.map((c, idx) => (
+                                                            <button
+                                                                key={idx}
+                                                                onClick={() => selectClub(c)}
+                                                                className={`w-full p-3 text-left border-b border-border last:border-b-0 ${focusedClubIndex === idx ? 'bg-secondary/70' : 'hover:bg-secondary/50'}`}
+                                                                role="option"
+                                                                aria-selected={focusedClubIndex === idx}
+                                                            >
+                                                                <div className="font-medium text-foreground">{c.name}</div>
+                                                                <div className="text-xs text-muted-foreground">{c.type} • {c.district}</div>
+                                                            </button>
+                                                        ))}
+                                                        <button
+                                                            onClick={() => selectClub(null)}
+                                                            className={`w-full p-3 text-left border-t border-border bg-secondary/20 text-foreground ${focusedClubIndex === filteredClubs.length ? 'bg-secondary/70' : 'hover:bg-secondary/50'}`}
+                                                            role="option"
+                                                            aria-selected={focusedClubIndex === filteredClubs.length}
+                                                        >
+                                                            Ingen (Ingen klub)
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        )}
+                                    </>
+                                );
+                            })()}
 
-                                        if (filtered.length === 0 && searchLower) {
-                                            return (
-                                                <div className="p-2">
-                                                    <div className="p-3 text-sm text-muted-foreground">Ingen klubber fundet</div>
-                                                    <button
-                                                        onClick={() => { setClub('None'); setClubSearch('None'); setShowClubList(false); setIsDropdownOpenedWithoutTyping(false); }}
-                                                        className="w-full p-3 text-left hover:bg-secondary/50 border-t border-border"
-                                                    >
-                                                        Ingen (Ingen klub)
-                                                    </button>
-                                                </div>
-                                            );
-                                        }
-
-                                        return (
-                                            <>
-                                                {filtered.map((c, idx) => (
-                                                    <button
-                                                        key={idx}
-                                                        onClick={() => { setClub(c.name); setClubSearch(c.name); setShowClubList(false); setIsDropdownOpenedWithoutTyping(false); }}
-                                                        className="w-full p-3 text-left hover:bg-secondary/50 border-b border-border last:border-b-0"
-                                                    >
-                                                        <div className="font-medium text-foreground">{c.name}</div>
-                                                        <div className="text-xs text-muted-foreground">{c.type} • {c.district}</div>
-                                                    </button>
-                                                ))}
-                                                <button
-                                                    onClick={() => { setClub('None'); setClubSearch('None'); setShowClubList(false); setIsDropdownOpenedWithoutTyping(false); }}
-                                                    className="w-full p-3 text-left hover:bg-secondary/50 border-t border-border bg-secondary/20 text-foreground"
-                                                >
-                                                    Ingen (Ingen klub)
-                                                </button>
-                                            </>
-                                        );
-                                    })()}
-                                </div>
-                            )}
                             {club && !readOnly && (
                                 <button
-                                    onClick={() => { setClub(''); setClubSearch(''); setShowClubList(true); setIsDropdownOpenedWithoutTyping(true); }}
+                                    onClick={() => { setClub(''); setClubSearch(''); setShowClubList(true); setIsDropdownOpenedWithoutTyping(true); setFocusedClubIndex(-1); clubInputRef.current?.focus(); }}
                                     className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                                     type="button"
+                                    aria-label="Ryd klub"
                                 >
                                     ✕
                                 </button>
