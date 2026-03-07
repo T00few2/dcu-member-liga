@@ -1,102 +1,112 @@
+from __future__ import annotations
+
+from typing import Any
+
 from firebase_admin import firestore
 from extensions import db
 
+from models import UserDoc
+
+
 class User:
-    def __init__(self, doc_snapshot=None, data=None, doc_id=None):
+    def __init__(
+        self,
+        doc_snapshot: Any = None,
+        data: UserDoc | None = None,
+        doc_id: str | None = None,
+    ) -> None:
         if doc_snapshot:
-            self.id = doc_snapshot.id
-            self._data = doc_snapshot.to_dict() or {}
+            self.id: str | None = doc_snapshot.id
+            self._data: UserDoc = doc_snapshot.to_dict() or {}
         else:
             self.id = doc_id
             self._data = data or {}
-            
-    def to_dict(self):
+
+    def to_dict(self) -> UserDoc:
         return self._data
 
     @property
-    def name(self):
+    def name(self) -> str:
         return self._data.get('name', '')
 
     @property
-    def e_license(self):
+    def e_license(self) -> str:
         return self._data.get('eLicense', '')
 
     @property
-    def zwift_id(self):
+    def zwift_id(self) -> str | None:
         return self._data.get('zwiftId')
 
     @property
-    def club(self):
+    def club(self) -> str:
         return self._data.get('club', '')
 
     @property
-    def verification(self):
+    def verification(self) -> dict[str, Any]:
         return self._data.get('verification', {})
 
     @property
-    def verification_status(self):
+    def verification_status(self) -> str:
         return self.verification.get('status', 'none')
 
     @property
-    def is_verified(self):
+    def is_verified(self) -> bool:
         return self.verification_status == 'approved'
 
     @property
-    def verification_history(self):
+    def verification_history(self) -> list[Any]:
         return self.verification.get('history', [])
 
     @property
-    def current_verification_request(self):
+    def current_verification_request(self) -> dict[str, Any]:
         return self.verification.get('currentRequest', {})
 
     @property
-    def weight_verification_video_link(self):
+    def weight_verification_video_link(self) -> str:
         return self.current_verification_request.get('videoLink', '')
 
     @property
-    def weight_verification_deadline(self):
+    def weight_verification_deadline(self) -> Any:
         return self.current_verification_request.get('deadline')
 
     @property
-    def registration(self):
+    def registration(self) -> dict[str, Any]:
         return self._data.get('registration', {})
 
     @property
-    def is_registered(self):
+    def is_registered(self) -> bool:
         return self.registration.get('status') == 'complete'
 
     @property
-    def accepted_data_policy(self):
+    def accepted_data_policy(self) -> bool:
         return bool(self.registration.get('dataPolicy'))
 
     @property
-    def accepted_public_results(self):
+    def accepted_public_results(self) -> bool:
         return bool(self.registration.get('publicResultsConsent'))
-    
+
     @property
-    def data_policy_version(self):
+    def data_policy_version(self) -> str | None:
         return self.registration.get('dataPolicy', {}).get('version')
 
     @property
-    def public_results_consent_version(self):
+    def public_results_consent_version(self) -> str | None:
         return self.registration.get('publicResultsConsent', {}).get('version')
 
     @property
-    def strava_auth(self):
+    def strava_auth(self) -> dict[str, Any] | None:
         return self._data.get('connections', {}).get('strava') or self._data.get('strava')
 
     # Equipment
     @property
-    def trainer(self):
+    def trainer(self) -> str:
         # Fallback logic preserved from get_profile
         t = self._data.get('equipment', {}).get('trainer')
         if not t:
             t = self._data.get('trainer', '')
         return t
 
-    # Legacy / Compatibility helpers if needed
-    
-    def update(self, updates):
+    def update(self, updates: dict[str, Any]) -> None:
         """
         Updates the user document in Firestore.
         Uses .update() so that dotted keys (e.g. 'verification.status') are treated as nested fields.
@@ -117,9 +127,10 @@ class User:
                     d = d.setdefault(part, {})
                 d[parts[-1]] = value
 
+
 class UserService:
     @staticmethod
-    def get_user_by_id(user_id):
+    def get_user_by_id(user_id: str | None) -> User | None:
         if not user_id: return None
         doc = db.collection('users').document(str(user_id)).get()
         if doc.exists:
@@ -127,7 +138,7 @@ class UserService:
         return None
 
     @staticmethod
-    def get_user_by_auth_uid(uid):
+    def get_user_by_auth_uid(uid: str) -> User | None:
         # Logic from users.py mapping lookup
         mapping_doc = db.collection('auth_mappings').document(uid).get()
         if mapping_doc.exists:
@@ -135,25 +146,25 @@ class UserService:
             zwift_id = data.get('zwiftId')
             if zwift_id:
                 return UserService.get_user_by_id(zwift_id)
-            
+
             # Legacy eLicense fallback
             e_license = data.get('eLicense')
             if e_license:
                 return UserService.get_user_by_id(e_license)
-                
+
         # Direct lookup fallback
         user = UserService.get_user_by_id(uid)
         if user: return user
-        
+
         # Query fallback
         docs = db.collection('users').where('authUid', '==', uid).limit(1).stream()
         for doc in docs:
             return User(doc_snapshot=doc)
-            
+
         return None
 
     @staticmethod
-    def get_user_by_elicense(elicense):
+    def get_user_by_elicense(elicense: str | None) -> User | None:
         if not elicense: return None
         docs = db.collection('users').where('eLicense', '==', str(elicense)).limit(1).stream()
         for doc in docs:
@@ -161,22 +172,22 @@ class UserService:
         return None
 
     @staticmethod
-    def get_pending_verifications():
+    def get_pending_verifications() -> list[User]:
         docs = db.collection('users').where('verification.status', '==', 'submitted').stream()
         return [User(doc_snapshot=doc) for doc in docs]
 
     @staticmethod
-    def get_active_verification_requests():
+    def get_active_verification_requests() -> list[User]:
         docs = db.collection('users').where('verification.status', '==', 'pending').stream()
         return [User(doc_snapshot=doc) for doc in docs]
 
     @staticmethod
-    def get_approved_verifications(limit=50):
+    def get_approved_verifications(limit: int = 50) -> list[User]:
         docs = db.collection('users').where('verification.status', '==', 'approved').limit(limit).stream()
         return [User(doc_snapshot=doc) for doc in docs]
-    
+
     @staticmethod
-    def get_all_participants(limit=100):
+    def get_all_participants(limit: int = 100) -> list[User]:
         docs = (
             db.collection('users')
             .where('registration.status', '==', 'complete')
