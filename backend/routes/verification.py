@@ -213,10 +213,6 @@ def review_verification():
             pass
         
         new_status = 'approved' if action == 'approve' else 'rejected'
-        
-        for req in requests:
-            if req.get('status') == 'submitted' and req.get('type') == 'weight':
-                pass # logic handled in second loop below
 
         now_iso = datetime.now().isoformat()
         current_req = user.current_verification_request
