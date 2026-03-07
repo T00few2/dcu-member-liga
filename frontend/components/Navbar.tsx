@@ -87,7 +87,11 @@ export default function Navbar() {
                                                         className="w-8 h-8 rounded-full border border-slate-600"
                                                     />
                                                 ) : (
-                                                    <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
+                                                    <div
+                                                        className="w-8 h-8 rounded-full bg-primary flex items-center justify-center"
+                                                        role="img"
+                                                        aria-label={user.displayName || user.email || 'User avatar'}
+                                                    >
                                                         {user.email?.[0].toUpperCase()}
                                                     </div>
                                                 )}

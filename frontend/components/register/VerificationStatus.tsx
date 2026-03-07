@@ -2,14 +2,16 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { API_URL } from '@/lib/api';
+import { fromTimestamp } from '@/lib/formatDate';
 
 interface VerificationRequest {
     requestId: string;
-    requestedAt: any;
+    requestedAt: { seconds: number } | string | null;
     status: 'pending' | 'submitted' | 'approved' | 'rejected';
     videoLink?: string;
     rejectionReason?: string;
-    deadline?: any;
+    deadline?: { seconds: number } | string | null;
 }
 
 interface VerificationStatusProps {
@@ -45,10 +47,9 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
         setSuccess('');
 
         try {
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
             const idToken = await user.getIdToken();
 
-            const res = await fetch(`${apiUrl}/verification/submit`, {
+            const res = await fetch(`${API_URL}/verification/submit`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -104,7 +105,7 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
                     <p className="text-orange-700 dark:text-orange-300">
                         Du er blevet udvalgt til en stikprøve vægtbekræftelse.
                         Optag venligst en indvejningsvideo og indsend linket nedenfor.
-                        {deadline && <span className="block font-bold mt-1">Frist: {new Date(deadline.seconds ? deadline.seconds * 1000 : deadline).toLocaleDateString()}</span>}
+                        {deadline && <span className="block font-bold mt-1">Frist: {fromTimestamp(deadline)?.toLocaleDateString()}</span>}
                     </p>
                 )}
                 {displayStatus === 'submitted' && (
@@ -202,7 +203,7 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
                                     </span>
                                     <span className="text-muted-foreground mx-2">•</span>
                                     <span className="text-muted-foreground">
-                                        {new Date(req.requestedAt?.seconds ? req.requestedAt.seconds * 1000 : req.requestedAt).toLocaleDateString()}
+                                        {fromTimestamp(req.requestedAt)?.toLocaleDateString()}
                                     </span>
                                 </div>
                                 {req.status === 'rejected' && req.rejectionReason && (

@@ -1,68 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
+import { API_URL } from '@/lib/api';
+import { formatDateShort } from '@/lib/formatDate';
+import type { Race, Sprint, CategoryConfig, ResultEntry, StandingEntry } from '@/types/live';
 
-interface CategoryConfig {
-    category: string;
-    laps?: number;
-    sprints?: Sprint[];
-    segmentType?: 'sprint' | 'split';
-}
-
-interface Race {
-    id: string;
-    name: string;
-    date: string;
-    routeId: string;
-    routeName: string;
-    map: string;
-    laps: number;
-    eventId?: string;
-    eventMode?: 'single' | 'multi';
-    eventConfiguration?: {
-        eventId: string;
-        eventSecret: string;
-        customCategory: string;
-        laps?: number; // Added laps override
-        sprints?: Sprint[]; // Added support for per-category sprints
-    }[];
-    singleModeCategories?: CategoryConfig[]; // Per-category config for single mode
-    results?: Record<string, ResultEntry[]>;
-    resultsUpdatedAt?: string;
-    sprints?: Sprint[];
-    sprintData?: Sprint[];
-}
-
-interface Sprint {
-    id: string;
-    name: string;
-    count: number;
-    direction: string;
-    lap: number;
-    key: string;
-}
-
-interface ResultEntry {
-    zwiftId: string;
-    name: string;
-    finishTime: number;
-    finishRank: number;
-    finishPoints: number;
-    sprintPoints: number;
-    totalPoints: number;
-    sprintDetails: Record<string, number>;
-}
-
-interface StandingEntry {
-    zwiftId: string;
-    name: string;
-    totalPoints: number;
-    raceCount: number;
-    results: { raceId: string, points: number }[];
-}
+// Locally computed extension — countingRaceIds is derived during standings processing
+type ProcessedRider = StandingEntry & { calculatedTotal: number; countingRaceIds: Set<string> };
 
 export default function ResultsPage() {
     const { user, loading: authLoading, isRegistered } = useAuth();
@@ -85,18 +32,17 @@ export default function ResultsPage() {
         const fetchData = async () => {
             if (!user) return;
             try {
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
                 const token = await user.getIdToken();
 
                 // Fetch Races
-                const racesRes = await fetch(`${apiUrl}/races`, {
+                const racesRes = await fetch(`${API_URL}/races`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
 
                 // Fetch Standings
                 const [standingsRes, settingsRes] = await Promise.all([
-                    fetch(`${apiUrl}/league/standings`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                    fetch(`${apiUrl}/league/settings`, { headers: { 'Authorization': `Bearer ${token}` } })
+                    fetch(`${API_URL}/league/standings`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(`${API_URL}/league/settings`, { headers: { 'Authorization': `Bearer ${token}` } })
                 ]);
 
                 if (settingsRes.ok) {
@@ -311,109 +257,58 @@ export default function ResultsPage() {
         ? availableStandingsCategories[0]
         : standingsCategory;
 
-    // Calculate standings with only best X races counting
-    const rawStandings = standings[displayStandingsCategory] || [];
+    // Calculate standings with only best X races counting (memoised to avoid re-sorting on every render)
+    const currentStandings = useMemo<ProcessedRider[]>(() => {
+        const rawStandings = standings[displayStandingsCategory] || [];
+        return rawStandings
+            .map(rider => {
+                const sortedResults = [...rider.results].sort((a, b) => b.points - a.points);
+                const countingRaceIds = new Set(sortedResults.slice(0, bestRacesCount).map(r => r.raceId));
+                const calculatedTotal = sortedResults.slice(0, bestRacesCount).reduce((sum, r) => sum + r.points, 0);
+                return { ...rider, calculatedTotal, countingRaceIds };
+            })
+            .sort((a, b) => b.calculatedTotal - a.calculatedTotal);
+    }, [standings, displayStandingsCategory, bestRacesCount]);
 
-    // Process each rider to calculate best races
-    const processedStandings = rawStandings.map(rider => {
-        // Sort results by points descending and take top N
-        const sortedResults = [...rider.results].sort((a, b) => b.points - a.points);
-        const countingRaceIds = new Set(sortedResults.slice(0, bestRacesCount).map(r => r.raceId));
-        const bestTotal = sortedResults.slice(0, bestRacesCount).reduce((sum, r) => sum + r.points, 0);
-
-        return {
-            ...rider,
-            calculatedTotal: bestTotal,
-            countingRaceIds
-        };
-    });
-
-    // Re-sort standings by the new calculated total
-    const currentStandings = processedStandings.sort((a, b) => b.calculatedTotal - a.calculatedTotal);
-
-    // Extract all unique sprint keys (if any) from the results to build dynamic columns
-    const allSprintKeys = new Set<string>();
-    if (raceResults.length > 0) {
+    // Build sprint column order and best split times (memoised — depends on race selection and results)
+    const { sprintColumns, bestSplitTimes } = useMemo(() => {
+        const allSprintKeys = new Set<string>();
         raceResults.forEach(r => {
-            if (r.sprintDetails) {
-                Object.keys(r.sprintDetails).forEach(k => allSprintKeys.add(k));
+            if (r.sprintDetails) Object.keys(r.sprintDetails).forEach(k => allSprintKeys.add(k));
+        });
+
+        let orderedSprints: Sprint[] = [];
+        if (selectedRace) {
+            if (selectedRace.eventMode === 'multi' && selectedRace.eventConfiguration) {
+                const catConfig = selectedRace.eventConfiguration.find(c => c.customCategory === displayRaceCategory);
+                orderedSprints = catConfig?.sprints ?? selectedRace.sprints ?? [];
+            } else {
+                const catConfig = selectedRace.singleModeCategories?.find(c => c.category === displayRaceCategory);
+                orderedSprints = catConfig?.sprints ?? selectedRace.sprintData ?? selectedRace.sprints ?? [];
+            }
+        }
+
+        const columns: string[] = [];
+        orderedSprints.forEach(s => {
+            const foundKey = [s.key, `${s.id}_${s.count}`, s.id].filter(Boolean).find(k => allSprintKeys.has(k!)) as string | undefined;
+            if (foundKey) { columns.push(foundKey); allSprintKeys.delete(foundKey); }
+        });
+        const remaining = Array.from(allSprintKeys).sort();
+
+        const finalColumns = [...columns, ...remaining];
+        const splitTimes: Record<string, number> = {};
+        finalColumns.forEach(key => {
+            const sample = raceResults.find(r => r.sprintDetails?.[key])?.sprintDetails?.[key];
+            if (typeof sample === 'number' && sample > 1_000_000) {
+                const times = raceResults
+                    .map(r => r.sprintDetails?.[key])
+                    .filter((v): v is number => typeof v === 'number' && v > 0);
+                if (times.length > 0) splitTimes[key] = Math.min(...times);
             }
         });
-    }
 
-    // Sort keys: prefer chronological order from sprintData, fallback to alphabetical
-    let sprintColumns: string[] = [];
-
-    if (selectedRace) {
-        // Determine correct sprint config source
-        let orderedSprints: Sprint[] = [];
-
-        if (selectedRace.eventMode === 'multi' && selectedRace.eventConfiguration) {
-            // Find config for current category
-            const catConfig = selectedRace.eventConfiguration.find(c => c.customCategory === displayRaceCategory);
-            if (catConfig && catConfig.sprints) {
-                orderedSprints = catConfig.sprints;
-            } else {
-                // Fallback to global if not found
-                orderedSprints = selectedRace.sprints || [];
-            }
-        } else {
-            // Single Mode - check for per-category config
-            if (selectedRace.singleModeCategories && selectedRace.singleModeCategories.length > 0) {
-                const catConfig = selectedRace.singleModeCategories.find(c => c.category === displayRaceCategory);
-                if (catConfig && catConfig.sprints) {
-                    orderedSprints = catConfig.sprints;
-                } else {
-                    // Fallback to global sprints
-                    orderedSprints = selectedRace.sprintData || selectedRace.sprints || [];
-                }
-            } else {
-                // Legacy: no per-category config
-                orderedSprints = selectedRace.sprintData || selectedRace.sprints || [];
-            }
-        }
-
-        if (orderedSprints.length > 0) {
-            // Iterate through defined sprints in order and pick those that have results
-            orderedSprints.forEach(s => {
-                // Check potential keys for this sprint
-                const potentialKeys = [s.key, `${s.id}_${s.count}`, `${s.id}`];
-
-                // Find the one that actually exists in our results
-                const foundKey = potentialKeys.find(k => allSprintKeys.has(k));
-
-                if (foundKey) {
-                    sprintColumns.push(foundKey);
-                    // Remove from set to track what's left
-                    allSprintKeys.delete(foundKey);
-                }
-            });
-        }
-    }
-
-    // Append any remaining keys that weren't in the ordered list (sorted alphabetically)
-    if (allSprintKeys.size > 0) {
-        const remaining = Array.from(allSprintKeys).sort();
-        sprintColumns = [...sprintColumns, ...remaining];
-    }
-
-    // Pre-calculate best times for each split column (where values are timestamps)
-    const bestSplitTimes: Record<string, number> = {};
-    sprintColumns.forEach(key => {
-        // Check if this column looks like a split (large numbers > 1,000,000)
-        // We check the first non-null value we find to determine type
-        const sampleValue = raceResults.find(r => r.sprintDetails?.[key])?.sprintDetails?.[key];
-
-        if (sampleValue && sampleValue > 1000000) {
-            const times = raceResults
-                .map(r => r.sprintDetails?.[key])
-                .filter((v): v is number => typeof v === 'number' && v > 0);
-
-            if (times.length > 0) {
-                bestSplitTimes[key] = Math.min(...times);
-            }
-        }
-    });
+        return { sprintColumns: finalColumns, bestSplitTimes: splitTimes };
+    }, [selectedRace, raceResults, displayRaceCategory]);
 
     const getSprintHeader = (key: string) => {
         // Find source sprint list again (could refactor to share)
@@ -501,7 +396,7 @@ export default function ResultsPage() {
                                             <th className="px-4 py-3">Rytter</th>
                                             <th className="px-4 py-3 text-center">Løb</th>
                                             {races.map((race) => (
-                                                <th key={race.id} className="px-2 py-3 text-center text-xs font-medium text-muted-foreground whitespace-normal min-w-[60px]" title={new Date(race.date).toLocaleDateString('da-DK', { day: '2-digit', month: '2-digit', year: 'numeric' })}>
+                                                <th key={race.id} className="px-2 py-3 text-center text-xs font-medium text-muted-foreground whitespace-normal min-w-[60px]" title={formatDateShort(race.date)}>
                                                     {race.name}
                                                 </th>
                                             ))}
@@ -563,7 +458,7 @@ export default function ResultsPage() {
                             >
                                 {races.map(r => (
                                     <option key={r.id} value={r.id}>
-                                        {new Date(r.date).toLocaleDateString('da-DK', { day: '2-digit', month: '2-digit', year: 'numeric' })} - {r.name}
+                                        {formatDateShort(r.date)} - {r.name}
                                     </option>
                                 ))}
                                 {races.length === 0 && <option>Ingen løb fundet</option>}

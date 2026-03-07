@@ -2,8 +2,9 @@ export interface Sprint {
     id: string;
     name: string;
     count: number;
-    key: string;
+    key?: string;
     lap?: number;
+    direction?: string;
     type?: 'sprint' | 'split';
 }
 
@@ -14,34 +15,62 @@ export interface CategoryConfig {
     segmentType?: 'sprint' | 'split';
 }
 
+export interface EventCategoryConfig {
+    eventId: string;
+    eventSecret?: string;
+    customCategory: string;
+    laps?: number;
+    sprints?: Sprint[];
+    segmentType?: 'sprint' | 'split';
+    startTime?: string;
+}
+
 export interface ResultEntry {
     zwiftId: string;
     name: string;
     finishTime: number;
-    finishRank: number;
+    finishRank?: number;
     finishPoints: number;
+    sprintPoints?: number;
     totalPoints: number;
     sprintDetails?: Record<string, number | string>;
+    sprintData?: Record<string, SprintPerformance>;
+    criticalP?: CriticalPower;
+}
+
+export interface SprintPerformance {
+    avgPower: number;
+    time: number;
+    rank: number;
+}
+
+export interface CriticalPower {
+    criticalP15Seconds: number;
+    criticalP1Minute: number;
+    criticalP5Minutes: number;
+    criticalP20Minutes: number;
 }
 
 export interface Race {
     id: string;
     name: string;
     date: string;
+    routeId?: string;
+    routeName?: string;
+    map?: string;
+    laps?: number;
+    totalDistance?: number;
+    totalElevation?: number;
     type?: 'scratch' | 'points' | 'time-trial';
+    eventId?: string;
+    eventSecret?: string;
+    eventMode?: 'single' | 'multi';
+    eventConfiguration?: EventCategoryConfig[];
+    singleModeCategories?: CategoryConfig[];
     results?: Record<string, ResultEntry[]>;
     sprints?: Sprint[];
     sprintData?: Sprint[];
     segmentType?: 'sprint' | 'split';
-    eventMode?: 'single' | 'multi';
-    eventConfiguration?: {
-        eventId: string;
-        customCategory: string;
-        sprints?: Sprint[];
-        segmentType?: 'sprint' | 'split';
-        startTime?: string;
-    }[];
-    singleModeCategories?: CategoryConfig[];
 }
 
 export interface StandingEntry {
@@ -49,9 +78,9 @@ export interface StandingEntry {
     name: string;
     totalPoints: number;
     raceCount: number;
-    results: { raceId: string, points: number }[];
+    results: { raceId: string; points: number }[];
     calculatedTotal?: number;
-    pointsByRace?: Record<string, { points: number, isBest: boolean }>;
+    pointsByRace?: Record<string, { points: number; isBest: boolean }>;
 }
 
 export interface OverlayConfig {

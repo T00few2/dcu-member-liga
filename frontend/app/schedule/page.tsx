@@ -2,38 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
-
-interface Segment {
-    id: string;
-    name: string;
-    count: number;
-    direction: string;
-    lap: number;
-    key?: string;
-}
-
-interface Race {
-    id: string;
-    name: string;
-    date: string;
-    routeId: string;
-    routeName: string;
-    map: string;
-    laps: number;
-    totalDistance: number;
-    totalElevation: number;
-    sprints?: Segment[];
-    eventMode?: 'single' | 'multi';
-    eventConfiguration?: {
-        customCategory: string;
-        laps?: number;
-        sprints?: Segment[];
-        eventId: string;
-        eventSecret?: string;
-    }[];
-    eventId?: string; // Legacy/Single
-    eventSecret?: string; // Legacy/Single
-}
+import type { Race } from '@/types/live';
+import { API_URL } from '@/lib/api';
+import { formatDateLong, formatTimeWithTz } from '@/lib/formatDate';
 
 const getZwiftInsiderUrl = (routeName: string) => {
     if (!routeName) return '#';
@@ -65,9 +36,8 @@ export default function SchedulePage() {
         const fetchRaces = async () => {
             if (!user) return;
             try {
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
                 const token = await user.getIdToken();
-                const res = await fetch(`${apiUrl}/races`, {
+                const res = await fetch(`${API_URL}/races`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 if (res.ok) {
@@ -199,11 +169,11 @@ export default function SchedulePage() {
                     <div className="flex flex-col md:flex-row justify-between md:items-start gap-4 mb-4">
                         <div>
                             <div className="text-sm font-medium text-primary mb-1">
-                                {raceDate.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                                {formatDateLong(raceDate)}
                             </div>
                             <h3 className="text-2xl font-bold text-card-foreground">{race.name}</h3>
                             <div className="text-muted-foreground text-sm mt-1">
-                                Start: {raceDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                                Start: {formatTimeWithTz(raceDate)}
                             </div>
                             {race.eventMode === 'multi' ? (
                                 <div className="flex flex-wrap gap-2 mt-2">

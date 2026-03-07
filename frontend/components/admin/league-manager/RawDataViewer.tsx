@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import type { Race, SelectedSegment, SprintDataEntry } from '@/types/admin';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+import { API_URL } from '@/lib/api';
 
 interface RawDataViewerProps {
     races: Race[];

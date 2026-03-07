@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import StravaAttribution from '@/components/StravaAttribution';
+import { API_URL } from '@/lib/api';
 import { 
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
     ComposedChart, Bar, Area, LabelList, Brush
@@ -69,8 +70,7 @@ export default function VerificationDashboard() {
     useEffect(() => {
         const fetchParticipants = async () => {
             try {
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-                const res = await fetch(`${apiUrl}/participants`);
+                const res = await fetch(`${API_URL}/participants`);
                 if (res.ok) {
                     const data = await res.json();
                     setParticipants(data.participants || []);
@@ -100,10 +100,9 @@ export default function VerificationDashboard() {
         if (!user) return;
 
         try {
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
             const token = await user.getIdToken();
-            
-            const res = await fetch(`${apiUrl}/admin/verification/rider/${rider.eLicense}`, {
+
+            const res = await fetch(`${API_URL}/admin/verification/rider/${rider.eLicense}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             
@@ -138,10 +137,9 @@ export default function VerificationDashboard() {
         if (!user || !selectedRider) return;
 
         try {
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
             const token = await user.getIdToken();
-            
-            const res = await fetch(`${apiUrl}/admin/verification/strava/streams/${activity.id}?eLicense=${selectedRider.eLicense}`, {
+
+            const res = await fetch(`${API_URL}/admin/verification/strava/streams/${activity.id}?eLicense=${selectedRider.eLicense}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
 

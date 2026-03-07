@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { API_URL } from '@/lib/api';
 
 interface Participant {
   name: string;
@@ -24,14 +25,14 @@ export default function ParticipantsPage() {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     if (!user || !isRegistered) return;
 
     const fetchParticipants = async () => {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-        const res = await fetch(`${apiUrl}/participants`);
+        const res = await fetch(`${API_URL}/participants?limit=2000`);
 
         if (res.ok) {
           const data = await res.json();
@@ -49,6 +50,16 @@ export default function ParticipantsPage() {
     fetchParticipants();
   }, [user, isRegistered]);
 
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return participants;
+    return participants.filter(p =>
+      p.name.toLowerCase().includes(q) ||
+      (p.club && p.club.toLowerCase().includes(q)) ||
+      p.eLicense.toLowerCase().includes(q)
+    );
+  }, [participants, search]);
+
   if (authLoading || loading) return <div className="p-8 text-center text-muted-foreground">Indlæser deltagere...</div>;
 
   if (error) return <div className="p-8 text-center text-red-600">{error}</div>;
@@ -56,7 +67,16 @@ export default function ParticipantsPage() {
   return (
     <div className="max-w-7xl mx-auto mt-8 px-4">
       <h1 className="text-3xl font-bold mb-2 text-foreground">Deltagere</h1>
-      <p className="text-muted-foreground mb-8">Alle tilmeldte ryttere i ligaen.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+        <p className="text-muted-foreground">Alle tilmeldte ryttere i ligaen ({participants.length}).</p>
+        <input
+          type="search"
+          placeholder="Søg navn, klub eller licens..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="sm:w-72 px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+        />
+      </div>
 
       <div className="bg-card rounded-lg shadow overflow-hidden border border-border">
         <div className="overflow-x-auto">
@@ -78,14 +98,14 @@ export default function ParticipantsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {participants.length === 0 ? (
+              {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="px-6 py-8 text-center text-muted-foreground">
-                    Ingen deltagere fundet endnu.
+                    {search ? 'Ingen deltagere matcher søgningen.' : 'Ingen deltagere fundet endnu.'}
                   </td>
                 </tr>
               ) : (
-                participants.map((p) => (
+                filtered.map((p) => (
                   <tr key={p.eLicense} className="hover:bg-muted/50 transition">
                     <td className="px-6 py-4 font-medium text-card-foreground">
                       <div className="flex items-center gap-2">

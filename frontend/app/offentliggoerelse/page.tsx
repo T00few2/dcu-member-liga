@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import MarkdownRenderer from '@/components/MarkdownRenderer';
+import { API_URL } from '@/lib/api';
 
 type PolicyDoc = {
   policyKey: string;
@@ -20,8 +21,7 @@ export default function PublicResultsPolicyPage() {
       try {
         setLoading(true);
         setError('');
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-        const res = await fetch(`${apiUrl}/policy/publicResultsConsent/current`);
+        const res = await fetch(`${API_URL}/policy/publicResultsConsent/current`);
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.message || 'Kunne ikke hente vilkår.');
         setPolicy(data as PolicyDoc);

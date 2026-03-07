@@ -11,7 +11,7 @@ import { RaceResultsTable } from '@/components/live/RaceResultsTable';
 import { TimeTrialTable } from '@/components/live/TimeTrialTable';
 import { StandingsTable } from '@/components/live/StandingsTable';
 import { resolveColor } from '@/lib/colors';
-import { OverlayConfig } from '@/types/live';
+import { OverlayConfig, EventCategoryConfig } from '@/types/live';
 
 export default function LiveResultsPage() {
     const params = useParams();
@@ -98,7 +98,7 @@ export default function LiveResultsPage() {
     let displayCategory = categoryParam;
     if (!displayCategory) {
         if (race.eventMode === 'multi' && race.eventConfiguration && race.eventConfiguration.length > 0) {
-            const match = race.eventConfiguration.find((c: any) => c.eventId === raceId);
+            const match = race.eventConfiguration.find((c: EventCategoryConfig) => c.eventId === raceId);
             if (match && match.customCategory) {
                 displayCategory = match.customCategory;
             } else {

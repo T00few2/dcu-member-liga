@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ToastProvider';
+import { API_URL } from '@/lib/api';
 
 interface PendingVerification {
     id: string; // eLicense or UID
@@ -57,9 +58,9 @@ export default function WeightVerificationManager() {
             const headers = { 'Authorization': `Bearer ${token}` };
 
             const [pendingRes, requestsRes, approvedRes] = await Promise.all([
-                fetch(`${process.env.NEXT_PUBLIC_API_URL}/admin/verification/pending`, { headers }),
-                fetch(`${process.env.NEXT_PUBLIC_API_URL}/admin/verification/requests`, { headers }),
-                fetch(`${process.env.NEXT_PUBLIC_API_URL}/admin/verification/approved`, { headers })
+                fetch(`${API_URL}/admin/verification/pending`, { headers }),
+                fetch(`${API_URL}/admin/verification/requests`, { headers }),
+                fetch(`${API_URL}/admin/verification/approved`, { headers })
             ]);
 
             if (pendingRes.ok) {
@@ -93,7 +94,7 @@ export default function WeightVerificationManager() {
         setTriggering(true);
         try {
             const token = await user.getIdToken();
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/admin/verification/trigger`, {
+            const res = await fetch(`${API_URL}/admin/verification/trigger`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ percentage: triggerPercent, deadlineDays })
@@ -119,7 +120,7 @@ export default function WeightVerificationManager() {
         setReviewingId(id);
         try {
             const token = await user.getIdToken();
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/admin/verification/review`, {
+            const res = await fetch(`${API_URL}/admin/verification/review`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
