@@ -3,19 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import type { Race, Sprint } from '@/types/live';
-import { API_URL } from '@/lib/api';
+import { API_URL, getZwiftInsiderUrl } from '@/lib/api';
 import { formatDateLong, formatTimeWithTz } from '@/lib/formatDate';
 
-const getZwiftInsiderUrl = (routeName: string) => {
-    if (!routeName) return '#';
-    const slug = routeName.toLowerCase()
-        .replace(/\s+/g, '-')
-        .replace(/[^\w\-]+/g, '')
-        .replace(/\-\-+/g, '-')
-        .replace(/^-+/, '')
-        .replace(/-+$/, '');
-    return `https://zwiftinsider.com/route/${slug}/`;
-};
 
 const getZwiftEventUrl = (eventId: string, eventSecret?: string) => {
     if (typeof window === 'undefined') return `https://www.zwift.com/eu/events/view/${eventId}${eventSecret ? `?eventSecret=${eventSecret}` : ''}`;

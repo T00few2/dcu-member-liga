@@ -1,8 +1,12 @@
+import logging
+
 from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
 from extensions import db
 from services.results_processor import ResultsProcessor
 from authz import require_admin, AuthzError
+
+logger = logging.getLogger(__name__)
 
 league_bp = Blueprint('league', __name__)
 
@@ -18,6 +22,7 @@ def get_settings():
         settings = doc.to_dict() if doc.exists else {}
         return jsonify({'settings': settings}), 200
     except Exception as e:
+        logger.error(f"Get settings error: {e}")
         return jsonify({'message': str(e)}), 500
 
 @league_bp.route('/league/settings', methods=['POST'])
@@ -53,6 +58,7 @@ def save_settings():
         
         return jsonify({'message': 'Settings saved'}), 200
     except Exception as e:
+        logger.error(f"Save settings error: {e}")
         return jsonify({'message': str(e)}), 500
 
 @league_bp.route('/league/standings', methods=['GET'])
@@ -78,4 +84,5 @@ def get_standings():
         
         return jsonify({'standings': standings}), 200
     except Exception as e:
+        logger.error(f"Get standings error: {e}")
         return jsonify({'message': str(e)}), 500

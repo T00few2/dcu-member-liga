@@ -3,7 +3,7 @@
 import { useAuth } from "@/lib/auth-context";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { API_URL } from '@/lib/api';
+import { API_URL, getZwiftInsiderUrl } from '@/lib/api';
 import ECyclingClubsModal from '@/components/ECyclingClubsModal';
 import CodeOfConductModal from '@/components/CodeOfConductModal';
 import RegistrationIntroModal from '@/components/RegistrationIntroModal';
@@ -12,16 +12,6 @@ import UnregisteredLoginModal from '@/components/UnregisteredLoginModal';
 import { useRouter } from "next/navigation";
 import type { Race, Sprint } from '@/types/live';
 
-const getZwiftInsiderUrl = (routeName: string) => {
-    if (!routeName) return '#';
-    const slug = routeName.toLowerCase()
-        .replace(/\s+/g, '-')
-        .replace(/[^\w\-]+/g, '')
-        .replace(/\-\-+/g, '-')
-        .replace(/^-+/, '')
-        .replace(/-+$/, '');
-    return `https://zwiftinsider.com/route/${slug}/`;
-};
 
 export default function Home() {
     const { user, signInWithGoogle, isRegistered, profileLoaded, loading, logOut, authIntent, clearAuthIntent } = useAuth();

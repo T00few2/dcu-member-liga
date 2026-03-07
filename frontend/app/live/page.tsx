@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
+import { useToast } from '@/components/ToastProvider';
 
 // Hooks
 import { useOverlayConfig } from '@/hooks/useOverlayConfig';
@@ -19,6 +20,7 @@ import {
 
 export default function LiveLinksPage() {
     const { user, isAdmin } = useAuth();
+    const { showToast } = useToast();
 
     // Custom hooks for data and config
     const {
@@ -52,7 +54,7 @@ export default function LiveLinksPage() {
     // Refresh results for a single race/category
     const handleRefresh = useCallback(async (raceId: string, category: string = 'All') => {
         if (!user) {
-            alert('Please log in to calculate results.');
+            showToast('Please log in to calculate results.', 'error');
             return;
         }
 
@@ -77,23 +79,23 @@ export default function LiveLinksPage() {
 
             if (!res.ok) {
                 const data = await res.json();
-                alert(`Failed: ${data.message}`);
+                showToast(`Failed: ${data.message}`, 'error');
             } else {
                 // Refresh local state from Firebase after successful calculation
                 await refreshRace(raceId);
             }
         } catch (e) {
             console.error(e);
-            alert('Error updating results');
+            showToast('Error updating results', 'error');
         } finally {
             setProcessingKey(null);
         }
-    }, [user, config.source, config.filterRegistered, refreshRace]);
+    }, [user, config.source, config.filterRegistered, refreshRace, showToast]);
 
     // Refresh all races for a specific category
     const handleRefreshCategory = useCallback(async (category: string) => {
         if (!user) {
-            alert('Please log in to calculate results.');
+            showToast('Please log in to calculate results.', 'error');
             return;
         }
 
@@ -110,11 +112,11 @@ export default function LiveLinksPage() {
             }
         } catch (e) {
             console.error(e);
-            alert('Error updating category results');
+            showToast('Error updating category results', 'error');
         } finally {
             setProcessingCategory(null);
         }
-    }, [user, races, getRaceCategories, handleRefresh]);
+    }, [user, races, getRaceCategories, handleRefresh, showToast]);
 
     // Loading state
     if (loading) {

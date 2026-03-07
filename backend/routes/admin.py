@@ -2,7 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
 from extensions import db, get_zwift_service, strava_service, get_zp_service
-from authz import require_admin, AuthzError
+from authz import require_admin, verify_user_token, AuthzError
 from services.user_service import UserService
 
 import logging
@@ -65,7 +65,7 @@ def verify_rider(rider_id):
             futures['zp'] = executor.submit(fetch_zp)
 
         try:
-            profile = futures['profile'].result()
+            profile = futures['profile'].result(timeout=30)
             if profile:
                 response_data['profile'] = {
                     'weight': round(profile.get('weight', 0) / 1000, 1) if profile.get('weight') else None,
@@ -77,14 +77,14 @@ def verify_rider(rider_id):
             logger.error(f"Zwift Profile Fetch Error: {e}")
 
         try:
-            strava_raw = futures['strava'].result()
+            strava_raw = futures['strava'].result(timeout=30)
             if strava_raw and 'activities' in strava_raw:
                 response_data['stravaActivities'] = strava_raw['activities']
         except Exception as e:
             logger.error(f"Strava Verification Fetch Error: {e}")
 
         try:
-            zp_json = futures['zp'].result()
+            zp_json = futures['zp'].result(timeout=30)
             if zp_json and 'data' in zp_json:
                 history = []
                 for entry in zp_json['data']:
@@ -233,15 +233,11 @@ def delete_trainer(trainer_id):
 @admin_bp.route('/trainers/request', methods=['POST'])
 def request_trainer():
     # User-facing endpoint
-    auth_header = request.headers.get('Authorization')
-    if not auth_header or not auth_header.startswith('Bearer '):
-        return jsonify({'message': 'Unauthorized'}), 401
     try:
-        id_token = auth_header.split('Bearer ')[1]
-        decoded = auth.verify_id_token(id_token)
-        uid = decoded['uid']
-    except Exception:
-        return jsonify({'message': 'Unauthorized'}), 401
+        decoded = verify_user_token(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+    uid = decoded['uid']
     
     if not db: return jsonify({'error': 'DB not available'}), 500
     

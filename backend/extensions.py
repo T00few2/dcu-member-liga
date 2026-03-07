@@ -1,5 +1,6 @@
 import os
 import time
+import threading
 import firebase_admin
 from firebase_admin import credentials, firestore
 from services.strava import StravaService
@@ -26,7 +27,7 @@ try:
             
     db = firestore.client()
 except Exception as e:
-    logger.warning(f"Warning: Firebase could not be initialized. Database operations will fail. Error: {e}")
+    logger.error(f"Firebase could not be initialized. Database operations will fail. Error: {e}")
 
 # --- Service Singletons & Factories ---
 
@@ -42,50 +43,50 @@ _zwift_game_service = ZwiftGameService()
 # ZwiftPower Cache
 _zp_service_instance = None
 _zp_service_timestamp = 0
-SESSION_VALIDITY = 3000 # 50 minutes
+_zp_lock = threading.Lock()
+SESSION_VALIDITY = 3000  # 50 minutes
 
 def get_zp_service():
     global _zp_service_instance, _zp_service_timestamp
     now = time.time()
-    
-    if _zp_service_instance and (now - _zp_service_timestamp < SESSION_VALIDITY):
-        return _zp_service_instance
+    with _zp_lock:
+        if _zp_service_instance and (now - _zp_service_timestamp < SESSION_VALIDITY):
+            return _zp_service_instance
 
-    logger.info("Creating new ZwiftPower session.")
-    service = ZwiftPowerService(ZWIFT_USERNAME, ZWIFT_PASSWORD)
-    try:
-        service.login()
-        _zp_service_instance = service
-        _zp_service_timestamp = now
-        return service
-    except Exception as e:
-        logger.error(f"Failed to initialize ZwiftPower session: {e}")
+        logger.info("Creating new ZwiftPower session.")
+        service = ZwiftPowerService(ZWIFT_USERNAME, ZWIFT_PASSWORD)
+        try:
+            service.login()
+            _zp_service_instance = service
+            _zp_service_timestamp = now
+        except Exception as e:
+            logger.error(f"Failed to initialize ZwiftPower session: {e}")
         return service
 
 # Zwift API Cache
 _zwift_service_instance = None
 _zwift_service_timestamp = 0
+_zwift_lock = threading.Lock()
 
 def get_zwift_service():
     global _zwift_service_instance, _zwift_service_timestamp
     now = time.time()
-    
-    if _zwift_service_instance and (now - _zwift_service_timestamp < SESSION_VALIDITY):
-        try:
-            _zwift_service_instance.ensure_valid_token()
-            return _zwift_service_instance
-        except Exception:
-            pass
+    with _zwift_lock:
+        if _zwift_service_instance and (now - _zwift_service_timestamp < SESSION_VALIDITY):
+            try:
+                _zwift_service_instance.ensure_valid_token()
+                return _zwift_service_instance
+            except Exception:
+                pass  # Token invalid — fall through to re-authenticate
 
-    logger.info("Creating new Zwift service session.")
-    service = ZwiftService(ZWIFT_USERNAME, ZWIFT_PASSWORD)
-    try:
-        service.authenticate()
-        _zwift_service_instance = service
-        _zwift_service_timestamp = now
-        return service
-    except Exception as e:
-        logger.error(f"Failed to initialize Zwift session: {e}")
+        logger.info("Creating new Zwift service session.")
+        service = ZwiftService(ZWIFT_USERNAME, ZWIFT_PASSWORD)
+        try:
+            service.authenticate()
+            _zwift_service_instance = service
+            _zwift_service_timestamp = now
+        except Exception as e:
+            logger.error(f"Failed to initialize Zwift session: {e}")
         return service
 
 def get_zwift_game_service():

@@ -48,6 +48,7 @@ def get_races():
             races.append(r)
         return jsonify({'races': races}), 200
     except Exception as e:
+        logger.error(f"Get races error: {e}")
         return jsonify({'message': str(e)}), 500
 
 @races_bp.route('/races', methods=['POST'])
