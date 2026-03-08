@@ -115,53 +115,67 @@ const chapters = [
         content: (
             <div className="space-y-5">
                 <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
-                    Kategoriseringen er baseret på <strong>vELO</strong> – et dynamisk ratingssystem der løbende opdateres baseret på dine resultater mod andre ryttere.
-                    Jo stærkere modstandere du slår, desto mere stiger din vELO. Systemet sikrer at du altid konkurrerer mod ryttere på dit niveau.
+                    Kategoriseringen er baseret på <strong>vELO</strong> – et dynamisk ratingssystem fra{' '}
+                    <a href="https://www.zwiftracing.app/reference/categories" target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">ZwiftRacing.app</a>{' '}
+                    der løbende opdateres baseret på dine resultater mod andre ryttere.
+                    Jo stærkere modstandere du slår, desto mere stiger din vELO. Systemet sikrer at du konkurrerer mod ryttere på dit niveau.
                 </p>
-                <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
-                    Kategorierne herunder tager udgangspunkt i vELO-systemet, men kan blive justeret (slået sammen eller opdelt) for at sikre det rette antal ryttere i hver kategori.
-                    De endelige kategorier offentliggøres inden sæsonstart.
-                </p>
-
-                <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
-                    <table className="w-full text-sm">
-                        <thead>
-                            <tr className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200">
-                                <th className="px-4 py-3 text-left font-bold">Kategori</th>
-                                <th className="px-4 py-3 text-left font-bold">vELO interval</th>
-                                <th className="px-4 py-3 text-left font-bold">Niveau</th>
-                                <th className="px-4 py-3 text-left font-bold">Bemærkning</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                            {[
-                                { kat: 'A', range: '≥ 250', niveau: 'Elite / Avanceret', note: '' },
-                                { kat: 'B', range: '200 – 249', niveau: 'Stærk motionist', note: '' },
-                                { kat: 'C', range: '150 – 199', niveau: 'Øvet', note: '' },
-                                { kat: 'D', range: '100 – 149', niveau: 'Begynder / Motionist', note: '' },
-                                { kat: 'E', range: '< 100', niveau: 'Nybegynder', note: 'Evt. sammenlagt med D' },
-                            ].map((row, i) => (
-                                <tr key={i} className="bg-white dark:bg-slate-900/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                                    <td className="px-4 py-3">
-                                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-primary text-white font-bold text-sm">
-                                            {row.kat}
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-3 font-mono font-medium text-slate-700 dark:text-slate-200">{row.range}</td>
-                                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{row.niveau}</td>
-                                    <td className="px-4 py-3 text-slate-400 dark:text-slate-500 italic text-xs">{row.note || '–'}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
 
                 <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-sm flex gap-3">
                     <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    <span>Kategorierne er vejledende og kan blive tilpasset inden sæsonstart. Følg med på Facebook og hjemmesiden for opdateringer.</span>
+                    <span>
+                        vELO har 10 navngivne kategorier. I ligaen kan kategorier blive <strong>slået sammen eller opdelt</strong> for at sikre tilstrækkeligt – men ikke for mange – ryttere i hver startgruppe.
+                        De endelige ligakategorier offentliggøres inden sæsonstart.
+                    </span>
                 </div>
+
+                <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+                    <table className="w-full text-sm">
+                        <thead>
+                            <tr className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200">
+                                <th className="px-4 py-3 text-left font-bold">#</th>
+                                <th className="px-4 py-3 text-left font-bold">vELO kategori</th>
+                                <th className="px-4 py-3 text-left font-bold">vELO interval</th>
+                                <th className="px-4 py-3 text-left font-bold">Niveau</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                            {[
+                                { rank: 10, name: 'Diamond',   color: '#b9f2ff', textColor: '#0e4f6b', range: '≥ 1900',        niveau: 'Absolut elite' },
+                                { rank: 9,  name: 'Ruby',      color: '#ff4e6a', textColor: '#fff',    range: '1700 – 1899',   niveau: 'Elite' },
+                                { rank: 8,  name: 'Emerald',   color: '#50c878', textColor: '#fff',    range: '1500 – 1699',   niveau: 'Meget stærk' },
+                                { rank: 7,  name: 'Sapphire',  color: '#0f52ba', textColor: '#fff',    range: '1450 – 1499',   niveau: 'Stærk' },
+                                { rank: 6,  name: 'Amethyst',  color: '#9b59b6', textColor: '#fff',    range: '1300 – 1449',   niveau: 'Avanceret' },
+                                { rank: 5,  name: 'Platinum',  color: '#e5e4e2', textColor: '#374151', range: '1150 – 1299',   niveau: 'Øvet+' },
+                                { rank: 4,  name: 'Gold',      color: '#ffd700', textColor: '#374151', range: '1000 – 1149',   niveau: 'Øvet' },
+                                { rank: 3,  name: 'Silver',    color: '#c0c0c0', textColor: '#374151', range: '850 – 999',     niveau: 'Motionist+' },
+                                { rank: 2,  name: 'Bronze',    color: '#cd7f32', textColor: '#fff',    range: '650 – 849',     niveau: 'Motionist' },
+                                { rank: 1,  name: 'Copper',    color: '#b87333', textColor: '#fff',    range: '< 650',         niveau: 'Begynder' },
+                            ].map((row, i) => (
+                                <tr key={i} className="bg-white dark:bg-slate-900/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                                    <td className="px-4 py-2.5 text-slate-400 dark:text-slate-500 text-xs">{row.rank}</td>
+                                    <td className="px-4 py-2.5">
+                                        <span
+                                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold"
+                                            style={{ backgroundColor: row.color, color: row.textColor }}
+                                        >
+                                            {row.name}
+                                        </span>
+                                    </td>
+                                    <td className="px-4 py-2.5 font-mono text-slate-700 dark:text-slate-200 text-xs">{row.range}</td>
+                                    <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">{row.niveau}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+                <p className="text-xs text-slate-400 dark:text-slate-500">
+                    vELO-intervallerne er vejledende. Find din præcise kategori på{' '}
+                    <a href="https://www.zwiftracing.app/reference/categories" target="_blank" rel="noopener noreferrer" className="underline">zwiftracing.app</a>.
+                    Ligaen benytter din <strong>30-dages max-rating</strong>.
+                </p>
             </div>
         ),
     },
