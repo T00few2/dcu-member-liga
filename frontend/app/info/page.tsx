@@ -251,6 +251,7 @@ const chapters = [
                     {[
                         {
                             num: 1,
+                            theme: 'The Punch',
                             name: 'Yorkshire Double Loop',
                             dist: '29,6 km',
                             laps: '1 omgang',
@@ -259,9 +260,11 @@ const chapters = [
                             spurter: 'KOM og SPRINT bannere',
                             color: 'border-green-500',
                             badge: 'bg-green-500/10 text-green-700 dark:text-green-300',
+                            themeBadge: 'bg-green-500/10 text-green-700 dark:text-green-300 border border-green-400/30',
                         },
                         {
                             num: 2,
+                            theme: 'The Sprint',
                             name: 'Glasgow Crit Six',
                             dist: '36,6 km',
                             laps: '2 omgange',
@@ -270,9 +273,11 @@ const chapters = [
                             spurter: 'Clyde Kicker og målstreg hver anden omgang',
                             color: 'border-blue-500',
                             badge: 'bg-blue-500/10 text-blue-700 dark:text-blue-300',
+                            themeBadge: 'bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-400/30',
                         },
                         {
                             num: 3,
+                            theme: 'The Climb',
                             name: 'Mayan Mash',
                             dist: '37,7 km',
                             laps: '1 omgang',
@@ -281,9 +286,11 @@ const chapters = [
                             spurter: 'Alle KOM bannere',
                             color: 'border-orange-500',
                             badge: 'bg-orange-500/10 text-orange-700 dark:text-orange-300',
+                            themeBadge: 'bg-orange-500/10 text-orange-700 dark:text-orange-300 border border-orange-400/30',
                         },
                         {
                             num: 4,
+                            theme: 'The Classic',
                             name: 'Triple Twist',
                             dist: '48,6 km',
                             laps: '2 omgange (lavere kat. evt. 1 omgang – 24,3 km)',
@@ -292,6 +299,7 @@ const chapters = [
                             spurter: 'Alle bannere',
                             color: 'border-red-500',
                             badge: 'bg-red-500/10 text-red-700 dark:text-red-300',
+                            themeBadge: 'bg-red-500/10 text-red-700 dark:text-red-300 border border-red-400/30',
                         },
                     ].map((race) => (
                         <div key={race.num} className={`rounded-xl border-l-4 ${race.color} border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/50 p-5`}>
@@ -301,6 +309,7 @@ const chapters = [
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <div className="flex flex-wrap items-center gap-2 mb-2">
+                                        <span className={`text-xs font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-full ${race.themeBadge}`}>{race.theme}</span>
                                         <h4 className="font-bold text-slate-900 dark:text-white text-base">{race.name}</h4>
                                         <span className="text-xs font-mono text-slate-500 dark:text-slate-400">{race.laps} · {race.dist}</span>
                                     </div>
