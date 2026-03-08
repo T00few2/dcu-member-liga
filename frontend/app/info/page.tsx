@@ -13,7 +13,7 @@ const chapters = [
         ),
         iconBg: 'bg-primary/10 text-primary',
         title: 'Om E-cykling',
-        defaultOpen: true,
+        defaultOpen: false,
         content: (
             <div className="space-y-4">
                 <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-lg">
@@ -111,7 +111,7 @@ const chapters = [
         ),
         iconBg: 'bg-purple-500/10 text-purple-600 dark:text-purple-400',
         title: 'Rytterkategorier',
-        defaultOpen: true,
+        defaultOpen: false,
         content: (
             <div className="space-y-5">
                 <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
@@ -188,7 +188,7 @@ const chapters = [
         ),
         iconBg: 'bg-red-500/10 text-red-600 dark:text-red-400',
         title: 'Løbsformat',
-        defaultOpen: true,
+        defaultOpen: false,
         content: (
             <div className="space-y-5">
                 <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-lg">
@@ -239,7 +239,7 @@ const chapters = [
         ),
         iconBg: 'bg-teal-500/10 text-teal-600 dark:text-teal-400',
         title: 'Ruter',
-        defaultOpen: true,
+        defaultOpen: false,
         content: (
             <div className="space-y-6">
                 <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
