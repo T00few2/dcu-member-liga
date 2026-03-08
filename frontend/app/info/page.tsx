@@ -13,7 +13,7 @@ const chapters = [
         ),
         iconBg: 'bg-primary/10 text-primary',
         title: 'Om E-cykling',
-        defaultOpen: true,
+        defaultOpen: false,
         content: (
             <div className="space-y-4">
                 <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-lg">
@@ -111,7 +111,7 @@ const chapters = [
         ),
         iconBg: 'bg-purple-500/10 text-purple-600 dark:text-purple-400',
         title: 'Rytterkategorier',
-        defaultOpen: true,
+        defaultOpen: false,
         content: (
             <div className="space-y-5">
                 <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
@@ -188,7 +188,7 @@ const chapters = [
         ),
         iconBg: 'bg-red-500/10 text-red-600 dark:text-red-400',
         title: 'Løbsformat',
-        defaultOpen: true,
+        defaultOpen: false,
         content: (
             <div className="space-y-5">
                 <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-lg">
@@ -231,6 +231,124 @@ const chapters = [
         ),
     },
     {
+        id: 'ruter',
+        icon: (
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+            </svg>
+        ),
+        iconBg: 'bg-teal-500/10 text-teal-600 dark:text-teal-400',
+        title: 'Ruter',
+        defaultOpen: false,
+        content: (
+            <div className="space-y-6">
+                <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
+                    Løbsserien består af 4 afdelinger – de 3 bedste resultater tæller. Ruterne er bevidst valgt for at give
+                    <strong> variation</strong> og give forskellige rytterprofiler en chance for at brillere.
+                </p>
+
+                <div className="space-y-4">
+                    {[
+                        {
+                            num: 1,
+                            name: 'Yorkshire Double Loop',
+                            dist: '29,6 km',
+                            laps: '1 omgang',
+                            type: 'Klassisk rundstrækning med lidt klatring',
+                            profile: 'Puncheur & udbrudsryttere',
+                            spurter: 'KOM og SPRINT bannere',
+                            color: 'border-green-500',
+                            badge: 'bg-green-500/10 text-green-700 dark:text-green-300',
+                        },
+                        {
+                            num: 2,
+                            name: 'Glasgow Crit Six',
+                            dist: '36,6 km',
+                            laps: '2 omgange',
+                            type: 'Fladt, teknisk criterium',
+                            profile: 'Sprintere & punchere',
+                            spurter: 'Clyde Kicker og målstreg hver anden omgang',
+                            color: 'border-blue-500',
+                            badge: 'bg-blue-500/10 text-blue-700 dark:text-blue-300',
+                        },
+                        {
+                            num: 3,
+                            name: 'Mayan Mash',
+                            dist: '37,7 km',
+                            laps: '1 omgang',
+                            type: 'Hård, bølgende rute med kortere stigninger',
+                            profile: 'Klatrere & udbrudsryttere',
+                            spurter: 'Alle KOM bannere',
+                            color: 'border-orange-500',
+                            badge: 'bg-orange-500/10 text-orange-700 dark:text-orange-300',
+                        },
+                        {
+                            num: 4,
+                            name: 'Triple Twist',
+                            dist: '48,6 km',
+                            laps: '2 omgange (lavere kat. evt. 1 omgang – 24,3 km)',
+                            type: 'Hurtig, punchy rundstrækning – Kaze Kicker (Japan)',
+                            profile: 'Klassikerspecialister & udbrudstyper',
+                            spurter: 'Alle bannere',
+                            color: 'border-red-500',
+                            badge: 'bg-red-500/10 text-red-700 dark:text-red-300',
+                        },
+                    ].map((race) => (
+                        <div key={race.num} className={`rounded-xl border-l-4 ${race.color} border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/50 p-5`}>
+                            <div className="flex items-start gap-3">
+                                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary text-white font-extrabold text-sm flex items-center justify-center mt-0.5">
+                                    {race.num}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                                        <h4 className="font-bold text-slate-900 dark:text-white text-base">{race.name}</h4>
+                                        <span className="text-xs font-mono text-slate-500 dark:text-slate-400">{race.laps} · {race.dist}</span>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
+                                        <div>
+                                            <span className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500 font-semibold">Type</span>
+                                            <p className="text-slate-700 dark:text-slate-200 mt-0.5">{race.type}</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500 font-semibold">Profil</span>
+                                            <p className={`mt-0.5 font-medium rounded-full px-2 py-0.5 inline-block text-xs ${race.badge}`}>{race.profile}</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500 font-semibold">Indlagte spurter</span>
+                                            <p className="text-slate-700 dark:text-slate-200 mt-0.5">{race.spurter}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                <div className="rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 p-5">
+                    <h4 className="font-bold text-slate-800 dark:text-white mb-3 flex items-center gap-2">
+                        <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                        </svg>
+                        Begrundelse for rutevalg
+                    </h4>
+                    <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
+                        {[
+                            { label: 'Yorkshire Double Loop', desc: 'Klassisk rundstrækning med klatreelementer → puncheur og udbrud.' },
+                            { label: 'Glasgow Crit Six', desc: 'Fladt criterium → sprintere & punchere konkurrerer om flere pointspurter.' },
+                            { label: 'Mayan Mash', desc: 'Hård, kuperet rute → klatrere og stærke udbrudsryttere belønnes.' },
+                            { label: 'Triple Twist', desc: 'Punchy, hurtig rute → udbrudstyper.' },
+                        ].map((item, i) => (
+                            <li key={i} className="flex gap-2">
+                                <span className="text-primary mt-0.5 flex-shrink-0">•</span>
+                                <span><strong>{item.label}:</strong> {item.desc}</span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            </div>
+        ),
+    },
+    {
         id: 'point-loeb',
         icon: (
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -238,7 +356,7 @@ const chapters = [
             </svg>
         ),
         iconBg: 'bg-orange-500/10 text-orange-600 dark:text-orange-400',
-        title: 'Pointgivning pr. Løb',
+        title: 'Pointgivning pr. løb',
         defaultOpen: false,
         content: (
             <div className="space-y-8">
