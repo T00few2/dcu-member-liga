@@ -4,6 +4,34 @@ import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
 
+function getZRCategory(rating: number | string): string {
+  const r = Number(rating);
+  if (isNaN(r) || rating === 'N/A') return '-';
+  if (r >= 2200) return 'Diamond';
+  if (r >= 1900) return 'Ruby';
+  if (r >= 1650) return 'Emerald';
+  if (r >= 1450) return 'Sapphire';
+  if (r >= 1300) return 'Amethyst';
+  if (r >= 1150) return 'Platinum';
+  if (r >= 1000) return 'Gold';
+  if (r >= 850) return 'Silver';
+  if (r >= 650) return 'Bronze';
+  return 'Copper';
+}
+
+const ZR_CATEGORY_STYLES: Record<string, string> = {
+  Diamond: 'bg-cyan-100 text-cyan-800',
+  Ruby: 'bg-red-100 text-red-800',
+  Emerald: 'bg-green-100 text-green-800',
+  Sapphire: 'bg-blue-100 text-blue-800',
+  Amethyst: 'bg-purple-100 text-purple-800',
+  Platinum: 'bg-slate-100 text-slate-700',
+  Gold: 'bg-yellow-100 text-yellow-800',
+  Silver: 'bg-gray-100 text-gray-700',
+  Bronze: 'bg-orange-100 text-orange-800',
+  Copper: 'bg-amber-100 text-amber-800',
+};
+
 interface Participant {
   name: string;
   club: string;
@@ -88,7 +116,8 @@ export default function ParticipantsPage() {
               <tr>
                 <th className="px-6 py-3 font-bold">Navn</th>
                 <th className="px-6 py-3 font-bold">Klub</th>
-                <th className="px-6 py-3 font-bold">Kat</th>
+                <th className="px-6 py-3 font-bold">ZR Kat</th>
+                <th className="px-6 py-3 font-bold">ZR max30</th>
                 <th className="px-6 py-3 font-bold">FTP (ZP)</th>
                 <th className="px-6 py-3 font-bold">ZRS</th>
                 <th className="px-6 py-3 font-bold">vELO</th>
@@ -103,7 +132,7 @@ export default function ParticipantsPage() {
             <tbody className="divide-y divide-border">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-8 text-center text-muted-foreground">
+                  <td colSpan={10} className="px-6 py-8 text-center text-muted-foreground">
                     {search ? 'Ingen deltagere matcher søgningen.' : 'Ingen deltagere fundet endnu.'}
                   </td>
                 </tr>
@@ -129,13 +158,18 @@ export default function ParticipantsPage() {
                     </td>
                     <td className="px-6 py-4 text-card-foreground">{p.club || '-'}</td>
                     <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                              ${p.category === 'A' ? 'bg-red-100 text-red-800' :
-                          p.category === 'B' ? 'bg-green-100 text-green-800' :
-                            p.category === 'C' ? 'bg-blue-100 text-blue-800' :
-                              'bg-slate-100 text-slate-800'}`}>
-                        {p.category}
-                      </span>
+                      {(() => { const cat = getZRCategory(p.rating); return cat !== '-' ? (
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ZR_CATEGORY_STYLES[cat] ?? 'bg-slate-100 text-slate-800'}`}>
+                          {cat}
+                        </span>
+                      ) : '-'; })()}
+                    </td>
+                    <td className="px-6 py-4">
+                      {(() => { const cat = getZRCategory(p.max30Rating); return cat !== '-' ? (
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ZR_CATEGORY_STYLES[cat] ?? 'bg-slate-100 text-slate-800'}`}>
+                          {cat}
+                        </span>
+                      ) : '-'; })()}
                     </td>
                     <td className="px-6 py-4">{p.ftp !== 'N/A' ? `${p.ftp} W` : '-'}</td>
                     <td className="px-6 py-4 font-mono font-medium text-card-foreground">
