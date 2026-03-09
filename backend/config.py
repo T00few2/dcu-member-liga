@@ -18,6 +18,8 @@ ZWIFT_PASSWORD = os.getenv('ZWIFT_PASSWORD')
 ZR_AUTH_KEY = os.getenv('ZR_AUTH_KEY')
 ZR_BASE_URL = os.getenv('ZR_BASE_URL', 'https://api.zwiftracing.app/api')
 
+SCHEDULER_SECRET = os.getenv('SCHEDULER_SECRET')
+
 # Critical secrets — raise at startup so the app fails loudly.
 # In CI (GitHub Actions sets CI=true automatically), downgrade to a warning
 # so tests can run without real credentials.

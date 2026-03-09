@@ -1,8 +1,8 @@
 from concurrent.futures import ThreadPoolExecutor
 from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
-from extensions import db, get_zwift_service, strava_service, get_zp_service
-from authz import require_admin, verify_user_token, AuthzError
+from extensions import db, get_zwift_service, strava_service, get_zp_service, zr_service
+from authz import require_admin, require_scheduler, verify_user_token, AuthzError
 from services.user_service import UserService
 
 import logging
@@ -320,11 +320,142 @@ def reject_trainer_request(request_id):
     except Exception as e: return jsonify({'message': str(e)}), 500
 
 # Seed endpoints (Simplified for brevity, but they follow same pattern)
-# For the sake of refactoring, I'll include one, but omit the massive random generation logic 
+# For the sake of refactoring, I'll include one, but omit the massive random generation logic
 # unless specifically requested. The previous seed endpoints were HUGE.
 # User asked for refactoring, so splitting them out is key. I'll create a separate file `seed.py` for them?
 # Or just put them here. They are Admin functionality.
 # I will put the seeding logic in a separate helper or just copy it if needed.
 # Given the size, maybe `backend/routes/seed.py`?
 # Yes, let's make `backend/routes/seed.py` for the seed data endpoints.
+
+
+# ---------------------------------------------------------------------------
+# Nightly ZwiftRacing stats refresh
+# Triggered by Google Cloud Scheduler via a shared secret header.
+# Uses the ZR batch endpoint to refresh all registered riders in one API call.
+# ---------------------------------------------------------------------------
+
+_FIRESTORE_BATCH_SIZE = 400  # Firestore max is 500; use 400 for safety
+
+
+@admin_bp.route('/admin/refresh-zr-stats', methods=['POST'])
+def refresh_zr_stats():
+    """
+    Refresh ZwiftRacing stats for every fully registered rider.
+
+    Authentication: X-Scheduler-Token header must match SCHEDULER_SECRET.
+    Can also be called by an admin (Firebase ID token with admin claim).
+
+    The ZR batch endpoint accepts up to 1000 rider IDs in a single call,
+    so a full refresh costs exactly one ZR API call regardless of rider count.
+    """
+    # Accept either scheduler secret or admin Firebase token.
+    scheduler_ok = False
+    try:
+        require_scheduler(request)
+        scheduler_ok = True
+    except AuthzError:
+        pass
+
+    if not scheduler_ok:
+        try:
+            require_admin(request)
+        except AuthzError as e:
+            return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    try:
+        # 1. Fetch all fully registered riders from Firestore (no limit).
+        docs = (
+            db.collection('users')
+            .where('registration.status', '==', 'complete')
+            .stream()
+        )
+
+        # Build a zwiftId → eLicense map so we can write results back.
+        riders = {}  # { zwift_id_str: e_license_str }
+        for doc in docs:
+            data = doc.to_dict() or {}
+            zwift_id = str(data.get('zwiftId', '')).strip()
+            e_license = str(data.get('eLicense', doc.id)).strip()
+            if zwift_id:
+                riders[zwift_id] = e_license
+
+        if not riders:
+            return jsonify({'message': 'No registered riders found', 'updated': 0}), 200
+
+        logger.info(f"ZR nightly refresh: fetching stats for {len(riders)} riders")
+
+        # 2. Single batch call to ZR API.
+        zwift_ids = [int(zid) for zid in riders.keys()]
+        batch_response = zr_service.get_riders_batch(zwift_ids)
+
+        if not batch_response:
+            return jsonify({'message': 'ZR batch call returned no data', 'updated': 0}), 502
+
+        # The ZR batch endpoint returns a list of rider objects.
+        # Normalise to a dict keyed by string zwiftId for easy lookup.
+        if isinstance(batch_response, list):
+            zr_by_id = {str(r.get('riderId', r.get('zwiftId', ''))): r for r in batch_response}
+        elif isinstance(batch_response, dict):
+            # Some APIs wrap the list: { "data": [...] } or { "<id>": {...} }
+            inner = batch_response.get('data', batch_response)
+            if isinstance(inner, list):
+                zr_by_id = {str(r.get('riderId', r.get('zwiftId', ''))): r for r in inner}
+            else:
+                zr_by_id = {str(k): v for k, v in inner.items()}
+        else:
+            logger.error(f"Unexpected ZR batch response type: {type(batch_response)}")
+            return jsonify({'message': 'Unexpected ZR response format', 'updated': 0}), 502
+
+        # 3. Write results back to Firestore in batches.
+        updated = 0
+        skipped = 0
+        batch = db.batch()
+        batch_count = 0
+
+        for zwift_id, e_license in riders.items():
+            rider_data = zr_by_id.get(zwift_id)
+            if not rider_data:
+                skipped += 1
+                continue
+
+            data = rider_data if 'race' in rider_data else rider_data.get('data', {})
+            race = data.get('race', {})
+
+            doc_ref = db.collection('users').document(e_license)
+            batch.set(doc_ref, {
+                'zwiftRacing': {
+                    'currentRating': race.get('current', {}).get('rating', 'N/A'),
+                    'max30Rating':   race.get('max30', {}).get('rating', 'N/A'),
+                    'max90Rating':   race.get('max90', {}).get('rating', 'N/A'),
+                    'phenotype':     data.get('phenotype', {}).get('value', 'N/A'),
+                    'updatedAt':     firestore.SERVER_TIMESTAMP,
+                }
+            }, merge=True)
+
+            updated += 1
+            batch_count += 1
+
+            if batch_count >= _FIRESTORE_BATCH_SIZE:
+                batch.commit()
+                batch = db.batch()
+                batch_count = 0
+
+        if batch_count > 0:
+            batch.commit()
+
+        logger.info(f"ZR nightly refresh complete: {updated} updated, {skipped} skipped (no ZR data)")
+        return jsonify({
+            'message': 'ZR stats refresh complete',
+            'total': len(riders),
+            'updated': updated,
+            'skipped': skipped,
+        }), 200
+
+    except Exception as e:
+        logger.error(f"ZR nightly refresh error: {e}")
+        return jsonify({'message': str(e)}), 500
 

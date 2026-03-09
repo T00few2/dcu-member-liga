@@ -1,0 +1,22 @@
+name: ZR Nightly Stats Refresh
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # 3am UTC every night
+  workflow_dispatch:       # allows manual trigger from the GitHub Actions UI
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger ZR stats refresh
+        run: |
+          response=$(curl -s -o /tmp/body.txt -w "%{http_code}" \
+            -X POST \
+            -H "X-Scheduler-Token: ${{ secrets.SCHEDULER_SECRET }}" \
+            -H "Content-Type: application/json" \
+            https://us-central1-dcu-member-liga-479507.cloudfunctions.net/dcu_api/admin/refresh-zr-stats)
+          echo "HTTP status: $response"
+          echo "Response body:"
+          cat /tmp/body.txt
+          [ "$response" = "200" ] || exit 1
