@@ -153,7 +153,7 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
       grace: 'bg-yellow-100 text-yellow-800',
       over: 'bg-red-100 text-red-800',
     } as Record<string, string>;
-    const labels = { ok: 'OK', grace: 'Grace', over: 'Over limit' };
+    const labels: Record<string, string> = { ok: 'OK', grace: 'Grace', over: 'Over limit' };
     return (
       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${styles[status] ?? ''}`}>
         {labels[status] ?? status}
