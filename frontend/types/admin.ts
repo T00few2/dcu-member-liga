@@ -88,6 +88,8 @@ export interface RaceResult {
 
 export interface LeagueSettings {
     name?: string;
+    seasonStart?: string;   // ISO date string, e.g. "2025-03-01"
+    gracePeriod?: number;   // Points above upper boundary before rider must move up (default 35)
     finishPoints: number[];
     sprintPoints: number[];
     leagueRankPoints?: number[];

@@ -22,6 +22,7 @@ RaceType = Literal['scratch', 'points', 'time-trial']
 RegistrationStatus = Literal['draft', 'complete']
 VerificationStatus = Literal['none', 'pending', 'submitted', 'approved', 'rejected']
 EventMode = Literal['single', 'multi']
+CategoryStatus = Literal['ok', 'grace', 'over']
 
 
 # ---------------------------------------------------------------------------
@@ -128,6 +129,8 @@ class RaceConfig(TypedDict, total=False):
 class LeagueSettings(TypedDict, total=False):
     """Document: league/settings."""
     name: str
+    seasonStart: str        # ISO date string, e.g. "2025-03-01"
+    gracePeriod: int        # Points above upper boundary before rider must move up (default 35)
     finishPoints: list[int]
     sprintPoints: list[int]
     leagueRankPoints: list[int]
@@ -194,6 +197,22 @@ class Verification(TypedDict, total=False):
     history: list[VerificationRequest]
 
 
+class LigaCategoryDoc(TypedDict, total=False):
+    """
+    Liga category assignment for a rider.
+    Stored at users/{zwiftId}.ligaCategory.
+    """
+    season: str             # ISO date of season start, e.g. "2025-03-01"
+    category: str           # "Diamond" | "Ruby" | ... | "Copper"
+    upperBoundary: int      # Exclusive upper vELO limit of assigned category (None for Diamond)
+    graceLimit: int         # upperBoundary + gracePeriod (None for Diamond)
+    assignedAt: Any         # Firestore Timestamp
+    assignedRating: int     # max30Rating at time of assignment
+    status: CategoryStatus  # 'ok' | 'grace' | 'over'
+    lastCheckedRating: int  # max30Rating at last nightly status check
+    lastCheckedAt: Any      # Firestore Timestamp
+
+
 class ZwiftPowerProfile(TypedDict, total=False):
     category: str
     ftp: str | int
@@ -236,6 +255,7 @@ class UserDoc(TypedDict, total=False):
     zwiftRacing: ZwiftRacingProfile
     zwiftProfile: ZwiftGameProfile
     stravaSummary: dict[str, Any]
+    ligaCategory: LigaCategoryDoc
     welcomeSeen: bool
     updatedAt: Any
     createdAt: Any

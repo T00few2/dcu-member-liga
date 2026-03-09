@@ -377,7 +377,16 @@ def get_participants():
             zr = data.get('zwiftRacing', {})
             zpro = data.get('zwiftProfile', {})
             strava = data.get('stravaSummary', {})
-            
+            lc = data.get('ligaCategory')
+
+            # Serialize Timestamp fields in ligaCategory so JSON doesn't choke.
+            if lc:
+                lc = dict(lc)
+                for ts_field in ('assignedAt', 'lastCheckedAt'):
+                    ts = lc.get(ts_field)
+                    if ts and hasattr(ts, 'timestamp'):
+                        lc[ts_field] = int(ts.timestamp() * 1000)
+
             participants.append({
                 'name': user.name,
                 'eLicense': user.e_license,
@@ -391,7 +400,8 @@ def get_participants():
                 'phenotype': zr.get('phenotype', 'N/A'),
                 'racingScore': zpro.get('racingScore', 'N/A'),
                 'stravaKms': strava.get('kms', '-'),
-                'weightVerificationStatus': user.verification_status
+                'weightVerificationStatus': user.verification_status,
+                'ligaCategory': lc,
             })
         
         return jsonify({'participants': participants}), 200
