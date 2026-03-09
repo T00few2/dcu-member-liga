@@ -6,6 +6,7 @@ from typing import Any, Dict
 
 from flask import Request
 from firebase_admin import auth
+from config import SCHEDULER_SECRET
 
 logger = logging.getLogger(__name__)
 
@@ -47,4 +48,17 @@ def require_admin(request: Request) -> Dict[str, Any]:
     if decoded.get("admin") is not True:
         raise AuthzError("Forbidden", 403)
     return decoded
+
+
+def require_scheduler(request: Request) -> None:
+    """
+    Verify that the request carries the shared scheduler secret in the
+    X-Scheduler-Token header.  Used by endpoints that are called by
+    Google Cloud Scheduler (which cannot supply a Firebase ID token).
+    """
+    if not SCHEDULER_SECRET:
+        raise AuthzError("Scheduler secret not configured on server", 500)
+    token = request.headers.get("X-Scheduler-Token", "")
+    if not token or token != SCHEDULER_SECRET:
+        raise AuthzError("Forbidden", 403)
 
