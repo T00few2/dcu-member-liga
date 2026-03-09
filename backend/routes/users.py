@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
-from extensions import db, get_zwift_service, get_zp_service, strava_service, zr_service
+from extensions import db, get_zwift_service, get_zp_service, strava_service, zr_service, stats_queue
 from services.policy_store import POLICY_DATA_POLICY, POLICY_PUBLIC_RESULTS, PolicyError, get_policy_meta
 from services.user_service import UserService
 from authz import verify_user_token, AuthzError
@@ -256,7 +256,7 @@ def signup():
             db.collection('auth_mappings').document(uid).set(auth_map_data, merge=True)
             
             if not is_draft and zwift_id and is_newly_registered:
-                update_rider_stats(e_license, zwift_id)
+                stats_queue.enqueue(str(e_license), str(zwift_id))
         
         return jsonify({
             'message': 'Progress saved' if is_draft else ('Profile updated' if not is_newly_registered else 'Signup successful'),

@@ -1,7 +1,16 @@
 import requests
 import time
+import logging
 from typing import Optional, Dict, Any, List
 from config import ZR_AUTH_KEY, ZR_BASE_URL
+
+logger = logging.getLogger(__name__)
+
+
+class RateLimitError(Exception):
+    """Raised when the ZR API returns HTTP 429 Too Many Requests."""
+    pass
+
 
 class ZwiftRacingService:
     def __init__(self):
@@ -15,9 +24,13 @@ class ZwiftRacingService:
                 resp = requests.get(url, headers=self.headers)
                 if resp.ok:
                     return resp.json()
-                print(f"HTTP {resp.status_code} when GET {url}")
+                if resp.status_code == 429:
+                    raise RateLimitError(f"Rate limited on GET {url}")
+                logger.warning(f"HTTP {resp.status_code} on GET {url} (attempt {attempt})")
+            except RateLimitError:
+                raise
             except Exception as e:
-                print(f"Attempt {attempt} failed: {e}")
+                logger.warning(f"Attempt {attempt} failed: {e}")
             time.sleep(backoff * attempt)
         return None
 
@@ -28,9 +41,13 @@ class ZwiftRacingService:
                 resp = requests.post(url, json=body, headers=self.headers)
                 if resp.ok:
                     return resp.json()
-                print(f"HTTP {resp.status_code} when POST {url}")
+                if resp.status_code == 429:
+                    raise RateLimitError(f"Rate limited on POST {url}")
+                logger.warning(f"HTTP {resp.status_code} on POST {url} (attempt {attempt})")
+            except RateLimitError:
+                raise
             except Exception as e:
-                print(f"Attempt {attempt} failed: {e}")
+                logger.warning(f"Attempt {attempt} failed: {e}")
             time.sleep(backoff * attempt)
         return None
 
