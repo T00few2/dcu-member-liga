@@ -27,6 +27,9 @@ interface LigaCategory {
   lastCheckedRating: number;
   lastCheckedAt?: number;
   assignedAt?: number;
+  locked?: boolean;
+  autoAssignedCategory?: string;
+  selfSelectedCategory?: string;
 }
 
 interface RiderEntry {
@@ -168,7 +171,8 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
         <h2 className="text-xl font-semibold mb-1 text-card-foreground">Season Category Assignment</h2>
         <p className="text-sm text-muted-foreground mb-5">
           Assigns each rider a liga category based on their current max30 vELO. Run once at season start.
-          The nightly ZR refresh then updates each rider's status automatically.
+          The nightly ZR refresh then updates each rider's full category automatically until their first race,
+          after which only grace-period status is updated and the category is locked.
         </p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
           <div>
@@ -265,7 +269,7 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
               <thead className="bg-muted/50 text-xs uppercase text-muted-foreground border-b border-border">
                 <tr>
                   <th className="px-4 py-3">Rider</th>
-                  <th className="px-4 py-3">Assigned Category</th>
+                  <th className="px-4 py-3">Category</th>
                   <th className="px-4 py-3 text-right">Rating at Assignment</th>
                   <th className="px-4 py-3 text-right">Upper Boundary</th>
                   <th className="px-4 py-3 text-right">Grace Limit</th>
@@ -305,9 +309,26 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
                         </td>
                         <td className="px-4 py-3">
                           {lc ? (
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ZR_CATEGORY_STYLES[lc.category] ?? 'bg-slate-100 text-slate-800'}`}>
-                              {lc.category}
-                            </span>
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ZR_CATEGORY_STYLES[lc.category] ?? 'bg-slate-100 text-slate-800'}`}>
+                                  {lc.category}
+                                </span>
+                                {lc.locked && (
+                                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs bg-amber-100 text-amber-700">
+                                    🔒 Locked
+                                  </span>
+                                )}
+                                {lc.selfSelectedCategory && lc.selfSelectedCategory === lc.category && lc.selfSelectedCategory !== lc.autoAssignedCategory && (
+                                  <span className="text-xs text-muted-foreground">(selvvalgt)</span>
+                                )}
+                              </div>
+                              {lc.autoAssignedCategory && lc.autoAssignedCategory !== lc.category && (
+                                <div className="text-xs text-muted-foreground">
+                                  Auto: {lc.autoAssignedCategory}
+                                </div>
+                              )}
+                            </div>
                           ) : (
                             <span className="text-muted-foreground text-xs">Not assigned</span>
                           )}
