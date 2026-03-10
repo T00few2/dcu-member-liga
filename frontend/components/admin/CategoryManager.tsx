@@ -45,7 +45,6 @@ interface CategoryDef {
 }
 
 interface LigaCategory {
-  season: string;
   category: string;
   upperBoundary: number | null;
   graceLimit: number | null;
