@@ -24,24 +24,58 @@ ZR_CATEGORIES: list[tuple[str, int, Optional[int]]] = [
     ('Copper',     0,  650),
 ]
 
+# Default ZR categories in the [{name, upper}] API format for storage/export.
+ZR_CATEGORY_DEFS: list[dict] = [
+    {'name': name, 'upper': upper}
+    for name, _lower, upper in ZR_CATEGORIES
+]
+
 GRACE_POINTS = 35
 
+# Type alias for the internal (name, lower, upper) list used by engine functions.
+CategoryList = list[tuple[str, int, Optional[int]]]
 
-def get_zr_category(rating: int | float) -> tuple[str, int, Optional[int]]:
+
+def cats_from_defs(defs: list[dict]) -> CategoryList:
+    """
+    Convert the API/storage format [{name, upper}] (sorted top to bottom,
+    with the top category having upper=None) into the internal
+    (name, lower_inclusive, upper_exclusive) tuple list.
+    """
+    result: CategoryList = []
+    for i, d in enumerate(defs):
+        name = str(d['name'])
+        upper = d.get('upper')  # None for the top category
+        # Lower = upper of the next entry, or 0 for the last entry.
+        raw_lower = defs[i + 1].get('upper') if i + 1 < len(defs) else None
+        lower = int(raw_lower) if raw_lower is not None else 0
+        result.append((name, lower, upper))
+    return result
+
+
+def get_zr_category(
+    rating: int | float,
+    categories: CategoryList | None = None,
+) -> tuple[str, int, Optional[int]]:
     """Return (name, lower, upper) for a given vELO rating."""
+    cats = categories or ZR_CATEGORIES
     r = int(rating)
-    for name, lower, upper in ZR_CATEGORIES:
+    for name, lower, upper in cats:
         if r >= lower:
             return name, lower, upper
-    return ZR_CATEGORIES[-1]  # Copper as fallback
+    return cats[-1]  # fallback to lowest
 
 
-def _next_category(name: str) -> tuple[str, int, Optional[int]]:
+def _next_category(
+    name: str,
+    categories: CategoryList | None = None,
+) -> tuple[str, int, Optional[int]]:
     """Return the category one tier above the given one."""
-    for i, (cat_name, lower, upper) in enumerate(ZR_CATEGORIES):
+    cats = categories or ZR_CATEGORIES
+    for i, (cat_name, lower, upper) in enumerate(cats):
         if cat_name == name and i > 0:
-            return ZR_CATEGORIES[i - 1]
-    return ZR_CATEGORIES[0]  # Already Diamond
+            return cats[i - 1]
+    return cats[0]  # already at top
 
 
 def compute_category_status(
@@ -52,7 +86,7 @@ def compute_category_status(
     """
     Return 'ok', 'grace', or 'over' given the current rating vs stored limits.
 
-    Diamond riders (upper_boundary=None) are always 'ok'.
+    Top-category riders (upper_boundary=None) are always 'ok'.
     """
     if upper_boundary is None:
         return 'ok'
@@ -64,7 +98,12 @@ def compute_category_status(
     return 'over'
 
 
-def build_liga_category(max30_rating: int | float, season: str, grace_points: int = GRACE_POINTS) -> dict:
+def build_liga_category(
+    max30_rating: int | float,
+    season: str,
+    grace_points: int = GRACE_POINTS,
+    categories: CategoryList | None = None,
+) -> dict:
     """
     Build a ligaCategory dict for storage in Firestore based on current max30Rating.
 
@@ -72,8 +111,9 @@ def build_liga_category(max30_rating: int | float, season: str, grace_points: in
         max30_rating: The rider's current max30 vELO rating.
         season: ISO date string for the season start (e.g. "2025-03-01").
         grace_points: How many points above the upper boundary the rider may go.
+        categories: Optional custom category list; defaults to ZR_CATEGORIES.
     """
-    name, lower, upper = get_zr_category(max30_rating)
+    name, lower, upper = get_zr_category(max30_rating, categories)
     grace_limit = (upper + grace_points) if upper is not None else None
 
     rating_int = int(max30_rating)
@@ -82,20 +122,107 @@ def build_liga_category(max30_rating: int | float, season: str, grace_points: in
     return {
         'season': season,
         'category': name,
-        'upperBoundary': upper,          # None for Diamond
-        'graceLimit': grace_limit,       # None for Diamond
+        'upperBoundary': upper,          # None for top category
+        'graceLimit': grace_limit,       # None for top category
         'assignedRating': rating_int,
         'status': status,
         'lastCheckedRating': rating_int,
     }
 
 
-def reassign_to_next_category(current_category: str, current_max30: int | float, grace_points: int = GRACE_POINTS) -> dict:
+def _effective_cat_name(
+    auto_cat: str | None,
+    sel_cat: str | None,
+    categories: CategoryList | None = None,
+) -> str | None:
+    """
+    Return the higher-ranked (harder) category between auto-assigned and self-selected.
+
+    Lower index in the categories list = higher/harder category.
+    Names not found in the list are treated as rank -1 (highest priority), so
+    custom-named merged categories always take precedence over standard names.
+    """
+    if not auto_cat:
+        return sel_cat
+    if not sel_cat:
+        return auto_cat
+    cats = categories or ZR_CATEGORIES
+    cat_names = [n for n, _, _ in cats]
+
+    def rank(name: str) -> int:
+        try:
+            return cat_names.index(name)
+        except ValueError:
+            return -1  # unknown / custom name → treat as highest
+
+    return auto_cat if rank(auto_cat) <= rank(sel_cat) else sel_cat
+
+
+def _ts_to_ms(value) -> int | None:
+    """Convert a Firestore Timestamp to milliseconds since epoch, or pass through."""
+    if value is None:
+        return None
+    if hasattr(value, 'timestamp'):
+        return int(value.timestamp() * 1000)
+    return value
+
+
+def serialize_liga_category(lc: dict | None) -> dict | None:
+    """
+    Flatten a ligaCategory Firestore document into an API response dict.
+
+    Handles both the new nested structure (autoAssigned/selfSelected sub-objects)
+    and the old flat structure for backward compatibility.
+
+    Returns None if lc is None or empty.
+    """
+    if not lc:
+        return None
+
+    auto = lc.get('autoAssigned')
+    locked = lc.get('locked', False)
+
+    # Backward compat: old flat structure has no autoAssigned sub-object
+    if auto is None:
+        auto = lc
+
+    sel = lc.get('selfSelected') or {}
+    auto_cat = auto.get('category')
+    sel_cat = sel.get('category') if sel else None
+
+    if locked:
+        effective = lc.get('category') or auto_cat
+    else:
+        effective = _effective_cat_name(auto_cat, sel_cat)
+
+    return {
+        'category': effective,
+        'upperBoundary': auto.get('upperBoundary'),
+        'graceLimit': auto.get('graceLimit'),
+        'assignedRating': auto.get('assignedRating'),
+        'assignedAt': _ts_to_ms(auto.get('assignedAt')),
+        'status': auto.get('status', 'ok'),
+        'lastCheckedRating': auto.get('lastCheckedRating'),
+        'lastCheckedAt': _ts_to_ms(auto.get('lastCheckedAt')),
+        'season': auto.get('season'),
+        'locked': locked,
+        'lockedAt': _ts_to_ms(lc.get('lockedAt')),
+        'autoAssignedCategory': auto_cat,
+        'selfSelectedCategory': sel_cat,
+    }
+
+
+def reassign_to_next_category(
+    current_category: str,
+    current_max30: int | float,
+    grace_points: int = GRACE_POINTS,
+    categories: CategoryList | None = None,
+) -> dict:
     """
     Build an updated ligaCategory dict after manually moving a rider up one tier.
     The new category's boundaries are used; status is recomputed against current max30.
     """
-    name, lower, upper = _next_category(current_category)
+    name, lower, upper = _next_category(current_category, categories)
     grace_limit = (upper + grace_points) if upper is not None else None
     rating_int = int(current_max30)
     status = compute_category_status(rating_int, upper, grace_limit)

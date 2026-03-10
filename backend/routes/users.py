@@ -1,8 +1,11 @@
+import datetime
+
 from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
 from extensions import db, get_zwift_service, get_zp_service, strava_service, zr_service, stats_queue
 from services.policy_store import POLICY_DATA_POLICY, POLICY_PUBLIC_RESULTS, PolicyError, get_policy_meta
 from services.user_service import UserService
+from services.category_engine import build_liga_category, ZR_CATEGORIES, serialize_liga_category
 from authz import verify_user_token, AuthzError
 
 import logging
@@ -38,13 +41,27 @@ def update_rider_stats(e_license, zwift_id):
         if zr_json:
             data = zr_json if 'race' in zr_json else zr_json.get('data', {})
             race = data.get('race', {})
+            max30 = race.get('max30', {}).get('rating', 'N/A')
             updates['zwiftRacing'] = {
                 'currentRating': race.get('current', {}).get('rating', 'N/A'),
-                'max30Rating': race.get('max30', {}).get('rating', 'N/A'),
+                'max30Rating': max30,
                 'max90Rating': race.get('max90', {}).get('rating', 'N/A'),
                 'phenotype': data.get('phenotype', {}).get('value', 'N/A'),
                 'updatedAt': firestore.SERVER_TIMESTAMP
             }
+            # Auto-assign ligaCategory on first-time registration if not already set.
+            if max30 != 'N/A' and db and e_license:
+                existing_doc = db.collection('users').document(str(e_license)).get()
+                existing_lc = (existing_doc.to_dict() or {}).get('ligaCategory') if existing_doc.exists else None
+                if not existing_lc:
+                    season = datetime.date.today().strftime('%Y-%m-%d')
+                    auto = build_liga_category(int(max30), season)
+                    auto['assignedAt'] = firestore.SERVER_TIMESTAMP
+                    updates['ligaCategory'] = {
+                        'autoAssigned': auto,
+                        'locked': False,
+                    }
+                    logger.info(f"Auto-assigned ligaCategory {auto['category']} for {e_license}")
     except Exception as e:
          logger.error(f"ZR Fetch Error: {e}")
 
@@ -107,6 +124,8 @@ def get_profile():
                 'requiredPublicResultsConsentVersion': policy_meta.get(POLICY_PUBLIC_RESULTS, {}).get('requiredVersion'),
             }), 200
         
+        lc = serialize_liga_category(user._data.get('ligaCategory'))
+
         return jsonify({
             'registered': user.is_registered,
             'hasDraft': user.registration.get('status') == 'draft',
@@ -127,7 +146,8 @@ def get_profile():
             'weightVerificationStatus': user.verification_status,
             'weightVerificationVideoLink': user.weight_verification_video_link,
             'weightVerificationDeadline': user.weight_verification_deadline,
-            'verificationRequests': user.verification_history
+            'verificationRequests': user.verification_history,
+            'ligaCategory': lc,
         }), 200
 
     except Exception as e:
@@ -352,6 +372,70 @@ def set_welcome_seen():
         logger.error(f"Welcome-seen Error: {e}")
         return jsonify({'message': str(e)}), 500
 
+@users_bp.route('/category/select', methods=['POST'])
+def select_category():
+    """
+    Allows a fully registered rider to self-select their liga category.
+
+    Rules:
+    - The chosen category must be the same as, or higher than, the auto-assigned category.
+    - Once a rider has completed at least one race (ligaCategory.locked == True), their
+      category is locked and cannot be changed via this endpoint (admin force-move only).
+    """
+    try:
+        decoded_token = verify_user_token(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    uid = decoded_token['uid']
+
+    if not db:
+        return jsonify({'message': 'Database not available'}), 500
+
+    user = UserService.get_user_by_auth_uid(uid)
+    if not user or not user.is_registered:
+        return jsonify({'message': 'User not registered'}), 403
+
+    data = request.get_json(silent=True) or {}
+    chosen = (data.get('category') or '').strip()
+
+    # Validate chosen category exists
+    cat_names = [name for name, _, _ in ZR_CATEGORIES]
+    if chosen not in cat_names:
+        return jsonify({'message': f'Unknown category: {chosen}'}), 400
+
+    existing_lc = user._data.get('ligaCategory') or {}
+
+    # Enforce lock: no self-selection after first completed race
+    if existing_lc.get('locked'):
+        return jsonify({'message': 'Din kategori er låst efter gennemført løb. Kontakt admin for at rykke op.'}), 403
+
+    # Get the auto-assigned category (floor for self-selection)
+    auto = existing_lc.get('autoAssigned') or existing_lc  # backward compat
+    auto_cat = auto.get('category')
+
+    # Determine order (lower index = higher/harder category)
+    def cat_index(name):
+        try:
+            return cat_names.index(name)
+        except ValueError:
+            return len(cat_names)  # unknown → worst rank
+
+    # Chosen must be same or higher (lower index) than auto-assigned
+    if auto_cat and cat_index(chosen) > cat_index(auto_cat):
+        return jsonify({'message': f'Du kan ikke vælge en lavere kategori end din auto-tildelte ({auto_cat}).'}), 400
+
+    doc_id = str(user.id)
+    db.collection('users').document(doc_id).update({
+        'ligaCategory.selfSelected': {
+            'category': chosen,
+            'selfSelectedAt': firestore.SERVER_TIMESTAMP,
+        }
+    })
+
+    return jsonify({'message': f'Kategori opdateret til {chosen}', 'ligaCategory': chosen}), 200
+
+
 @users_bp.route('/participants', methods=['GET'])
 def get_participants():
     try:
@@ -377,15 +461,7 @@ def get_participants():
             zr = data.get('zwiftRacing', {})
             zpro = data.get('zwiftProfile', {})
             strava = data.get('stravaSummary', {})
-            lc = data.get('ligaCategory')
-
-            # Serialize Timestamp fields in ligaCategory so JSON doesn't choke.
-            if lc:
-                lc = dict(lc)
-                for ts_field in ('assignedAt', 'lastCheckedAt'):
-                    ts = lc.get(ts_field)
-                    if ts and hasattr(ts, 'timestamp'):
-                        lc[ts_field] = int(ts.timestamp() * 1000)
+            lc = serialize_liga_category(data.get('ligaCategory'))
 
             participants.append({
                 'name': user.name,

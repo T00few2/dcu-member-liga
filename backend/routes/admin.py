@@ -4,7 +4,10 @@ from firebase_admin import firestore
 from extensions import db, get_zwift_service, strava_service, get_zp_service, zr_service
 from authz import require_admin, require_scheduler, verify_user_token, AuthzError
 from services.user_service import UserService
-from services.category_engine import build_liga_category, compute_category_status, reassign_to_next_category
+from services.category_engine import (
+    build_liga_category, compute_category_status, reassign_to_next_category,
+    serialize_liga_category, cats_from_defs,
+)
 
 import logging
 
@@ -14,6 +17,30 @@ admin_bp = Blueprint('admin', __name__)
 
 def verify_admin_auth():
     return require_admin(request)
+
+
+def _load_liga_settings(db) -> dict:
+    """Load league settings and return a dict with gracePeriod and categories."""
+    try:
+        doc = db.collection('league').document('settings').get()
+        s = doc.to_dict() if doc.exists else {}
+    except Exception:
+        s = {}
+    return {
+        'gracePeriod': int(s.get('gracePeriod', 35)),
+        'categories': s.get('ligaCategories'),  # None → use ZR_CATEGORIES default
+    }
+
+
+def _resolve_categories(settings: dict):
+    """Return a CategoryList from settings, defaulting to ZR_CATEGORIES."""
+    defs = settings.get('categories')
+    if defs and isinstance(defs, list) and len(defs) >= 2:
+        try:
+            return cats_from_defs(defs)
+        except Exception:
+            pass
+    return None  # caller should fall back to ZR_CATEGORIES default
 
 @admin_bp.route('/admin/verification/rider/<rider_id>', methods=['GET'])
 def verify_rider(rider_id):
@@ -411,7 +438,12 @@ def refresh_zr_stats():
             logger.error(f"Unexpected ZR batch response type: {type(batch_response)}")
             return jsonify({'message': 'Unexpected ZR response format', 'updated': 0}), 502
 
-        # 3. Write results back to Firestore in batches.
+        # 3. Load league settings (categories + gracePeriod) once for all updates.
+        liga_settings = _load_liga_settings(db)
+        nightly_grace = liga_settings['gracePeriod']
+        nightly_categories = _resolve_categories(liga_settings)  # None → ZR_CATEGORIES default
+
+        # 4. Write results back to Firestore in batches.
         updated = 0
         skipped = 0
         batch = db.batch()
@@ -446,25 +478,48 @@ def refresh_zr_stats():
                 }
             }
 
-            # If this rider has an assigned liga category, recompute status.
+            # If this rider has an assigned liga category, update it.
             lc = liga_by_elicense.get(e_license)
+            liga_update = {}
             if lc and new_max30 != 'N/A':
                 try:
-                    new_status = compute_category_status(
-                        int(new_max30),
-                        lc.get('upperBoundary'),
-                        lc.get('graceLimit'),
-                    )
-                    update['ligaCategory'] = {
-                        'status': new_status,
-                        'lastCheckedRating': int(new_max30),
-                        'lastCheckedAt': firestore.SERVER_TIMESTAMP,
-                    }
+                    # Backward compat: old flat structure has no autoAssigned sub-object
+                    auto = lc.get('autoAssigned') or lc
+                    locked = lc.get('locked', False)
+
+                    if locked:
+                        # Locked riders: only update status tracking in autoAssigned
+                        new_status = compute_category_status(
+                            int(new_max30),
+                            auto.get('upperBoundary'),
+                            auto.get('graceLimit'),
+                        )
+                        liga_update = {
+                            'ligaCategory.autoAssigned.status': new_status,
+                            'ligaCategory.autoAssigned.lastCheckedRating': int(new_max30),
+                            'ligaCategory.autoAssigned.lastCheckedAt': firestore.SERVER_TIMESTAMP,
+                        }
+                    else:
+                        # Unlocked riders: re-compute full category from current max30
+                        season = auto.get('season', '')
+                        new_auto = build_liga_category(
+                            int(new_max30), season, nightly_grace, nightly_categories
+                        )
+                        new_auto['assignedRating'] = auto.get('assignedRating', int(new_max30))
+                        new_auto['assignedAt'] = auto.get('assignedAt')
+                        new_auto['lastCheckedAt'] = firestore.SERVER_TIMESTAMP
+                        liga_update = {'ligaCategory.autoAssigned': new_auto}
                 except Exception:
                     pass
 
             doc_ref = db.collection('users').document(e_license)
-            batch.set(doc_ref, update, merge=True)
+            # Use update() with dot-notation to safely patch sub-fields without
+            # overwriting sibling keys (e.g. locked, selfSelected).
+            full_update = {
+                'zwiftRacing': update['zwiftRacing'],
+                **liga_update,
+            }
+            batch.update(doc_ref, full_update)
 
             updated += 1
             batch_count += 1
@@ -494,6 +549,70 @@ def refresh_zr_stats():
 # Liga Category Enforcement
 # ---------------------------------------------------------------------------
 
+@admin_bp.route('/admin/liga-categories/config', methods=['POST'])
+def save_liga_categories_config():
+    """
+    Save a custom set of liga category definitions to league settings.
+
+    Body: { "categories": [{ "name": str, "upper": int | null }, ...] }
+
+    The list must be ordered from highest to lowest, with exactly one entry
+    having upper=null (the top/uncapped category, which must be first).
+    The saved config is used by assign-liga-categories and the nightly refresh.
+    """
+    try:
+        verify_admin_auth()
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    try:
+        body = request.get_json(silent=True) or {}
+        categories = body.get('categories')
+
+        if not categories or not isinstance(categories, list):
+            return jsonify({'message': "'categories' must be a non-empty list"}), 400
+        if len(categories) < 2:
+            return jsonify({'message': 'At least 2 categories are required'}), 400
+
+        for cat in categories:
+            name = cat.get('name', '')
+            if not isinstance(name, str) or not name.strip():
+                return jsonify({'message': 'Each category must have a non-empty name'}), 400
+            upper = cat.get('upper')
+            if upper is not None and not isinstance(upper, (int, float)):
+                return jsonify({'message': 'upper must be a number or null'}), 400
+
+        null_upper_count = sum(1 for c in categories if c.get('upper') is None)
+        if null_upper_count != 1:
+            return jsonify({'message': 'Exactly one category must have upper=null (the top)'}), 400
+        if categories[0].get('upper') is not None:
+            return jsonify({'message': 'The category with upper=null must be first'}), 400
+
+        # Validate that upper boundaries are strictly decreasing
+        uppers = [c['upper'] for c in categories[1:]]  # skip the null at index 0
+        for i in range(len(uppers) - 1):
+            if uppers[i] is not None and uppers[i + 1] is not None and uppers[i] <= uppers[i + 1]:
+                return jsonify({'message': 'Upper boundaries must be strictly decreasing'}), 400
+
+        # Normalise: strip whitespace from names, ensure upper is int or None
+        normalised = [
+            {'name': c['name'].strip(), 'upper': int(c['upper']) if c.get('upper') is not None else None}
+            for c in categories
+        ]
+
+        db.collection('league').document('settings').set(
+            {'ligaCategories': normalised}, merge=True
+        )
+        return jsonify({'message': 'Category configuration saved', 'count': len(normalised)}), 200
+
+    except Exception as e:
+        logger.error(f"Save liga categories config error: {e}")
+        return jsonify({'message': str(e)}), 500
+
+
 @admin_bp.route('/admin/assign-liga-categories', methods=['POST'])
 def assign_liga_categories():
     """
@@ -516,7 +635,7 @@ def assign_liga_categories():
     try:
         body = request.get_json(silent=True) or {}
 
-        # Fall back to league settings for season / gracePeriod.
+        # Load league settings for defaults.
         settings_doc = db.collection('league').document('settings').get()
         settings = settings_doc.to_dict() if settings_doc.exists else {}
 
@@ -526,7 +645,11 @@ def assign_liga_categories():
         if not season:
             return jsonify({'message': 'season is required (set in body or league settings)'}), 400
 
-        # Save seasonStart / gracePeriod back to league settings for reference.
+        # Resolve category definitions: body → settings → ZR_CATEGORIES default.
+        cat_defs = body.get('categories') or settings.get('ligaCategories')
+        categories = cats_from_defs(cat_defs) if cat_defs else None
+
+        # Persist season / gracePeriod back to settings.
         db.collection('league').document('settings').set(
             {'seasonStart': season, 'gracePeriod': grace_period},
             merge=True,
@@ -554,12 +677,18 @@ def assign_liga_categories():
                 continue
 
             try:
-                liga_cat = build_liga_category(int(max30), season, grace_period)
-                liga_cat['assignedAt'] = firestore.SERVER_TIMESTAMP
-                liga_cat['lastCheckedAt'] = firestore.SERVER_TIMESTAMP
+                auto = build_liga_category(int(max30), season, grace_period, categories)
+                auto['assignedAt'] = firestore.SERVER_TIMESTAMP
+                auto['lastCheckedAt'] = firestore.SERVER_TIMESTAMP
 
                 doc_ref = db.collection('users').document(e_license)
-                batch.set(doc_ref, {'ligaCategory': liga_cat}, merge=True)
+                # Fully reset ligaCategory: new autoAssigned, clear selfSelected, unlock
+                batch.set(doc_ref, {
+                    'ligaCategory': {
+                        'autoAssigned': auto,
+                        'locked': False,
+                    }
+                }, merge=True)
 
                 assigned += 1
                 batch_count += 1
@@ -613,16 +742,8 @@ def get_liga_categories():
         riders = []
         for doc in docs:
             data = doc.to_dict() or {}
-            lc = data.get('ligaCategory')
+            lc = serialize_liga_category(data.get('ligaCategory'))
             zr = data.get('zwiftRacing', {})
-
-            # Serialize Timestamps so JSON doesn't choke.
-            if lc:
-                lc = dict(lc)
-                for ts_field in ('assignedAt', 'lastCheckedAt'):
-                    ts = lc.get(ts_field)
-                    if ts and hasattr(ts, 'timestamp'):
-                        lc[ts_field] = int(ts.timestamp() * 1000)
 
             riders.append({
                 'zwiftId': data.get('zwiftId', ''),
@@ -671,27 +792,36 @@ def reassign_liga_category(zwift_id):
         if not lc:
             return jsonify({'message': 'Rider has no assigned liga category'}), 400
 
-        settings_doc = db.collection('league').document('settings').get()
-        settings = settings_doc.to_dict() if settings_doc.exists else {}
-        grace_period = int(settings.get('gracePeriod', 35))
+        liga_settings = _load_liga_settings(db)
+        grace_period = liga_settings['gracePeriod']
+        categories = _resolve_categories(liga_settings)
 
         zr = data.get('zwiftRacing', {})
         max30 = zr.get('max30Rating', 'N/A')
         if max30 == 'N/A':
             return jsonify({'message': 'Rider has no max30Rating'}), 400
 
-        update = reassign_to_next_category(lc['category'], int(max30), grace_period)
-        update['lastCheckedAt'] = firestore.SERVER_TIMESTAMP
+        # Backward compat: old flat structure has no autoAssigned sub-object
+        auto = lc.get('autoAssigned') or lc
+        current_cat = auto.get('category')
 
-        db.collection('users').document(e_license).set(
-            {'ligaCategory': update},
-            merge=True,
-        )
+        update_fields = reassign_to_next_category(current_cat, int(max30), grace_period, categories)
+        update_fields['lastCheckedAt'] = firestore.SERVER_TIMESTAMP
+
+        # Build the updated autoAssigned (merge new fields into existing)
+        new_auto = {**auto, **update_fields}
+
+        doc_update = {'ligaCategory.autoAssigned': new_auto}
+        if lc.get('locked'):
+            # Also update the frozen category so results reflect the forced move
+            doc_update['ligaCategory.category'] = update_fields['category']
+
+        db.collection('users').document(e_license).update(doc_update)
 
         return jsonify({
-            'message': f"Rider moved to {update['category']}",
-            'category': update['category'],
-            'status': update['status'],
+            'message': f"Rider moved to {update_fields['category']}",
+            'category': update_fields['category'],
+            'status': update_fields['status'],
         }), 200
 
     except Exception as e:
