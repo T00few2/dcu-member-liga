@@ -102,7 +102,6 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
   const [riders, setRiders] = useState<RiderEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [assigning, setAssigning] = useState(false);
-  const [season, setSeason] = useState('');
   const [gracePeriod, setGracePeriod] = useState(35);
   const [filter, setFilter] = useState<FilterMode>('all');
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -124,7 +123,6 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
         if (res.ok) {
           const data = await res.json();
           const s = data.settings || {};
-          if (s.seasonStart) setSeason(s.seasonStart);
           if (s.gracePeriod) setGracePeriod(s.gracePeriod);
           if (s.ligaCategories && Array.isArray(s.ligaCategories) && s.ligaCategories.length >= 2) {
             setLigaCategories(s.ligaCategories);
@@ -224,9 +222,9 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
   // ── Assignment ──────────────────────────────────────────────────────────
 
   const handleAssign = async () => {
-    if (!user || !season) return;
+    if (!user) return;
     if (!confirm(
-      `Assign liga categories based on current max30 vELO?\n\nSeason start: ${season}\nGrace period: ${gracePeriod} points\nCategories: ${ligaCategories.length} configured\n\nThis will overwrite existing assignments for all riders.`
+      `Assign liga categories based on current max30 vELO?\n\nLimit buffer: ${gracePeriod} points\nCategories: ${ligaCategories.length} configured\n\nThis will overwrite existing assignments for all riders.`
     )) return;
 
     setAssigning(true);
@@ -235,7 +233,7 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
       const res = await fetch(`${API_URL}/admin/assign-liga-categories`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ season, gracePeriod, categories: ligaCategories }),
+        body: JSON.stringify({ gracePeriod, categories: ligaCategories }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -318,15 +316,23 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
             <button
               onClick={handleSaveConfig}
               disabled={!configDirty || configSaving}
-              className="px-3 py-1.5 rounded text-sm bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 font-medium"
+              className="px-3 py-1.5 rounded text-sm bg-secondary text-secondary-foreground hover:opacity-90 disabled:opacity-50 font-medium border border-border"
             >
               {configSaving ? 'Saving…' : 'Save Configuration'}
+            </button>
+            <button
+              onClick={handleAssign}
+              disabled={assigning}
+              className="px-3 py-1.5 rounded text-sm bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 font-medium"
+            >
+              {assigning ? 'Assigning…' : 'Assign Liga Categories'}
             </button>
           </div>
         </div>
         <p className="text-sm text-muted-foreground mb-5">
           Define vELO split points and category names. Defaults to the 10 standard ZR categories.
           The distribution preview shows how current max30 ratings map to these categories.
+          Use <strong>Assign Liga Categories</strong> to apply this configuration to all riders based on their current max30 vELO.
         </p>
 
         <div className="overflow-x-auto">
@@ -421,51 +427,7 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
 
         <p className="text-xs text-muted-foreground mt-3">
           <strong>Split</strong> divides a category at its midpoint. <strong>Merge ↑</strong> absorbs a category into the one above it.
-          Edit names freely; boundaries are derived from upper values.
-        </p>
-      </div>
-
-      {/* ── Season Assignment ── */}
-      <div className="bg-card p-6 rounded-lg shadow border border-border">
-        <h2 className="text-xl font-semibold mb-1 text-card-foreground">Season Category Assignment</h2>
-        <p className="text-sm text-muted-foreground mb-5">
-          Assigns each rider a liga category based on their current max30 vELO using the{' '}
-          {ligaCategories.length} categories configured above. The nightly ZR refresh then updates
-          each rider&apos;s category automatically until their first race, after which only
-          grace-period status is tracked and the category is locked.
-        </p>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-          <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-1">Season Start Date</label>
-            <input
-              type="date"
-              value={season}
-              onChange={e => setSeason(e.target.value)}
-              className="w-full p-2 border border-input rounded bg-background text-foreground"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-1">
-              Grace Period (points above limit)
-            </label>
-            <input
-              type="number"
-              value={gracePeriod}
-              min={0}
-              onChange={e => setGracePeriod(parseInt(e.target.value) || 35)}
-              className="w-28 p-2 border border-input rounded bg-background text-foreground"
-            />
-          </div>
-          <button
-            onClick={handleAssign}
-            disabled={assigning || !season}
-            className="bg-primary text-primary-foreground px-4 py-2 rounded hover:opacity-90 font-medium disabled:opacity-50"
-          >
-            {assigning ? 'Assigning…' : 'Assign Liga Categories'}
-          </button>
-        </div>
-        <p className="text-xs text-muted-foreground mt-3">
-          Upper boundary + {gracePeriod} pts = grace limit. Exceeding the grace limit flags the rider as "Over limit".
+          Edit names freely; boundaries are derived from upper values. Categories are locked to a rider after their first race.
         </p>
       </div>
 
@@ -498,26 +460,39 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
               </span>
             )}
           </h3>
-          <div className="flex gap-2 flex-wrap">
-            {(['all', 'grace', 'over'] as FilterMode[]).map(f => (
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              Limit buffer
+              <input
+                type="number"
+                value={gracePeriod}
+                min={0}
+                onChange={e => setGracePeriod(parseInt(e.target.value) || 0)}
+                className="w-16 px-2 py-1 border border-input rounded bg-background text-foreground text-sm text-right"
+              />
+              <span className="text-xs">pts</span>
+            </label>
+            <div className="flex gap-2 flex-wrap">
+              {(['all', 'grace', 'over'] as FilterMode[]).map(f => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={`px-3 py-1 rounded text-sm font-medium transition ${
+                    filter === f
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {f === 'all' ? `All (${riders.length})` : f === 'grace' ? `Grace (${graceCount})` : `Over limit (${overCount})`}
+                </button>
+              ))}
               <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={`px-3 py-1 rounded text-sm font-medium transition ${
-                  filter === f
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-muted-foreground hover:text-foreground'
-                }`}
+                onClick={loadRiders}
+                className="px-3 py-1 rounded text-sm bg-muted text-muted-foreground hover:text-foreground"
               >
-                {f === 'all' ? `All (${riders.length})` : f === 'grace' ? `Grace (${graceCount})` : `Over limit (${overCount})`}
+                Refresh
               </button>
-            ))}
-            <button
-              onClick={loadRiders}
-              className="px-3 py-1 rounded text-sm bg-muted text-muted-foreground hover:text-foreground"
-            >
-              Refresh
-            </button>
+            </div>
           </div>
         </div>
 

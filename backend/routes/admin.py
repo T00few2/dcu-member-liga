@@ -29,7 +29,6 @@ def _load_liga_settings(db) -> dict:
     return {
         'gracePeriod': int(s.get('gracePeriod', 35)),
         'categories': s.get('ligaCategories'),  # None → use ZR_CATEGORIES default
-        'seasonStart': s.get('seasonStart', ''),
     }
 
 
@@ -442,7 +441,6 @@ def refresh_zr_stats():
         # 3. Load league settings (categories + gracePeriod) once for all updates.
         liga_settings = _load_liga_settings(db)
         nightly_grace = liga_settings['gracePeriod']
-        nightly_season = liga_settings['seasonStart']
         nightly_categories = _resolve_categories(liga_settings)  # None → ZR_CATEGORIES default
 
         # 4. Write results back to Firestore in batches.
@@ -504,9 +502,8 @@ def refresh_zr_stats():
                             }
                         else:
                             # Unlocked riders: re-compute full category from current max30
-                            season = auto.get('season', '') or nightly_season
                             new_auto = build_liga_category(
-                                int(new_max30), season, nightly_grace, nightly_categories
+                                int(new_max30), nightly_grace, nightly_categories
                             )
                             new_auto['assignedRating'] = auto.get('assignedRating', int(new_max30))
                             new_auto['assignedAt'] = auto.get('assignedAt')
@@ -515,7 +512,7 @@ def refresh_zr_stats():
                     else:
                         # No category yet — auto-create from current max30
                         new_auto = build_liga_category(
-                            int(new_max30), nightly_season, nightly_grace, nightly_categories
+                            int(new_max30), nightly_grace, nightly_categories
                         )
                         new_auto['assignedAt'] = firestore.SERVER_TIMESTAMP
                         new_auto['lastCheckedAt'] = firestore.SERVER_TIMESTAMP
@@ -635,9 +632,9 @@ def assign_liga_categories():
     Bulk-assign liga categories to all registered riders based on their
     current max30 vELO rating.
 
-    Body: { "season": "2025-03-01", "gracePeriod": 35 }
+    Body: { "gracePeriod": 35, "categories": [...] }
 
-    Reads seasonStart / gracePeriod from league settings if not in body.
+    Reads gracePeriod from league settings if not in body.
     Overwrites any existing ligaCategory on each user document.
     """
     try:
@@ -655,19 +652,15 @@ def assign_liga_categories():
         settings_doc = db.collection('league').document('settings').get()
         settings = settings_doc.to_dict() if settings_doc.exists else {}
 
-        season = body.get('season') or settings.get('seasonStart', '')
         grace_period = int(body.get('gracePeriod', settings.get('gracePeriod', 35)))
-
-        if not season:
-            return jsonify({'message': 'season is required (set in body or league settings)'}), 400
 
         # Resolve category definitions: body → settings → ZR_CATEGORIES default.
         cat_defs = body.get('categories') or settings.get('ligaCategories')
         categories = cats_from_defs(cat_defs) if cat_defs else None
 
-        # Persist season / gracePeriod back to settings.
+        # Persist gracePeriod back to settings.
         db.collection('league').document('settings').set(
-            {'seasonStart': season, 'gracePeriod': grace_period},
+            {'gracePeriod': grace_period},
             merge=True,
         )
 
@@ -693,7 +686,7 @@ def assign_liga_categories():
                 continue
 
             try:
-                auto = build_liga_category(int(max30), season, grace_period, categories)
+                auto = build_liga_category(int(max30), grace_period, categories)
                 auto['assignedAt'] = firestore.SERVER_TIMESTAMP
                 auto['lastCheckedAt'] = firestore.SERVER_TIMESTAMP
 
@@ -723,7 +716,6 @@ def assign_liga_categories():
         logger.info(f"Liga category assignment: {assigned} assigned, {skipped} skipped")
         return jsonify({
             'message': 'Liga categories assigned',
-            'season': season,
             'gracePeriod': grace_period,
             'assigned': assigned,
             'skipped': skipped,

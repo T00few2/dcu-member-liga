@@ -100,7 +100,6 @@ def compute_category_status(
 
 def build_liga_category(
     max30_rating: int | float,
-    season: str,
     grace_points: int = GRACE_POINTS,
     categories: CategoryList | None = None,
 ) -> dict:
@@ -109,7 +108,6 @@ def build_liga_category(
 
     Args:
         max30_rating: The rider's current max30 vELO rating.
-        season: ISO date string for the season start (e.g. "2025-03-01").
         grace_points: How many points above the upper boundary the rider may go.
         categories: Optional custom category list; defaults to ZR_CATEGORIES.
     """
@@ -120,7 +118,6 @@ def build_liga_category(
     status = compute_category_status(rating_int, upper, grace_limit)
 
     return {
-        'season': season,
         'category': name,
         'upperBoundary': upper,          # None for top category
         'graceLimit': grace_limit,       # None for top category
