@@ -6,7 +6,7 @@ from authz import require_admin, require_scheduler, verify_user_token, AuthzErro
 from services.user_service import UserService
 from services.category_engine import (
     build_liga_category, compute_category_status, reassign_to_next_category,
-    serialize_liga_category, cats_from_defs, ZR_CATEGORY_DEFS,
+    serialize_liga_category, cats_from_defs,
 )
 
 import logging
