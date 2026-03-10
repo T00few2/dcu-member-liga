@@ -78,6 +78,7 @@ function RegisterContent() {
                 <>
                     <div className="flex gap-2 mb-6 border-b border-border">
                         <TabButton id="info" label="Rytterinfo" active={activeTab === 'info'} />
+                        <TabButton id="kategori" label="Kategori" active={activeTab === 'kategori'} />
                         <TabButton id="connections" label="Forbindelser" active={activeTab === 'connections'} />
                         <TabButton id="agreements" label="Aftaler" active={activeTab === 'agreements'} />
                         <TabButton
@@ -86,7 +87,6 @@ function RegisterContent() {
                             active={activeTab === 'verification'}
                             warning={weightVerificationStatus === 'pending'}
                         />
-                        <TabButton id="kategori" label="Kategori" active={activeTab === 'kategori'} />
                     </div>
                     <div className="min-h-[300px]">
                         {activeTab === 'info' && <RiderInfoForm {...riderInfoProps} />}
