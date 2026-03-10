@@ -56,7 +56,7 @@ def _lock_categories_for_race(race_id):
                 lc = data.get('ligaCategory') or {}
                 if not lc.get('locked'):
                     # Compute effective category at lock time
-                    auto = lc.get('autoAssigned') or lc  # backward compat
+                    auto = lc.get('autoAssigned') or {}
                     sel = lc.get('selfSelected') or {}
                     effective = _effective_cat_name(
                         auto.get('category'),

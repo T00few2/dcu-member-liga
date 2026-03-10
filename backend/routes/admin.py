@@ -484,8 +484,7 @@ def refresh_zr_stats():
             if new_max30 != 'N/A':
                 try:
                     if lc:
-                        # Backward compat: old flat structure has no autoAssigned sub-object
-                        auto = lc.get('autoAssigned') or lc
+                        auto = lc.get('autoAssigned') or {}
                         locked = lc.get('locked', False)
 
                         if locked:
@@ -809,8 +808,7 @@ def reassign_liga_category(zwift_id):
         if max30 == 'N/A':
             return jsonify({'message': 'Rider has no max30Rating'}), 400
 
-        # Backward compat: old flat structure has no autoAssigned sub-object
-        auto = lc.get('autoAssigned') or lc
+        auto = lc.get('autoAssigned') or {}
         current_cat = auto.get('category')
 
         update_fields = reassign_to_next_category(current_cat, int(max30), grace_period, categories)

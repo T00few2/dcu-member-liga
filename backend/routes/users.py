@@ -410,7 +410,7 @@ def select_category():
         return jsonify({'message': 'Din kategori er låst efter gennemført løb. Kontakt admin for at rykke op.'}), 403
 
     # Get the auto-assigned category (floor for self-selection)
-    auto = existing_lc.get('autoAssigned') or existing_lc  # backward compat
+    auto = existing_lc.get('autoAssigned') or {}
     auto_cat = auto.get('category')
 
     # Determine order (lower index = higher/harder category)

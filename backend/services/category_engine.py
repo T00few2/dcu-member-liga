@@ -167,22 +167,13 @@ def _ts_to_ms(value) -> int | None:
 def serialize_liga_category(lc: dict | None) -> dict | None:
     """
     Flatten a ligaCategory Firestore document into an API response dict.
-
-    Handles both the new nested structure (autoAssigned/selfSelected sub-objects)
-    and the old flat structure for backward compatibility.
-
     Returns None if lc is None or empty.
     """
     if not lc:
         return None
 
-    auto = lc.get('autoAssigned')
+    auto = lc.get('autoAssigned') or {}
     locked = lc.get('locked', False)
-
-    # Backward compat: old flat structure has no autoAssigned sub-object
-    if auto is None:
-        auto = lc
-
     sel = lc.get('selfSelected') or {}
     auto_cat = auto.get('category')
     sel_cat = sel.get('category') if sel else None
