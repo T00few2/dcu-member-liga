@@ -47,7 +47,6 @@ interface LigaCategory {
     assignedAt?: number;
     lastCheckedRating?: number;
     lastCheckedAt?: number;
-    season?: string;
     locked?: boolean;
     lockedAt?: number;
     autoAssignedCategory?: string;

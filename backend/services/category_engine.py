@@ -201,7 +201,6 @@ def serialize_liga_category(lc: dict | None) -> dict | None:
         'status': auto.get('status', 'ok'),
         'lastCheckedRating': auto.get('lastCheckedRating'),
         'lastCheckedAt': _ts_to_ms(auto.get('lastCheckedAt')),
-        'season': auto.get('season'),
         'locked': locked,
         'lockedAt': _ts_to_ms(lc.get('lockedAt')),
         'autoAssignedCategory': auto_cat,

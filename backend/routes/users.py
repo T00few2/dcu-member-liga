@@ -54,8 +54,7 @@ def update_rider_stats(e_license, zwift_id):
                 existing_doc = db.collection('users').document(str(e_license)).get()
                 existing_lc = (existing_doc.to_dict() or {}).get('ligaCategory') if existing_doc.exists else None
                 if not existing_lc:
-                    season = datetime.date.today().strftime('%Y-%m-%d')
-                    auto = build_liga_category(int(max30), season)
+                    auto = build_liga_category(int(max30))
                     auto['assignedAt'] = firestore.SERVER_TIMESTAMP
                     updates['ligaCategory'] = {
                         'autoAssigned': auto,
