@@ -6,6 +6,7 @@ import RiderInfoForm from '@/components/register/RiderInfoForm';
 import ConnectionsForm from '@/components/register/ConnectionsForm';
 import AgreementsForm from '@/components/register/AgreementsForm';
 import VerificationStatus from '@/components/register/VerificationStatus';
+import CategoryTab from '@/components/register/CategoryTab';
 
 function RegisterContent() {
     const {
@@ -85,6 +86,7 @@ function RegisterContent() {
                             active={activeTab === 'verification'}
                             warning={weightVerificationStatus === 'pending'}
                         />
+                        <TabButton id="kategori" label="Kategori" active={activeTab === 'kategori'} />
                     </div>
                     <div className="min-h-[300px]">
                         {activeTab === 'info' && <RiderInfoForm {...riderInfoProps} />}
@@ -111,6 +113,7 @@ function RegisterContent() {
                                 refreshProfile={refreshProfile}
                             />
                         )}
+                        {activeTab === 'kategori' && <CategoryTab />}
                     </div>
                 </>
             )}

@@ -222,7 +222,7 @@ const chapters = [
                     Grace-grænsen er 35 vELO-point over den øvre kategorgrænse. Find dit aktuelle vELO på{' '}
                     <a href="https://www.zwiftracing.app/reference/categories" target="_blank" rel="noopener noreferrer" className="underline">zwiftracing.app</a>.
                     Du kan se og justere din kategori under{' '}
-                    <Link href="/profile" className="underline text-primary">Min Profil → Kategori</Link>.
+                    <Link href="/register" className="underline text-primary">Min Profil → Kategori</Link>.
                 </p>
             </div>
         ),

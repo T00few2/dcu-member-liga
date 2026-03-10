@@ -52,7 +52,7 @@ export default function Dashboard({ user, nextRace }: DashboardProps) {
                             <h2 className="text-2xl font-semibold mb-2 group-hover:text-primary">Resultater &rarr;</h2>
                             <p className="text-muted-foreground">Se løbsresultater og ligastillingen.</p>
                         </Link>
-                        <Link href="/profile" className="p-6 border border-border rounded-lg shadow-sm hover:shadow-md transition bg-card text-card-foreground group text-left">
+                        <Link href="/register" className="p-6 border border-border rounded-lg shadow-sm hover:shadow-md transition bg-card text-card-foreground group text-left">
                             <h2 className="text-2xl font-semibold mb-2 group-hover:text-primary">Min Profil &rarr;</h2>
                             <p className="text-muted-foreground">Se og vælg din liga-kategori.</p>
                         </Link>
