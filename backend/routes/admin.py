@@ -4,6 +4,7 @@ from firebase_admin import firestore
 from extensions import db, get_zwift_service, strava_service, get_zp_service, zr_service
 from authz import require_admin, require_scheduler, verify_user_token, AuthzError
 from services.user_service import UserService
+from services.category_engine import build_liga_category, compute_category_status, reassign_to_next_category
 
 import logging
 
@@ -416,6 +417,15 @@ def refresh_zr_stats():
         batch = db.batch()
         batch_count = 0
 
+        # Pre-fetch ligaCategory for all riders so we can update status in the same batch.
+        liga_by_elicense = {}
+        for doc in db.collection('users').where('registration.status', '==', 'complete').stream():
+            d = doc.to_dict() or {}
+            lc = d.get('ligaCategory')
+            if lc:
+                e_lic = str(d.get('eLicense', doc.id)).strip()
+                liga_by_elicense[e_lic] = lc
+
         for zwift_id, e_license in riders.items():
             rider_data = zr_by_id.get(zwift_id)
             if not rider_data:
@@ -424,17 +434,37 @@ def refresh_zr_stats():
 
             data = rider_data if 'race' in rider_data else rider_data.get('data', {})
             race = data.get('race', {})
+            new_max30 = race.get('max30', {}).get('rating', 'N/A')
 
-            doc_ref = db.collection('users').document(e_license)
-            batch.set(doc_ref, {
+            update = {
                 'zwiftRacing': {
                     'currentRating': race.get('current', {}).get('rating', 'N/A'),
-                    'max30Rating':   race.get('max30', {}).get('rating', 'N/A'),
+                    'max30Rating':   new_max30,
                     'max90Rating':   race.get('max90', {}).get('rating', 'N/A'),
                     'phenotype':     data.get('phenotype', {}).get('value', 'N/A'),
                     'updatedAt':     firestore.SERVER_TIMESTAMP,
                 }
-            }, merge=True)
+            }
+
+            # If this rider has an assigned liga category, recompute status.
+            lc = liga_by_elicense.get(e_license)
+            if lc and new_max30 != 'N/A':
+                try:
+                    new_status = compute_category_status(
+                        int(new_max30),
+                        lc.get('upperBoundary'),
+                        lc.get('graceLimit'),
+                    )
+                    update['ligaCategory'] = {
+                        'status': new_status,
+                        'lastCheckedRating': int(new_max30),
+                        'lastCheckedAt': firestore.SERVER_TIMESTAMP,
+                    }
+                except Exception:
+                    pass
+
+            doc_ref = db.collection('users').document(e_license)
+            batch.set(doc_ref, update, merge=True)
 
             updated += 1
             batch_count += 1
@@ -459,3 +489,211 @@ def refresh_zr_stats():
         logger.error(f"ZR nightly refresh error: {e}")
         return jsonify({'message': str(e)}), 500
 
+
+# ---------------------------------------------------------------------------
+# Liga Category Enforcement
+# ---------------------------------------------------------------------------
+
+@admin_bp.route('/admin/assign-liga-categories', methods=['POST'])
+def assign_liga_categories():
+    """
+    Bulk-assign liga categories to all registered riders based on their
+    current max30 vELO rating.
+
+    Body: { "season": "2025-03-01", "gracePeriod": 35 }
+
+    Reads seasonStart / gracePeriod from league settings if not in body.
+    Overwrites any existing ligaCategory on each user document.
+    """
+    try:
+        verify_admin_auth()
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    try:
+        body = request.get_json(silent=True) or {}
+
+        # Fall back to league settings for season / gracePeriod.
+        settings_doc = db.collection('league').document('settings').get()
+        settings = settings_doc.to_dict() if settings_doc.exists else {}
+
+        season = body.get('season') or settings.get('seasonStart', '')
+        grace_period = int(body.get('gracePeriod', settings.get('gracePeriod', 35)))
+
+        if not season:
+            return jsonify({'message': 'season is required (set in body or league settings)'}), 400
+
+        # Save seasonStart / gracePeriod back to league settings for reference.
+        db.collection('league').document('settings').set(
+            {'seasonStart': season, 'gracePeriod': grace_period},
+            merge=True,
+        )
+
+        docs = (
+            db.collection('users')
+            .where('registration.status', '==', 'complete')
+            .stream()
+        )
+
+        assigned = 0
+        skipped = 0
+        batch = db.batch()
+        batch_count = 0
+
+        for doc in docs:
+            data = doc.to_dict() or {}
+            e_license = str(data.get('eLicense', doc.id)).strip()
+            zr = data.get('zwiftRacing', {})
+            max30 = zr.get('max30Rating', 'N/A')
+
+            if max30 == 'N/A' or max30 is None:
+                skipped += 1
+                continue
+
+            try:
+                liga_cat = build_liga_category(int(max30), season, grace_period)
+                liga_cat['assignedAt'] = firestore.SERVER_TIMESTAMP
+                liga_cat['lastCheckedAt'] = firestore.SERVER_TIMESTAMP
+
+                doc_ref = db.collection('users').document(e_license)
+                batch.set(doc_ref, {'ligaCategory': liga_cat}, merge=True)
+
+                assigned += 1
+                batch_count += 1
+
+                if batch_count >= _FIRESTORE_BATCH_SIZE:
+                    batch.commit()
+                    batch = db.batch()
+                    batch_count = 0
+            except Exception as ex:
+                logger.warning(f"Could not assign category for {e_license}: {ex}")
+                skipped += 1
+
+        if batch_count > 0:
+            batch.commit()
+
+        logger.info(f"Liga category assignment: {assigned} assigned, {skipped} skipped")
+        return jsonify({
+            'message': 'Liga categories assigned',
+            'season': season,
+            'gracePeriod': grace_period,
+            'assigned': assigned,
+            'skipped': skipped,
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Liga category assignment error: {e}")
+        return jsonify({'message': str(e)}), 500
+
+
+@admin_bp.route('/admin/liga-categories', methods=['GET'])
+def get_liga_categories():
+    """
+    Return all registered riders with their ligaCategory data,
+    sorted so 'over' riders appear first, then 'grace', then 'ok'.
+    """
+    try:
+        verify_admin_auth()
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    try:
+        docs = (
+            db.collection('users')
+            .where('registration.status', '==', 'complete')
+            .stream()
+        )
+
+        riders = []
+        for doc in docs:
+            data = doc.to_dict() or {}
+            lc = data.get('ligaCategory')
+            zr = data.get('zwiftRacing', {})
+
+            # Serialize Timestamps so JSON doesn't choke.
+            if lc:
+                lc = dict(lc)
+                for ts_field in ('assignedAt', 'lastCheckedAt'):
+                    ts = lc.get(ts_field)
+                    if ts and hasattr(ts, 'timestamp'):
+                        lc[ts_field] = int(ts.timestamp() * 1000)
+
+            riders.append({
+                'zwiftId': data.get('zwiftId', ''),
+                'name': data.get('name', ''),
+                'eLicense': data.get('eLicense', doc.id),
+                'club': data.get('club', ''),
+                'max30Rating': zr.get('max30Rating', 'N/A'),
+                'ligaCategory': lc,
+            })
+
+        # Sort: over → grace → ok → no category
+        status_order = {'over': 0, 'grace': 1, 'ok': 2}
+        riders.sort(key=lambda r: status_order.get(
+            (r.get('ligaCategory') or {}).get('status', ''), 3
+        ))
+
+        return jsonify({'riders': riders}), 200
+
+    except Exception as e:
+        logger.error(f"Get liga categories error: {e}")
+        return jsonify({'message': str(e)}), 500
+
+
+@admin_bp.route('/admin/liga-categories/<zwift_id>/reassign', methods=['POST'])
+def reassign_liga_category(zwift_id):
+    """
+    Manually move a rider up to the next category tier.
+    Their grace limit resets to the new category's boundary + gracePeriod.
+    """
+    try:
+        verify_admin_auth()
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    try:
+        user = UserService.get_user_by_id(zwift_id)
+        if not user:
+            return jsonify({'message': 'User not found'}), 404
+
+        data = user._data
+        e_license = str(data.get('eLicense', zwift_id)).strip()
+        lc = data.get('ligaCategory')
+        if not lc:
+            return jsonify({'message': 'Rider has no assigned liga category'}), 400
+
+        settings_doc = db.collection('league').document('settings').get()
+        settings = settings_doc.to_dict() if settings_doc.exists else {}
+        grace_period = int(settings.get('gracePeriod', 35))
+
+        zr = data.get('zwiftRacing', {})
+        max30 = zr.get('max30Rating', 'N/A')
+        if max30 == 'N/A':
+            return jsonify({'message': 'Rider has no max30Rating'}), 400
+
+        update = reassign_to_next_category(lc['category'], int(max30), grace_period)
+        update['lastCheckedAt'] = firestore.SERVER_TIMESTAMP
+
+        db.collection('users').document(e_license).set(
+            {'ligaCategory': update},
+            merge=True,
+        )
+
+        return jsonify({
+            'message': f"Rider moved to {update['category']}",
+            'category': update['category'],
+            'status': update['status'],
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Reassign liga category error: {e}")
+        return jsonify({'message': str(e)}), 500

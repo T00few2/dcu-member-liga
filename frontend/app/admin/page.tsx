@@ -7,12 +7,13 @@ import VerificationDashboard from '@/components/admin/VerificationDashboard';
 import TrainerManager from '@/components/admin/TrainerManager';
 import PolicyManager from '@/components/admin/PolicyManager';
 import WeightVerificationManager from '@/components/admin/WeightVerificationManager';
+import CategoryManager from '@/components/admin/CategoryManager';
 
 export default function AdminPage() {
   const { user, loading: authLoading, isAdmin, refreshClaims } = useAuth();
 
   // Top Level Tab State
-  const [activeSection, setActiveSection] = useState<'league' | 'verification' | 'weight' | 'trainers' | 'policies'>('league');
+  const [activeSection, setActiveSection] = useState<'league' | 'categories' | 'verification' | 'weight' | 'trainers' | 'policies'>('league');
 
   if (authLoading) return <div className="p-8 text-center">Loading...</div>;
   if (!user) return null;
@@ -53,6 +54,12 @@ export default function AdminPage() {
           League Management
         </button>
         <button
+          onClick={() => setActiveSection('categories')}
+          className={`pb-4 px-6 text-lg font-medium transition whitespace-nowrap ${activeSection === 'categories' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          Categories
+        </button>
+        <button
           onClick={() => setActiveSection('verification')}
           className={`pb-4 px-6 text-lg font-medium transition whitespace-nowrap ${activeSection === 'verification' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
         >
@@ -82,6 +89,8 @@ export default function AdminPage() {
       <div className="min-h-[500px]">
         {activeSection === 'league' ? (
           <LeagueManager />
+        ) : activeSection === 'categories' ? (
+          <CategoryManager user={user} />
         ) : activeSection === 'verification' ? (
           <VerificationDashboard />
         ) : activeSection === 'weight' ? (

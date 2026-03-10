@@ -32,6 +32,15 @@ const ZR_CATEGORY_STYLES: Record<string, string> = {
   Copper: 'bg-amber-100 text-amber-800',
 };
 
+interface LigaCategory {
+  category: string;
+  status: 'ok' | 'grace' | 'over';
+  upperBoundary: number | null;
+  graceLimit: number | null;
+  assignedRating: number;
+  lastCheckedRating: number;
+}
+
 interface Participant {
   name: string;
   club: string;
@@ -46,6 +55,7 @@ interface Participant {
   racingScore: number | string;
   stravaKms: string;
   weightVerificationStatus?: 'none' | 'pending' | 'submitted' | 'approved' | 'rejected';
+  ligaCategory?: LigaCategory;
 }
 
 export default function ParticipantsPage() {
@@ -118,6 +128,7 @@ export default function ParticipantsPage() {
                 <th className="px-6 py-3 font-bold">Klub</th>
                 <th className="px-6 py-3 font-bold">ZR Kat</th>
                 <th className="px-6 py-3 font-bold">ZR max30</th>
+                <th className="px-6 py-3 font-bold">Liga Kat</th>
                 <th className="px-6 py-3 font-bold">FTP (ZP)</th>
                 <th className="px-6 py-3 font-bold">ZRS</th>
                 <th className="px-6 py-3 font-bold">vELO</th>
@@ -132,7 +143,7 @@ export default function ParticipantsPage() {
             <tbody className="divide-y divide-border">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-6 py-8 text-center text-muted-foreground">
+                  <td colSpan={11} className="px-6 py-8 text-center text-muted-foreground">
                     {search ? 'Ingen deltagere matcher søgningen.' : 'Ingen deltagere fundet endnu.'}
                   </td>
                 </tr>
@@ -170,6 +181,21 @@ export default function ParticipantsPage() {
                           {cat}
                         </span>
                       ) : '-'; })()}
+                    </td>
+                    <td className="px-6 py-4">
+                      {p.ligaCategory ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ZR_CATEGORY_STYLES[p.ligaCategory.category] ?? 'bg-slate-100 text-slate-800'}`}>
+                            {p.ligaCategory.category}
+                          </span>
+                          {p.ligaCategory.status === 'grace' && (
+                            <span title={`In grace zone (limit: ${p.ligaCategory.graceLimit})`} className="text-yellow-500 cursor-help text-xs font-bold">!</span>
+                          )}
+                          {p.ligaCategory.status === 'over' && (
+                            <span title={`Over grace limit (${p.ligaCategory.graceLimit})`} className="text-red-500 cursor-help text-xs font-bold">!!</span>
+                          )}
+                        </div>
+                      ) : '-'}
                     </td>
                     <td className="px-6 py-4">{p.ftp !== 'N/A' ? `${p.ftp} W` : '-'}</td>
                     <td className="px-6 py-4 font-mono font-medium text-card-foreground">
