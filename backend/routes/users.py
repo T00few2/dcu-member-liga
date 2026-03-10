@@ -1,5 +1,3 @@
-import datetime
-
 from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
 from extensions import db, get_zwift_service, get_zp_service, strava_service, zr_service, stats_queue
