@@ -90,6 +90,72 @@ def build_liga_category(max30_rating: int | float, season: str, grace_points: in
     }
 
 
+def _effective_cat_name(auto_cat: str | None, sel_cat: str | None) -> str | None:
+    """Return the higher-ranked (harder) category between auto-assigned and self-selected."""
+    if not auto_cat:
+        return sel_cat
+    if not sel_cat:
+        return auto_cat
+    cat_names = [name for name, _, _ in ZR_CATEGORIES]
+    auto_idx = cat_names.index(auto_cat) if auto_cat in cat_names else len(cat_names)
+    sel_idx = cat_names.index(sel_cat) if sel_cat in cat_names else len(cat_names)
+    return auto_cat if auto_idx <= sel_idx else sel_cat
+
+
+def _ts_to_ms(value) -> int | None:
+    """Convert a Firestore Timestamp to milliseconds since epoch, or pass through."""
+    if value is None:
+        return None
+    if hasattr(value, 'timestamp'):
+        return int(value.timestamp() * 1000)
+    return value
+
+
+def serialize_liga_category(lc: dict | None) -> dict | None:
+    """
+    Flatten a ligaCategory Firestore document into an API response dict.
+
+    Handles both the new nested structure (autoAssigned/selfSelected sub-objects)
+    and the old flat structure for backward compatibility.
+
+    Returns None if lc is None or empty.
+    """
+    if not lc:
+        return None
+
+    auto = lc.get('autoAssigned')
+    locked = lc.get('locked', False)
+
+    # Backward compat: old flat structure has no autoAssigned sub-object
+    if auto is None:
+        auto = lc
+
+    sel = lc.get('selfSelected') or {}
+    auto_cat = auto.get('category')
+    sel_cat = sel.get('category') if sel else None
+
+    if locked:
+        effective = lc.get('category') or auto_cat
+    else:
+        effective = _effective_cat_name(auto_cat, sel_cat)
+
+    return {
+        'category': effective,
+        'upperBoundary': auto.get('upperBoundary'),
+        'graceLimit': auto.get('graceLimit'),
+        'assignedRating': auto.get('assignedRating'),
+        'assignedAt': _ts_to_ms(auto.get('assignedAt')),
+        'status': auto.get('status', 'ok'),
+        'lastCheckedRating': auto.get('lastCheckedRating'),
+        'lastCheckedAt': _ts_to_ms(auto.get('lastCheckedAt')),
+        'season': auto.get('season'),
+        'locked': locked,
+        'lockedAt': _ts_to_ms(lc.get('lockedAt')),
+        'autoAssignedCategory': auto_cat,
+        'selfSelectedCategory': sel_cat,
+    }
+
+
 def reassign_to_next_category(current_category: str, current_max30: int | float, grace_points: int = GRACE_POINTS) -> dict:
     """
     Build an updated ligaCategory dict after manually moving a rider up one tier.

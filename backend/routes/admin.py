@@ -4,7 +4,10 @@ from firebase_admin import firestore
 from extensions import db, get_zwift_service, strava_service, get_zp_service, zr_service
 from authz import require_admin, require_scheduler, verify_user_token, AuthzError
 from services.user_service import UserService
-from services.category_engine import build_liga_category, compute_category_status, reassign_to_next_category
+from services.category_engine import (
+    build_liga_category, compute_category_status, reassign_to_next_category,
+    serialize_liga_category,
+)
 
 import logging
 
@@ -446,25 +449,46 @@ def refresh_zr_stats():
                 }
             }
 
-            # If this rider has an assigned liga category, recompute status.
+            # If this rider has an assigned liga category, update it.
             lc = liga_by_elicense.get(e_license)
+            liga_update = {}
             if lc and new_max30 != 'N/A':
                 try:
-                    new_status = compute_category_status(
-                        int(new_max30),
-                        lc.get('upperBoundary'),
-                        lc.get('graceLimit'),
-                    )
-                    update['ligaCategory'] = {
-                        'status': new_status,
-                        'lastCheckedRating': int(new_max30),
-                        'lastCheckedAt': firestore.SERVER_TIMESTAMP,
-                    }
+                    # Backward compat: old flat structure has no autoAssigned sub-object
+                    auto = lc.get('autoAssigned') or lc
+                    locked = lc.get('locked', False)
+
+                    if locked:
+                        # Locked riders: only update status tracking in autoAssigned
+                        new_status = compute_category_status(
+                            int(new_max30),
+                            auto.get('upperBoundary'),
+                            auto.get('graceLimit'),
+                        )
+                        liga_update = {
+                            'ligaCategory.autoAssigned.status': new_status,
+                            'ligaCategory.autoAssigned.lastCheckedRating': int(new_max30),
+                            'ligaCategory.autoAssigned.lastCheckedAt': firestore.SERVER_TIMESTAMP,
+                        }
+                    else:
+                        # Unlocked riders: re-compute full category from current max30
+                        season = auto.get('season', '')
+                        new_auto = build_liga_category(int(new_max30), season)
+                        new_auto['assignedRating'] = auto.get('assignedRating', int(new_max30))
+                        new_auto['assignedAt'] = auto.get('assignedAt')
+                        new_auto['lastCheckedAt'] = firestore.SERVER_TIMESTAMP
+                        liga_update = {'ligaCategory.autoAssigned': new_auto}
                 except Exception:
                     pass
 
             doc_ref = db.collection('users').document(e_license)
-            batch.set(doc_ref, update, merge=True)
+            # Use update() with dot-notation to safely patch sub-fields without
+            # overwriting sibling keys (e.g. locked, selfSelected).
+            full_update = {
+                'zwiftRacing': update['zwiftRacing'],
+                **liga_update,
+            }
+            batch.update(doc_ref, full_update)
 
             updated += 1
             batch_count += 1
@@ -554,12 +578,18 @@ def assign_liga_categories():
                 continue
 
             try:
-                liga_cat = build_liga_category(int(max30), season, grace_period)
-                liga_cat['assignedAt'] = firestore.SERVER_TIMESTAMP
-                liga_cat['lastCheckedAt'] = firestore.SERVER_TIMESTAMP
+                auto = build_liga_category(int(max30), season, grace_period)
+                auto['assignedAt'] = firestore.SERVER_TIMESTAMP
+                auto['lastCheckedAt'] = firestore.SERVER_TIMESTAMP
 
                 doc_ref = db.collection('users').document(e_license)
-                batch.set(doc_ref, {'ligaCategory': liga_cat}, merge=True)
+                # Fully reset ligaCategory: new autoAssigned, clear selfSelected, unlock
+                batch.set(doc_ref, {
+                    'ligaCategory': {
+                        'autoAssigned': auto,
+                        'locked': False,
+                    }
+                }, merge=True)
 
                 assigned += 1
                 batch_count += 1
@@ -613,16 +643,8 @@ def get_liga_categories():
         riders = []
         for doc in docs:
             data = doc.to_dict() or {}
-            lc = data.get('ligaCategory')
+            lc = serialize_liga_category(data.get('ligaCategory'))
             zr = data.get('zwiftRacing', {})
-
-            # Serialize Timestamps so JSON doesn't choke.
-            if lc:
-                lc = dict(lc)
-                for ts_field in ('assignedAt', 'lastCheckedAt'):
-                    ts = lc.get(ts_field)
-                    if ts and hasattr(ts, 'timestamp'):
-                        lc[ts_field] = int(ts.timestamp() * 1000)
 
             riders.append({
                 'zwiftId': data.get('zwiftId', ''),
@@ -680,18 +702,27 @@ def reassign_liga_category(zwift_id):
         if max30 == 'N/A':
             return jsonify({'message': 'Rider has no max30Rating'}), 400
 
-        update = reassign_to_next_category(lc['category'], int(max30), grace_period)
-        update['lastCheckedAt'] = firestore.SERVER_TIMESTAMP
+        # Backward compat: old flat structure has no autoAssigned sub-object
+        auto = lc.get('autoAssigned') or lc
+        current_cat = auto.get('category')
 
-        db.collection('users').document(e_license).set(
-            {'ligaCategory': update},
-            merge=True,
-        )
+        update_fields = reassign_to_next_category(current_cat, int(max30), grace_period)
+        update_fields['lastCheckedAt'] = firestore.SERVER_TIMESTAMP
+
+        # Build the updated autoAssigned (merge new fields into existing)
+        new_auto = {**auto, **update_fields}
+
+        doc_update = {'ligaCategory.autoAssigned': new_auto}
+        if lc.get('locked'):
+            # Also update the frozen category so results reflect the forced move
+            doc_update['ligaCategory.category'] = update_fields['category']
+
+        db.collection('users').document(e_license).update(doc_update)
 
         return jsonify({
-            'message': f"Rider moved to {update['category']}",
-            'category': update['category'],
-            'status': update['status'],
+            'message': f"Rider moved to {update_fields['category']}",
+            'category': update_fields['category'],
+            'status': update_fields['status'],
         }), 200
 
     except Exception as e:

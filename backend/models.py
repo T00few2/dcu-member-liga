@@ -197,20 +197,48 @@ class Verification(TypedDict, total=False):
     history: list[VerificationRequest]
 
 
+class AutoAssignedDoc(TypedDict, total=False):
+    """
+    The nightly-updated (fluid) category sub-document.
+    Updated every night until the rider's first race.
+    """
+    season: str             # ISO date of season start, e.g. "2025-03-01"
+    category: str           # "Diamond" | "Ruby" | ... | "Copper"
+    upperBoundary: int      # Exclusive upper vELO limit (None for Diamond)
+    graceLimit: int         # upperBoundary + gracePeriod (None for Diamond)
+    assignedAt: Any         # Firestore Timestamp – original assignment time
+    assignedRating: int     # max30Rating at original assignment
+    status: CategoryStatus  # 'ok' | 'grace' | 'over'
+    lastCheckedRating: int  # max30Rating at last nightly check
+    lastCheckedAt: Any      # Firestore Timestamp
+
+
+class SelfSelectedDoc(TypedDict, total=False):
+    """Optional sub-document written when a rider picks their own category."""
+    category: str           # "Diamond" | "Ruby" | ... | "Copper"
+    selfSelectedAt: Any     # Firestore Timestamp
+
+
 class LigaCategoryDoc(TypedDict, total=False):
     """
     Liga category assignment for a rider.
     Stored at users/{zwiftId}.ligaCategory.
+
+    Before the rider's first race:
+      - autoAssigned  is updated nightly based on current max30 vELO.
+      - selfSelected  is set if the rider voluntarily picks a same/higher category.
+      - Effective category = max(autoAssigned.category, selfSelected.category).
+
+    After the rider's first race (locked == True):
+      - category holds the frozen effective category (written at lock time).
+      - autoAssigned.status / lastCheckedRating / lastCheckedAt are still updated
+        nightly to track grace-period compliance.
     """
-    season: str             # ISO date of season start, e.g. "2025-03-01"
-    category: str           # "Diamond" | "Ruby" | ... | "Copper"
-    upperBoundary: int      # Exclusive upper vELO limit of assigned category (None for Diamond)
-    graceLimit: int         # upperBoundary + gracePeriod (None for Diamond)
-    assignedAt: Any         # Firestore Timestamp
-    assignedRating: int     # max30Rating at time of assignment
-    status: CategoryStatus  # 'ok' | 'grace' | 'over'
-    lastCheckedRating: int  # max30Rating at last nightly status check
-    lastCheckedAt: Any      # Firestore Timestamp
+    autoAssigned: AutoAssignedDoc   # always present once assigned
+    selfSelected: SelfSelectedDoc   # present only if rider chose a category
+    locked: bool                    # True after first completed race
+    lockedAt: Any                   # Firestore Timestamp – when locked
+    category: str                   # frozen effective category (only set when locked)
 
 
 class ZwiftPowerProfile(TypedDict, total=False):

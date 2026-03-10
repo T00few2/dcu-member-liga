@@ -54,14 +54,15 @@ function CategoryExplanation() {
                 <p className="font-medium text-foreground">Automatisk tildeling</p>
                 <p>
                     Når du tilmelder dig, henter vi dit aktuelle max30-rating fra ZwiftRacing og placerer dig i den tilsvarende kategori.
+                    Kategorien opdateres automatisk dagligt frem til dit første løb.
                     Kategorierne spænder fra <strong className="text-foreground">Copper</strong> (0 vELO) til <strong className="text-foreground">Diamond</strong> (2200+ vELO).
                 </p>
             </div>
             <div className="space-y-2">
-                <p className="font-medium text-foreground">Selvvalg af højere kategori</p>
+                <p className="font-medium text-foreground">Selvvalg af kategori</p>
                 <p>
-                    Du kan frit vælge at rykke op i en <em>højere</em> kategori end din tildelte – f.eks. hvis du ønsker en større udfordring.
-                    Det er ikke muligt at vælge en lavere kategori end den tildelte.
+                    Du kan vælge din auto-tildelte kategori eller en <em>højere</em> kategori – f.eks. hvis du ønsker en større udfordring.
+                    Det er ikke muligt at vælge en lavere kategori end den auto-tildelte.
                 </p>
             </div>
             <div className="space-y-2">
@@ -86,17 +87,19 @@ function CategoryExplanation() {
 // Main page
 // ---------------------------------------------------------------------------
 interface LigaCategory {
-    category: string;
+    category: string;               // effective category (locked or max(auto, selfSelected))
     upperBoundary: number | null;
     graceLimit: number | null;
     assignedRating: number;
     status: string;
-    selfSelected?: boolean;
-    selfSelectedAt?: number;
     assignedAt?: number;
+    lastCheckedRating?: number;
+    lastCheckedAt?: number;
+    season?: string;
     locked?: boolean;
     lockedAt?: number;
-    lastCheckedRating?: number;
+    autoAssignedCategory?: string;  // what the nightly run computed
+    selfSelectedCategory?: string;  // what the rider chose (null if not self-selected)
 }
 
 interface Profile {
@@ -150,8 +153,14 @@ export default function ProfilePage() {
     const lc = profile?.ligaCategory;
     const currentCatIndex = lc ? catIndex(lc.category) : -1;
 
-    // Options: only higher (lower index) categories
-    const upgradeOptions = ZR_CATEGORIES.filter((_, i) => i < currentCatIndex);
+    // Self-selection floor: same or higher than the auto-assigned category.
+    // If Diamond is auto-assigned there is nothing higher, so show no options.
+    const autoAssignedIndex = lc?.autoAssignedCategory
+        ? catIndex(lc.autoAssignedCategory)
+        : currentCatIndex;
+    const upgradeOptions = autoAssignedIndex > 0
+        ? ZR_CATEGORIES.filter((_, i) => i <= autoAssignedIndex)
+        : [];
 
     const handleSave = async () => {
         if (!selected || !user) return;
@@ -238,8 +247,13 @@ export default function ProfilePage() {
                                             <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold border ${meta.color}`}>
                                                 {lc.category}
                                             </span>
-                                            {lc.selfSelected && (
+                                            {lc.selfSelectedCategory && lc.selfSelectedCategory === lc.category && lc.selfSelectedCategory !== lc.autoAssignedCategory && (
                                                 <span className="ml-2 text-xs text-muted-foreground">(selvvalgt)</span>
+                                            )}
+                                            {lc.autoAssignedCategory && lc.autoAssignedCategory !== lc.category && (
+                                                <p className="text-xs text-muted-foreground mt-1">
+                                                    Auto-tildelt: {lc.autoAssignedCategory}
+                                                </p>
                                             )}
                                         </div>
                                     </div>
@@ -287,20 +301,20 @@ export default function ProfilePage() {
                         )}
                     </div>
 
-                    {/* Self-select higher category */}
+                    {/* Self-select category */}
                     {!lc?.locked && (
                         <div className="bg-card border border-border rounded-lg p-6 shadow-sm">
-                            <h2 className="text-lg font-semibold mb-1">Vælg en højere kategori</h2>
+                            <h2 className="text-lg font-semibold mb-1">Vælg kategori</h2>
                             <p className="text-sm text-muted-foreground mb-4">
-                                Du kan frivilligt rykke op i en sværere kategori. Det er ikke muligt at rykke ned igen.
+                                Din kategori opdateres automatisk dagligt frem til dit første løb. Du kan vælge din auto-tildelte kategori eller en højere kategori.
                             </p>
 
                             {upgradeOptions.length === 0 ? (
                                 <p className="text-sm text-muted-foreground italic">
-                                    {currentCatIndex === 0
+                                    {autoAssignedIndex === 0
                                         ? 'Du er allerede i den højeste kategori (Diamond).'
                                         : lc
-                                        ? 'Ingen højere kategorier tilgængelige.'
+                                        ? 'Ingen kategorier tilgængelige.'
                                         : 'Tilmeld dig for at se dine kategorimuligheder.'}
                                 </p>
                             ) : (

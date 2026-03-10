@@ -131,13 +131,13 @@ const chapters = [
                             step: '1',
                             color: 'bg-blue-500',
                             title: 'Automatisk tildeling ved tilmelding',
-                            desc: 'Når du tilmelder dig ligaen henter vi dit aktuelle max30-vELO fra ZwiftRacing og placerer dig automatisk i den tilsvarende kategori. Du behøver ikke gøre noget.',
+                            desc: 'Når du tilmelder dig ligaen henter vi dit aktuelle max30-vELO fra ZwiftRacing og placerer dig automatisk i den tilsvarende kategori. Kategorien opdateres automatisk dagligt frem til dit første løb.',
                         },
                         {
                             step: '2',
                             color: 'bg-purple-500',
-                            title: 'Frivillig oprykning (Min Profil)',
-                            desc: 'Ønsker du en større udfordring, kan du via siden "Min Profil → Kategori" vælge at rykke op i en højere kategori. Det er ikke muligt at vælge en lavere kategori end den tildelte.',
+                            title: 'Selvvalg af kategori (Min Profil)',
+                            desc: 'Via "Min Profil → Kategori" kan du vælge din auto-tildelte kategori eller en højere kategori. Det er ikke muligt at vælge en lavere kategori end den auto-tildelte.',
                         },
                         {
                             step: '3',

@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
 from extensions import db, get_zwift_service, get_zwift_game_service
 from services.results_processor import ResultsProcessor
+from services.category_engine import _effective_cat_name
 from datetime import datetime
 from authz import require_admin, AuthzError
 import re
@@ -54,12 +55,18 @@ def _lock_categories_for_race(race_id):
             if str(data.get('zwiftId', '')).strip() in zwift_ids:
                 lc = data.get('ligaCategory') or {}
                 if not lc.get('locked'):
-                    batch.set(doc.reference, {
-                        'ligaCategory': {
-                            'locked': True,
-                            'lockedAt': firestore.SERVER_TIMESTAMP,
-                        }
-                    }, merge=True)
+                    # Compute effective category at lock time
+                    auto = lc.get('autoAssigned') or lc  # backward compat
+                    sel = lc.get('selfSelected') or {}
+                    effective = _effective_cat_name(
+                        auto.get('category'),
+                        sel.get('category'),
+                    )
+                    batch.update(doc.reference, {
+                        'ligaCategory.locked': True,
+                        'ligaCategory.lockedAt': firestore.SERVER_TIMESTAMP,
+                        'ligaCategory.category': effective,
+                    })
                     count += 1
 
         if count:
