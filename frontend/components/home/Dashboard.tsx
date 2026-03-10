@@ -52,7 +52,11 @@ export default function Dashboard({ user, nextRace }: DashboardProps) {
                             <h2 className="text-2xl font-semibold mb-2 group-hover:text-primary">Resultater &rarr;</h2>
                             <p className="text-muted-foreground">Se løbsresultater og ligastillingen.</p>
                         </Link>
-                        <Link href="/stats" className="p-6 border border-border rounded-lg shadow-sm hover:shadow-md transition bg-card text-card-foreground group text-left md:col-span-2">
+                        <Link href="/profile" className="p-6 border border-border rounded-lg shadow-sm hover:shadow-md transition bg-card text-card-foreground group text-left">
+                            <h2 className="text-2xl font-semibold mb-2 group-hover:text-primary">Min Profil &rarr;</h2>
+                            <p className="text-muted-foreground">Se og vælg din liga-kategori.</p>
+                        </Link>
+                        <Link href="/stats" className="p-6 border border-border rounded-lg shadow-sm hover:shadow-md transition bg-card text-card-foreground group text-left">
                             <h2 className="text-2xl font-semibold mb-2 group-hover:text-primary">Min Statistik &rarr;</h2>
                             <p className="text-muted-foreground">Sammenlign din præstation med andre ryttere.</p>
                         </Link>

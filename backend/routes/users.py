@@ -1,8 +1,11 @@
+import datetime
+
 from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
 from extensions import db, get_zwift_service, get_zp_service, strava_service, zr_service, stats_queue
 from services.policy_store import POLICY_DATA_POLICY, POLICY_PUBLIC_RESULTS, PolicyError, get_policy_meta
 from services.user_service import UserService
+from services.category_engine import build_liga_category, ZR_CATEGORIES
 from authz import verify_user_token, AuthzError
 
 import logging
@@ -38,13 +41,26 @@ def update_rider_stats(e_license, zwift_id):
         if zr_json:
             data = zr_json if 'race' in zr_json else zr_json.get('data', {})
             race = data.get('race', {})
+            max30 = race.get('max30', {}).get('rating', 'N/A')
             updates['zwiftRacing'] = {
                 'currentRating': race.get('current', {}).get('rating', 'N/A'),
-                'max30Rating': race.get('max30', {}).get('rating', 'N/A'),
+                'max30Rating': max30,
                 'max90Rating': race.get('max90', {}).get('rating', 'N/A'),
                 'phenotype': data.get('phenotype', {}).get('value', 'N/A'),
                 'updatedAt': firestore.SERVER_TIMESTAMP
             }
+            # Auto-assign ligaCategory on first-time registration if not already set.
+            if max30 != 'N/A' and db and e_license:
+                existing_doc = db.collection('users').document(str(e_license)).get()
+                existing_lc = (existing_doc.to_dict() or {}).get('ligaCategory') if existing_doc.exists else None
+                if not existing_lc:
+                    season = datetime.date.today().strftime('%Y-%m-%d')
+                    liga_cat = build_liga_category(int(max30), season)
+                    liga_cat['assignedAt'] = firestore.SERVER_TIMESTAMP
+                    liga_cat['selfSelected'] = False
+                    liga_cat['locked'] = False
+                    updates['ligaCategory'] = liga_cat
+                    logger.info(f"Auto-assigned ligaCategory {liga_cat['category']} for {e_license}")
     except Exception as e:
          logger.error(f"ZR Fetch Error: {e}")
 
@@ -107,6 +123,14 @@ def get_profile():
                 'requiredPublicResultsConsentVersion': policy_meta.get(POLICY_PUBLIC_RESULTS, {}).get('requiredVersion'),
             }), 200
         
+        lc = user._data.get('ligaCategory')
+        if lc:
+            lc = dict(lc)
+            for ts_field in ('assignedAt', 'lastCheckedAt'):
+                ts = lc.get(ts_field)
+                if ts and hasattr(ts, 'timestamp'):
+                    lc[ts_field] = int(ts.timestamp() * 1000)
+
         return jsonify({
             'registered': user.is_registered,
             'hasDraft': user.registration.get('status') == 'draft',
@@ -127,7 +151,8 @@ def get_profile():
             'weightVerificationStatus': user.verification_status,
             'weightVerificationVideoLink': user.weight_verification_video_link,
             'weightVerificationDeadline': user.weight_verification_deadline,
-            'verificationRequests': user.verification_history
+            'verificationRequests': user.verification_history,
+            'ligaCategory': lc,
         }), 200
 
     except Exception as e:
@@ -351,6 +376,81 @@ def set_welcome_seen():
     except Exception as e:
         logger.error(f"Welcome-seen Error: {e}")
         return jsonify({'message': str(e)}), 500
+
+@users_bp.route('/category/select', methods=['POST'])
+def select_category():
+    """
+    Allows a fully registered rider to self-select a higher liga category.
+
+    Rules:
+    - The chosen category must be strictly higher (lower index in ZR_CATEGORIES) than the
+      currently assigned category.
+    - Once a rider has completed at least one race (ligaCategory.locked == True), their
+      category is locked and cannot be changed via this endpoint (admin force-move only).
+    """
+    try:
+        decoded_token = verify_user_token(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    uid = decoded_token['uid']
+
+    if not db:
+        return jsonify({'message': 'Database not available'}), 500
+
+    user = UserService.get_user_by_auth_uid(uid)
+    if not user or not user.is_registered:
+        return jsonify({'message': 'User not registered'}), 403
+
+    data = request.get_json(silent=True) or {}
+    chosen = (data.get('category') or '').strip()
+
+    # Validate chosen category exists
+    cat_names = [name for name, _, _ in ZR_CATEGORIES]
+    if chosen not in cat_names:
+        return jsonify({'message': f'Unknown category: {chosen}'}), 400
+
+    existing_lc = user._data.get('ligaCategory') or {}
+
+    # Enforce lock: no self-selection after first completed race
+    if existing_lc.get('locked'):
+        return jsonify({'message': 'Din kategori er låst efter gennemført løb. Kontakt admin for at rykke op.'}), 403
+
+    current_cat = existing_lc.get('category')
+
+    # Determine order (lower index = higher/harder category)
+    def cat_index(name):
+        try:
+            return cat_names.index(name)
+        except ValueError:
+            return len(cat_names)  # unknown → worst rank
+
+    if current_cat and cat_index(chosen) >= cat_index(current_cat):
+        return jsonify({'message': f'Du kan kun vælge en højere kategori end din nuværende ({current_cat}).'}), 400
+
+    # Build the new ligaCategory payload
+    _, lower, upper = next((t for t in ZR_CATEGORIES if t[0] == chosen), (chosen, 0, None))
+    grace_points = 35
+    grace_limit = (upper + grace_points) if upper is not None else None
+
+    new_lc = {
+        **existing_lc,
+        'category': chosen,
+        'upperBoundary': upper,
+        'graceLimit': grace_limit,
+        'selfSelected': True,
+        'selfSelectedAt': firestore.SERVER_TIMESTAMP,
+        'assignedAt': existing_lc.get('assignedAt') or firestore.SERVER_TIMESTAMP,
+        'locked': existing_lc.get('locked', False),
+    }
+    # Status is not recomputed on self-selection (user is moving to a harder tier voluntarily)
+    new_lc['status'] = existing_lc.get('status', 'ok')
+
+    doc_id = str(user.id)
+    db.collection('users').document(doc_id).set({'ligaCategory': new_lc}, merge=True)
+
+    return jsonify({'message': f'Kategori opdateret til {chosen}', 'ligaCategory': chosen}), 200
+
 
 @users_bp.route('/participants', methods=['GET'])
 def get_participants():

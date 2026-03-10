@@ -14,6 +14,60 @@ _DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 
 races_bp = Blueprint('races', __name__)
 
+
+def _lock_categories_for_race(race_id):
+    """
+    After race results are published, lock ligaCategory for every registered rider
+    who appears in the results. Locked riders cannot self-select a lower category.
+    """
+    if not db:
+        return
+
+    try:
+        race_doc = db.collection('races').document(race_id).get()
+        if not race_doc.exists:
+            return
+        results = (race_doc.to_dict() or {}).get('results', {})
+
+        # Collect all zwiftIds that have a result
+        zwift_ids = set()
+        for riders in results.values():
+            for r in (riders or []):
+                zid = str(r.get('zwiftId', '')).strip()
+                if zid:
+                    zwift_ids.add(zid)
+
+        if not zwift_ids:
+            return
+
+        # Build zwiftId → doc_id map from user collection (only registered riders)
+        docs = (
+            db.collection('users')
+            .where('registration.status', '==', 'complete')
+            .stream()
+        )
+
+        batch = db.batch()
+        count = 0
+        for doc in docs:
+            data = doc.to_dict() or {}
+            if str(data.get('zwiftId', '')).strip() in zwift_ids:
+                lc = data.get('ligaCategory') or {}
+                if not lc.get('locked'):
+                    batch.set(doc.reference, {
+                        'ligaCategory': {
+                            'locked': True,
+                            'lockedAt': firestore.SERVER_TIMESTAMP,
+                        }
+                    }, merge=True)
+                    count += 1
+
+        if count:
+            batch.commit()
+            logger.info(f"Locked ligaCategory for {count} riders after race {race_id}")
+    except Exception as exc:
+        logger.error(f"_lock_categories_for_race({race_id}) failed: {exc}")
+
 def _validate_race_fields(data):
     """Return an error string if required race fields are missing or invalid, else None."""
     name = data.get('name', '')
@@ -225,6 +279,7 @@ def refresh_results(race_id):
             category_filter=category_filter
         )
         
+        _lock_categories_for_race(race_id)
         return jsonify({'message': f'Results calculated (Mode: {fetch_mode}, Cat: {category_filter})', 'results': results}), 200
     except Exception as e:
         logger.error(f"Results Processing Error: {e}")
