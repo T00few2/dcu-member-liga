@@ -29,6 +29,7 @@ def _load_liga_settings(db) -> dict:
     return {
         'gracePeriod': int(s.get('gracePeriod', 35)),
         'categories': s.get('ligaCategories'),  # None → use ZR_CATEGORIES default
+        'seasonStart': s.get('seasonStart', ''),
     }
 
 
@@ -441,6 +442,7 @@ def refresh_zr_stats():
         # 3. Load league settings (categories + gracePeriod) once for all updates.
         liga_settings = _load_liga_settings(db)
         nightly_grace = liga_settings['gracePeriod']
+        nightly_season = liga_settings['seasonStart']
         nightly_categories = _resolve_categories(liga_settings)  # None → ZR_CATEGORIES default
 
         # 4. Write results back to Firestore in batches.
@@ -478,37 +480,51 @@ def refresh_zr_stats():
                 }
             }
 
-            # If this rider has an assigned liga category, update it.
+            # Update or create the rider's liga category.
             lc = liga_by_elicense.get(e_license)
             liga_update = {}
-            if lc and new_max30 != 'N/A':
+            if new_max30 != 'N/A':
                 try:
-                    # Backward compat: old flat structure has no autoAssigned sub-object
-                    auto = lc.get('autoAssigned') or lc
-                    locked = lc.get('locked', False)
+                    if lc:
+                        # Backward compat: old flat structure has no autoAssigned sub-object
+                        auto = lc.get('autoAssigned') or lc
+                        locked = lc.get('locked', False)
 
-                    if locked:
-                        # Locked riders: only update status tracking in autoAssigned
-                        new_status = compute_category_status(
-                            int(new_max30),
-                            auto.get('upperBoundary'),
-                            auto.get('graceLimit'),
-                        )
-                        liga_update = {
-                            'ligaCategory.autoAssigned.status': new_status,
-                            'ligaCategory.autoAssigned.lastCheckedRating': int(new_max30),
-                            'ligaCategory.autoAssigned.lastCheckedAt': firestore.SERVER_TIMESTAMP,
-                        }
+                        if locked:
+                            # Locked riders: only update status tracking in autoAssigned
+                            new_status = compute_category_status(
+                                int(new_max30),
+                                auto.get('upperBoundary'),
+                                auto.get('graceLimit'),
+                            )
+                            liga_update = {
+                                'ligaCategory.autoAssigned.status': new_status,
+                                'ligaCategory.autoAssigned.lastCheckedRating': int(new_max30),
+                                'ligaCategory.autoAssigned.lastCheckedAt': firestore.SERVER_TIMESTAMP,
+                            }
+                        else:
+                            # Unlocked riders: re-compute full category from current max30
+                            season = auto.get('season', '') or nightly_season
+                            new_auto = build_liga_category(
+                                int(new_max30), season, nightly_grace, nightly_categories
+                            )
+                            new_auto['assignedRating'] = auto.get('assignedRating', int(new_max30))
+                            new_auto['assignedAt'] = auto.get('assignedAt')
+                            new_auto['lastCheckedAt'] = firestore.SERVER_TIMESTAMP
+                            liga_update = {'ligaCategory.autoAssigned': new_auto}
                     else:
-                        # Unlocked riders: re-compute full category from current max30
-                        season = auto.get('season', '')
+                        # No category yet — auto-create from current max30
                         new_auto = build_liga_category(
-                            int(new_max30), season, nightly_grace, nightly_categories
+                            int(new_max30), nightly_season, nightly_grace, nightly_categories
                         )
-                        new_auto['assignedRating'] = auto.get('assignedRating', int(new_max30))
-                        new_auto['assignedAt'] = auto.get('assignedAt')
+                        new_auto['assignedAt'] = firestore.SERVER_TIMESTAMP
                         new_auto['lastCheckedAt'] = firestore.SERVER_TIMESTAMP
-                        liga_update = {'ligaCategory.autoAssigned': new_auto}
+                        liga_update = {
+                            'ligaCategory': {
+                                'autoAssigned': new_auto,
+                                'locked': False,
+                            }
+                        }
                 except Exception:
                     pass
 
