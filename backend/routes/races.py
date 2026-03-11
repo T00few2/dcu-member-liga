@@ -11,7 +11,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-_DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+_DATE_ONLY_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+_DATETIME_LOCAL_RE = re.compile(r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$')
 
 races_bp = Blueprint('races', __name__)
 
@@ -83,12 +84,20 @@ def _validate_race_fields(data):
         return 'Race name is required'
     if len(name) > 200:
         return 'Race name is too long (max 200 characters)'
-    if not date or not _DATE_RE.match(str(date)):
-        return 'Race date must be a valid YYYY-MM-DD string'
-    try:
-        datetime.strptime(str(date), '%Y-%m-%d')
-    except ValueError:
-        return 'Race date is not a valid calendar date'
+    date_str = str(date)
+    if _DATE_ONLY_RE.match(date_str):
+        try:
+            datetime.strptime(date_str, '%Y-%m-%d')
+        except ValueError:
+            return 'Race date is not a valid calendar date'
+    elif _DATETIME_LOCAL_RE.match(date_str):
+        dt_format = '%Y-%m-%dT%H:%M:%S' if len(date_str) == 19 else '%Y-%m-%dT%H:%M'
+        try:
+            datetime.strptime(date_str, dt_format)
+        except ValueError:
+            return 'Race date/time is not a valid calendar value'
+    else:
+        return 'Race date must be YYYY-MM-DD or YYYY-MM-DDTHH:mm'
     return None
 
 def verify_admin_auth():

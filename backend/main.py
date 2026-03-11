@@ -1,6 +1,7 @@
 import os
 import functions_framework
 from flask import Flask, request as flask_request
+from urllib.parse import urlparse
 from extensions import db
 from routes.races import races_bp
 from routes.league import league_bp
@@ -14,12 +15,37 @@ ALLOWED_ORIGINS = {'https://dansk-ecykling.dk', 'https://www.dansk-ecykling.dk'}
 _ALLOW_LOCALHOST = os.environ.get('ALLOW_LOCALHOST', 'false').lower() == 'true'
 _SEED_ENABLED = os.environ.get('SEED_ENABLED', 'false').lower() == 'true'
 
+def _is_local_dev_origin(origin: str) -> bool:
+    try:
+        parsed = urlparse(origin)
+    except Exception:
+        return False
+
+    if parsed.scheme not in {'http', 'https'}:
+        return False
+
+    host = (parsed.hostname or '').lower()
+    if host in {'localhost', '127.0.0.1', '::1'}:
+        return True
+
+    # Permit private network hosts for LAN testing in local dev.
+    if host.startswith('192.168.') or host.startswith('10.'):
+        return True
+    if host.startswith('172.'):
+        parts = host.split('.')
+        if len(parts) >= 2 and parts[1].isdigit():
+            second = int(parts[1])
+            if 16 <= second <= 31:
+                return True
+
+    return False
+
 def get_cors_origin(origin: str | None) -> str | None:
     if not origin:
         return None
     if origin in ALLOWED_ORIGINS:
         return origin
-    if _ALLOW_LOCALHOST and (origin.startswith('http://localhost:') or origin == 'http://localhost'):
+    if _ALLOW_LOCALHOST and _is_local_dev_origin(origin):
         return origin
     return None
 
