@@ -2,6 +2,26 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import CodeOfConductModal from '@/components/CodeOfConductModal';
+
+function YderligereRegler() {
+    const [open, setOpen] = useState(false);
+    return (
+        <>
+            <p className="text-slate-600 dark:text-slate-400">
+                Se vores{' '}
+                <button
+                    onClick={() => setOpen(true)}
+                    className="text-primary underline hover:no-underline font-medium"
+                >
+                    adfærdskodeks
+                </button>
+                {' '}for yderligere regler og retningslinjer.
+            </p>
+            <CodeOfConductModal isOpen={open} onClose={() => setOpen(false)} />
+        </>
+    );
+}
 
 const chapters = [
     {
@@ -96,7 +116,7 @@ const chapters = [
                     </div>
                     <div className="pl-4 border-l-4 border-slate-400">
                         <h4 className="font-bold text-slate-900 dark:text-white mb-1">Yderligere regler</h4>
-                        <p className="text-slate-500 dark:text-slate-500 italic">Yderligere regler og retningslinjer vil blive offentliggjort her inden sæsonstart.</p>
+                        <YderligereRegler />
                     </div>
                 </div>
             </div>
