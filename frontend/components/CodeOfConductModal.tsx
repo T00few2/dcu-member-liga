@@ -1,4 +1,4 @@
-import React from 'react';
+import { useEffect, useState } from 'react';
 
 interface CodeOfConductModalProps {
     isOpen: boolean;
@@ -8,9 +8,20 @@ interface CodeOfConductModalProps {
 }
 
 export default function CodeOfConductModal({ isOpen, onClose, onAccept, disableAccept }: CodeOfConductModalProps) {
+    const [useMobileFallback, setUseMobileFallback] = useState(false);
+
+    useEffect(() => {
+        if (typeof navigator === 'undefined') return;
+        const ua = navigator.userAgent || '';
+        // iOS Safari + iPadOS (desktop UA with touch) often has issues with embedded Google Docs iframes.
+        const isIOS = /iPad|iPhone|iPod/.test(ua) || (ua.includes('Mac') && navigator.maxTouchPoints > 1);
+        setUseMobileFallback(isIOS);
+    }, []);
+
     if (!isOpen) return null;
 
     const docUrl = "https://docs.google.com/document/d/1lQE0w8ylJLoBscj6rgWZ4nGYqKbCsoin9HR4wBiF3V4/preview";
+    const docEditUrl = "https://docs.google.com/document/d/1lQE0w8ylJLoBscj6rgWZ4nGYqKbCsoin9HR4wBiF3V4/edit?tab=t.0#heading=h.epmyt5apdaf3";
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
@@ -29,19 +40,46 @@ export default function CodeOfConductModal({ isOpen, onClose, onAccept, disableA
                     </button>
                 </div>
 
-                {/* Google Docs embed container */}
-                <div className="w-full h-[60vh] sm:h-[70vh] bg-white relative">
-                    <iframe
-                        src={docUrl}
-                        className="w-full h-full border-0 absolute inset-0"
-                        title="DCU E-Cycling Code of Conduct"
-                        allowFullScreen
-                    />
-                </div>
+                {/* Content */}
+                {useMobileFallback ? (
+                    <div className="p-4 sm:p-6 overflow-y-auto w-full min-h-[40vh] bg-background">
+                        <p className="text-sm sm:text-base text-muted-foreground mb-4">
+                            På iPhone/iPad kan dokument-preview inde i popup være ustabil.
+                            Åbn derfor dokumentet direkte i en ny fane.
+                        </p>
+                        <div className="flex flex-col gap-3">
+                            <a
+                                href={docUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center justify-center px-4 py-3 rounded-xl bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-colors"
+                            >
+                                Åbn dokument (preview)
+                            </a>
+                            <a
+                                href={docEditUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center justify-center px-4 py-3 rounded-xl border border-border bg-card text-card-foreground font-semibold hover:bg-muted transition-colors"
+                            >
+                                Åbn i Google Docs
+                            </a>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="w-full h-[60vh] sm:h-[70vh] bg-white relative">
+                        <iframe
+                            src={docUrl}
+                            className="w-full h-full border-0 absolute inset-0"
+                            title="DCU E-Cycling Code of Conduct"
+                            allowFullScreen
+                        />
+                    </div>
+                )}
 
                 <div className="p-4 border-t border-border/50 flex flex-col sm:flex-row justify-between items-center gap-3 bg-muted/30">
                     <a
-                        href="https://docs.google.com/document/d/1lQE0w8ylJLoBscj6rgWZ4nGYqKbCsoin9HR4wBiF3V4/edit?tab=t.0#heading=h.epmyt5apdaf3"
+                        href={docEditUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-sm font-semibold text-primary hover:underline flex items-center gap-1.5"
