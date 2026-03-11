@@ -16,6 +16,7 @@ interface Props {
     sprintColumns: string[];
     bestSplitTimes: Record<string, number>;
     getSprintHeader: (key: string) => string;
+    leaguePointsByZwiftId?: Map<string, number>;
 }
 
 export default function RaceResultsTable({
@@ -32,7 +33,12 @@ export default function RaceResultsTable({
     sprintColumns,
     bestSplitTimes,
     getSprintHeader,
+    leaguePointsByZwiftId,
 }: Props) {
+    const showFinishPointsColumn = raceResults.some(r => (r.finishPoints ?? 0) > 0);
+    const showTotalPointsColumn = raceResults.some(r => (r.totalPoints ?? 0) > 0);
+    const showLeaguePointsColumn = !!leaguePointsByZwiftId && raceResults.some(r => leaguePointsByZwiftId.has(r.zwiftId));
+
     return (
         <div className="space-y-6">
             {/* Race Selector */}
@@ -95,8 +101,15 @@ export default function RaceResultsTable({
                                             {getSprintHeader(sprintKey)}
                                         </th>
                                     ))}
-                                    <th className="px-4 py-3 text-right text-muted-foreground/70">Målpoint</th>
-                                    <th className="px-4 py-3 text-right font-bold text-primary">Total point</th>
+                                    {showFinishPointsColumn && (
+                                        <th className="px-4 py-3 text-right text-muted-foreground/70">Målpoint</th>
+                                    )}
+                                    {showTotalPointsColumn && (
+                                        <th className="px-4 py-3 text-right font-bold text-primary">Total point</th>
+                                    )}
+                                    {showLeaguePointsColumn && (
+                                        <th className="px-4 py-3 text-right font-bold text-primary">Ligapoint</th>
+                                    )}
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border">
@@ -127,8 +140,17 @@ export default function RaceResultsTable({
                                                 </td>
                                             );
                                         })}
-                                        <td className="px-4 py-3 text-right text-muted-foreground font-medium">{rider.finishPoints}</td>
-                                        <td className="px-4 py-3 text-right font-bold text-foreground">{rider.totalPoints}</td>
+                                        {showFinishPointsColumn && (
+                                            <td className="px-4 py-3 text-right text-muted-foreground font-medium">{rider.finishPoints}</td>
+                                        )}
+                                        {showTotalPointsColumn && (
+                                            <td className="px-4 py-3 text-right font-bold text-foreground">{rider.totalPoints}</td>
+                                        )}
+                                        {showLeaguePointsColumn && (
+                                            <td className="px-4 py-3 text-right font-bold text-foreground">
+                                                {leaguePointsByZwiftId?.get(rider.zwiftId) ?? '-'}
+                                            </td>
+                                        )}
                                     </tr>
                                 ))}
                             </tbody>

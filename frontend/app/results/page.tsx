@@ -127,6 +127,16 @@ export default function ResultsPage() {
         : selectedCategory;
 
     const raceResults = selectedRace?.results?.[displayRaceCategory] || [];
+    const leaguePointsByZwiftId = useMemo(() => {
+        const map = new Map<string, number>();
+        const raceKey = selectedRaceId;
+        if (!raceKey) return map;
+        (standings[displayRaceCategory] || []).forEach(entry => {
+            const match = entry.results?.find(r => r.raceId === raceKey);
+            if (match) map.set(entry.zwiftId, match.points);
+        });
+        return map;
+    }, [standings, displayRaceCategory, selectedRaceId]);
 
     let displayLaps = selectedRace?.laps;
     if (selectedRace?.eventMode === 'multi' && selectedRace.eventConfiguration) {
@@ -274,6 +284,7 @@ export default function ResultsPage() {
                     sprintColumns={sprintColumns}
                     bestSplitTimes={bestSplitTimes}
                     getSprintHeader={getSprintHeader}
+                    leaguePointsByZwiftId={leaguePointsByZwiftId}
                 />
             )}
         </div>

@@ -35,6 +35,7 @@ export default function HistorikPage() {
     const [selectedRaceId, setSelectedRaceId] = useState<string>('');
     const [selectedCategory, setSelectedCategory] = useState<string>('A');
     const [standingsCategory, setStandingsCategory] = useState<string>('A');
+    const [autoSelectStandingsCategory, setAutoSelectStandingsCategory] = useState(true);
 
     // Fetch archive list on mount
     useEffect(() => {
@@ -52,17 +53,17 @@ export default function HistorikPage() {
     useEffect(() => {
         if (!selectedArchiveId) return;
         setLoadingDetail(true);
+        setAutoSelectStandingsCategory(true);
         setArchiveDetail(null);
         setRaces([]);
         setSelectedRaceId('');
+        setStandingsCategory('');
 
         fetch(`${API_URL}/archives/${selectedArchiveId}`)
             .then(r => r.ok ? r.json() : null)
             .then(data => {
                 if (!data) return;
                 setArchiveDetail(data);
-                const cats = Object.keys(data.standings || {});
-                if (cats.length > 0) setStandingsCategory(cats.sort()[0]);
                 if (data.races?.length > 0) setSelectedRaceId(data.races[0].id);
             })
             .catch(() => {})
@@ -116,6 +117,16 @@ export default function HistorikPage() {
         : selectedCategory;
 
     const raceResults: ResultEntry[] = selectedRace?.results?.[displayRaceCategory] || [];
+    const leaguePointsByZwiftId = useMemo(() => {
+        const map = new Map<string, number>();
+        const raceKey = selectedRaceId;
+        if (!raceKey) return map;
+        (standings[displayRaceCategory] || []).forEach(entry => {
+            const match = entry.results?.find(r => r.raceId === raceKey);
+            if (match) map.set(entry.zwiftId, match.points);
+        });
+        return map;
+    }, [standings, displayRaceCategory, selectedRaceId]);
 
     let displayLaps = selectedRace?.laps;
     if (selectedRace?.eventMode === 'multi' && selectedRace.eventConfiguration) {
@@ -142,6 +153,22 @@ export default function HistorikPage() {
     const displayStandingsCategory = (Object.keys(standings).length > 0 && !availableStandingsCategories.includes(standingsCategory))
         ? availableStandingsCategories[0]
         : standingsCategory;
+
+    const selectedRaceLoaded = !selectedRaceId || races.some(r => r.id === selectedRaceId);
+
+    // Default standings category should follow the same visible category order as the tabs.
+    useEffect(() => {
+        if (!autoSelectStandingsCategory) return;
+        if (!selectedRaceLoaded) return;
+        if (availableStandingsCategories.length === 0) return;
+        setStandingsCategory(availableStandingsCategories[0]);
+        setAutoSelectStandingsCategory(false);
+    }, [autoSelectStandingsCategory, selectedRaceLoaded, availableStandingsCategories]);
+
+    const handleStandingsCategoryChange = (cat: string) => {
+        setStandingsCategory(cat);
+        setAutoSelectStandingsCategory(false);
+    };
 
     const currentStandings = useMemo<ProcessedRider[]>(() => {
         return (standings[displayStandingsCategory] || [])
@@ -279,7 +306,7 @@ export default function HistorikPage() {
                             availableStandingsCategories={availableStandingsCategories}
                             displayStandingsCategory={displayStandingsCategory}
                             standingsCategory={standingsCategory}
-                            setStandingsCategory={setStandingsCategory}
+                            setStandingsCategory={handleStandingsCategoryChange}
                         />
                     )}
 
@@ -298,6 +325,7 @@ export default function HistorikPage() {
                             sprintColumns={sprintColumns}
                             bestSplitTimes={bestSplitTimes}
                             getSprintHeader={getSprintHeader}
+                            leaguePointsByZwiftId={leaguePointsByZwiftId}
                         />
                     )}
                 </>
