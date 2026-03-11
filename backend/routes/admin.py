@@ -901,3 +901,46 @@ def archive_season():
     except Exception as e:
         logger.error(f"Archive season error: {e}")
         return jsonify({'message': str(e)}), 500
+
+
+@admin_bp.route('/admin/reset-season', methods=['POST'])
+def reset_season():
+    """
+    Delete all races and clear current standings.
+    League settings (scoring, categories) are preserved.
+    Intended to be used after archiving the season.
+    """
+    try:
+        verify_admin_auth()
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    try:
+        # Delete all race documents
+        race_docs = list(db.collection('races').stream())
+        batch = db.batch()
+        count = 0
+        for doc in race_docs:
+            batch.delete(doc.reference)
+            count += 1
+            if count % 400 == 0:
+                batch.commit()
+                batch = db.batch()
+        if count % 400 != 0:
+            batch.commit()
+
+        # Clear standings
+        db.collection('league').document('standings').set(
+            {'standings': {}, 'updatedAt': firestore.SERVER_TIMESTAMP},
+            merge=False,
+        )
+
+        logger.info(f"Season reset: {count} races deleted, standings cleared")
+        return jsonify({'message': 'Season reset', 'racesDeleted': count}), 200
+
+    except Exception as e:
+        logger.error(f"Reset season error: {e}")
+        return jsonify({'message': str(e)}), 500

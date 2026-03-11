@@ -114,6 +114,15 @@ const chapters = [
                         <h4 className="font-bold text-slate-900 dark:text-white mb-1">Tilslutning af profil</h4>
                         <p className="text-slate-600 dark:text-slate-400">Husk at forbinde din Zwift ID og andre nødvendige detaljer i dine brugerindstillinger her på siden, før du tilmelder dig et løb.</p>
                     </div>
+                    <div className="pl-4 border-l-4 border-orange-400">
+                        <h4 className="font-bold text-slate-900 dark:text-white mb-1">Godkendt hometrainer eller dobbeltregistrering</h4>
+                        <p className="text-slate-600 dark:text-slate-400 mb-2">
+                            Alle deltagere skal enten benytte en <strong>godkendt smart hometrainer</strong> (direct drive med automatisk modstandsstyring) eller foretage <strong>dobbeltregistrering</strong> med en separat wattmåler.
+                        </p>
+                        <p className="text-slate-600 dark:text-slate-400">
+                            Ved dobbeltregistrering skal aktiviteten uploades til <strong>Strava</strong>, og din Strava-konto skal være forbundet med din profil her på siden. Dette giver mulighed for stikprøvekontrol af wattdata.
+                        </p>
+                    </div>
                     <div className="pl-4 border-l-4 border-slate-400">
                         <h4 className="font-bold text-slate-900 dark:text-white mb-1">Yderligere regler</h4>
                         <YderligereRegler />
