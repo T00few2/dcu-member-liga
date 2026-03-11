@@ -833,3 +833,71 @@ def reassign_liga_category(zwift_id):
     except Exception as e:
         logger.error(f"Reassign liga category error: {e}")
         return jsonify({'message': str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Season Archive
+# ---------------------------------------------------------------------------
+
+@admin_bp.route('/admin/archive-season', methods=['POST'])
+def archive_season():
+    """
+    Snapshot the current season into the archives collection.
+
+    Body: { "name": "Forårsliga 2025" }
+
+    Creates:
+      archives/{uuid}  — name, archivedAt, settings, standings
+      archives/{uuid}/races/{raceId}  — full copy of each race document
+    """
+    try:
+        verify_admin_auth()
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    try:
+        body = request.get_json(silent=True) or {}
+        name = (body.get('name') or '').strip()
+        if not name:
+            return jsonify({'message': 'name is required'}), 400
+
+        # Read current standings and settings
+        settings_doc = db.collection('league').document('settings').get()
+        settings = settings_doc.to_dict() if settings_doc.exists else {}
+
+        standings_doc = db.collection('league').document('standings').get()
+        standings = standings_doc.to_dict() if standings_doc.exists else {}
+
+        # Read all races
+        race_docs = list(db.collection('races').stream())
+
+        import uuid
+        archive_id = str(uuid.uuid4())
+        archive_ref = db.collection('archives').document(archive_id)
+
+        archive_ref.set({
+            'name': name,
+            'archivedAt': firestore.SERVER_TIMESTAMP,
+            'settings': settings,
+            'standings': standings.get('standings', {}),
+            'raceCount': len(race_docs),
+        })
+
+        # Copy each race into sub-collection
+        for race_doc in race_docs:
+            data = race_doc.to_dict() or {}
+            archive_ref.collection('races').document(race_doc.id).set(data)
+
+        logger.info(f"Archived season '{name}' as {archive_id} ({len(race_docs)} races)")
+        return jsonify({
+            'message': f"Season '{name}' archived",
+            'archiveId': archive_id,
+            'raceCount': len(race_docs),
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Archive season error: {e}")
+        return jsonify({'message': str(e)}), 500

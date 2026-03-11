@@ -37,6 +37,7 @@ export default function Navbar() {
         { href: '/schedule', label: 'Kalender' },
         { href: '/results', label: 'Resultater' },
         { href: '/stats', label: 'Statistik' },
+        { href: '/historik', label: 'Historik' },
     ];
 
     if (hideNavbar) return null;
@@ -164,6 +165,9 @@ export default function Navbar() {
                                         <Link href="/info" className={`hidden md:inline text-base transition-colors ${pathname === '/info' ? 'text-white font-bold' : 'text-white/90 font-bold hover:text-white'}`}>
                                             Info
                                         </Link>
+                                        <Link href="/historik" className={`hidden md:inline text-base transition-colors ${pathname === '/historik' ? 'text-white font-bold' : 'text-white/90 font-bold hover:text-white'}`}>
+                                            Historik
+                                        </Link>
                                         <button
                                             onClick={() => signInWithGoogle('login')}
                                             className="hidden md:inline text-base text-white/90 font-bold hover:text-white transition-colors"
@@ -265,6 +269,13 @@ export default function Navbar() {
                                     onClick={() => setIsDrawerOpen(false)}
                                 >
                                     Info
+                                </Link>
+                                <Link
+                                    href="/historik"
+                                    className="block px-4 py-3 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg"
+                                    onClick={() => setIsDrawerOpen(false)}
+                                >
+                                    Historik
                                 </Link>
                                 <button
                                     onClick={() => {

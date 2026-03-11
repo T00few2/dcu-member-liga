@@ -44,6 +44,8 @@ export default function LeagueManager() {
 
     // Local UI state
     const [activeTab, setActiveTab] = useState<'races' | 'settings' | 'testing' | 'rawdata'>('races');
+    const [archiveName, setArchiveName] = useState('');
+    const [archiving, setArchiving] = useState(false);
     const [viewingResultsId, setViewingResultsId] = useState<string | null>(null);
     const [availableSegments, setAvailableSegments] = useState<Segment[]>([]);
     
@@ -311,13 +313,63 @@ export default function LeagueManager() {
 
             {/* Settings Tab */}
             {activeTab === 'settings' && (
-                <LeagueSettingsForm
-                    user={user}
-                    settings={leagueSettings}
-                    onSave={setLeagueSettings}
-                    status={status}
-                    setStatus={setStatus}
-                />
+                <>
+                    <LeagueSettingsForm
+                        user={user}
+                        settings={leagueSettings}
+                        onSave={setLeagueSettings}
+                        status={status}
+                        setStatus={setStatus}
+                    />
+                    <div className="bg-card p-6 rounded-lg shadow mt-6 border border-border">
+                        <h2 className="text-xl font-semibold mb-1 text-card-foreground">Arkivér sæson</h2>
+                        <p className="text-sm text-muted-foreground mb-4">
+                            Gem et snapshot af den aktuelle sæsons resultater og stilling til historikken. Dette ændrer ikke de aktuelle data.
+                        </p>
+                        <div className="flex gap-3 items-end flex-wrap">
+                            <div className="flex-1 min-w-48">
+                                <label className="block text-sm font-medium text-muted-foreground mb-1">Sæsonnavn</label>
+                                <input
+                                    type="text"
+                                    value={archiveName}
+                                    onChange={e => setArchiveName(e.target.value)}
+                                    placeholder={`${leagueSettings.name || 'Forårsliga'} ${new Date().getFullYear()}`}
+                                    className="w-full p-2 border border-input rounded bg-background text-foreground text-sm"
+                                />
+                            </div>
+                            <button
+                                disabled={archiving}
+                                onClick={async () => {
+                                    const name = archiveName.trim() || `${leagueSettings.name || 'Forårsliga'} ${new Date().getFullYear()}`;
+                                    if (!confirm(`Arkivér sæson som "${name}"?`)) return;
+                                    setArchiving(true);
+                                    try {
+                                        const token = await user?.getIdToken();
+                                        const res = await fetch(`${API_URL}/admin/archive-season`, {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                            body: JSON.stringify({ name }),
+                                        });
+                                        const data = await res.json();
+                                        if (res.ok) {
+                                            alert(`Sæson arkiveret! ${data.raceCount} løb gemt.`);
+                                            setArchiveName('');
+                                        } else {
+                                            alert(`Fejl: ${data.message}`);
+                                        }
+                                    } catch {
+                                        alert('Arkivering fejlede');
+                                    } finally {
+                                        setArchiving(false);
+                                    }
+                                }}
+                                className="px-4 py-2 bg-primary text-primary-foreground rounded hover:opacity-90 disabled:opacity-50 font-medium text-sm whitespace-nowrap"
+                            >
+                                {archiving ? 'Arkiverer…' : 'Arkivér sæson'}
+                            </button>
+                        </div>
+                    </div>
+                </>
             )}
 
             {/* Testing Tab */}
