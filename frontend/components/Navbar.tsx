@@ -164,6 +164,12 @@ export default function Navbar() {
                                         <Link href="/info" className={`hidden md:inline text-base transition-colors ${pathname === '/info' ? 'text-white font-bold' : 'text-white/90 font-bold hover:text-white'}`}>
                                             Info
                                         </Link>
+                                        <button
+                                            onClick={() => signInWithGoogle('login')}
+                                            className="hidden md:inline text-base text-white/90 font-bold hover:text-white transition-colors"
+                                        >
+                                            Log ind
+                                        </button>
                                     </div>
                                 )}
                             </>
