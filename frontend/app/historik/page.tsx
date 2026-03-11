@@ -92,6 +92,7 @@ export default function HistorikPage() {
 
     // Available race categories
     let availableRaceCategories: string[] = [];
+    const raceOrderReference = [...races].reverse().find(r => r.eventMode === 'multi' && r.eventConfiguration?.length);
     if (selectedRace?.results && Object.keys(selectedRace.results).length > 0) {
         availableRaceCategories = Object.keys(selectedRace.results);
     } else if (selectedRace?.eventMode === 'multi' && selectedRace.eventConfiguration) {
@@ -108,6 +109,12 @@ export default function HistorikPage() {
     } else if (selectedRace?.singleModeCategories?.length) {
         const orderMap = new Map(selectedRace.singleModeCategories.map((cfg, idx) => [cfg.category, idx]));
         availableRaceCategories.sort((a, b) => (orderMap.get(a) ?? 999) - (orderMap.get(b) ?? 999));
+    } else if (raceOrderReference?.eventConfiguration) {
+        const orderMap = new Map(raceOrderReference.eventConfiguration.map((cfg, idx) => [cfg.customCategory, idx]));
+        availableRaceCategories.sort((a, b) => {
+            const diff = (orderMap.get(a) ?? 999) - (orderMap.get(b) ?? 999);
+            return diff !== 0 ? diff : a.localeCompare(b);
+        });
     } else {
         availableRaceCategories.sort();
     }

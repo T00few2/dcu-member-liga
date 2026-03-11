@@ -22,6 +22,7 @@ export default function ResultsPage() {
     const [selectedRaceId, setSelectedRaceId] = useState<string>('');
     const [selectedCategory, setSelectedCategory] = useState<string>('A');
     const [standingsCategory, setStandingsCategory] = useState<string>('A');
+    const [autoSelectStandingsCategory, setAutoSelectStandingsCategory] = useState(true);
     const [bestRacesCount, setBestRacesCount] = useState<number>(5);
 
     useEffect(() => {
@@ -58,10 +59,8 @@ export default function ResultsPage() {
                 if (standingsRes.ok) {
                     const data = await standingsRes.json();
                     setStandings(data.standings || {});
-                    const cats = Object.keys(data.standings || {});
-                    if (cats.length > 0 && !cats.includes(standingsCategory)) {
-                        setStandingsCategory(cats.sort()[0]);
-                    }
+                    setAutoSelectStandingsCategory(true);
+                    setStandingsCategory('');
                 }
             } catch (e) {
                 console.error('Error fetching data', e);
@@ -101,6 +100,7 @@ export default function ResultsPage() {
 
     // Available race categories
     let availableRaceCategories: string[] = [];
+    const raceOrderReference = [...races].reverse().find(r => r.eventMode === 'multi' && r.eventConfiguration?.length);
     if (selectedRace?.results && Object.keys(selectedRace.results).length > 0) {
         availableRaceCategories = Object.keys(selectedRace.results);
     } else if (selectedRace?.eventMode === 'multi' && selectedRace.eventConfiguration) {
@@ -118,6 +118,12 @@ export default function ResultsPage() {
     } else if (selectedRace?.singleModeCategories?.length) {
         const orderMap = new Map(selectedRace.singleModeCategories.map((cfg, idx) => [cfg.category, idx]));
         availableRaceCategories.sort((a, b) => (orderMap.get(a) ?? 999) - (orderMap.get(b) ?? 999));
+    } else if (raceOrderReference?.eventConfiguration) {
+        const orderMap = new Map(raceOrderReference.eventConfiguration.map((cfg, idx) => [cfg.customCategory, idx]));
+        availableRaceCategories.sort((a, b) => {
+            const diff = (orderMap.get(a) ?? 999) - (orderMap.get(b) ?? 999);
+            return diff !== 0 ? diff : a.localeCompare(b);
+        });
     } else {
         availableRaceCategories.sort();
     }
@@ -163,6 +169,22 @@ export default function ResultsPage() {
     const displayStandingsCategory = (Object.keys(standings).length > 0 && !availableStandingsCategories.includes(standingsCategory))
         ? availableStandingsCategories[0]
         : standingsCategory;
+
+    const selectedRaceLoaded = !selectedRaceId || races.some(r => r.id === selectedRaceId);
+
+    // Default standings category should follow the same visible category order as the tabs.
+    useEffect(() => {
+        if (!autoSelectStandingsCategory) return;
+        if (!selectedRaceLoaded) return;
+        if (availableStandingsCategories.length === 0) return;
+        setStandingsCategory(availableStandingsCategories[0]);
+        setAutoSelectStandingsCategory(false);
+    }, [autoSelectStandingsCategory, selectedRaceLoaded, availableStandingsCategories]);
+
+    const handleStandingsCategoryChange = (cat: string) => {
+        setStandingsCategory(cat);
+        setAutoSelectStandingsCategory(false);
+    };
 
     const currentStandings = useMemo<ProcessedRider[]>(() => {
         return (standings[displayStandingsCategory] || [])
@@ -265,7 +287,7 @@ export default function ResultsPage() {
                     availableStandingsCategories={availableStandingsCategories}
                     displayStandingsCategory={displayStandingsCategory}
                     standingsCategory={standingsCategory}
-                    setStandingsCategory={setStandingsCategory}
+                    setStandingsCategory={handleStandingsCategoryChange}
                 />
             )}
 

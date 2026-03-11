@@ -438,12 +438,12 @@ export default function LeagueManager() {
                     {/* Season management */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
                         {/* Archive */}
-                        <div className="bg-card p-6 rounded-lg shadow border border-border">
+                        <div className="bg-card p-6 rounded-lg shadow border border-border flex flex-col">
                             <h2 className="text-lg font-semibold mb-1 text-card-foreground">Arkivér sæson</h2>
                             <p className="text-sm text-muted-foreground mb-4">
                                 Gem et snapshot af den aktuelle sæsons løb, stilling og indstillinger til historikken. De aktuelle data berøres ikke.
                             </p>
-                            <div className="space-y-3">
+                            <div className="space-y-3 flex-1 flex flex-col">
                                 <div>
                                     <label className="block text-sm font-medium text-muted-foreground mb-1">Sæsonnavn</label>
                                     <input
@@ -480,7 +480,7 @@ export default function LeagueManager() {
                                             setArchiving(false);
                                         }
                                     }}
-                                    className="w-full px-4 py-2 bg-primary text-primary-foreground rounded hover:opacity-90 disabled:opacity-50 font-medium text-sm"
+                                    className="w-full mt-auto px-4 py-2 bg-primary text-primary-foreground rounded hover:opacity-90 disabled:opacity-50 font-medium text-sm"
                                 >
                                     {archiving ? 'Arkiverer…' : 'Arkivér sæson'}
                                 </button>
@@ -488,7 +488,7 @@ export default function LeagueManager() {
                         </div>
 
                         {/* Reset */}
-                        <div className="bg-card p-6 rounded-lg shadow border border-red-200 dark:border-red-900">
+                        <div className="bg-card p-6 rounded-lg shadow border border-red-200 dark:border-red-900 flex flex-col">
                             <h2 className="text-lg font-semibold mb-1 text-red-700 dark:text-red-400">Nulstil sæson</h2>
                             <p className="text-sm text-muted-foreground mb-4">
                                 Sletter alle løb og nulstiller stillingen. Scoring-indstillinger og kategoriopsætning bevares. <strong className="text-red-600 dark:text-red-400">Kan ikke fortrydes.</strong>
@@ -518,7 +518,7 @@ export default function LeagueManager() {
                                         setResetting(false);
                                     }
                                 }}
-                                className="w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 font-medium text-sm"
+                                className="w-full mt-auto px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 font-medium text-sm"
                             >
                                 {resetting ? 'Nulstiller…' : 'Nulstil sæson'}
                             </button>
