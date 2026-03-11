@@ -150,7 +150,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (loading) return;
 
-    const publicRoutes = ['/', '/info', '/datapolitik', '/offentliggoerelse', '/register'];
+    const publicRoutes = ['/', '/info', '/historik', '/datapolitik', '/offentliggoerelse', '/register'];
     const isPublicRoute = publicRoutes.includes(pathname) || pathname.startsWith('/live');
 
     // Unauthenticated users can only access public routes.
@@ -166,7 +166,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const allowedUnregistered = pathname === '/' || pathname === '/register' || pathname === '/info' || pathname === '/datapolitik' || pathname === '/offentliggoerelse';
+      const allowedUnregistered = pathname === '/' || pathname === '/register' || pathname === '/info' || pathname === '/historik' || pathname === '/datapolitik' || pathname === '/offentliggoerelse';
       if (!allowedUnregistered) {
         router.push('/register');
       }
