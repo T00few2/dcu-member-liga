@@ -136,7 +136,7 @@ class ZwiftGameService:
         # Key is (segment_id, direction) just to be safe, though ID should be unique.
         active_segments = {} 
 
-        def finish_segment(seg_id, direction, current_order, current_lap, seg_data):
+        def finish_segment(seg_id, direction, current_order, current_lap, seg_data, finish_ratio=0.5):
             key = (seg_id, direction)
             if key in active_segments:
                 start_info = active_segments.pop(key)
@@ -150,8 +150,9 @@ class ZwiftGameService:
                 seg_copy["lap"] = current_lap
                 seg_copy["direction"] = direction
                 seg_copy["id"] = seg_id
-                # Use the order from the finish point so it sorts correctly in the timeline
-                seg_copy["order"] = current_order 
+                # Use finish order with a within-entry ratio to keep chronological ordering
+                # when multiple segments finish in the same route entry.
+                seg_copy["order"] = current_order + max(0.0, min(1.0, float(finish_ratio)))
                 
                 all_found_segments.append(seg_copy)
 
@@ -214,6 +215,12 @@ class ZwiftGameService:
                 # Is Finish point in this entry?
                 has_finish = (min_p <= s_finish <= max_p)
                 
+                finish_ratio = 0.5
+                if has_finish:
+                    span = entry_end - entry_start
+                    if span != 0:
+                        finish_ratio = (s_finish - entry_start) / span
+
                 if not has_start and not has_finish:
                     continue
                 
@@ -252,12 +259,12 @@ class ZwiftGameService:
                             # Let's assume standard behavior:
                             # If Start < Finish: Start -> Finish.
                             start_segment(seg_id, direction, order, lap)
-                            finish_segment(seg_id, direction, order, lap, seg)
+                            finish_segment(seg_id, direction, order, lap, seg, finish_ratio)
                         else:
                             # Start > Finish (e.g. 0.6 -> 0.4).
                             # Moving Low -> High (0.3 -> 0.7).
                             # We hit Finish (0.4) then Start (0.6).
-                            finish_segment(seg_id, direction, order, lap, seg)
+                            finish_segment(seg_id, direction, order, lap, seg, finish_ratio)
                             start_segment(seg_id, direction, order, lap)
                     else:
                         # Moving High -> Low
@@ -266,12 +273,12 @@ class ZwiftGameService:
                             # Moving 0.9 -> 0.4.
                             # We hit Start first.
                             start_segment(seg_id, direction, order, lap)
-                            finish_segment(seg_id, direction, order, lap, seg)
+                            finish_segment(seg_id, direction, order, lap, seg, finish_ratio)
                         else:
                             # Start (0.4) < Finish (0.6).
                             # Moving 0.9 -> 0.3.
                             # We hit Finish (0.6) then Start (0.4).
-                            finish_segment(seg_id, direction, order, lap, seg)
+                            finish_segment(seg_id, direction, order, lap, seg, finish_ratio)
                             start_segment(seg_id, direction, order, lap)
                             
                 elif has_start:
@@ -280,7 +287,7 @@ class ZwiftGameService:
                     
                 elif has_finish:
                     # Only Finish is in range.
-                    finish_segment(seg_id, direction, order, lap, seg)
+                    finish_segment(seg_id, direction, order, lap, seg, finish_ratio)
 
             # Add segmentIds to the entry for debugging/frontend use
             # This is a bit tricky now as segments might span entries.

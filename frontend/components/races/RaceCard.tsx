@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { getZwiftInsiderUrl } from '@/lib/api';
 import { formatDateLong, formatTimeWithTz } from '@/lib/formatDate';
 import PointsSplitBadge from '@/components/races/PointsSplitBadge';
@@ -15,6 +16,14 @@ interface RaceCardProps {
 }
 
 const normalize = (value?: string | null) => (value || '').trim().toLowerCase();
+const slugify = (value?: string | null) =>
+    normalize(value)
+        .replace(/&/g, ' and ')
+        .replace(/['"]/g, '')
+        .replace(/[^\w\s-]/g, ' ')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
 
 const getZwiftEventUrl = (eventId: string, eventSecret?: string) => {
     if (typeof window === 'undefined') {
@@ -26,6 +35,11 @@ const getZwiftEventUrl = (eventId: string, eventSecret?: string) => {
 };
 
 function SprintsByLap({ sprints }: { sprints: Sprint[] }) {
+    const sprintLabel = (seg: Sprint) => {
+        const isReverse = normalize(seg.direction) === 'reverse';
+        return isReverse ? `${seg.name} Reverse` : seg.name;
+    };
+
     const byLap = sprints.reduce((acc, seg) => {
         const lap = seg.lap || 1;
         if (!acc[lap]) acc[lap] = [];
@@ -43,7 +57,7 @@ function SprintsByLap({ sprints }: { sprints: Sprint[] }) {
                         <div className="flex-1 flex flex-wrap gap-2">
                             {segs.sort((a, b) => a.count - b.count).map((seg, idx) => (
                                 <span key={idx} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
-                                    {seg.name}
+                                    {sprintLabel(seg)}
                                 </span>
                             ))}
                         </div>
@@ -100,6 +114,7 @@ export default function RaceCard({
     isPast = false,
     showPointsSplit = true,
 }: RaceCardProps) {
+    const [routeImageFailed, setRouteImageFailed] = useState(false);
     const raceDate = new Date(race.date);
     const userConfig = race.eventMode === 'multi' ? getUserEventConfig(race, userCategory) : null;
     const userSingleConfig = race.eventMode !== 'multi' ? getUserSingleConfig(race, userCategory) : null;
@@ -119,6 +134,15 @@ export default function RaceCard({
     const racePassHref = race.eventMode === 'multi'
         ? (userConfig?.eventId ? getZwiftEventUrl(userConfig.eventId, userConfig.eventSecret) : null)
         : (race.eventId ? getZwiftEventUrl(race.eventId, race.eventSecret) : null);
+
+    const worldSlug = slugify(race.map);
+    const routeSlug = slugify(race.routeName);
+    const wozRouteUrl = worldSlug && routeSlug
+        ? `https://whatsonzwift.com/world/${worldSlug}/route/${routeSlug}`
+        : null;
+    const wozImageUrl = worldSlug && routeSlug
+        ? `https://whatsonzwift.com/img/routes/${worldSlug}-${routeSlug}.png`
+        : null;
 
     return (
         <div className={`bg-card border border-border rounded-lg shadow-sm overflow-hidden mb-6 ${isPast ? 'opacity-75' : ''}`}>
@@ -166,6 +190,27 @@ export default function RaceCard({
                         </div>
                     </div>
                 </div>
+
+                {wozImageUrl && !routeImageFailed && (
+                    <div className="border-t border-border pt-4 mb-6">
+                        <h4 className="text-sm font-semibold text-card-foreground mb-2">Ruteprofil</h4>
+                        <a
+                            href={wozRouteUrl || undefined}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block rounded-lg overflow-hidden border border-border bg-muted/20"
+                            title="Åbn ruteside på WhatsonZwift"
+                        >
+                            <img
+                                src={wozImageUrl}
+                                alt={`Ruteprofil: ${race.routeName || 'route'}`}
+                                className="w-full h-auto"
+                                loading="lazy"
+                                onError={() => setRouteImageFailed(true)}
+                            />
+                        </a>
+                    </div>
+                )}
 
                 {!isPast && showPointsSplit && leagueSettings && (
                     <div className="border-t border-border pt-4 mb-6">
