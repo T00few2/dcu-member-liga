@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { getZwiftInsiderUrl } from '@/lib/api';
 import { formatDateLong, formatTimeWithTz } from '@/lib/formatDate';
 import PointsSplitBadge from '@/components/races/PointsSplitBadge';
@@ -114,7 +113,6 @@ export default function RaceCard({
     isPast = false,
     showPointsSplit = true,
 }: RaceCardProps) {
-    const [routeImageFailed, setRouteImageFailed] = useState(false);
     const raceDate = new Date(race.date);
     const userConfig = race.eventMode === 'multi' ? getUserEventConfig(race, userCategory) : null;
     const userSingleConfig = race.eventMode !== 'multi' ? getUserSingleConfig(race, userCategory) : null;
@@ -137,11 +135,8 @@ export default function RaceCard({
 
     const worldSlug = slugify(race.map);
     const routeSlug = slugify(race.routeName);
-    const wozRouteUrl = worldSlug && routeSlug
-        ? `https://whatsonzwift.com/world/${worldSlug}/route/${routeSlug}`
-        : null;
-    const wozImageUrl = worldSlug && routeSlug
-        ? `https://whatsonzwift.com/img/routes/${worldSlug}-${routeSlug}.png`
+    const zwiftMapUrl = worldSlug && routeSlug
+        ? `https://zwiftmap.com/${worldSlug}/${routeSlug}`
         : null;
 
     return (
@@ -191,24 +186,44 @@ export default function RaceCard({
                     </div>
                 </div>
 
-                {wozImageUrl && !routeImageFailed && (
+                {zwiftMapUrl && (
                     <div className="border-t border-border pt-4 mb-6">
-                        <h4 className="text-sm font-semibold text-card-foreground mb-2">Ruteprofil</h4>
-                        <a
-                            href={wozRouteUrl || undefined}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="block rounded-lg overflow-hidden border border-border bg-muted/20"
-                            title="Åbn ruteside på WhatsonZwift"
+                        <h4 className="text-sm font-semibold text-card-foreground mb-2">
+                            Ruteprofil
+                            <a
+                                href={zwiftMapUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="ml-2 text-xs font-normal text-primary hover:underline"
+                            >
+                                (ZwiftMap ↗)
+                            </a>
+                        </h4>
+                        {/* Clip to elevation chart: sidebar is 320px wide, chart starts ~310px from top */}
+                        <div
+                            className="relative rounded-lg border border-border overflow-hidden"
+                            style={{ height: 230 }}
                         >
-                            <img
-                                src={wozImageUrl}
-                                alt={`Ruteprofil: ${race.routeName || 'route'}`}
-                                className="w-full h-auto"
+                            <iframe
+                                src={zwiftMapUrl}
+                                style={{
+                                    position: 'absolute',
+                                    top: -310,
+                                    left: 0,
+                                    width: 1200,
+                                    height: 900,
+                                    border: 'none',
+                                }}
                                 loading="lazy"
-                                onError={() => setRouteImageFailed(true)}
+                                title={`Ruteprofil: ${race.routeName || ''}`}
+                                sandbox="allow-scripts allow-same-origin"
                             />
-                        </a>
+                            {/* Cover the map area to the right of the 320px sidebar */}
+                            <div
+                                className="absolute top-0 bottom-0 bg-card"
+                                style={{ left: 320, right: 0 }}
+                            />
+                        </div>
                     </div>
                 )}
 
