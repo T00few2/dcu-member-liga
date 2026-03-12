@@ -194,6 +194,20 @@ export default function NextRaceCard({ race }: NextRaceCardProps) {
                     </div>
                 </div>
 
+                {race.map && race.routeName && (
+                    <div className="border-t border-border pt-4 mb-6">
+                        <h4 className="text-sm font-semibold text-card-foreground mb-3">Ruteprofil</h4>
+                        <iframe
+                            src={`${getZwiftMapUrl(race.map, race.routeName)}#profile`}
+                            className="w-full rounded border border-border"
+                            style={{ height: 220 }}
+                            loading="lazy"
+                            title="Ruteprofil"
+                            sandbox="allow-scripts allow-same-origin"
+                        />
+                    </div>
+                )}
+
                 {(hasMultiSprints || hasSingleSprints) && (
                     <div className="border-t border-border pt-4 mb-6">
                         <h4 className="text-sm font-semibold text-card-foreground mb-3">Pointsprint</h4>
