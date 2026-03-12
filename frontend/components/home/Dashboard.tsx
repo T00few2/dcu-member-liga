@@ -7,13 +7,16 @@ import WelcomeModal from '@/components/WelcomeModal';
 import CommunitySection from './CommunitySection';
 import NextRaceCard from './NextRaceCard';
 import type { Race } from '@/types/live';
+import type { LeagueSettings } from '@/types/admin';
 
 interface DashboardProps {
     user: User;
     nextRace: Race | null;
+    leagueSettings: LeagueSettings | null;
+    userCategory?: string | null;
 }
 
-export default function Dashboard({ user, nextRace }: DashboardProps) {
+export default function Dashboard({ user, nextRace, leagueSettings, userCategory }: DashboardProps) {
     return (
         <div className="w-full relative -mt-4 text-foreground bg-background">
             {/* Hero */}
@@ -41,7 +44,7 @@ export default function Dashboard({ user, nextRace }: DashboardProps) {
             {/* Content */}
             <div className="container mx-auto px-4 -mt-12 relative z-20 pb-20 animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-300">
                 <div className="w-full max-w-4xl mx-auto space-y-8">
-                    {nextRace && <NextRaceCard race={nextRace} />}
+                    {nextRace && <NextRaceCard race={nextRace} leagueSettings={leagueSettings} userCategory={userCategory} />}
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <Link href="/participants" className="p-6 border border-border rounded-lg shadow-sm hover:shadow-md transition bg-card text-card-foreground group text-left">

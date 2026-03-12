@@ -22,6 +22,8 @@ export default function SegmentPicker({
 }: SegmentPickerProps) {
     const segmentsByLap = groupSegmentsByLap(segments);
     const label = segmentType === 'split' ? 'Split Segments' : 'Sprint Segments';
+    const segmentLabel = (name: string, direction: string) =>
+        String(direction || '').toLowerCase() === 'reverse' ? `${name} Reverse` : name;
 
     if (segments.length === 0) {
         return (
@@ -60,8 +62,8 @@ export default function SegmentPicker({
                                                 onChange={() => onToggle(seg)}
                                                 className="w-3 h-3 rounded border-input text-primary focus:ring-primary"
                                             />
-                                            <div className="text-xs truncate" title={`${seg.name} (${seg.direction})`}>
-                                                {seg.name}
+                                            <div className="text-xs truncate" title={segmentLabel(seg.name, seg.direction)}>
+                                                {segmentLabel(seg.name, seg.direction)}
                                             </div>
                                         </label>
                                     );
@@ -103,7 +105,7 @@ export default function SegmentPicker({
                                                 className="w-4 h-4 rounded border-input text-primary focus:ring-primary"
                                             />
                                             <div className="text-sm">
-                                                <div className="font-medium text-foreground">{seg.name}</div>
+                                                <div className="font-medium text-foreground">{segmentLabel(seg.name, seg.direction)}</div>
                                                 <div className="text-xs text-muted-foreground">
                                                     {seg.direction} • Occurrence #{seg.count}
                                                 </div>
@@ -134,6 +136,8 @@ export function CollapsibleSegmentPicker({
 }: CollapsibleSegmentPickerProps) {
     const label = title || (segmentType === 'split' ? 'Split Segments' : 'Sprint Segments');
     const segmentsByLap = groupSegmentsByLap(segments);
+    const segmentLabel = (name: string, direction: string) =>
+        String(direction || '').toLowerCase() === 'reverse' ? `${name} Reverse` : name;
 
     return (
         <details className="group border border-input rounded bg-background">
@@ -173,8 +177,8 @@ export function CollapsibleSegmentPicker({
                                                 onChange={() => onToggle(seg)}
                                                 className="w-3 h-3 rounded border-input text-primary focus:ring-primary"
                                             />
-                                            <div className="text-xs truncate" title={`${seg.name} (${seg.direction})`}>
-                                                {seg.name}
+                                            <div className="text-xs truncate" title={segmentLabel(seg.name, seg.direction)}>
+                                                {segmentLabel(seg.name, seg.direction)}
                                             </div>
                                         </label>
                                     );

@@ -162,15 +162,21 @@ export default function Navbar() {
                                     </div>
                                 ) : (
                                     <div className="flex items-center gap-4">
-                                        <Link href="/info" className={`hidden md:inline text-base transition-colors ${pathname === '/info' ? 'text-white font-bold' : 'text-white/90 font-bold hover:text-white'}`}>
+                                        <Link
+                                            href="/info"
+                                            className={`hidden md:inline hover:bg-white/10 px-3 py-2 rounded-md text-base transition-colors ${pathname === '/info' ? 'text-white font-bold' : 'text-white/90 font-bold'}`}
+                                        >
                                             Info
                                         </Link>
-                                        <Link href="/historik" className={`hidden md:inline text-base transition-colors ${pathname === '/historik' ? 'text-white font-bold' : 'text-white/90 font-bold hover:text-white'}`}>
+                                        <Link
+                                            href="/historik"
+                                            className={`hidden md:inline hover:bg-white/10 px-3 py-2 rounded-md text-base transition-colors ${pathname === '/historik' ? 'text-white font-bold' : 'text-white/90 font-bold'}`}
+                                        >
                                             Historik
                                         </Link>
                                         <button
                                             onClick={() => signInWithGoogle('login')}
-                                            className="hidden md:inline text-base text-white/90 font-bold hover:text-white transition-colors"
+                                            className="hidden md:inline cursor-pointer hover:bg-white/10 px-3 py-2 rounded-md text-base text-white/90 font-bold hover:text-white transition-colors"
                                         >
                                             Log ind
                                         </button>

@@ -132,6 +132,68 @@ The backend includes a dedicated module (`routes/seed.py`) for generating realis
 ## Development
 *   **Requirements**: `requirements.txt`
 
+## Run Backend Locally
+
+The backend runs as a local Cloud Function through `functions-framework`.
+
+### 1) Go to backend folder
+
+```bash
+cd backend
+```
+
+### 2) Create and activate a virtual environment (recommended)
+
+Windows (PowerShell):
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+macOS/Linux:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+### 3) Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4) Configure environment variables
+
+Create/update `backend/.env` with required secrets and local flags.
+
+For local frontend usage, make sure this is set:
+
+```env
+ALLOW_LOCALHOST=true
+```
+
+### 5) Start backend on port 8080
+
+```bash
+python -m functions_framework --target dcu_api --source main.py --debug --port 8080
+```
+
+You should see output similar to:
+
+- `Running on http://127.0.0.1:8080`
+- `Debugger is active`
+
+### 6) Quick verification
+
+Open one of these in a browser:
+
+- `http://127.0.0.1:8080/races`
+- `http://127.0.0.1:8080/routes`
+
+If those return JSON, the backend is running correctly.
+
 ## Data Inspection Tools
 
 A utility script is available for easily inspecting Firestore data and outputting it as JSON (friendly for AI agents).

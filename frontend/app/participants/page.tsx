@@ -148,8 +148,8 @@ export default function ParticipantsPage() {
                   </td>
                 </tr>
               ) : (
-                filtered.map((p) => (
-                  <tr key={p.eLicense} className="hover:bg-muted/50 transition">
+                filtered.map((p, idx) => (
+                  <tr key={`${p.eLicense || 'no-license'}-${p.zwiftId || 'no-zwift'}-${idx}`} className="hover:bg-muted/50 transition">
                     <td className="px-6 py-4 font-medium text-card-foreground">
                       <div className="flex items-center gap-2">
                         {p.name}
