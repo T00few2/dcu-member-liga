@@ -421,6 +421,7 @@ export default function LeagueManager() {
                     {/* Race List */}
                     <RaceList
                         races={races}
+                        leagueSettings={leagueSettings}
                         editingRaceId={raceForm.formState.editingRaceId}
                         status={status}
                         resultSource={resultSource}

@@ -14,6 +14,7 @@ import { API_URL } from './api';
 
 interface AuthContextType {
   user: User | null;
+  userCategory: string | null;
   loading: boolean;
   isRegistered: boolean;
   isAdmin: boolean;
@@ -36,6 +37,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
+  userCategory: null,
   loading: true,
   isRegistered: false,
   isAdmin: false,
@@ -58,6 +60,7 @@ const AuthContext = createContext<AuthContextType>({
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [userCategory, setUserCategory] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isRegistered, setIsRegistered] = useState(false);
   const [realIsAdmin, setRealIsAdmin] = useState(false);
@@ -90,6 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const requiredPublic = data.requiredPublicResultsConsentVersion;
         setRequiredDataPolicyVersion(requiredPolicy || null);
         setRequiredPublicResultsConsentVersion(requiredPublic || null);
+        setUserCategory(data?.ligaCategory?.category || null);
         const policyOk = !!requiredPolicy && (data.dataPolicyVersion === requiredPolicy) && !!data.acceptedDataPolicy;
         const publicOk = !!requiredPublic && (data.publicResultsConsentVersion === requiredPublic) && !!data.acceptedPublicResults;
         setNeedsConsentUpdate(!(policyOk && publicOk));
@@ -100,6 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setNeedsConsentUpdate(false);
         setRequiredDataPolicyVersion(null);
         setRequiredPublicResultsConsentVersion(null);
+        setUserCategory(null);
         setProfileLoaded(true);
       }
     } catch (error) {
@@ -109,6 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setNeedsConsentUpdate(false);
       setRequiredDataPolicyVersion(null);
       setRequiredPublicResultsConsentVersion(null);
+      setUserCategory(null);
       setProfileLoaded(true);
     }
   }, []);
@@ -141,6 +147,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setHasSeenWelcomeModal(false);
         setRequiredDataPolicyVersion(null);
         setRequiredPublicResultsConsentVersion(null);
+        setUserCategory(null);
       }
       setLoading(false);
     });
@@ -246,6 +253,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setHasSeenWelcomeModal(false);
       setRequiredDataPolicyVersion(null);
       setRequiredPublicResultsConsentVersion(null);
+      setUserCategory(null);
     } catch (error) {
       console.error("Error signing out", error);
     }
@@ -266,7 +274,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      user, loading, isRegistered, profileLoaded, isAdmin, needsConsentUpdate, hasSeenWelcomeModal,
+      user, userCategory, loading, isRegistered, profileLoaded, isAdmin, needsConsentUpdate, hasSeenWelcomeModal,
       requiredDataPolicyVersion, requiredPublicResultsConsentVersion,
       authIntent, clearAuthIntent, signInWithGoogle, logOut, refreshProfile, refreshClaims,
       isImpersonating, toggleImpersonation, weightVerificationStatus,

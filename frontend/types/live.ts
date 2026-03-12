@@ -67,6 +67,7 @@ export interface Race {
     eventMode?: 'single' | 'multi';
     eventConfiguration?: EventCategoryConfig[];
     singleModeCategories?: CategoryConfig[];
+    selectedSegments?: string[];
     results?: Record<string, ResultEntry[]>;
     sprints?: Sprint[];
     sprintData?: Sprint[];
