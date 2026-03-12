@@ -1,6 +1,7 @@
 'use client';
 
-import { getZwiftMapUrl } from '@/lib/api';
+import { useState } from 'react';
+import { getZwiftInsiderUrl } from '@/lib/api';
 import { formatDateLong, formatTimeWithTz } from '@/lib/formatDate';
 import PointsSplitBadge from '@/components/races/PointsSplitBadge';
 import type { Race, Sprint, EventCategoryConfig, CategoryConfig } from '@/types/live';
@@ -15,6 +16,14 @@ interface RaceCardProps {
 }
 
 const normalize = (value?: string | null) => (value || '').trim().toLowerCase();
+const slugify = (value?: string | null) =>
+    normalize(value)
+        .replace(/&/g, ' and ')
+        .replace(/['"]/g, '')
+        .replace(/[^\w\s-]/g, ' ')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
 
 const getZwiftEventUrl = (eventId: string, eventSecret?: string) => {
     if (typeof window === 'undefined') {
@@ -105,6 +114,7 @@ export default function RaceCard({
     isPast = false,
     showPointsSplit = true,
 }: RaceCardProps) {
+    const [routeImageFailed, setRouteImageFailed] = useState(false);
     const raceDate = new Date(race.date);
     const userConfig = race.eventMode === 'multi' ? getUserEventConfig(race, userCategory) : null;
     const userSingleConfig = race.eventMode !== 'multi' ? getUserSingleConfig(race, userCategory) : null;
@@ -125,8 +135,13 @@ export default function RaceCard({
         ? (userConfig?.eventId ? getZwiftEventUrl(userConfig.eventId, userConfig.eventSecret) : null)
         : (race.eventId ? getZwiftEventUrl(race.eventId, race.eventSecret) : null);
 
-    const zwiftMapUrl = race.map && race.routeName
-        ? getZwiftMapUrl(race.map, race.routeName)
+    const worldSlug = slugify(race.map);
+    const routeSlug = slugify(race.routeName);
+    const wozRouteUrl = worldSlug && routeSlug
+        ? `https://whatsonzwift.com/world/${worldSlug}/route/${routeSlug}`
+        : null;
+    const wozImageUrl = worldSlug && routeSlug
+        ? `https://whatsonzwift.com/img/routes/${worldSlug}-${routeSlug}.png`
         : null;
 
     return (
@@ -146,17 +161,15 @@ export default function RaceCard({
                         <div className="font-semibold text-card-foreground">{race.map}</div>
                         <div className="text-sm text-muted-foreground flex items-center justify-end gap-1">
                             {race.routeName}
-                            {zwiftMapUrl && (
-                                <a
-                                    href={zwiftMapUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-xs text-primary hover:underline"
-                                    title="View on ZwiftMap"
-                                >
-                                    (ZwiftMap ↗)
-                                </a>
-                            )}
+                            <a
+                                href={getZwiftInsiderUrl(race.routeName ?? '')}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-primary hover:underline"
+                                title="View on ZwiftInsider"
+                            >
+                                (Info ↗)
+                            </a>
                         </div>
                     </div>
                 </div>
@@ -178,23 +191,23 @@ export default function RaceCard({
                     </div>
                 </div>
 
-                {zwiftMapUrl && (
+                {wozImageUrl && !routeImageFailed && (
                     <div className="border-t border-border pt-4 mb-6">
+                        <h4 className="text-sm font-semibold text-card-foreground mb-2">Ruteprofil</h4>
                         <a
-                            href={zwiftMapUrl}
+                            href={wozRouteUrl || undefined}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/20 hover:bg-muted/40 px-4 py-3 transition-colors group"
-                            title="Vis interaktivt rutekort på ZwiftMap"
+                            className="block rounded-lg overflow-hidden border border-border bg-muted/20"
+                            title="Åbn ruteside på WhatsonZwift"
                         >
-                            <div>
-                                <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-0.5">Rutekort</div>
-                                <div className="text-sm font-medium text-card-foreground">{race.routeName}</div>
-                                <div className="text-xs text-muted-foreground">{race.map}</div>
-                            </div>
-                            <div className="text-primary group-hover:text-primary/80 shrink-0">
-                                <ExternalLinkIcon size={20} />
-                            </div>
+                            <img
+                                src={wozImageUrl}
+                                alt={`Ruteprofil: ${race.routeName || 'route'}`}
+                                className="w-full h-auto"
+                                loading="lazy"
+                                onError={() => setRouteImageFailed(true)}
+                            />
                         </a>
                     </div>
                 )}
