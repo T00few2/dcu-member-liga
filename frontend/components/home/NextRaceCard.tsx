@@ -3,9 +3,12 @@
 import Link from 'next/link';
 import { getZwiftMapUrl } from '@/lib/api';
 import type { Race, Sprint } from '@/types/live';
+import type { LeagueSettings } from '@/types/admin';
 
 interface NextRaceCardProps {
     race: Race;
+    leagueSettings?: LeagueSettings | null;
+    userCategory?: string | null;
 }
 
 function SprintsByLap({ sprints }: { sprints: Sprint[] }) {
