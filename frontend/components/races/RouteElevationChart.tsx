@@ -36,6 +36,20 @@ const SEGMENT_COLORS: Record<RouteSegment['type'], string> = {
     climb:  '#ed2324',
 };
 
+function getNiceStep(rawStep: number): number {
+    if (!Number.isFinite(rawStep) || rawStep <= 0) return 1;
+    const exponent = Math.floor(Math.log10(rawStep));
+    const fraction = rawStep / 10 ** exponent;
+    let niceFraction: number;
+
+    if (fraction <= 1) niceFraction = 1;
+    else if (fraction <= 2) niceFraction = 2;
+    else if (fraction <= 5) niceFraction = 5;
+    else niceFraction = 10;
+
+    return niceFraction * 10 ** exponent;
+}
+
 function gradientColor(pct: number): string {
     if (pct > 8)  return '#cc0000';
     if (pct > 5)  return '#ff4500';
@@ -120,8 +134,12 @@ export default function RouteElevationChart({ worldName, routeName }: Props) {
     if (!data) return null;
 
     const maxDist = data[data.length - 1]?.distance ?? 0;
-    const distStep = Math.ceil(maxDist / 4 / 5) * 5 || 1;
-    const xTicks = [0, distStep, distStep * 2, distStep * 3, distStep * 4];
+    const distStep = getNiceStep(maxDist / 4);
+    const maxDistTick = distStep * Math.ceil(maxDist / distStep);
+    const xTicks = Array.from(
+        { length: Math.max(2, Math.round(maxDistTick / distStep) + 1) },
+        (_, i) => i * distStep,
+    );
 
     const altitudes = data.map((d) => d.altitude);
     const minAlt = Math.min(...altitudes);
@@ -146,7 +164,7 @@ export default function RouteElevationChart({ worldName, routeName }: Props) {
                         <XAxis
                             dataKey="distance"
                             type="number"
-                            domain={[0, maxDist]}
+                            domain={[0, maxDistTick]}
                             ticks={xTicks}
                             tickFormatter={(v, i) => i === xTicks.length - 1 ? `${v.toFixed(0)} km` : `${v.toFixed(0)}`}
                             tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
