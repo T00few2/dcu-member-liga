@@ -122,7 +122,6 @@ function ElevationTooltip({
 export default function RouteElevationChart({ worldName, routeName }: Props) {
     const [data, setData] = useState<DataPoint[] | null>(null);
     const [routeSegments, setRouteSegments] = useState<RouteSegment[]>([]);
-    const [stravaSegmentUrl, setStravaSegmentUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -133,9 +132,7 @@ export default function RouteElevationChart({ worldName, routeName }: Props) {
                 distance: number[];
                 altitude: number[];
                 segments?: RouteSegment[];
-                stravaSegmentUrl?: string;
             } | null) => {
-                setStravaSegmentUrl(json?.stravaSegmentUrl ?? null);
                 if (json?.distance?.length && json?.altitude?.length) {
                     const n = Math.max(1, Math.floor(json.distance.length / TARGET_POINTS));
                     const raw = json.distance
@@ -159,9 +156,7 @@ export default function RouteElevationChart({ worldName, routeName }: Props) {
                     setRouteSegments(json.segments ?? []);
                 }
             })
-            .catch(() => {
-                setStravaSegmentUrl(null);
-            })
+            .catch(() => {})
             .finally(() => setLoading(false));
     }, [worldName, routeName]);
 
@@ -193,19 +188,6 @@ export default function RouteElevationChart({ worldName, routeName }: Props) {
 
     return (
         <div>
-            {stravaSegmentUrl && (
-                <div className="flex justify-end mb-1">
-                    <a
-                        href={stravaSegmentUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-primary hover:underline"
-                        title="View route segment on Strava"
-                    >
-                        Strava ↗
-                    </a>
-                </div>
-            )}
             <div style={{ width: '100%', height: 160 }}>
                 <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={data} margin={{ top: 8, right: 6, bottom: 4, left: 0 }} baseValue="dataMin">
