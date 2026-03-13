@@ -31,15 +31,18 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'No Strava segment found for this route' }, { status: 404 });
     }
 
-    // Map segmentsOnRoute to { from, to, type, name } — skip plain "segment" type
+    // Map segmentsOnRoute to { from, to, type, name }.
+    // Segment-level Strava fields are not required for rendering.
     const routeSegments = match.segmentsOnRoute
         .map((sor) => {
             const seg = segments.find((s) => s.slug === sor.segment);
-            return seg && seg.type !== 'segment'
-                ? { from: sor.from, to: sor.to, type: seg.type, name: seg.name }
-                : null;
-        })
-        .filter(Boolean);
+            return {
+                from: sor.from,
+                to: sor.to,
+                type: seg?.type ?? 'segment',
+                name: seg?.name ?? sor.segment,
+            };
+        });
 
     const upstream = await fetch(`${API_URL}/route-elevation/${match.stravaSegmentId}`, {
         next: { revalidate: 86400 }, // route elevation never changes

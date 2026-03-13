@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth-context';
 import type { Race } from '@/types/live';
 import type { LeagueSettings } from '@/types/admin';
 import { API_URL } from '@/lib/api';
+import { fromTimestamp } from '@/lib/formatDate';
 import RaceCard from '@/components/races/RaceCard';
 
 export default function SchedulePage() {
@@ -35,9 +36,11 @@ export default function SchedulePage() {
                 if (racesRes.ok) {
                     const data = await racesRes.json();
                     // Sort by date ascending
-                    const sorted = (data.races || []).sort((a: Race, b: Race) =>
-                        new Date(a.date).getTime() - new Date(b.date).getTime()
-                    );
+                    const sorted = (data.races || []).sort((a: Race, b: Race) => {
+                        const aTime = fromTimestamp(a.date)?.getTime() ?? Number.POSITIVE_INFINITY;
+                        const bTime = fromTimestamp(b.date)?.getTime() ?? Number.POSITIVE_INFINITY;
+                        return aTime - bTime;
+                    });
                     setRaces(sorted);
                 }
 
@@ -70,8 +73,15 @@ export default function SchedulePage() {
 
     if (!isRegistered) return null;
 
-    const futureRaces = races.filter(r => new Date(r.date) > new Date());
-    const pastRaces = races.filter(r => new Date(r.date) <= new Date()).reverse();
+    const now = Date.now();
+    const futureRaces = races.filter((r) => {
+        const t = fromTimestamp(r.date)?.getTime();
+        return Number.isFinite(t) && (t as number) > now;
+    });
+    const pastRaces = races.filter((r) => {
+        const t = fromTimestamp(r.date)?.getTime();
+        return Number.isFinite(t) && (t as number) <= now;
+    }).reverse();
 
     return (
         <div className="max-w-4xl mx-auto px-4 py-8">

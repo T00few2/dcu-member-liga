@@ -15,7 +15,7 @@ import {
 interface RouteSegment {
     from: number;
     to: number;
-    type: 'sprint' | 'climb';
+    type: 'sprint' | 'climb' | 'segment';
     name: string;
 }
 
@@ -34,6 +34,7 @@ const TARGET_POINTS = 400;
 const SEGMENT_COLORS: Record<RouteSegment['type'], string> = {
     sprint: '#56A845',
     climb:  '#ed2324',
+    segment: '#6b7280',
 };
 
 function getNiceStep(rawStep: number): number {

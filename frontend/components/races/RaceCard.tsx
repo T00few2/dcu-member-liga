@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getZwiftInsiderUrl } from '@/lib/api';
-import { formatDateLong, formatTimeWithTz } from '@/lib/formatDate';
+import { formatDateLong, formatTimeWithTz, fromTimestamp } from '@/lib/formatDate';
 import PointsSplitBadge from '@/components/races/PointsSplitBadge';
 import RouteElevationChart from '@/components/races/RouteElevationChart';
 import type { Race, Sprint, EventCategoryConfig, CategoryConfig } from '@/types/live';
@@ -147,7 +147,7 @@ export default function RaceCard({
     isPast = false,
     showPointsSplit = true,
 }: RaceCardProps) {
-    const raceDate = new Date(race.date);
+    const raceDate = fromTimestamp(race.date) || new Date(NaN);
     const userConfig = race.eventMode === 'multi' ? getUserEventConfig(race, userCategory) : null;
     const userSingleConfig = race.eventMode !== 'multi' ? getUserSingleConfig(race, userCategory) : null;
 
