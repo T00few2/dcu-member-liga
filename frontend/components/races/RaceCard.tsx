@@ -189,19 +189,7 @@ export default function RaceCard({
 
                 {race.map && race.routeName && (
                     <div className="border-t border-border pt-4 mb-6">
-                        <h4 className="text-sm font-semibold text-card-foreground mb-2">
-                            Ruteprofil
-                            {zwiftMapUrl && (
-                                <a
-                                    href={zwiftMapUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="ml-2 text-xs font-normal text-primary hover:underline"
-                                >
-                                    (ZwiftMap ↗)
-                                </a>
-                            )}
-                        </h4>
+                        <h4 className="text-sm font-semibold text-card-foreground mb-2">Ruteprofil</h4>
                         <RouteElevationChart worldName={race.map} routeName={race.routeName} />
                     </div>
                 )}

@@ -16,6 +16,7 @@ interface RouteSegment {
     from: number;
     to: number;
     type: 'sprint' | 'climb';
+    name: string;
 }
 
 interface Props {
@@ -30,14 +31,11 @@ interface DataPoint {
 }
 
 const TARGET_POINTS = 400;
-const STRIP_STOPS = 80;
-
 const SEGMENT_COLORS: Record<RouteSegment['type'], string> = {
     sprint: '#56A845',
     climb:  '#ed2324',
 };
 
-// Standard cycling gradient colour scale
 function gradientColor(pct: number): string {
     if (pct > 8)  return '#cc0000';
     if (pct > 5)  return '#ff4500';
@@ -48,26 +46,24 @@ function gradientColor(pct: number): string {
     return '#0066cc';
 }
 
-function GradientStrip({ data }: { data: DataPoint[] }) {
-    const maxDist = data[data.length - 1].distance;
-    const n = Math.max(1, Math.floor(data.length / STRIP_STOPS));
-    const stops = data
-        .filter((_, i) => i % n === 0)
-        .map((p) => `${gradientColor(p.gradient)} ${((p.distance / maxDist) * 100).toFixed(1)}%`)
-        .join(', ');
-
-    return (
-        <div style={{ height: 8, borderRadius: 3, background: `linear-gradient(to right, ${stops})` }} />
-    );
-}
-
-function ElevationTooltip({ active, payload, label }: any) {
+function ElevationTooltip({
+    active, payload, label, routeSegments,
+}: any) {
     if (!active || !payload?.length) return null;
     const pt: DataPoint = payload[0].payload;
+    const dist = Number(label);
+    const seg: RouteSegment | undefined = routeSegments?.find(
+        (s: RouteSegment) => dist >= s.from && dist <= s.to,
+    );
     const sign = pt.gradient > 0 ? '+' : '';
     return (
         <div className="rounded border bg-popover px-2 py-1 shadow text-xs space-y-0.5">
-            <div className="font-medium">{Number(label).toFixed(1)} km</div>
+            <div className="font-medium">{dist.toFixed(1)} km</div>
+            {seg && (
+                <div style={{ color: SEGMENT_COLORS[seg.type], fontWeight: 600 }}>
+                    {seg.name}
+                </div>
+            )}
             <div>{Math.round(pt.altitude)} m</div>
             <div style={{ color: gradientColor(pt.gradient) }}>
                 {sign}{pt.gradient.toFixed(1)}%
@@ -94,8 +90,6 @@ export default function RouteElevationChart({ worldName, routeName }: Props) {
                             distance: d / 1_000,
                             altitude: json.altitude[i * n],
                         }));
-
-                    // gradient % = (Δalt_m / Δdist_m) * 100
                     const enriched: DataPoint[] = raw.map((pt, i) => ({
                         ...pt,
                         gradient:
@@ -139,9 +133,13 @@ export default function RouteElevationChart({ worldName, routeName }: Props) {
                         <CartesianGrid vertical={false} strokeOpacity={0.15} />
                         <XAxis dataKey="distance" type="number" hide domain={[0, 'dataMax']} />
                         <YAxis type="number" hide domain={['dataMin', 'auto']} />
-                        <Tooltip content={<ElevationTooltip />} isAnimationActive={false} />
+                        <Tooltip
+                            content={(props) => (
+                                <ElevationTooltip {...props} routeSegments={routeSegments} />
+                            )}
+                            isAnimationActive={false}
+                        />
 
-                        {/* Sprint and KOM overlays */}
                         {routeSegments.map((seg, i) => (
                             <ReferenceArea
                                 key={i}
@@ -152,6 +150,13 @@ export default function RouteElevationChart({ worldName, routeName }: Props) {
                                 stroke={SEGMENT_COLORS[seg.type]}
                                 strokeOpacity={0.6}
                                 strokeWidth={1}
+                                label={{
+                                    value: seg.name,
+                                    position: 'insideTop',
+                                    fontSize: 9,
+                                    fill: SEGMENT_COLORS[seg.type],
+                                    fontWeight: 600,
+                                }}
                             />
                         ))}
 
@@ -167,7 +172,5 @@ export default function RouteElevationChart({ worldName, routeName }: Props) {
                     </AreaChart>
                 </ResponsiveContainer>
             </div>
-            <GradientStrip data={data} />
-        </div>
     );
 }
