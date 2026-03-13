@@ -9,6 +9,8 @@ load_dotenv()
 
 STRAVA_CLIENT_ID = os.getenv('STRAVA_CLIENT_ID')
 STRAVA_CLIENT_SECRET = os.getenv('STRAVA_CLIENT_SECRET')
+# Refresh token for a dedicated service account used to fetch public segment data
+STRAVA_SERVICE_REFRESH_TOKEN = os.getenv('STRAVA_SERVICE_REFRESH_TOKEN')
 BACKEND_URL = os.getenv('BACKEND_URL', 'https://us-central1-dcu-member-liga-479507.cloudfunctions.net/dcu_api')
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://dcu-member-liga.vercel.app')
 

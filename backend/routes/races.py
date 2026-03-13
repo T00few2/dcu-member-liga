@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
-from extensions import db, get_zwift_service, get_zwift_game_service
+from extensions import db, get_zwift_service, get_zwift_game_service, strava_service
 from services.results_processor import ResultsProcessor
 from services.category_engine import _effective_cat_name
 from datetime import datetime
@@ -300,3 +300,22 @@ def refresh_results(race_id):
     except Exception as e:
         logger.error(f"Results Processing Error: {e}")
         return jsonify({'message': str(e)}), 500
+
+
+@races_bp.route('/route-elevation/<int:segment_id>', methods=['GET'])
+def get_route_elevation(segment_id):
+    """Return distance + altitude streams for a Strava segment, cached in Firestore."""
+    if not db:
+        return jsonify({'error': 'Database unavailable'}), 503
+
+    cache_ref = db.collection('elevation_cache').document(str(segment_id))
+    cached = cache_ref.get()
+    if cached.exists:
+        return jsonify(cached.to_dict())
+
+    streams = strava_service.get_segment_streams(segment_id)
+    if not streams:
+        return jsonify({'error': 'Could not fetch elevation data'}), 502
+
+    cache_ref.set(streams)
+    return jsonify(streams)

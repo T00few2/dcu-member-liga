@@ -1,6 +1,6 @@
 import requests
 import time
-from config import STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, BACKEND_URL
+from config import STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, BACKEND_URL, STRAVA_SERVICE_REFRESH_TOKEN
 from firebase_admin import firestore
 
 import logging
@@ -10,6 +10,8 @@ logger = logging.getLogger(__name__)
 class StravaService:
     def __init__(self, db):
         self.db = db
+        self._service_access_token = None
+        self._service_token_expiry = 0
 
     def _get_user_ref(self, rider_id):
         # Helper to find user doc by ID (ZwiftID) or eLicense
@@ -193,11 +195,11 @@ class StravaService:
         access_token = self._get_valid_token(rider_id)
         if not access_token:
             return None
-            
+
         try:
             url = f"https://www.strava.com/api/v3/activities/{activity_id}/streams?keys=time,watts,cadence,heartrate,altitude"
             res = requests.get(url, headers={'Authorization': f"Bearer {access_token}"})
-            
+
             if res.status_code == 200:
                 return res.json()
             else:
@@ -205,4 +207,81 @@ class StravaService:
                 return None
         except Exception as e:
             logger.error(f"Error fetching streams: {e}")
+            return None
+
+    def _get_service_token(self):
+        """Get a service-level Strava access token for fetching public data (e.g. segment streams)."""
+        if self._service_access_token and time.time() < self._service_token_expiry:
+            return self._service_access_token
+
+        # Prefer the refresh token stored in Firestore (handles rotation), fall back to env
+        refresh_token = None
+        if self.db:
+            try:
+                doc = self.db.collection('system').document('strava_service_token').get()
+                if doc.exists:
+                    refresh_token = doc.to_dict().get('refresh_token')
+            except Exception as e:
+                logger.warning(f"Could not read service token from Firestore: {e}")
+
+        if not refresh_token:
+            refresh_token = STRAVA_SERVICE_REFRESH_TOKEN
+
+        if not refresh_token:
+            logger.warning("STRAVA_SERVICE_REFRESH_TOKEN is not configured.")
+            return None
+
+        try:
+            res = requests.post('https://www.strava.com/oauth/token', data={
+                'client_id': STRAVA_CLIENT_ID,
+                'client_secret': STRAVA_CLIENT_SECRET,
+                'grant_type': 'refresh_token',
+                'refresh_token': refresh_token,
+            })
+            data = res.json()
+            if res.status_code != 200:
+                logger.error(f"Service token refresh failed: {res.status_code} {data}")
+                return None
+
+            self._service_access_token = data['access_token']
+            self._service_token_expiry = data['expires_at'] - 300
+
+            # Persist the (possibly rotated) refresh token back to Firestore
+            if self.db:
+                try:
+                    self.db.collection('system').document('strava_service_token').set({
+                        'refresh_token': data['refresh_token'],
+                        'expires_at': data['expires_at'],
+                    }, merge=True)
+                except Exception as e:
+                    logger.warning(f"Could not persist rotated service token: {e}")
+
+            return self._service_access_token
+        except Exception as e:
+            logger.error(f"Error obtaining service token: {e}")
+            return None
+
+    def get_segment_streams(self, segment_id: int):
+        """Fetch distance and altitude streams for a public Strava segment."""
+        access_token = self._get_service_token()
+        if not access_token:
+            return None
+
+        try:
+            url = (
+                f"https://www.strava.com/api/v3/segments/{segment_id}/streams"
+                f"?keys=distance,altitude&key_by_type=true"
+            )
+            res = requests.get(url, headers={'Authorization': f'Bearer {access_token}'})
+            if res.status_code == 200:
+                data = res.json()
+                return {
+                    'distance': data.get('distance', {}).get('data', []),
+                    'altitude': data.get('altitude', {}).get('data', []),
+                }
+            else:
+                logger.error(f"Segment stream fetch failed: {res.status_code} {res.text}")
+                return None
+        except Exception as e:
+            logger.error(f"Error fetching segment streams: {e}")
             return None

@@ -3,6 +3,7 @@
 import { getZwiftInsiderUrl } from '@/lib/api';
 import { formatDateLong, formatTimeWithTz } from '@/lib/formatDate';
 import PointsSplitBadge from '@/components/races/PointsSplitBadge';
+import RouteElevationChart from '@/components/races/RouteElevationChart';
 import type { Race, Sprint, EventCategoryConfig, CategoryConfig } from '@/types/live';
 import type { LeagueSettings } from '@/types/admin';
 
@@ -186,44 +187,22 @@ export default function RaceCard({
                     </div>
                 </div>
 
-                {zwiftMapUrl && (
+                {race.map && race.routeName && (
                     <div className="border-t border-border pt-4 mb-6">
                         <h4 className="text-sm font-semibold text-card-foreground mb-2">
                             Ruteprofil
-                            <a
-                                href={zwiftMapUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="ml-2 text-xs font-normal text-primary hover:underline"
-                            >
-                                (ZwiftMap ↗)
-                            </a>
+                            {zwiftMapUrl && (
+                                <a
+                                    href={zwiftMapUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="ml-2 text-xs font-normal text-primary hover:underline"
+                                >
+                                    (ZwiftMap ↗)
+                                </a>
+                            )}
                         </h4>
-                        {/* Clip to elevation chart: sidebar is 320px wide, chart starts ~400px from top */}
-                        <div
-                            className="relative rounded-lg border border-border overflow-hidden"
-                            style={{ height: 150 }}
-                        >
-                            <iframe
-                                src={zwiftMapUrl}
-                                style={{
-                                    position: 'absolute',
-                                    top: -400,
-                                    left: 0,
-                                    width: 1200,
-                                    height: 900,
-                                    border: 'none',
-                                }}
-                                loading="lazy"
-                                title={`Ruteprofil: ${race.routeName || ''}`}
-                                sandbox="allow-scripts allow-same-origin"
-                            />
-                            {/* Cover the map area to the right of the 320px sidebar */}
-                            <div
-                                className="absolute top-0 bottom-0 bg-card"
-                                style={{ left: 320, right: 0 }}
-                            />
-                        </div>
+                        <RouteElevationChart worldName={race.map} routeName={race.routeName} />
                     </div>
                 )}
 
