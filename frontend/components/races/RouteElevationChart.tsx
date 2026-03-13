@@ -31,8 +31,6 @@ interface DataPoint {
 }
 
 const TARGET_POINTS = 400;
-const STRIP_STOPS = 80;
-
 const SEGMENT_COLORS: Record<RouteSegment['type'], string> = {
     sprint: '#56A845',
     climb:  '#ed2324',
@@ -46,18 +44,6 @@ function gradientColor(pct: number): string {
     if (pct > -1) return '#22aa55';
     if (pct > -3) return '#4da6ff';
     return '#0066cc';
-}
-
-function GradientStrip({ data }: { data: DataPoint[] }) {
-    const maxDist = data[data.length - 1].distance;
-    const n = Math.max(1, Math.floor(data.length / STRIP_STOPS));
-    const stops = data
-        .filter((_, i) => i % n === 0)
-        .map((p) => `${gradientColor(p.gradient)} ${((p.distance / maxDist) * 100).toFixed(1)}%`)
-        .join(', ');
-    return (
-        <div style={{ height: 8, borderRadius: 3, background: `linear-gradient(to right, ${stops})` }} />
-    );
 }
 
 function ElevationTooltip({
@@ -186,7 +172,5 @@ export default function RouteElevationChart({ worldName, routeName }: Props) {
                     </AreaChart>
                 </ResponsiveContainer>
             </div>
-            <GradientStrip data={data} />
-        </div>
     );
 }
