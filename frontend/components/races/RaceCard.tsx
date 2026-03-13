@@ -199,16 +199,16 @@ export default function RaceCard({
                                 (ZwiftMap ↗)
                             </a>
                         </h4>
-                        {/* Clip to elevation chart: sidebar is 320px wide, chart starts ~310px from top */}
+                        {/* Clip to elevation chart: sidebar is 320px wide, chart starts ~400px from top */}
                         <div
                             className="relative rounded-lg border border-border overflow-hidden"
-                            style={{ height: 230 }}
+                            style={{ height: 150 }}
                         >
                             <iframe
                                 src={zwiftMapUrl}
                                 style={{
                                     position: 'absolute',
-                                    top: -310,
+                                    top: -400,
                                     left: 0,
                                     width: 1200,
                                     height: 900,
