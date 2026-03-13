@@ -119,11 +119,23 @@ export default function RouteElevationChart({ worldName, routeName }: Props) {
 
     if (!data) return null;
 
+    const maxDist = data[data.length - 1]?.distance ?? 0;
+    const distStep = Math.ceil(maxDist / 4 / 5) * 5 || 1;
+    const xTicks = [0, distStep, distStep * 2, distStep * 3, distStep * 4];
+
+    const altitudes = data.map((d) => d.altitude);
+    const minAlt = Math.min(...altitudes);
+    const maxAlt = Math.max(...altitudes);
+    const altRange = maxAlt - minAlt || 1;
+    const altStep = Math.ceil(altRange / 4 / 10) * 10 || 10;
+    const altBase = Math.floor(minAlt / altStep) * altStep;
+    const yTicks = [0, 1, 2, 3, 4].map((i) => altBase + i * altStep);
+
     return (
         <div>
             <div style={{ width: '100%', height: 160 }}>
                 <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 4, left: 40 }} baseValue="dataMin">
+                    <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 4, left: 8 }} baseValue="dataMin">
                         <defs>
                             <linearGradient id="elevGrad" x1="0" y1="0" x2="0" y2="100%">
                                 <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.55} />
@@ -134,20 +146,22 @@ export default function RouteElevationChart({ worldName, routeName }: Props) {
                         <XAxis
                             dataKey="distance"
                             type="number"
-                            domain={[0, 'dataMax']}
-                            tickFormatter={(v) => `${v.toFixed(0)} km`}
+                            domain={[0, maxDist]}
+                            ticks={xTicks}
+                            tickFormatter={(v, i) => i === xTicks.length - 1 ? `${v.toFixed(0)} km` : `${v.toFixed(0)}`}
                             tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
                             tickLine={false}
                             axisLine={false}
                         />
                         <YAxis
                             type="number"
-                            domain={['dataMin', 'auto']}
-                            tickFormatter={(v) => `${v} m`}
+                            domain={[altBase, altBase + altStep * 4]}
+                            ticks={yTicks}
+                            tickFormatter={(v, i) => i === 0 ? `${v} m` : `${v}`}
                             tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
                             tickLine={false}
                             axisLine={false}
-                            width={40}
+                            width={36}
                         />
                         <Tooltip
                             content={(props) => (
