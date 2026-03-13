@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { routes } from 'zwift-data';
+import { routes, segments } from 'zwift-data';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -31,8 +31,18 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'No Strava segment found for this route' }, { status: 404 });
     }
 
+    // Map segmentsOnRoute to { from, to, type } — skip plain "segment" type, only sprint/climb
+    const routeSegments = match.segmentsOnRoute
+        .map((sor) => {
+            const seg = segments.find((s) => s.slug === sor.segment);
+            return seg && seg.type !== 'segment'
+                ? { from: sor.from, to: sor.to, type: seg.type }
+                : null;
+        })
+        .filter(Boolean);
+
     const upstream = await fetch(`${API_URL}/route-elevation/${match.stravaSegmentId}`, {
-        next: { revalidate: 86400 }, // cache for 24h — route elevation never changes
+        next: { revalidate: 86400 }, // route elevation never changes
     });
 
     if (!upstream.ok) {
@@ -40,7 +50,8 @@ export async function GET(req: NextRequest) {
     }
 
     const data = await upstream.json();
-    return NextResponse.json(data, {
-        headers: { 'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800' },
-    });
+    return NextResponse.json(
+        { ...data, segments: routeSegments },
+        { headers: { 'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800' } }
+    );
 }

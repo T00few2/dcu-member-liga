@@ -5,11 +5,18 @@ import {
     Area,
     AreaChart,
     CartesianGrid,
+    ReferenceArea,
     ResponsiveContainer,
     Tooltip,
     XAxis,
     YAxis,
 } from 'recharts';
+
+interface RouteSegment {
+    from: number;
+    to: number;
+    type: 'sprint' | 'climb';
+}
 
 interface Props {
     worldName: string;
@@ -23,7 +30,12 @@ interface DataPoint {
 }
 
 const TARGET_POINTS = 400;
-const STRIP_STOPS = 80; // max color stops in the CSS gradient strip
+const STRIP_STOPS = 80;
+
+const SEGMENT_COLORS: Record<RouteSegment['type'], string> = {
+    sprint: '#56A845',
+    climb:  '#ed2324',
+};
 
 // Standard cycling gradient colour scale
 function gradientColor(pct: number): string {
@@ -56,9 +68,9 @@ function ElevationTooltip({ active, payload, label }: any) {
     return (
         <div className="rounded border bg-popover px-2 py-1 shadow text-xs space-y-0.5">
             <div className="font-medium">{Number(label).toFixed(1)} km</div>
-            <div>{Math.round(pt.altitude)} m hoogte</div>
+            <div>{Math.round(pt.altitude)} m</div>
             <div style={{ color: gradientColor(pt.gradient) }}>
-                {sign}{pt.gradient.toFixed(1)}% helling
+                {sign}{pt.gradient.toFixed(1)}%
             </div>
         </div>
     );
@@ -66,13 +78,14 @@ function ElevationTooltip({ active, payload, label }: any) {
 
 export default function RouteElevationChart({ worldName, routeName }: Props) {
     const [data, setData] = useState<DataPoint[] | null>(null);
+    const [routeSegments, setRouteSegments] = useState<RouteSegment[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const params = new URLSearchParams({ world: worldName, route: routeName });
         fetch(`/api/route-elevation?${params}`)
             .then((res) => (res.ok ? res.json() : null))
-            .then((json: { distance: number[]; altitude: number[] } | null) => {
+            .then((json: { distance: number[]; altitude: number[]; segments?: RouteSegment[] } | null) => {
                 if (json?.distance?.length && json?.altitude?.length) {
                     const n = Math.max(1, Math.floor(json.distance.length / TARGET_POINTS));
                     const raw = json.distance
@@ -95,6 +108,7 @@ export default function RouteElevationChart({ worldName, routeName }: Props) {
                                   ) / 10,
                     }));
                     setData(enriched);
+                    setRouteSegments(json.segments ?? []);
                 }
             })
             .catch(() => {})
@@ -125,10 +139,22 @@ export default function RouteElevationChart({ worldName, routeName }: Props) {
                         <CartesianGrid vertical={false} strokeOpacity={0.15} />
                         <XAxis dataKey="distance" type="number" hide domain={[0, 'dataMax']} />
                         <YAxis type="number" hide domain={['dataMin', 'auto']} />
-                        <Tooltip
-                            content={<ElevationTooltip />}
-                            isAnimationActive={false}
-                        />
+                        <Tooltip content={<ElevationTooltip />} isAnimationActive={false} />
+
+                        {/* Sprint and KOM overlays */}
+                        {routeSegments.map((seg, i) => (
+                            <ReferenceArea
+                                key={i}
+                                x1={seg.from}
+                                x2={seg.to}
+                                fill={SEGMENT_COLORS[seg.type]}
+                                fillOpacity={0.25}
+                                stroke={SEGMENT_COLORS[seg.type]}
+                                strokeOpacity={0.6}
+                                strokeWidth={1}
+                            />
+                        ))}
+
                         <Area
                             type="monotone"
                             dataKey="altitude"
