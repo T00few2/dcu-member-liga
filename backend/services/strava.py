@@ -227,8 +227,19 @@ class StravaService:
         if not refresh_token:
             refresh_token = STRAVA_SERVICE_REFRESH_TOKEN
 
+        # Last resort: borrow any connected user's refresh token — segment streams
+        # are public data, so any authenticated Strava user can fetch them.
+        if not refresh_token and self.db:
+            try:
+                docs = self.db.collection('strava_tokens').limit(1).stream()
+                for doc in docs:
+                    refresh_token = doc.to_dict().get('refresh_token')
+                    break
+            except Exception as e:
+                logger.warning(f"Could not find fallback user token: {e}")
+
         if not refresh_token:
-            logger.warning("STRAVA_SERVICE_REFRESH_TOKEN is not configured.")
+            logger.warning("No Strava token available for segment stream fetch.")
             return None
 
         try:
