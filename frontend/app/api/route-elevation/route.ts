@@ -31,12 +31,12 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'No Strava segment found for this route' }, { status: 404 });
     }
 
-    // Map segmentsOnRoute to { from, to, type } — skip plain "segment" type, only sprint/climb
+    // Map segmentsOnRoute to { from, to, type, name } — skip plain "segment" type
     const routeSegments = match.segmentsOnRoute
         .map((sor) => {
             const seg = segments.find((s) => s.slug === sor.segment);
             return seg && seg.type !== 'segment'
-                ? { from: sor.from, to: sor.to, type: seg.type }
+                ? { from: sor.from, to: sor.to, type: seg.type, name: seg.name }
                 : null;
         })
         .filter(Boolean);
