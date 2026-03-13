@@ -16,7 +16,7 @@ interface RouteSegment {
     from: number;
     to: number;
     type: 'sprint' | 'climb' | 'segment';
-    name: string;
+    name?: string;
 }
 
 interface Props {
@@ -61,8 +61,18 @@ function gradientColor(pct: number): string {
     return '#0066cc';
 }
 
-function compactSegmentLabel(name: string): string {
-    const compact = name
+function normalizeSegmentType(type: unknown): RouteSegment['type'] {
+    return type === 'sprint' || type === 'climb' || type === 'segment' ? type : 'segment';
+}
+
+function getSegmentName(name: unknown): string {
+    if (typeof name !== 'string') return 'Segment';
+    const trimmed = name.trim();
+    return trimmed.length > 0 ? trimmed : 'Segment';
+}
+
+function compactSegmentLabel(name?: string): string {
+    const compact = getSegmentName(name)
         .replace(/\s+(reverse|rev\.?)$/i, ' Rev.')
         .replace(/\s+mountainside/i, ' Mtn.')
         .trim();
@@ -107,8 +117,8 @@ function ElevationTooltip({
         <div className="rounded border bg-popover px-2 py-1 shadow text-xs space-y-0.5">
             <div className="font-medium">{dist.toFixed(1)} km</div>
             {seg && (
-                <div style={{ color: SEGMENT_COLORS[seg.type], fontWeight: 600 }}>
-                    {seg.name}
+                <div style={{ color: SEGMENT_COLORS[normalizeSegmentType(seg.type)], fontWeight: 600 }}>
+                    {getSegmentName(seg.name)}
                 </div>
             )}
             <div>{Math.round(pt.altitude)} m</div>
@@ -153,7 +163,14 @@ export default function RouteElevationChart({ worldName, routeName }: Props) {
                                   ) / 10,
                     }));
                     setData(enriched);
-                    setRouteSegments(json.segments ?? []);
+                    setRouteSegments(
+                        (json.segments ?? []).map((seg) => ({
+                            from: Number.isFinite(seg?.from) ? seg.from : 0,
+                            to: Number.isFinite(seg?.to) ? seg.to : 0,
+                            type: normalizeSegmentType(seg?.type),
+                            name: getSegmentName(seg?.name),
+                        })),
+                    );
                 }
             })
             .catch(() => {})
@@ -231,16 +248,16 @@ export default function RouteElevationChart({ worldName, routeName }: Props) {
                                 key={i}
                                 x1={seg.from}
                                 x2={seg.to}
-                                fill={SEGMENT_COLORS[seg.type]}
+                                fill={SEGMENT_COLORS[normalizeSegmentType(seg.type)]}
                                 fillOpacity={0.25}
-                                stroke={SEGMENT_COLORS[seg.type]}
+                                stroke={SEGMENT_COLORS[normalizeSegmentType(seg.type)]}
                                 strokeOpacity={0.6}
                                 strokeWidth={1}
                                 label={(labelProps) =>
                                     renderCenteredSegmentLabel(
                                         labelProps,
                                         compactSegmentLabel(seg.name),
-                                        SEGMENT_COLORS[seg.type],
+                                        SEGMENT_COLORS[normalizeSegmentType(seg.type)],
                                     )
                                 }
                             />

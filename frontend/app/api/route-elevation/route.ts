@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
                 from: sor.from,
                 to: sor.to,
                 type: seg?.type ?? 'segment',
-                name: seg?.name ?? sor.segment,
+                name: seg?.name ?? sor.segment ?? 'Segment',
             };
         });
 
