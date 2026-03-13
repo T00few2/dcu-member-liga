@@ -121,9 +121,9 @@ export default function RouteElevationChart({ worldName, routeName }: Props) {
 
     return (
         <div>
-            <div style={{ width: '100%', height: 130 }}>
+            <div style={{ width: '100%', height: 160 }}>
                 <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={data} margin={{ top: 8, bottom: 4 }} baseValue="dataMin">
+                    <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 4, left: 40 }} baseValue="dataMin">
                         <defs>
                             <linearGradient id="elevGrad" x1="0" y1="0" x2="0" y2="100%">
                                 <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.55} />
@@ -131,8 +131,24 @@ export default function RouteElevationChart({ worldName, routeName }: Props) {
                             </linearGradient>
                         </defs>
                         <CartesianGrid vertical={false} strokeOpacity={0.15} />
-                        <XAxis dataKey="distance" type="number" hide domain={[0, 'dataMax']} />
-                        <YAxis type="number" hide domain={['dataMin', 'auto']} />
+                        <XAxis
+                            dataKey="distance"
+                            type="number"
+                            domain={[0, 'dataMax']}
+                            tickFormatter={(v) => `${v.toFixed(0)} km`}
+                            tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                            tickLine={false}
+                            axisLine={false}
+                        />
+                        <YAxis
+                            type="number"
+                            domain={['dataMin', 'auto']}
+                            tickFormatter={(v) => `${v} m`}
+                            tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                            tickLine={false}
+                            axisLine={false}
+                            width={40}
+                        />
                         <Tooltip
                             content={(props) => (
                                 <ElevationTooltip {...props} routeSegments={routeSegments} />
