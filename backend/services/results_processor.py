@@ -10,6 +10,7 @@ from services.zwift_game import ZwiftGameService
 from services.results.race_scorer import RaceScorer
 from services.results.league_engine import LeagueEngine
 from services.results.zwift_fetcher import ZwiftFetcher
+from services.category_config import CategoryConfigResolver
 from firebase_admin import firestore
 
 from models import LeagueStandings, RaceConfig, RaceResults
@@ -367,37 +368,5 @@ class ResultsProcessor:
             logger.info(f"    Saved {len(processed_batch)} merged results to {custom_category}")
 
     def _get_category_config(self, race_data: dict[str, Any], category: str) -> RaceConfig:
-        """Helper to build a config dict for RaceScorer from race_data"""
-
-        # Default global config
-        config: RaceConfig = {
-            'manualDQs': race_data.get('manualDQs', []),
-            'manualDeclassifications': race_data.get('manualDeclassifications', []),
-            'manualExclusions': race_data.get('manualExclusions', []),
-            'segmentType': race_data.get('segmentType', 'sprint'),
-            'sprints': race_data.get('sprints', [])
-        }
-
-        # Try to find specific category config overrides
-
-        # 1. Check Multi-Mode Config (eventConfiguration)
-        if race_data.get('eventMode') == 'multi' and race_data.get('eventConfiguration'):
-            for cfg in race_data['eventConfiguration']:
-                if cfg.get('customCategory') == category:
-                    if cfg.get('segmentType'):
-                        config['segmentType'] = cfg['segmentType']
-                    if cfg.get('sprints'):
-                        config['sprints'] = cfg['sprints']
-                    return config
-
-        # 2. Check Single-Mode Config (singleModeCategories)
-        if race_data.get('singleModeCategories'):
-            for cfg in race_data['singleModeCategories']:
-                if cfg.get('category') == category:
-                    if cfg.get('segmentType'):
-                        config['segmentType'] = cfg['segmentType']
-                    if cfg.get('sprints'):
-                        config['sprints'] = cfg['sprints']
-                    return config
-
-        return config
+        """Build a RaceConfig for a category, delegating to CategoryConfigResolver."""
+        return CategoryConfigResolver.get_race_config(race_data, category)

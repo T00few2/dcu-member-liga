@@ -6,6 +6,8 @@ from typing import Any
 import logging
 
 from models import LeagueSettings, LeagueStandings, RiderResult, SegmentType, SprintConfig
+from services.category_config import CategoryConfigResolver
+from utils.datetime_utils import normalize_dt, parse_dt
 
 logger = logging.getLogger(__name__)
 
@@ -379,52 +381,20 @@ class LeagueEngine:
         return result
 
     def _get_category_sprints(self, race_data: dict[str, Any], category: str) -> list[SprintConfig]:
-        """Get sprint/segment configuration for a category"""
-        if race_data.get('eventMode') == 'multi' and race_data.get('eventConfiguration'):
-            for cfg in race_data['eventConfiguration']:
-                if cfg.get('customCategory') == category:
-                    return cfg.get('sprints', [])
-
-        if race_data.get('singleModeCategories'):
-            for cfg in race_data['singleModeCategories']:
-                if cfg.get('category') == category:
-                    return cfg.get('sprints', [])
-
-        return race_data.get('sprints', [])
+        """Get sprint/segment configuration for a category."""
+        return CategoryConfigResolver.get_sprints(race_data, category)
 
     def _get_category_segment_type(self, race_data: dict[str, Any], category: str) -> SegmentType:
-        """Get segment type for a category"""
-        if race_data.get('eventMode') == 'multi' and race_data.get('eventConfiguration'):
-            for cfg in race_data['eventConfiguration']:
-                if cfg.get('customCategory') == category:
-                    return cfg.get('segmentType') or race_data.get('segmentType', 'sprint')
-
-        if race_data.get('singleModeCategories'):
-            for cfg in race_data['singleModeCategories']:
-                if cfg.get('category') == category:
-                    return cfg.get('segmentType') or race_data.get('segmentType', 'sprint')
-
-        return race_data.get('segmentType', 'sprint')
+        """Get segment type for a category."""
+        return CategoryConfigResolver.get_segment_type(race_data, category)
 
     @staticmethod
     def _normalize_dt(value: datetime | None) -> datetime | None:
-        if not value:
-            return None
-        if value.tzinfo:
-            return value.astimezone(timezone.utc).replace(tzinfo=None)
-        return value
+        return normalize_dt(value)
 
     @staticmethod
     def _parse_dt(value: Any) -> datetime | None:
-        if not value:
-            return None
-        if isinstance(value, datetime):
-            return LeagueEngine._normalize_dt(value)
-        try:
-            parsed = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
-            return LeagueEngine._normalize_dt(parsed)
-        except Exception:
-            return None
+        return parse_dt(value)
 
     @staticmethod
     def _get_race_datetime(race_data: dict[str, Any]) -> datetime | None:
