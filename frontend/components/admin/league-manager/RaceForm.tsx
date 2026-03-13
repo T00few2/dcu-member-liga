@@ -1,13 +1,12 @@
 'use client';
 
 import { User } from 'firebase/auth';
-import type { Route, Segment, RaceFormState, EventConfig, CategoryConfig, LoadingStatus } from '@/types/admin';
+import { useState } from 'react';
+import type { Route, Segment, RaceFormState, EventConfig, CategoryConfig, LoadingStatus, ProfileSegment } from '@/types/admin';
 import { getRouteHelpers } from '@/hooks/useLeagueData';
 import SegmentPicker from './SegmentPicker';
 import SingleModeConfig from './SingleModeConfig';
 import MultiModeConfig from './MultiModeConfig';
-
-import { API_URL } from '@/lib/api';
 
 interface RaceFormProps {
     user: User | null;
@@ -25,6 +24,9 @@ interface RaceFormProps {
     onRemoveSingleModeCategory: (index: number) => void;
     onUpdateSingleModeCategory: (index: number, field: keyof CategoryConfig, value: CategoryConfig[keyof CategoryConfig]) => void;
     onToggleSingleModeCategorySprint: (configIndex: number, seg: Segment) => void;
+    onUpdateProfileSegment: (index: number, patch: Partial<ProfileSegment>) => void;
+    onAddProfileSegment: () => void;
+    onRemoveProfileSegment: (index: number) => void;
     onCancel: () => void;
     onSave: (e: React.FormEvent) => void;
 }
@@ -45,9 +47,13 @@ export default function RaceForm({
     onRemoveSingleModeCategory,
     onUpdateSingleModeCategory,
     onToggleSingleModeCategorySprint,
+    onUpdateProfileSegment,
+    onAddProfileSegment,
+    onRemoveProfileSegment,
     onCancel,
     onSave,
 }: RaceFormProps) {
+    const [loadingProfileSegments, setLoadingProfileSegments] = useState(false);
     const { maps, filteredRoutes, selectedRoute } = getRouteHelpers(
         routes,
         formState.selectedMap,
@@ -62,6 +68,92 @@ export default function RaceForm({
         acc[lap].push(seg);
         return acc;
     }, {} as Record<number, Segment[]>);
+
+    const inferDirection = (rawDirection: unknown, name: unknown): 'forward' | 'reverse' => {
+        if (rawDirection === 'reverse') return 'reverse';
+        const n = String(name || '').toLowerCase();
+        if (n.includes(' rev') || n.includes('reverse')) return 'reverse';
+        return 'forward';
+    };
+
+    const normalizeNameForMatch = (name: unknown): string =>
+        String(name || '')
+            .toLowerCase()
+            .replace(/\s+\(.*\)\s*$/g, '')
+            .replace(/\s+(reverse|rev\.?)$/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+    const inferTypeFromName = (name: unknown): ProfileSegment['type'] => {
+        const n = String(name || '').toLowerCase();
+        if (n.includes('sprint') || n.includes('prime')) return 'sprint';
+        if (n.includes('kom') || n.includes('climb')) return 'climb';
+        return 'segment';
+    };
+
+    const collectRouteSegments = (): Segment[] => {
+        const rows: Segment[] = [...(segments || [])];
+        const seen = new Set<string>();
+        const unique: Segment[] = [];
+        for (const s of rows) {
+            const k = `${s.id || s.name}_${s.count || 1}_${String(s.direction || '').toLowerCase()}`;
+            if (seen.has(k)) continue;
+            seen.add(k);
+            unique.push(s);
+        }
+        return unique;
+    };
+
+    const handleAutoFillProfileSegments = async () => {
+        if (!selectedRoute) return;
+        setLoadingProfileSegments(true);
+        try {
+            const configured = collectRouteSegments();
+            if (configured.length === 0) {
+                alert('No route segments are loaded. Select route/laps first.');
+                return;
+            }
+            const params = new URLSearchParams({
+                world: selectedRoute.map,
+                route: selectedRoute.name,
+                laps: String(formState.laps || 1),
+            });
+            const res = await fetch(`/api/route-elevation?${params}`, { cache: 'no-store' });
+            if (!res.ok) throw new Error(`Failed with ${res.status}`);
+            const json = await res.json();
+
+            const routeSegments: any[] = Array.isArray(json?.segments) ? json.segments : [];
+            const occurrenceCounters = new Map<string, number>();
+            const routeByOccurrenceKey = new Map<string, any>();
+            routeSegments.forEach((seg) => {
+                const base = `${normalizeNameForMatch(seg?.name)}::${inferDirection(seg?.direction, seg?.name)}`;
+                const occ = (occurrenceCounters.get(base) || 0) + 1;
+                occurrenceCounters.set(base, occ);
+                routeByOccurrenceKey.set(`${base}::${occ}`, seg);
+            });
+
+            const mapped: ProfileSegment[] = configured.map((seg) => {
+                const direction = inferDirection(seg.direction, seg.name);
+                const occ = Number.isFinite(seg.count) && seg.count > 0 ? seg.count : 1;
+                const key = `${normalizeNameForMatch(seg.name)}::${direction}::${occ}`;
+                const hit = routeByOccurrenceKey.get(key);
+                return {
+                    name: seg.name || 'Segment',
+                    type: hit?.type === 'sprint' || hit?.type === 'climb' || hit?.type === 'segment'
+                        ? hit.type
+                        : inferTypeFromName(seg.name),
+                    fromKm: Number(hit?.from) || 0,
+                    toKm: Number(hit?.to) || 0,
+                    direction,
+                };
+            });
+            onFieldChange('profileSegments', mapped);
+        } catch (e) {
+            alert('Could not auto-fill profile segments');
+        } finally {
+            setLoadingProfileSegments(false);
+        }
+    };
 
     return (
         <div className="bg-card p-6 rounded-lg shadow mb-8 border border-border">
@@ -266,6 +358,107 @@ export default function RaceForm({
                                 />
                             </div>
                         )}
+
+                        {/* Profile Segment Positions (curated for race card route profile) */}
+                        <div className="border-t border-border pt-4 mt-4">
+                            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                                <label className="block font-medium text-card-foreground">
+                                    Route Profile Segments (manual override)
+                                </label>
+                                <div className="flex gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={handleAutoFillProfileSegments}
+                                        disabled={loadingProfileSegments}
+                                        className="px-3 py-1.5 text-xs rounded bg-secondary text-secondary-foreground hover:opacity-90"
+                                    >
+                                        {loadingProfileSegments ? 'Loading...' : 'Fill all route segments + route data'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={onAddProfileSegment}
+                                        className="px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90"
+                                    >
+                                        + Add segment
+                                    </button>
+                                </div>
+                            </div>
+                            <p className="text-xs text-muted-foreground mb-3">
+                                These values are used directly for segment boxes on race cards.
+                            </p>
+                            <div className="space-y-2">
+                                {formState.profileSegments.length === 0 && (
+                                    <div className="text-xs text-muted-foreground border border-dashed border-border rounded p-3">
+                                        No curated profile segments yet.
+                                    </div>
+                                )}
+                                {formState.profileSegments.map((seg, i) => (
+                                    <div key={i} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end border border-border rounded p-2">
+                                        <div className="md:col-span-4">
+                                            <label className="block text-[11px] text-muted-foreground mb-1">Name</label>
+                                            <input
+                                                type="text"
+                                                value={seg.name}
+                                                onChange={(e) => onUpdateProfileSegment(i, { name: e.target.value })}
+                                                className="w-full p-1.5 border border-input rounded bg-background text-foreground text-sm"
+                                            />
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className="block text-[11px] text-muted-foreground mb-1">Type</label>
+                                            <select
+                                                value={seg.type}
+                                                onChange={(e) => onUpdateProfileSegment(i, { type: e.target.value as ProfileSegment['type'] })}
+                                                className="w-full p-1.5 border border-input rounded bg-background text-foreground text-sm"
+                                            >
+                                                <option value="climb">Climb</option>
+                                                <option value="sprint">Sprint</option>
+                                                <option value="segment">Segment</option>
+                                            </select>
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className="block text-[11px] text-muted-foreground mb-1">From km</label>
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                value={seg.fromKm}
+                                                onChange={(e) => onUpdateProfileSegment(i, { fromKm: Number(e.target.value) || 0 })}
+                                                className="w-full p-1.5 border border-input rounded bg-background text-foreground text-sm"
+                                            />
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className="block text-[11px] text-muted-foreground mb-1">To km</label>
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                value={seg.toKm}
+                                                onChange={(e) => onUpdateProfileSegment(i, { toKm: Number(e.target.value) || 0 })}
+                                                className="w-full p-1.5 border border-input rounded bg-background text-foreground text-sm"
+                                            />
+                                        </div>
+                                        <div className="md:col-span-1">
+                                            <label className="block text-[11px] text-muted-foreground mb-1">Dir</label>
+                                            <select
+                                                value={seg.direction || 'forward'}
+                                                onChange={(e) => onUpdateProfileSegment(i, { direction: e.target.value as ProfileSegment['direction'] })}
+                                                className="w-full p-1.5 border border-input rounded bg-background text-foreground text-sm"
+                                            >
+                                                <option value="forward">F</option>
+                                                <option value="reverse">R</option>
+                                            </select>
+                                        </div>
+                                        <div className="md:col-span-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => onRemoveProfileSegment(i)}
+                                                className="w-full p-1.5 text-xs rounded bg-destructive text-destructive-foreground hover:opacity-90"
+                                            >
+                                                Remove
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
                     </div>
                 )}
 

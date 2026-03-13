@@ -11,17 +11,23 @@ import {
     XAxis,
     YAxis,
 } from 'recharts';
+import type { ProfileSegment } from '@/types/live';
+import type { Sprint } from '@/types/live';
 
 interface RouteSegment {
     from: number;
     to: number;
     type: 'sprint' | 'climb' | 'segment';
     name?: string;
+    direction?: 'forward' | 'reverse';
 }
 
 interface Props {
     worldName: string;
     routeName: string;
+    laps?: number;
+    profileSegments?: ProfileSegment[];
+    pointSegments?: Sprint[];
 }
 
 interface DataPoint {
@@ -31,6 +37,7 @@ interface DataPoint {
 }
 
 const TARGET_POINTS = 400;
+const EMPTY_PROFILE_SEGMENTS: ProfileSegment[] = [];
 const SEGMENT_COLORS: Record<RouteSegment['type'], string> = {
     sprint: '#56A845',
     climb:  '#ed2324',
@@ -71,7 +78,23 @@ function getSegmentName(name: unknown): string {
     return trimmed.length > 0 ? trimmed : 'Segment';
 }
 
-function compactSegmentLabel(name?: string): string {
+function normalizeNameForMatch(name?: string): string {
+    return getSegmentName(name)
+        .toLowerCase()
+        .replace(/\s+\(.*\)\s*$/g, '')
+        .replace(/\s+(reverse|rev\.?)$/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function normalizeDirectionForMatch(direction?: string, name?: string): 'forward' | 'reverse' {
+    if ((direction || '').toLowerCase() === 'reverse') return 'reverse';
+    const n = getSegmentName(name).toLowerCase();
+    if (n.includes('reverse') || n.includes(' rev')) return 'reverse';
+    return 'forward';
+}
+
+function compactSegmentLabel(name?: string, direction?: 'forward' | 'reverse'): string {
     const compact = getSegmentName(name)
         .replace(/\s+(reverse|rev\.?)$/i, ' Rev.')
         .replace(/\s+mountainside/i, ' Mtn.')
@@ -80,46 +103,66 @@ function compactSegmentLabel(name?: string): string {
     return compact.length > MAX_LEN ? `${compact.slice(0, MAX_LEN - 1)}…` : compact;
 }
 
-function renderCenteredSegmentLabel(props: any, value: string, color: string) {
+function renderCenteredSegmentLabel(props: any, value: string, color: string, showPointIcon = false) {
     const { viewBox } = props || {};
     if (!viewBox) return null;
     const cx = viewBox.x + viewBox.width / 2;
     const cy = viewBox.y + viewBox.height / 2;
 
     return (
-        <text
-            x={cx}
-            y={cy}
-            fill={color}
-            fontSize={9}
-            fontWeight={600}
-            textAnchor="middle"
-            dominantBaseline="central"
-            transform={`rotate(-90, ${cx}, ${cy})`}
-            pointerEvents="none"
-        >
-            {value}
-        </text>
+        <g pointerEvents="none">
+            {showPointIcon && (
+                <text
+                    x={cx}
+                    y={Math.max(2, viewBox.y - 14)}
+                    fill="#d97706"
+                    fontSize={10}
+                    fontWeight={700}
+                    textAnchor="middle"
+                    dominantBaseline="hanging"
+                >
+                    ★
+                </text>
+            )}
+            <text
+                x={cx}
+                y={cy}
+                fill={color}
+                fontSize={9}
+                fontWeight={600}
+                textAnchor="middle"
+                dominantBaseline="central"
+                transform={`rotate(-90, ${cx}, ${cy})`}
+            >
+                {value}
+            </text>
+        </g>
     );
 }
 
 function ElevationTooltip({
-    active, payload, label, routeSegments,
+    active, payload, label, routeSegments, pointSegmentOccurrenceKeys, routeOccurrenceKeys,
 }: any) {
     if (!active || !payload?.length) return null;
     const pt: DataPoint = payload[0].payload;
     const dist = Number(label);
-    const seg: RouteSegment | undefined = routeSegments?.find(
+    const segIndex: number = routeSegments?.findIndex(
         (s: RouteSegment) => dist >= s.from && dist <= s.to,
     );
+    const seg: RouteSegment | undefined = segIndex >= 0 ? routeSegments?.[segIndex] : undefined;
+    const occKey = segIndex >= 0 ? routeOccurrenceKeys?.[segIndex] : '';
+    const isPointSegment = !!seg && pointSegmentOccurrenceKeys?.has(occKey);
     const sign = pt.gradient > 0 ? '+' : '';
     return (
         <div className="rounded border bg-popover px-2 py-1 shadow text-xs space-y-0.5">
             <div className="font-medium">{dist.toFixed(1)} km</div>
             {seg && (
                 <div style={{ color: SEGMENT_COLORS[normalizeSegmentType(seg.type)], fontWeight: 600 }}>
-                    {getSegmentName(seg.name)}
+                    {compactSegmentLabel(seg.name, seg.direction)}
                 </div>
+            )}
+            {isPointSegment && (
+                <div style={{ color: '#d97706', fontWeight: 700 }}>Points segment</div>
             )}
             <div>{Math.round(pt.altitude)} m</div>
             <div style={{ color: gradientColor(pt.gradient) }}>
@@ -129,14 +172,21 @@ function ElevationTooltip({
     );
 }
 
-export default function RouteElevationChart({ worldName, routeName }: Props) {
+export default function RouteElevationChart({
+    worldName,
+    routeName,
+    laps = 1,
+    profileSegments,
+    pointSegments = [],
+}: Props) {
+    const safeProfileSegments = profileSegments ?? EMPTY_PROFILE_SEGMENTS;
     const [data, setData] = useState<DataPoint[] | null>(null);
     const [routeSegments, setRouteSegments] = useState<RouteSegment[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const params = new URLSearchParams({ world: worldName, route: routeName });
-        fetch(`/api/route-elevation?${params}`)
+        const params = new URLSearchParams({ world: worldName, route: routeName, laps: String(laps) });
+        fetch(`/api/route-elevation?${params}`, { cache: 'no-store' })
             .then((res) => (res.ok ? res.json() : null))
             .then((json: {
                 distance: number[];
@@ -163,19 +213,31 @@ export default function RouteElevationChart({ worldName, routeName }: Props) {
                                   ) / 10,
                     }));
                     setData(enriched);
-                    setRouteSegments(
-                        (json.segments ?? []).map((seg) => ({
-                            from: Number.isFinite(seg?.from) ? seg.from : 0,
-                            to: Number.isFinite(seg?.to) ? seg.to : 0,
-                            type: normalizeSegmentType(seg?.type),
-                            name: getSegmentName(seg?.name),
-                        })),
-                    );
+                    const fromRace: RouteSegment[] = safeProfileSegments.map((seg) => ({
+                        from: Number(seg.fromKm) || 0,
+                        to: Number(seg.toKm) || 0,
+                        type: normalizeSegmentType(seg.type),
+                        name: getSegmentName(seg.name),
+                        direction: seg.direction === 'reverse' ? 'reverse' : 'forward',
+                    }));
+                    if (fromRace.length > 0) {
+                        setRouteSegments(fromRace);
+                    } else {
+                        setRouteSegments(
+                            (json.segments ?? []).map((seg) => ({
+                                from: Number.isFinite(seg?.from) ? seg.from : 0,
+                                to: Number.isFinite(seg?.to) ? seg.to : 0,
+                                type: normalizeSegmentType(seg?.type),
+                                name: getSegmentName(seg?.name),
+                                direction: seg?.direction === 'reverse' ? 'reverse' : 'forward',
+                            })),
+                        );
+                    }
                 }
             })
             .catch(() => {})
             .finally(() => setLoading(false));
-    }, [worldName, routeName]);
+    }, [worldName, routeName, laps, safeProfileSegments]);
 
     if (loading) {
         return (
@@ -202,6 +264,23 @@ export default function RouteElevationChart({ worldName, routeName }: Props) {
     const altStep = Math.ceil(altRange / 4 / 10) * 10 || 10;
     const altBase = Math.floor(minAlt / altStep) * altStep;
     const yTicks = [0, 1, 2, 3, 4].map((i) => altBase + i * altStep);
+    const pointSegmentOccurrenceKeys = new Set(
+        (pointSegments || []).map((s) => {
+            const base = normalizeNameForMatch(s.name);
+            const dir = normalizeDirectionForMatch(s.direction, s.name);
+            const occ = Number.isFinite(s.count) && s.count > 0 ? s.count : 1;
+            return `${base}::${dir}::${occ}`;
+        }),
+    );
+    const routeOccurrenceCounters = new Map<string, number>();
+    const routeOccurrenceKeys = routeSegments.map((seg) => {
+        const base = normalizeNameForMatch(seg.name);
+        const dir = normalizeDirectionForMatch(seg.direction, seg.name);
+        const keyBase = `${base}::${dir}`;
+        const next = (routeOccurrenceCounters.get(keyBase) || 0) + 1;
+        routeOccurrenceCounters.set(keyBase, next);
+        return `${keyBase}::${next}`;
+    });
 
     return (
         <div>
@@ -238,16 +317,27 @@ export default function RouteElevationChart({ worldName, routeName }: Props) {
                         />
                         <Tooltip
                             content={(props) => (
-                                <ElevationTooltip {...props} routeSegments={routeSegments} />
+                                <ElevationTooltip
+                                    {...props}
+                                    routeSegments={routeSegments}
+                                    pointSegmentOccurrenceKeys={pointSegmentOccurrenceKeys}
+                                    routeOccurrenceKeys={routeOccurrenceKeys}
+                                />
                             )}
                             isAnimationActive={false}
                         />
 
                         {routeSegments.map((seg, i) => (
+                            (() => {
+                                const isPointSegment = pointSegmentOccurrenceKeys.has(routeOccurrenceKeys[i]);
+                                const segmentBoxTop = altBase + altStep * 3.7;
+                                return (
                             <ReferenceArea
                                 key={i}
                                 x1={seg.from}
                                 x2={seg.to}
+                                y1={altBase}
+                                y2={segmentBoxTop}
                                 fill={SEGMENT_COLORS[normalizeSegmentType(seg.type)]}
                                 fillOpacity={0.25}
                                 stroke={SEGMENT_COLORS[normalizeSegmentType(seg.type)]}
@@ -256,11 +346,14 @@ export default function RouteElevationChart({ worldName, routeName }: Props) {
                                 label={(labelProps) =>
                                     renderCenteredSegmentLabel(
                                         labelProps,
-                                        compactSegmentLabel(seg.name),
+                                        compactSegmentLabel(seg.name, seg.direction),
                                         SEGMENT_COLORS[normalizeSegmentType(seg.type)],
+                                        isPointSegment,
                                     )
                                 }
                             />
+                                );
+                            })()
                         ))}
 
                         <Area
