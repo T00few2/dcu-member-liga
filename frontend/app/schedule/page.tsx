@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import type { Race } from '@/types/live';
 import type { LeagueSettings } from '@/types/admin';
@@ -10,10 +9,9 @@ import { fromTimestamp } from '@/lib/formatDate';
 import RaceCard from '@/components/races/RaceCard';
 
 export default function SchedulePage() {
-    const searchParams = useSearchParams();
-    const debugMode = searchParams.get('debug') === '1';
     const { user, userCategory, loading: authLoading, isRegistered } = useAuth();
     const [races, setRaces] = useState<Race[]>([]);
+    const [debugMode, setDebugMode] = useState(false);
     const [debugLogs, setDebugLogs] = useState<string[]>([]);
     const [leagueSettings, setLeagueSettings] = useState<LeagueSettings>({
         finishPoints: [],
@@ -22,6 +20,11 @@ export default function SchedulePage() {
         bestRacesCount: 5,
     });
     const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        setDebugMode(params.get('debug') === '1');
+    }, []);
 
     useEffect(() => {
         if (!debugMode) return;
