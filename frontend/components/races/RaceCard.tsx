@@ -124,7 +124,7 @@ export default function RaceCard({
 
     const sprintsToShow = race.eventMode === 'multi'
         ? ((userConfig?.sprints && userConfig.sprints.length > 0) ? userConfig.sprints : (race.sprints || []))
-        : (userSingleConfig?.sprints || race.sprints || []);
+        : ((userSingleConfig?.sprints && userSingleConfig.sprints.length > 0) ? userSingleConfig.sprints : (race.sprints || []));
 
     const resolvedSprintsToShow = sprintsToShow.length > 0
         ? sprintsToShow
