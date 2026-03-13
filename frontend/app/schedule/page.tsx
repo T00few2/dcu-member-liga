@@ -32,6 +32,9 @@ export default function SchedulePage() {
         const append = (line: string) => {
             setDebugLogs((prev) => {
                 const next = [...prev, `${new Date().toISOString()} ${line}`];
+                try {
+                    sessionStorage.setItem('__schedule_debug_logs', JSON.stringify(next.slice(-30)));
+                } catch {}
                 return next.slice(-30);
             });
         };

@@ -193,8 +193,9 @@ export default function RouteElevationChart({ worldName, routeName }: Props) {
                     <AreaChart data={data} margin={{ top: 8, right: 6, bottom: 4, left: 0 }} baseValue="dataMin">
                         <defs>
                             <linearGradient id="elevGrad" x1="0" y1="0" x2="0" y2="100%">
-                                <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.55} />
-                                <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0.05} />
+                                <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.6} />
+                                <stop offset="65%" stopColor="hsl(var(--primary))" stopOpacity={0.28} />
+                                <stop offset="100%" stopColor="hsl(var(--muted-foreground))" stopOpacity={0.2} />
                             </linearGradient>
                         </defs>
                         <CartesianGrid vertical={false} strokeOpacity={0.15} />
