@@ -1,5 +1,4 @@
 import os
-import time
 import queue
 import threading
 import firebase_admin
@@ -9,12 +8,31 @@ from services.zwiftpower import ZwiftPowerService
 from services.zwiftracing import ZwiftRacingService, RateLimitError
 from services.zwift import ZwiftService
 from services.zwift_game import ZwiftGameService
+from services.cached_service import CachedService
 from config import ZWIFT_USERNAME, ZWIFT_PASSWORD
 
-# --- Database Initialization ---
 import logging
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Named constants
+# ---------------------------------------------------------------------------
+
+# How long an authenticated session (Zwift / ZwiftPower) remains valid.
+# Zwift access tokens expire after ~55 minutes; use 50 min as a safe TTL.
+SESSION_TTL_SECONDS: int = 3000  # 50 minutes
+
+# Background stats-queue: target rate ≈ 4.6 calls/min (ZR limit is 5/min).
+STATS_CALL_INTERVAL_SECONDS: float = 13.0
+# Seconds to pause the worker after a 429 response from ZwiftRacing.
+STATS_RATE_LIMIT_PAUSE_SECONDS: int = 65
+# Maximum fetch attempts per rider before giving up.
+STATS_MAX_RETRIES: int = 4
+
+# ---------------------------------------------------------------------------
+# Database Initialization
+# ---------------------------------------------------------------------------
 
 db = None
 try:
@@ -28,83 +46,82 @@ try:
 
     db = firestore.client()
 except Exception as e:
-    logger.error(f"Firebase could not be initialized. Database operations will fail. Error: {e}")
+    logger.error(
+        f"Firebase could not be initialized. Database operations will fail. Error: {e}"
+    )
 
-# --- Service Singletons & Factories ---
+# ---------------------------------------------------------------------------
+# Service Singletons
+# ---------------------------------------------------------------------------
 
-# Strava
+# Strava (no session TTL — uses per-user OAuth tokens stored in Firestore)
 strava_service = StravaService(db)
 
-# Zwift Racing
+# ZwiftRacing (stateless API client with API-key auth)
 zr_service = ZwiftRacingService()
 
-# Zwift Game
+# Zwift Game (stateless)
 _zwift_game_service = ZwiftGameService()
 
-# ZwiftPower Cache
-_zp_service_instance = None
-_zp_service_timestamp = 0
-_zp_lock = threading.Lock()
-SESSION_VALIDITY = 3000  # 50 minutes
+
+# --- ZwiftPower (session-based, requires re-login after TTL) ---
+
+def _make_zp_service() -> ZwiftPowerService:
+    service = ZwiftPowerService(ZWIFT_USERNAME, ZWIFT_PASSWORD)
+    try:
+        service.login()
+    except Exception as e:
+        logger.error(f"Failed to initialize ZwiftPower session: {e}")
+    return service  # Return even on failure; callers handle downstream errors.
 
 
-def get_zp_service():
-    global _zp_service_instance, _zp_service_timestamp
-    now = time.time()
-    with _zp_lock:
-        if _zp_service_instance and (now - _zp_service_timestamp < SESSION_VALIDITY):
-            return _zp_service_instance
-
-        logger.info("Creating new ZwiftPower session.")
-        service = ZwiftPowerService(ZWIFT_USERNAME, ZWIFT_PASSWORD)
-        try:
-            service.login()
-            _zp_service_instance = service
-            _zp_service_timestamp = now
-        except Exception as e:
-            logger.error(f"Failed to initialize ZwiftPower session: {e}")
-        return service
-
-# Zwift API Cache
-_zwift_service_instance = None
-_zwift_service_timestamp = 0
-_zwift_lock = threading.Lock()
+_zp_cache = CachedService(
+    factory=_make_zp_service,
+    name='ZwiftPower',
+    ttl=SESSION_TTL_SECONDS,
+)
 
 
-def get_zwift_service():
-    global _zwift_service_instance, _zwift_service_timestamp
-    now = time.time()
-    with _zwift_lock:
-        if _zwift_service_instance and (now - _zwift_service_timestamp < SESSION_VALIDITY):
-            try:
-                _zwift_service_instance.ensure_valid_token()
-                return _zwift_service_instance
-            except Exception:
-                pass  # Token invalid — fall through to re-authenticate
-
-        logger.info("Creating new Zwift service session.")
-        service = ZwiftService(ZWIFT_USERNAME, ZWIFT_PASSWORD)
-        try:
-            service.authenticate()
-            _zwift_service_instance = service
-            _zwift_service_timestamp = now
-        except Exception as e:
-            logger.error(f"Failed to initialize Zwift session: {e}")
-        return service
+def get_zp_service() -> ZwiftPowerService:
+    return _zp_cache.get()
 
 
-def get_zwift_game_service():
+# --- Zwift API (token-based, auto-refreshes but we re-authenticate on TTL) ---
+
+def _make_zwift_service() -> ZwiftService:
+    service = ZwiftService(ZWIFT_USERNAME, ZWIFT_PASSWORD)
+    try:
+        service.authenticate()
+    except Exception as e:
+        logger.error(f"Failed to initialize Zwift session: {e}")
+    return service  # Return even on failure; callers handle downstream errors.
+
+
+def _validate_zwift_service(svc: ZwiftService) -> bool:
+    """Returns True if the token is still valid; raises or returns False to trigger refresh."""
+    svc.ensure_valid_token()
+    return True
+
+
+_zwift_cache = CachedService(
+    factory=_make_zwift_service,
+    name='Zwift',
+    ttl=SESSION_TTL_SECONDS,
+    validator=_validate_zwift_service,
+)
+
+
+def get_zwift_service() -> ZwiftService:
+    return _zwift_cache.get()
+
+
+def get_zwift_game_service() -> ZwiftGameService:
     return _zwift_game_service
 
 
-# --- Stats Fetch Queue ---
-# Fetches ZwiftRacing (and could be extended to ZP/Zwift) stats in the background
-# after signup, so the registration response is never blocked by external API calls.
-
-_STATS_CALL_INTERVAL = 13.0   # seconds between ZR calls (~4.6/min, safely under 5/min limit)
-_STATS_RATE_LIMIT_PAUSE = 65  # seconds to pause the worker after a 429
-_STATS_MAX_RETRIES = 4
-
+# ---------------------------------------------------------------------------
+# Background Stats Fetch Queue
+# ---------------------------------------------------------------------------
 
 class StatsQueue:
     """
@@ -114,19 +131,22 @@ class StatsQueue:
     Enqueue a rider with enqueue(e_license, zwift_id). The worker drains the
     queue at a rate that respects the ZR API limit (5 calls/min). On a 429
     it pauses, then re-enqueues the rider for another attempt (up to
-    _STATS_MAX_RETRIES total). On other transient failures it also re-enqueues.
+    STATS_MAX_RETRIES total). On other transient failures it also re-enqueues.
     """
 
-    def __init__(self):
-        self._q = queue.Queue()
-        self._thread = threading.Thread(target=self._worker, daemon=True, name="stats-queue-worker")
+    def __init__(self) -> None:
+        self._q: queue.Queue = queue.Queue()
+        self._thread = threading.Thread(
+            target=self._worker, daemon=True, name='stats-queue-worker'
+        )
         self._thread.start()
 
-    def enqueue(self, e_license: str, zwift_id: str, attempt: int = 1):
+    def enqueue(self, e_license: str, zwift_id: str, attempt: int = 1) -> None:
         self._q.put((e_license, zwift_id, attempt))
         logger.info(f"StatsQueue: enqueued {e_license} (attempt {attempt})")
 
-    def _worker(self):
+    def _worker(self) -> None:
+        import time
         while True:
             e_license, zwift_id, attempt = self._q.get()
             try:
@@ -135,12 +155,16 @@ class StatsQueue:
                 logger.error(f"StatsQueue: unexpected error for {e_license}: {e}")
             finally:
                 self._q.task_done()
-            # Pace calls regardless of outcome to stay within the rate limit.
-            time.sleep(_STATS_CALL_INTERVAL)
+            # Pace calls to stay within the ZR rate limit.
+            time.sleep(STATS_CALL_INTERVAL_SECONDS)
 
-    def _fetch_and_store(self, e_license: str, zwift_id: str, attempt: int):
-        if attempt > _STATS_MAX_RETRIES:
-            logger.error(f"StatsQueue: giving up on ZR stats for {e_license} after {_STATS_MAX_RETRIES} attempts")
+    def _fetch_and_store(self, e_license: str, zwift_id: str, attempt: int) -> None:
+        import time
+        if attempt > STATS_MAX_RETRIES:
+            logger.error(
+                f"StatsQueue: giving up on ZR stats for {e_license} "
+                f"after {STATS_MAX_RETRIES} attempts"
+            )
             return
 
         logger.info(f"StatsQueue: fetching ZR stats for {e_license} (attempt {attempt})")
@@ -148,14 +172,17 @@ class StatsQueue:
             zr_json = zr_service.get_rider_data(str(zwift_id))
         except RateLimitError:
             logger.warning(
-                f"StatsQueue: rate limited for {e_license} — pausing {_STATS_RATE_LIMIT_PAUSE}s then re-enqueuing"
+                f"StatsQueue: rate limited for {e_license} — "
+                f"pausing {STATS_RATE_LIMIT_PAUSE_SECONDS}s then re-enqueuing"
             )
-            time.sleep(_STATS_RATE_LIMIT_PAUSE)
+            time.sleep(STATS_RATE_LIMIT_PAUSE_SECONDS)
             self.enqueue(e_license, zwift_id, attempt + 1)
             return
 
         if not zr_json:
-            logger.warning(f"StatsQueue: no ZR data for {e_license} on attempt {attempt} — re-enqueuing")
+            logger.warning(
+                f"StatsQueue: no ZR data for {e_license} on attempt {attempt} — re-enqueuing"
+            )
             self.enqueue(e_license, zwift_id, attempt + 1)
             return
 
