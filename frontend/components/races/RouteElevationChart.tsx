@@ -172,5 +172,6 @@ export default function RouteElevationChart({ worldName, routeName }: Props) {
                     </AreaChart>
                 </ResponsiveContainer>
             </div>
+        </div>
     );
 }
