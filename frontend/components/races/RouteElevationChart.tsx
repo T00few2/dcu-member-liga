@@ -60,6 +60,38 @@ function gradientColor(pct: number): string {
     return '#0066cc';
 }
 
+function compactSegmentLabel(name: string): string {
+    const compact = name
+        .replace(/\s+(reverse|rev\.?)$/i, ' Rev.')
+        .replace(/\s+mountainside/i, ' Mtn.')
+        .trim();
+    const MAX_LEN = 20;
+    return compact.length > MAX_LEN ? `${compact.slice(0, MAX_LEN - 1)}…` : compact;
+}
+
+function renderCenteredSegmentLabel(props: any, value: string, color: string) {
+    const { viewBox } = props || {};
+    if (!viewBox) return null;
+    const cx = viewBox.x + viewBox.width / 2;
+    const cy = viewBox.y + viewBox.height / 2;
+
+    return (
+        <text
+            x={cx}
+            y={cy}
+            fill={color}
+            fontSize={9}
+            fontWeight={600}
+            textAnchor="middle"
+            dominantBaseline="central"
+            transform={`rotate(-90, ${cx}, ${cy})`}
+            pointerEvents="none"
+        >
+            {value}
+        </text>
+    );
+}
+
 function ElevationTooltip({
     active, payload, label, routeSegments,
 }: any) {
@@ -89,13 +121,20 @@ function ElevationTooltip({
 export default function RouteElevationChart({ worldName, routeName }: Props) {
     const [data, setData] = useState<DataPoint[] | null>(null);
     const [routeSegments, setRouteSegments] = useState<RouteSegment[]>([]);
+    const [stravaSegmentUrl, setStravaSegmentUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const params = new URLSearchParams({ world: worldName, route: routeName });
         fetch(`/api/route-elevation?${params}`)
             .then((res) => (res.ok ? res.json() : null))
-            .then((json: { distance: number[]; altitude: number[]; segments?: RouteSegment[] } | null) => {
+            .then((json: {
+                distance: number[];
+                altitude: number[];
+                segments?: RouteSegment[];
+                stravaSegmentUrl?: string;
+            } | null) => {
+                setStravaSegmentUrl(json?.stravaSegmentUrl ?? null);
                 if (json?.distance?.length && json?.altitude?.length) {
                     const n = Math.max(1, Math.floor(json.distance.length / TARGET_POINTS));
                     const raw = json.distance
@@ -119,7 +158,9 @@ export default function RouteElevationChart({ worldName, routeName }: Props) {
                     setRouteSegments(json.segments ?? []);
                 }
             })
-            .catch(() => {})
+            .catch(() => {
+                setStravaSegmentUrl(null);
+            })
             .finally(() => setLoading(false));
     }, [worldName, routeName]);
 
@@ -151,9 +192,22 @@ export default function RouteElevationChart({ worldName, routeName }: Props) {
 
     return (
         <div>
+            {stravaSegmentUrl && (
+                <div className="flex justify-end mb-1">
+                    <a
+                        href={stravaSegmentUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-primary hover:underline"
+                        title="View route segment on Strava"
+                    >
+                        Strava ↗
+                    </a>
+                </div>
+            )}
             <div style={{ width: '100%', height: 160 }}>
                 <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 4, left: 8 }} baseValue="dataMin">
+                    <AreaChart data={data} margin={{ top: 8, right: 6, bottom: 4, left: 0 }} baseValue="dataMin">
                         <defs>
                             <linearGradient id="elevGrad" x1="0" y1="0" x2="0" y2="100%">
                                 <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.55} />
@@ -179,7 +233,7 @@ export default function RouteElevationChart({ worldName, routeName }: Props) {
                             tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
                             tickLine={false}
                             axisLine={false}
-                            width={36}
+                            width={30}
                         />
                         <Tooltip
                             content={(props) => (
@@ -198,13 +252,13 @@ export default function RouteElevationChart({ worldName, routeName }: Props) {
                                 stroke={SEGMENT_COLORS[seg.type]}
                                 strokeOpacity={0.6}
                                 strokeWidth={1}
-                                label={{
-                                    value: seg.name,
-                                    position: 'insideTop',
-                                    fontSize: 9,
-                                    fill: SEGMENT_COLORS[seg.type],
-                                    fontWeight: 600,
-                                }}
+                                label={(labelProps) =>
+                                    renderCenteredSegmentLabel(
+                                        labelProps,
+                                        compactSegmentLabel(seg.name),
+                                        SEGMENT_COLORS[seg.type],
+                                    )
+                                }
                             />
                         ))}
 

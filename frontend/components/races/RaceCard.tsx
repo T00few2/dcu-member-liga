@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { getZwiftInsiderUrl } from '@/lib/api';
 import { formatDateLong, formatTimeWithTz } from '@/lib/formatDate';
 import PointsSplitBadge from '@/components/races/PointsSplitBadge';
@@ -77,6 +78,38 @@ function ExternalLinkIcon({ size }: { size: number }) {
     );
 }
 
+function StravaRouteLink({ worldName, routeName }: { worldName?: string; routeName?: string }) {
+    const [stravaSegmentUrl, setStravaSegmentUrl] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!worldName || !routeName) {
+            setStravaSegmentUrl(null);
+            return;
+        }
+        const params = new URLSearchParams({ world: worldName, route: routeName });
+        fetch(`/api/route-meta?${params}`)
+            .then((res) => (res.ok ? res.json() : null))
+            .then((json: { stravaSegmentUrl?: string } | null) => {
+                setStravaSegmentUrl(json?.stravaSegmentUrl ?? null);
+            })
+            .catch(() => setStravaSegmentUrl(null));
+    }, [worldName, routeName]);
+
+    if (!stravaSegmentUrl) return null;
+
+    return (
+        <a
+            href={stravaSegmentUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-primary hover:underline"
+            title="View route segment on Strava"
+        >
+            (Strava ↗)
+        </a>
+    );
+}
+
 function getUserEventConfig(race: Race, userCategory?: string | null): EventCategoryConfig | null {
     if (!race.eventConfiguration || race.eventConfiguration.length === 0) return null;
     if (!userCategory) return null;
@@ -134,12 +167,6 @@ export default function RaceCard({
         ? (userConfig?.eventId ? getZwiftEventUrl(userConfig.eventId, userConfig.eventSecret) : null)
         : (race.eventId ? getZwiftEventUrl(race.eventId, race.eventSecret) : null);
 
-    const worldSlug = slugify(race.map);
-    const routeSlug = slugify(race.routeName);
-    const zwiftMapUrl = worldSlug && routeSlug
-        ? `https://zwiftmap.com/${worldSlug}/${routeSlug}`
-        : null;
-
     return (
         <div className={`bg-card border border-border rounded-lg shadow-sm overflow-hidden mb-6 ${isPast ? 'opacity-75' : ''}`}>
             <div className="p-6">
@@ -164,8 +191,9 @@ export default function RaceCard({
                                 className="text-xs text-primary hover:underline"
                                 title="View on ZwiftInsider"
                             >
-                                (Info ↗)
+                                (ZI ↗)
                             </a>
+                            <StravaRouteLink worldName={race.map} routeName={race.routeName} />
                         </div>
                     </div>
                 </div>
