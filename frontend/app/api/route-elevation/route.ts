@@ -70,7 +70,7 @@ export async function GET(req: NextRequest) {
         });
 
     const upstream = await fetch(`${API_URL}/route-elevation/${match.stravaSegmentId}`, {
-        next: { revalidate: 86400 }, // route elevation never changes
+        cache: 'no-store',
     });
 
     if (!upstream.ok) {
@@ -96,6 +96,6 @@ export async function GET(req: NextRequest) {
             stravaSegmentId: match.stravaSegmentId,
             stravaSegmentUrl: match.stravaSegmentUrl || `https://www.strava.com/segments/${match.stravaSegmentId}`,
         },
-        { headers: { 'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800' } }
+        { headers: { 'Cache-Control': 'no-store' } }
     );
 }
