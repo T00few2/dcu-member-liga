@@ -17,6 +17,12 @@ from services.category_engine import (
     serialize_liga_category,
     cats_from_defs,
 )
+from services.schema_validation import (
+    log_schema_issues,
+    validate_league_settings_doc,
+    validate_user_doc,
+    with_schema_version,
+)
 
 import logging
 
@@ -89,14 +95,16 @@ def refresh_zr_stats():
             .stream()
         )
 
-        # Build zwiftId → eLicense map.
-        riders: dict[str, str] = {}
+        # Build zwiftId → user document reference map.
+        riders: dict[str, firestore.DocumentReference] = {}
+        rider_labels: dict[str, str] = {}
         for doc in docs:
             data = doc.to_dict() or {}
             zwift_id = str(data.get('zwiftId', '')).strip()
             e_license = str(data.get('eLicense', doc.id)).strip()
             if zwift_id:
-                riders[zwift_id] = e_license
+                riders[zwift_id] = doc.reference
+                rider_labels[zwift_id] = e_license or doc.id
 
         if not riders:
             return jsonify({'message': 'No registered riders found', 'updated': 0}), 200
@@ -131,7 +139,7 @@ def refresh_zr_stats():
         nightly_categories = _resolve_categories(liga_settings)
 
         # Pre-fetch ligaCategory for all registered riders.
-        liga_by_elicense: dict[str, dict] = {}
+        liga_by_doc_id: dict[str, dict] = {}
         for doc in (
             db.collection('users')
             .where('registration.status', '==', 'complete')
@@ -140,15 +148,15 @@ def refresh_zr_stats():
             d = doc.to_dict() or {}
             lc = d.get('ligaCategory')
             if lc:
-                e_lic = str(d.get('eLicense', doc.id)).strip()
-                liga_by_elicense[e_lic] = lc
+                liga_by_doc_id[doc.id] = lc
 
         updated = 0
         skipped = 0
         batch = db.batch()
         batch_count = 0
 
-        for zwift_id, e_license in riders.items():
+        for zwift_id, user_ref in riders.items():
+            rider_label = rider_labels.get(zwift_id, user_ref.id)
             rider_data = zr_by_id.get(zwift_id)
             if not rider_data:
                 skipped += 1
@@ -171,7 +179,7 @@ def refresh_zr_stats():
             liga_update: dict = {}
             if new_max30 != 'N/A':
                 try:
-                    lc = liga_by_elicense.get(e_license)
+                    lc = liga_by_doc_id.get(user_ref.id)
                     if lc:
                         auto = lc.get('autoAssigned') or {}
                         if lc.get('locked'):
@@ -206,10 +214,12 @@ def refresh_zr_stats():
                             }
                         }
                 except Exception:
+                    logger.warning(f"Could not update category metadata for {rider_label}", exc_info=True)
                     pass
 
-            doc_ref = db.collection('users').document(e_license)
-            batch.update(doc_ref, {**zr_update, **liga_update})
+            user_update = with_schema_version({**zr_update, **liga_update})
+            log_schema_issues(logger, f"users/{user_ref.id} (zr nightly)", validate_user_doc(user_update, partial=True))
+            batch.update(user_ref, user_update)
             updated += 1
             batch_count += 1
 
@@ -287,9 +297,13 @@ def save_liga_categories_config():
             for c in categories
         ]
 
-        db.collection('league').document('settings').set(
-            {'ligaCategories': normalised}, merge=True
+        settings_update = with_schema_version({'ligaCategories': normalised})
+        log_schema_issues(
+            logger,
+            "league/settings (liga categories config)",
+            validate_league_settings_doc(settings_update, partial=True),
         )
+        db.collection('league').document('settings').set(settings_update, merge=True)
         return jsonify({'message': 'Category configuration saved', 'count': len(normalised)}), 200
 
     except Exception as e:
@@ -318,9 +332,13 @@ def assign_liga_categories():
         cat_defs = body.get('categories') or settings.get('ligaCategories')
         categories = cats_from_defs(cat_defs) if cat_defs else None
 
-        db.collection('league').document('settings').set(
-            {'gracePeriod': grace_period}, merge=True
+        settings_update = with_schema_version({'gracePeriod': grace_period})
+        log_schema_issues(
+            logger,
+            "league/settings (gracePeriod)",
+            validate_league_settings_doc(settings_update, partial=True),
         )
+        db.collection('league').document('settings').set(settings_update, merge=True)
 
         docs = (
             db.collection('users')
@@ -335,7 +353,6 @@ def assign_liga_categories():
 
         for doc in docs:
             data = doc.to_dict() or {}
-            e_license = str(data.get('eLicense', doc.id)).strip()
             max30 = data.get('zwiftRacing', {}).get('max30Rating', 'N/A')
 
             if max30 == 'N/A' or max30 is None:
@@ -347,11 +364,9 @@ def assign_liga_categories():
                 auto['assignedAt'] = firestore.SERVER_TIMESTAMP
                 auto['lastCheckedAt'] = firestore.SERVER_TIMESTAMP
 
-                batch.set(
-                    db.collection('users').document(e_license),
-                    {'ligaCategory': {'autoAssigned': auto, 'locked': False}},
-                    merge=True,
-                )
+                user_update = with_schema_version({'ligaCategory': {'autoAssigned': auto, 'locked': False}})
+                log_schema_issues(logger, f"users/{doc.id} (bulk assign liga)", validate_user_doc(user_update, partial=True))
+                batch.set(doc.reference, user_update, merge=True)
                 assigned += 1
                 batch_count += 1
 
@@ -360,7 +375,7 @@ def assign_liga_categories():
                     batch = db.batch()
                     batch_count = 0
             except Exception as ex:
-                logger.warning(f"Could not assign category for {e_license}: {ex}")
+                logger.warning(f"Could not assign category for {doc.id}: {ex}")
                 skipped += 1
 
         if batch_count > 0:
@@ -441,7 +456,6 @@ def reassign_liga_category(zwift_id):
             return jsonify({'message': 'User not found'}), 404
 
         data = user._data
-        e_license = str(data.get('eLicense', zwift_id)).strip()
         lc = data.get('ligaCategory')
         if not lc:
             return jsonify({'message': 'Rider has no assigned liga category'}), 400
@@ -465,7 +479,9 @@ def reassign_liga_category(zwift_id):
         if lc.get('locked'):
             doc_update['ligaCategory.category'] = update_fields['category']
 
-        db.collection('users').document(e_license).update(doc_update)
+        user_update = with_schema_version(doc_update)
+        log_schema_issues(logger, f"users/{user.id} (manual reassign)", validate_user_doc(user_update, partial=True))
+        db.collection('users').document(str(user.id)).update(user_update)
 
         return jsonify({
             'message': f"Rider moved to {update_fields['category']}",

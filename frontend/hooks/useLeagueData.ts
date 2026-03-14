@@ -5,6 +5,7 @@ import { User } from 'firebase/auth';
 import { db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import type { Route, Race, Segment, LeagueSettings, LoadingStatus } from '@/types/admin';
+import { normalizeLeagueSettings, normalizeRace } from '@/lib/firestore-normalizers';
 
 import { API_URL } from '@/lib/api';
 
@@ -66,18 +67,19 @@ export function useLeagueData({ user, authLoading }: UseLeagueDataOptions): UseL
 
                 if (racesRes.ok) {
                     const racesData = await racesRes.json();
-                    setRaces(racesData.races || []);
+                    const normalizedRaces = (racesData.races ?? []).map((race: Race) => normalizeRace(race, race.id));
+                    setRaces(normalizedRaces as Race[]);
                 }
                 
                 if (settingsRes.ok) {
                     const settingsData = await settingsRes.json();
-                    const settings = settingsData.settings || {};
+                    const settings = normalizeLeagueSettings(settingsData.settings || {});
                     setLeagueSettings({
-                        name: settings.name || '',
-                        finishPoints: settings.finishPoints || [],
-                        sprintPoints: settings.sprintPoints || [],
-                        leagueRankPoints: settings.leagueRankPoints || [],
-                        bestRacesCount: settings.bestRacesCount || 5,
+                        name: settings.leagueName,
+                        finishPoints: (settingsData.settings?.finishPoints ?? []),
+                        sprintPoints: (settingsData.settings?.sprintPoints ?? []),
+                        leagueRankPoints: (settingsData.settings?.leagueRankPoints ?? []),
+                        bestRacesCount: settings.bestRacesCount,
                     });
                 }
             } catch (e) {
@@ -117,8 +119,7 @@ export function useLeagueData({ user, authLoading }: UseLeagueDataOptions): UseL
             
             if (raceSnap.exists()) {
                 const updatedRace = {
-                    id: raceSnap.id,
-                    ...raceSnap.data(),
+                    ...normalizeRace(raceSnap.data(), raceSnap.id),
                 } as Race;
                 
                 setRaces(prev => prev.map(r => r.id === raceId ? updatedRace : r));

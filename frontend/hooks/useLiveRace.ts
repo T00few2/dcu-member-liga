@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { doc, onSnapshot, collection, query, where, getDocs, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Race } from '@/types/live';
+import { normalizeRace } from '@/lib/firestore-normalizers';
 
 export function useLiveRace(raceId: string) {
     const [race, setRace] = useState<Race | null>(null);
@@ -43,7 +44,7 @@ export function useLiveRace(raceId: string) {
                 docRef,
                 (docSnap) => {
                     if (docSnap.exists()) {
-                        setRace({ ...(docSnap.data() as Race), id: docSnap.id });
+                        setRace(normalizeRace(docSnap.data(), docSnap.id));
                         setLoading(false);
                     } else {
                         setError('Race not found');

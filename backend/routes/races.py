@@ -3,6 +3,7 @@ from firebase_admin import firestore
 from extensions import db, get_zwift_service, get_zwift_game_service, strava_service
 from services.results_processor import ResultsProcessor
 from services.category_engine import _effective_cat_name
+from services.schema_validation import log_schema_issues, validate_race_doc, with_schema_version
 from datetime import datetime
 from authz import require_admin, AuthzError
 import re
@@ -137,7 +138,9 @@ def create_race():
         if err:
             return jsonify({'message': err}), 400
 
-        _, doc_ref = db.collection('races').add(data)
+        payload = with_schema_version(data)
+        log_schema_issues(logger, "races/<new> (create)", validate_race_doc(payload))
+        _, doc_ref = db.collection('races').add(payload)
         return jsonify({'message': 'Race created', 'id': doc_ref.id}), 201
     except Exception as e:
         return jsonify({'message': str(e)}), 500
@@ -174,7 +177,9 @@ def update_race(race_id):
         if err:
             return jsonify({'message': err}), 400
 
-        db.collection('races').document(race_id).update(data)
+        payload = with_schema_version(data)
+        log_schema_issues(logger, f"races/{race_id} (update)", validate_race_doc(payload))
+        db.collection('races').document(race_id).update(payload)
         return jsonify({'message': 'Race updated'}), 200
     except Exception as e:
         return jsonify({'message': str(e)}), 500
@@ -247,9 +252,11 @@ def update_sprint_data(race_id, category):
                 updated_count += 1
         
         # Save updated results first
-        db.collection('races').document(race_id).update({
+        payload = with_schema_version({
             'results': results
         })
+        log_schema_issues(logger, f"races/{race_id} (sprint update)", validate_race_doc(payload, partial=True))
+        db.collection('races').document(race_id).update(payload)
         
         # Now recalculate all points
         zwift_service = get_zwift_service()

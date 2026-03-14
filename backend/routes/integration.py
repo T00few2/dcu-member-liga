@@ -6,6 +6,7 @@ from firebase_admin import firestore
 from extensions import db, strava_service, get_zwift_game_service
 from config import FRONTEND_URL
 from authz import verify_user_token, AuthzError
+from services.schema_validation import with_schema_version
 import secrets
 import requests
 from bs4 import BeautifulSoup
@@ -105,10 +106,10 @@ def strava_callback():
         }, merge=True)
 
         # Record that Strava is connected in the user doc (no tokens here)
-        user_doc_ref.set({
+        user_doc_ref.set(with_schema_version({
             'connections': {'strava': {'athlete_id': token_data.get('athlete', {}).get('id')}},
             'updatedAt': firestore.SERVER_TIMESTAMP,
-        }, merge=True)
+        }), merge=True)
 
     finally:
         try:

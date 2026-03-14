@@ -1,6 +1,7 @@
 import { Race, StandingEntry, OverlayConfig } from '@/types/live';
 import { shortenRiderName } from '@/lib/formatters';
 import { resolveColor } from '@/lib/colors';
+import { fromTimestamp } from '@/lib/formatDate';
 
 interface RaceResult {
     zwiftId: string;
@@ -29,7 +30,9 @@ export function StandingsTable({ standings, allRaces, category, bestRacesCount, 
     // Get race IDs that have results for this category
     const raceIdsWithResults = new Set<string>();
     standings.forEach(rider => {
-        rider.results.forEach(r => raceIdsWithResults.add(r.raceId));
+        for (const r of rider.results ?? []) {
+            if (r?.raceId) raceIdsWithResults.add(r.raceId);
+        }
     });
     
     // Filter and sort races that have results
@@ -37,14 +40,15 @@ export function StandingsTable({ standings, allRaces, category, bestRacesCount, 
     
     // Process Best X
     const processedStandings = standings.map(rider => {
-        const sortedResults = [...rider.results].sort((a, b) => b.points - a.points);
+        const riderResults = rider.results ?? [];
+        const sortedResults = [...riderResults].sort((a, b) => b.points - a.points);
         const bestResults = sortedResults.slice(0, bestRacesCount);
         const bestTotal = bestResults.reduce((sum, r) => sum + r.points, 0);
         const bestRaceIds = new Set(bestResults.map(r => r.raceId));
         
         // Create a map of raceId -> points for quick lookup
         const pointsByRace: Record<string, { points: number, isBest: boolean }> = {};
-        rider.results.forEach(r => {
+        riderResults.forEach(r => {
             pointsByRace[r.raceId] = { 
                 points: r.points, 
                 isBest: bestRaceIds.has(r.raceId) 
@@ -102,7 +106,7 @@ export function StandingsTable({ standings, allRaces, category, bestRacesCount, 
                         <th 
                             key={race.id}
                             className={`sticky top-0 z-10 bg-slate-800/90 ${headerCellPadding} px-1 text-center font-bold text-blue-400 ${isFull ? 'min-w-[120px] max-w-[200px]' : 'w-12'}`}
-                            title={`${race.name} (${new Date(race.date).toLocaleDateString()})`}
+                            title={`${race.name} (${fromTimestamp(race.date)?.toLocaleDateString() || '-'})`}
                             style={{
                                 backgroundColor: resolveColor(overlay.headerBg),
                                 color: resolveColor(overlay.accent, overlay.headerText || overlay.text || undefined)

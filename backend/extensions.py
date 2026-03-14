@@ -9,6 +9,7 @@ from services.zwiftracing import ZwiftRacingService, RateLimitError
 from services.zwift import ZwiftService
 from services.zwift_game import ZwiftGameService
 from services.cached_service import CachedService
+from services.schema_validation import with_schema_version
 from config import ZWIFT_USERNAME, ZWIFT_PASSWORD
 
 import logging
@@ -128,7 +129,7 @@ class StatsQueue:
     Background worker that fetches and stores ZwiftRacing stats for newly
     registered riders without blocking the signup HTTP response.
 
-    Enqueue a rider with enqueue(e_license, zwift_id). The worker drains the
+    Enqueue a rider with enqueue(user_doc_id, zwift_id). The worker drains the
     queue at a rate that respects the ZR API limit (5 calls/min). On a 429
     it pauses, then re-enqueues the rider for another attempt (up to
     STATS_MAX_RETRIES total). On other transient failures it also re-enqueues.
@@ -141,54 +142,56 @@ class StatsQueue:
         )
         self._thread.start()
 
-    def enqueue(self, e_license: str, zwift_id: str, attempt: int = 1) -> None:
-        self._q.put((e_license, zwift_id, attempt))
-        logger.info(f"StatsQueue: enqueued {e_license} (attempt {attempt})")
+    def enqueue(self, user_doc_id: str, zwift_id: str, attempt: int = 1, rider_label: str | None = None) -> None:
+        self._q.put((user_doc_id, zwift_id, attempt, rider_label))
+        label = rider_label or user_doc_id
+        logger.info(f"StatsQueue: enqueued {label} (attempt {attempt})")
 
     def _worker(self) -> None:
         import time
         while True:
-            e_license, zwift_id, attempt = self._q.get()
+            user_doc_id, zwift_id, attempt, rider_label = self._q.get()
             try:
-                self._fetch_and_store(e_license, zwift_id, attempt)
+                self._fetch_and_store(user_doc_id, zwift_id, attempt, rider_label)
             except Exception as e:
-                logger.error(f"StatsQueue: unexpected error for {e_license}: {e}")
+                logger.error(f"StatsQueue: unexpected error for {rider_label or user_doc_id}: {e}")
             finally:
                 self._q.task_done()
             # Pace calls to stay within the ZR rate limit.
             time.sleep(STATS_CALL_INTERVAL_SECONDS)
 
-    def _fetch_and_store(self, e_license: str, zwift_id: str, attempt: int) -> None:
+    def _fetch_and_store(self, user_doc_id: str, zwift_id: str, attempt: int, rider_label: str | None = None) -> None:
         import time
+        label = rider_label or user_doc_id
         if attempt > STATS_MAX_RETRIES:
             logger.error(
-                f"StatsQueue: giving up on ZR stats for {e_license} "
+                f"StatsQueue: giving up on ZR stats for {label} "
                 f"after {STATS_MAX_RETRIES} attempts"
             )
             return
 
-        logger.info(f"StatsQueue: fetching ZR stats for {e_license} (attempt {attempt})")
+        logger.info(f"StatsQueue: fetching ZR stats for {label} (attempt {attempt})")
         try:
             zr_json = zr_service.get_rider_data(str(zwift_id))
         except RateLimitError:
             logger.warning(
-                f"StatsQueue: rate limited for {e_license} — "
+                f"StatsQueue: rate limited for {label} — "
                 f"pausing {STATS_RATE_LIMIT_PAUSE_SECONDS}s then re-enqueuing"
             )
             time.sleep(STATS_RATE_LIMIT_PAUSE_SECONDS)
-            self.enqueue(e_license, zwift_id, attempt + 1)
+            self.enqueue(user_doc_id, zwift_id, attempt + 1, rider_label=label)
             return
 
         if not zr_json:
             logger.warning(
-                f"StatsQueue: no ZR data for {e_license} on attempt {attempt} — re-enqueuing"
+                f"StatsQueue: no ZR data for {label} on attempt {attempt} — re-enqueuing"
             )
-            self.enqueue(e_license, zwift_id, attempt + 1)
+            self.enqueue(user_doc_id, zwift_id, attempt + 1, rider_label=label)
             return
 
         data = zr_json if 'race' in zr_json else zr_json.get('data', {})
         race = data.get('race', {})
-        db.collection('users').document(str(e_license)).set({
+        payload = with_schema_version({
             'zwiftRacing': {
                 'currentRating': race.get('current', {}).get('rating', 'N/A'),
                 'max30Rating':   race.get('max30', {}).get('rating', 'N/A'),
@@ -196,8 +199,9 @@ class StatsQueue:
                 'phenotype':     data.get('phenotype', {}).get('value', 'N/A'),
                 'updatedAt':     firestore.SERVER_TIMESTAMP,
             }
-        }, merge=True)
-        logger.info(f"StatsQueue: ZR stats stored for {e_license}")
+        })
+        db.collection('users').document(str(user_doc_id)).set(payload, merge=True)
+        logger.info(f"StatsQueue: ZR stats stored for {label}")
 
 
 stats_queue = StatsQueue()

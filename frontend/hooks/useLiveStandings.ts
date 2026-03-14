@@ -2,6 +2,12 @@ import { useState, useEffect } from 'react';
 import { doc, onSnapshot, getDoc, collection, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Race, StandingEntry } from '@/types/live';
+import {
+    normalizeLeagueSettings,
+    normalizeRace,
+    normalizeStandingsMap,
+    raceDateMs,
+} from '@/lib/firestore-normalizers';
 
 export function useLiveStandings() {
     const [standings, setStandings] = useState<Record<string, StandingEntry[]>>({});
@@ -15,13 +21,9 @@ export function useLiveStandings() {
             try {
                  const settingsDoc = await getDoc(doc(db, 'league', 'settings')); 
                  if (settingsDoc.exists()) {
-                     const data = settingsDoc.data();
-                     if (data?.bestRacesCount) {
-                         setBestRacesCount(data.bestRacesCount);
-                     }
-                     if (data?.name) {
-                         setLeagueName(data.name);
-                     }
+                     const normalized = normalizeLeagueSettings(settingsDoc.data());
+                     setBestRacesCount(normalized.bestRacesCount);
+                     setLeagueName(normalized.leagueName);
                  }
             } catch (err) {
                 console.error("Error fetching settings:", err);
@@ -34,9 +36,7 @@ export function useLiveStandings() {
             (docSnap) => {
                 if (docSnap.exists()) {
                     const data = docSnap.data();
-                    if (data.standings) {
-                        setStandings(data.standings);
-                    }
+                    setStandings(normalizeStandingsMap(data.standings));
                 }
             }, 
             (err) => {
@@ -48,12 +48,9 @@ export function useLiveStandings() {
         const fetchAllRaces = async () => {
             try {
                 const racesSnapshot = await getDocs(collection(db, 'races'));
-                const races = racesSnapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                })) as Race[];
+                const races = racesSnapshot.docs.map(doc => normalizeRace(doc.data(), doc.id)) as Race[];
                 // Sort by date
-                races.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                races.sort((a, b) => raceDateMs(a) - raceDateMs(b));
                 setAllRaces(races);
             } catch (err) {
                 console.error("Error fetching races:", err);

@@ -4,6 +4,7 @@ from extensions import db, get_zwift_service, get_zp_service, strava_service, zr
 from services.policy_store import POLICY_DATA_POLICY, POLICY_PUBLIC_RESULTS, PolicyError, get_policy_meta
 from services.user_service import UserService
 from services.category_engine import build_liga_category, ZR_CATEGORIES, serialize_liga_category
+from services.schema_validation import log_schema_issues, validate_user_doc, with_schema_version
 from authz import verify_user_token, AuthzError
 
 import logging
@@ -89,6 +90,8 @@ def update_rider_stats(e_license, zwift_id):
         logger.error(f"Strava Fetch Error: {e}")
          
     if updates:
+        updates = with_schema_version(updates)
+        log_schema_issues(logger, f"users/{zwift_id} (stats update)", validate_user_doc(updates, partial=True))
         db.collection('users').document(str(zwift_id)).set(updates, merge=True)
         return updates
     return None
@@ -235,10 +238,12 @@ def signup():
                 registration['status'] = 'complete'
                 
             user_data['registration'] = registration
+            user_data = with_schema_version(user_data)
             
             # Use Zwift ID as the document ID (primary key)
             doc_id = str(zwift_id) if zwift_id else uid
             doc_ref = db.collection('users').document(doc_id)
+            log_schema_issues(logger, f"users/{doc_id} (signup)", validate_user_doc(user_data))
 
             @firestore.transactional
             def _promote_registration(transaction, ref, data):
@@ -272,7 +277,7 @@ def signup():
             db.collection('auth_mappings').document(uid).set(auth_map_data, merge=True)
             
             if not is_draft and zwift_id and is_newly_registered:
-                stats_queue.enqueue(str(e_license), str(zwift_id))
+                stats_queue.enqueue(str(doc_id), str(zwift_id), rider_label=str(e_license or doc_id))
         
         return jsonify({
             'message': 'Progress saved' if is_draft else ('Profile updated' if not is_newly_registered else 'Signup successful'),
@@ -336,6 +341,8 @@ def update_consents():
                 'status': 'complete' # Re-affirm status
             }
         }
+        updates = with_schema_version(updates)
+        log_schema_issues(logger, f"users/{doc_id} (consents)", validate_user_doc(updates, partial=True))
 
         db.collection('users').document(str(doc_id)).set(updates, merge=True)
 
@@ -359,9 +366,13 @@ def set_welcome_seen():
         user = UserService.get_user_by_auth_uid(uid)
         if not user:
             # Fallback if no user document exists yet
-            db.collection('users').document(uid).set({'welcomeSeen': True}, merge=True)
+            payload = with_schema_version({'welcomeSeen': True})
+            log_schema_issues(logger, f"users/{uid} (welcomeSeen)", validate_user_doc(payload, partial=True))
+            db.collection('users').document(uid).set(payload, merge=True)
         else:
-            db.collection('users').document(str(user.id)).set({'welcomeSeen': True}, merge=True)
+            payload = with_schema_version({'welcomeSeen': True})
+            log_schema_issues(logger, f"users/{user.id} (welcomeSeen)", validate_user_doc(payload, partial=True))
+            db.collection('users').document(str(user.id)).set(payload, merge=True)
             
         return jsonify({'message': 'Updated'}), 200
     except Exception as e:
@@ -509,11 +520,10 @@ def get_stats():
                 target_user = UserService.get_user_by_elicense(e_license)
             if target_user:
                 user_data = target_user.to_dict()
+                zwift_id = user_data.get('zwiftId')
                 
                 if (user_data.get('connections') or {}).get('strava') and zwift_id:
                     strava_data = strava_service.get_activities(zwift_id)
-                
-                zwift_id = user_data.get('zwiftId')
                 if zwift_id:
                     try:
                         zp = get_zp_service()

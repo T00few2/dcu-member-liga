@@ -4,6 +4,12 @@ from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
 from extensions import db
 from services.results_processor import ResultsProcessor
+from services.schema_validation import (
+    log_schema_issues,
+    validate_league_settings_doc,
+    validate_league_standings_doc,
+    with_schema_version,
+)
 from authz import require_admin, AuthzError
 
 logger = logging.getLogger(__name__)
@@ -53,6 +59,8 @@ def save_settings():
         
         if name is not None:
             update_data['name'] = name
+        update_data = with_schema_version(update_data)
+        log_schema_issues(logger, "league/settings (save)", validate_league_settings_doc(update_data, partial=True))
             
         db.collection('league').document('settings').set(update_data, merge=True)
         
@@ -77,10 +85,12 @@ def get_standings():
         processor = ResultsProcessor(db, None, None) 
         standings = processor.calculate_league_standings()
         
-        db.collection('league').document('standings').set({
+        standings_payload = with_schema_version({
             'standings': standings,
             'updatedAt': firestore.SERVER_TIMESTAMP
         })
+        log_schema_issues(logger, "league/standings (fallback calc)", validate_league_standings_doc(standings_payload))
+        db.collection('league').document('standings').set(standings_payload)
         
         return jsonify({'standings': standings}), 200
     except Exception as e:

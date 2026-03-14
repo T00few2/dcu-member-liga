@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { db } from '@/lib/firebase';
 import { collection, getDocs, getDoc, query, doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { User } from 'firebase/auth';
+import { normalizeRace, raceDateMs } from '@/lib/firestore-normalizers';
 
 // Simplified Race type for live dashboard
 export interface LiveRace {
@@ -49,15 +50,10 @@ export function useLiveRaces(user: User | null): UseLiveRacesReturn {
                 const q = query(racesRef);
                 const snapshot = await getDocs(q);
                 
-                const fetchedRaces = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                })) as LiveRace[];
+                const fetchedRaces = snapshot.docs.map(doc => normalizeRace(doc.data(), doc.id)) as LiveRace[];
 
                 // Sort by date ascending
-                fetchedRaces.sort((a, b) => 
-                    new Date(a.date).getTime() - new Date(b.date).getTime()
-                );
+                fetchedRaces.sort((a, b) => raceDateMs(a) - raceDateMs(b));
 
                 setRaces(fetchedRaces);
             } catch (error) {
@@ -167,8 +163,7 @@ export function useLiveRaces(user: User | null): UseLiveRacesReturn {
             
             if (raceSnap.exists()) {
                 const updatedRace = {
-                    id: raceSnap.id,
-                    ...raceSnap.data(),
+                    ...normalizeRace(raceSnap.data(), raceSnap.id),
                 } as LiveRace;
                 
                 setRaces(prev => prev.map(r => r.id === raceId ? updatedRace : r));

@@ -128,6 +128,7 @@ class RaceConfig(TypedDict, total=False):
 
 class LeagueSettings(TypedDict, total=False):
     """Document: league/settings."""
+    schemaVersion: int
     name: str
     seasonStart: str        # ISO date string, e.g. "2025-03-01"
     gracePeriod: int        # Points above upper boundary before rider must move up (default 35)
@@ -269,6 +270,7 @@ class UserDoc(TypedDict, total=False):
     All fields optional because documents are built incrementally across
     the registration flow.
     """
+    schemaVersion: int
     authUid: str
     email: str
     name: str

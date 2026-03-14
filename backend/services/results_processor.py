@@ -11,6 +11,12 @@ from services.results.race_scorer import RaceScorer
 from services.results.league_engine import LeagueEngine
 from services.results.zwift_fetcher import ZwiftFetcher
 from services.category_config import CategoryConfigResolver
+from services.schema_validation import (
+    log_schema_issues,
+    validate_league_standings_doc,
+    validate_race_doc,
+    with_schema_version,
+)
 from firebase_admin import firestore
 
 from models import LeagueStandings, RaceConfig, RaceResults
@@ -118,10 +124,12 @@ class ResultsProcessor:
             )
 
         # 6. Save Results to Firestore
-        self.db.collection('races').document(race_id).update({
+        race_update = with_schema_version({
             'results': all_results,
             'resultsUpdatedAt': datetime.now()
         })
+        log_schema_issues(logger, f"races/{race_id} (results processing)", validate_race_doc(race_update, partial=True))
+        self.db.collection('races').document(race_id).update(race_update)
 
         race_data['results'] = all_results
 
@@ -139,10 +147,12 @@ class ResultsProcessor:
         override_race_data: dict[str, Any] | None = None,
     ) -> LeagueStandings:
         standings = self.calculate_league_standings(override_race_id, override_race_data)
-        self.db.collection('league').document('standings').set({
+        standings_payload = with_schema_version({
             'standings': standings,
             'updatedAt': firestore.SERVER_TIMESTAMP
-        }, merge=True)
+        })
+        log_schema_issues(logger, "league/standings (save)", validate_league_standings_doc(standings_payload))
+        self.db.collection('league').document('standings').set(standings_payload, merge=True)
         logger.info("Updated league standings document.")
         return standings
 
@@ -182,10 +192,12 @@ class ResultsProcessor:
             updated_riders = scorer.calculate_results(riders, category_config, segment_efforts_map=None)
             updated_results[category] = updated_riders
 
-        self.db.collection('races').document(race_id).update({
+        race_update = with_schema_version({
             'results': updated_results,
             'resultsUpdatedAt': datetime.now()
         })
+        log_schema_issues(logger, f"races/{race_id} (recalculate)", validate_race_doc(race_update, partial=True))
+        self.db.collection('races').document(race_id).update(race_update)
 
         race_data['results'] = updated_results
         try:

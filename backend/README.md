@@ -211,9 +211,25 @@ Use the schema health script to validate canonical structure and detect deprecat
 *   **Usage**:
     *   `conda run -n py311 python backend/scripts/schema_health_check.py`
 
+### Release gates
+
+Run these checks before shipping schema/data-structure changes:
+
+*   `conda run -n py311 python backend/scripts/schema_health_check.py`
+*   `conda run -n py311 python -m pytest backend/tests`
+*   (optional wrapper) `conda run -n py311 python backend/scripts/run_release_gates.py`
+
 ### Archival migration scripts
 
 Migration scripts under `backend/scripts/migrate_*.py` are retained for historical one-time use only and are not part of routine maintenance.
+
+## Firestore index configuration
+
+The repository tracks Firestore index configuration at:
+
+*   `firestore.indexes.json`
+
+When composite indexes are introduced for new queries, update this file and deploy with Firebase CLI in your normal infra workflow.
 
 ## Admin Management Tools
 
