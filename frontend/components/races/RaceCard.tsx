@@ -222,7 +222,6 @@ export default function RaceCard({
                             worldName={race.map}
                             routeName={race.routeName}
                             laps={lapsToShow}
-                            profileSegments={race.profileSegments}
                             pointSegments={resolvedSprintsToShow}
                         />
                     </div>

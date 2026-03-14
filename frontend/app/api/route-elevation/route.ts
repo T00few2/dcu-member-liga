@@ -3,6 +3,30 @@ import { routes, segments } from 'zwift-data';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
+type RouteSegment = {
+    from: number;
+    to: number;
+    type: 'sprint' | 'climb' | 'segment';
+    name: string;
+    direction?: 'forward' | 'reverse';
+};
+
+type ProfileSegment = {
+    name: string;
+    type: 'sprint' | 'climb' | 'segment';
+    fromKm: number;
+    toKm: number;
+    direction?: 'forward' | 'reverse';
+};
+
+function inferDirectionFromSegment(segmentSlug?: string | null, segmentName?: string | null): 'forward' | 'reverse' {
+    const slug = (segmentSlug || '').toLowerCase();
+    const name = (segmentName || '').toLowerCase();
+    if (slug.endsWith('-rev') || slug.includes('-reverse')) return 'reverse';
+    if (name.includes(' rev') || name.includes('reverse')) return 'reverse';
+    return 'forward';
+}
+
 function slugify(value?: string | null): string {
     return (value || '')
         .trim()
@@ -33,7 +57,7 @@ export async function GET(req: NextRequest) {
 
     // Map segmentsOnRoute to { from, to, type, name }.
     // Segment-level Strava fields are not required for rendering.
-    const routeSegments = match.segmentsOnRoute
+    const routeSegments: RouteSegment[] = match.segmentsOnRoute
         .map((sor) => {
             const seg = segments.find((s) => s.slug === sor.segment);
             return {
@@ -41,6 +65,7 @@ export async function GET(req: NextRequest) {
                 to: sor.to,
                 type: seg?.type ?? 'segment',
                 name: seg?.name ?? sor.segment ?? 'Segment',
+                direction: inferDirectionFromSegment(sor.segment, seg?.name ?? sor.segment),
             };
         });
 
@@ -53,10 +78,21 @@ export async function GET(req: NextRequest) {
     }
 
     const data = await upstream.json();
+    const profileSegments: ProfileSegment[] = Array.isArray(data?.profileSegments)
+        ? data.profileSegments
+        : routeSegments.map((seg) => ({
+            name: seg.name,
+            type: seg.type,
+            fromKm: seg.from,
+            toKm: seg.to,
+            direction: seg.direction,
+        }));
+
     return NextResponse.json(
         {
             ...data,
             segments: routeSegments,
+            profileSegments,
             stravaSegmentId: match.stravaSegmentId,
             stravaSegmentUrl: match.stravaSegmentUrl || `https://www.strava.com/segments/${match.stravaSegmentId}`,
         },

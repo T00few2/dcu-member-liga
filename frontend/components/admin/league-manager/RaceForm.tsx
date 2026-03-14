@@ -1,9 +1,10 @@
 'use client';
 
 import { User } from 'firebase/auth';
-import { useState } from 'react';
-import type { Route, Segment, RaceFormState, EventConfig, CategoryConfig, LoadingStatus, ProfileSegment } from '@/types/admin';
+import { useEffect, useState } from 'react';
+import type { Route, Segment, RaceFormState, EventConfig, CategoryConfig, LoadingStatus } from '@/types/admin';
 import { getRouteHelpers } from '@/hooks/useLeagueData';
+import { API_URL } from '@/lib/api';
 import SegmentPicker from './SegmentPicker';
 import SingleModeConfig from './SingleModeConfig';
 import MultiModeConfig from './MultiModeConfig';
@@ -24,11 +25,23 @@ interface RaceFormProps {
     onRemoveSingleModeCategory: (index: number) => void;
     onUpdateSingleModeCategory: (index: number, field: keyof CategoryConfig, value: CategoryConfig[keyof CategoryConfig]) => void;
     onToggleSingleModeCategorySprint: (configIndex: number, seg: Segment) => void;
-    onUpdateProfileSegment: (index: number, patch: Partial<ProfileSegment>) => void;
-    onAddProfileSegment: () => void;
-    onRemoveProfileSegment: (index: number) => void;
     onCancel: () => void;
     onSave: (e: React.FormEvent) => void;
+}
+
+interface RouteProfileSegment {
+    name: string;
+    type: 'sprint' | 'climb' | 'segment';
+    fromKm: number;
+    toKm: number;
+    direction: 'forward' | 'reverse';
+}
+
+function inferDirection(rawDirection: unknown, name: unknown): 'forward' | 'reverse' {
+    if (rawDirection === 'reverse') return 'reverse';
+    const n = String(name || '').toLowerCase();
+    if (n.includes(' rev') || n.includes('reverse')) return 'reverse';
+    return 'forward';
 }
 
 export default function RaceForm({
@@ -47,13 +60,15 @@ export default function RaceForm({
     onRemoveSingleModeCategory,
     onUpdateSingleModeCategory,
     onToggleSingleModeCategorySprint,
-    onUpdateProfileSegment,
-    onAddProfileSegment,
-    onRemoveProfileSegment,
     onCancel,
     onSave,
 }: RaceFormProps) {
-    const [loadingProfileSegments, setLoadingProfileSegments] = useState(false);
+    const [loadingRouteProfile, setLoadingRouteProfile] = useState(false);
+    const [savingRouteProfile, setSavingRouteProfile] = useState(false);
+    const [routeProfileSegments, setRouteProfileSegments] = useState<RouteProfileSegment[]>([]);
+    const [routeProfileSegmentId, setRouteProfileSegmentId] = useState<number | null>(null);
+    const [routeProfileError, setRouteProfileError] = useState<string | null>(null);
+
     const { maps, filteredRoutes, selectedRoute } = getRouteHelpers(
         routes,
         formState.selectedMap,
@@ -69,89 +84,97 @@ export default function RaceForm({
         return acc;
     }, {} as Record<number, Segment[]>);
 
-    const inferDirection = (rawDirection: unknown, name: unknown): 'forward' | 'reverse' => {
-        if (rawDirection === 'reverse') return 'reverse';
-        const n = String(name || '').toLowerCase();
-        if (n.includes(' rev') || n.includes('reverse')) return 'reverse';
-        return 'forward';
-    };
+    useEffect(() => {
+        setRouteProfileSegments([]);
+        setRouteProfileSegmentId(null);
+        setRouteProfileError(null);
+    }, [formState.selectedMap, formState.selectedRouteId]);
 
-    const normalizeNameForMatch = (name: unknown): string =>
-        String(name || '')
-            .toLowerCase()
-            .replace(/\s+\(.*\)\s*$/g, '')
-            .replace(/\s+(reverse|rev\.?)$/g, '')
-            .replace(/\s+/g, ' ')
-            .trim();
-
-    const inferTypeFromName = (name: unknown): ProfileSegment['type'] => {
-        const n = String(name || '').toLowerCase();
-        if (n.includes('sprint') || n.includes('prime')) return 'sprint';
-        if (n.includes('kom') || n.includes('climb')) return 'climb';
-        return 'segment';
-    };
-
-    const collectRouteSegments = (): Segment[] => {
-        const rows: Segment[] = [...(segments || [])];
-        const seen = new Set<string>();
-        const unique: Segment[] = [];
-        for (const s of rows) {
-            const k = `${s.id || s.name}_${s.count || 1}_${String(s.direction || '').toLowerCase()}`;
-            if (seen.has(k)) continue;
-            seen.add(k);
-            unique.push(s);
-        }
-        return unique;
-    };
-
-    const handleAutoFillProfileSegments = async () => {
+    const loadRouteProfileSegments = async () => {
         if (!selectedRoute) return;
-        setLoadingProfileSegments(true);
+        setLoadingRouteProfile(true);
+        setRouteProfileError(null);
         try {
-            const configured = collectRouteSegments();
-            if (configured.length === 0) {
-                alert('No route segments are loaded. Select route/laps first.');
-                return;
-            }
             const params = new URLSearchParams({
                 world: selectedRoute.map,
                 route: selectedRoute.name,
                 laps: String(formState.laps || 1),
             });
             const res = await fetch(`/api/route-elevation?${params}`, { cache: 'no-store' });
-            if (!res.ok) throw new Error(`Failed with ${res.status}`);
+            if (!res.ok) throw new Error(`Failed to load route profile (${res.status})`);
             const json = await res.json();
 
-            const routeSegments: any[] = Array.isArray(json?.segments) ? json.segments : [];
-            const occurrenceCounters = new Map<string, number>();
-            const routeByOccurrenceKey = new Map<string, any>();
-            routeSegments.forEach((seg) => {
-                const base = `${normalizeNameForMatch(seg?.name)}::${inferDirection(seg?.direction, seg?.name)}`;
-                const occ = (occurrenceCounters.get(base) || 0) + 1;
-                occurrenceCounters.set(base, occ);
-                routeByOccurrenceKey.set(`${base}::${occ}`, seg);
-            });
+            const sid = Number(json?.stravaSegmentId);
+            if (!Number.isFinite(sid) || sid <= 0) {
+                throw new Error('Could not resolve Strava segment ID for route');
+            }
 
-            const mapped: ProfileSegment[] = configured.map((seg) => {
-                const direction = inferDirection(seg.direction, seg.name);
-                const occ = Number.isFinite(seg.count) && seg.count > 0 ? seg.count : 1;
-                const key = `${normalizeNameForMatch(seg.name)}::${direction}::${occ}`;
-                const hit = routeByOccurrenceKey.get(key);
-                return {
-                    name: seg.name || 'Segment',
-                    type: hit?.type === 'sprint' || hit?.type === 'climb' || hit?.type === 'segment'
-                        ? hit.type
-                        : inferTypeFromName(seg.name),
-                    fromKm: Number(hit?.from) || 0,
-                    toKm: Number(hit?.to) || 0,
-                    direction,
-                };
-            });
-            onFieldChange('profileSegments', mapped);
-        } catch (e) {
-            alert('Could not auto-fill profile segments');
+            const mapped: RouteProfileSegment[] = (Array.isArray(json?.profileSegments) ? json.profileSegments : [])
+                .map((seg: any) => ({
+                    name: String(seg?.name || 'Segment').trim() || 'Segment',
+                    type: seg?.type === 'sprint' || seg?.type === 'climb' || seg?.type === 'segment' ? seg.type : 'segment',
+                    fromKm: Number(seg?.fromKm) || 0,
+                    toKm: Number(seg?.toKm) || 0,
+                    direction: inferDirection(seg?.direction, seg?.name),
+                }));
+            setRouteProfileSegmentId(sid);
+            setRouteProfileSegments(mapped);
+        } catch (e: any) {
+            setRouteProfileError(e?.message || 'Could not load route profile segments');
         } finally {
-            setLoadingProfileSegments(false);
+            setLoadingRouteProfile(false);
+        }
+    };
+
+    const updateRouteProfileSegment = (index: number, patch: Partial<RouteProfileSegment>) => {
+        setRouteProfileSegments((prev) => prev.map((s, i) => (i === index ? { ...s, ...patch } : s)));
+    };
+
+    const addRouteProfileSegment = () => {
+        setRouteProfileSegments((prev) => [
+            ...prev,
+            { name: 'Segment', type: 'segment', fromKm: 0, toKm: 0, direction: 'forward' },
+        ]);
+    };
+
+    const removeRouteProfileSegment = (index: number) => {
+        setRouteProfileSegments((prev) => prev.filter((_, i) => i !== index));
+    };
+
+    const saveRouteProfileSegments = async () => {
+        if (!user) return;
+        if (!routeProfileSegmentId) {
+            setRouteProfileError('Load route profile first to resolve cache key.');
+            return;
+        }
+        setSavingRouteProfile(true);
+        setRouteProfileError(null);
+        try {
+            const token = await user.getIdToken();
+            const payload = routeProfileSegments.map((seg) => ({
+                name: (seg.name || '').trim() || 'Segment',
+                type: seg.type,
+                fromKm: Number(seg.fromKm) || 0,
+                toKm: Number(seg.toKm) || 0,
+                direction: seg.direction === 'reverse' ? 'reverse' : 'forward',
+            }));
+            const res = await fetch(`${API_URL}/route-elevation/${routeProfileSegmentId}/profile-segments`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                },
+                body: JSON.stringify({ profileSegments: payload }),
+            });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(json?.message || `Failed to save (${res.status})`);
+            }
+            alert('Route profile segments saved.');
+        } catch (e: any) {
+            setRouteProfileError(e?.message || 'Could not save route profile segments');
+        } finally {
+            setSavingRouteProfile(false);
         }
     };
 
@@ -359,47 +382,59 @@ export default function RaceForm({
                             </div>
                         )}
 
-                        {/* Profile Segment Positions (curated for race card route profile) */}
+                        {/* Route profile ownership note */}
                         <div className="border-t border-border pt-4 mt-4">
                             <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                                 <label className="block font-medium text-card-foreground">
-                                    Route Profile Segments (manual override)
+                                    Route profile segments
                                 </label>
                                 <div className="flex gap-2">
                                     <button
                                         type="button"
-                                        onClick={handleAutoFillProfileSegments}
-                                        disabled={loadingProfileSegments}
+                                        onClick={loadRouteProfileSegments}
+                                        disabled={loadingRouteProfile}
                                         className="px-3 py-1.5 text-xs rounded bg-secondary text-secondary-foreground hover:opacity-90"
                                     >
-                                        {loadingProfileSegments ? 'Loading...' : 'Fill all route segments + route data'}
+                                        {loadingRouteProfile ? 'Loading...' : 'Load from elevation cache'}
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={onAddProfileSegment}
+                                        onClick={addRouteProfileSegment}
                                         className="px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90"
                                     >
                                         + Add segment
                                     </button>
+                                    <button
+                                        type="button"
+                                        onClick={saveRouteProfileSegments}
+                                        disabled={savingRouteProfile || !routeProfileSegmentId}
+                                        className="px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                                    >
+                                        {savingRouteProfile ? 'Saving...' : 'Save to elevation_cache'}
+                                    </button>
                                 </div>
                             </div>
                             <p className="text-xs text-muted-foreground mb-3">
-                                These values are used directly for segment boxes on race cards.
+                                Managed per route in `elevation_cache` (not saved on races).
+                                {routeProfileSegmentId ? ` Cache key: ${routeProfileSegmentId}` : ''}
                             </p>
+                            {routeProfileError && (
+                                <div className="text-xs text-red-600 dark:text-red-400 mb-2">{routeProfileError}</div>
+                            )}
                             <div className="space-y-2">
-                                {formState.profileSegments.length === 0 && (
+                                {routeProfileSegments.length === 0 && (
                                     <div className="text-xs text-muted-foreground border border-dashed border-border rounded p-3">
-                                        No curated profile segments yet.
+                                        No route profile segments loaded yet.
                                     </div>
                                 )}
-                                {formState.profileSegments.map((seg, i) => (
+                                {routeProfileSegments.map((seg, i) => (
                                     <div key={i} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end border border-border rounded p-2">
                                         <div className="md:col-span-4">
                                             <label className="block text-[11px] text-muted-foreground mb-1">Name</label>
                                             <input
                                                 type="text"
                                                 value={seg.name}
-                                                onChange={(e) => onUpdateProfileSegment(i, { name: e.target.value })}
+                                                onChange={(e) => updateRouteProfileSegment(i, { name: e.target.value })}
                                                 className="w-full p-1.5 border border-input rounded bg-background text-foreground text-sm"
                                             />
                                         </div>
@@ -407,7 +442,7 @@ export default function RaceForm({
                                             <label className="block text-[11px] text-muted-foreground mb-1">Type</label>
                                             <select
                                                 value={seg.type}
-                                                onChange={(e) => onUpdateProfileSegment(i, { type: e.target.value as ProfileSegment['type'] })}
+                                                onChange={(e) => updateRouteProfileSegment(i, { type: e.target.value as RouteProfileSegment['type'] })}
                                                 className="w-full p-1.5 border border-input rounded bg-background text-foreground text-sm"
                                             >
                                                 <option value="climb">Climb</option>
@@ -421,7 +456,7 @@ export default function RaceForm({
                                                 type="number"
                                                 step="0.01"
                                                 value={seg.fromKm}
-                                                onChange={(e) => onUpdateProfileSegment(i, { fromKm: Number(e.target.value) || 0 })}
+                                                onChange={(e) => updateRouteProfileSegment(i, { fromKm: Number(e.target.value) || 0 })}
                                                 className="w-full p-1.5 border border-input rounded bg-background text-foreground text-sm"
                                             />
                                         </div>
@@ -431,15 +466,15 @@ export default function RaceForm({
                                                 type="number"
                                                 step="0.01"
                                                 value={seg.toKm}
-                                                onChange={(e) => onUpdateProfileSegment(i, { toKm: Number(e.target.value) || 0 })}
+                                                onChange={(e) => updateRouteProfileSegment(i, { toKm: Number(e.target.value) || 0 })}
                                                 className="w-full p-1.5 border border-input rounded bg-background text-foreground text-sm"
                                             />
                                         </div>
                                         <div className="md:col-span-1">
                                             <label className="block text-[11px] text-muted-foreground mb-1">Dir</label>
                                             <select
-                                                value={seg.direction || 'forward'}
-                                                onChange={(e) => onUpdateProfileSegment(i, { direction: e.target.value as ProfileSegment['direction'] })}
+                                                value={seg.direction}
+                                                onChange={(e) => updateRouteProfileSegment(i, { direction: e.target.value as RouteProfileSegment['direction'] })}
                                                 className="w-full p-1.5 border border-input rounded bg-background text-foreground text-sm"
                                             >
                                                 <option value="forward">F</option>
@@ -449,7 +484,7 @@ export default function RaceForm({
                                         <div className="md:col-span-1">
                                             <button
                                                 type="button"
-                                                onClick={() => onRemoveProfileSegment(i)}
+                                                onClick={() => removeRouteProfileSegment(i)}
                                                 className="w-full p-1.5 text-xs rounded bg-destructive text-destructive-foreground hover:opacity-90"
                                             >
                                                 Remove

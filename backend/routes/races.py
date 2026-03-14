@@ -326,3 +326,55 @@ def get_route_elevation(segment_id):
 
     cache_ref.set(streams)
     return jsonify(streams)
+
+
+@races_bp.route('/route-elevation/<int:segment_id>/profile-segments', methods=['PUT'])
+def update_route_profile_segments(segment_id):
+    try:
+        verify_admin_auth()
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'Database unavailable'}), 503
+
+    try:
+        req_data = request.get_json(silent=True) or {}
+        raw_segments = req_data.get('profileSegments')
+        if not isinstance(raw_segments, list):
+            return jsonify({'message': 'profileSegments must be a list'}), 400
+
+        cleaned_segments = []
+        for i, seg in enumerate(raw_segments):
+            if not isinstance(seg, dict):
+                return jsonify({'message': f'profileSegments[{i}] must be an object'}), 400
+            name = str(seg.get('name', '')).strip()
+            seg_type = str(seg.get('type', '')).strip().lower()
+            direction = str(seg.get('direction', 'forward')).strip().lower()
+            try:
+                from_km = float(seg.get('fromKm', 0))
+                to_km = float(seg.get('toKm', 0))
+            except (TypeError, ValueError):
+                return jsonify({'message': f'profileSegments[{i}] fromKm/toKm must be numbers'}), 400
+
+            if not name:
+                return jsonify({'message': f'profileSegments[{i}] name is required'}), 400
+            if seg_type not in {'sprint', 'climb', 'segment'}:
+                return jsonify({'message': f'profileSegments[{i}] type must be sprint, climb, or segment'}), 400
+            if direction not in {'forward', 'reverse'}:
+                return jsonify({'message': f'profileSegments[{i}] direction must be forward or reverse'}), 400
+
+            cleaned_segments.append({
+                'name': name,
+                'type': seg_type,
+                'fromKm': from_km,
+                'toKm': to_km,
+                'direction': direction,
+            })
+
+        cache_ref = db.collection('elevation_cache').document(str(segment_id))
+        cache_ref.set({'profileSegments': cleaned_segments}, merge=True)
+        return jsonify({'message': 'Route profile segments updated', 'count': len(cleaned_segments)}), 200
+    except Exception as e:
+        logger.error(f"Route profile segment update error for {segment_id}: {e}")
+        return jsonify({'message': str(e)}), 500

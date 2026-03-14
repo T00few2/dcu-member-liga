@@ -57,6 +57,22 @@
         122.5,
         130.2,
         128.4
+      ],
+      "profileSegments": [
+        {
+          "name": "Yorkshire KOM",
+          "type": "climb",
+          "fromKm": 0.773,
+          "toKm": 1.94,
+          "direction": "reverse"
+        },
+        {
+          "name": "Yorkshire Sprint",
+          "type": "sprint",
+          "fromKm": 13.123,
+          "toKm": 13.518,
+          "direction": "reverse"
+        }
       ]
     }
   ],
@@ -108,22 +124,6 @@
       "singleModeCategories": [],
       "linkedEventIds": [],
       "sprints": [],
-      "profileSegments": [
-        {
-          "name": "Yorkshire KOM",
-          "type": "climb",
-          "fromKm": 0.773,
-          "toKm": 1.94,
-          "direction": "reverse"
-        },
-        {
-          "name": "Yorkshire Sprint",
-          "type": "sprint",
-          "fromKm": 13.123,
-          "toKm": 13.518,
-          "direction": "reverse"
-        }
-      ],
       "eventConfiguration": [
         {
           "segmentType": "sprint",

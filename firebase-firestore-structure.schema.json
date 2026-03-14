@@ -190,6 +190,12 @@
           "items": {
             "type": "number"
           }
+        },
+        "profileSegments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/profileSegmentObject"
+          }
         }
       }
     },
@@ -326,12 +332,6 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/segmentObject"
-          }
-        },
-        "profileSegments": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/profileSegmentObject"
           }
         },
         "eventConfiguration": {

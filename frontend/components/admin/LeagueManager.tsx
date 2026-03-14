@@ -150,12 +150,6 @@ export default function LeagueManager() {
                 selectedSegments: formState.selectedSprints.map(s => s.key),
                 sprints: formState.selectedSprints,
                 segmentType: formState.segmentType,
-                profileSegments: [...(formState.profileSegments || [])]
-                    .map((s) => ({
-                        ...s,
-                        fromKm: Number(s.fromKm) || 0,
-                        toKm: Number(s.toKm) || 0,
-                    })),
                 eventMode: formState.eventMode,
             };
 
@@ -409,9 +403,6 @@ export default function LeagueManager() {
                         onRemoveSingleModeCategory={raceForm.removeSingleModeCategory}
                         onUpdateSingleModeCategory={raceForm.updateSingleModeCategory}
                         onToggleSingleModeCategorySprint={raceForm.toggleSingleModeCategorySprint}
-                        onUpdateProfileSegment={raceForm.updateProfileSegment}
-                        onAddProfileSegment={raceForm.addProfileSegment}
-                        onRemoveProfileSegment={raceForm.removeProfileSegment}
                         onCancel={handleCancel}
                         onSave={handleSaveRace}
                     />

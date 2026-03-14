@@ -8,7 +8,6 @@ import type {
     SelectedSegment, 
     CategoryConfig, 
     EventConfig,
-    ProfileSegment,
 } from '@/types/admin';
 
 const initialFormState: RaceFormState = {
@@ -26,7 +25,6 @@ const initialFormState: RaceFormState = {
     laps: 1,
     selectedSprints: [],
     segmentType: 'sprint',
-    profileSegments: [],
 };
 
 export function useRaceForm() {
@@ -64,7 +62,6 @@ export function useRaceForm() {
             laps: race.laps,
             segmentType: race.segmentType || 'sprint',
             selectedSprints: race.sprints || [],
-            profileSegments: race.profileSegments || [],
             eventConfiguration: [],
             singleModeCategories: [],
         };
@@ -225,30 +222,6 @@ export function useRaceForm() {
         }));
     }, []);
 
-    const updateProfileSegment = useCallback((index: number, patch: Partial<ProfileSegment>) => {
-        setFormState(prev => ({
-            ...prev,
-            profileSegments: prev.profileSegments.map((s, i) => i === index ? { ...s, ...patch } : s),
-        }));
-    }, []);
-
-    const addProfileSegment = useCallback(() => {
-        setFormState(prev => ({
-            ...prev,
-            profileSegments: [
-                ...prev.profileSegments,
-                { name: 'Segment', type: 'segment', fromKm: 0, toKm: 0, direction: 'forward' },
-            ],
-        }));
-    }, []);
-
-    const removeProfileSegment = useCallback((index: number) => {
-        setFormState(prev => ({
-            ...prev,
-            profileSegments: prev.profileSegments.filter((_, i) => i !== index),
-        }));
-    }, []);
-
     return {
         formState,
         updateField,
@@ -265,9 +238,6 @@ export function useRaceForm() {
         removeSingleModeCategory,
         updateSingleModeCategory,
         toggleSingleModeCategorySprint,
-        updateProfileSegment,
-        addProfileSegment,
-        removeProfileSegment,
         // Convenience getters
         isEditing: formState.editingRaceId !== null,
     };

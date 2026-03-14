@@ -8,14 +8,6 @@ export interface Sprint {
     type?: 'sprint' | 'split';
 }
 
-export interface ProfileSegment {
-    name: string;
-    type: 'sprint' | 'climb' | 'segment';
-    fromKm: number;
-    toKm: number;
-    direction?: 'forward' | 'reverse';
-}
-
 export interface CategoryConfig {
     category: string;
     laps?: number;
@@ -80,7 +72,6 @@ export interface Race {
     sprints?: Sprint[];
     sprintData?: Sprint[];
     segmentType?: 'sprint' | 'split';
-    profileSegments?: ProfileSegment[];
     manualDQs?: string[];
     manualDeclassifications?: string[];
     manualExclusions?: string[];

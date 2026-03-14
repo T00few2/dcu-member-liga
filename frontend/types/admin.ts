@@ -18,14 +18,6 @@ export interface Segment {
     lap: number;
 }
 
-export interface ProfileSegment {
-    name: string;
-    type: 'sprint' | 'climb' | 'segment';
-    fromKm: number;
-    toKm: number;
-    direction?: 'forward' | 'reverse';
-}
-
 export interface SelectedSegment extends Segment {
     key: string;
     type?: 'sprint' | 'split';
@@ -68,7 +60,6 @@ export interface Race {
     selectedSegments?: string[];
     sprints?: SelectedSegment[];
     segmentType?: 'sprint' | 'split';
-    profileSegments?: ProfileSegment[];
     results?: Record<string, RaceResult[]>;
     manualDQs?: string[];
     manualDeclassifications?: string[];
@@ -121,7 +112,6 @@ export interface RaceFormState {
     laps: number;
     selectedSprints: SelectedSegment[];
     segmentType: 'sprint' | 'split';
-    profileSegments: ProfileSegment[];
 }
 
 // Status type for loading states

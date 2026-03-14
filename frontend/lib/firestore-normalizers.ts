@@ -59,7 +59,6 @@ export function normalizeRace(raw: unknown, id: string): Race {
         sprints: Array.isArray(data.sprints) ? (data.sprints as Race['sprints']) : [],
         sprintData: Array.isArray(data.sprintData) ? (data.sprintData as Race['sprintData']) : [],
         segmentType: (asString(data.segmentType) as Race['segmentType']) || undefined,
-        profileSegments: Array.isArray(data.profileSegments) ? (data.profileSegments as Race['profileSegments']) : [],
         manualDQs,
         manualDeclassifications,
         manualExclusions,

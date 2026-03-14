@@ -11,7 +11,6 @@ import {
     XAxis,
     YAxis,
 } from 'recharts';
-import type { ProfileSegment } from '@/types/live';
 import type { Sprint } from '@/types/live';
 
 interface RouteSegment {
@@ -22,11 +21,18 @@ interface RouteSegment {
     direction?: 'forward' | 'reverse';
 }
 
+interface ProfileSegment {
+    name: string;
+    type: 'sprint' | 'climb' | 'segment';
+    fromKm: number;
+    toKm: number;
+    direction?: 'forward' | 'reverse';
+}
+
 interface Props {
     worldName: string;
     routeName: string;
     laps?: number;
-    profileSegments?: ProfileSegment[];
     pointSegments?: Sprint[];
 }
 
@@ -37,7 +43,6 @@ interface DataPoint {
 }
 
 const TARGET_POINTS = 400;
-const EMPTY_PROFILE_SEGMENTS: ProfileSegment[] = [];
 const SEGMENT_COLORS: Record<RouteSegment['type'], string> = {
     sprint: '#56A845',
     climb:  '#ed2324',
@@ -176,10 +181,8 @@ export default function RouteElevationChart({
     worldName,
     routeName,
     laps = 1,
-    profileSegments,
     pointSegments = [],
 }: Props) {
-    const safeProfileSegments = profileSegments ?? EMPTY_PROFILE_SEGMENTS;
     const [data, setData] = useState<DataPoint[] | null>(null);
     const [routeSegments, setRouteSegments] = useState<RouteSegment[]>([]);
     const [loading, setLoading] = useState(true);
@@ -192,6 +195,7 @@ export default function RouteElevationChart({
                 distance: number[];
                 altitude: number[];
                 segments?: RouteSegment[];
+                profileSegments?: ProfileSegment[];
             } | null) => {
                 if (json?.distance?.length && json?.altitude?.length) {
                     const n = Math.max(1, Math.floor(json.distance.length / TARGET_POINTS));
@@ -213,15 +217,15 @@ export default function RouteElevationChart({
                                   ) / 10,
                     }));
                     setData(enriched);
-                    const fromRace: RouteSegment[] = safeProfileSegments.map((seg) => ({
+                    const fromRouteProfile: RouteSegment[] = (json.profileSegments ?? []).map((seg) => ({
                         from: Number(seg.fromKm) || 0,
                         to: Number(seg.toKm) || 0,
                         type: normalizeSegmentType(seg.type),
                         name: getSegmentName(seg.name),
                         direction: seg.direction === 'reverse' ? 'reverse' : 'forward',
                     }));
-                    if (fromRace.length > 0) {
-                        setRouteSegments(fromRace);
+                    if (fromRouteProfile.length > 0) {
+                        setRouteSegments(fromRouteProfile);
                     } else {
                         setRouteSegments(
                             (json.segments ?? []).map((seg) => ({
@@ -237,7 +241,7 @@ export default function RouteElevationChart({
             })
             .catch(() => {})
             .finally(() => setLoading(false));
-    }, [worldName, routeName, laps, safeProfileSegments]);
+    }, [worldName, routeName, laps]);
 
     if (loading) {
         return (

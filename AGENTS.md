@@ -27,3 +27,6 @@ If a script fails due to missing auth, report that clearly and do not proceed wi
   - `firebase-firestore-structure.schema.json`
   - `firebase-firestore-structure.example.json`
 - Keep example data sanitized (no real tokens, secrets, or personal data).
+- Route profile metadata ownership:
+  - `profileSegments` belongs in `elevation_cache` route docs.
+  - Do not store `profileSegments` in `races` documents.
