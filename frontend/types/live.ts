@@ -81,6 +81,9 @@ export interface Race {
     sprintData?: Sprint[];
     segmentType?: 'sprint' | 'split';
     profileSegments?: ProfileSegment[];
+    manualDQs?: string[];
+    manualDeclassifications?: string[];
+    manualExclusions?: string[];
 }
 
 export interface StandingEntry {
