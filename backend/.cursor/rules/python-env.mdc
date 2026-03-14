@@ -1,0 +1,16 @@
+---
+description: Use Conda py311 for backend Python and Firestore scripts
+globs:
+  - backend/**/*.py
+  - backend/scripts/**/*.py
+alwaysApply: true
+---
+
+- For any backend Python command, use `conda run -n py311 python ...`.
+- Never assume `python` or `py` points to the correct environment.
+- Before Firestore inspection/migration scripts, prefer read-only checks first.
+- Firestore auth priority:
+  1) `GOOGLE_APPLICATION_CREDENTIALS`
+  2) `backend/serviceAccountKey.json`
+  3) ADC
+- If environment/auth is missing, stop and ask the user for access path instead of guessing.
