@@ -193,7 +193,7 @@ export default function RouteElevationChart({
 
     useEffect(() => {
         const params = new URLSearchParams({ world: worldName, route: routeName, laps: String(laps) });
-        fetch(`/api/route-elevation?${params}`, { cache: 'no-store' })
+        fetch(`/api/route-elevation?${params}`)
             .then((res) => (res.ok ? res.json() : null))
             .then((json: {
                 distance: number[];

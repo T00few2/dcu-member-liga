@@ -99,6 +99,7 @@ export default function RaceForm({
                 world: selectedRoute.map,
                 route: selectedRoute.name,
                 laps: String(formState.laps || 1),
+                fresh: '1',
             });
             const res = await fetch(`/api/route-elevation?${params}`, { cache: 'no-store' });
             if (!res.ok) throw new Error(`Failed to load route profile (${res.status})`);

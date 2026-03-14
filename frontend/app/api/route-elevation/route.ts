@@ -42,6 +42,7 @@ function slugify(value?: string | null): string {
 export async function GET(req: NextRequest) {
     const world = req.nextUrl.searchParams.get('world');
     const route = req.nextUrl.searchParams.get('route');
+    const fresh = req.nextUrl.searchParams.get('fresh') === '1';
 
     if (!world || !route) {
         return NextResponse.json({ error: 'Missing world or route param' }, { status: 400 });
@@ -69,9 +70,10 @@ export async function GET(req: NextRequest) {
             };
         });
 
-    const upstream = await fetch(`${API_URL}/route-elevation/${match.stravaSegmentId}`, {
-        cache: 'no-store',
-    });
+    const upstream = await fetch(`${API_URL}/route-elevation/${match.stravaSegmentId}`, fresh
+        ? { cache: 'no-store' }
+        : { next: { revalidate: 86400 } }
+    );
 
     if (!upstream.ok) {
         return NextResponse.json({ error: 'Failed to fetch elevation data' }, { status: 502 });
@@ -96,6 +98,8 @@ export async function GET(req: NextRequest) {
             stravaSegmentId: match.stravaSegmentId,
             stravaSegmentUrl: match.stravaSegmentUrl || `https://www.strava.com/segments/${match.stravaSegmentId}`,
         },
-        { headers: { 'Cache-Control': 'no-store' } }
+        fresh
+            ? { headers: { 'Cache-Control': 'no-store' } }
+            : { headers: { 'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800' } }
     );
 }
