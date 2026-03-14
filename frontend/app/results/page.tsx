@@ -21,7 +21,7 @@ export default function ResultsPage() {
     const [activeTab, setActiveTab] = useState<'standings' | 'results'>('standings');
     const [selectedRaceId, setSelectedRaceId] = useState<string>('');
     const [selectedCategory, setSelectedCategory] = useState<string>('A');
-    const [standingsCategory, setStandingsCategory] = useState<string>('A');
+    const [standingsCategory, setStandingsCategory] = useState<string>('');
     const [autoSelectStandingsCategory, setAutoSelectStandingsCategory] = useState(true);
     const [bestRacesCount, setBestRacesCount] = useState<number>(5);
 
@@ -153,11 +153,26 @@ export default function ResultsPage() {
         if (cfg?.laps) displayLaps = cfg.laps;
     }
 
-    // Available standings categories
-    let availableStandingsCategories = Object.keys(standings).length > 0 ? Object.keys(standings) : ['A', 'B', 'C', 'D', 'E'];
-    const referenceRace = [...races].reverse().find(r => r.eventMode === 'multi' && r.eventConfiguration?.length);
-    if (referenceRace?.eventConfiguration) {
-        const orderMap = new Map(referenceRace.eventConfiguration.map((cfg, idx) => [cfg.customCategory, idx]));
+    // Available standings categories (never default to A-E).
+    // If standings are empty, fall back to configured race categories.
+    let availableStandingsCategories = Object.keys(standings).length > 0 ? Object.keys(standings) : [];
+    if (availableStandingsCategories.length === 0) {
+        availableStandingsCategories = [...availableRaceCategories];
+    }
+
+    const standingsOrderReference =
+        selectedRace?.eventMode === 'multi' && selectedRace.eventConfiguration?.length
+            ? selectedRace
+            : [...races].reverse().find(r => r.eventMode === 'multi' && r.eventConfiguration?.length);
+
+    if (standingsOrderReference?.eventConfiguration) {
+        const orderMap = new Map(standingsOrderReference.eventConfiguration.map((cfg, idx) => [cfg.customCategory, idx]));
+        availableStandingsCategories.sort((a, b) => {
+            const diff = (orderMap.get(a) ?? 999) - (orderMap.get(b) ?? 999);
+            return diff !== 0 ? diff : a.localeCompare(b);
+        });
+    } else if (selectedRace?.singleModeCategories?.length) {
+        const orderMap = new Map(selectedRace.singleModeCategories.map((cfg, idx) => [cfg.category, idx]));
         availableStandingsCategories.sort((a, b) => {
             const diff = (orderMap.get(a) ?? 999) - (orderMap.get(b) ?? 999);
             return diff !== 0 ? diff : a.localeCompare(b);
