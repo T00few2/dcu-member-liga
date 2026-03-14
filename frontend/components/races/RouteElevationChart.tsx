@@ -99,6 +99,10 @@ function normalizeDirectionForMatch(direction?: string, name?: string): 'forward
     return 'forward';
 }
 
+function normalizeDirection(direction?: string): 'forward' | 'reverse' {
+    return direction === 'reverse' ? 'reverse' : 'forward';
+}
+
 function compactSegmentLabel(name?: string, direction?: 'forward' | 'reverse'): string {
     const compact = getSegmentName(name)
         .replace(/\s+(reverse|rev\.?)$/i, ' Rev.')
@@ -218,7 +222,7 @@ export default function RouteElevationChart({
                     }));
                     setData(enriched);
                     const fromRouteProfile: RouteSegment[] = (json.profileSegments ?? [])
-                        .map((seg) => {
+                        .map((seg): RouteSegment => {
                             const rawFrom = Number(seg.fromKm) || 0;
                             const rawTo = Number(seg.toKm) || 0;
                             return {
@@ -227,7 +231,7 @@ export default function RouteElevationChart({
                                 to: Math.max(rawFrom, rawTo),
                                 type: normalizeSegmentType(seg.type),
                                 name: getSegmentName(seg.name),
-                                direction: seg.direction === 'reverse' ? 'reverse' : 'forward',
+                                direction: normalizeDirection(seg.direction),
                             };
                         })
                         .sort((a, b) => a.from - b.from || a.to - b.to);
@@ -240,7 +244,7 @@ export default function RouteElevationChart({
                                 to: Number.isFinite(seg?.to) ? seg.to : 0,
                                 type: normalizeSegmentType(seg?.type),
                                 name: getSegmentName(seg?.name),
-                                direction: seg?.direction === 'reverse' ? 'reverse' : 'forward',
+                                direction: normalizeDirection(seg?.direction),
                             })),
                         );
                     }
