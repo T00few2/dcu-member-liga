@@ -13,26 +13,9 @@ class StravaService:
         self._service_access_token = None
         self._service_token_expiry = 0
 
-    def _get_user_ref(self, rider_id):
-        # Helper to find user doc by ID (ZwiftID) or eLicense
-        doc = self.db.collection('users').document(str(rider_id)).get()
-        if doc.exists:
-            return self.db.collection('users').document(str(rider_id)), doc.to_dict()
-
-        # Fallback to eLicense lookup
-        docs = self.db.collection('users').where('eLicense', '==', str(rider_id)).limit(1).stream()
-        for d in docs:
-            return self.db.collection('users').document(d.id), d.to_dict()
-
-        return None, None
-
     def _resolve_doc_id(self, rider_id):
         """Return the canonical users/ document ID for a rider."""
-        _, user_data = self._get_user_ref(rider_id)
-        if not user_data:
-            return str(rider_id)
-        # The document ID is the ZwiftID when available, else eLicense
-        return str(user_data.get('zwiftId') or user_data.get('eLicense') or rider_id)
+        return str(rider_id)
 
     def _token_ref(self, doc_id):
         return self.db.collection('strava_tokens').document(str(doc_id))
@@ -118,19 +101,11 @@ class StravaService:
         try:
             doc_id = self._resolve_doc_id(rider_id)
 
-            # Primary: dedicated strava_tokens collection
             token_doc = self._token_ref(doc_id).get()
             if token_doc.exists:
                 strava_auth = token_doc.to_dict()
             else:
-                # Compatibility path: tokens still embedded in user document
-                _, user_data = self._get_user_ref(rider_id)
-                if not user_data:
-                    return None
-                strava_auth = user_data.get('connections', {}).get('strava') or user_data.get('strava')
-                if strava_auth:
-                    # Move tokens to dedicated collection on first access
-                    self._write_tokens(doc_id, strava_auth)
+                return None
 
             if not strava_auth:
                 return None

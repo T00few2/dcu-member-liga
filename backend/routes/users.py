@@ -79,7 +79,7 @@ def update_rider_stats(e_license, zwift_id):
          
     # 4. Strava (Summary only)
     try:
-        strava_data = strava_service.get_activities(e_license)
+        strava_data = strava_service.get_activities(zwift_id)
         if strava_data and 'kms' in strava_data:
             updates['stravaSummary'] = {
                 'kms': strava_data.get('kms', 'N/A'),
@@ -510,8 +510,8 @@ def get_stats():
             if target_user:
                 user_data = target_user.to_dict()
                 
-                if (user_data.get('connections') or {}).get('strava'):
-                    strava_data = strava_service.get_activities(e_license)
+                if (user_data.get('connections') or {}).get('strava') and zwift_id:
+                    strava_data = strava_service.get_activities(zwift_id)
                 
                 zwift_id = user_data.get('zwiftId')
                 if zwift_id:

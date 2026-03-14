@@ -55,11 +55,8 @@ class ResultsProcessor:
         # Determine Event Sources
         event_sources: list[dict[str, Any]] = []
         event_config = race_data.get('eventConfiguration', [])
-        single_mode_categories = race_data.get('singleModeCategories', [])
-
         if event_config and len(event_config) > 0:
-            # Multi-Event Mode
-            logger.info("Using Multi-Event Configuration")
+            logger.info("Using eventConfiguration sources")
             for cfg in event_config:
                 event_sources.append({
                     'id': cfg.get('eventId'),
@@ -67,34 +64,6 @@ class ResultsProcessor:
                     'customCategory': cfg.get('customCategory'),
                     'sprints': cfg.get('sprints', []),
                     'segmentType': cfg.get('segmentType') or race_data.get('segmentType')
-                })
-        else:
-            # Single-event mode
-            event_id = race_data.get('eventId')
-            event_secret = race_data.get('eventSecret')
-            global_sprints = race_data.get('sprints', [])
-
-            if event_id:
-                logger.info("Using Single Event Configuration")
-                category_config_map: dict[str, Any] = {}
-                if single_mode_categories:
-                    logger.info(f"  Found {len(single_mode_categories)} per-category configurations")
-                    for cat_cfg in single_mode_categories:
-                        cat_name = cat_cfg.get('category')
-                        if cat_name:
-                            category_config_map[cat_name] = {
-                                'sprints': cat_cfg.get('sprints', []),
-                                'segmentType': cat_cfg.get('segmentType') or race_data.get('segmentType'),
-                                'laps': cat_cfg.get('laps')
-                            }
-
-                event_sources.append({
-                    'id': event_id,
-                    'secret': event_secret,
-                    'customCategory': None,
-                    'sprints': global_sprints,
-                    'segmentType': race_data.get('segmentType'),
-                    'categoryConfigMap': category_config_map
                 })
 
         if not event_sources:

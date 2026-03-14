@@ -55,9 +55,9 @@ def verify_rider(rider_id):
             return get_zwift_service().get_profile(int(zwift_id))
 
         def fetch_strava():
-            if not strava_auth or not e_license:
+            if not strava_auth or not zwift_id:
                 return None
-            return strava_service.get_activities(e_license)
+            return strava_service.get_activities(zwift_id)
 
         def fetch_zp():
             if not zwift_id:
@@ -140,7 +140,10 @@ def get_strava_streams(activity_id):
         return jsonify({'message': 'Missing eLicense'}), 400
 
     try:
-        streams = strava_service.get_activity_streams(e_license, activity_id)
+        user = UserService.get_user_by_elicense(e_license)
+        if not user or not user.zwift_id:
+            return jsonify({'message': 'User not found'}), 404
+        streams = strava_service.get_activity_streams(user.zwift_id, activity_id)
         if streams:
             return jsonify({'streams': streams}), 200
         return jsonify({'message': 'Failed to fetch streams'}), 404
