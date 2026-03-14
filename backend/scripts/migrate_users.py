@@ -1,3 +1,11 @@
+"""
+ARCHIVAL MIGRATION SCRIPT.
+
+This script exists for historical one-time migrations and is not part of
+routine operations. Prefer using read-only schema health checks before
+considering any write migration.
+"""
+
 import firebase_admin
 from firebase_admin import credentials, firestore, auth
 import argparse
@@ -100,7 +108,7 @@ def migrate_user(doc, db, dry_run=True):
         print(f"  [SUCCESS] Written to {target_key}")
         
         # Update Auth Mapping
-        uid = user_data.get('authUid') or user_data.get('uid') # Legacy field might vary
+        uid = user_data.get('authUid') or user_data.get('uid') # Older field name may vary
         if uid:
             db.collection('auth_mappings').document(uid).set({'zwiftId': str(zwift_id)}, merge=True)
             print(f"  [SUCCESS] Updated auth_mapping for {uid}")

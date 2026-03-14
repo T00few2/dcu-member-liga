@@ -55,7 +55,7 @@ export default function RaceList({
             }
         };
 
-        // Legacy storage shape used in older races
+        // Backward-compatible top-level segment keys
         for (const segKey of race.selectedSegments || []) {
             segmentKeys.add(segKey);
         }
@@ -80,7 +80,7 @@ export default function RaceList({
         const segmentKeys = new Set<string>();
         const defaultType = race.segmentType || 'sprint';
 
-        // Top-level race segments (legacy/single mode)
+        // Top-level race segments (single mode)
         if (defaultType !== 'split') {
             for (const key of race.selectedSegments || []) {
                 segmentKeys.add(key);

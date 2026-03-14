@@ -123,13 +123,13 @@ class StravaService:
             if token_doc.exists:
                 strava_auth = token_doc.to_dict()
             else:
-                # Fallback: legacy tokens embedded in user document
+                # Compatibility path: tokens still embedded in user document
                 _, user_data = self._get_user_ref(rider_id)
                 if not user_data:
                     return None
                 strava_auth = user_data.get('connections', {}).get('strava') or user_data.get('strava')
                 if strava_auth:
-                    # Migrate to dedicated collection on first access
+                    # Move tokens to dedicated collection on first access
                     self._write_tokens(doc_id, strava_auth)
 
             if not strava_auth:

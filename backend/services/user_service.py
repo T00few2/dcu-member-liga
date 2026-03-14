@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from firebase_admin import firestore
 from extensions import db
 
 from models import UserDoc
+
+logger = logging.getLogger(__name__)
 
 
 class User:
@@ -95,16 +98,12 @@ class User:
 
     @property
     def strava_auth(self) -> dict[str, Any] | None:
-        return self._data.get('connections', {}).get('strava') or self._data.get('strava')
+        return self._data.get('connections', {}).get('strava')
 
     # Equipment
     @property
     def trainer(self) -> str:
-        # Fallback logic preserved from get_profile
-        t = self._data.get('equipment', {}).get('trainer')
-        if not t:
-            t = self._data.get('trainer', '')
-        return t
+        return self._data.get('equipment', {}).get('trainer', '')
 
     def update(self, updates: dict[str, Any]) -> None:
         """
@@ -139,7 +138,6 @@ class UserService:
 
     @staticmethod
     def get_user_by_auth_uid(uid: str) -> User | None:
-        # Logic from users.py mapping lookup
         mapping_doc = db.collection('auth_mappings').document(uid).get()
         if mapping_doc.exists:
             data = mapping_doc.to_dict()
@@ -147,16 +145,10 @@ class UserService:
             if zwift_id:
                 return UserService.get_user_by_id(zwift_id)
 
-            # Legacy eLicense fallback
-            e_license = data.get('eLicense')
-            if e_license:
-                return UserService.get_user_by_id(e_license)
+            if data.get('eLicense'):
+                logger.warning("Found unexpected auth_mappings.eLicense for uid=%s without zwiftId", uid)
 
-        # Direct lookup fallback
-        user = UserService.get_user_by_id(uid)
-        if user: return user
-
-        # Query fallback
+        # Keep authUid query support for draft/incomplete accounts keyed by UID.
         docs = db.collection('users').where('authUid', '==', uid).limit(1).stream()
         for doc in docs:
             return User(doc_snapshot=doc)

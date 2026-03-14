@@ -203,6 +203,18 @@ A utility script is available for easily inspecting Firestore data and outputtin
     *   List collections: `python backend/scripts/inspect_data.py --list-collections`
     *   Get collection data: `python backend/scripts/inspect_data.py --collection <NAME>`
 
+### Schema health check (read-only)
+
+Use the schema health script to validate canonical structure and detect deprecated fields.
+
+*   **Location**: `backend/scripts/schema_health_check.py`
+*   **Usage**:
+    *   `conda run -n py311 python backend/scripts/schema_health_check.py`
+
+### Archival migration scripts
+
+Migration scripts under `backend/scripts/migrate_*.py` are retained for historical one-time use only and are not part of routine maintenance.
+
 ## Admin Management Tools
 
 Scripts are provided to manage user roles (specifically the `admin` custom claim) without direct database editing.

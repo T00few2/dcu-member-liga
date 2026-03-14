@@ -48,8 +48,8 @@ def update_rider_stats(e_license, zwift_id):
                 'updatedAt': firestore.SERVER_TIMESTAMP
             }
             # Auto-assign ligaCategory on first-time registration if not already set.
-            if max30 != 'N/A' and db and e_license:
-                existing_doc = db.collection('users').document(str(e_license)).get()
+            if max30 != 'N/A' and db and zwift_id:
+                existing_doc = db.collection('users').document(str(zwift_id)).get()
                 existing_lc = (existing_doc.to_dict() or {}).get('ligaCategory') if existing_doc.exists else None
                 if not existing_lc:
                     auto = build_liga_category(int(max30))
@@ -58,7 +58,7 @@ def update_rider_stats(e_license, zwift_id):
                         'autoAssigned': auto,
                         'locked': False,
                     }
-                    logger.info(f"Auto-assigned ligaCategory {auto['category']} for {e_license}")
+                    logger.info(f"Auto-assigned ligaCategory {auto['category']} for {zwift_id}")
     except Exception as e:
          logger.error(f"ZR Fetch Error: {e}")
 
@@ -89,7 +89,7 @@ def update_rider_stats(e_license, zwift_id):
         logger.error(f"Strava Fetch Error: {e}")
          
     if updates:
-        db.collection('users').document(str(e_license)).set(updates, merge=True)
+        db.collection('users').document(str(zwift_id)).set(updates, merge=True)
         return updates
     return None
 
@@ -132,8 +132,8 @@ def get_profile():
             'zwiftId': user.zwift_id,
             'club': user.club,
             'trainer': user.trainer,
-            'stravaConnected': bool(user._data.get('connections', {}).get('strava')) or bool(user._data.get('strava')),
-            'acceptedCoC': user.registration.get('cocAccepted', user._data.get('acceptedCoC', False)),
+            'stravaConnected': bool(user._data.get('connections', {}).get('strava')),
+            'acceptedCoC': user.registration.get('cocAccepted', False),
             'acceptedDataPolicy': user.accepted_data_policy,
             'acceptedPublicResults': user.accepted_public_results,
             'dataPolicyVersion': user.data_policy_version,
@@ -268,7 +268,6 @@ def signup():
                 'lastLogin': firestore.SERVER_TIMESTAMP
             }
             if zwift_id: auth_map_data['zwiftId'] = zwift_id
-            if e_license: auth_map_data['eLicense'] = e_license
             
             db.collection('auth_mappings').document(uid).set(auth_map_data, merge=True)
             
@@ -485,15 +484,15 @@ def get_participants():
 @users_bp.route('/stats', methods=['GET'])
 def get_stats():
     e_license = request.args.get('eLicense')
+    target_user = None
     
     if not e_license:
         try:
             decoded_token = verify_user_token(request)
             uid = decoded_token['uid']
-            if db:
-                mapping_doc = db.collection('auth_mappings').document(uid).get()
-                if mapping_doc.exists:
-                    e_license = mapping_doc.to_dict().get('eLicense')
+            target_user = UserService.get_user_by_auth_uid(uid)
+            if target_user:
+                e_license = target_user.e_license
         except AuthzError:
             pass  # Unauthenticated access is allowed for this endpoint
         except Exception as e:
@@ -506,11 +505,12 @@ def get_stats():
     
     if e_license and db:
         try:
-            user_doc = db.collection('users').document(str(e_license)).get()
-            if user_doc.exists:
-                user_data = user_doc.to_dict()
+            if not target_user:
+                target_user = UserService.get_user_by_elicense(e_license)
+            if target_user:
+                user_data = target_user.to_dict()
                 
-                if user_data.get('strava'):
+                if (user_data.get('connections') or {}).get('strava'):
                     strava_data = strava_service.get_activities(e_license)
                 
                 zwift_id = user_data.get('zwiftId')
@@ -612,8 +612,8 @@ def verify_elicense(e_license):
          return jsonify({'error': 'DB not available'}), 500
     
     try:
-        doc = db.collection('users').document(str(e_license)).get()
-        return jsonify({'available': not doc.exists}), 200
+        existing = UserService.get_user_by_elicense(e_license)
+        return jsonify({'available': existing is None}), 200
     except Exception as e:
         logger.error(f"eLicense verify error for {e_license}: {e}")
         return jsonify({'message': str(e)}), 500

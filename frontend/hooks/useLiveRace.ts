@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { doc, onSnapshot, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, where, getDocs, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Race } from '@/types/live';
 
@@ -15,29 +15,22 @@ export function useLiveRace(raceId: string) {
             let docRef;
             
             try {
-                // 1. Try Document ID
+                // 1) Canonical path: race doc ID
                 docRef = doc(db, 'races', raceId);
-                const docSnap = await getDocs(query(collection(db, 'races'), where('__name__', '==', raceId)));
+                const docSnap = await getDoc(docRef);
                 
-                if (docSnap.empty) {
-                     // 2. Try Legacy Event ID
-                     const q = query(collection(db, 'races'), where('eventId', '==', raceId));
-                     const snapshot = await getDocs(q);
-                     if (!snapshot.empty) {
+                if (!docSnap.exists()) {
+                    // 2) Minimal compatibility: linked event IDs
+                    const q = query(collection(db, 'races'), where('linkedEventIds', 'array-contains', raceId));
+                    const snapshot = await getDocs(q);
+
+                    if (!snapshot.empty) {
                         docRef = doc(db, 'races', snapshot.docs[0].id);
-                     } else {
-                        // 3. Try Linked Event IDs
-                        const q2 = query(collection(db, 'races'), where('linkedEventIds', 'array-contains', raceId));
-                        const snapshot2 = await getDocs(q2);
-                        
-                        if (!snapshot2.empty) {
-                            docRef = doc(db, 'races', snapshot2.docs[0].id);
-                        } else {
-                            setError(`No race found with ID: ${raceId}`);
-                            setLoading(false);
-                            return;
-                        }
-                     }
+                    } else {
+                        setError(`No race found with ID: ${raceId}`);
+                        setLoading(false);
+                        return;
+                    }
                 }
             } catch (err: any) {
                 console.error("Query error:", err);

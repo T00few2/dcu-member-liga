@@ -73,8 +73,6 @@ def trigger_verification():
                 'verification.status': 'pending',
                 'verification.currentRequest': new_request,
                 'verification.history': firestore.ArrayUnion([new_request]),
-                # Clean up legacy fields if they exist? Maybe separate script is safer.
-                # But let's stop writing them.
             }
             batch.update(doc_ref, updates)
             updated_count += 1

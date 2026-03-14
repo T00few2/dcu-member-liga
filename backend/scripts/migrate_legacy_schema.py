@@ -1,13 +1,15 @@
 """
+ARCHIVAL MIGRATION SCRIPT.
+
 One-time migration: normalise user document registration status.
 
-Legacy user documents may use any of three different field conventions:
+Older user documents may use any of three different field conventions:
   (A) NEW:    registration.status == 'complete'        (current schema)
-  (B) OLD:    registrationComplete == True              (legacy)
-  (C) OLDEST: verified == True                          (ultra-legacy)
+  (B) OLD:    registrationComplete == True              (deprecated)
+  (C) OLDEST: verified == True                          (very old)
 
-This script rewrites all (B) and (C) documents to use the canonical (A) schema
-so that the legacy branches in results_processor.py and elsewhere can be removed.
+This script rewrites all (B) and (C) documents to use the canonical (A) schema.
+It is retained for historical reference and should not be run as routine maintenance.
 
 Usage (from the backend/ directory):
     python scripts/migrate_legacy_schema.py [--dry-run]
@@ -46,15 +48,15 @@ def _init_firebase() -> firestore.Client:
     return firestore.client()
 
 
-def _is_registered_legacy(data: dict) -> bool:
-    """True if the document uses a legacy registration signal."""
+def _is_registered_deprecated(data: dict) -> bool:
+    """True if the document uses a deprecated registration signal."""
     # Already on the new schema — skip.
     if data.get('registration', {}).get('status') == 'complete':
         return False
-    # Legacy B
+    # Old schema B
     if data.get('registrationComplete') is True:
         return True
-    # Legacy C (ultra-legacy)
+    # Oldest schema C
     if data.get('verified') is True:
         return True
     return False
@@ -70,7 +72,7 @@ def migrate(dry_run: bool = False) -> None:
     to_migrate = []
     for doc in docs:
         data = doc.to_dict() or {}
-        if _is_registered_legacy(data):
+        if _is_registered_deprecated(data):
             to_migrate.append(doc)
 
     logger.info(f"Documents requiring migration: {len(to_migrate)}")
@@ -109,7 +111,7 @@ def migrate(dry_run: bool = False) -> None:
 
         update_payload = {
             'registration': updated_reg,
-            # Clear the now-redundant legacy fields.
+            # Clear now-redundant deprecated fields.
             'registrationComplete': firestore.DELETE_FIELD,
             'verified': firestore.DELETE_FIELD,
         }
@@ -129,7 +131,7 @@ def migrate(dry_run: bool = False) -> None:
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Migrate legacy user registration schema.')
+    parser = argparse.ArgumentParser(description='Migrate deprecated user registration schema.')
     parser.add_argument('--dry-run', action='store_true', help='Preview changes without writing.')
     args = parser.parse_args()
     migrate(dry_run=args.dry_run)

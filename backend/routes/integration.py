@@ -80,15 +80,11 @@ def strava_callback():
     mapping_doc = db.collection('auth_mappings').document(uid).get()
     if mapping_doc.exists:
         mapping_data = mapping_doc.to_dict()
-        # Check for new primary key (ZwiftID)
         mapped_zwift_id = mapping_data.get('zwiftId')
         if mapped_zwift_id:
             user_doc_ref = db.collection('users').document(str(mapped_zwift_id))
-        else:
-            # Fallback to old eLicense key
-            mapped_elicense = mapping_data.get('eLicense')
-            if mapped_elicense:
-                user_doc_ref = db.collection('users').document(str(mapped_elicense))
+        elif mapping_data.get('eLicense'):
+            logger.warning("Found unexpected auth_mappings.eLicense for uid=%s during Strava callback", uid)
     
     if not user_doc_ref:
          # Fallback: Just update the UID doc (drafts/unregistered)
@@ -140,7 +136,7 @@ def strava_deauthorize():
         if mapping_data.get('zwiftId'):
             user_doc_ref = db.collection('users').document(str(mapping_data.get('zwiftId')))
         elif mapping_data.get('eLicense'):
-             user_doc_ref = db.collection('users').document(str(mapping_data.get('eLicense')))
+            logger.warning("Found unexpected auth_mappings.eLicense for uid=%s during Strava deauthorize", uid)
     
     if not user_doc_ref:
         user_doc_ref = db.collection('users').document(uid)
@@ -149,11 +145,7 @@ def strava_deauthorize():
     user_doc = user_doc_ref.get()
     if user_doc.exists:
         user_data = user_doc.to_dict() or {}
-        # Check new location first
         access_token = (user_data.get('connections') or {}).get('strava', {}).get('access_token')
-        # Check legacy location
-        if not access_token:
-             access_token = (user_data.get('strava') or {}).get('access_token')
 
     # Also check strava_tokens collection for the access token
     if not access_token:
@@ -172,10 +164,8 @@ def strava_deauthorize():
         logger.warning(f"Failed to delete Strava tokens doc: {e}")
 
     try:
-        # Remove legacy token fields from user doc if they still exist
         user_doc_ref.update({
             'connections.strava': firestore.DELETE_FIELD,
-            'strava': firestore.DELETE_FIELD,
         })
     except Exception as e:
         logger.warning(f"Failed to clean up Strava fields from user doc: {e}")

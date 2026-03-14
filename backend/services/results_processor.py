@@ -69,7 +69,7 @@ class ResultsProcessor:
                     'segmentType': cfg.get('segmentType') or race_data.get('segmentType')
                 })
         else:
-            # Legacy/Single Mode
+            # Single-event mode
             event_id = race_data.get('eventId')
             event_secret = race_data.get('eventSecret')
             global_sprints = race_data.get('sprints', [])
@@ -118,15 +118,13 @@ class ResultsProcessor:
             data = doc.to_dict()
             zid = data.get('zwiftId')
 
-            # Check registration status (support both schemas)
-            is_registered = False
             reg = data.get('registration', {})
-            if reg.get('status') == 'complete':
-                is_registered = True
-            elif data.get('registrationComplete') is True:
-                is_registered = True
-            elif data.get('verified') is True: # ultra-legacy
-                is_registered = True
+            is_registered = reg.get('status') == 'complete'
+            if data.get('registrationComplete') is True or data.get('verified') is True:
+                logger.warning(
+                    "Deprecated registration fields found for user doc %s; canonical registration.status is required",
+                    doc.id,
+                )
 
             if zid and is_registered:
                 registered_riders[str(zid)] = data
