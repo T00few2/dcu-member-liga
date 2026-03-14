@@ -14,6 +14,7 @@ interface RaceCardProps {
     userCategory?: string | null;
     isPast?: boolean;
     showPointsSplit?: boolean;
+    variant?: 'full' | 'public';
 }
 
 const normalize = (value?: string | null) => (value || '').trim().toLowerCase();
@@ -140,14 +141,26 @@ function fallbackSprintsFromSelectedKeys(selectedSegments?: string[]): Sprint[] 
         });
 }
 
+function getPublicSprints(race: Race): Sprint[] {
+    if (race.eventConfiguration?.length) {
+        return race.eventConfiguration[0]?.sprints || [];
+    }
+    if (race.singleModeCategories?.length) {
+        return race.singleModeCategories[0]?.sprints || [];
+    }
+    return race.sprints || [];
+}
+
 export default function RaceCard({
     race,
     leagueSettings,
     userCategory,
     isPast = false,
     showPointsSplit = true,
+    variant = 'full',
 }: RaceCardProps) {
     const raceDate = fromTimestamp(race.date) || new Date(NaN);
+    const isPublicVariant = variant === 'public';
     const userConfig = race.eventMode === 'multi' ? getUserEventConfig(race, userCategory) : null;
     const userSingleConfig = race.eventMode !== 'multi' ? getUserSingleConfig(race, userCategory) : null;
 
@@ -155,9 +168,13 @@ export default function RaceCard({
         ? (userConfig?.laps || race.laps)
         : (userSingleConfig?.laps || race.laps);
 
-    const sprintsToShow = race.eventMode === 'multi'
-        ? ((userConfig?.sprints && userConfig.sprints.length > 0) ? userConfig.sprints : (race.sprints || []))
-        : ((userSingleConfig?.sprints && userSingleConfig.sprints.length > 0) ? userSingleConfig.sprints : (race.sprints || []));
+    const sprintsToShow = isPublicVariant
+        ? getPublicSprints(race)
+        : (
+            race.eventMode === 'multi'
+                ? ((userConfig?.sprints && userConfig.sprints.length > 0) ? userConfig.sprints : (race.sprints || []))
+                : ((userSingleConfig?.sprints && userSingleConfig.sprints.length > 0) ? userSingleConfig.sprints : (race.sprints || []))
+        );
 
     const resolvedSprintsToShow = sprintsToShow.length > 0
         ? sprintsToShow
@@ -169,13 +186,13 @@ export default function RaceCard({
 
     return (
         <div className={`bg-card border border-border rounded-lg shadow-sm overflow-hidden mb-6 ${isPast ? 'opacity-75' : ''}`}>
-            <div className="p-6">
-                <div className="flex flex-col md:flex-row justify-between md:items-start gap-4 mb-4">
+            <div className={isPublicVariant ? 'p-4 md:p-5' : 'p-6'}>
+                <div className={`flex flex-col md:flex-row justify-between md:items-start gap-4 ${isPublicVariant ? 'mb-3' : 'mb-4'}`}>
                     <div>
                         <div className="text-sm font-medium text-primary mb-1">
                             {formatDateLong(raceDate)}
                         </div>
-                        <h3 className="text-2xl font-bold text-card-foreground">{race.name}</h3>
+                        <h3 className={isPublicVariant ? 'text-xl font-bold text-card-foreground' : 'text-2xl font-bold text-card-foreground'}>{race.name}</h3>
                         <div className="text-muted-foreground text-sm mt-1">
                             Start: {formatTimeWithTz(raceDate)}
                         </div>
@@ -198,7 +215,7 @@ export default function RaceCard({
                     </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4 mb-6 text-sm">
+                <div className={`grid grid-cols-3 gap-4 ${isPublicVariant ? 'mb-4' : 'mb-6'} text-sm`}>
                     <div className="bg-muted/20 p-3 rounded text-center">
                         <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Distance</div>
                         <div className="font-semibold text-card-foreground">{race.totalDistance} km</div>
@@ -216,8 +233,16 @@ export default function RaceCard({
                 </div>
 
                 {race.map && race.routeName && (
-                    <div className="border-t border-border pt-4 mb-6">
-                        <h4 className="text-sm font-semibold text-card-foreground mb-2">Ruteprofil</h4>
+                    <div className={`border-t border-border pt-4 ${isPublicVariant ? 'mb-4' : 'mb-6'}`}>
+                        <div className="flex items-center justify-between gap-3 mb-2">
+                            <h4 className="text-sm font-semibold text-card-foreground">Ruteprofil</h4>
+                            {resolvedSprintsToShow.length > 0 && (
+                                <span className="text-xs text-muted-foreground">
+                                    <span className="text-amber-600 mr-1">★</span>
+                                    Pointspurt
+                                </span>
+                            )}
+                        </div>
                         <RouteElevationChart
                             worldName={race.map}
                             routeName={race.routeName}
@@ -227,7 +252,7 @@ export default function RaceCard({
                     </div>
                 )}
 
-                {!isPast && showPointsSplit && leagueSettings && (
+                {!isPublicVariant && !isPast && showPointsSplit && leagueSettings && (
                     <div className="border-t border-border pt-4 mb-6">
                         <h4 className="text-sm font-semibold text-card-foreground mb-2">Pointfordeling</h4>
                         <PointsSplitBadge
@@ -238,14 +263,14 @@ export default function RaceCard({
                     </div>
                 )}
 
-                {resolvedSprintsToShow.length > 0 && (
+                {!isPublicVariant && resolvedSprintsToShow.length > 0 && (
                     <div className="border-t border-border pt-4 mb-6">
                         <h4 className="text-sm font-semibold text-card-foreground mb-3">Pointsprint</h4>
                         <SprintsByLap sprints={resolvedSprintsToShow} />
                     </div>
                 )}
 
-                {racePassHref ? (
+                {!isPublicVariant && racePassHref ? (
                     <a
                         href={racePassHref}
                         target="_blank"
@@ -255,14 +280,14 @@ export default function RaceCard({
                         <span>Løbspas</span>
                         <ExternalLinkIcon size={16} />
                     </a>
-                ) : (
+                ) : !isPublicVariant ? (
                     <div
                         className="block w-full bg-muted text-muted-foreground font-bold py-3 px-4 rounded-lg text-center shadow-sm cursor-not-allowed"
                         title="Løbspas kommer snart - hold øje"
                     >
                         Løbspas kommer snart
                     </div>
-                )}
+                ) : null}
             </div>
         </div>
     );

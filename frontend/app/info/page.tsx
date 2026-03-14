@@ -1,8 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import CodeOfConductModal from '@/components/CodeOfConductModal';
+import RaceCard from '@/components/races/RaceCard';
+import { API_URL } from '@/lib/api';
+import { fromTimestamp } from '@/lib/formatDate';
+import type { Race } from '@/types/live';
 
 function YderligereRegler() {
     const [open, setOpen] = useState(false);
@@ -20,6 +24,66 @@ function YderligereRegler() {
             </p>
             <CodeOfConductModal isOpen={open} onClose={() => setOpen(false)} />
         </>
+    );
+}
+
+function RuterSection() {
+    const [races, setRaces] = useState<Race[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const load = async () => {
+            try {
+                const res = await fetch(`${API_URL}/races`);
+                if (!res.ok) return;
+                const data = await res.json();
+                const sorted = (data.races || []).sort((a: Race, b: Race) => {
+                    const aTime = fromTimestamp(a.date)?.getTime() ?? Number.POSITIVE_INFINITY;
+                    const bTime = fromTimestamp(b.date)?.getTime() ?? Number.POSITIVE_INFINITY;
+                    return aTime - bTime;
+                });
+                const now = Date.now();
+                const upcoming = sorted.filter((r: Race) => {
+                    const t = fromTimestamp(r.date)?.getTime();
+                    return Number.isFinite(t) && (t as number) > now;
+                });
+                const selected = (upcoming.length > 0 ? upcoming : sorted).slice(0, 4);
+                setRaces(selected);
+            } finally {
+                setLoading(false);
+            }
+        };
+        load();
+    }, []);
+
+    return (
+        <div className="space-y-6">
+            <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
+                Løbsserien består af 4 afdelinger – de 3 bedste resultater tæller. Ruterne er bevidst valgt for at give
+                <strong> variation</strong> og give forskellige rytterprofiler en chance for at brillere.
+            </p>
+
+            {loading ? (
+                <div className="text-sm text-slate-500 dark:text-slate-400">Indlæser ruter...</div>
+            ) : races.length > 0 ? (
+                <div>
+                    {races.map((race) => (
+                        <RaceCard
+                            key={race.id}
+                            race={race}
+                            leagueSettings={null}
+                            showPointsSplit={false}
+                            variant="public"
+                        />
+                    ))}
+                </div>
+            ) : (
+                <div className="text-sm text-slate-500 dark:text-slate-400">
+                    Ingen ruter fundet endnu.
+                </div>
+            )}
+
+        </div>
     );
 }
 
@@ -317,122 +381,7 @@ const chapters = [
         iconBg: 'bg-teal-500/10 text-teal-600 dark:text-teal-400',
         title: 'Ruter',
         defaultOpen: false,
-        content: (
-            <div className="space-y-6">
-                <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
-                    Løbsserien består af 4 afdelinger – de 3 bedste resultater tæller. Ruterne er bevidst valgt for at give
-                    <strong> variation</strong> og give forskellige rytterprofiler en chance for at brillere.
-                </p>
-
-                <div className="space-y-4">
-                    {[
-                        {
-                            num: 1,
-                            theme: 'The Punch',
-                            name: 'Yorkshire Double Loop',
-                            dist: '29,6 km',
-                            laps: '1 omgang',
-                            type: 'Klassisk rundstrækning med lidt klatring',
-                            profile: 'Puncheur & udbrudsryttere',
-                            spurter: 'KOM og SPRINT bannere',
-                            color: 'border-green-500',
-                            badge: 'bg-green-500/10 text-green-700 dark:text-green-300',
-                            themeBadge: 'bg-green-500/10 text-green-700 dark:text-green-300 border border-green-400/30',
-                        },
-                        {
-                            num: 2,
-                            theme: 'The Sprint',
-                            name: 'Glasgow Crit Six',
-                            dist: '36,6 km',
-                            laps: '2 omgange',
-                            type: 'Fladt, teknisk criterium',
-                            profile: 'Sprintere & punchere',
-                            spurter: 'Clyde Kicker og målstreg hver anden omgang',
-                            color: 'border-blue-500',
-                            badge: 'bg-blue-500/10 text-blue-700 dark:text-blue-300',
-                            themeBadge: 'bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-400/30',
-                        },
-                        {
-                            num: 3,
-                            theme: 'The Climb',
-                            name: 'Mayan Mash',
-                            dist: '37,7 km',
-                            laps: '1 omgang',
-                            type: 'Hård, bølgende rute med kortere stigninger',
-                            profile: 'Klatrere & udbrudsryttere',
-                            spurter: 'Alle KOM bannere',
-                            color: 'border-orange-500',
-                            badge: 'bg-orange-500/10 text-orange-700 dark:text-orange-300',
-                            themeBadge: 'bg-orange-500/10 text-orange-700 dark:text-orange-300 border border-orange-400/30',
-                        },
-                        {
-                            num: 4,
-                            theme: 'The Classic',
-                            name: 'Triple Twist',
-                            dist: '48,6 km',
-                            laps: '2 omgange (lavere kat. evt. 1 omgang – 24,3 km)',
-                            type: 'Hurtig, punchy rundstrækning – Kaze Kicker (Japan)',
-                            profile: 'Klassikerspecialister & udbrudstyper',
-                            spurter: 'Alle bannere',
-                            color: 'border-red-500',
-                            badge: 'bg-red-500/10 text-red-700 dark:text-red-300',
-                            themeBadge: 'bg-red-500/10 text-red-700 dark:text-red-300 border border-red-400/30',
-                        },
-                    ].map((race) => (
-                        <div key={race.num} className={`rounded-xl border-l-4 ${race.color} border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/50 p-5`}>
-                            <div className="flex items-start gap-3">
-                                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary text-white font-extrabold text-sm flex items-center justify-center mt-0.5">
-                                    {race.num}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex flex-wrap items-center gap-2 mb-2">
-                                        <span className={`text-xs font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-full ${race.themeBadge}`}>{race.theme}</span>
-                                        <h4 className="font-bold text-slate-900 dark:text-white text-base">{race.name}</h4>
-                                        <span className="text-xs font-mono text-slate-500 dark:text-slate-400">{race.laps} · {race.dist}</span>
-                                    </div>
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
-                                        <div>
-                                            <span className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500 font-semibold">Type</span>
-                                            <p className="text-slate-700 dark:text-slate-200 mt-0.5">{race.type}</p>
-                                        </div>
-                                        <div>
-                                            <span className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500 font-semibold">Profil</span>
-                                            <p className={`mt-0.5 font-medium rounded-full px-2 py-0.5 inline-block text-xs ${race.badge}`}>{race.profile}</p>
-                                        </div>
-                                        <div>
-                                            <span className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500 font-semibold">Indlagte spurter</span>
-                                            <p className="text-slate-700 dark:text-slate-200 mt-0.5">{race.spurter}</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-
-                <div className="rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 p-5">
-                    <h4 className="font-bold text-slate-800 dark:text-white mb-3 flex items-center gap-2">
-                        <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                        </svg>
-                        Begrundelse for rutevalg
-                    </h4>
-                    <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
-                        {[
-                            { label: 'Yorkshire Double Loop', desc: 'Klassisk rundstrækning med klatreelementer → puncheur og udbrud.' },
-                            { label: 'Glasgow Crit Six', desc: 'Fladt criterium → sprintere & punchere konkurrerer om flere pointspurter.' },
-                            { label: 'Mayan Mash', desc: 'Hård, kuperet rute → klatrere og stærke udbrudsryttere belønnes.' },
-                            { label: 'Triple Twist', desc: 'Punchy, hurtig rute → udbrudstyper.' },
-                        ].map((item, i) => (
-                            <li key={i} className="flex gap-2">
-                                <span className="text-primary mt-0.5 flex-shrink-0">•</span>
-                                <span><strong>{item.label}:</strong> {item.desc}</span>
-                            </li>
-                        ))}
-                    </ul>
-                </div>
-            </div>
-        ),
+        content: <RuterSection />,
     },
     {
         id: 'point-loeb',
