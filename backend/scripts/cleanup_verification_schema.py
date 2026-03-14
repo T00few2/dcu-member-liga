@@ -1,3 +1,9 @@
+"""
+ARCHIVAL MIGRATION SCRIPT.
+
+One-time malformed verification key cleanup retained for historical reference.
+Do not use in routine operations.
+"""
 
 import sys
 import os

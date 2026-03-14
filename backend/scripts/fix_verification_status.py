@@ -1,3 +1,9 @@
+"""
+ARCHIVAL MIGRATION SCRIPT.
+
+One-time verification status fix utility retained for historical reference.
+Do not use in routine operations.
+"""
 
 import firebase_admin
 from firebase_admin import credentials, firestore

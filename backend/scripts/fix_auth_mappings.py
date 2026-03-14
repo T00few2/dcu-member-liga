@@ -1,3 +1,10 @@
+"""
+ARCHIVAL MIGRATION SCRIPT.
+
+One-time auth mapping repair utility retained for historical reference.
+Do not use in routine operations.
+"""
+
 import firebase_admin
 from firebase_admin import credentials, firestore
 import argparse

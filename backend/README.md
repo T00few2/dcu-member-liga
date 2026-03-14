@@ -223,6 +223,11 @@ Run these checks before shipping schema/data-structure changes:
 
 Migration scripts under `backend/scripts/migrate_*.py` are retained for historical one-time use only and are not part of routine maintenance.
 
+Additional one-off cleanup/fix scripts are also archival (for example:
+`consolidate_consents.py`, `consolidate_verification.py`,
+`cleanup_verification_schema.py`, `fix_verification_status.py`,
+`fix_auth_mappings.py`, `init_settings.py`).
+
 ## Firestore index configuration
 
 The repository tracks Firestore index configuration at:
