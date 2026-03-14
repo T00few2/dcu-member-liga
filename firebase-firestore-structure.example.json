@@ -1,0 +1,250 @@
+{
+  "archives": [
+    {
+      "_id": "archive_2026_spring",
+      "archivedAt": "2026-02-01T12:00:00+00:00",
+      "name": "Spring Season Archive",
+      "raceCount": 3,
+      "settings": {
+        "pointsSystem": "standard"
+      },
+      "standings": {
+        "Master H50": [
+          {
+            "name": "Rider Example",
+            "zwiftId": "100001",
+            "totalPoints": 52,
+            "lastRacePoints": 16,
+            "raceCount": 3,
+            "lastRaceDate": "2026-01-31T11:30:00+00:00",
+            "results": [
+              {
+                "raceId": "race_001",
+                "points": 20
+              },
+              {
+                "raceId": "race_002",
+                "points": 16
+              },
+              {
+                "raceId": "race_003",
+                "points": 16
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "auth_mappings": [
+    {
+      "_id": "auth_uid_example_001",
+      "zwiftId": "100001",
+      "lastLogin": "2026-03-14T10:00:00+00:00"
+    }
+  ],
+  "elevation_cache": [
+    {
+      "_id": "route_cache_mayan_mash",
+      "distance": [
+        0.0,
+        100.0,
+        250.0,
+        500.0
+      ],
+      "altitude": [
+        120.0,
+        122.5,
+        130.2,
+        128.4
+      ]
+    }
+  ],
+  "league": [
+    {
+      "_id": "liveOverlay",
+      "schemes": [
+        {
+          "name": "DCU DM hvid/graa",
+          "overlayHeaderText": "#000000",
+          "overlayRowBg": "#808080",
+          "overlayAccent": "#ffcc00",
+          "overlayRowAltBg": "#707070",
+          "overlayPositive": "#2ecc71",
+          "overlayRowText": "#ffffff",
+          "overlayText": "#ffffff",
+          "overlayBorder": "#000000",
+          "overlayMuted": "#cccccc",
+          "overlayHeaderBg": "#ffffff",
+          "overlayBackground": "#ffffff"
+        }
+      ]
+    }
+  ],
+  "policies": [
+    {
+      "_id": "dataPolicy",
+      "currentDisplayVersion": "2026-02-04",
+      "updatedAt": "2026-02-04T10:27:57+00:00"
+    }
+  ],
+  "races": [
+    {
+      "_id": "race_doc_example_001",
+      "name": "The Climb",
+      "type": "points",
+      "eventMode": "multi",
+      "date": "2026-05-20T19:00",
+      "map": "WATOPIA",
+      "routeId": "4280627426",
+      "routeName": "Mayan Mash",
+      "segmentType": "sprint",
+      "eventId": "",
+      "eventSecret": "",
+      "laps": 1,
+      "totalDistance": 37.7,
+      "totalElevation": 763,
+      "selectedSegments": [],
+      "singleModeCategories": [],
+      "linkedEventIds": [],
+      "sprints": [],
+      "profileSegments": [
+        {
+          "name": "Yorkshire KOM",
+          "type": "climb",
+          "fromKm": 0.773,
+          "toKm": 1.94,
+          "direction": "reverse"
+        },
+        {
+          "name": "Yorkshire Sprint",
+          "type": "sprint",
+          "fromKm": 13.123,
+          "toKm": 13.518,
+          "direction": "reverse"
+        }
+      ],
+      "eventConfiguration": [
+        {
+          "segmentType": "sprint",
+          "customCategory": "Diamond",
+          "startTime": "19:00",
+          "eventId": "",
+          "eventSecret": "",
+          "laps": 1,
+          "sprints": [
+            {
+              "id": "1048355050",
+              "key": "1048355050_1",
+              "name": "Mayan Mountainside KOM",
+              "direction": "forward",
+              "lap": 1,
+              "count": 1
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "strava_oauth_states": [
+    {
+      "_id": "oauth_state_example_001",
+      "uid": "auth_uid_example_001",
+      "eLicense": "123 456 78",
+      "createdAt": "2026-02-07T21:26:10+00:00"
+    }
+  ],
+  "strava_tokens": [
+    {
+      "_id": "100001",
+      "athlete_id": 9999999,
+      "expires_at": 1773407159,
+      "access_token": "REDACTED_ACCESS_TOKEN",
+      "refresh_token": "REDACTED_REFRESH_TOKEN"
+    }
+  ],
+  "system": [
+    {
+      "_id": "strava_service_token",
+      "expires_at": 1773495028,
+      "refresh_token": "REDACTED_SERVICE_REFRESH_TOKEN"
+    }
+  ],
+  "trainer_requests": [
+    {
+      "_id": "trainer_request_example_001",
+      "requesterName": "Member Example",
+      "requesterUid": "auth_uid_example_001",
+      "trainerName": "Wahoo KICKR Bike v2",
+      "status": "approved",
+      "createdAt": "2025-12-11T22:16:50+00:00",
+      "approvedAt": "2025-12-11T22:32:31+00:00"
+    }
+  ],
+  "trainers": [
+    {
+      "_id": "trainer_example_001",
+      "name": "Wahoo KICKR Bike v2",
+      "status": "approved",
+      "dualRecordingRequired": true,
+      "createdAt": "2025-12-12T12:20:27+00:00",
+      "updatedAt": "2025-12-12T12:20:27+00:00"
+    }
+  ],
+  "users": [
+    {
+      "_id": "100001",
+      "authUid": "auth_uid_example_001",
+      "zwiftId": "100001",
+      "name": "User Example",
+      "email": "user@example.com",
+      "club": "Danish Zwift Racers",
+      "welcomeSeen": true,
+      "updatedAt": "2026-03-13T07:05:59+00:00",
+      "equipment": {
+        "trainer": "Wahoo KICKR Bike v2"
+      },
+      "connections": {
+        "strava": {
+          "athlete_id": 9999999
+        }
+      },
+      "zwiftRacing": {
+        "currentRating": 2012.5,
+        "max30Rating": 2033.1,
+        "max90Rating": 2033.1,
+        "phenotype": "All-Rounder",
+        "updatedAt": "2026-03-14T04:26:58+00:00"
+      },
+      "ligaCategory": {
+        "locked": false,
+        "selfSelected": {
+          "category": "Ruby",
+          "selfSelectedAt": "2026-03-10T18:12:42+00:00"
+        },
+        "autoAssigned": {
+          "category": "Ruby",
+          "status": "ok",
+          "assignedRating": 2033,
+          "upperBoundary": 2200,
+          "graceLimit": 2235,
+          "lastCheckedRating": 2033,
+          "assignedAt": "2026-03-10T18:09:18+00:00",
+          "lastCheckedAt": "2026-03-14T04:26:58+00:00"
+        }
+      },
+      "registration": {
+        "status": "complete",
+        "cocAccepted": true,
+        "dataPolicy": {
+          "version": "2026-02-04",
+          "acceptedAt": "2026-03-04T22:21:43+00:00"
+        },
+        "publicResultsConsent": {
+          "version": "2026-02-03",
+          "acceptedAt": "2026-03-04T22:21:43+00:00"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,687 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "firebase-firestore-structure.schema.json",
+  "title": "DCU Member Liga Firestore Data Structure",
+  "description": "Reference schema for Firestore collections and document shapes. This is a structural guide, not a strict validator of all production variants.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "archives": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/archiveDoc"
+      }
+    },
+    "auth_mappings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/authMappingDoc"
+      }
+    },
+    "elevation_cache": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/elevationCacheDoc"
+      }
+    },
+    "league": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/leagueDoc"
+      }
+    },
+    "policies": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/policyDoc"
+      }
+    },
+    "races": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/raceDoc"
+      }
+    },
+    "strava_oauth_states": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/stravaOAuthStateDoc"
+      }
+    },
+    "strava_tokens": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/stravaTokenDoc"
+      }
+    },
+    "system": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/systemDoc"
+      }
+    },
+    "trainer_requests": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/trainerRequestDoc"
+      }
+    },
+    "trainers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/trainerDoc"
+      }
+    },
+    "users": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/userDoc"
+      }
+    }
+  },
+  "$defs": {
+    "timestampString": {
+      "type": "string",
+      "description": "ISO-8601 timestamp string",
+      "examples": [
+        "2026-03-14T04:26:58.007000+00:00"
+      ]
+    },
+    "archiveDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "_id": {
+          "type": "string"
+        },
+        "archivedAt": {
+          "$ref": "#/$defs/timestampString"
+        },
+        "name": {
+          "type": "string"
+        },
+        "raceCount": {
+          "type": "integer"
+        },
+        "settings": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "standings": {
+          "type": "object",
+          "description": "Category-keyed standings map",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "zwiftId": {
+                  "type": "string"
+                },
+                "totalPoints": {
+                  "type": "number"
+                },
+                "lastRacePoints": {
+                  "type": "number"
+                },
+                "raceCount": {
+                  "type": "integer"
+                },
+                "lastRaceDate": {
+                  "$ref": "#/$defs/timestampString"
+                },
+                "results": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "properties": {
+                      "raceId": {
+                        "type": "string"
+                      },
+                      "points": {
+                        "type": "number"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "authMappingDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "_id": {
+          "type": "string",
+          "description": "Auth UID"
+        },
+        "zwiftId": {
+          "type": "string"
+        },
+        "lastLogin": {
+          "$ref": "#/$defs/timestampString"
+        }
+      }
+    },
+    "elevationCacheDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "_id": {
+          "type": "string",
+          "description": "Route or cache key"
+        },
+        "distance": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "altitude": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "leagueDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "_id": {
+          "type": "string"
+        },
+        "schemes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "overlayHeaderText": {
+                "type": "string"
+              },
+              "overlayRowBg": {
+                "type": "string"
+              },
+              "overlayAccent": {
+                "type": "string"
+              },
+              "overlayRowAltBg": {
+                "type": "string"
+              },
+              "overlayPositive": {
+                "type": "string"
+              },
+              "overlayRowText": {
+                "type": "string"
+              },
+              "overlayText": {
+                "type": "string"
+              },
+              "overlayBorder": {
+                "type": "string"
+              },
+              "overlayMuted": {
+                "type": "string"
+              },
+              "overlayHeaderBg": {
+                "type": "string"
+              },
+              "overlayBackground": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "policyDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "_id": {
+          "type": "string"
+        },
+        "currentDisplayVersion": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/timestampString"
+        }
+      }
+    },
+    "raceDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "eventMode": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        },
+        "map": {
+          "type": "string"
+        },
+        "routeId": {
+          "type": "string"
+        },
+        "routeName": {
+          "type": "string"
+        },
+        "segmentType": {
+          "type": "string"
+        },
+        "eventId": {
+          "type": "string"
+        },
+        "eventSecret": {
+          "type": "string"
+        },
+        "laps": {
+          "type": "integer"
+        },
+        "totalDistance": {
+          "type": "number"
+        },
+        "totalElevation": {
+          "type": "number"
+        },
+        "selectedSegments": {
+          "type": "array",
+          "items": {}
+        },
+        "singleModeCategories": {
+          "type": "array",
+          "items": {}
+        },
+        "linkedEventIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sprints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/segmentObject"
+          }
+        },
+        "profileSegments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/profileSegmentObject"
+          }
+        },
+        "eventConfiguration": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "segmentType": {
+                "type": "string"
+              },
+              "customCategory": {
+                "type": "string"
+              },
+              "startTime": {
+                "type": "string"
+              },
+              "eventId": {
+                "type": "string"
+              },
+              "eventSecret": {
+                "type": "string"
+              },
+              "laps": {
+                "type": "integer"
+              },
+              "sprints": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/segmentObject"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "segmentObject": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "direction": {
+          "type": "string"
+        },
+        "lap": {
+          "type": "integer"
+        },
+        "count": {
+          "type": "integer"
+        }
+      }
+    },
+    "profileSegmentObject": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "fromKm": {
+          "type": "number"
+        },
+        "toKm": {
+          "type": "number"
+        },
+        "direction": {
+          "type": "string"
+        }
+      }
+    },
+    "stravaOAuthStateDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "_id": {
+          "type": "string"
+        },
+        "uid": {
+          "type": "string"
+        },
+        "eLicense": {
+          "type": "string"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestampString"
+        }
+      }
+    },
+    "stravaTokenDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "_id": {
+          "type": "string",
+          "description": "Often Zwift ID as string"
+        },
+        "athlete_id": {
+          "type": "integer"
+        },
+        "expires_at": {
+          "type": "integer"
+        },
+        "access_token": {
+          "type": "string"
+        },
+        "refresh_token": {
+          "type": "string"
+        }
+      }
+    },
+    "systemDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "_id": {
+          "type": "string"
+        },
+        "expires_at": {
+          "type": "integer"
+        },
+        "refresh_token": {
+          "type": "string"
+        }
+      }
+    },
+    "trainerRequestDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "_id": {
+          "type": "string"
+        },
+        "requesterName": {
+          "type": "string"
+        },
+        "requesterUid": {
+          "type": "string"
+        },
+        "trainerName": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestampString"
+        },
+        "approvedAt": {
+          "$ref": "#/$defs/timestampString"
+        }
+      }
+    },
+    "trainerDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "dualRecordingRequired": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestampString"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/timestampString"
+        }
+      }
+    },
+    "userDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "_id": {
+          "type": "string",
+          "description": "Usually Zwift ID as string"
+        },
+        "authUid": {
+          "type": "string"
+        },
+        "zwiftId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "club": {
+          "type": "string"
+        },
+        "welcomeSeen": {
+          "type": "boolean"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/timestampString"
+        },
+        "equipment": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "trainer": {
+              "type": "string"
+            }
+          }
+        },
+        "connections": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "strava": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "athlete_id": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "zwiftRacing": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "currentRating": {
+              "type": "number"
+            },
+            "max30Rating": {
+              "type": "number"
+            },
+            "max90Rating": {
+              "type": "number"
+            },
+            "phenotype": {
+              "type": "string"
+            },
+            "updatedAt": {
+              "$ref": "#/$defs/timestampString"
+            }
+          }
+        },
+        "ligaCategory": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "locked": {
+              "type": "boolean"
+            },
+            "selfSelected": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "category": {
+                  "type": "string"
+                },
+                "selfSelectedAt": {
+                  "$ref": "#/$defs/timestampString"
+                }
+              }
+            },
+            "autoAssigned": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "category": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "assignedRating": {
+                  "type": "number"
+                },
+                "upperBoundary": {
+                  "type": "number"
+                },
+                "graceLimit": {
+                  "type": "number"
+                },
+                "lastCheckedRating": {
+                  "type": "number"
+                },
+                "assignedAt": {
+                  "$ref": "#/$defs/timestampString"
+                },
+                "lastCheckedAt": {
+                  "$ref": "#/$defs/timestampString"
+                }
+              }
+            }
+          }
+        },
+        "registration": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "status": {
+              "type": "string"
+            },
+            "cocAccepted": {
+              "type": "boolean"
+            },
+            "dataPolicy": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "version": {
+                  "type": "string"
+                },
+                "acceptedAt": {
+                  "$ref": "#/$defs/timestampString"
+                }
+              }
+            },
+            "publicResultsConsent": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "version": {
+                  "type": "string"
+                },
+                "acceptedAt": {
+                  "$ref": "#/$defs/timestampString"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

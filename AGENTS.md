@@ -20,3 +20,10 @@ For Firestore access, initialize Firebase Admin in this order:
 3. ADC only if explicitly configured
 
 If a script fails due to missing auth, report that clearly and do not proceed with writes.
+
+## Firestore Schema Maintenance
+
+- If any Firestore collection/document shape is added, removed, or changed, update:
+  - `firebase-firestore-structure.schema.json`
+  - `firebase-firestore-structure.example.json`
+- Keep example data sanitized (no real tokens, secrets, or personal data).
