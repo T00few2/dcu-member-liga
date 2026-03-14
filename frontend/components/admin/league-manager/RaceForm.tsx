@@ -130,6 +130,30 @@ export default function RaceForm({
         setRouteProfileSegments((prev) => prev.map((s, i) => (i === index ? { ...s, ...patch } : s)));
     };
 
+    const moveRouteProfileSegment = (index: number, direction: -1 | 1) => {
+        setRouteProfileSegments((prev) => {
+            const nextIndex = index + direction;
+            if (nextIndex < 0 || nextIndex >= prev.length) return prev;
+            const copy = [...prev];
+            const [item] = copy.splice(index, 1);
+            copy.splice(nextIndex, 0, item);
+            return copy;
+        });
+    };
+
+    const sortRouteProfileSegmentsByDistance = () => {
+        setRouteProfileSegments((prev) =>
+            [...prev].sort((a, b) => {
+                const aMin = Math.min(Number(a.fromKm) || 0, Number(a.toKm) || 0);
+                const bMin = Math.min(Number(b.fromKm) || 0, Number(b.toKm) || 0);
+                if (aMin !== bMin) return aMin - bMin;
+                const aMax = Math.max(Number(a.fromKm) || 0, Number(a.toKm) || 0);
+                const bMax = Math.max(Number(b.fromKm) || 0, Number(b.toKm) || 0);
+                return aMax - bMax;
+            })
+        );
+    };
+
     const addRouteProfileSegment = () => {
         setRouteProfileSegments((prev) => [
             ...prev,
@@ -154,8 +178,8 @@ export default function RaceForm({
             const payload = routeProfileSegments.map((seg) => ({
                 name: (seg.name || '').trim() || 'Segment',
                 type: seg.type,
-                fromKm: Number(seg.fromKm) || 0,
-                toKm: Number(seg.toKm) || 0,
+                fromKm: Math.min(Number(seg.fromKm) || 0, Number(seg.toKm) || 0),
+                toKm: Math.max(Number(seg.fromKm) || 0, Number(seg.toKm) || 0),
                 direction: seg.direction === 'reverse' ? 'reverse' : 'forward',
             }));
             const res = await fetch(`${API_URL}/route-elevation/${routeProfileSegmentId}/profile-segments`, {
@@ -406,6 +430,13 @@ export default function RaceForm({
                                     </button>
                                     <button
                                         type="button"
+                                        onClick={sortRouteProfileSegmentsByDistance}
+                                        className="px-3 py-1.5 text-xs rounded bg-secondary text-secondary-foreground hover:opacity-90"
+                                    >
+                                        Sort by km
+                                    </button>
+                                    <button
+                                        type="button"
                                         onClick={saveRouteProfileSegments}
                                         disabled={savingRouteProfile || !routeProfileSegmentId}
                                         className="px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
@@ -480,6 +511,28 @@ export default function RaceForm({
                                                 <option value="forward">F</option>
                                                 <option value="reverse">R</option>
                                             </select>
+                                        </div>
+                                        <div className="md:col-span-1">
+                                            <div className="flex gap-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => moveRouteProfileSegment(i, -1)}
+                                                    disabled={i === 0}
+                                                    className="w-1/2 p-1.5 text-xs rounded bg-secondary text-secondary-foreground hover:opacity-90 disabled:opacity-50"
+                                                    title="Move up"
+                                                >
+                                                    ↑
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => moveRouteProfileSegment(i, 1)}
+                                                    disabled={i === routeProfileSegments.length - 1}
+                                                    className="w-1/2 p-1.5 text-xs rounded bg-secondary text-secondary-foreground hover:opacity-90 disabled:opacity-50"
+                                                    title="Move down"
+                                                >
+                                                    ↓
+                                                </button>
+                                            </div>
                                         </div>
                                         <div className="md:col-span-1">
                                             <button

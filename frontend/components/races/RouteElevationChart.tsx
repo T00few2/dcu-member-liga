@@ -217,13 +217,20 @@ export default function RouteElevationChart({
                                   ) / 10,
                     }));
                     setData(enriched);
-                    const fromRouteProfile: RouteSegment[] = (json.profileSegments ?? []).map((seg) => ({
-                        from: Number(seg.fromKm) || 0,
-                        to: Number(seg.toKm) || 0,
-                        type: normalizeSegmentType(seg.type),
-                        name: getSegmentName(seg.name),
-                        direction: seg.direction === 'reverse' ? 'reverse' : 'forward',
-                    }));
+                    const fromRouteProfile: RouteSegment[] = (json.profileSegments ?? [])
+                        .map((seg) => {
+                            const rawFrom = Number(seg.fromKm) || 0;
+                            const rawTo = Number(seg.toKm) || 0;
+                            return {
+                                // Normalize bounds so segments always render even if entered in reverse order.
+                                from: Math.min(rawFrom, rawTo),
+                                to: Math.max(rawFrom, rawTo),
+                                type: normalizeSegmentType(seg.type),
+                                name: getSegmentName(seg.name),
+                                direction: seg.direction === 'reverse' ? 'reverse' : 'forward',
+                            };
+                        })
+                        .sort((a, b) => a.from - b.from || a.to - b.to);
                     if (fromRouteProfile.length > 0) {
                         setRouteSegments(fromRouteProfile);
                     } else {
