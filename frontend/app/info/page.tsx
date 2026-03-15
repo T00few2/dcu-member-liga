@@ -131,7 +131,7 @@ const chapters = [
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {[
                         { label: 'Cykel', desc: 'Racer, mountainbike eller gravel – så længe den passer på hometraineren.' },
-                        { label: 'Smart hometrainer', desc: 'Direct drive anbefales til konkurrence da den justerer modstanden automatisk og giver præcise watt-aflæsninger.' },
+                        { label: 'Smart hometrainer', desc: 'Godkendt direct drive med automatisk modstandsstyring – eller dobbeltregistrering med separat wattmåler og Strava-forbindelse.' },
                         { label: 'Enhed til software', desc: 'PC, Mac, Apple TV, iPad eller nyere smartphone.' },
                         { label: 'Zwift-konto', desc: 'Ligaen afvikles på Zwift. Du skal oprette en konto og tilmelde dig via denne hjemmeside.' },
                         { label: 'Pulsmåler', desc: 'Brystrem eller armbånd – påkrævet i de fleste løb for at sikre fair konkurrence.' },
