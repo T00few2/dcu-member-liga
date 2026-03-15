@@ -67,7 +67,7 @@ export default function LandingPage({
                         <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity z-0 pointer-events-none"></div>
                         <h2 className="text-2xl font-bold mb-3 relative z-10">Ikke medlem af en klub endnu?</h2>
                         <p className="text-muted-foreground mb-8 flex-grow relative z-10">
-                            Deltagelse kræver medlemskab af en DCU-klub. Vælg mellem en dedikeret E-cykling klub eller en fysisk cykelklub.
+                            Deltagelse kræver medlemskab af en DCU-klub. Vælg mellem en dedikeret E-cykelklub eller en fysisk cykelklub.
                         </p>
                         <button
                             onClick={() => setShowClubsModal(true)}

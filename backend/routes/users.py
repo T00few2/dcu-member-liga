@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
-from extensions import db, get_zwift_service, get_zp_service, strava_service, zr_service, stats_queue
+from extensions import db, get_zwift_service, get_zp_service, zr_service, stats_queue
 from services.policy_store import POLICY_DATA_POLICY, POLICY_PUBLIC_RESULTS, PolicyError, get_policy_meta
 from services.user_service import UserService
 from services.category_engine import build_liga_category, ZR_CATEGORIES, serialize_liga_category
@@ -77,17 +77,6 @@ def update_rider_stats(e_license, zwift_id):
              }
     except Exception as e:
          logger.error(f"Zwift Fetch Error: {e}")
-         
-    # 4. Strava (Summary only)
-    try:
-        strava_data = strava_service.get_activities(zwift_id)
-        if strava_data and 'kms' in strava_data:
-            updates['stravaSummary'] = {
-                'kms': strava_data.get('kms', 'N/A'),
-                'updatedAt': firestore.SERVER_TIMESTAMP
-            }
-    except Exception as e:
-        logger.error(f"Strava Fetch Error: {e}")
          
     if updates:
         updates = with_schema_version(updates)
@@ -467,7 +456,6 @@ def get_participants():
             zp = data.get('zwiftPower', {})
             zr = data.get('zwiftRacing', {})
             zpro = data.get('zwiftProfile', {})
-            strava = data.get('stravaSummary', {})
             lc = serialize_liga_category(data.get('ligaCategory'))
 
             participants.append({
@@ -482,7 +470,6 @@ def get_participants():
                 'max90Rating': zr.get('max90Rating', 'N/A'),
                 'phenotype': zr.get('phenotype', 'N/A'),
                 'racingScore': zpro.get('racingScore', 'N/A'),
-                'stravaKms': strava.get('kms', '-'),
                 'weightVerificationStatus': user.verification_status,
                 'ligaCategory': lc,
             })
@@ -509,7 +496,6 @@ def get_stats():
         except Exception as e:
             logger.error(f"Token lookup failed in stats: {e}")
     
-    strava_data = {'kms': 'Not Connected', 'activities': []}
     zp_data = {'category': 'N/A', 'ftp': 'N/A'}
     zr_data = {}
     zwift_data = {}
@@ -522,8 +508,6 @@ def get_stats():
                 user_data = target_user.to_dict()
                 zwift_id = user_data.get('zwiftId')
                 
-                if (user_data.get('connections') or {}).get('strava') and zwift_id:
-                    strava_data = strava_service.get_activities(zwift_id)
                 if zwift_id:
                     try:
                         zp = get_zp_service()
@@ -588,11 +572,6 @@ def get_stats():
             {
                 'platform': 'ZwiftRacing',
                 **zr_data
-            },
-            {
-                'platform': 'Strava', 
-                'kms': strava_data.get('kms', 'N/A'),
-                'activities': strava_data.get('activities', [])
             }
         ]
     }

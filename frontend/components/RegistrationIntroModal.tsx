@@ -85,7 +85,7 @@ export default function RegistrationIntroModal({ isOpen, onClose, onContinue }: 
                             </div>
                             <div>
                                 <h3 className="font-semibold mb-1 text-foreground">Forbindelser</h3>
-                                <p className="text-sm text-muted-foreground">Forbind din konto til Zwift og Strava (anbefalet).</p>
+                                <p className="text-sm text-muted-foreground">Forbind din konto til Zwift samt Strava til admin-validering ved behov.</p>
                             </div>
                         </div>
 

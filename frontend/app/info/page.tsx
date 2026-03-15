@@ -184,7 +184,7 @@ const chapters = [
                             Alle deltagere skal enten benytte en <strong>godkendt smart hometrainer</strong> (direct drive med automatisk modstandsstyring) eller foretage <strong>dobbeltregistrering</strong> med en separat wattmåler.
                         </p>
                         <p className="text-slate-600 dark:text-slate-400">
-                            Ved dobbeltregistrering skal aktiviteten uploades til <strong>Strava</strong>, og din Strava-konto skal være forbundet med din profil her på siden. Dette giver mulighed for stikprøvekontrol af wattdata.
+                            Ved dobbeltregistrering skal aktiviteten uploades til <strong>Strava</strong>, og din Strava-konto skal være forbundet med din profil her på siden. Strava-data bruges kun til admin kontrol af wattdata.
                         </p>
                     </div>
                     <div className="pl-4 border-l-4 border-slate-400">

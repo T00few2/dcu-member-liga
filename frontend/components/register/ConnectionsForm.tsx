@@ -20,7 +20,7 @@ export default function ConnectionsForm({
 
                     <div className="flex items-center justify-between mb-4">
                         <p className="text-sm text-muted-foreground">
-                            Forbind Strava for automatisk at indlæse dine udendørsresultater.
+                            Forbind Strava, så admins kan validere dobbeltregistrering ved behov.
                         </p>
                         <StravaAttribution />
                     </div>
@@ -29,7 +29,7 @@ export default function ConnectionsForm({
                         <div className="flex items-center justify-between bg-white dark:bg-black/20 p-4 rounded border border-border">
                             <div className="flex items-center gap-2 text-green-600 dark:text-green-400 font-medium">
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
-                                Forbundet til Strava
+                                Forbundet til Strava (admin-validering)
                             </div>
                             <button
                                 onClick={handleDisconnectStrava}

@@ -53,7 +53,6 @@ interface Participant {
   max90Rating: number | string;
   phenotype: string;
   racingScore: number | string;
-  stravaKms: string;
   weightVerificationStatus?: 'none' | 'pending' | 'submitted' | 'approved' | 'rejected';
   ligaCategory?: LigaCategory;
 }
@@ -96,8 +95,7 @@ export default function ParticipantsPage() {
     if (!q) return participants;
     return participants.filter(p =>
       p.name.toLowerCase().includes(q) ||
-      (p.club && p.club.toLowerCase().includes(q)) ||
-      p.eLicense.toLowerCase().includes(q)
+      (p.club && p.club.toLowerCase().includes(q))
     );
   }, [participants, search]);
 
@@ -112,7 +110,7 @@ export default function ParticipantsPage() {
         <p className="text-muted-foreground">Alle tilmeldte ryttere i ligaen ({participants.length}).</p>
         <input
           type="search"
-          placeholder="Søg navn, klub eller licens..."
+          placeholder="Søg navn eller klub..."
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="sm:w-72 px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
@@ -135,15 +133,13 @@ export default function ParticipantsPage() {
                 <th className="px-6 py-3 font-bold">vELO max30</th>
                 <th className="px-6 py-3 font-bold">vELO max90</th>
                 <th className="px-6 py-3 font-bold">Fænotype</th>
-                <th className="px-6 py-3 font-bold">Strava (10 ture)</th>
                 <th className="px-6 py-3 font-bold">Profillinks</th>
-                <th className="px-6 py-3 font-bold text-right">E-Licens</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-6 py-8 text-center text-muted-foreground">
+                  <td colSpan={12} className="px-6 py-8 text-center text-muted-foreground">
                     {search ? 'Ingen deltagere matcher søgningen.' : 'Ingen deltagere fundet endnu.'}
                   </td>
                 </tr>
@@ -214,14 +210,6 @@ export default function ParticipantsPage() {
                       {p.phenotype !== 'N/A' ? p.phenotype : '-'}
                     </td>
                     <td className="px-6 py-4">
-                      {p.stravaKms !== '-' ? (
-                        <span className="text-orange-600 flex items-center gap-1">
-                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7 13.828h4.169" /></svg>
-                          {p.stravaKms}
-                        </span>
-                      ) : '-'}
-                    </td>
-                    <td className="px-6 py-4">
                       {p.zwiftId ? (
                         <div className="flex items-center gap-3">
                           <a
@@ -251,7 +239,6 @@ export default function ParticipantsPage() {
                         </div>
                       ) : '-'}
                     </td>
-                    <td className="px-6 py-4 text-muted-foreground text-right font-mono">{p.eLicense}</td>
                   </tr>
                 ))
               )}

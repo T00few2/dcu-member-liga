@@ -9,7 +9,6 @@ export interface Participant {
     category: string;
     ftp: string;
     rating: string;
-    stravaKms: string;
 }
 
 export interface ZwiftPowerResult {
