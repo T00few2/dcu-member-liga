@@ -18,11 +18,10 @@ export default function ConnectionsForm({
                 <h3 className="text-lg font-semibold mb-3 text-card-foreground">Strava Forbindelse</h3>
                 <div className={`p-4 border rounded-lg transition-colors ${stravaConnected ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' : 'bg-card border-border'}`}>
 
-                    <div className="flex items-center justify-between mb-4">
+                    <div className="mb-4">
                         <p className="text-sm text-muted-foreground">
                             Forbind Strava, så admins kan validere dobbeltregistrering ved behov.
                         </p>
-                        <StravaAttribution />
                     </div>
 
                     {stravaConnected ? (
@@ -39,13 +38,20 @@ export default function ConnectionsForm({
                             </button>
                         </div>
                     ) : (
-                        <button
-                            onClick={handleConnectStrava}
-                            className="w-full flex items-center justify-center gap-2 bg-[#FC4C02] text-white px-4 py-3 rounded-lg font-bold hover:bg-[#E34402] transition-colors shadow-sm"
-                        >
-                            <svg role="img" viewBox="0 0 24 24" className="w-5 h-5 fill-current"><title>Strava</title><path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7 13.828h4.169" /></svg>
-                            Forbind med Strava
-                        </button>
+                        <div className="flex items-center justify-between gap-4">
+                            <button
+                                onClick={handleConnectStrava}
+                                className="inline-flex items-center justify-start rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                aria-label="Connect with Strava"
+                            >
+                                <img
+                                    src="/strava/btn_strava_connect_with_orange.svg"
+                                    alt="Connect with Strava"
+                                    className="h-12 w-auto"
+                                />
+                            </button>
+                            <StravaAttribution className="shrink-0" />
+                        </div>
                     )}
                 </div>
             </div>

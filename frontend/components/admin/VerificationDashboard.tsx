@@ -157,10 +157,10 @@ export default function VerificationDashboard() {
                                                                 href={`https://www.strava.com/activities/${act.id}`}
                                                                 target="_blank"
                                                                 rel="noopener noreferrer"
-                                                                className="text-xs text-blue-500 hover:underline"
+                                                                className="text-xs text-[#FC5200] underline hover:no-underline"
                                                                 onClick={e => e.stopPropagation()}
                                                             >
-                                                                Link ↗
+                                                                View on Strava
                                                             </a>
                                                         </div>
                                                         <div className="text-xs text-muted-foreground mb-2">

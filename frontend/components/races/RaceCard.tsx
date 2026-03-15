@@ -79,38 +79,6 @@ function ExternalLinkIcon({ size }: { size: number }) {
     );
 }
 
-function StravaRouteLink({ worldName, routeName }: { worldName?: string; routeName?: string }) {
-    const [stravaSegmentUrl, setStravaSegmentUrl] = useState<string | null>(null);
-
-    useEffect(() => {
-        if (!worldName || !routeName) {
-            setStravaSegmentUrl(null);
-            return;
-        }
-        const params = new URLSearchParams({ world: worldName, route: routeName });
-        fetch(`/api/route-meta?${params}`)
-            .then((res) => (res.ok ? res.json() : null))
-            .then((json: { stravaSegmentUrl?: string } | null) => {
-                setStravaSegmentUrl(json?.stravaSegmentUrl ?? null);
-            })
-            .catch(() => setStravaSegmentUrl(null));
-    }, [worldName, routeName]);
-
-    if (!stravaSegmentUrl) return null;
-
-    return (
-        <a
-            href={stravaSegmentUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs text-primary hover:underline"
-            title="View route segment on Strava"
-        >
-            (Strava ↗)
-        </a>
-    );
-}
-
 function getUserEventConfig(race: Race, userCategory?: string | null): EventCategoryConfig | null {
     if (!race.eventConfiguration || race.eventConfiguration.length === 0) return null;
     if (!userCategory) return null;
@@ -210,7 +178,6 @@ export default function RaceCard({
                             >
                                 (ZI ↗)
                             </a>
-                            <StravaRouteLink worldName={race.map} routeName={race.routeName} />
                         </div>
                     </div>
                 </div>
