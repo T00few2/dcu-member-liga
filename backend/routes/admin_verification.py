@@ -44,7 +44,6 @@ def verify_rider(rider_id):
             return jsonify({'message': 'User not found'}), 404
 
         zwift_id = user.zwift_id
-        e_license = user.e_license
         strava_auth = user.strava_auth
 
         response_data = {'profile': {}, 'stravaActivities': [], 'zwiftPowerHistory': []}
