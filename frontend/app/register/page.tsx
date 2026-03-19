@@ -45,7 +45,7 @@ function RegisterContent() {
     const TabButton = ({ id, label, active, warning = false }: { id: string; label: string; active: boolean; warning?: boolean }) => (
         <button
             onClick={() => setActiveTab(id)}
-            className={`flex-1 py-1.5 text-sm font-medium rounded transition-colors ${
+            className={`flex-none px-3 py-1.5 text-sm font-medium rounded whitespace-nowrap transition-colors ${
                 active
                     ? 'bg-primary text-white shadow-sm'
                     : 'text-muted-foreground hover:text-foreground'
@@ -78,7 +78,7 @@ function RegisterContent() {
             {/* TABBED INTERFACE (Registered Users) */}
             {isRegistered && (
                 <>
-                    <div className="flex gap-1 mb-6 p-1 bg-muted rounded-lg">
+                    <div className="flex gap-1 mb-6 p-1 bg-muted rounded-lg overflow-x-auto scrollbar-hide">
                         <TabButton id="info" label="Rytterinfo" active={activeTab === 'info'} />
                         <TabButton id="kategori" label="Kategori" active={activeTab === 'kategori'} />
                         <TabButton id="connections" label="Forbindelser" active={activeTab === 'connections'} />
