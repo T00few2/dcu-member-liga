@@ -35,7 +35,6 @@ def test_user_service():
     if user:
         print(f"User Found: {user.name}")
         print(f"Zwift ID: {user.zwift_id}")
-        print(f"eLicense: {user.e_license}")
         print(f"Verification Status (nested): {user.verification_status}")
         print(f"Is Verified: {user.is_verified}")
         print(f"Requests history count: {len(user.verification_history)}")
@@ -55,14 +54,6 @@ def test_user_service():
         import json
         print(json.dumps(profile_json, default=str, indent=2))
         
-        # Test eLicense lookup
-        if user.e_license:
-            print(f"\nTesting eLicense lookup for {user.e_license}...")
-            user_by_license = UserService.get_user_by_elicense(user.e_license)
-            if user_by_license and user_by_license.id == user.id:
-                 print("eLicense lookup SUCCESS")
-            else:
-                 print("eLicense lookup FAILED")
     else:
         print("User 15690 not found.")
 

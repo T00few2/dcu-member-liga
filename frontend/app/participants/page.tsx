@@ -44,7 +44,6 @@ interface LigaCategory {
 interface Participant {
   name: string;
   club: string;
-  eLicense: string;
   zwiftId?: string;
   category: string;
   ftp: number | string;
@@ -145,7 +144,7 @@ export default function ParticipantsPage() {
                 </tr>
               ) : (
                 filtered.map((p, idx) => (
-                  <tr key={`${p.eLicense || 'no-license'}-${p.zwiftId || 'no-zwift'}-${idx}`} className="hover:bg-muted/50 transition">
+                  <tr key={`${p.zwiftId || 'no-zwift'}-${idx}`} className="hover:bg-muted/50 transition">
                     <td className="px-6 py-4 font-medium text-card-foreground">
                       <div className="flex items-center gap-2">
                         {p.name}

@@ -14,7 +14,7 @@ export default function RiderSearch({ participants, loading, onSelect }: RiderSe
 
     const filtered = participants.filter(p =>
         p.name.toLowerCase().includes(search.toLowerCase()) ||
-        p.eLicense.includes(search)
+        (p.zwiftId || '').includes(search)
     );
 
     return (
@@ -23,7 +23,7 @@ export default function RiderSearch({ participants, loading, onSelect }: RiderSe
             <div className="relative">
                 <input
                     type="text"
-                    placeholder="Search by name or E-License..."
+                    placeholder="Search by name or Zwift ID..."
                     value={search}
                     onChange={e => setSearch(e.target.value)}
                     disabled={loading}
@@ -33,7 +33,7 @@ export default function RiderSearch({ participants, loading, onSelect }: RiderSe
                     <div className="absolute z-10 mt-1 w-full bg-card border border-border rounded-lg shadow-xl max-h-60 overflow-y-auto">
                         {filtered.map(p => (
                             <div
-                                key={p.eLicense}
+                                key={p.zwiftId}
                                 onClick={() => { onSelect(p); setSearch(''); }}
                                 className="p-3 hover:bg-muted cursor-pointer flex justify-between items-center border-b border-border/50 last:border-0"
                             >
@@ -42,7 +42,7 @@ export default function RiderSearch({ participants, loading, onSelect }: RiderSe
                                     <span className="text-sm text-muted-foreground ml-2">({p.category})</span>
                                 </div>
                                 <span className="text-xs font-mono bg-secondary text-secondary-foreground px-2 py-1 rounded">
-                                    {p.eLicense}
+                                    {p.zwiftId}
                                 </span>
                             </div>
                         ))}

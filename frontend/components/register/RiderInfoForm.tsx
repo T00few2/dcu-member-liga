@@ -18,8 +18,6 @@ interface Trainer {
 interface RiderInfoFormProps {
     name: string;
     setName: (val: string) => void;
-    eLicense: string;
-    setELicense: (val: string) => void;
     club: string;
     setClub: (val: string) => void;
     trainer: string;
@@ -30,10 +28,6 @@ interface RiderInfoFormProps {
     trainers: Trainer[];
     loadingTrainers: boolean;
     trainersError: string;
-    licenseAvailable: boolean;
-    checkingLicense: boolean;
-    checkLicense: () => void;
-    licenseCheckMessage: string;
     onRequestTrainer: (name: string) => void;
     // Zwift ID Props
     zwiftId: string;
@@ -49,12 +43,10 @@ interface RiderInfoFormProps {
 
 export default function RiderInfoForm({
     name, setName,
-    eLicense, setELicense,
     club, setClub,
     trainer, setTrainer,
     clubs, loadingClubs, clubsError,
     trainers, loadingTrainers, trainersError,
-    licenseAvailable, checkingLicense, checkLicense, licenseCheckMessage,
     onRequestTrainer,
     zwiftId, setZwiftId, zwiftVerified, verifyingZwift, zwiftName, zwiftError, verifyZwiftId, confirmZwiftIdentity,
     readOnly = false
@@ -305,35 +297,6 @@ export default function RiderInfoForm({
                         </div>
                     )}
                 </div>
-
-                {/* E-License (Postponed for now) */}
-                {/* 
-                <div>
-                    <label className="block font-semibold text-card-foreground mb-1">DCU E-License</label>
-                    <div className="relative">
-                        <input
-                            type="text"
-                            value={eLicense}
-                            onChange={e => !readOnly && setELicense(e.target.value)}
-                            onBlur={() => !readOnly && checkLicense()}
-                            disabled={readOnly}
-                            className={`w-full p-3 border rounded-lg focus:ring-2 outline-none transition-all text-foreground bg-background disabled:opacity-50 ${!licenseAvailable ? 'border-red-500 focus:ring-red-200' :
-                                (eLicense && licenseAvailable && !checkingLicense && !readOnly) ? 'border-green-500 focus:ring-green-200' :
-                                    'border-input focus:ring-ring focus:border-ring'
-                                }`}
-                            placeholder="e.g. 10123456"
-                        />
-                        {checkingLicense && (
-                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">Tjekker...</span>
-                        )}
-                    </div>
-                    {licenseCheckMessage && (
-                        <p className={`text-sm mt-1 ${licenseAvailable ? 'text-green-600' : 'text-red-500'}`}>
-                            {licenseCheckMessage}
-                        </p>
-                    )}
-                </div>
-                */}
 
                 {/* Trainer */}
                 <div>

@@ -33,10 +33,6 @@ class User:
         return self._data.get('name', '')
 
     @property
-    def e_license(self) -> str:
-        return self._data.get('eLicense', '')
-
-    @property
     def zwift_id(self) -> str | None:
         return self._data.get('zwiftId')
 
@@ -145,9 +141,6 @@ class UserService:
             if zwift_id:
                 return UserService.get_user_by_id(zwift_id)
 
-            if data.get('eLicense'):
-                logger.warning("Found unexpected auth_mappings.eLicense for uid=%s without zwiftId", uid)
-
         # Keep authUid query support for draft/incomplete accounts keyed by UID.
         docs = db.collection('users').where('authUid', '==', uid).limit(1).stream()
         for doc in docs:
@@ -155,13 +148,6 @@ class UserService:
 
         return None
 
-    @staticmethod
-    def get_user_by_elicense(elicense: str | None) -> User | None:
-        if not elicense: return None
-        docs = db.collection('users').where('eLicense', '==', str(elicense)).limit(1).stream()
-        for doc in docs:
-            return User(doc_snapshot=doc)
-        return None
 
     @staticmethod
     def get_pending_verifications() -> list[User]:

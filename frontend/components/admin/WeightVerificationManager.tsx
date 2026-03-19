@@ -6,9 +6,8 @@ import { useToast } from '@/components/ToastProvider';
 import { API_URL } from '@/lib/api';
 
 interface PendingVerification {
-    id: string; // eLicense or UID
+    id: string;
     name: string;
-    eLicense: string;
     club: string;
     videoLink: string;
     submittedAt: string | any;
@@ -17,7 +16,6 @@ interface PendingVerification {
 interface ActiveRequest {
     id: string;
     name: string;
-    eLicense: string;
     club: string;
     deadline: string | any;
 }
@@ -25,7 +23,6 @@ interface ActiveRequest {
 interface ApprovedVerification {
     id: string;
     name: string;
-    eLicense: string;
     club: string;
     approvedAt: string | any;
     approvedBy: string;
@@ -211,7 +208,7 @@ export default function WeightVerificationManager() {
                                     <div>
                                         <div className="font-bold text-foreground">{req.name}</div>
                                         <div className="text-xs text-muted-foreground">
-                                            {req.club || 'No Club'} • License: {req.eLicense}
+                                            {req.club || 'No Club'}
                                         </div>
                                     </div>
                                     {req.deadline && (
@@ -246,7 +243,7 @@ export default function WeightVerificationManager() {
                                         <div>
                                             <div className="font-bold text-lg text-foreground">{req.name}</div>
                                             <div className="text-sm text-muted-foreground">
-                                                License: {req.eLicense} • Club: {req.club || 'None'}
+                                                Club: {req.club || 'None'}
                                             </div>
                                             <div className="text-xs text-muted-foreground mt-1">
                                                 Submitted: {new Date(req.submittedAt).toLocaleDateString()}
@@ -322,7 +319,7 @@ export default function WeightVerificationManager() {
                                 <div>
                                     <div className="font-bold text-foreground">{req.name}</div>
                                     <div className="text-xs text-muted-foreground">
-                                        {req.club || 'No Club'} • License: {req.eLicense}
+                                        {req.club || 'No Club'}
                                     </div>
                                     <div className="text-xs text-green-600 dark:text-green-400 font-medium">
                                         Approved: {new Date(req.approvedAt).toLocaleDateString()} by {req.approvedBy}

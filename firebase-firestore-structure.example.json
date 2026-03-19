@@ -150,7 +150,6 @@
     {
       "_id": "oauth_state_example_001",
       "uid": "auth_uid_example_001",
-      "eLicense": "123 456 78",
       "createdAt": "2026-02-07T21:26:10+00:00"
     }
   ],

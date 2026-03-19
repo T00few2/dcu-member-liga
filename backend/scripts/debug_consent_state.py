@@ -42,9 +42,8 @@ def debug_state():
     if mapping_doc.exists:
         m_data = mapping_doc.to_dict()
         print(f"  - zwiftId: {m_data.get('zwiftId')}")
-        print(f"  - eLicense: {m_data.get('eLicense')}")
-        
-        target_id = m_data.get('zwiftId') or m_data.get('eLicense') or UID
+
+        target_id = m_data.get('zwiftId') or UID
         print(f"  -> Maps directly to: {target_id}")
     else:
         print("  - Document NOT FOUND!")

@@ -11,7 +11,7 @@ import CategoryTab from '@/components/register/CategoryTab';
 function RegisterContent() {
     const {
         authLoading, fetchingProfile,
-        eLicense, setELicense, name, setName, zwiftId, setZwiftId,
+        name, setName, zwiftId, setZwiftId,
         club, setClub, trainer, setTrainer, stravaConnected,
         acceptedCoC, setAcceptedCoC, acceptedDataPolicy, setAcceptedDataPolicy,
         acceptedPublicResults, setAcceptedPublicResults,
@@ -20,11 +20,10 @@ function RegisterContent() {
         clubs, loadingClubs, clubsError,
         trainers, loadingTrainers, trainersError,
         zwiftVerified, verifyingZwift, zwiftName, zwiftError,
-        checkingLicense, licenseAvailable, licenseCheckMessage,
         isRegistered, activeTab, setActiveTab, currentStep, setCurrentStep,
         submitting, savingProgress, message, error,
         step0Valid, step1Valid, step2Valid,
-        checkLicense, verifyZwiftId, confirmZwiftIdentity,
+        verifyZwiftId, confirmZwiftIdentity,
         handleConnectStrava, handleDisconnectStrava, handleRequestTrainer, saveData,
     } = useRegistration();
 
@@ -33,10 +32,9 @@ function RegisterContent() {
     }
 
     const riderInfoProps = {
-        name, setName, eLicense, setELicense, club, setClub, trainer, setTrainer,
+        name, setName, club, setClub, trainer, setTrainer,
         clubs, loadingClubs, clubsError,
         trainers, loadingTrainers, trainersError,
-        licenseAvailable, checkingLicense, checkLicense, licenseCheckMessage,
         onRequestTrainer: handleRequestTrainer,
         zwiftId, setZwiftId, zwiftVerified, verifyingZwift,
         zwiftName, zwiftError, verifyZwiftId, confirmZwiftIdentity,

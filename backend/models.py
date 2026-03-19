@@ -274,7 +274,6 @@ class UserDoc(TypedDict, total=False):
     authUid: str
     email: str
     name: str
-    eLicense: str
     zwiftId: str
     club: str
     registration: Registration

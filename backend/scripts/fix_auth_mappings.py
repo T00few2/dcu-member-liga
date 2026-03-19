@@ -23,9 +23,8 @@ def validate_mappings(db, dry_run=True):
         data = mapping_doc.to_dict()
         
         zwift_id = data.get('zwiftId')
-        e_license = data.get('eLicense')
-        
-        target_key = str(zwift_id) if zwift_id else (str(e_license) if e_license else None)
+
+        target_key = str(zwift_id) if zwift_id else None
         
         if target_key:
             user_doc = db.collection('users').document(target_key).get()
@@ -45,9 +44,7 @@ def validate_mappings(db, dry_run=True):
                             print(f"    [FIXED] Remapped {uid} -> ZwiftID {new_zwift_id}")
                             fixed_in_validation += 1
                         else:
-                            # Fallback to doc_id if it's the key
-                            db.collection('auth_mappings').document(uid).set({'eLicense': actual_doc.id}, merge=True) # assuming it's elicense-like
-                            print(f"    [FIXED] Remapped {uid} -> DocID {actual_doc.id}")
+                            print(f"    [SKIP] No zwiftId found for {actual_doc.id}, skipping remap.")
                             fixed_in_validation += 1
                 else:
                      print(f"    [CRITICAL] User document completely lost for UID {uid}!")
@@ -106,31 +103,13 @@ def fix_auth_mappings(db, dry_run=True):
                 if str(current_map.get('zwiftId')) != doc_id:
                      needs_update = True
             # Otherwise just check if entirely missing
-            elif not current_map.get('zwiftId') and not current_map.get('eLicense'):
+            elif not current_map.get('zwiftId'):
                 needs_update = True
-        
+
         if needs_update:
-            # Determine what to map to
-            # If doc_id is Zwift ID (digits), map to it
+            # If doc_id is a Zwift ID (digits), map to it
             if doc_id.isdigit() and len(doc_id) < 10:
                 update_data['zwiftId'] = doc_id
-            # If doc_id is eLicense or UID, map eLicense if present
-            elif user_data.get('eLicense'):
-                update_data['eLicense'] = user_data.get('eLicense')
-            
-            # If still nothing, and doc key is UID, we don't strictly need a mapping 
-            # (get_profile falls back to uid lookup *if* configured, but new logic desires mapping)
-            # BUT: if the user doc IS the UID, then mapping isn't 100% implicitly needed if code falls back?
-            # actually, current get_profile logic:
-            # 1. Check mapping.
-            # 2. Else: Check Users/UID.
-            # So if doc_id == UID, it works without mapping.
-            # The issue is likely users keyed by eLicense (e.g. 'DK12345') but without mapping.
-            
-            if doc_id != uid and not update_data:
-                # Key is something else (eLicense?) and we found no eLicense field?
-                # or Key is eLicense and we want to map it
-                 update_data['eLicense'] = doc_id
             
             if update_data:
                 update_data['lastLogin'] = firestore.SERVER_TIMESTAMP
