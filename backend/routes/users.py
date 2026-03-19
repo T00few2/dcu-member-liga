@@ -3,7 +3,7 @@ from firebase_admin import firestore
 from extensions import db, get_zwift_service, get_zp_service, zr_service, stats_queue
 from services.policy_store import POLICY_DATA_POLICY, POLICY_PUBLIC_RESULTS, PolicyError, get_policy_meta
 from services.user_service import UserService
-from services.category_engine import build_liga_category, ZR_CATEGORIES, serialize_liga_category
+from services.category_engine import ZR_CATEGORIES, serialize_liga_category
 from services.schema_validation import log_schema_issues, validate_user_doc, with_schema_version
 from authz import verify_user_token, AuthzError
 
