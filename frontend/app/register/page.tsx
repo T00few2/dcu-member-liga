@@ -45,9 +45,11 @@ function RegisterContent() {
     const TabButton = ({ id, label, active, warning = false }: { id: string; label: string; active: boolean; warning?: boolean }) => (
         <button
             onClick={() => setActiveTab(id)}
-            className={`flex-1 pb-3 text-sm font-medium border-b-2 transition-colors ${
-                active ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
-            } ${warning ? 'text-orange-600 dark:text-orange-400' : ''}`}
+            className={`flex-1 py-1.5 text-sm font-medium rounded transition-colors ${
+                active
+                    ? 'bg-primary text-white shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+            } ${warning && !active ? 'text-orange-600 dark:text-orange-400' : ''}`}
         >
             {label} {warning && '⚠️'}
         </button>
@@ -76,7 +78,7 @@ function RegisterContent() {
             {/* TABBED INTERFACE (Registered Users) */}
             {isRegistered && (
                 <>
-                    <div className="flex gap-2 mb-6 border-b border-border">
+                    <div className="flex gap-1 mb-6 p-1 bg-muted rounded-lg">
                         <TabButton id="info" label="Rytterinfo" active={activeTab === 'info'} />
                         <TabButton id="kategori" label="Kategori" active={activeTab === 'kategori'} />
                         <TabButton id="connections" label="Forbindelser" active={activeTab === 'connections'} />
