@@ -55,7 +55,6 @@ interface LigaCategory {
 
 interface Profile {
     name: string;
-    eLicense: string;
     zwiftId: string;
     ligaCategory?: LigaCategory;
 }

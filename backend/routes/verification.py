@@ -179,7 +179,7 @@ def review_verification():
         
     try:
         data = request.get_json()
-        target_user_id = data.get('userId') # This is likely ZwiftID or eLicense or UID
+        target_user_id = data.get('userId') # This is likely ZwiftID or UID
         action = data.get('action')
         reason = data.get('reason', '')
         
@@ -291,7 +291,6 @@ def get_pending_verifications():
             pending.append({
                 'id': user.id,
                 'name': user.name,
-                'eLicense': user.e_license,
                 'club': user.club,
                 'videoLink': active_req.get('videoLink'),
                 'submittedAt': active_req.get('submittedAt')
@@ -324,7 +323,6 @@ def get_active_requests():
             active.append({
                 'id': user.id,
                 'name': user.name,
-                'eLicense': user.e_license,
                 'club': user.club,
                 'deadline': current.get('deadline')
             })
@@ -360,7 +358,6 @@ def get_approved_verifications():
             approved.append({
                 'id': user.id,
                 'name': user.name,
-                'eLicense': user.e_license,
                 'club': user.club,
                 'approvedAt': approved_req.get('reviewedAt'),
                 'approvedBy': approved_req.get('reviewerId', 'Admin')

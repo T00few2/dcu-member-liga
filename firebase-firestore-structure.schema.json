@@ -424,9 +424,6 @@
         "uid": {
           "type": "string"
         },
-        "eLicense": {
-          "type": "string"
-        },
         "createdAt": {
           "$ref": "#/$defs/timestampString"
         }

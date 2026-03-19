@@ -61,7 +61,6 @@ interface LigaCategory {
 interface RiderEntry {
   zwiftId: string;
   name: string;
-  eLicense: string;
   club: string;
   max30Rating: number | string;
   ligaCategory: LigaCategory | null;
@@ -539,7 +538,7 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
                       >
                         <td className="px-4 py-3">
                           <div className="font-medium text-card-foreground">{r.name}</div>
-                          <div className="text-xs text-muted-foreground">{r.club || r.eLicense}</div>
+                          <div className="text-xs text-muted-foreground">{r.club}</div>
                         </td>
                         <td className="px-4 py-3">
                           {lc ? (

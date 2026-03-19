@@ -15,7 +15,6 @@ export function useRegistration() {
     const stravaStatusParam = searchParams.get('strava');
 
     // User Data
-    const [eLicense, setELicense] = useState('');
     const [name, setName] = useState('');
     const [zwiftId, setZwiftId] = useState('');
     const [club, setClub] = useState('');
@@ -44,14 +43,11 @@ export function useRegistration() {
     const [trainersError, setTrainersError] = useState('');
 
     // Helper State
-    const [initialData, setInitialData] = useState<{ eLicense?: string; zwiftId?: string }>({});
+    const [initialData, setInitialData] = useState<{ zwiftId?: string }>({});
     const [zwiftVerified, setZwiftVerified] = useState(false);
     const [verifyingZwift, setVerifyingZwift] = useState(false);
     const [zwiftName, setZwiftName] = useState('');
     const [zwiftError, setZwiftError] = useState('');
-    const [checkingLicense, setCheckingLicense] = useState(false);
-    const [licenseAvailable, setLicenseAvailable] = useState(true);
-    const [licenseCheckMessage, setLicenseCheckMessage] = useState('');
 
     // UI State
     const [isRegistered, setIsRegistered] = useState(false);
@@ -90,7 +86,6 @@ export function useRegistration() {
                     setRequiredPublicResultsConsentVersion(data.requiredPublicResultsConsentVersion || null);
 
                     if (data.registered || data.hasDraft) {
-                        setELicense(data.eLicense || '');
                         setName(data.name || '');
                         setZwiftId(data.zwiftId || '');
                         setClub(data.club || '');
@@ -103,7 +98,7 @@ export function useRegistration() {
                         setWeightVerificationVideoLink(data.weightVerificationVideoLink || '');
                         setWeightVerificationDeadline(data.weightVerificationDeadline || null);
                         setVerificationRequests(data.verificationRequests || []);
-                        setInitialData({ eLicense: data.eLicense, zwiftId: data.zwiftId });
+                        setInitialData({ zwiftId: data.zwiftId });
                         if (data.zwiftId) setZwiftVerified(true);
                         setIsRegistered(data.registered);
                         if (data.hasDraft && !data.registered) setMessage('Velkommen tilbage! Kladde indlæst.');
@@ -127,7 +122,6 @@ export function useRegistration() {
             const tempName = localStorage.getItem('temp_reg_name');
             if (tempName) {
                 setName(tempName);
-                setELicense(localStorage.getItem('temp_reg_elicense') || '');
                 setZwiftId(localStorage.getItem('temp_reg_zwiftid') || '');
                 setClub(localStorage.getItem('temp_reg_club') || '');
                 setTrainer(localStorage.getItem('temp_reg_trainer') || '');
@@ -140,25 +134,6 @@ export function useRegistration() {
     }, [zwiftId, initialData.zwiftId]);
 
     // --- Actions ---
-
-    const checkLicense = async () => {
-        if (!eLicense || eLicense === initialData.eLicense) {
-            setLicenseAvailable(true);
-            setLicenseCheckMessage('');
-            return;
-        }
-        setCheckingLicense(true);
-        try {
-            const res = await fetch(`${API_URL}/verify/elicense/${eLicense}`);
-            const data = await res.json();
-            setLicenseAvailable(data.available);
-            setLicenseCheckMessage(!data.available ? 'License already used.' : '');
-        } catch {
-            setLicenseCheckMessage('Error checking license');
-        } finally {
-            setCheckingLicense(false);
-        }
-    };
 
     const verifyZwiftId = async () => {
         if (!zwiftId) return;
@@ -184,7 +159,6 @@ export function useRegistration() {
     const handleConnectStrava = async () => {
         if (!zwiftId) { setError('Indtast Zwift ID først'); return; }
         localStorage.setItem('temp_reg_name', name);
-        localStorage.setItem('temp_reg_elicense', eLicense);
         localStorage.setItem('temp_reg_zwiftid', zwiftId);
         localStorage.setItem('temp_reg_club', club);
         localStorage.setItem('temp_reg_trainer', trainer);
@@ -192,7 +166,7 @@ export function useRegistration() {
             const token = await user?.getIdToken();
             const res = await fetch(`${API_URL}/strava/login`, {
                 method: 'POST',
-                body: JSON.stringify({ eLicense, zwiftId }),
+                body: JSON.stringify({ zwiftId }),
                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
             });
             const data = await res.json();
@@ -242,7 +216,7 @@ export function useRegistration() {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    eLicense, name, zwiftId, club, trainer,
+                    name, zwiftId, club, trainer,
                     acceptedCoC, acceptedDataPolicy, acceptedPublicResults,
                     dataPolicyVersion: requiredDataPolicyVersion,
                     publicResultsConsentVersion: requiredPublicResultsConsentVersion,
@@ -252,7 +226,7 @@ export function useRegistration() {
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.message);
-            setInitialData({ eLicense, zwiftId });
+            setInitialData({ zwiftId });
             setMessage(isDraft ? 'Kladde gemt.' : 'Profil opdateret!');
             showToast(isDraft ? 'Kladde gemt' : 'Gemt!', 'success');
             if (!isDraft) {
@@ -278,7 +252,6 @@ export function useRegistration() {
         authLoading,
         fetchingProfile,
         // User Data
-        eLicense, setELicense,
         name, setName,
         zwiftId, setZwiftId,
         club, setClub,
@@ -298,8 +271,6 @@ export function useRegistration() {
         trainers, loadingTrainers, trainersError,
         // Zwift helpers
         zwiftVerified, verifyingZwift, zwiftName, zwiftError,
-        // License helpers
-        checkingLicense, licenseAvailable, licenseCheckMessage,
         // UI
         isRegistered,
         activeTab, setActiveTab,
@@ -309,7 +280,6 @@ export function useRegistration() {
         // Validation
         step0Valid, step1Valid, step2Valid,
         // Actions
-        checkLicense,
         verifyZwiftId,
         confirmZwiftIdentity,
         handleConnectStrava,

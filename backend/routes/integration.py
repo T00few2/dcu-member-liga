@@ -30,8 +30,6 @@ def strava_login_post():
     uid = decoded['uid']
 
     body = request.get_json(silent=True) or {}
-    # We can pass eLicense or ZwiftID for context, but mainly rely on UID mapping later
-    e_license = body.get('eLicense')
     zwift_id = body.get('zwiftId')
 
     if not db:
@@ -40,7 +38,6 @@ def strava_login_post():
     state = secrets.token_urlsafe(32)
     db.collection('strava_oauth_states').document(state).set({
         'uid': uid,
-        'eLicense': e_license,
         'zwiftId': zwift_id,
         'createdAt': firestore.SERVER_TIMESTAMP
     })
@@ -84,8 +81,6 @@ def strava_callback():
         mapped_zwift_id = mapping_data.get('zwiftId')
         if mapped_zwift_id:
             user_doc_ref = db.collection('users').document(str(mapped_zwift_id))
-        elif mapping_data.get('eLicense'):
-            logger.warning("Found unexpected auth_mappings.eLicense for uid=%s during Strava callback", uid)
     
     if not user_doc_ref:
          # Fallback: Just update the UID doc (drafts/unregistered)
@@ -136,8 +131,6 @@ def strava_deauthorize():
         mapping_data = mapping_doc.to_dict()
         if mapping_data.get('zwiftId'):
             user_doc_ref = db.collection('users').document(str(mapping_data.get('zwiftId')))
-        elif mapping_data.get('eLicense'):
-            logger.warning("Found unexpected auth_mappings.eLicense for uid=%s during Strava deauthorize", uid)
     
     if not user_doc_ref:
         user_doc_ref = db.collection('users').document(uid)

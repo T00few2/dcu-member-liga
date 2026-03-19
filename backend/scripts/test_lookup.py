@@ -52,13 +52,8 @@ def test_lookup(db, target_input):
         zwift_id = m_data.get('zwiftId')
         
         if not zwift_id:
-             old_elicense = m_data.get('eLicense')
-             if old_elicense:
-                 print(f"  [STEP] Using old eLicense key: {old_elicense}")
-                 resolved_doc = db.collection('users').document(str(old_elicense)).get()
-             else:
-                 print(f"  [STEP] Mapping exists but no keys. detailed fallback to UID.")
-                 resolved_doc = db.collection('users').document(expected_uid).get()
+             print(f"  [STEP] Mapping exists but no zwiftId. Falling back to UID.")
+             resolved_doc = db.collection('users').document(expected_uid).get()
         else:
              print(f"  [STEP] Using ZwiftID key: {zwift_id}")
              resolved_doc = db.collection('users').document(str(zwift_id)).get()

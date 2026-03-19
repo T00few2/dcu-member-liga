@@ -30,7 +30,7 @@ def migrate_user(doc, db, dry_run=True):
     print(f"  - Found ZwiftID: {zwift_id} (Type: {type(zwift_id)})")
     
     # Needs migration if:
-    # A) Key is NOT Zwift ID (e.g. key is eLicense or UID)
+    # A) Key is NOT Zwift ID (e.g. key is UID)
     # B) Schema is OLD (missing 'registration' group)
     
     is_zwift_key = str(doc_id) == str(zwift_id)

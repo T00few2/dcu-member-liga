@@ -4,7 +4,6 @@ import { API_URL } from '@/lib/api';
 
 export interface Participant {
     name: string;
-    eLicense: string;
     zwiftId: string;
     category: string;
     ftp: string;
@@ -86,7 +85,7 @@ export function useRiderVerification(user: User | null) {
 
         try {
             const token = await user.getIdToken();
-            const res = await fetch(`${API_URL}/admin/verification/rider/${rider.eLicense}`, {
+            const res = await fetch(`${API_URL}/admin/verification/rider/${rider.zwiftId}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (res.ok) {
@@ -117,7 +116,7 @@ export function useRiderVerification(user: User | null) {
         try {
             const token = await user.getIdToken();
             const res = await fetch(
-                `${API_URL}/admin/verification/strava/streams/${activity.id}?eLicense=${selectedRider.eLicense}`,
+                `${API_URL}/admin/verification/strava/streams/${activity.id}?zwiftId=${selectedRider.zwiftId}`,
                 { headers: { 'Authorization': `Bearer ${token}` } }
             );
             if (res.ok) {

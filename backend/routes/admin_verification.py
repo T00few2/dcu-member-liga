@@ -37,10 +37,6 @@ def verify_rider(rider_id):
     try:
         user = UserService.get_user_by_id(rider_id)
         if not user:
-            logger.info(f"User not found by ID {rider_id}, trying eLicense lookup")
-            user = UserService.get_user_by_elicense(rider_id)
-
-        if not user:
             return jsonify({'message': 'User not found'}), 404
 
         zwift_id = user.zwift_id
@@ -134,15 +130,12 @@ def get_strava_streams(activity_id):
     except AuthzError as e:
         return jsonify({'message': e.message}), e.status_code
 
-    e_license = request.args.get('eLicense')
-    if not e_license:
-        return jsonify({'message': 'Missing eLicense'}), 400
+    zwift_id = request.args.get('zwiftId')
+    if not zwift_id:
+        return jsonify({'message': 'Missing zwiftId'}), 400
 
     try:
-        user = UserService.get_user_by_elicense(e_license)
-        if not user or not user.zwift_id:
-            return jsonify({'message': 'User not found'}), 404
-        streams = strava_service.get_activity_streams(user.zwift_id, activity_id)
+        streams = strava_service.get_activity_streams(zwift_id, activity_id)
         if streams:
             return jsonify({'streams': streams}), 200
         return jsonify({'message': 'Failed to fetch streams'}), 404

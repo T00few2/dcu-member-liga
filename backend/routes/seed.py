@@ -37,27 +37,17 @@ def seed_participants():
         clubs = ['Aarhus Cykle Ring', 'Team Biciklet', 'Odense Cykel Club', 'Copenhagen Cycling', 'Roskilde CK', 'Aalborg CK', 'Test Club']
         categories = ['A', 'B', 'C', 'D', 'E']
         
-        existing_test = db.collection('users').where('isTestData', '==', True).stream()
-        max_id = 0
-        for doc in existing_test:
-            data = doc.to_dict()
-            e_lic = data.get('eLicense', '')
-            if e_lic.startswith('TEST-'):
-                try:
-                    num = int(e_lic.split('-')[1])
-                    if num > max_id: max_id = num
-                except: pass
-        
+        existing_test = list(db.collection('users').where('isTestData', '==', True).stream())
+        max_id = len(existing_test)
+
         created = []
         for i in range(count):
             idx = max_id + i + 1
-            e_license = f"TEST-{idx:04d}"
             zwift_id = f"999{idx:04d}"
             name = f"{random.choice(first_names)} {random.choice(last_names)}"
             assigned_category = random.choice(categories)
-            
+
             user_data = {
-                'eLicense': e_license,
                 'zwiftId': zwift_id,
                 'name': name,
                 'club': random.choice(clubs),
@@ -70,7 +60,7 @@ def seed_participants():
             }
             # Use Zwift ID as key
             db.collection('users').document(zwift_id).set(user_data)
-            created.append({'eLicense': e_license, 'name': name, 'zwiftId': zwift_id, 'category': assigned_category})
+            created.append({'name': name, 'zwiftId': zwift_id, 'category': assigned_category})
         
         return jsonify({'message': f'Created {len(created)} test participants', 'participants': created}), 201
     except Exception as e: return jsonify({'message': str(e)}), 500
@@ -113,8 +103,7 @@ def seed_results():
             test_participants.append({
                 'zwiftId': data.get('zwiftId'),
                 'name': data.get('name'),
-                'eLicense': data.get('eLicense'),
-                'category': data.get('category', 'A') 
+                'category': data.get('category', 'A')
             })
         
         if len(test_participants) == 0:
@@ -123,7 +112,6 @@ def seed_results():
                 test_participants.append({
                     'zwiftId': f"999{i:04d}",
                     'name': f"Temp User {i}",
-                    'eLicense': f"TEMP-{i:04d}",
                     'category': random.choice(['A', 'B', 'C', 'D', 'E'])
                 })
         

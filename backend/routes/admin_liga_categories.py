@@ -101,10 +101,9 @@ def refresh_zr_stats():
         for doc in docs:
             data = doc.to_dict() or {}
             zwift_id = str(data.get('zwiftId', '')).strip()
-            e_license = str(data.get('eLicense', doc.id)).strip()
             if zwift_id:
                 riders[zwift_id] = doc.reference
-                rider_labels[zwift_id] = e_license or doc.id
+                rider_labels[zwift_id] = zwift_id
 
         if not riders:
             return jsonify({'message': 'No registered riders found', 'updated': 0}), 200
@@ -420,7 +419,6 @@ def get_liga_categories():
             riders.append({
                 'zwiftId': data.get('zwiftId', ''),
                 'name': data.get('name', ''),
-                'eLicense': data.get('eLicense', doc.id),
                 'club': data.get('club', ''),
                 'max30Rating': zr.get('max30Rating', 'N/A'),
                 'ligaCategory': lc,
