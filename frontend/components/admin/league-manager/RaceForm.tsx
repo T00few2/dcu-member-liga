@@ -84,6 +84,17 @@ export default function RaceForm({
         return acc;
     }, {} as Record<number, Segment[]>);
 
+    // Build unique name→direction lookup from lap-1 segments for the autofill datalist
+    const lap1SegmentOptions = Array.from(
+        segments
+            .filter(s => (s.lap ?? 1) === 1)
+            .reduce((map, s) => {
+                if (!map.has(s.name)) map.set(s.name, s.direction as 'forward' | 'reverse');
+                return map;
+            }, new Map<string, 'forward' | 'reverse'>())
+            .entries()
+    ).map(([name, direction]) => ({ name, direction }));
+
     useEffect(() => {
         setRouteProfileSegments([]);
         setRouteProfileSegmentId(null);
@@ -459,6 +470,11 @@ export default function RaceForm({
                                         No route profile segments loaded yet.
                                     </div>
                                 )}
+                                <datalist id="route-profile-segment-names">
+                                    {lap1SegmentOptions.map(opt => (
+                                        <option key={opt.name} value={opt.name} />
+                                    ))}
+                                </datalist>
                                 {routeProfileSegments.map((seg, i) => (
                                     <div key={i} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end border border-border rounded p-2">
                                         <div className="md:col-span-4">
@@ -466,7 +482,14 @@ export default function RaceForm({
                                             <input
                                                 type="text"
                                                 value={seg.name}
-                                                onChange={(e) => updateRouteProfileSegment(i, { name: e.target.value })}
+                                                list="route-profile-segment-names"
+                                                onChange={(e) => {
+                                                    const newName = e.target.value;
+                                                    const match = lap1SegmentOptions.find(opt => opt.name === newName);
+                                                    const patch: Partial<RouteProfileSegment> = { name: newName };
+                                                    if (match) patch.direction = match.direction;
+                                                    updateRouteProfileSegment(i, patch);
+                                                }}
                                                 className="w-full p-1.5 border border-input rounded bg-background text-foreground text-sm"
                                             />
                                         </div>
