@@ -32,8 +32,8 @@ interface RaceFormProps {
 interface RouteProfileSegment {
     name: string;
     type: 'sprint' | 'climb' | 'segment';
-    fromKm: number;
-    toKm: number;
+    fromKm: string;
+    toKm: string;
     direction: 'forward' | 'reverse';
 }
 
@@ -125,8 +125,8 @@ export default function RaceForm({
                 .map((seg: any) => ({
                     name: String(seg?.name || 'Segment').trim() || 'Segment',
                     type: seg?.type === 'sprint' || seg?.type === 'climb' || seg?.type === 'segment' ? seg.type : 'segment',
-                    fromKm: Number(seg?.fromKm) || 0,
-                    toKm: Number(seg?.toKm) || 0,
+                    fromKm: seg?.fromKm != null ? String(seg.fromKm) : '',
+                    toKm: seg?.toKm != null ? String(seg.toKm) : '',
                     direction: inferDirection(seg?.direction, seg?.name),
                 }));
             setRouteProfileSegmentId(sid);
@@ -169,7 +169,7 @@ export default function RaceForm({
     const addRouteProfileSegment = () => {
         setRouteProfileSegments((prev) => [
             ...prev,
-            { name: 'Segment', type: 'segment', fromKm: 0, toKm: 0, direction: 'forward' },
+            { name: 'Segment', type: 'segment', fromKm: '', toKm: '', direction: 'forward' },
         ]);
     };
 
@@ -508,20 +508,20 @@ export default function RaceForm({
                                         <div className="md:col-span-2">
                                             <label className="block text-[11px] text-muted-foreground mb-1">From km</label>
                                             <input
-                                                type="number"
-                                                step="0.01"
+                                                type="text"
+                                                inputMode="decimal"
                                                 value={seg.fromKm}
-                                                onChange={(e) => updateRouteProfileSegment(i, { fromKm: Number(e.target.value) || 0 })}
+                                                onChange={(e) => updateRouteProfileSegment(i, { fromKm: e.target.value })}
                                                 className="w-full p-1.5 border border-input rounded bg-background text-foreground text-sm"
                                             />
                                         </div>
                                         <div className="md:col-span-2">
                                             <label className="block text-[11px] text-muted-foreground mb-1">To km</label>
                                             <input
-                                                type="number"
-                                                step="0.01"
+                                                type="text"
+                                                inputMode="decimal"
                                                 value={seg.toKm}
-                                                onChange={(e) => updateRouteProfileSegment(i, { toKm: Number(e.target.value) || 0 })}
+                                                onChange={(e) => updateRouteProfileSegment(i, { toKm: e.target.value })}
                                                 className="w-full p-1.5 border border-input rounded bg-background text-foreground text-sm"
                                             />
                                         </div>
