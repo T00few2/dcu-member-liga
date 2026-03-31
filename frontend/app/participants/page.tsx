@@ -192,7 +192,9 @@ export default function ParticipantsPage() {
                         </div>
                       ) : '-'}
                     </td>
-                    <td className="px-6 py-4">{p.ftp !== 'N/A' ? `${p.ftp} W` : '-'}</td>
+                    <td className="px-6 py-4">
+                      {typeof p.ftp === 'number' ? `${Math.round(p.ftp)} W` : '-'}
+                    </td>
                     <td className="px-6 py-4 font-mono font-medium text-card-foreground">
                       {p.racingScore !== 'N/A' && p.racingScore ? Math.round(Number(p.racingScore)) : '-'}
                     </td>

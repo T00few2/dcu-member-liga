@@ -389,13 +389,16 @@ def get_participants():
             zr = data.get('zwiftRacing', {})
             zpro = data.get('zwiftProfile', {})
             lc = serialize_liga_category(data.get('ligaCategory'))
+            ftp_value = zpro.get('ftp')
+            if ftp_value in (None, ''):
+                ftp_value = 'N/A'
 
             participants.append({
                 'name': user.name,
                 'zwiftId': user.zwift_id,
                 'club': user.club,
                 'category': lc.get('category') or 'N/A',
-                'ftp': zpro.get('ftp', 'N/A'),
+                'ftp': ftp_value,
                 'rating': zr.get('currentRating', 'N/A'),
                 'max30Rating': zr.get('max30Rating', 'N/A'),
                 'max90Rating': zr.get('max90Rating', 'N/A'),

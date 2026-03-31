@@ -253,6 +253,7 @@ def zwift_callback():
 
         access_token = token_data.get('access_token')
         profile = zwift_service.get_profile(user_access_token=access_token, include_competition_metrics=True) or {}
+        competition = profile.get('competitionMetrics') or {}
         zwift_user_id = profile.get('userId')
         profile_numeric_id = profile.get('id')
         upsert_from_token_response(
@@ -265,10 +266,11 @@ def zwift_callback():
         user_doc_ref.set(with_schema_version({
             'zwiftUserId': zwift_user_id,
             'zwiftProfile': {
-                'ftp': profile.get('ftp'),
+                # Official API exposes FTP in competitionMetrics for racing-profile.
+                'ftp': competition.get('ftp') or competition.get('zftp'),
                 'weight': profile.get('weight'),
                 'height': profile.get('heightInMillimeters'),
-                'racingScore': (profile.get('competitionMetrics') or {}).get('racingScore'),
+                'racingScore': competition.get('racingScore'),
                 'updatedAt': firestore.SERVER_TIMESTAMP,
             },
             'connections': {
