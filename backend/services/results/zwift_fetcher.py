@@ -48,18 +48,20 @@ class ZwiftFetcher:
             for entry in finish_results_raw:
                 profile = entry.get('profileData', {})
                 zid = str(profile.get('id') or entry.get('profileId'))
+                registered_profile = registered_riders.get(zid)
+                canonical_zwift_id = str(registered_profile.get('zwiftId')) if registered_profile and registered_profile.get('zwiftId') else zid
 
                 # Helper to build finisher object
                 finisher: RiderResult = {
-                    'zwiftId': zid,
+                    'zwiftId': canonical_zwift_id,
                     'finishTime': entry.get('activityData', {}).get('durationInMilliseconds', 0),
                     'flaggedCheating': entry.get('flaggedCheating', False),
                     'flaggedSandbagging': entry.get('flaggedSandbagging', False),
                     'criticalP': entry.get('criticalP', {})
                 }
 
-                if zid in registered_riders:
-                    finisher['name'] = registered_riders[zid].get('name')
+                if registered_profile:
+                    finisher['name'] = registered_profile.get('name')
                     finishers.append(finisher)
                 elif not filter_registered:
                     finisher['name'] = f"{profile.get('firstName', '')} {profile.get('lastName', '')}".strip()
@@ -73,16 +75,18 @@ class ZwiftFetcher:
 
             for p in participants_raw:
                 zid = str(p.get('id'))
+                registered_profile = registered_riders.get(zid)
+                canonical_zwift_id = str(registered_profile.get('zwiftId')) if registered_profile and registered_profile.get('zwiftId') else zid
                 finisher = {
-                    'zwiftId': zid,
+                    'zwiftId': canonical_zwift_id,
                     'finishTime': 0,
                     'flaggedCheating': False,
                     'flaggedSandbagging': False,
                     'criticalP': {}
                 }
 
-                if zid in registered_riders:
-                    finisher['name'] = registered_riders[zid].get('name')
+                if registered_profile:
+                    finisher['name'] = registered_profile.get('name')
                     finishers.append(finisher)
                 elif not filter_registered:
                     finisher['name'] = f"{p.get('firstName', '')} {p.get('lastName', '')}".strip()

@@ -14,18 +14,30 @@ STRAVA_SERVICE_REFRESH_TOKEN = os.getenv('STRAVA_SERVICE_REFRESH_TOKEN')
 BACKEND_URL = os.getenv('BACKEND_URL', 'https://us-central1-dcu-member-liga-479507.cloudfunctions.net/dcu_api')
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://dansk-ecykling.dk')
 
-ZWIFT_USERNAME = os.getenv('ZWIFT_USERNAME')
-ZWIFT_PASSWORD = os.getenv('ZWIFT_PASSWORD')
-
 ZR_AUTH_KEY = os.getenv('ZR_AUTH_KEY')
 ZR_BASE_URL = os.getenv('ZR_BASE_URL', 'https://api.zwiftracing.app/api')
+
+ZWIFT_CLIENT_ID = os.getenv('ZWIFT_CLIENT_ID')
+ZWIFT_CLIENT_SECRET = os.getenv('ZWIFT_CLIENT_SECRET')
+ZWIFT_AUTH_BASE_URL = os.getenv('ZWIFT_AUTH_BASE_URL', 'https://secure.zwift.com/auth/realms/zwift')
+ZWIFT_API_BASE_URL = os.getenv('ZWIFT_API_BASE_URL', 'https://us-or-rly101.zwift.com')
+ZWIFT_REDIRECT_URI = os.getenv('ZWIFT_REDIRECT_URI')
+ZWIFT_MIGRATION_MODE = os.getenv('ZWIFT_MIGRATION_MODE', 'official_only')
 
 SCHEDULER_SECRET = os.getenv('SCHEDULER_SECRET')
 
 # Critical secrets — raise at startup so the app fails loudly.
 # In CI (GitHub Actions sets CI=true automatically), downgrade to a warning
 # so tests can run without real credentials.
-_required = [(n, v) for n, v in [('ZWIFT_USERNAME', ZWIFT_USERNAME), ('ZWIFT_PASSWORD', ZWIFT_PASSWORD)] if not v]
+_required = [
+    (n, v)
+    for n, v in [
+        ('ZWIFT_CLIENT_ID', ZWIFT_CLIENT_ID),
+        ('ZWIFT_CLIENT_SECRET', ZWIFT_CLIENT_SECRET),
+        ('ZWIFT_REDIRECT_URI', ZWIFT_REDIRECT_URI),
+    ]
+    if not v
+]
 if _required:
     _names = ', '.join(n for n, _ in _required)
     if os.getenv('CI'):

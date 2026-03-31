@@ -13,6 +13,7 @@ export function useRegistration() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const stravaStatusParam = searchParams.get('strava');
+    const zwiftStatusParam = searchParams.get('zwift');
 
     // User Data
     const [name, setName] = useState('');
@@ -20,6 +21,7 @@ export function useRegistration() {
     const [club, setClub] = useState('');
     const [trainer, setTrainer] = useState('');
     const [stravaConnected, setStravaConnected] = useState(false);
+    const [zwiftConnected, setZwiftConnected] = useState(false);
     const [acceptedCoC, setAcceptedCoC] = useState(false);
     const [acceptedDataPolicy, setAcceptedDataPolicy] = useState(false);
     const [acceptedPublicResults, setAcceptedPublicResults] = useState(false);
@@ -91,6 +93,7 @@ export function useRegistration() {
                         setClub(data.club || '');
                         setTrainer(data.trainer || '');
                         setStravaConnected(data.stravaConnected || false);
+                        setZwiftConnected(data.zwiftConnected || false);
                         setAcceptedCoC(data.acceptedCoC || false);
                         setAcceptedDataPolicy(!!data.acceptedDataPolicy && data.dataPolicyVersion === data.requiredDataPolicyVersion);
                         setAcceptedPublicResults(!!data.acceptedPublicResults && data.publicResultsConsentVersion === data.requiredPublicResultsConsentVersion);
@@ -130,17 +133,34 @@ export function useRegistration() {
     }, [stravaStatusParam]);
 
     useEffect(() => {
+        if (zwiftStatusParam === 'connected') {
+            setZwiftConnected(true);
+            setMessage('Zwift forbundet med succes!');
+            const tempName = localStorage.getItem('temp_reg_name');
+            if (tempName) {
+                setName(tempName);
+                setZwiftId(localStorage.getItem('temp_reg_zwiftid') || '');
+                setClub(localStorage.getItem('temp_reg_club') || '');
+                setTrainer(localStorage.getItem('temp_reg_trainer') || '');
+            }
+        }
+    }, [zwiftStatusParam]);
+
+    useEffect(() => {
         if (zwiftId !== initialData.zwiftId && zwiftVerified) setZwiftVerified(false);
     }, [zwiftId, initialData.zwiftId]);
 
     // --- Actions ---
 
     const verifyZwiftId = async () => {
-        if (!zwiftId) return;
+        if (!zwiftId || !user) return;
         setVerifyingZwift(true);
         setZwiftError('');
         try {
-            const res = await fetch(`${API_URL}/verify/zwift/${zwiftId}`);
+            const token = await user.getIdToken();
+            const res = await fetch(`${API_URL}/verify/zwift/${zwiftId}`, {
+                headers: { 'Authorization': `Bearer ${token}` },
+            });
             const data = await res.json();
             if (res.ok) setZwiftName(`${data.firstName} ${data.lastName}`);
             else setZwiftError(data.message || 'Could not verify ID');
@@ -172,6 +192,42 @@ export function useRegistration() {
             const data = await res.json();
             if (data.url) window.location.href = data.url;
             else throw new Error(data.message);
+        } catch (e: any) {
+            setError(e.message);
+        }
+    };
+
+    const handleConnectZwift = async () => {
+        if (!zwiftId) { setError('Indtast Zwift ID først'); return; }
+        localStorage.setItem('temp_reg_name', name);
+        localStorage.setItem('temp_reg_zwiftid', zwiftId);
+        localStorage.setItem('temp_reg_club', club);
+        localStorage.setItem('temp_reg_trainer', trainer);
+        try {
+            const token = await user?.getIdToken();
+            const res = await fetch(`${API_URL}/zwift/login`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ promptLogin: true }),
+            });
+            const data = await res.json();
+            if (data.url) window.location.href = data.url;
+            else throw new Error(data.message || 'Failed to start Zwift OAuth');
+        } catch (e: any) {
+            setError(e.message);
+        }
+    };
+
+    const handleDisconnectZwift = async () => {
+        try {
+            const token = await user?.getIdToken();
+            await fetch(`${API_URL}/zwift/deauthorize`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+            });
+            setZwiftConnected(false);
+            setZwiftVerified(false);
+            showToast('Zwift disconnected', 'success');
         } catch (e: any) {
             setError(e.message);
         }
@@ -257,6 +313,7 @@ export function useRegistration() {
         club, setClub,
         trainer, setTrainer,
         stravaConnected,
+        zwiftConnected,
         acceptedCoC, setAcceptedCoC,
         acceptedDataPolicy, setAcceptedDataPolicy,
         acceptedPublicResults, setAcceptedPublicResults,
@@ -284,6 +341,8 @@ export function useRegistration() {
         confirmZwiftIdentity,
         handleConnectStrava,
         handleDisconnectStrava,
+        handleConnectZwift,
+        handleDisconnectZwift,
         handleRequestTrainer,
         saveData,
     };

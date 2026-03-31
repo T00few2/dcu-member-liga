@@ -19,7 +19,7 @@ export default function VerificationDashboard() {
         selectRider, selectStravaActivity,
     } = useRiderVerification(user);
 
-    const [selectedRaceDate, setSelectedRaceDate] = useState<number | null>(null);
+    const [selectedRaceDate, setSelectedRaceDate] = useState<number | string | null>(null);
     const [powerTrendStat, setPowerTrendStat] = useState('avg');
     const [curveTimeRange, setCurveTimeRange] = useState(90);
 
@@ -29,6 +29,12 @@ export default function VerificationDashboard() {
     };
 
     const selectedStravaActivity = stravaData.find(a => a.id === selectedStravaActivityId);
+    const formatRaceDate = (value: number | string) => {
+        if (typeof value === 'number') {
+            return new Date(value * 1000).toLocaleDateString();
+        }
+        return new Date(value).toLocaleDateString();
+    };
 
     return (
         <div className="max-w-6xl mx-auto pb-12">
@@ -85,10 +91,10 @@ export default function VerificationDashboard() {
 
                             {/* Data Tables */}
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-                                {/* ZwiftPower Feed */}
+                                {/* Zwift Official Feed */}
                                 <div className="bg-card rounded-lg shadow border border-border overflow-hidden">
                                     <div className="bg-[#FC6719]/10 p-3 border-b border-[#FC6719]/20 font-semibold text-[#FC6719] flex justify-between items-center">
-                                        <span>ZwiftPower Feed</span>
+                                        <span>Zwift Official Feed</span>
                                         <span className="text-xs bg-[#FC6719] text-white px-2 py-0.5 rounded-full">Last 10 Races</span>
                                     </div>
                                     <div className="divide-y divide-border max-h-[500px] overflow-y-auto">
@@ -104,7 +110,7 @@ export default function VerificationDashboard() {
                                                         className={`p-4 transition cursor-pointer border-l-4 ${isSelected ? 'bg-muted/50 border-primary' : 'hover:bg-muted/30 border-transparent'}`}
                                                     >
                                                         <div className="font-medium text-sm text-card-foreground truncate mb-1">{race.event_title}</div>
-                                                        <div className="text-xs text-muted-foreground mb-2">{new Date(race.date * 1000).toLocaleDateString()}</div>
+                                                        <div className="text-xs text-muted-foreground mb-2">{formatRaceDate(race.date)}</div>
                                                         <div className="grid grid-cols-3 gap-2 text-center text-sm">
                                                             <div className="bg-secondary/50 rounded p-1">
                                                                 <div className="text-xs text-muted-foreground">Power</div>

@@ -130,6 +130,7 @@
           "customCategory": "Diamond",
           "startTime": "19:00",
           "eventId": "",
+          "subgroupId": "1234567890",
           "eventSecret": "",
           "laps": 1,
           "sprints": [
@@ -160,6 +161,54 @@
       "expires_at": 1773407159,
       "access_token": "REDACTED_ACCESS_TOKEN",
       "refresh_token": "REDACTED_REFRESH_TOKEN"
+    }
+  ],
+  "zwift_oauth_states": [
+    {
+      "_id": "zwift_oauth_state_example_001",
+      "uid": "auth_uid_example_001",
+      "createdAt": "2026-03-14T10:05:00+00:00"
+    }
+  ],
+  "zwift_tokens": [
+    {
+      "_id": "100001",
+      "access_token": "REDACTED_ZWIFT_ACCESS_TOKEN",
+      "refresh_token": "REDACTED_ZWIFT_REFRESH_TOKEN",
+      "expires_at": 1773507159,
+      "scope": "activity profile:read fitness_metrics:read",
+      "zwiftUserId": "fdddaae1-1015-4bf4-8aaa-7d9e0d7e4ead",
+      "updatedAt": "2026-03-14T10:06:00+00:00"
+    }
+  ],
+  "zwift_webhooks": [
+    {
+      "_id": "ea856ca4-258b-4d4e-bd15-af0d986ab817",
+      "notificationId": "ea856ca4-258b-4d4e-bd15-af0d986ab817",
+      "notificationType": "ActivitySaved",
+      "userId": "fdddaae1-1015-4bf4-8aaa-7d9e0d7e4ead",
+      "activityId": "16889999",
+      "payload": {
+        "notificationType": "ActivitySaved",
+        "userId": "fdddaae1-1015-4bf4-8aaa-7d9e0d7e4ead",
+        "activityId": "16889999",
+        "notificationId": "ea856ca4-258b-4d4e-bd15-af0d986ab817"
+      },
+      "receivedAt": "2026-03-14T10:10:00+00:00"
+    }
+  ],
+  "zwift_activities": [
+    {
+      "_id": "16889999",
+      "activityId": "16889999",
+      "userId": "fdddaae1-1015-4bf4-8aaa-7d9e0d7e4ead",
+      "source": "webhook",
+      "data": {
+        "activityName": "Watopia Group Ride",
+        "distanceInMeters": 25000.3,
+        "avgWatts": 179.5
+      },
+      "updatedAt": "2026-03-14T10:10:02+00:00"
     }
   ],
   "system": [
@@ -195,6 +244,7 @@
       "_id": "100001",
       "authUid": "auth_uid_example_001",
       "zwiftId": "100001",
+      "zwiftUserId": "fdddaae1-1015-4bf4-8aaa-7d9e0d7e4ead",
       "name": "User Example",
       "email": "user@example.com",
       "club": "Danish Zwift Racers",
@@ -206,7 +256,27 @@
       "connections": {
         "strava": {
           "athlete_id": 9999999
+        },
+        "zwift": {
+          "connected": true,
+          "connectedAt": "2026-03-14T10:06:00+00:00",
+          "scope": "activity profile:read fitness_metrics:read",
+          "userId": "fdddaae1-1015-4bf4-8aaa-7d9e0d7e4ead",
+          "profileId": 100001,
+          "subscriptions": {
+            "activity": true,
+            "racingScore": false,
+            "powerCurve": false,
+            "updatedAt": "2026-03-14T10:08:00+00:00"
+          }
         }
+      },
+      "zwiftProfile": {
+        "ftp": 295,
+        "weight": 75000,
+        "height": 1780,
+        "racingScore": 250.7,
+        "updatedAt": "2026-03-14T10:07:00+00:00"
       },
       "zwiftRacing": {
         "currentRating": 2012.5,

@@ -239,7 +239,7 @@ export default function RiderInfoForm({
                 <div>
                     <label className="block font-semibold text-card-foreground mb-1">Zwift ID</label>
                     <p className="text-sm text-muted-foreground mb-2">
-                        Find dit ID på <a href="https://zwiftpower.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">ZwiftPower</a> eller i dine profil URL indstillinger.
+                        Forbind Zwift i fanen “Forbindelser” og bekræft derefter, at ID matcher din tilknyttede Zwift konto.
                     </p>
 
                     <div className="flex gap-2 items-start">

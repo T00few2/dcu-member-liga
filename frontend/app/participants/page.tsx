@@ -126,7 +126,7 @@ export default function ParticipantsPage() {
                 <th className="px-6 py-3 font-bold">ZR Kat</th>
                 <th className="px-6 py-3 font-bold">ZR max30</th>
                 <th className="px-6 py-3 font-bold">Liga Kat</th>
-                <th className="px-6 py-3 font-bold">FTP (ZP)</th>
+                <th className="px-6 py-3 font-bold">FTP (Zwift)</th>
                 <th className="px-6 py-3 font-bold">ZRS</th>
                 <th className="px-6 py-3 font-bold">vELO</th>
                 <th className="px-6 py-3 font-bold">vELO max30</th>
@@ -211,17 +211,6 @@ export default function ParticipantsPage() {
                     <td className="px-6 py-4">
                       {p.zwiftId ? (
                         <div className="flex items-center gap-3">
-                          <a
-                            href={`https://zwiftpower.com/profile.php?z=${p.zwiftId}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-primary hover:text-primary/80 transition-colors"
-                            title="ZwiftPower Profile"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-                            </svg>
-                          </a>
                           <a
                             href={`https://www.zwiftracing.app/riders/${p.zwiftId}`}
                             target="_blank"

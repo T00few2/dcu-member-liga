@@ -9,19 +9,13 @@ from flask import request, jsonify
 
 from routes.admin import admin_bp
 from authz import require_admin, AuthzError
-from extensions import db, get_zwift_service, strava_service, get_zp_service
+from extensions import db, get_zwift_service, strava_service
 from services.user_service import UserService
+from services.zwift_tokens import get_valid_access_token
 
 import logging
 
 logger = logging.getLogger(__name__)
-
-
-def _parse_zp_numeric(value) -> float:
-    """Coerce a ZwiftPower field (may be a single-element list) to float."""
-    if isinstance(value, list):
-        return float(value[0]) if value else 0.0
-    return float(value) if value else 0.0
 
 
 @admin_bp.route('/admin/verification/rider/<rider_id>', methods=['GET'])
@@ -42,36 +36,49 @@ def verify_rider(rider_id):
         zwift_id = user.zwift_id
         strava_auth = user.strava_auth
 
-        response_data = {'profile': {}, 'stravaActivities': [], 'zwiftPowerHistory': []}
+        response_data = {'profile': {}, 'stravaActivities': [], 'zwiftPowerHistory': [], 'officialMetrics': {}}
 
         def fetch_zwift_profile():
             if not zwift_id:
                 return None
-            return get_zwift_service().get_profile(int(zwift_id))
+            access_token = get_valid_access_token(str(user.id), get_zwift_service())
+            if not access_token:
+                return None
+            return get_zwift_service().get_profile(user_access_token=access_token)
 
         def fetch_strava():
             if not strava_auth or not zwift_id:
                 return None
             return strava_service.get_activities(zwift_id)
 
-        def fetch_zp():
+        def fetch_power_curve():
             if not zwift_id:
                 return None
-            return get_zp_service().get_rider_data_json(int(zwift_id))
+            access_token = get_valid_access_token(str(user.id), get_zwift_service())
+            if not access_token:
+                return None
+            service = get_zwift_service()
+            power_profile = service.get_power_profile(access_token)
+            best_curve = service.get_best_power_curve_all_time(access_token)
+            return {'powerProfile': power_profile, 'bestCurve': best_curve}
 
         with ThreadPoolExecutor(max_workers=3) as executor:
             f_profile = executor.submit(fetch_zwift_profile)
             f_strava = executor.submit(fetch_strava)
-            f_zp = executor.submit(fetch_zp)
+            f_power = executor.submit(fetch_power_curve)
 
         try:
             profile = f_profile.result(timeout=30)
             if profile:
+                competition = profile.get('competitionMetrics') or {}
                 response_data['profile'] = {
                     'weight': round(profile.get('weight', 0) / 1000, 1) if profile.get('weight') else None,
-                    'height': round(profile.get('height', 0) / 10, 0) if profile.get('height') else None,
+                    'height': round(profile.get('heightInMillimeters', 0) / 10, 0) if profile.get('heightInMillimeters') else None,
                     'maxHr': profile.get('heartRateMax', 0),
                     'img': profile.get('imageSrc'),
+                    'racingScore': competition.get('racingScore'),
+                    'zftp': competition.get('zftp'),
+                    'zmap': competition.get('zmap'),
                 }
         except Exception as e:
             logger.error(f"Zwift Profile Fetch Error: {e}")
@@ -84,38 +91,26 @@ def verify_rider(rider_id):
             logger.error(f"Strava Verification Fetch Error: {e}")
 
         try:
-            zp_json = f_zp.result(timeout=30)
-            if zp_json and 'data' in zp_json:
-                _CP_DURATIONS = ['w5', 'w15', 'w30', 'w60', 'w120', 'w300', 'w1200']
+            power_data = f_power.result(timeout=30)
+            if power_data:
+                response_data['officialMetrics'] = power_data
+                best_curve = (power_data.get('bestCurve') or {}).get('pointsWatts') or {}
                 history = []
-                for entry in zp_json['data']:
-                    cp_curve = {}
-                    for dur in _CP_DURATIONS:
-                        val = entry.get(dur)
-                        try:
-                            cp_curve[dur] = int(float(val[0] if isinstance(val, list) and val else val)) if val else 0
-                        except (ValueError, TypeError):
-                            cp_curve[dur] = 0
-
-                    wkg_raw = entry.get('avg_wkg')
-                    wkg_val = float((wkg_raw[0] if isinstance(wkg_raw, list) and wkg_raw else wkg_raw) or 0)
-
+                for duration_sec, point in best_curve.items():
                     history.append({
-                        'date': entry.get('event_date', 0),
-                        'event_title': entry.get('event_title', 'Unknown Event'),
-                        'avg_watts': _parse_zp_numeric(entry.get('avg_power')),
-                        'avg_hr': _parse_zp_numeric(entry.get('avg_hr')),
-                        'wkg': wkg_val,
-                        'category': entry.get('category', ''),
-                        'weight': _parse_zp_numeric(entry.get('weight')),
-                        'height': _parse_zp_numeric(entry.get('height')),
-                        'cp_curve': cp_curve,
+                        'date': point.get('date'),
+                        'event_title': f"Best effort {duration_sec}s",
+                        'avg_watts': point.get('value', 0),
+                        'avg_hr': 0,
+                        'wkg': 0,
+                        'category': '',
+                        'weight': 0,
+                        'height': 0,
+                        'cp_curve': {str(duration_sec): point.get('value', 0)},
                     })
-
-                history.sort(key=lambda x: x['date'], reverse=True)
                 response_data['zwiftPowerHistory'] = history
         except Exception as e:
-            logger.error(f"ZP Verification Fetch Error: {e}")
+            logger.error(f"Official metrics fetch error: {e}")
 
         return jsonify(response_data), 200
 

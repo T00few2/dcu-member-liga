@@ -3,10 +3,17 @@ import datetime
 
 from flask import Blueprint, request, jsonify, redirect
 from firebase_admin import firestore
-from extensions import db, strava_service, get_zwift_game_service
+from extensions import db, strava_service, get_zwift_game_service, get_zwift_service
 from config import FRONTEND_URL
 from authz import verify_user_token, AuthzError
 from services.schema_validation import with_schema_version
+from services.zwift_tokens import (
+    delete_token_doc,
+    get_token_doc,
+    get_valid_access_token,
+    resolve_user_doc_id_from_auth_uid,
+    upsert_from_token_response,
+)
 import secrets
 import requests
 from bs4 import BeautifulSoup
@@ -14,6 +21,13 @@ from bs4 import BeautifulSoup
 logger = logging.getLogger(__name__)
 
 integration_bp = Blueprint('integration', __name__)
+
+
+def _resolve_user_doc_ref_from_uid(uid: str):
+    user_doc_id = resolve_user_doc_id_from_auth_uid(uid)
+    if not user_doc_id:
+        return None
+    return db.collection('users').document(str(user_doc_id))
 
 # --- STRAVA ---
 
@@ -165,6 +179,252 @@ def strava_deauthorize():
         logger.warning(f"Failed to clean up Strava fields from user doc: {e}")
 
     return jsonify({'message': 'Strava disconnected', 'revoked': revoked}), 200
+
+
+# --- ZWIFT OAUTH ---
+
+@integration_bp.route('/zwift/login', methods=['GET'])
+def zwift_login_get():
+    return jsonify({'message': 'Use POST /zwift/login with Authorization header'}), 405
+
+
+@integration_bp.route('/zwift/login', methods=['POST'])
+def zwift_login_post():
+    try:
+        decoded = verify_user_token(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    uid = decoded['uid']
+    body = request.get_json(silent=True) or {}
+    state = secrets.token_urlsafe(32)
+    prompt_login = bool(body.get('promptLogin', False))
+
+    db.collection('zwift_oauth_states').document(state).set({
+        'uid': uid,
+        'createdAt': firestore.SERVER_TIMESTAMP,
+    })
+
+    zwift_service = get_zwift_service()
+    url = zwift_service.build_authorize_url(state=state, prompt_login=prompt_login)
+    return jsonify({'url': url}), 200
+
+
+@integration_bp.route('/zwift/callback', methods=['GET'])
+def zwift_callback():
+    code = request.args.get('code')
+    state = request.args.get('state')
+    error = request.args.get('error')
+    if error:
+        return jsonify({'message': f'Zwift Error: {error}'}), 400
+    if not code or not state:
+        return jsonify({'message': 'Missing code or state'}), 400
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    state_ref = db.collection('zwift_oauth_states').document(state)
+    state_doc = state_ref.get()
+    if not state_doc.exists:
+        return jsonify({'message': 'Invalid or expired state'}), 400
+
+    state_data = state_doc.to_dict() or {}
+    uid = state_data.get('uid')
+
+    created_at = state_data.get('createdAt')
+    if created_at:
+        age = datetime.datetime.now(datetime.timezone.utc) - created_at
+        if age.total_seconds() > 600:
+            state_ref.delete()
+            return jsonify({'message': 'OAuth state expired, please try again'}), 400
+
+    user_doc_ref = _resolve_user_doc_ref_from_uid(uid)
+    if not user_doc_ref:
+        return jsonify({'message': 'Could not resolve user document'}), 400
+
+    zwift_service = get_zwift_service()
+    try:
+        status_code, token_data = zwift_service.exchange_code_for_tokens(code)
+        if status_code != 200:
+            return jsonify({'message': 'Failed to get Zwift tokens'}), 500
+
+        access_token = token_data.get('access_token')
+        profile = zwift_service.get_profile(user_access_token=access_token, include_competition_metrics=True) or {}
+        zwift_user_id = profile.get('userId')
+        profile_numeric_id = profile.get('id')
+        upsert_from_token_response(
+            user_doc_ref.id,
+            token_data,
+            scopes=token_data.get('scope'),
+            zwift_user_id=zwift_user_id,
+        )
+
+        user_doc_ref.set(with_schema_version({
+            'zwiftUserId': zwift_user_id,
+            'zwiftProfile': {
+                'ftp': profile.get('ftp'),
+                'weight': profile.get('weight'),
+                'height': profile.get('heightInMillimeters'),
+                'racingScore': (profile.get('competitionMetrics') or {}).get('racingScore'),
+                'updatedAt': firestore.SERVER_TIMESTAMP,
+            },
+            'connections': {
+                'zwift': {
+                    'connected': True,
+                    'connectedAt': firestore.SERVER_TIMESTAMP,
+                    'scope': token_data.get('scope'),
+                    'userId': zwift_user_id,
+                    'profileId': profile_numeric_id,
+                }
+            },
+            'updatedAt': firestore.SERVER_TIMESTAMP,
+        }), merge=True)
+    finally:
+        try:
+            state_ref.delete()
+        except Exception as exc:
+            logger.warning(f"Failed to delete Zwift OAuth state document: {exc}")
+
+    return redirect(f"{FRONTEND_URL}/register?zwift=connected")
+
+
+@integration_bp.route('/zwift/deauthorize', methods=['POST'])
+def zwift_deauthorize():
+    try:
+        decoded = verify_user_token(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    uid = decoded['uid']
+    user_doc_ref = _resolve_user_doc_ref_from_uid(uid)
+    if not user_doc_ref:
+        return jsonify({'message': 'User not found'}), 404
+
+    token_doc = get_token_doc(user_doc_ref.id) or {}
+    refresh_token = token_doc.get('refresh_token')
+    revoked = False
+    if refresh_token:
+        revoked = get_zwift_service().revoke_token(refresh_token)
+
+    delete_token_doc(user_doc_ref.id)
+
+    try:
+        user_doc_ref.update({
+            'connections.zwift': firestore.DELETE_FIELD,
+        })
+    except Exception as exc:
+        logger.warning(f"Failed to clean up Zwift fields from user doc: {exc}")
+
+    return jsonify({'message': 'Zwift disconnected', 'revoked': revoked}), 200
+
+
+@integration_bp.route('/zwift/subscriptions/sync', methods=['POST'])
+def zwift_sync_subscriptions():
+    try:
+        decoded = verify_user_token(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    uid = decoded['uid']
+    user_doc_ref = _resolve_user_doc_ref_from_uid(uid)
+    if not user_doc_ref:
+        return jsonify({'message': 'User not found'}), 404
+
+    zwift_service = get_zwift_service()
+    access_token = get_valid_access_token(user_doc_ref.id, zwift_service)
+    if not access_token:
+        return jsonify({'message': 'Zwift account not connected'}), 400
+
+    body = request.get_json(silent=True) or {}
+    subscribe_activity = bool(body.get('activity', True))
+    subscribe_racing = bool(body.get('racingScore', False))
+    subscribe_power_curve = bool(body.get('powerCurve', False))
+
+    result: dict[str, dict[str, object]] = {}
+    if subscribe_activity:
+        status, payload = zwift_service.subscribe_activity(access_token)
+        result['activity'] = {'status': status, 'payload': payload}
+    if subscribe_racing:
+        status, payload = zwift_service.subscribe_racing_score(access_token)
+        result['racingScore'] = {'status': status, 'payload': payload}
+    if subscribe_power_curve:
+        status, payload = zwift_service.subscribe_power_curve(access_token)
+        result['powerCurve'] = {'status': status, 'payload': payload}
+
+    user_doc_ref.set(with_schema_version({
+        'connections': {
+            'zwift': {
+                'subscriptions': {
+                    'activity': subscribe_activity,
+                    'racingScore': subscribe_racing,
+                    'powerCurve': subscribe_power_curve,
+                    'updatedAt': firestore.SERVER_TIMESTAMP,
+                }
+            }
+        }
+    }), merge=True)
+    return jsonify({'message': 'Subscription sync complete', 'result': result}), 200
+
+
+@integration_bp.route('/zwift/webhook', methods=['POST'])
+def zwift_webhook():
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    payload = request.get_json(silent=True) or {}
+    notification_id = payload.get('notificationId')
+    if not notification_id:
+        return jsonify({'message': 'Missing notificationId'}), 400
+
+    notif_type = payload.get('notificationType')
+    user_id = payload.get('userId')
+    activity_id = payload.get('activityId')
+
+    db.collection('zwift_webhooks').document(str(notification_id)).set(with_schema_version({
+        'notificationId': notification_id,
+        'notificationType': notif_type,
+        'userId': user_id,
+        'activityId': activity_id,
+        'payload': payload,
+        'receivedAt': firestore.SERVER_TIMESTAMP,
+    }), merge=True)
+
+    if notif_type == 'ActivitySaved' and user_id and activity_id:
+        try:
+            token_docs = (
+                db.collection('zwift_tokens')
+                .where('zwiftUserId', '==', user_id)
+                .limit(1)
+                .stream()
+            )
+            token_doc = next(token_docs, None)
+            if token_doc:
+                user_doc_id = token_doc.id
+                zwift_service = get_zwift_service()
+                access_token = get_valid_access_token(user_doc_id, zwift_service)
+                if access_token:
+                    activity = zwift_service.get_user_activity(str(activity_id), access_token)
+                    if activity:
+                        db.collection('zwift_activities').document(str(activity_id)).set(with_schema_version({
+                            'activityId': str(activity_id),
+                            'userId': user_id,
+                            'source': 'webhook',
+                            'data': activity,
+                            'updatedAt': firestore.SERVER_TIMESTAMP,
+                        }), merge=True)
+        except Exception as exc:
+            logger.error(f"Failed to process ActivitySaved webhook {notification_id}: {exc}")
+
+    return '', 204
 
 # --- ZWIFT GAME DATA ---
 

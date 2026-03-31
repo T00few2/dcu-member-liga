@@ -54,6 +54,30 @@
         "$ref": "#/$defs/stravaTokenDoc"
       }
     },
+    "zwift_oauth_states": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/zwiftOAuthStateDoc"
+      }
+    },
+    "zwift_tokens": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/zwiftTokenDoc"
+      }
+    },
+    "zwift_webhooks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/zwiftWebhookDoc"
+      }
+    },
+    "zwift_activities": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/zwiftActivityDoc"
+      }
+    },
     "system": {
       "type": "array",
       "items": {
@@ -352,6 +376,9 @@
               "eventId": {
                 "type": "string"
               },
+              "subgroupId": {
+                "type": "string"
+              },
               "eventSecret": {
                 "type": "string"
               },
@@ -451,6 +478,104 @@
         }
       }
     },
+    "zwiftOAuthStateDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "_id": {
+          "type": "string"
+        },
+        "uid": {
+          "type": "string"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestampString"
+        }
+      }
+    },
+    "zwiftTokenDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "_id": {
+          "type": "string",
+          "description": "Usually user document ID"
+        },
+        "access_token": {
+          "type": "string"
+        },
+        "refresh_token": {
+          "type": "string"
+        },
+        "expires_at": {
+          "type": "integer"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "zwiftUserId": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/timestampString"
+        }
+      }
+    },
+    "zwiftWebhookDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "_id": {
+          "type": "string",
+          "description": "notificationId"
+        },
+        "notificationId": {
+          "type": "string"
+        },
+        "notificationType": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        },
+        "activityId": {
+          "type": "string"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "receivedAt": {
+          "$ref": "#/$defs/timestampString"
+        }
+      }
+    },
+    "zwiftActivityDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "_id": {
+          "type": "string",
+          "description": "activityId"
+        },
+        "activityId": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "data": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/timestampString"
+        }
+      }
+    },
     "systemDoc": {
       "type": "object",
       "additionalProperties": true,
@@ -531,6 +656,9 @@
         "zwiftId": {
           "type": "string"
         },
+        "zwiftUserId": {
+          "type": "string"
+        },
         "name": {
           "type": "string"
         },
@@ -567,6 +695,66 @@
                   "type": "integer"
                 }
               }
+            },
+            "zwift": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "connected": {
+                  "type": "boolean"
+                },
+                "connectedAt": {
+                  "$ref": "#/$defs/timestampString"
+                },
+                "scope": {
+                  "type": "string"
+                },
+                "userId": {
+                  "type": "string"
+                },
+                "profileId": {
+                  "type": "integer"
+                },
+                "subscriptions": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "activity": {
+                      "type": "boolean"
+                    },
+                    "racingScore": {
+                      "type": "boolean"
+                    },
+                    "powerCurve": {
+                      "type": "boolean"
+                    },
+                    "updatedAt": {
+                      "$ref": "#/$defs/timestampString"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "zwiftProfile": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "ftp": {
+              "type": "number"
+            },
+            "weight": {
+              "type": "number"
+            },
+            "height": {
+              "type": "number"
+            },
+            "racingScore": {
+              "type": "number"
+            },
+            "updatedAt": {
+              "$ref": "#/$defs/timestampString"
             }
           }
         },

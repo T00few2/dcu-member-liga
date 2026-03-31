@@ -11,7 +11,7 @@ export interface Participant {
 }
 
 export interface ZwiftPowerResult {
-    date: number;
+    date: number | string;
     event_title: string;
     avg_watts: number;
     avg_hr: number;
@@ -90,7 +90,15 @@ export function useRiderVerification(user: User | null) {
             });
             if (res.ok) {
                 const data = await res.json();
-                setZpData((data.zwiftPowerHistory || []).sort((a: ZwiftPowerResult, b: ZwiftPowerResult) => a.date - b.date));
+                const toEpoch = (value: unknown): number => {
+                    if (typeof value === 'number') return value;
+                    if (typeof value === 'string') {
+                        const parsed = Date.parse(value);
+                        return Number.isNaN(parsed) ? 0 : parsed;
+                    }
+                    return 0;
+                };
+                setZpData((data.zwiftPowerHistory || []).sort((a: ZwiftPowerResult, b: ZwiftPowerResult) => toEpoch(a.date) - toEpoch(b.date)));
                 setStravaData(data.stravaActivities || []);
                 setRiderProfile(data.profile || {});
             } else {

@@ -19,13 +19,13 @@ The API logic is split into domain-specific Blueprints in the `routes/` director
 *   **`routes/users.py`**: User profile management, signup, participants list, and detailed stats.
 *   **`routes/league.py`**: League settings (points schemes) and global standings calculation.
 *   **`routes/admin.py`**: Admin verification dashboard, trainer management/approval.
-*   **`routes/integration.py`**: External OAuth flows (Strava) and proxy endpoints (Zwift routes/segments, Clubs).
+*   **`routes/integration.py`**: External OAuth flows (Strava + Zwift), webhook intake, and proxy endpoints (Zwift routes/segments, Clubs).
 *   **`routes/seed.py`**: Tools for generating test data (participants, race results) for development.
 
 ### 3. Shared Extensions
 *   **`extensions.py`**: Handles infrastructure initialization.
     *   Initializes Firebase Firestore (`db`).
-    *   Manages Service Singletons (Zwift, Strava, ZwiftPower) to ensure efficient connection reuse.
+    *   Manages Service Singletons (Zwift, Strava) to ensure efficient connection reuse.
 
 ### 4. Services & Business Logic
 The core logic resides in the `services/` directory.
@@ -73,8 +73,7 @@ For all race types:
 *   League points are assigned from the configured `leagueRankPoints` array (e.g., `[50, 48, 46, ...]`).
 
 #### Integration Services
-*   `services/zwift.py`: Low-level Zwift API client (Profile, Events, Activity feed).
-*   `services/zwiftpower.py`: Scrapes/Fetches historical power data from ZwiftPower.
+*   `services/zwift.py`: Official Zwift Developer API client (OAuth, Profile, Events, Subscriptions, Activity feed).
 *   `services/zwiftracing.py`: Fetches ZP/ZR rating and phenotype data.
 *   `services/strava.py`: Strava API integration (Activities, Streams, OAuth).
 *   `services/zwift_game.py`: Static game data (Routes, Segments).

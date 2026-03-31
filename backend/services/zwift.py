@@ -1,288 +1,457 @@
-import requests
+from __future__ import annotations
+
 import logging
 import time
-import backoff
-from requests.exceptions import RequestException
-from google.protobuf.json_format import MessageToDict
-from services.segment_results_pb2 import SegmentResults
 from datetime import datetime
+from typing import Any
+from urllib.parse import urlencode
 
-# Set up logging (simplified for Cloud Functions)
-logger = logging.getLogger('ZwiftAPI')
+import requests
+from requests import Response
+from requests.exceptions import RequestException
+
+from config import (
+    ZWIFT_API_BASE_URL,
+    ZWIFT_AUTH_BASE_URL,
+    ZWIFT_CLIENT_ID,
+    ZWIFT_CLIENT_SECRET,
+    ZWIFT_MIGRATION_MODE,
+    ZWIFT_REDIRECT_URI,
+)
+
+logger = logging.getLogger("ZwiftAPI")
+
 
 def zwift_compat_date(dt: datetime) -> str:
-    """
-    Convert a datetime object to a string in the format expected by Zwift.
-    """
-    return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
 
 class ZwiftService:
-    def __init__(self, username, password, client_id='Zwift Game Client'):
-        self.username = username
-        self.password = password
-        self.client_id = client_id
-        self.host = 'https://secure.zwift.com'
-        self.token_url = f'{self.host}/auth/realms/zwift/protocol/openid-connect/token'
-        self.auth_token = None
-        self.refresh_token = None
-        self.token_expiry_time = 0
-    
-    def authenticate(self):
-        data = {
-            'client_id': self.client_id,
-            'grant_type': 'password',
-            'username': self.username,
-            'password': self.password
-        }
-        try:
-            response = requests.post(self.token_url, data=data)
-            if response.status_code == 200:
-                self.auth_token = response.json()
-                logger.info("Authenticated successfully.")
-            else:
-                raise Exception(f"Authentication failed: {response.text}")
-            
-            expires_in = self.auth_token.get('expires_in', 3600)
-            self.refresh_token = self.auth_token.get('refresh_token')
-            # Calculate token expiry time (with 60-second buffer)
-            self.token_expiry_time = time.time() + expires_in - 60
-        except Exception as e:
-            print(f"Zwift Auth Error: {e}")
-            raise e
-        
-    def refresh_auth_token(self):
-        logger.info("Refreshing auth token...")
-        data = {
-            'client_id': self.client_id,
-            'grant_type': 'refresh_token',
-            'refresh_token': self.refresh_token
-        }
-        try:
-            response = requests.post(self.token_url, data=data)
-            if response.status_code == 200:
-                self.auth_token = response.json()
-                logger.info("Token refreshed successfully.")
-                # Update refresh token and expiry time when present
-                self.refresh_token = self.auth_token.get('refresh_token', self.refresh_token)
-                self.token_expiry_time = time.time() + self.auth_token.get('expires_in', 60) - 60
-            else:
-                logger.error(f"Token refresh failed: {response.text}")
-                # If refresh fails, try to authenticate again
-                logger.info("Attempting to re-authenticate...")
-                self.authenticate()
-        except Exception as e:
-            print(f"Zwift Refresh Error: {e}")
-            self.authenticate() # Fallback
-    
-    def ensure_valid_token(self):
-        """Ensure the token is valid, refresh if needed."""
-        if not self.is_authenticated():
-            logger.info("Not authenticated. Authenticating now.")
-            self.authenticate()
-        elif time.time() >= self.token_expiry_time:
-            logger.info("Token expired or about to expire. Refreshing...")
-            self.refresh_auth_token()
-    
-    def is_authenticated(self):
-        return self.auth_token is not None and 'access_token' in self.auth_token
+    """
+    Official Zwift Developer API client.
 
-    def fetch_json_with_retry(self, url, headers, params=None):
-        """Fetch JSON data with retries, handling both request and JSON parsing errors."""
-        @backoff.on_exception(backoff.expo, (RequestException, ValueError), max_tries=3)
-        def _fetch():
-            response = requests.get(url, headers=headers, params=params, timeout=20)
-            response.raise_for_status()
-            return response.json()
-        return _fetch()
-    
-    def get_profile(self, id):
-        self.ensure_valid_token()
-        
-        headers = {
-            'Authorization': f"Bearer {self.auth_token['access_token']}",
-            'Accept': 'application/json'
+    Supports:
+    - OAuth authorization code + refresh token lifecycle
+    - OAuth client credentials token lifecycle
+    - Official profile, activities, subscriptions and event-result endpoints
+    """
+
+    def __init__(
+        self,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+        auth_base_url: str | None = None,
+        api_base_url: str | None = None,
+        redirect_uri: str | None = None,
+        migration_mode: str | None = None,
+    ) -> None:
+        self.client_id = client_id or ZWIFT_CLIENT_ID
+        self.client_secret = client_secret or ZWIFT_CLIENT_SECRET
+        self.auth_base_url = (auth_base_url or ZWIFT_AUTH_BASE_URL).rstrip("/")
+        self.api_base_url = (api_base_url or ZWIFT_API_BASE_URL).rstrip("/")
+        self.redirect_uri = redirect_uri or ZWIFT_REDIRECT_URI
+        self.migration_mode = (migration_mode or ZWIFT_MIGRATION_MODE).strip().lower()
+        self.allow_legacy_fallback = self.migration_mode in {"dual_stack", "dual", "legacy_fallback"}
+
+        self.token_url = f"{self.auth_base_url}/protocol/openid-connect/token"
+        self.revoke_url = f"{self.auth_base_url}/protocol/openid-connect/revoke"
+        self.authorize_url = f"{self.auth_base_url}/protocol/openid-connect/auth"
+
+        self._app_access_token: str | None = None
+        self._app_token_expiry_epoch: float = 0.0
+
+    # ------------------------------------------------------------------
+    # OAuth helpers
+    # ------------------------------------------------------------------
+
+    def build_authorize_url(
+        self,
+        state: str,
+        scope: str = "activity profile:read fitness_metrics:read",
+        prompt_login: bool = False,
+    ) -> str:
+        params = {
+            "client_id": self.client_id,
+            "response_type": "code",
+            "scope": scope,
+            "redirect_uri": self.redirect_uri,
+            "state": state,
         }
-  
-        url = f'https://us-or-rly101.zwift.com/api/profiles/{id}'
-        try:
-            response = requests.get(url, headers=headers, timeout=20)
-            if response.status_code == 200:
-                return response.json()
-            elif response.status_code == 404:
-                return None
-            else:
-                print(f"Zwift API Error {response.status_code}: {response.text}")
-                return None
-        except Exception as e:
-            print(f"Zwift API Request Error: {e}")
+        if prompt_login:
+            params["prompt"] = "login"
+        return f"{self.authorize_url}?{urlencode(params)}"
+
+    def exchange_code_for_tokens(self, code: str, redirect_uri: str | None = None) -> tuple[int, dict[str, Any]]:
+        payload = {
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirect_uri or self.redirect_uri,
+        }
+        response = self._post_form(self.token_url, payload)
+        return response.status_code, self._safe_json(response)
+
+    def refresh_user_token(self, refresh_token: str) -> tuple[int, dict[str, Any]]:
+        payload = {
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+        }
+        response = self._post_form(self.token_url, payload)
+        return response.status_code, self._safe_json(response)
+
+    def revoke_token(self, refresh_token: str) -> bool:
+        payload = {
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+            "token": refresh_token,
+        }
+        response = self._post_form(self.revoke_url, payload)
+        return response.status_code == 200
+
+    def authenticate(self) -> None:
+        """
+        Kept for backwards compatibility with old callers.
+        Now acquires an app token via client_credentials.
+        """
+        self.get_app_access_token(force_refresh=True)
+
+    def refresh_auth_token(self) -> None:
+        """
+        Kept for backwards compatibility with old callers.
+        """
+        self.get_app_access_token(force_refresh=True)
+
+    def ensure_valid_token(self) -> None:
+        """
+        Kept for backwards compatibility with old callers.
+        """
+        self.get_app_access_token()
+
+    def is_authenticated(self) -> bool:
+        return bool(self._app_access_token and time.time() < self._app_token_expiry_epoch)
+
+    def get_app_access_token(self, force_refresh: bool = False) -> str:
+        if not force_refresh and self.is_authenticated():
+            return self._app_access_token or ""
+
+        payload = {
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+            "grant_type": "client_credentials",
+        }
+        response = self._post_form(self.token_url, payload)
+        if response.status_code != 200:
+            raise RuntimeError(f"Zwift client_credentials failed ({response.status_code}): {response.text}")
+        data = self._safe_json(response)
+        token = data.get("access_token")
+        if not token:
+            raise RuntimeError("Zwift client_credentials response missing access_token")
+        ttl = int(data.get("expires_in", 21600))
+        self._app_access_token = token
+        self._app_token_expiry_epoch = time.time() + max(ttl - 60, 60)
+        return token
+
+    # ------------------------------------------------------------------
+    # Official API helpers
+    # ------------------------------------------------------------------
+
+    def get_profile(
+        self,
+        rider_id: int | None = None,
+        user_access_token: str | None = None,
+        include_competition_metrics: bool = True,
+    ) -> dict[str, Any] | None:
+        """
+        Official replacement for old /api/profiles/{id}.
+        Returns the authenticated rider profile from /api/link/racing-profile.
+
+        rider_id is kept for compatibility but ignored by the official endpoint.
+        """
+        params = {"includeCompetitionMetrics": str(include_competition_metrics).lower()}
+        response = self._api_get("/api/link/racing-profile", token=user_access_token, params=params)
+        if response.status_code == 404:
             return None
+        if response.status_code != 200:
+            logger.error("Zwift profile fetch failed (%s): %s", response.status_code, response.text)
+            return None
+        return self._safe_json(response)
 
-    def get_event_info(self, event_id, event_secret=None):
-        self.ensure_valid_token()
-        headers = {
-            'Authorization': f"Bearer {self.auth_token['access_token']}",
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-        }
-        url = f'https://us-or-rly101.zwift.com/api/events/{event_id}'
+    def get_user_activity(self, activity_id: str, user_access_token: str) -> dict[str, Any] | None:
+        response = self._api_get(f"/api/thirdparty/activity/{activity_id}", token=user_access_token)
+        if response.status_code == 404:
+            return None
+        if response.status_code != 200:
+            logger.error("Zwift activity fetch failed (%s): %s", response.status_code, response.text)
+            return None
+        return self._safe_json(response)
+
+    def get_power_profile(self, user_access_token: str) -> dict[str, Any] | None:
+        response = self._api_get("/api/link/power-curve/power-profile", token=user_access_token)
+        if response.status_code != 200:
+            logger.error("Zwift power profile fetch failed (%s): %s", response.status_code, response.text)
+            return None
+        return self._safe_json(response)
+
+    def get_best_power_curve_all_time(self, user_access_token: str) -> dict[str, Any] | None:
+        response = self._api_get("/api/link/power-curve/best/all-time", token=user_access_token)
+        if response.status_code != 200:
+            logger.error("Zwift best all-time curve fetch failed (%s): %s", response.status_code, response.text)
+            return None
+        return self._safe_json(response)
+
+    def get_best_power_curve_last(self, user_access_token: str, days: int = 30) -> dict[str, Any] | None:
+        response = self._api_get("/api/link/power-curve/best/last", token=user_access_token, params={"days": days})
+        if response.status_code != 200:
+            logger.error("Zwift best recent curve fetch failed (%s): %s", response.status_code, response.text)
+            return None
+        return self._safe_json(response)
+
+    # ------------------------------------------------------------------
+    # Subscriptions / webhooks
+    # ------------------------------------------------------------------
+
+    def subscribe_activity(self, user_access_token: str) -> tuple[int, dict[str, Any]]:
+        response = self._api_post("/api/thirdparty/activity/subscribe", token=user_access_token)
+        return response.status_code, self._safe_json(response)
+
+    def unsubscribe_activity(self, user_access_token: str) -> tuple[int, dict[str, Any]]:
+        response = self._api_delete("/api/thirdparty/activity/subscribe", token=user_access_token)
+        return response.status_code, self._safe_json(response)
+
+    def unsubscribe_activity_for_user(self, user_id: str) -> tuple[int, dict[str, Any]]:
+        response = self._api_delete(f"/api/thirdparty/activity/subscribe/{user_id}")
+        return response.status_code, self._safe_json(response)
+
+    def subscribe_racing_score(self, user_access_token: str) -> tuple[int, dict[str, Any]]:
+        response = self._api_post("/api/thirdparty/racing-score/subscribe", token=user_access_token)
+        return response.status_code, self._safe_json(response)
+
+    def unsubscribe_racing_score(self, user_access_token: str) -> tuple[int, dict[str, Any]]:
+        response = self._api_delete("/api/thirdparty/racing-score/subscribe", token=user_access_token)
+        return response.status_code, self._safe_json(response)
+
+    def unsubscribe_racing_score_for_user(self, user_id: str) -> tuple[int, dict[str, Any]]:
+        response = self._api_delete(f"/api/thirdparty/racing-score/subscribe/{user_id}")
+        return response.status_code, self._safe_json(response)
+
+    def subscribe_power_curve(self, user_access_token: str) -> tuple[int, dict[str, Any]]:
+        response = self._api_post("/api/thirdparty/power-curve/subscribe", token=user_access_token)
+        return response.status_code, self._safe_json(response)
+
+    def unsubscribe_power_curve(self, user_access_token: str) -> tuple[int, dict[str, Any]]:
+        response = self._api_delete("/api/thirdparty/power-curve/subscribe", token=user_access_token)
+        return response.status_code, self._safe_json(response)
+
+    def unsubscribe_power_curve_for_user(self, user_id: str) -> tuple[int, dict[str, Any]]:
+        response = self._api_delete(f"/api/thirdparty/power-curve/subscribe/{user_id}")
+        return response.status_code, self._safe_json(response)
+
+    # ------------------------------------------------------------------
+    # Event and race helpers (official path variants)
+    # ------------------------------------------------------------------
+
+    def get_event_info(self, event_id: str, event_secret: str | None = None) -> dict[str, Any]:
+        """
+        Official migration path uses /api/link/events/{eventId}.
+        """
+        params = {}
         if event_secret:
-            url += f'?eventSecret={event_secret}'
-        return self.fetch_json_with_retry(url, headers=headers)
+            params["eventSecret"] = event_secret
+        response = self._api_get(f"/api/link/events/{event_id}", params=params)
+        if response.status_code == 200:
+            return self._safe_json(response)
 
-    def get_event_results(self, event_sub_id, limit=50, event_secret=None):
-        self.ensure_valid_token()
-        headers = {
-            'Authorization': f"Bearer {self.auth_token['access_token']}",
-            'Accept': 'application/json, text/plain, */*',
-        }
-        results_url = f'https://us-or-rly101.zwift.com/api/race-results/entries'
-        
-        start = 0
-        all_results = []
-        
+        if self.allow_legacy_fallback:
+            legacy_response = self._api_get(f"/api/events/{event_id}", params=params)
+            legacy_response.raise_for_status()
+            return self._safe_json(legacy_response)
+
+        response.raise_for_status()
+        return {}
+
+    def get_event_results(self, event_sub_id: str, limit: int = 100, event_secret: str | None = None) -> list[dict[str, Any]]:
+        """
+        Uses official /api/link/events/subgroups/{subgroupId}/segment-results.
+        Normalizes entries to preserve legacy keys consumed by scorers.
+        """
+        del event_secret  # Official endpoint does not use eventSecret.
+        cursor: str | None = None
+        all_entries: list[dict[str, Any]] = []
+
         while True:
-            params = {
-                'event_subgroup_id': event_sub_id,
-                'start': start,
-                'limit': limit,
-            }
-            if event_secret:
-                params['eventSecret'] = event_secret
-
-            try:
-                data = self.fetch_json_with_retry(results_url, headers, params)
-                if 'entries' in data:
-                    entries = data['entries']
-                    all_results.extend(entries)
-                else:
-                    break
-                
-                if len(entries) < limit:
-                    break
-                start += len(entries)
-                time.sleep(1) # Gentle backoff
-            except Exception as e:
-                print(f"Error fetching event results page: {e}")
+            params = {}
+            if cursor:
+                params["cursor"] = cursor
+            response = self._api_get(f"/api/link/events/subgroups/{event_sub_id}/segment-results", params=params)
+            if response.status_code != 200 and self.allow_legacy_fallback:
+                return self._get_event_results_legacy(event_sub_id, limit=limit)
+            response.raise_for_status()
+            data = self._safe_json(response)
+            entries = data.get("entries", [])
+            for e in entries:
+                user_id = e.get("userId")
+                all_entries.append(
+                    {
+                        "profileId": user_id,
+                        "profileData": {
+                            "id": user_id,
+                            "userId": user_id,
+                            "firstName": "",
+                            "lastName": "",
+                        },
+                        "activityData": {
+                            "durationInMilliseconds": e.get("durationInMilliseconds", 0),
+                        },
+                        "flaggedCheating": False,
+                        "flaggedSandbagging": False,
+                        "criticalP": {},
+                        "_officialSegmentResult": e,
+                    }
+                )
+            cursor = data.get("cursor")
+            if not cursor or len(entries) < limit:
                 break
-                
-        return all_results
+        return all_entries
+
+    def _get_event_results_legacy(self, event_sub_id: str, limit: int = 100) -> list[dict[str, Any]]:
+        start = 0
+        all_entries: list[dict[str, Any]] = []
+        while True:
+            response = self._api_get(
+                "/api/race-results/entries",
+                params={"event_subgroup_id": event_sub_id, "start": start, "limit": limit},
+            )
+            response.raise_for_status()
+            payload = self._safe_json(response)
+            entries = payload.get("entries", [])
+            all_entries.extend(entries)
+            if len(entries) < limit:
+                break
+            start += len(entries)
+        return all_entries
 
     def get_event_participants(
-            self,
-            event_sub_id,
-            joined=False,
-            limit=100,
-            page=None,
-            participant_type='all',
-            page_delay=10,
-            overlap_delay=0,
-        ):
+        self,
+        event_sub_id: str,
+        joined: bool = False,
+        limit: int = 100,
+        page: int | None = None,
+        participant_type: str = "all",
+        page_delay: int = 0,
+        overlap_delay: int = 0,
+    ) -> list[dict[str, Any]]:
         """
-        Fetch participants for a specific event subgroup with pagination.
-
-        Notes:
-        - The signed_up endpoint returns duplicates and has broken paging.
-          We de-duplicate by athlete id and fetch overlapping pages to compensate.
+        Official replacement uses /api/link/events/subgroups/{subgroupId}/live-data.
+        This only returns active participants.
         """
-        self.ensure_valid_token()
-        
-        headers = {
-            'Authorization': f"Bearer {self.auth_token['access_token']}",
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            # Avoid brotli responses (requests doesn't decode br by default)
-            'Accept-Encoding': 'gzip, deflate',
-        }
-        
-        participants_url = f'https://us-or-rly101.zwift.com/api/events/subgroups/entrants/{event_sub_id}'
-        start = (page * limit) if page is not None else 0
-        all_participants = []
-        seen_ids = set()
+        del joined, participant_type, overlap_delay
+        current_page = page or 0
+        participants: list[dict[str, Any]] = []
 
-        def merge_page(start_offset):
-            params = {
-                'type': participant_type,
-                'participation': 'registered' if joined else 'signed_up',
-                'start': start_offset,
-                'limit': limit,
-            }
-            data = self.fetch_json_with_retry(participants_url, headers, params)
-            for participant in data:
-                participant_id = participant.get('id')
-                if participant_id is None or participant_id not in seen_ids:
-                    if participant_id is not None:
-                        seen_ids.add(participant_id)
-                    all_participants.append(participant)
-            return data
-
-        overlapping_starts = []
         while True:
-            try:
-                data = merge_page(start)
-                print(f"Fetched {len(data)} participants, total so far: {len(all_participants)}.")
-
-                if not joined and (start or len(data) == limit):
-                    # Overlapping pages help compensate for broken paging on signed_up.
-                    step = 20
-                    for i in range(step, limit, step):
-                        overlapping_starts.append(start + i)
-
-                # Stop if fewer than limit participants are returned, indicating end of pages
-                if len(data) < limit:
-                    break
-                start += len(data)  # Move to the next page
-
-                if page is not None:
-                    break
-
-                if page_delay:
-                    time.sleep(page_delay)  # Delay between requests
-
-            except ValueError as e:
-                print("JSON parsing error or non-JSON response:", e)
-                break  # Exit loop on persistent JSON parsing errors
-
-            except RequestException as e:
-                print(f"Request error: {e}")
-                break  # Exit loop on request error
-
-        # Fetch overlapping pages (sequentially) to improve coverage.
-        for overlap_start in overlapping_starts:
-            try:
-                merge_page(overlap_start)
-                if overlap_delay:
-                    time.sleep(overlap_delay)
-            except (ValueError, RequestException) as e:
-                print(f"Overlap fetch error: {e}")
-
-        return all_participants
-
-    def get_segment_results(self, segment_id, from_date=None, to_date=None):
-        self.ensure_valid_token()
-        headers = {
-            'Authorization': f"Bearer {self.auth_token['access_token']}",
-            'Content-Type': 'application/json'
-        }
-        
-        query = {
-            'world_id': 1, # Zwift usually requires this but sometimes ignores it for segment lookup
-            'segment_id': segment_id,
-        }
-        if from_date:
-            query['from'] = zwift_compat_date(from_date)
-        if to_date:
-            query['to'] = zwift_compat_date(to_date)
-            
-        url = f'https://us-or-rly101.zwift.com/api/segment-results'
-        
-        try:
-            response = requests.get(url, headers=headers, params=query, timeout=20)
+            response = self._api_get(
+                f"/api/link/events/subgroups/{event_sub_id}/live-data",
+                params={"page": current_page, "limit": limit},
+            )
             response.raise_for_status()
-            
-            binary_data = response.content
-            segment_results_pb = SegmentResults()
-            segment_results_pb.ParseFromString(binary_data)
-            return MessageToDict(segment_results_pb)
-        except Exception as e:
-            print(f"Error fetching segment results: {e}")
+            data = self._safe_json(response)
+            rows = data.get("data", [])
+            for row in rows:
+                user_id = row.get("userId")
+                participants.append(
+                    {
+                        "id": user_id,
+                        "userId": user_id,
+                        "firstName": "",
+                        "lastName": "",
+                        "_officialLiveData": row,
+                    }
+                )
+            if len(rows) < limit or page is not None:
+                break
+            current_page += 1
+            if page_delay:
+                time.sleep(page_delay)
+        return participants
+
+    def get_segment_results(self, segment_id: str, from_date: datetime | None = None, to_date: datetime | None = None) -> dict[str, Any]:
+        """
+        There is no direct official equivalent for legacy global segment-result lookup.
+        Kept for compatibility and returns an empty payload.
+        """
+        del segment_id, from_date, to_date
+        return {}
+
+    # ------------------------------------------------------------------
+    # Internal HTTP helpers
+    # ------------------------------------------------------------------
+
+    def _post_form(self, url: str, payload: dict[str, Any]) -> Response:
+        return requests.post(
+            url,
+            data=payload,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=20,
+        )
+
+    def _api_get(self, path: str, token: str | None = None, params: dict[str, Any] | None = None) -> Response:
+        return self._api_request("GET", path, token=token, params=params)
+
+    def _api_post(self, path: str, token: str | None = None, body: dict[str, Any] | None = None) -> Response:
+        return self._api_request("POST", path, token=token, json_body=body)
+
+    def _api_delete(self, path: str, token: str | None = None) -> Response:
+        return self._api_request("DELETE", path, token=token)
+
+    def _api_request(
+        self,
+        method: str,
+        path: str,
+        token: str | None = None,
+        params: dict[str, Any] | None = None,
+        json_body: dict[str, Any] | None = None,
+        retries: int = 3,
+    ) -> Response:
+        access_token = token or self.get_app_access_token()
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/json",
+        }
+        url = f"{self.api_base_url}{path}"
+        last_error: Exception | None = None
+
+        for attempt in range(1, retries + 1):
+            try:
+                response = requests.request(
+                    method=method,
+                    url=url,
+                    headers=headers,
+                    params=params,
+                    json=json_body,
+                    timeout=20,
+                )
+                if response.status_code in {429, 500, 502, 503, 504} and attempt < retries:
+                    time.sleep(attempt)
+                    continue
+                return response
+            except RequestException as exc:
+                last_error = exc
+                if attempt < retries:
+                    time.sleep(attempt)
+                    continue
+                raise
+
+        if last_error:
+            raise last_error
+        raise RuntimeError("Unexpected request failure without exception")
+
+    @staticmethod
+    def _safe_json(response: Response) -> dict[str, Any]:
+        try:
+            data = response.json()
+            return data if isinstance(data, dict) else {}
+        except Exception:
             return {}

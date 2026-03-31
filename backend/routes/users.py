@@ -1,10 +1,11 @@
 from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
-from extensions import db, get_zwift_service, get_zp_service, zr_service, stats_queue
+from extensions import db, get_zwift_service, zr_service, stats_queue
 from services.policy_store import POLICY_DATA_POLICY, POLICY_PUBLIC_RESULTS, PolicyError, get_policy_meta
 from services.user_service import UserService
 from services.category_engine import ZR_CATEGORIES, serialize_liga_category
 from services.schema_validation import log_schema_issues, validate_user_doc, with_schema_version
+from services.zwift_tokens import get_valid_access_token, get_token_doc
 from authz import verify_user_token, AuthzError
 
 import logging
@@ -52,6 +53,7 @@ def get_profile():
             'club': user.club,
             'trainer': user.trainer,
             'stravaConnected': bool(user._data.get('connections', {}).get('strava')),
+            'zwiftConnected': bool(user._data.get('connections', {}).get('zwift')),
             'acceptedCoC': user.registration.get('cocAccepted', False),
             'acceptedDataPolicy': user.accepted_data_policy,
             'acceptedPublicResults': user.accepted_public_results,
@@ -122,6 +124,12 @@ def signup():
                 'updatedAt': firestore.SERVER_TIMESTAMP,
                 'zwiftId': zwift_id,
             }
+            # Preserve existing linked Zwift UUID if connection is already established.
+            existing_user = UserService.get_user_by_auth_uid(uid)
+            if existing_user:
+                existing_zwift_user_id = (existing_user.to_dict() or {}).get('zwiftUserId')
+                if existing_zwift_user_id:
+                    user_data['zwiftUserId'] = existing_zwift_user_id
             if name: user_data['name'] = name
             if club: user_data['club'] = club
             
@@ -378,7 +386,6 @@ def get_participants():
         
         for user in user_objects:
             data = user._data
-            zp = data.get('zwiftPower', {})
             zr = data.get('zwiftRacing', {})
             zpro = data.get('zwiftProfile', {})
             lc = serialize_liga_category(data.get('ligaCategory'))
@@ -387,8 +394,8 @@ def get_participants():
                 'name': user.name,
                 'zwiftId': user.zwift_id,
                 'club': user.club,
-                'category': zp.get('category', 'N/A'),
-                'ftp': zp.get('ftp', 'N/A'),
+                'category': lc.get('category') or 'N/A',
+                'ftp': zpro.get('ftp', 'N/A'),
                 'rating': zr.get('currentRating', 'N/A'),
                 'max30Rating': zr.get('max30Rating', 'N/A'),
                 'max90Rating': zr.get('max90Rating', 'N/A'),
@@ -415,7 +422,6 @@ def get_stats():
     except Exception as e:
         logger.error(f"Token lookup failed in stats: {e}")
 
-    zp_data = {'category': 'N/A', 'ftp': 'N/A'}
     zr_data = {}
     zwift_data = {}
 
@@ -423,18 +429,6 @@ def get_stats():
         try:
             zwift_id = target_user.zwift_id
             if zwift_id:
-                try:
-                    zp = get_zp_service()
-                    zp_json = zp.get_rider_data_json(int(zwift_id))
-                    if zp_json and 'data' in zp_json and len(zp_json['data']) > 0:
-                        rider_info = zp_json['data'][0]
-                        zp_data = {
-                            'category': rider_info.get('category', 'N/A'),
-                            'ftp': rider_info.get('ftp', 'N/A'),
-                        }
-                except Exception as zp_e:
-                    logger.error(f"ZwiftPower fetch error: {zp_e}")
-
                 try:
                     zr_json = zr_service.get_rider_data(str(zwift_id))
                     if zr_json:
@@ -455,16 +449,18 @@ def get_stats():
 
                 try:
                     zwift_service = get_zwift_service()
-                    profile = zwift_service.get_profile(int(zwift_id))
+                    access_token = get_valid_access_token(str(target_user.id), zwift_service)
+                    profile = zwift_service.get_profile(user_access_token=access_token) if access_token else None
                     if profile:
+                        competition = profile.get('competitionMetrics') or {}
                         zwift_data = {
-                            'ftp': profile.get('ftp', 'N/A'),
+                            'ftp': competition.get('ftp', 'N/A'),
                             'weight': f"{round(profile.get('weight', 0) / 1000, 1)} kg" if profile.get('weight') else 'N/A',
-                            'height': f"{round(profile.get('height', 0) / 10, 0)} cm" if profile.get('height') else 'N/A',
-                            'totalDistance': f"{int(profile.get('totalDistance', 0) / 1000)} km" if profile.get('totalDistance') else 'N/A',
-                            'totalTime': f"{int(profile.get('totalTimeInMinutes', 0) / 60)} hrs" if profile.get('totalTimeInMinutes') else 'N/A',
-                            'level': int(profile.get('level', 0)),
-                            'racingScore': profile.get('competitionMetrics', {}).get('racingScore', 'N/A')
+                            'height': f"{round(profile.get('heightInMillimeters', 0) / 10, 0)} cm" if profile.get('heightInMillimeters') else 'N/A',
+                            'racingScore': competition.get('racingScore', 'N/A'),
+                            'zftp': competition.get('zftp', 'N/A'),
+                            'zmap': competition.get('zmap', 'N/A'),
+                            'vo2max': competition.get('vo2max', 'N/A'),
                         }
                 except Exception as z_e:
                     logger.error(f"Zwift API fetch error: {z_e}")
@@ -479,11 +475,6 @@ def get_stats():
                 **zwift_data
             },
             {
-                'platform': 'ZwiftPower', 
-                'category': zp_data.get('category', 'N/A'),
-                'ftp': zp_data.get('ftp', 'N/A')
-            },
-            {
                 'platform': 'ZwiftRacing',
                 **zr_data
             }
@@ -494,16 +485,36 @@ def get_stats():
 @users_bp.route('/verify/zwift/<zwift_id>', methods=['GET'])
 def verify_zwift_id(zwift_id):
     try:
+        try:
+            decoded_token = verify_user_token(request)
+        except AuthzError as e:
+            return jsonify({'message': e.message}), e.status_code
+
+        uid = decoded_token['uid']
+        user = UserService.get_user_by_auth_uid(uid)
+        if not user:
+            return jsonify({'message': 'User profile not found'}), 404
+
         zwift_service = get_zwift_service()
-        profile = zwift_service.get_profile(int(zwift_id))
+        token_doc = get_token_doc(str(user.id)) or {}
+        if not token_doc:
+            return jsonify({'message': 'Connect your Zwift account first'}), 400
+
+        access_token = get_valid_access_token(str(user.id), zwift_service)
+        profile = zwift_service.get_profile(user_access_token=access_token) if access_token else None
 
         if not profile:
             return jsonify({'message': 'Rider not found'}), 404
 
+        profile_numeric_id = str(profile.get('id', '')).strip()
+        if str(zwift_id).strip() != profile_numeric_id:
+            return jsonify({'message': 'Zwift ID does not match connected Zwift account'}), 400
+
         return jsonify({
             'firstName': profile.get('firstName'),
             'lastName': profile.get('lastName'),
-            'id': profile.get('id')
+            'id': profile.get('id'),
+            'userId': profile.get('userId'),
         }), 200
     except Exception as e:
         logger.error(f"Zwift verify error for {zwift_id}: {e}")

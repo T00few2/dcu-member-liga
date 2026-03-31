@@ -36,8 +36,8 @@ function getAxisTicks(data: any[]) {
 
 interface VerificationChartsProps {
     zpData: ZwiftPowerResult[];
-    selectedRaceDate: number | null;
-    onSelectRaceDate: (date: number) => void;
+    selectedRaceDate: number | string | null;
+    onSelectRaceDate: (date: number | string) => void;
     powerTrendStat: string;
     onPowerTrendStatChange: (v: string) => void;
     curveTimeRange: number;
@@ -53,18 +53,24 @@ export default function VerificationCharts({
     curveTimeRange,
     onCurveTimeRangeChange,
 }: VerificationChartsProps) {
+    const toEpochSeconds = (value: number | string): number => {
+        if (typeof value === 'number') return value;
+        const parsed = Date.parse(value);
+        return Number.isNaN(parsed) ? 0 : Math.floor(parsed / 1000);
+    };
+
     // Weight & height data
     const weightHeightData = zpData.map(d => ({
-        date: new Date(d.date * 1000).toISOString().split('T')[0],
+        date: new Date(toEpochSeconds(d.date) * 1000).toISOString().split('T')[0],
         weight: d.weight > 0 ? d.weight : null,
         height: d.height > 0 ? d.height : null,
     })).filter(d => d.weight || d.height);
 
     // Power trend data
     const ninetyDaysAgo = Date.now() / 1000 - 90 * 24 * 60 * 60;
-    const powerData = zpData.filter(d => d.date > ninetyDaysAgo).map(d => ({
-        date: new Date(d.date * 1000).toISOString().split('T')[0],
-        timestamp: d.date,
+    const powerData = zpData.filter(d => toEpochSeconds(d.date) > ninetyDaysAgo).map(d => ({
+        date: new Date(toEpochSeconds(d.date) * 1000).toISOString().split('T')[0],
+        timestamp: toEpochSeconds(d.date),
         power: powerTrendStat === 'avg' ? d.avg_watts : (d.cp_curve?.[powerTrendStat] ?? 0),
         hr: d.avg_hr,
         title: d.event_title,
@@ -72,7 +78,7 @@ export default function VerificationCharts({
 
     // CP curve data
     const curveCutoff = curveTimeRange === 0 ? 0 : Date.now() / 1000 - curveTimeRange * 24 * 60 * 60;
-    const curveRaces = zpData.filter(d => d.date > curveCutoff);
+    const curveRaces = zpData.filter(d => toEpochSeconds(d.date) > curveCutoff);
     const bestCurve: Record<string, number> = {};
     CP_DURATIONS.forEach(dur => {
         bestCurve[dur.key] = curveRaces.reduce((max, race) => Math.max(max, race.cp_curve?.[dur.key] ?? 0), 0);
@@ -85,7 +91,7 @@ export default function VerificationCharts({
             highlightedPower: highlightedRace?.cp_curve?.[dur.key] ?? null,
         };
         curveRaces.forEach(race => {
-            if (race.cp_curve) point[`race_${race.date}`] = race.cp_curve[dur.key] || null;
+            if (race.cp_curve) point[`race_${toEpochSeconds(race.date)}`] = race.cp_curve[dur.key] || null;
         });
         return point;
     });
@@ -142,7 +148,7 @@ export default function VerificationCharts({
                                 )}
                             />
                             {curveRaces.map(race => (
-                                <Line key={race.date} type="monotone" dataKey={`race_${race.date}`}
+                                <Line key={String(race.date)} type="monotone" dataKey={`race_${toEpochSeconds(race.date)}`}
                                     stroke="#8884d8" strokeOpacity={0.15} strokeWidth={1} dot={false} isAnimationActive={false} />
                             ))}
                             <Line type="monotone" dataKey="maxPower" stroke="#8884d8"
@@ -213,7 +219,7 @@ export default function VerificationCharts({
                                 name={powerTrendStat === 'avg' ? 'Avg Power' : `${powerTrendStat} Power`} unit="W"
                                 strokeWidth={2} activeDot={{ r: 8 }}
                                 dot={(props: any) => {
-                                    if (selectedRaceDate && props.payload.timestamp === selectedRaceDate)
+                                    if (selectedRaceDate && props.payload.timestamp === toEpochSeconds(selectedRaceDate))
                                         return <circle cx={props.cx} cy={props.cy} r={6} fill="#ff0000" stroke="none" />;
                                     return <circle cx={props.cx} cy={props.cy} r={0} />;
                                 }}

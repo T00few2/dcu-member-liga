@@ -12,7 +12,7 @@ function RegisterContent() {
     const {
         authLoading, fetchingProfile,
         name, setName, zwiftId, setZwiftId,
-        club, setClub, trainer, setTrainer, stravaConnected,
+        club, setClub, trainer, setTrainer, stravaConnected, zwiftConnected,
         acceptedCoC, setAcceptedCoC, acceptedDataPolicy, setAcceptedDataPolicy,
         acceptedPublicResults, setAcceptedPublicResults,
         weightVerificationStatus, weightVerificationVideoLink,
@@ -24,7 +24,7 @@ function RegisterContent() {
         submitting, savingProgress, message, error,
         step0Valid, step1Valid, step2Valid,
         verifyZwiftId, confirmZwiftIdentity,
-        handleConnectStrava, handleDisconnectStrava, handleRequestTrainer, saveData,
+        handleConnectStrava, handleDisconnectStrava, handleConnectZwift, handleDisconnectZwift, handleRequestTrainer, saveData,
     } = useRegistration();
 
     if (authLoading || fetchingProfile) {
@@ -93,8 +93,11 @@ function RegisterContent() {
                         {activeTab === 'connections' && (
                             <ConnectionsForm
                                 stravaConnected={stravaConnected}
+                                zwiftConnected={zwiftConnected}
                                 handleConnectStrava={handleConnectStrava}
                                 handleDisconnectStrava={handleDisconnectStrava}
+                                handleConnectZwift={handleConnectZwift}
+                                handleDisconnectZwift={handleDisconnectZwift}
                             />
                         )}
                         {activeTab === 'agreements' && (
@@ -146,8 +149,11 @@ function RegisterContent() {
                                 <h2 className="text-xl font-semibold mb-4 text-card-foreground">Forbind konti</h2>
                                 <ConnectionsForm
                                     stravaConnected={stravaConnected}
+                                    zwiftConnected={zwiftConnected}
                                     handleConnectStrava={handleConnectStrava}
                                     handleDisconnectStrava={handleDisconnectStrava}
+                                    handleConnectZwift={handleConnectZwift}
+                                    handleDisconnectZwift={handleDisconnectZwift}
                                 />
                             </div>
                         )}

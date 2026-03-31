@@ -4,13 +4,11 @@ import threading
 import firebase_admin
 from firebase_admin import credentials, firestore
 from services.strava import StravaService
-from services.zwiftpower import ZwiftPowerService
 from services.zwiftracing import ZwiftRacingService, RateLimitError
 from services.zwift import ZwiftService
 from services.zwift_game import ZwiftGameService
 from services.cached_service import CachedService
 from services.schema_validation import with_schema_version
-from config import ZWIFT_USERNAME, ZWIFT_PASSWORD
 
 import logging
 
@@ -65,32 +63,10 @@ zr_service = ZwiftRacingService()
 _zwift_game_service = ZwiftGameService()
 
 
-# --- ZwiftPower (session-based, requires re-login after TTL) ---
-
-def _make_zp_service() -> ZwiftPowerService:
-    service = ZwiftPowerService(ZWIFT_USERNAME, ZWIFT_PASSWORD)
-    try:
-        service.login()
-    except Exception as e:
-        logger.error(f"Failed to initialize ZwiftPower session: {e}")
-    return service  # Return even on failure; callers handle downstream errors.
-
-
-_zp_cache = CachedService(
-    factory=_make_zp_service,
-    name='ZwiftPower',
-    ttl=SESSION_TTL_SECONDS,
-)
-
-
-def get_zp_service() -> ZwiftPowerService:
-    return _zp_cache.get()
-
-
 # --- Zwift API (token-based, auto-refreshes but we re-authenticate on TTL) ---
 
 def _make_zwift_service() -> ZwiftService:
-    service = ZwiftService(ZWIFT_USERNAME, ZWIFT_PASSWORD)
+    service = ZwiftService()
     try:
         service.authenticate()
     except Exception as e:

@@ -66,10 +66,12 @@ class ResultsProcessor:
             for cfg in event_config:
                 event_sources.append({
                     'id': cfg.get('eventId'),
+                    'subgroupId': cfg.get('subgroupId'),
                     'secret': cfg.get('eventSecret'),
                     'customCategory': cfg.get('customCategory'),
                     'sprints': cfg.get('sprints', []),
-                    'segmentType': cfg.get('segmentType') or race_data.get('segmentType')
+                    'segmentType': cfg.get('segmentType') or race_data.get('segmentType'),
+                    'startTime': cfg.get('startTime') or race_data.get('date'),
                 })
 
         if not event_sources:
@@ -92,6 +94,7 @@ class ResultsProcessor:
         for doc in users_docs:
             data = doc.to_dict()
             zid = data.get('zwiftId')
+            zuid = data.get('zwiftUserId')
 
             reg = data.get('registration', {})
             is_registered = reg.get('status') == 'complete'
@@ -103,6 +106,8 @@ class ResultsProcessor:
 
             if zid and is_registered:
                 registered_riders[str(zid)] = data
+            if zuid and is_registered:
+                registered_riders[str(zuid)] = data
 
         logger.info(f"Found {len(registered_riders)} registered riders in database.")
 
@@ -253,23 +258,33 @@ class ResultsProcessor:
         filter_registered: bool,
         category_filter: str | None,
     ) -> None:
-        event_id = source['id']
+        event_id = source.get('id')
+        direct_subgroup_id = source.get('subgroupId')
         event_secret = source['secret']
         custom_category = source['customCategory']
         category_config_map = source.get('categoryConfigMap', {})
 
-        if not event_id:
+        if not event_id and not direct_subgroup_id:
             return
 
         logger.info(f"Processing Event Source: {event_id} (Target Cat: {custom_category or 'Auto'})")
 
-        try:
-            event_info = self.zwift_fetcher.get_event_info(event_id, event_secret)
-        except Exception as e:
-            logger.error(f"Failed to fetch event info for {event_id}: {e}")
-            return
-
-        subgroups = self.zwift_fetcher.extract_subgroups(event_info)
+        if direct_subgroup_id:
+            subgroups = [{
+                "id": direct_subgroup_id,
+                "eventName": race_data.get("name", ""),
+                "subgroupLabel": custom_category or "All",
+                "routeId": race_data.get("routeId"),
+                "laps": race_data.get("laps"),
+                "eventSubgroupStart": source.get("startTime") or race_data.get("date"),
+            }]
+        else:
+            try:
+                event_info = self.zwift_fetcher.get_event_info(event_id, event_secret)
+            except Exception as e:
+                logger.error(f"Failed to fetch event info for {event_id}: {e}")
+                return
+            subgroups = self.zwift_fetcher.extract_subgroups(event_info)
         logger.info(f"  Found {len(subgroups)} subgroups.")
 
         custom_cat_finishers: list[Any] = []
@@ -291,8 +306,21 @@ class ResultsProcessor:
             start_time_str = subgroup['eventSubgroupStart']
 
             try:
-                clean_time = start_time_str.replace('Z', '+0000')
-                start_time = datetime.strptime(clean_time, '%Y-%m-%dT%H:%M:%S.%f%z')
+                if isinstance(start_time_str, datetime):
+                    start_time = start_time_str
+                else:
+                    raw = str(start_time_str or "")
+                    if raw.endswith("Z"):
+                        try:
+                            start_time = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                        except ValueError:
+                            clean_time = raw.replace('Z', '+0000')
+                            start_time = datetime.strptime(clean_time, '%Y-%m-%dT%H:%M:%S.%f%z')
+                    elif "T" in raw:
+                        dt_format = '%Y-%m-%dT%H:%M:%S' if len(raw) >= 19 else '%Y-%m-%dT%H:%M'
+                        start_time = datetime.strptime(raw[:19], dt_format)
+                    else:
+                        start_time = datetime.strptime(race_data.get('date', ''), '%Y-%m-%d')
             except Exception as e:
                 logger.error(f"Time parse error: {e}")
                 continue
