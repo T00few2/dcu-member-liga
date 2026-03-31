@@ -21,7 +21,7 @@ ZWIFT_CLIENT_ID = os.getenv('ZWIFT_CLIENT_ID')
 ZWIFT_CLIENT_SECRET = os.getenv('ZWIFT_CLIENT_SECRET')
 ZWIFT_AUTH_BASE_URL = os.getenv('ZWIFT_AUTH_BASE_URL', 'https://secure.zwift.com/auth/realms/zwift')
 ZWIFT_API_BASE_URL = os.getenv('ZWIFT_API_BASE_URL', 'https://us-or-rly101.zwift.com')
-ZWIFT_REDIRECT_URI = os.getenv('ZWIFT_REDIRECT_URI')
+ZWIFT_REDIRECT_URI = os.getenv('ZWIFT_REDIRECT_URI', f'{BACKEND_URL}/zwift/callback')
 ZWIFT_MIGRATION_MODE = os.getenv('ZWIFT_MIGRATION_MODE', 'official_only')
 
 SCHEDULER_SECRET = os.getenv('SCHEDULER_SECRET')
@@ -29,24 +29,20 @@ SCHEDULER_SECRET = os.getenv('SCHEDULER_SECRET')
 # Critical secrets — raise at startup so the app fails loudly.
 # In CI (GitHub Actions sets CI=true automatically), downgrade to a warning
 # so tests can run without real credentials.
-_required = [
+_zwift_required = [
     (n, v)
     for n, v in [
         ('ZWIFT_CLIENT_ID', ZWIFT_CLIENT_ID),
         ('ZWIFT_CLIENT_SECRET', ZWIFT_CLIENT_SECRET),
-        ('ZWIFT_REDIRECT_URI', ZWIFT_REDIRECT_URI),
     ]
     if not v
 ]
-if _required:
-    _names = ', '.join(n for n, _ in _required)
-    if os.getenv('CI'):
-        logger.warning(f"Config missing in CI mode: {_names}. Zwift integrations will be unavailable.")
-    else:
-        raise ValueError(
-            f"Required config missing: {_names}. "
-            "Set these variables in your .env file before starting the server."
-        )
+if _zwift_required:
+    _names = ', '.join(n for n, _ in _zwift_required)
+    logger.warning(
+        f"Config missing: {_names}. "
+        "Zwift integrations will be unavailable until these vars are configured."
+    )
 
 # Optional integrations — warn but allow startup without them
 for _name, _val, _hint in [
