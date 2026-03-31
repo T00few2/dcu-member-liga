@@ -1,6 +1,6 @@
 # DCU Member Liga - Backend
 
-This backend is built using **Python Flask** and is designed to run as a Google Cloud Function (`functions-framework`). It handles race management, results processing, league standings calculations, and user profiles.
+This backend is built using **Python Flask** and is designed to run as a Google Cloud Function (`functions-framework`). It handles race management, results processing, league standings calculations, and user profiles..
 
 ## Project Structure
 
