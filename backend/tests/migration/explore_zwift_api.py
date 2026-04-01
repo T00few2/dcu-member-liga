@@ -37,8 +37,6 @@ import argparse
 import json
 import os
 import sys
-import time
-
 import requests
 from dotenv import load_dotenv
 
@@ -161,7 +159,7 @@ def explore_segment_results(token: str, subgroup_id: str) -> None:
     # understand the structure (finish line vs. sprint segments).
     if isinstance(body, dict) and body.get("entries"):
         segment_ids = sorted({e.get("segmentId") for e in body["entries"] if e.get("segmentId")})
-        user_ids    = sorted({e.get("userId")    for e in body["entries"] if e.get("userId")})
+        user_ids = sorted({e.get("userId") for e in body["entries"] if e.get("userId")})
         print(f"\n  Unique segmentIds in this page : {segment_ids}")
         print(f"  Unique userIds in this page    : {len(user_ids)} riders")
 
@@ -304,7 +302,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    print(f"\nZwift API Explorer")
+    print("\nZwift API Explorer")
     print(f"  ZWIFT_API_BASE : {ZWIFT_API_BASE}")
     print(f"  ZWIFT_AUTH_BASE: {ZWIFT_AUTH_BASE}")
     print(f"  ZR_BASE_URL    : {ZR_BASE_URL}")
