@@ -16,6 +16,7 @@ export default function ConnectionsForm({
     stravaConnected, zwiftConnected, handleConnectStrava, handleDisconnectStrava, handleConnectZwift, handleDisconnectZwift
 }: ConnectionsFormProps) {
     const [zwiftLogoFailed, setZwiftLogoFailed] = useState(false);
+    const [dcuLogoFailed, setDcuLogoFailed] = useState(false);
 
     return (
         <div className="space-y-8">
@@ -27,26 +28,39 @@ export default function ConnectionsForm({
                         zwiftConnected ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' : 'bg-card border-border'
                     }`}
                 >
-                    <div className="mb-4 rounded-lg border border-black/10 bg-[#FC6719] px-4 py-3 text-white">
-                        {!zwiftLogoFailed ? (
-                            <img
-                                src="/zwift/zwiftlink-logo-lockups-generic-horizonal.png"
-                                alt="Zwift Link partner lockup"
-                                className="h-10 w-auto object-contain"
-                                onError={() => setZwiftLogoFailed(true)}
-                            />
-                        ) : (
-                            <div className="flex items-center justify-between gap-3">
-                                <div className="text-sm font-semibold tracking-wide">ZWIFT</div>
-                                <div className="text-sm font-bold">x</div>
-                                <div className="text-sm font-semibold tracking-wide">DCU</div>
-                            </div>
-                        )}
+                    <div className="mb-4 rounded-lg border border-border bg-background px-4 py-3">
+                        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#FC6719]">
+                            Official Partner Connection
+                        </div>
+                        <div className="flex items-center gap-3">
+                            {!zwiftLogoFailed ? (
+                                <img
+                                    src="/zwift/zwiftlink-logo-lockups-generic-horizonal.png"
+                                    alt="Zwift Link logo"
+                                    className="h-8 w-auto object-contain"
+                                    onError={() => setZwiftLogoFailed(true)}
+                                />
+                            ) : (
+                                <div className="text-sm font-semibold text-card-foreground">Zwift</div>
+                            )}
+
+                            <div className="text-sm font-semibold text-muted-foreground">x</div>
+
+                            {!dcuLogoFailed ? (
+                                <img
+                                    src="/DCU_red.svg"
+                                    alt="DCU logo"
+                                    className="h-8 w-auto object-contain"
+                                    onError={() => setDcuLogoFailed(true)}
+                                />
+                            ) : (
+                                <div className="text-sm font-semibold text-card-foreground">DCU</div>
+                            )}
+                        </div>
                     </div>
                     <div className="mb-4">
                         <p className="text-sm text-muted-foreground">
-                            Forbind din konto via <strong>Zwift Link</strong>. Ifolge Zwift guidelines bruges Zwift Orange
-                            (#FC6719) som primar farve i denne integration.
+                            Forbind din konto via <strong>Zwift Link</strong> for at dele officielle Zwift-data med DCU Liga.
                         </p>
                     </div>
 
@@ -54,7 +68,7 @@ export default function ConnectionsForm({
                         <div className="flex items-center justify-between bg-white dark:bg-black/20 p-4 rounded border border-border">
                             <div className="flex items-center gap-2 text-green-600 dark:text-green-400 font-medium">
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
-                                Forbundet til Zwift (officiel API)
+                                Forbundet til Zwift Link
                             </div>
                             <button
                                 onClick={handleDisconnectZwift}
@@ -68,7 +82,7 @@ export default function ConnectionsForm({
                             onClick={handleConnectZwift}
                             className="px-4 py-2 rounded-lg bg-[#FC6719] text-white hover:brightness-95 font-medium border border-[#FC6719] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FC6719] focus-visible:ring-offset-2"
                         >
-                            Connect with Zwift Link
+                            Forbind med Zwift Link
                         </button>
                     )}
                 </div>
