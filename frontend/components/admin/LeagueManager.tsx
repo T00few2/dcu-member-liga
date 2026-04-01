@@ -55,6 +55,13 @@ export default function LeagueManager() {
     const [filterRegistered, setFilterRegistered] = useState(false);
     const [categoryFilter, setCategoryFilter] = useState('All');
 
+    const eventConfigurationLapSignature = raceForm.formState.eventConfiguration
+        .map(cfg => cfg.laps || 0)
+        .join(',');
+    const singleModeCategoryLapSignature = raceForm.formState.singleModeCategories
+        .map(cat => cat.laps || 0)
+        .join(',');
+
     // Fetch segments when route or laps change
     useEffect(() => {
         const loadSegments = async () => {
@@ -85,8 +92,8 @@ export default function LeagueManager() {
         raceForm.formState.selectedRouteId, 
         raceForm.formState.laps, 
         raceForm.formState.eventMode,
-        raceForm.formState.eventConfiguration.length,
-        raceForm.formState.singleModeCategories.length,
+        eventConfigurationLapSignature,
+        singleModeCategoryLapSignature,
         fetchSegments,
     ]);
 

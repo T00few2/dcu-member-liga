@@ -22,8 +22,11 @@ export default function SegmentPicker({
 }: SegmentPickerProps) {
     const segmentsByLap = groupSegmentsByLap(segments);
     const label = segmentType === 'split' ? 'Split Segments' : 'Sprint Segments';
-    const segmentLabel = (name: string, direction: string) =>
-        String(direction || '').toLowerCase() === 'reverse' ? `${name} Reverse` : name;
+    const segmentLabel = (name: string, direction: string) => {
+        const label = name || '';
+        if (String(direction || '').toLowerCase() !== 'reverse') return label;
+        return /\breverse\b/i.test(label) ? label : `${label} Reverse`;
+    };
 
     if (segments.length === 0) {
         return (
@@ -136,8 +139,11 @@ export function CollapsibleSegmentPicker({
 }: CollapsibleSegmentPickerProps) {
     const label = title || (segmentType === 'split' ? 'Split Segments' : 'Sprint Segments');
     const segmentsByLap = groupSegmentsByLap(segments);
-    const segmentLabel = (name: string, direction: string) =>
-        String(direction || '').toLowerCase() === 'reverse' ? `${name} Reverse` : name;
+    const segmentLabel = (name: string, direction: string) => {
+        const label = name || '';
+        if (String(direction || '').toLowerCase() !== 'reverse') return label;
+        return /\breverse\b/i.test(label) ? label : `${label} Reverse`;
+    };
 
     return (
         <details className="group border border-input rounded bg-background">

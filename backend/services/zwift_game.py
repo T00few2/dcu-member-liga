@@ -63,9 +63,10 @@ class ZwiftGameService:
         Given a route ID and a number of laps, load the route manifest and segments,
         and return a list of segment dictionaries that the route travels through.
         """
-        # Ensure we look in the backend folder relative to this file or CWD
-        # Cloud Functions CWD is usually the root of the source
-        base_dir = os.getcwd()
+        # Resolve data files relative to backend/services, regardless of process CWD.
+        # This avoids intermittent "missing segments" when the app is started from
+        # different working directories.
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         
         # Load routes
         routes_file = os.path.join(base_dir, "data/routes.json")
@@ -96,6 +97,17 @@ class ZwiftGameService:
         except Exception as e:
             print(f"Error loading segments file for course {course_id}: {e}")
             return []
+
+        # Mirror Sauce behavior: a small set of segment IDs should only be matched
+        # when both start and finish are inside the current road section.
+        strict_ids_file = os.path.join(base_dir, "data/segRequireStartEnd.json")
+        strict_start_end_ids = set()
+        try:
+            with open(strict_ids_file, "r", encoding="utf-8") as f:
+                strict_start_end_ids = {str(v) for v in json.load(f) or []}
+        except Exception:
+            # Optional file: keep behavior if the list is missing/unreadable.
+            strict_start_end_ids = set()
 
         # Partition the manifest into lead‑in and main entries.
         manifest = route.get("manifest", [])
@@ -221,6 +233,9 @@ class ZwiftGameService:
                     if span != 0:
                         finish_ratio = (s_finish - entry_start) / span
 
+                if str(seg_id) in strict_start_end_ids and not (has_start and has_finish):
+                    continue
+
                 if not has_start and not has_finish:
                     continue
                 
@@ -300,8 +315,11 @@ class ZwiftGameService:
             # (We can't easily modify the 'entry' in 'occurrences' to include started-but-not-finished without more state).
             # But the return value 'result' is what matters most.
             
+        # Sort by appearance order
+        all_found_segments.sort(key=lambda s: s.get("order", 0))
+
         # ----------------------------
-        # Compute occurrence counts.
+        # Compute occurrence counts after sorting so count order matches what users see.
         segment_counts = {}
         for seg in all_found_segments:
             seg_id = seg.get("id")
@@ -311,17 +329,14 @@ class ZwiftGameService:
             segment_counts[seg_id] += 1
             seg["count"] = segment_counts[seg_id]
 
-        # We used to deduplicate here, but if a segment appears multiple times in a lap (e.g. figure 8)
-        # we want to be able to select each occurrence individually.
-        # The 'count' field makes them unique occurrences.
-        
-        # Sort by appearance order
-        all_found_segments.sort(key=lambda s: s.get("order", 0))
-
         result = []
         for seg in all_found_segments:
             result.append({
-                "name": seg.get("nameForward"),
+                "name": (
+                    seg.get("nameReverse")
+                    if seg.get("direction") == "reverse" and seg.get("nameReverse")
+                    else seg.get("nameForward")
+                ),
                 "direction": seg.get("direction"),
                 "count": seg.get("count"), # Occurrence number (1st time, 2nd time...)
                 "id": seg.get("id"),
