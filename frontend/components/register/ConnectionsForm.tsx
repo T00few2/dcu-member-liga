@@ -16,7 +16,6 @@ export default function ConnectionsForm({
     stravaConnected, zwiftConnected, handleConnectStrava, handleDisconnectStrava, handleConnectZwift, handleDisconnectZwift
 }: ConnectionsFormProps) {
     const [zwiftLogoFailed, setZwiftLogoFailed] = useState(false);
-    const [dcuLogoFailed, setDcuLogoFailed] = useState(false);
 
     return (
         <div className="space-y-8">
@@ -32,31 +31,16 @@ export default function ConnectionsForm({
                         <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#FC6719]">
                             Official Partner Connection
                         </div>
-                        <div className="flex items-center gap-3">
-                            {!zwiftLogoFailed ? (
-                                <img
-                                    src="/zwift/zwiftlink-logo-lockups-generic-horizonal.png"
-                                    alt="Zwift Link logo"
-                                    className="h-8 w-auto object-contain"
-                                    onError={() => setZwiftLogoFailed(true)}
-                                />
-                            ) : (
-                                <div className="text-sm font-semibold text-card-foreground">Zwift</div>
-                            )}
-
-                            <div className="text-sm font-semibold text-muted-foreground">x</div>
-
-                            {!dcuLogoFailed ? (
-                                <img
-                                    src="/DCU_red.svg"
-                                    alt="DCU logo"
-                                    className="h-8 w-auto object-contain"
-                                    onError={() => setDcuLogoFailed(true)}
-                                />
-                            ) : (
-                                <div className="text-sm font-semibold text-card-foreground">DCU</div>
-                            )}
-                        </div>
+                        {!zwiftLogoFailed ? (
+                            <img
+                                src="/zwift/zwiftlink-logo-lockups-generic-horizonal.png"
+                                alt="Zwift x DCU lockup"
+                                className="h-10 w-auto object-contain"
+                                onError={() => setZwiftLogoFailed(true)}
+                            />
+                        ) : (
+                            <div className="text-sm font-semibold text-card-foreground">Zwift Link</div>
+                        )}
                     </div>
                     <div className="mb-4">
                         <p className="text-sm text-muted-foreground">
