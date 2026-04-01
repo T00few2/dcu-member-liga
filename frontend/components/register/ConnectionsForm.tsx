@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import StravaAttribution from '@/components/StravaAttribution';
 
 interface ConnectionsFormProps {
@@ -14,15 +15,38 @@ interface ConnectionsFormProps {
 export default function ConnectionsForm({
     stravaConnected, zwiftConnected, handleConnectStrava, handleDisconnectStrava, handleConnectZwift, handleDisconnectZwift
 }: ConnectionsFormProps) {
+    const [zwiftLogoFailed, setZwiftLogoFailed] = useState(false);
+
     return (
         <div className="space-y-8">
             {/* Zwift Section */}
             <div>
-                <h3 className="text-lg font-semibold mb-3 text-card-foreground">Zwift Forbindelse</h3>
-                <div className={`p-4 border rounded-lg transition-colors ${zwiftConnected ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' : 'bg-card border-border'}`}>
+                <h3 className="text-lg font-semibold mb-3 text-card-foreground">Zwift Link</h3>
+                <div
+                    className={`p-4 border rounded-lg transition-colors ${
+                        zwiftConnected ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' : 'bg-card border-border'
+                    }`}
+                >
+                    <div className="mb-4 rounded-lg border border-black/10 bg-[#FC6719] px-4 py-3 text-white">
+                        {!zwiftLogoFailed ? (
+                            <img
+                                src="/zwift/zwiftlink-logo-lockups-generic-horizonal.png"
+                                alt="Zwift Link partner lockup"
+                                className="h-10 w-auto object-contain"
+                                onError={() => setZwiftLogoFailed(true)}
+                            />
+                        ) : (
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="text-sm font-semibold tracking-wide">ZWIFT</div>
+                                <div className="text-sm font-bold">x</div>
+                                <div className="text-sm font-semibold tracking-wide">DCU</div>
+                            </div>
+                        )}
+                    </div>
                     <div className="mb-4">
                         <p className="text-sm text-muted-foreground">
-                            Forbind din Zwift konto med den officielle Zwift API integration.
+                            Forbind din konto via <strong>Zwift Link</strong>. Ifolge Zwift guidelines bruges Zwift Orange
+                            (#FC6719) som primar farve i denne integration.
                         </p>
                     </div>
 
@@ -42,9 +66,9 @@ export default function ConnectionsForm({
                     ) : (
                         <button
                             onClick={handleConnectZwift}
-                            className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary-dark font-medium"
+                            className="px-4 py-2 rounded-lg bg-[#FC6719] text-white hover:brightness-95 font-medium border border-[#FC6719] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FC6719] focus-visible:ring-offset-2"
                         >
-                            Forbind Zwift
+                            Connect with Zwift Link
                         </button>
                     )}
                 </div>
