@@ -123,7 +123,8 @@ class ZwiftGameService:
         occurrences = []
         order_counter = 0
         for entry in leadin_entries:
-            occurrences.append((entry, 1, order_counter))
+            # Keep lead-in separate from race laps.
+            occurrences.append((entry, 0, order_counter))
             order_counter += 1
         for entry in main_entries:
             occurrences.append((entry, 1, order_counter))
@@ -137,6 +138,10 @@ class ZwiftGameService:
         segments_by_road = defaultdict(list)
         for seg in segments_data:
             if seg.get("archId") is None:
+                continue
+            # Mirror official/Sauce-style filtering for scoring segment pickers:
+            # exclude loop/lap-style checkpoint segments (e.g. Volcano lap arch).
+            if seg.get("requiresAllCheckpoints"):
                 continue
             road_id = seg.get("roadId")
             if road_id is not None:
@@ -153,13 +158,11 @@ class ZwiftGameService:
             if key in active_segments:
                 start_info = active_segments.pop(key)
                 
-                # Construct the found segment object
-                # Use the lap from when it started (or finished? usually finish lap matters for timing)
-                # But here we want to list them in order.
-                # Let's attribute to the lap where it finishes.
-                
+                # Construct the found segment object.
+                # Label by start lap so segments that begin in lead-in are shown
+                # under "Lead in" even if they finish after crossing into lap 1.
                 seg_copy = seg_data.copy()
-                seg_copy["lap"] = current_lap
+                seg_copy["lap"] = start_info.get("lap", current_lap)
                 seg_copy["direction"] = direction
                 seg_copy["id"] = seg_id
                 # Use finish order with a within-entry ratio to keep chronological ordering
@@ -229,9 +232,19 @@ class ZwiftGameService:
                 
                 finish_ratio = 0.5
                 if has_finish:
-                    span = entry_end - entry_start
+                    # Manifest bounds are not always ordered by travel direction.
+                    # For reverse entries, treat traversal as high -> low across the
+                    # covered interval so within-entry ordering matches in-game order.
+                    if is_reverse_entry:
+                        travel_start = max(entry_start, entry_end)
+                        travel_end = min(entry_start, entry_end)
+                    else:
+                        travel_start = min(entry_start, entry_end)
+                        travel_end = max(entry_start, entry_end)
+
+                    span = travel_end - travel_start
                     if span != 0:
-                        finish_ratio = (s_finish - entry_start) / span
+                        finish_ratio = (s_finish - travel_start) / span
 
                 if str(seg_id) in strict_start_end_ids and not (has_start and has_finish):
                     continue

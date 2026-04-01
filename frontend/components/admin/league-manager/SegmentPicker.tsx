@@ -22,6 +22,7 @@ export default function SegmentPicker({
 }: SegmentPickerProps) {
     const segmentsByLap = groupSegmentsByLap(segments);
     const label = segmentType === 'split' ? 'Split Segments' : 'Sprint Segments';
+    const lapLabel = (lapNum: number) => (lapNum === 0 ? 'Lead in' : `Lap ${lapNum}`);
     const segmentLabel = (name: string, direction: string) => {
         const label = name || '';
         if (String(direction || '').toLowerCase() !== 'reverse') return label;
@@ -48,7 +49,7 @@ export default function SegmentPicker({
                         return (
                             <div key={lapNum} className="mb-2">
                                 <div className="text-[10px] font-bold text-muted-foreground uppercase mb-1 bg-muted/30 px-1 rounded">
-                                    Lap {lapNum}
+                                    {lapLabel(lapNum)}
                                 </div>
                                 {segmentsByLap[lapNum].map(seg => {
                                     const uniqueKey = `${seg.id}_${seg.count}`;
@@ -89,7 +90,7 @@ export default function SegmentPicker({
                     return (
                         <div key={lapNum} className="border border-border rounded-md overflow-hidden">
                             <div className="bg-muted/30 px-3 py-2 text-sm font-semibold text-muted-foreground border-b border-border">
-                                Lap {lapNum}
+                                {lapLabel(lapNum)}
                             </div>
                             <div className="p-2 grid grid-cols-1 md:grid-cols-2 gap-2">
                                 {segmentsByLap[lapNum].map(seg => {
@@ -139,6 +140,7 @@ export function CollapsibleSegmentPicker({
 }: CollapsibleSegmentPickerProps) {
     const label = title || (segmentType === 'split' ? 'Split Segments' : 'Sprint Segments');
     const segmentsByLap = groupSegmentsByLap(segments);
+    const lapLabel = (lapNum: number) => (lapNum === 0 ? 'Lead in' : `Lap ${lapNum}`);
     const segmentLabel = (name: string, direction: string) => {
         const label = name || '';
         if (String(direction || '').toLowerCase() !== 'reverse') return label;
@@ -166,7 +168,7 @@ export function CollapsibleSegmentPicker({
                         return (
                             <div key={lapNum} className="mb-2">
                                 <div className="text-[10px] font-bold text-muted-foreground uppercase mb-1 bg-muted/30 px-1 rounded">
-                                    Lap {lapNum}
+                                    {lapLabel(lapNum)}
                                 </div>
                                 {segmentsByLap[lapNum].map(seg => {
                                     const uniqueKey = `${seg.id}_${seg.count}`;

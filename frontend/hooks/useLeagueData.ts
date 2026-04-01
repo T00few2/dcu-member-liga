@@ -165,7 +165,7 @@ export function useLeagueData({ user, authLoading }: UseLeagueDataOptions): UseL
 // Helper to group segments by lap
 export function groupSegmentsByLap(segments: Segment[]): Record<number, Segment[]> {
     return segments.reduce((acc, seg) => {
-        const lap = seg.lap || 1;
+        const lap = seg.lap ?? 1;
         if (!acc[lap]) acc[lap] = [];
         acc[lap].push(seg);
         return acc;
