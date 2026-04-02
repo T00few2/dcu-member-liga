@@ -30,3 +30,9 @@ If a script fails due to missing auth, report that clearly and do not proceed wi
 - Route profile metadata ownership:
   - `profileSegments` belongs in `elevation_cache` route docs.
   - Do not store `profileSegments` in `races` documents.
+
+## Zwift API Reference
+
+- Official Zwift API endpoint documentation for this repository is maintained in:
+  - `zwift_api_docs.md`
+- Use this file as the first reference when implementing or updating Zwift integration logic.

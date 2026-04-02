@@ -7,6 +7,7 @@ from services.schema_validation import log_schema_issues, validate_race_doc, wit
 from datetime import datetime
 from authz import require_admin, AuthzError
 import re
+from typing import Any
 
 import logging
 
@@ -105,6 +106,66 @@ def verify_admin_auth():
     # Backwards-compatible wrapper used throughout this file.
     return require_admin(request)
 
+
+def _select_subgroup_id(event_payload: dict[str, Any], custom_category: Any) -> str | None:
+    subgroups = event_payload.get("eventSubgroups", []) if isinstance(event_payload, dict) else []
+    if not isinstance(subgroups, list) or not subgroups:
+        return None
+
+    if custom_category:
+        wanted = str(custom_category).strip().upper()
+        for subgroup in subgroups:
+            label = str(subgroup.get("subgroupLabel") or "").strip().upper()
+            sid = subgroup.get("id")
+            if wanted and label == wanted and sid is not None:
+                return str(sid)
+
+    if len(subgroups) == 1 and subgroups[0].get("id") is not None:
+        return str(subgroups[0]["id"])
+    return None
+
+
+def _hydrate_event_config_subgroup_ids(data: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    event_config = data.get("eventConfiguration")
+    if not isinstance(event_config, list) or not event_config:
+        return data, []
+
+    zwift_service = get_zwift_service()
+    warnings: list[str] = []
+    event_cache: dict[str, dict[str, Any] | None] = {}
+
+    for idx, cfg in enumerate(event_config):
+        if not isinstance(cfg, dict):
+            continue
+        if cfg.get("subgroupId"):
+            continue
+
+        event_id = str(cfg.get("eventId") or "").strip()
+        if not event_id:
+            continue
+
+        if event_id not in event_cache:
+            event_cache[event_id] = zwift_service.get_public_event_info(event_id)
+        event_payload = event_cache[event_id]
+        if not event_payload:
+            warnings.append(
+                f"eventConfiguration[{idx}] eventId={event_id}: public event lookup failed"
+            )
+            continue
+
+        subgroup_id = _select_subgroup_id(event_payload, cfg.get("customCategory"))
+        if subgroup_id:
+            cfg["subgroupId"] = subgroup_id
+            continue
+
+        warnings.append(
+            f"eventConfiguration[{idx}] eventId={event_id}: subgroupId not resolved "
+            f"(customCategory={cfg.get('customCategory')!r})"
+        )
+
+    data["eventConfiguration"] = event_config
+    return data, warnings
+
 @races_bp.route('/races', methods=['GET'])
 def get_races():
     if not db:
@@ -134,6 +195,7 @@ def create_race():
         
     try:
         data = request.get_json(silent=True) or {}
+        data, hydrate_warnings = _hydrate_event_config_subgroup_ids(data)
         err = _validate_race_fields(data)
         if err:
             return jsonify({'message': err}), 400
@@ -141,7 +203,10 @@ def create_race():
         payload = with_schema_version(data)
         log_schema_issues(logger, "races/<new> (create)", validate_race_doc(payload))
         _, doc_ref = db.collection('races').add(payload)
-        return jsonify({'message': 'Race created', 'id': doc_ref.id}), 201
+        body: dict[str, Any] = {'message': 'Race created', 'id': doc_ref.id}
+        if hydrate_warnings:
+            body['warnings'] = hydrate_warnings
+        return jsonify(body), 201
     except Exception as e:
         return jsonify({'message': str(e)}), 500
 
@@ -173,6 +238,7 @@ def update_race(race_id):
     
     try:
         data = request.get_json(silent=True) or {}
+        data, hydrate_warnings = _hydrate_event_config_subgroup_ids(data)
         err = _validate_race_fields(data)
         if err:
             return jsonify({'message': err}), 400
@@ -180,7 +246,10 @@ def update_race(race_id):
         payload = with_schema_version(data)
         log_schema_issues(logger, f"races/{race_id} (update)", validate_race_doc(payload))
         db.collection('races').document(race_id).update(payload)
-        return jsonify({'message': 'Race updated'}), 200
+        body: dict[str, Any] = {'message': 'Race updated'}
+        if hydrate_warnings:
+            body['warnings'] = hydrate_warnings
+        return jsonify(body), 200
     except Exception as e:
         return jsonify({'message': str(e)}), 500
 

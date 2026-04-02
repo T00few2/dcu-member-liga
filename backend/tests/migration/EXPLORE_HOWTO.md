@@ -16,18 +16,58 @@ ZR_AUTH_KEY=...            # needed for ZwiftRacing.app endpoints
 ZWIFT_API_BASE_URL=...     # defaults to https://us-or-rly101.zwift.com
 ZWIFT_AUTH_BASE_URL=...    # defaults to https://secure.zwift.com/auth/realms/zwift
 ZR_BASE_URL=...            # defaults to https://api.zwiftracing.app/api
+ZWIFT_USERNAME=...         # needed for legacy unofficial endpoints
+ZWIFT_PASSWORD=...         # needed for legacy unofficial endpoints
+ZWIFT_LEGACY_CLIENT_ID=... # optional, defaults to Zwift_Mobile_Link
 ```
 
 ---
 
 ## Commands
 
-### Minimum — official endpoints only
+### Official-only validation (recommended first)
 
 ```bash
 python tests/migration/explore_zwift_api.py \
     --event-id <eventId> \
-    --subgroup-id <subgroupId>
+    --resolve-subgroups \
+    --official-only
+```
+
+### Resolve subgroup IDs from legacy event info
+
+```bash
+python tests/migration/explore_zwift_api.py \
+    --event-id <eventId> \
+    --resolve-subgroups \
+    --legacy
+```
+
+The script resolves subgroup IDs from the legacy event endpoint and then uses
+the first subgroup ID for subgroup-based endpoint calls.
+
+### Official power-curve checks (extended)
+
+```bash
+python tests/migration/explore_zwift_api.py \
+    --event-id <eventId> \
+    --subgroup-id <subgroupId> \
+    --user-token <userAccessToken> \
+    --days 30 \
+    --year 2026 \
+    --activity-id <activityId> \
+    --official-only
+```
+
+### Official live-data with optional heavy fields
+
+```bash
+python tests/migration/explore_zwift_api.py \
+    --event-id <eventId> \
+    --subgroup-id <subgroupId> \
+    --include-avatar \
+    --include-position \
+    --official-only
 ```
 
 ### Include ZwiftRacing.app + a specific rider
@@ -50,7 +90,7 @@ python tests/migration/explore_zwift_api.py \
     --activity-id <activityId>
 ```
 
-### Full picture — everything including legacy endpoints for comparison
+### Legacy comparison validation
 
 ```bash
 python tests/migration/explore_zwift_api.py \
@@ -62,6 +102,16 @@ python tests/migration/explore_zwift_api.py \
     --legacy
 ```
 
+If your legacy endpoints require event secret:
+
+```bash
+python tests/migration/explore_zwift_api.py \
+    --event-id <eventId> \
+    --resolve-subgroups \
+    --event-secret <eventSecret> \
+    --legacy
+```
+
 ### Skip ZwiftRacing.app endpoints
 
 ```bash
@@ -70,6 +120,13 @@ python tests/migration/explore_zwift_api.py \
     --subgroup-id <subgroupId> \
     --skip-zr
 ```
+
+### Output summary
+
+Each run now ends with a `CHECK SUMMARY` section with PASS/FAIL status for:
+- endpoint response checks (200/non-200)
+- subgroup resolution success
+- key schema assertions for segment-results
 
 ---
 

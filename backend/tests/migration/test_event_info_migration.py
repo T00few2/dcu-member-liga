@@ -1,14 +1,8 @@
 """
-Migration comparison tests: official vs legacy Zwift event-info endpoints.
+Migration tests focused on legacy Zwift event-info fallback.
 
-These tests verify that ZwiftFetcher.extract_subgroups produces identical output
-whether the event info originates from:
-  Official:  GET /api/link/events/{eventId}
-  Legacy:    GET /api/events/{eventId}  (fallback in dual_stack mode)
-
-Both endpoints are expected to return the same JSON schema for the fields that
-ZwiftFetcher uses (name, eventSubgroups[].id/subgroupLabel/routeId/laps/
-eventSubgroupStart).  These tests lock in that assumption.
+These tests verify fallback and data extraction behavior for:
+  Legacy: GET /api/events/{eventId}
 
 Delete this directory once the migration is confirmed stable in production.
 
@@ -43,7 +37,6 @@ for _s in _STUBS:
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-import pytest
 from services.zwift import ZwiftService
 from services.results.zwift_fetcher import ZwiftFetcher
 
@@ -109,39 +102,6 @@ def _mock_response_error(status_code: int) -> MagicMock:
 
 
 # ---------------------------------------------------------------------------
-# Tests: official endpoint
-# ---------------------------------------------------------------------------
-
-class TestOfficialEventInfo:
-    """ZwiftService.get_event_info uses /api/link/events/{id} by default."""
-
-    def test_returns_event_dict(self):
-        svc = _make_service("official_only")
-        with patch("requests.request", return_value=_mock_response(200, SAMPLE_EVENT)):
-            result = svc.get_event_info("evt-100")
-        assert isinstance(result, dict)
-        assert result["id"] == "evt-100"
-
-    def test_event_name_present(self):
-        svc = _make_service("official_only")
-        with patch("requests.request", return_value=_mock_response(200, SAMPLE_EVENT)):
-            result = svc.get_event_info("evt-100")
-        assert result["name"] == "DCU Liga Race 1"
-
-    def test_subgroups_list_present(self):
-        svc = _make_service("official_only")
-        with patch("requests.request", return_value=_mock_response(200, SAMPLE_EVENT)):
-            result = svc.get_event_info("evt-100")
-        assert len(result["eventSubgroups"]) == 2
-
-    def test_404_raises_in_official_only_mode(self):
-        svc = _make_service("official_only")
-        with patch("requests.request", return_value=_mock_response_error(404)):
-            with pytest.raises(Exception):
-                svc.get_event_info("evt-missing")
-
-
-# ---------------------------------------------------------------------------
 # Tests: legacy endpoint fallback
 # ---------------------------------------------------------------------------
 
@@ -157,15 +117,8 @@ class TestLegacyEventInfo:
             result = svc.get_event_info("evt-100")
         assert result["id"] == "evt-100"
 
-    def test_official_success_does_not_hit_legacy(self):
-        """When the official endpoint succeeds, exactly one HTTP request is made."""
-        svc = _make_service("dual_stack")
-        with patch("requests.request", return_value=_mock_response(200, SAMPLE_EVENT)) as mock_req:
-            svc.get_event_info("evt-100")
-        assert mock_req.call_count == 1
-
     def test_legacy_url_contains_events_path(self):
-        """Verify the fallback request goes to /api/events/ not /api/link/events/."""
+        """Verify the fallback request goes to /api/events/."""
         svc = _make_service("dual_stack")
         with patch("requests.request", side_effect=[
             _mock_response_error(404),
@@ -173,7 +126,6 @@ class TestLegacyEventInfo:
         ]) as mock_req:
             svc.get_event_info("evt-100")
         legacy_url = mock_req.call_args_list[1][1].get("url") or mock_req.call_args_list[1][0][1]
-        assert "/api/link/events/" not in legacy_url
         assert "/api/events/" in legacy_url
 
 
@@ -217,27 +169,6 @@ class TestExtractSubgroupsEquivalence:
     def test_event_name_propagated_to_each_subgroup(self):
         subgroups = self._extract(SAMPLE_EVENT)
         assert all(s["eventName"] == "DCU Liga Race 1" for s in subgroups)
-
-    def test_official_and_legacy_produce_same_subgroups(self):
-        """
-        If both API paths return the same schema (as expected), extract_subgroups
-        must return the same result for each.  Simulate by passing SAMPLE_EVENT
-        through both mock paths and comparing.
-        """
-        svc_official = _make_service("official_only")
-        svc_legacy = _make_service("dual_stack")
-
-        with patch("requests.request", return_value=_mock_response(200, SAMPLE_EVENT)):
-            official_info = svc_official.get_event_info("evt-100")
-
-        with patch("requests.request", side_effect=[
-            _mock_response_error(404),
-            _mock_response(200, SAMPLE_EVENT),
-        ]):
-            legacy_info = svc_legacy.get_event_info("evt-100")
-
-        fetcher = ZwiftFetcher(MagicMock())
-        assert fetcher.extract_subgroups(official_info) == fetcher.extract_subgroups(legacy_info)
 
     def test_missing_optional_fields_default_to_none(self):
         """laps / routeId may be absent; extract_subgroups should return None not raise."""

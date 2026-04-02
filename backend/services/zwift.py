@@ -253,10 +253,41 @@ class ZwiftService:
     # Event and race helpers (official path variants)
     # ------------------------------------------------------------------
 
+    def get_public_event_info(self, event_id: str) -> dict[str, Any] | None:
+        """
+        Practical event->subgroup resolver using public event payload.
+        Note: this path is not listed in the official developer docs.
+        """
+        url = f"{self.api_base_url}/api/public/events/{event_id}"
+        try:
+            response = requests.get(
+                url,
+                headers={"Accept": "application/json"},
+                timeout=20,
+            )
+        except RequestException as exc:
+            logger.warning("Zwift public event fetch failed for %s: %s", event_id, exc)
+            return None
+
+        if response.status_code != 200:
+            return None
+
+        payload = self._safe_json(response)
+        if not isinstance(payload, dict):
+            return None
+        if not isinstance(payload.get("eventSubgroups"), list):
+            return None
+        return payload
+
     def get_event_info(self, event_id: str, event_secret: str | None = None) -> dict[str, Any]:
         """
-        Official migration path uses /api/link/events/{eventId}.
+        Resolve event info with subgroup data.
+        Tries /api/public/events/{eventId} first, then official/legacy fallback paths.
         """
+        public_payload = self.get_public_event_info(event_id)
+        if public_payload:
+            return public_payload
+
         params = {}
         if event_secret:
             params["eventSecret"] = event_secret

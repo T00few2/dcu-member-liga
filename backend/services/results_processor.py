@@ -285,6 +285,17 @@ class ResultsProcessor:
                 logger.error(f"Failed to fetch event info for {event_id}: {e}")
                 return
             subgroups = self.zwift_fetcher.extract_subgroups(event_info)
+
+            # If this source targets one custom category but subgroupId was not
+            # persisted yet, restrict to the matching subgroup label when present.
+            if custom_category:
+                wanted = str(custom_category).strip().upper()
+                matched = [
+                    sg for sg in subgroups
+                    if str(sg.get("subgroupLabel") or "").strip().upper() == wanted
+                ]
+                if matched:
+                    subgroups = matched
         logger.info(f"  Found {len(subgroups)} subgroups.")
 
         custom_cat_finishers: list[Any] = []
