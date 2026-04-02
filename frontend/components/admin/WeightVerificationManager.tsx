@@ -47,6 +47,9 @@ export default function WeightVerificationManager() {
     const [reviewingId, setReviewingId] = useState<string | null>(null);
     const [rejectionReason, setRejectionReason] = useState('');
 
+    // Revoke State
+    const [revokingId, setRevokingId] = useState<string | null>(null);
+
     const fetchData = async () => {
         if (!user) return;
         setLoading(true);
@@ -107,6 +110,32 @@ export default function WeightVerificationManager() {
             showToast('Network error triggering verification', 'error');
         } finally {
             setTriggering(false);
+        }
+    };
+
+    const handleRevoke = async (id: string) => {
+        if (!user) return;
+        if (!confirm('Are you sure you want to revoke this verification request? The rider will no longer be required to submit.')) return;
+
+        setRevokingId(id);
+        try {
+            const token = await user.getIdToken();
+            const res = await fetch(`${API_URL}/admin/verification/revoke/${id}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (res.ok) {
+                showToast('Verification request revoked', 'success');
+                setActiveRequests(prev => prev.filter(r => r.id !== id));
+            } else {
+                const data = await res.json();
+                showToast(data.message || 'Failed to revoke', 'error');
+            }
+        } catch (e) {
+            showToast('Network error revoking verification', 'error');
+        } finally {
+            setRevokingId(null);
         }
     };
 
@@ -211,11 +240,20 @@ export default function WeightVerificationManager() {
                                             {req.club || 'No Club'}
                                         </div>
                                     </div>
-                                    {req.deadline && (
-                                        <div className="text-xs text-orange-600 dark:text-orange-400 font-medium">
-                                            Due: {new Date(req.deadline).toLocaleDateString()}
-                                        </div>
-                                    )}
+                                    <div className="flex items-center gap-3">
+                                        {req.deadline && (
+                                            <div className="text-xs text-orange-600 dark:text-orange-400 font-medium">
+                                                Due: {new Date(req.deadline).toLocaleDateString()}
+                                            </div>
+                                        )}
+                                        <button
+                                            onClick={() => handleRevoke(req.id)}
+                                            disabled={revokingId === req.id}
+                                            className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 font-medium"
+                                        >
+                                            {revokingId === req.id ? 'Revoking...' : 'Revoke'}
+                                        </button>
+                                    </div>
                                 </div>
                             ))}
                         </div>
