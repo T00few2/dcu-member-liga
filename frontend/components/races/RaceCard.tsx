@@ -8,6 +8,19 @@ import RouteElevationChart from '@/components/races/RouteElevationChart';
 import type { Race, Sprint, EventCategoryConfig, CategoryConfig } from '@/types/live';
 import type { LeagueSettings } from '@/types/admin';
 
+interface ProfileSegment {
+    name: string;
+    type: string;
+    fromKm: number;
+    toKm: number;
+    direction?: string;
+}
+
+interface ProfileData {
+    leadInDistance: number;
+    profileSegments: ProfileSegment[];
+}
+
 interface RaceCardProps {
     race: Race;
     leagueSettings: LeagueSettings | null;
@@ -36,10 +49,56 @@ const getZwiftEventUrl = (eventId: string, eventSecret?: string) => {
     return `${baseUrl}${eventId}${eventSecret ? `?eventSecret=${eventSecret}` : ''}`;
 };
 
-function SprintsByLap({ sprints }: { sprints: Sprint[] }) {
+function normalizeNameForMatch(name?: string): string {
+    return (name || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+\(.*\)\s*$/g, '')
+        .replace(/\s+(reverse|rev\.?)$/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function normalizeDirectionForMatch(direction?: string, name?: string): 'forward' | 'reverse' {
+    if ((direction || '').toLowerCase() === 'reverse') return 'reverse';
+    const n = (name || '').toLowerCase();
+    if (n.includes('reverse') || n.includes(' rev')) return 'reverse';
+    return 'forward';
+}
+
+function buildProfileSegmentIndex(profileSegments: ProfileSegment[]): Map<string, ProfileSegment> {
+    const counters = new Map<string, number>();
+    const index = new Map<string, ProfileSegment>();
+    for (const seg of profileSegments) {
+        const base = normalizeNameForMatch(seg.name);
+        const dir = normalizeDirectionForMatch(seg.direction, seg.name);
+        const keyBase = `${base}::${dir}`;
+        const count = (counters.get(keyBase) || 0) + 1;
+        counters.set(keyBase, count);
+        index.set(`${keyBase}::${count}`, seg);
+    }
+    return index;
+}
+
+function SprintsByLap({ sprints, profileData }: { sprints: Sprint[]; profileData: ProfileData | null }) {
     const sprintLabel = (seg: Sprint) => {
         const isReverse = normalize(seg.direction) === 'reverse';
         return isReverse ? `${seg.name} Reverse` : seg.name;
+    };
+
+    const profileIndex = profileData ? buildProfileSegmentIndex(profileData.profileSegments) : null;
+    const leadIn = profileData?.leadInDistance ?? 0;
+
+    const getKmRange = (seg: Sprint): string | null => {
+        if (!profileIndex) return null;
+        const base = normalizeNameForMatch(seg.name);
+        const dir = normalizeDirectionForMatch(seg.direction, seg.name);
+        const count = Number.isFinite(seg.count) && seg.count > 0 ? seg.count : 1;
+        const match = profileIndex.get(`${base}::${dir}::${count}`);
+        if (!match) return null;
+        const from = (Math.min(match.fromKm, match.toKm) + leadIn).toFixed(1);
+        const to = (Math.max(match.fromKm, match.toKm) + leadIn).toFixed(1);
+        return `${from}–${to} km`;
     };
 
     const byLap = sprints.reduce((acc, seg) => {
@@ -57,11 +116,17 @@ function SprintsByLap({ sprints }: { sprints: Sprint[] }) {
                     <div key={lapKey} className="flex flex-col sm:flex-row gap-2 sm:gap-8 text-sm">
                         <div className="w-16 font-medium text-muted-foreground shrink-0">Omgang {lapKey}</div>
                         <div className="flex-1 flex flex-wrap gap-2">
-                            {segs.sort((a, b) => a.count - b.count).map((seg, idx) => (
-                                <span key={idx} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
-                                    {sprintLabel(seg)}
-                                </span>
-                            ))}
+                            {segs.sort((a, b) => a.count - b.count).map((seg, idx) => {
+                                const kmRange = getKmRange(seg);
+                                return (
+                                    <span key={idx} className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                                        {sprintLabel(seg)}
+                                        {kmRange && (
+                                            <span className="opacity-70 font-normal">{kmRange}</span>
+                                        )}
+                                    </span>
+                                );
+                            })}
                         </div>
                     </div>
                 ))}
@@ -129,6 +194,7 @@ export default function RaceCard({
 }: RaceCardProps) {
     const raceDate = fromTimestamp(race.date) || new Date(NaN);
     const isPublicVariant = variant === 'public';
+    const [profileData, setProfileData] = useState<ProfileData | null>(null);
     const userConfig = race.eventMode === 'multi' ? getUserEventConfig(race, userCategory) : null;
     const userSingleConfig = race.eventMode !== 'multi' ? getUserSingleConfig(race, userCategory) : null;
 
@@ -147,6 +213,21 @@ export default function RaceCard({
     const resolvedSprintsToShow = sprintsToShow.length > 0
         ? sprintsToShow
         : fallbackSprintsFromSelectedKeys(race.selectedSegments);
+
+    useEffect(() => {
+        if (!race.map || !race.routeName || resolvedSprintsToShow.length === 0) return;
+        const params = new URLSearchParams({ world: race.map, route: race.routeName, laps: String(lapsToShow) });
+        fetch(`/api/route-elevation?${params}`)
+            .then((r) => (r.ok ? r.json() : null))
+            .then((json) => {
+                if (!json) return;
+                setProfileData({
+                    leadInDistance: Number(json.leadInDistance) || 0,
+                    profileSegments: Array.isArray(json.profileSegments) ? json.profileSegments : [],
+                });
+            })
+            .catch(() => {});
+    }, [race.map, race.routeName, lapsToShow, resolvedSprintsToShow.length]);
 
     const racePassHref = race.eventMode === 'multi'
         ? (userConfig?.eventId ? getZwiftEventUrl(userConfig.eventId, userConfig.eventSecret) : null)
@@ -233,7 +314,7 @@ export default function RaceCard({
                 {!isPublicVariant && resolvedSprintsToShow.length > 0 && (
                     <div className="border-t border-border pt-4 mb-6">
                         <h4 className="text-sm font-semibold text-card-foreground mb-3">Pointsprint</h4>
-                        <SprintsByLap sprints={resolvedSprintsToShow} />
+                        <SprintsByLap sprints={resolvedSprintsToShow} profileData={profileData} />
                     </div>
                 )}
 
