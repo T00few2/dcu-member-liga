@@ -331,6 +331,50 @@ def get_active_requests():
     except Exception as e:
         return jsonify({'message': str(e)}), 500
 
+@verification_bp.route('/admin/verification/revoke/<user_id>', methods=['POST'])
+def revoke_verification(user_id):
+    """
+    Admin endpoint to revoke a pending verification request for a specific user.
+    Resets their verification status back to 'none' and clears the current request.
+    """
+    try:
+        require_admin(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    try:
+        user = UserService.get_user_by_id(user_id)
+        if not user:
+            return jsonify({'message': 'User not found'}), 404
+
+        if user.verification_status != 'pending':
+            return jsonify({'message': 'User does not have a pending verification request'}), 400
+
+        # Mark the current request as revoked in history
+        requests = user.verification_history
+        now_iso = datetime.now(timezone.utc).isoformat()
+        updated_requests = []
+        for req in requests:
+            if req.get('status') == 'pending' and req.get('type') == 'weight':
+                req['status'] = 'revoked'
+                req['revokedAt'] = now_iso
+            updated_requests.append(req)
+
+        user.update({
+            'verification.status': 'none',
+            'verification.currentRequest': {},
+            'verification.history': updated_requests
+        })
+
+        return jsonify({'message': 'Verification request revoked.'}), 200
+
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+
+
 @verification_bp.route('/admin/verification/approved', methods=['GET'])
 def get_approved_verifications():
     """
