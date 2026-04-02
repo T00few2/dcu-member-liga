@@ -102,8 +102,21 @@ function SprintsByLap({ sprints, profileData }: { sprints: Sprint[]; profileData
         };
     };
 
+    const getFromKmValue = (seg: Sprint): number => {
+        if (!profileIndex) return Infinity;
+        const base = normalizeNameForMatch(seg.name);
+        const dir = normalizeDirectionForMatch(seg.direction, seg.name);
+        const count = Number.isFinite(seg.count) && seg.count > 0 ? seg.count : 1;
+        const match = profileIndex.get(`${base}::${dir}::${count}`);
+        if (!match) return Infinity;
+        return Math.min(match.fromKm, match.toKm) + leadIn;
+    };
+
     const rows = [...sprints]
         .sort((a, b) => {
+            const aFrom = getFromKmValue(a);
+            const bFrom = getFromKmValue(b);
+            if (aFrom !== bFrom) return aFrom - bFrom;
             const lapDiff = (a.lap || 1) - (b.lap || 1);
             if (lapDiff !== 0) return lapDiff;
             return a.count - b.count;
@@ -152,12 +165,12 @@ function SprintsByLap({ sprints, profileData }: { sprints: Sprint[]; profileData
             </div>
             {hasKmData && leadIn > 0 && (
                 <p className="text-xs text-muted-foreground mt-2">
-                    Km inkl. indrulning ({leadIn.toFixed(1)} km)
+                    Distancer inkl lead-in ({leadIn.toFixed(1)} km)
                 </p>
             )}
             {hasKmData && leadIn === 0 && (
                 <p className="text-xs text-muted-foreground mt-2">
-                    Km fra startlinjen inkl. indrulning
+                    Distancer inkl lead-in
                 </p>
             )}
         </div>
