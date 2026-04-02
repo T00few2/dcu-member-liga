@@ -89,47 +89,77 @@ function SprintsByLap({ sprints, profileData }: { sprints: Sprint[]; profileData
     const profileIndex = profileData ? buildProfileSegmentIndex(profileData.profileSegments) : null;
     const leadIn = profileData?.leadInDistance ?? 0;
 
-    const getKmRange = (seg: Sprint): string | null => {
+    const getKmFromTo = (seg: Sprint): { from: string; to: string } | null => {
         if (!profileIndex) return null;
         const base = normalizeNameForMatch(seg.name);
         const dir = normalizeDirectionForMatch(seg.direction, seg.name);
         const count = Number.isFinite(seg.count) && seg.count > 0 ? seg.count : 1;
         const match = profileIndex.get(`${base}::${dir}::${count}`);
         if (!match) return null;
-        const from = (Math.min(match.fromKm, match.toKm) + leadIn).toFixed(1);
-        const to = (Math.max(match.fromKm, match.toKm) + leadIn).toFixed(1);
-        return `${from}–${to} km`;
+        return {
+            from: (Math.min(match.fromKm, match.toKm) + leadIn).toFixed(1),
+            to: (Math.max(match.fromKm, match.toKm) + leadIn).toFixed(1),
+        };
     };
 
-    const byLap = sprints.reduce((acc, seg) => {
-        const lap = seg.lap || 1;
-        if (!acc[lap]) acc[lap] = [];
-        acc[lap].push(seg);
-        return acc;
-    }, {} as Record<number, Sprint[]>);
+    const rows = [...sprints]
+        .sort((a, b) => {
+            const lapDiff = (a.lap || 1) - (b.lap || 1);
+            if (lapDiff !== 0) return lapDiff;
+            return a.count - b.count;
+        });
+
+    const hasKmData = rows.some((s) => getKmFromTo(s) !== null);
 
     return (
-        <div className="space-y-3">
-            {Object.entries(byLap)
-                .sort(([a], [b]) => parseInt(a) - parseInt(b))
-                .map(([lapKey, segs]) => (
-                    <div key={lapKey} className="flex flex-col sm:flex-row gap-2 sm:gap-8 text-sm">
-                        <div className="w-16 font-medium text-muted-foreground shrink-0">Omgang {lapKey}</div>
-                        <div className="flex-1 flex flex-wrap gap-2">
-                            {segs.sort((a, b) => a.count - b.count).map((seg, idx) => {
-                                const kmRange = getKmRange(seg);
-                                return (
-                                    <span key={idx} className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
-                                        {sprintLabel(seg)}
-                                        {kmRange && (
-                                            <span className="opacity-70 font-normal">{kmRange}</span>
-                                        )}
-                                    </span>
-                                );
-                            })}
-                        </div>
-                    </div>
-                ))}
+        <div>
+            <div className="overflow-x-auto">
+                <table className="w-full text-sm border-collapse">
+                    <thead>
+                        <tr className="border-b border-border">
+                            <th className="text-left py-1.5 pr-4 font-medium text-muted-foreground text-xs uppercase tracking-wide">Sprint</th>
+                            <th className="text-center py-1.5 px-3 font-medium text-muted-foreground text-xs uppercase tracking-wide whitespace-nowrap">Omgang</th>
+                            {hasKmData && (
+                                <>
+                                    <th className="text-right py-1.5 px-3 font-medium text-muted-foreground text-xs uppercase tracking-wide whitespace-nowrap">Fra km</th>
+                                    <th className="text-right py-1.5 pl-3 font-medium text-muted-foreground text-xs uppercase tracking-wide whitespace-nowrap">Til km</th>
+                                </>
+                            )}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows.map((seg, idx) => {
+                            const kmFromTo = getKmFromTo(seg);
+                            return (
+                                <tr key={idx} className="border-b border-border/50 last:border-0">
+                                    <td className="py-1.5 pr-4 font-medium text-card-foreground">{sprintLabel(seg)}</td>
+                                    <td className="py-1.5 px-3 text-center text-muted-foreground">{seg.lap || 1}</td>
+                                    {hasKmData && (
+                                        <>
+                                            <td className="py-1.5 px-3 text-right font-mono text-card-foreground">
+                                                {kmFromTo ? `${kmFromTo.from}` : '—'}
+                                            </td>
+                                            <td className="py-1.5 pl-3 text-right font-mono text-card-foreground">
+                                                {kmFromTo ? `${kmFromTo.to}` : '—'}
+                                            </td>
+                                        </>
+                                    )}
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+            {hasKmData && leadIn > 0 && (
+                <p className="text-xs text-muted-foreground mt-2">
+                    Km inkl. indrulning ({leadIn.toFixed(1)} km)
+                </p>
+            )}
+            {hasKmData && leadIn === 0 && (
+                <p className="text-xs text-muted-foreground mt-2">
+                    Km fra startlinjen inkl. indrulning
+                </p>
+            )}
         </div>
     );
 }
