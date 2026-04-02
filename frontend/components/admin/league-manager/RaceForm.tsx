@@ -66,6 +66,7 @@ export default function RaceForm({
     const [loadingRouteProfile, setLoadingRouteProfile] = useState(false);
     const [savingRouteProfile, setSavingRouteProfile] = useState(false);
     const [routeProfileSegments, setRouteProfileSegments] = useState<RouteProfileSegment[]>([]);
+    const [routeProfileLeadIn, setRouteProfileLeadIn] = useState<string>('');
     const [routeProfileSegmentId, setRouteProfileSegmentId] = useState<number | null>(null);
     const [routeProfileError, setRouteProfileError] = useState<string | null>(null);
 
@@ -97,6 +98,7 @@ export default function RaceForm({
 
     useEffect(() => {
         setRouteProfileSegments([]);
+        setRouteProfileLeadIn('');
         setRouteProfileSegmentId(null);
         setRouteProfileError(null);
     }, [formState.selectedMap, formState.selectedRouteId]);
@@ -131,6 +133,7 @@ export default function RaceForm({
                 }));
             setRouteProfileSegmentId(sid);
             setRouteProfileSegments(mapped);
+            setRouteProfileLeadIn(json?.leadInDistance != null ? String(json.leadInDistance) : '');
         } catch (e: any) {
             setRouteProfileError(e?.message || 'Could not load route profile segments');
         } finally {
@@ -194,13 +197,17 @@ export default function RaceForm({
                 toKm: Math.max(Number(seg.fromKm) || 0, Number(seg.toKm) || 0),
                 direction: seg.direction === 'reverse' ? 'reverse' : 'forward',
             }));
+            const leadInValue = routeProfileLeadIn !== '' ? parseFloat(routeProfileLeadIn) : null;
             const res = await fetch(`${API_URL}/route-elevation/${routeProfileSegmentId}/profile-segments`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`,
                 },
-                body: JSON.stringify({ profileSegments: payload }),
+                body: JSON.stringify({
+                    profileSegments: payload,
+                    ...(leadInValue !== null && Number.isFinite(leadInValue) ? { leadInDistance: leadInValue } : {}),
+                }),
             });
             const json = await res.json().catch(() => ({}));
             if (!res.ok) {
@@ -464,6 +471,18 @@ export default function RaceForm({
                             {routeProfileError && (
                                 <div className="text-xs text-red-600 dark:text-red-400 mb-2">{routeProfileError}</div>
                             )}
+                            <div className="mb-3 flex items-center gap-3">
+                                <label className="text-xs text-muted-foreground whitespace-nowrap">Lead-in distance (km)</label>
+                                <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={routeProfileLeadIn}
+                                    onChange={(e) => setRouteProfileLeadIn(e.target.value)}
+                                    placeholder="e.g. 2.5"
+                                    className="w-24 p-1.5 border border-input rounded bg-background text-foreground text-sm"
+                                />
+                                <span className="text-xs text-muted-foreground">Added to from/to km when displaying segments on route cards</span>
+                            </div>
                             <div className="space-y-2">
                                 {routeProfileSegments.length === 0 && (
                                     <div className="text-xs text-muted-foreground border border-dashed border-border rounded p-3">

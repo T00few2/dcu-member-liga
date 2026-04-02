@@ -344,6 +344,14 @@ def update_route_profile_segments(segment_id):
         if not isinstance(raw_segments, list):
             return jsonify({'message': 'profileSegments must be a list'}), 400
 
+        raw_lead_in = req_data.get('leadInDistance')
+        lead_in_distance = None
+        if raw_lead_in is not None:
+            try:
+                lead_in_distance = float(raw_lead_in)
+            except (TypeError, ValueError):
+                return jsonify({'message': 'leadInDistance must be a number'}), 400
+
         cleaned_segments = []
         for i, seg in enumerate(raw_segments):
             if not isinstance(seg, dict):
@@ -372,8 +380,12 @@ def update_route_profile_segments(segment_id):
                 'direction': direction,
             })
 
+        update_data = {'profileSegments': cleaned_segments}
+        if lead_in_distance is not None:
+            update_data['leadInDistance'] = lead_in_distance
+
         cache_ref = db.collection('elevation_cache').document(str(segment_id))
-        cache_ref.set({'profileSegments': cleaned_segments}, merge=True)
+        cache_ref.set(update_data, merge=True)
         return jsonify({'message': 'Route profile segments updated', 'count': len(cleaned_segments)}), 200
     except Exception as e:
         logger.error(f"Route profile segment update error for {segment_id}: {e}")
