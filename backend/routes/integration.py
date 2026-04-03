@@ -443,7 +443,7 @@ def zwift_webhook():
         except Exception as exc:
             logger.error(f"Failed to process ActivitySaved webhook {notification_id}: {exc}")
 
-    elif notif_type == 'RacingScore' and user_id:
+    elif notif_type == 'RacingScoreUpdated' and user_id:
         try:
             token_docs = (
                 db.collection('zwift_tokens')
@@ -465,7 +465,7 @@ def zwift_webhook():
                             'updatedAt': firestore.SERVER_TIMESTAMP,
                         }), merge=True)
         except Exception as exc:
-            logger.error(f"Failed to process RacingScore webhook {notification_id}: {exc}")
+            logger.error(f"Failed to process RacingScoreUpdated webhook {notification_id}: {exc}")
 
     return '', 204
 
