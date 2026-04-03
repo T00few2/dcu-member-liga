@@ -209,6 +209,20 @@ class ZwiftService:
             return None
         return self._safe_json(response)
 
+    def get_best_power_curve_year(self, user_access_token: str, year: int) -> dict[str, Any] | None:
+        response = self._api_get(f"/api/link/power-curve/best/year/{year}", token=user_access_token)
+        if response.status_code != 200:
+            logger.error("Zwift best year curve fetch failed (%s): %s", response.status_code, response.text)
+            return None
+        return self._safe_json(response)
+
+    def get_best_power_curve_activity(self, user_access_token: str, activity_id: str) -> dict[str, Any] | None:
+        response = self._api_get(f"/api/link/power-curve/activity/{activity_id}", token=user_access_token)
+        if response.status_code != 200:
+            logger.error("Zwift activity curve fetch failed (%s): %s", response.status_code, response.text)
+            return None
+        return self._safe_json(response)
+
     # ------------------------------------------------------------------
     # Subscriptions / webhooks
     # ------------------------------------------------------------------

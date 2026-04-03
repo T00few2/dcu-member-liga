@@ -18,7 +18,7 @@ Use this first. Pick endpoint by task.
 | Task | Method + Path | Auth | Key Output |
 |---|---|---|---|
 | Event -> subgroup bridge | `GET /api/public/events/{eventId}` | None observed (public) | `eventSubgroups[].id` |
-| Rider profile/category | `GET /api/link/racing-profile` | User token (`profile:read`, `fitness_metrics:read`) | `competitionMetrics`, rider identity |
+| Rider profile/category | `GET /api/link/racing-profile` | User token (`profile:read`, `fitness_metrics:read`) | `competitionMetrics` (ftp, zftp, zmap, racingScore, powerCompoundScore, vo2max, category, categoryWomen, weightInGrams), rider identity |
 | Live race telemetry | `GET /api/link/events/subgroups/{subgroupId}/live-data` | App/User token | active riders + power/cadence/position |
 | Race segment/finish data | `GET /api/link/events/subgroups/{subgroupId}/segment-results` | App/User token | `durationInMilliseconds`, `segmentId` |
 | Activity details | `GET /api/thirdparty/activity/{activityId}` | User token (`activity`) | summary stats + `fitFileURL` |
@@ -353,10 +353,23 @@ When implementing integration logic here:
 - **Graceful Handling:** Returns `429 Too Many Requests` when limits are exceeded.
 
 ### Webhook Callback Messages
-The following event types are sent to registered callback URLs:
-- `ActivitySaved`: Triggered when a user saves a new activity.
-- `WorkoutProgressChanged`: Status updates for scheduled workouts.
-- `UserDisconnected`: Triggered when a user disconnects the partner application from their Zwift account.
+The following `notificationType` values are sent to registered callback URLs:
+
+| `notificationType` | Trigger | Handler implemented |
+|---|---|---|
+| `ActivitySaved` | Rider saves a new activity | ✅ Fetches and stores activity |
+| `RacingScoreUpdated` | Racing score **and** power curve updated — both subscriptions fire this type (confirmed from official docs) | ✅ Re-fetches and stores `competitionMetrics` → `zwiftProfile` **and** `power-profile` → `zwiftPowerCurve` |
+| `UserDisconnected` | User disconnects the partner app from their Zwift account | ✅ Clears tokens and connection record |
+| `WorkoutProgressChanged` | Status update for a scheduled workout | ❌ Not handled (irrelevant for race league) |
+
+**Note:** All types confirmed from official `SubscriptionDto` schema and endpoint example responses. Both the racing-score and power-curve subscription endpoints explicitly return `subscriptionType: "RacingScoreUpdated"` — a single notification covers both.
+All raw webhook payloads are always logged to the `zwift_webhooks` Firestore collection regardless of type.
+
+#### Subscription endpoints (per type)
+- Activity: `POST/DELETE /api/thirdparty/activity/subscribe`
+- Racing score: `POST/DELETE /api/thirdparty/racing-score/subscribe`
+- Power curve: `POST/DELETE /api/thirdparty/power-curve/subscribe`
+- Unsubscribe by userId (app credentials): `DELETE /api/thirdparty/{type}/subscribe/{userId}`
 
 ---
 
@@ -424,15 +437,37 @@ Representative response shape:
     "followeesCount": 0
   },
   "competitionMetrics": {
-    "ftp": 300,
-    "category": "B",
-    "categoryWomen": "A",
-    "powerCompoundScore": 4.5,
-    "zftp": 295,
-    "zmap": 400,
-    "vo2max": 55.2,
-    "weightInGrams": 75000,
-    "racingScore": 250.7
+    "ftp": 300,              // Functional Threshold Power (watts)
+    "zftp": 295,             // Zwift calculated FTP (used for CE categorisation)
+    "zmap": 400,             // Zwift Maximal Aerobic Power (1-min sprint; used for CE categorisation)
+    "racingScore": 250.7,    // Proprietary overall racing score
+    "powerCompoundScore": 4.5, // Proprietary combined power metric (W/kg compound)
+    "vo2max": 55.2,          // Estimated VO2max
+    "category": "B",         // Zwift CE category (mixed-gender events)
+    "categoryWomen": "A",    // Zwift CE category (women's events)
+    "weightInGrams": 75000   // Rider weight at time of snapshot (grams)
+  },
+  "achievements": {          // only if includeAchievements=true
+    "achievementLevel": 42,
+    "totalDistanceInMeters": 50000000,
+    "totalDistanceClimbedInMeters": 500000,
+    "totalTimeInMinutes": 18000,
+    "totalMetersInKomJersey": 1000000,
+    "totalMetersInSprintersJersey": 500000,
+    "totalMetersInOrangeJersey": 200000,
+    "totalWattHours": 250000,
+    "totalExperiencePoints": 800000,
+    "totalGold": 5000000,
+    "runAchievementLevel": 10,
+    "totalRunDistance": 500000,
+    "totalRunTimeInMinutes": 3000,
+    "totalRunExperiencePoints": 50000,
+    "totalRunCalories": 25000,
+    "runTime1miInSeconds": 420,
+    "runTime5kmInSeconds": 1400,
+    "runTime10kmInSeconds": 2900,
+    "runTimeHalfMarathonInSeconds": 6300,
+    "runTimeFullMarathonInSeconds": 13500
   }
 }
 ```

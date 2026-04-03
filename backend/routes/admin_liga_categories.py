@@ -9,6 +9,9 @@ from firebase_admin import firestore
 from routes.admin import admin_bp
 from authz import require_admin, require_scheduler, AuthzError
 from extensions import db, zr_service
+from extensions import get_zwift_service
+from services.zwift_tokens import get_valid_access_token
+from routes.integration import _competition_metrics_to_profile, _power_profile_to_firestore
 from services.user_service import UserService
 from services.category_engine import (
     build_liga_category,
@@ -242,6 +245,97 @@ def refresh_zr_stats():
 
     except Exception as e:
         logger.error(f"ZR nightly refresh error: {e}")
+        return jsonify({'message': str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Backfill Zwift profile (competition metrics + subscriptions)
+# ---------------------------------------------------------------------------
+
+@admin_bp.route('/admin/refresh-zwift-profile', methods=['POST'])
+def refresh_zwift_profile():
+    """
+    Backfill competition metrics and webhook subscriptions for all users
+    that have a stored Zwift token.
+
+    For each user:
+    - Re-fetches GET /api/link/racing-profile?includeCompetitionMetrics=true
+    - Updates zwiftProfile with all CompetitionMetrics fields
+    - Subscribes to activity and racing-score webhooks
+
+    Safe to run multiple times (idempotent).
+    Accepts scheduler token or admin Firebase token.
+    """
+    scheduler_ok = False
+    try:
+        require_scheduler(request)
+        scheduler_ok = True
+    except AuthzError:
+        pass
+
+    if not scheduler_ok:
+        try:
+            require_admin(request)
+        except AuthzError as e:
+            return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    try:
+        zwift_service = get_zwift_service()
+        token_docs = list(db.collection('zwift_tokens').stream())
+
+        if not token_docs:
+            return jsonify({'message': 'No Zwift token documents found', 'updated': 0}), 200
+
+        updated = 0
+        skipped = 0
+        errors = 0
+
+        for token_doc in token_docs:
+            user_doc_id = token_doc.id
+            try:
+                access_token = get_valid_access_token(user_doc_id, zwift_service)
+                if not access_token:
+                    skipped += 1
+                    continue
+
+                profile = zwift_service.get_profile(user_access_token=access_token, include_competition_metrics=True)
+                if not profile:
+                    skipped += 1
+                    continue
+
+                competition = profile.get('competitionMetrics') or {}
+                update: dict = {
+                    'zwiftProfile': _competition_metrics_to_profile(competition, profile),
+                    'updatedAt': firestore.SERVER_TIMESTAMP,
+                }
+
+                power_profile = zwift_service.get_power_profile(access_token)
+                if power_profile:
+                    update['zwiftPowerCurve'] = _power_profile_to_firestore(power_profile)
+
+                db.collection('users').document(user_doc_id).set(with_schema_version(update), merge=True)
+
+                try:
+                    zwift_service.subscribe_activity(access_token)
+                    zwift_service.subscribe_racing_score(access_token)
+                    zwift_service.subscribe_power_curve(access_token)
+                except Exception as sub_exc:
+                    logger.warning(f"Subscription failed for {user_doc_id}: {sub_exc}")
+
+                updated += 1
+
+            except Exception as exc:
+                logger.error(f"refresh-zwift-profile failed for {user_doc_id}: {exc}")
+                errors += 1
+
+        logger.info(f"refresh-zwift-profile complete: updated={updated}, skipped={skipped}, errors={errors}")
+        return jsonify({'message': 'Zwift profile refresh complete', 'updated': updated, 'skipped': skipped, 'errors': errors}), 200
+
+    except Exception as e:
+        logger.error(f"refresh-zwift-profile error: {e}")
         return jsonify({'message': str(e)}), 500
 
 

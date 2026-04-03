@@ -23,6 +23,39 @@ logger = logging.getLogger(__name__)
 integration_bp = Blueprint('integration', __name__)
 
 
+def _competition_metrics_to_profile(competition: dict, profile: dict) -> dict:
+    """Map competitionMetrics + profile fields to the zwiftProfile Firestore shape."""
+    return {
+        'ftp': competition.get('ftp') or competition.get('zftp'),
+        'zftp': competition.get('zftp'),
+        'zmap': competition.get('zmap'),
+        'racingScore': competition.get('racingScore'),
+        'powerCompoundScore': competition.get('powerCompoundScore'),
+        'vo2max': competition.get('vo2max'),
+        'category': competition.get('category'),
+        'categoryWomen': competition.get('categoryWomen'),
+        'weightInGrams': competition.get('weightInGrams'),
+        'weight': profile.get('weight'),
+        'height': profile.get('heightInMillimeters'),
+        'updatedAt': firestore.SERVER_TIMESTAMP,
+    }
+
+
+def _power_profile_to_firestore(power_profile: dict) -> dict:
+    """Map /api/link/power-curve/power-profile response to the zwiftPowerCurve Firestore shape."""
+    return {
+        'zftp': power_profile.get('zftp'),
+        'zmap': power_profile.get('zmap'),
+        'vo2max': power_profile.get('vo2max'),
+        'category': power_profile.get('category'),
+        'categoryWomen': power_profile.get('categoryWomen'),
+        'validPowerProfile': power_profile.get('validPowerProfile'),
+        'metricsTimestamp': power_profile.get('metricsTimestamp'),
+        'cpBestEfforts': power_profile.get('cpBestEfforts'),
+        'updatedAt': firestore.SERVER_TIMESTAMP,
+    }
+
+
 def _resolve_user_doc_ref_from_uid(uid: str):
     user_doc_id = resolve_user_doc_id_from_auth_uid(uid)
     if not user_doc_id:
@@ -265,14 +298,7 @@ def zwift_callback():
 
         user_doc_ref.set(with_schema_version({
             'zwiftUserId': zwift_user_id,
-            'zwiftProfile': {
-                # Official API exposes FTP in competitionMetrics for racing-profile.
-                'ftp': competition.get('ftp') or competition.get('zftp'),
-                'weight': profile.get('weight'),
-                'height': profile.get('heightInMillimeters'),
-                'racingScore': competition.get('racingScore'),
-                'updatedAt': firestore.SERVER_TIMESTAMP,
-            },
+            'zwiftProfile': _competition_metrics_to_profile(competition, profile),
             'connections': {
                 'zwift': {
                     'connected': True,
@@ -284,6 +310,13 @@ def zwift_callback():
             },
             'updatedAt': firestore.SERVER_TIMESTAMP,
         }), merge=True)
+
+        try:
+            zwift_service.subscribe_activity(access_token)
+            zwift_service.subscribe_racing_score(access_token)
+            zwift_service.subscribe_power_curve(access_token)
+        except Exception as exc:
+            logger.warning(f"Failed to subscribe to Zwift webhooks for {zwift_user_id}: {exc}")
     finally:
         try:
             state_ref.delete()
@@ -348,8 +381,8 @@ def zwift_sync_subscriptions():
 
     body = request.get_json(silent=True) or {}
     subscribe_activity = bool(body.get('activity', True))
-    subscribe_racing = bool(body.get('racingScore', False))
-    subscribe_power_curve = bool(body.get('powerCurve', False))
+    subscribe_racing = bool(body.get('racingScore', True))
+    subscribe_power_curve = bool(body.get('powerCurve', True))
 
     result: dict[str, dict[str, object]] = {}
     if subscribe_activity:
@@ -425,6 +458,55 @@ def zwift_webhook():
                         }), merge=True)
         except Exception as exc:
             logger.error(f"Failed to process ActivitySaved webhook {notification_id}: {exc}")
+
+    elif notif_type == 'RacingScoreUpdated' and user_id:
+        try:
+            token_docs = (
+                db.collection('zwift_tokens')
+                .where('zwiftUserId', '==', user_id)
+                .limit(1)
+                .stream()
+            )
+            token_doc = next(token_docs, None)
+            if token_doc:
+                user_doc_id = token_doc.id
+                zwift_service = get_zwift_service()
+                access_token = get_valid_access_token(user_doc_id, zwift_service)
+                if access_token:
+                    # Both racing-score and power-curve subscriptions fire RacingScoreUpdated.
+                    # Fetch and store both in one pass.
+                    profile = zwift_service.get_profile(user_access_token=access_token, include_competition_metrics=True)
+                    power_profile = zwift_service.get_power_profile(access_token)
+                    update: dict = {'updatedAt': firestore.SERVER_TIMESTAMP}
+                    if profile:
+                        competition = profile.get('competitionMetrics') or {}
+                        update['zwiftProfile'] = _competition_metrics_to_profile(competition, profile)
+                    if power_profile:
+                        update['zwiftPowerCurve'] = _power_profile_to_firestore(power_profile)
+                    if len(update) > 1:
+                        db.collection('users').document(user_doc_id).set(with_schema_version(update), merge=True)
+        except Exception as exc:
+            logger.error(f"Failed to process RacingScoreUpdated webhook {notification_id}: {exc}")
+
+    elif notif_type == 'UserDisconnected' and user_id:
+        try:
+            token_docs = (
+                db.collection('zwift_tokens')
+                .where('zwiftUserId', '==', user_id)
+                .limit(1)
+                .stream()
+            )
+            token_doc = next(token_docs, None)
+            if token_doc:
+                user_doc_id = token_doc.id
+                db.collection('zwift_tokens').document(user_doc_id).delete()
+                db.collection('users').document(user_doc_id).set(with_schema_version({
+                    'connections': {'zwift': firestore.DELETE_FIELD},
+                    'updatedAt': firestore.SERVER_TIMESTAMP,
+                }), merge=True)
+                logger.info(f"Cleared Zwift connection for user {user_doc_id} after UserDisconnected webhook")
+        except Exception as exc:
+            logger.error(f"Failed to process UserDisconnected webhook {notification_id}: {exc}")
 
     return '', 204
 
