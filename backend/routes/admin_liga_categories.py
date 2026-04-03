@@ -63,6 +63,53 @@ def _resolve_categories(settings: dict):
     return None
 
 
+def _effective_rating(current, max30) -> int | None:
+    """Return max(currentRating, max30Rating), handling N/A and None.
+
+    Uses the higher of the two values so that a missing 30-day rating does not
+    prevent category assignment when a current rating is available.
+    """
+    vals = []
+    for v in (current, max30):
+        if v is not None and v != 'N/A':
+            try:
+                vals.append(int(v))
+            except (ValueError, TypeError):
+                pass
+    return max(vals) if vals else None
+
+
+def _compute_liga_update(eff_rating: int, existing_lc: dict | None, grace_period: int, categories) -> dict:
+    """Return the Firestore update dict for ligaCategory fields.
+
+    Single source of truth for all automatic category assignment paths
+    (nightly refresh and bulk assign). The individual manual reassign
+    uses reassign_to_next_category() and stays separate.
+    """
+    if existing_lc:
+        auto = existing_lc.get('autoAssigned') or {}
+        if existing_lc.get('locked'):
+            new_status = compute_category_status(
+                eff_rating, auto.get('upperBoundary'), auto.get('graceLimit')
+            )
+            return {
+                'ligaCategory.autoAssigned.status': new_status,
+                'ligaCategory.autoAssigned.lastCheckedRating': eff_rating,
+                'ligaCategory.autoAssigned.lastCheckedAt': firestore.SERVER_TIMESTAMP,
+            }
+        else:
+            new_auto = build_liga_category(eff_rating, grace_period, categories)
+            new_auto['assignedRating'] = auto.get('assignedRating', eff_rating)
+            new_auto['assignedAt'] = auto.get('assignedAt')
+            new_auto['lastCheckedAt'] = firestore.SERVER_TIMESTAMP
+            return {'ligaCategory.autoAssigned': new_auto}
+    else:
+        new_auto = build_liga_category(eff_rating, grace_period, categories)
+        new_auto['assignedAt'] = firestore.SERVER_TIMESTAMP
+        new_auto['lastCheckedAt'] = firestore.SERVER_TIMESTAMP
+        return {'ligaCategory': {'autoAssigned': new_auto, 'locked': False}}
+
+
 # ---------------------------------------------------------------------------
 # Nightly ZwiftRacing stats refresh
 # ---------------------------------------------------------------------------
@@ -166,11 +213,13 @@ def refresh_zr_stats():
 
             data = rider_data if 'race' in rider_data else rider_data.get('data', {})
             race = data.get('race', {})
+            new_current = race.get('current', {}).get('rating', 'N/A')
             new_max30 = race.get('max30', {}).get('rating', 'N/A')
+            eff_rating = _effective_rating(new_current, new_max30)
 
             zr_update = {
                 'zwiftRacing': {
-                    'currentRating': race.get('current', {}).get('rating', 'N/A'),
+                    'currentRating': new_current,
                     'max30Rating':   new_max30,
                     'max90Rating':   race.get('max90', {}).get('rating', 'N/A'),
                     'phenotype':     data.get('phenotype', {}).get('value', 'N/A'),
@@ -179,45 +228,16 @@ def refresh_zr_stats():
             }
 
             liga_update: dict = {}
-            if new_max30 != 'N/A':
+            if eff_rating is not None:
                 try:
-                    lc = liga_by_doc_id.get(user_ref.id)
-                    if lc:
-                        auto = lc.get('autoAssigned') or {}
-                        if lc.get('locked'):
-                            new_status = compute_category_status(
-                                int(new_max30),
-                                auto.get('upperBoundary'),
-                                auto.get('graceLimit'),
-                            )
-                            liga_update = {
-                                'ligaCategory.autoAssigned.status': new_status,
-                                'ligaCategory.autoAssigned.lastCheckedRating': int(new_max30),
-                                'ligaCategory.autoAssigned.lastCheckedAt': firestore.SERVER_TIMESTAMP,
-                            }
-                        else:
-                            new_auto = build_liga_category(
-                                int(new_max30), nightly_grace, nightly_categories
-                            )
-                            new_auto['assignedRating'] = auto.get('assignedRating', int(new_max30))
-                            new_auto['assignedAt'] = auto.get('assignedAt')
-                            new_auto['lastCheckedAt'] = firestore.SERVER_TIMESTAMP
-                            liga_update = {'ligaCategory.autoAssigned': new_auto}
-                    else:
-                        new_auto = build_liga_category(
-                            int(new_max30), nightly_grace, nightly_categories
-                        )
-                        new_auto['assignedAt'] = firestore.SERVER_TIMESTAMP
-                        new_auto['lastCheckedAt'] = firestore.SERVER_TIMESTAMP
-                        liga_update = {
-                            'ligaCategory': {
-                                'autoAssigned': new_auto,
-                                'locked': False,
-                            }
-                        }
+                    liga_update = _compute_liga_update(
+                        eff_rating,
+                        liga_by_doc_id.get(user_ref.id),
+                        nightly_grace,
+                        nightly_categories,
+                    )
                 except Exception:
                     logger.warning(f"Could not update category metadata for {rider_label}", exc_info=True)
-                    pass
 
             user_update = with_schema_version({**zr_update, **liga_update})
             log_schema_issues(logger, f"users/{user_ref.id} (zr nightly)", validate_user_doc(user_update, partial=True))
@@ -446,18 +466,17 @@ def assign_liga_categories():
 
         for doc in docs:
             data = doc.to_dict() or {}
-            max30 = data.get('zwiftRacing', {}).get('max30Rating', 'N/A')
+            zr = data.get('zwiftRacing', {})
+            eff_rating = _effective_rating(zr.get('currentRating', 'N/A'), zr.get('max30Rating', 'N/A'))
 
-            if max30 == 'N/A' or max30 is None:
+            if eff_rating is None:
                 skipped += 1
                 continue
 
             try:
-                auto = build_liga_category(int(max30), grace_period, categories)
-                auto['assignedAt'] = firestore.SERVER_TIMESTAMP
-                auto['lastCheckedAt'] = firestore.SERVER_TIMESTAMP
-
-                user_update = with_schema_version({'ligaCategory': {'autoAssigned': auto, 'locked': False}})
+                # Pass existing_lc=None so bulk assign always resets to unlocked.
+                liga_update = _compute_liga_update(eff_rating, None, grace_period, categories)
+                user_update = with_schema_version(liga_update)
                 log_schema_issues(logger, f"users/{doc.id} (bulk assign liga)", validate_user_doc(user_update, partial=True))
                 batch.set(doc.reference, user_update, merge=True)
                 assigned += 1
@@ -556,14 +575,15 @@ def reassign_liga_category(zwift_id):
         grace_period = liga_settings['gracePeriod']
         categories = _resolve_categories(liga_settings)
 
-        max30 = data.get('zwiftRacing', {}).get('max30Rating', 'N/A')
-        if max30 == 'N/A':
-            return jsonify({'message': 'Rider has no max30Rating'}), 400
+        zr = data.get('zwiftRacing', {})
+        eff_rating = _effective_rating(zr.get('currentRating', 'N/A'), zr.get('max30Rating', 'N/A'))
+        if eff_rating is None:
+            return jsonify({'message': 'Rider has no vELO rating'}), 400
 
         auto = lc.get('autoAssigned') or {}
         current_cat = auto.get('category')
 
-        update_fields = reassign_to_next_category(current_cat, int(max30), grace_period, categories)
+        update_fields = reassign_to_next_category(current_cat, eff_rating, grace_period, categories)
         update_fields['lastCheckedAt'] = firestore.SERVER_TIMESTAMP
 
         new_auto = {**auto, **update_fields}
