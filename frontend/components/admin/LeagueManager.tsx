@@ -194,12 +194,15 @@ export default function LeagueManager() {
             
             if (res.ok) {
                 const data = await res.json();
-                const savedRace = { ...raceData, id: formState.editingRaceId || data.id } as Race;
+                const savedRace = (data.race || { ...raceData, id: formState.editingRaceId || data.id }) as Race;
                 
                 if (formState.editingRaceId) {
                     setRaces(races.map(r => r.id === formState.editingRaceId ? savedRace : r));
                 } else {
                     setRaces([...races, savedRace]);
+                }
+                if (Array.isArray(data.warnings) && data.warnings.length > 0) {
+                    alert(`Race saved with warnings:\n- ${data.warnings.join('\n- ')}`);
                 }
                 raceForm.resetForm();
             } else {

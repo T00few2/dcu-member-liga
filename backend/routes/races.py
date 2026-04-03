@@ -107,17 +107,37 @@ def verify_admin_auth():
     return require_admin(request)
 
 
+def _normalize_category(value: Any) -> str:
+    raw = str(value or "").strip().upper()
+    if not raw:
+        return ""
+    # Accept values like "A", "Category A", "A (4.0+)", etc.
+    for ch in raw:
+        if ch in {"A", "B", "C", "D", "E"}:
+            return ch
+    return raw
+
+
 def _select_subgroup_id(event_payload: dict[str, Any], custom_category: Any) -> str | None:
     subgroups = event_payload.get("eventSubgroups", []) if isinstance(event_payload, dict) else []
     if not isinstance(subgroups, list) or not subgroups:
         return None
 
     if custom_category:
-        wanted = str(custom_category).strip().upper()
+        wanted = _normalize_category(custom_category)
+        label_to_number = {"A": "1", "B": "2", "C": "3", "D": "4", "E": "5"}
         for subgroup in subgroups:
-            label = str(subgroup.get("subgroupLabel") or "").strip().upper()
             sid = subgroup.get("id")
-            if wanted and label == wanted and sid is not None:
+            if sid is None:
+                continue
+            subgroup_label = _normalize_category(subgroup.get("subgroupLabel"))
+            subgroup_name = _normalize_category(subgroup.get("name"))
+            subgroup_numeric = str(subgroup.get("label") or "").strip()
+            if wanted and (
+                subgroup_label == wanted
+                or subgroup_name == wanted
+                or (wanted in label_to_number and subgroup_numeric == label_to_number[wanted])
+            ):
                 return str(sid)
 
     if len(subgroups) == 1 and subgroups[0].get("id") is not None:
@@ -203,7 +223,7 @@ def create_race():
         payload = with_schema_version(data)
         log_schema_issues(logger, "races/<new> (create)", validate_race_doc(payload))
         _, doc_ref = db.collection('races').add(payload)
-        body: dict[str, Any] = {'message': 'Race created', 'id': doc_ref.id}
+        body: dict[str, Any] = {'message': 'Race created', 'id': doc_ref.id, 'race': {**payload, 'id': doc_ref.id}}
         if hydrate_warnings:
             body['warnings'] = hydrate_warnings
         return jsonify(body), 201
@@ -246,7 +266,7 @@ def update_race(race_id):
         payload = with_schema_version(data)
         log_schema_issues(logger, f"races/{race_id} (update)", validate_race_doc(payload))
         db.collection('races').document(race_id).update(payload)
-        body: dict[str, Any] = {'message': 'Race updated'}
+        body: dict[str, Any] = {'message': 'Race updated', 'race': {**payload, 'id': race_id}}
         if hydrate_warnings:
             body['warnings'] = hydrate_warnings
         return jsonify(body), 200
