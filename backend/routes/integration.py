@@ -23,6 +23,24 @@ logger = logging.getLogger(__name__)
 integration_bp = Blueprint('integration', __name__)
 
 
+def _competition_metrics_to_profile(competition: dict, profile: dict) -> dict:
+    """Map competitionMetrics + profile fields to the zwiftProfile Firestore shape."""
+    return {
+        'ftp': competition.get('ftp') or competition.get('zftp'),
+        'zftp': competition.get('zftp'),
+        'zmap': competition.get('zmap'),
+        'racingScore': competition.get('racingScore'),
+        'powerCompoundScore': competition.get('powerCompoundScore'),
+        'vo2max': competition.get('vo2max'),
+        'category': competition.get('category'),
+        'categoryWomen': competition.get('categoryWomen'),
+        'weightInGrams': competition.get('weightInGrams'),
+        'weight': profile.get('weight'),
+        'height': profile.get('heightInMillimeters'),
+        'updatedAt': firestore.SERVER_TIMESTAMP,
+    }
+
+
 def _resolve_user_doc_ref_from_uid(uid: str):
     user_doc_id = resolve_user_doc_id_from_auth_uid(uid)
     if not user_doc_id:
@@ -265,16 +283,7 @@ def zwift_callback():
 
         user_doc_ref.set(with_schema_version({
             'zwiftUserId': zwift_user_id,
-            'zwiftProfile': {
-                'ftp': competition.get('ftp') or competition.get('zftp'),
-                'zftp': competition.get('zftp'),
-                'zmap': competition.get('zmap'),
-                'racingScore': competition.get('racingScore'),
-                'vo2max': competition.get('vo2max'),
-                'weight': profile.get('weight'),
-                'height': profile.get('heightInMillimeters'),
-                'updatedAt': firestore.SERVER_TIMESTAMP,
-            },
+            'zwiftProfile': _competition_metrics_to_profile(competition, profile),
             'connections': {
                 'zwift': {
                     'connected': True,
@@ -452,16 +461,7 @@ def zwift_webhook():
                     if profile:
                         competition = profile.get('competitionMetrics') or {}
                         db.collection('users').document(user_doc_id).set(with_schema_version({
-                            'zwiftProfile': {
-                                'ftp': competition.get('ftp') or competition.get('zftp'),
-                                'zftp': competition.get('zftp'),
-                                'zmap': competition.get('zmap'),
-                                'racingScore': competition.get('racingScore'),
-                                'vo2max': competition.get('vo2max'),
-                                'weight': profile.get('weight'),
-                                'height': profile.get('heightInMillimeters'),
-                                'updatedAt': firestore.SERVER_TIMESTAMP,
-                            },
+                            'zwiftProfile': _competition_metrics_to_profile(competition, profile),
                             'updatedAt': firestore.SERVER_TIMESTAMP,
                         }), merge=True)
         except Exception as exc:
