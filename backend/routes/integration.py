@@ -297,7 +297,9 @@ def zwift_callback():
             zwift_user_id=zwift_user_id,
         )
 
-        user_doc_ref.set(with_schema_version({
+        power_profile = zwift_service.get_power_profile(access_token)
+
+        callback_update: dict = {
             'zwiftUserId': zwift_user_id,
             'zwiftProfile': _competition_metrics_to_profile(competition, profile),
             'connections': {
@@ -310,7 +312,11 @@ def zwift_callback():
                 }
             },
             'updatedAt': firestore.SERVER_TIMESTAMP,
-        }), merge=True)
+        }
+        if power_profile:
+            callback_update['zwiftPowerCurve'] = _power_profile_to_firestore(power_profile)
+
+        user_doc_ref.set(with_schema_version(callback_update), merge=True)
 
         try:
             zwift_service.subscribe_activity(access_token)
