@@ -488,31 +488,6 @@ def zwift_webhook():
         except Exception as exc:
             logger.error(f"Failed to process RacingScoreUpdated webhook {notification_id}: {exc}")
 
-    elif notif_type == 'PowerCurveUpdated' and user_id:
-        # Kept as fallback in case Zwift uses a separate type after all.
-        # If RacingScoreUpdated already handles both, this will never fire.
-        try:
-            token_docs = (
-                db.collection('zwift_tokens')
-                .where('zwiftUserId', '==', user_id)
-                .limit(1)
-                .stream()
-            )
-            token_doc = next(token_docs, None)
-            if token_doc:
-                user_doc_id = token_doc.id
-                zwift_service = get_zwift_service()
-                access_token = get_valid_access_token(user_doc_id, zwift_service)
-                if access_token:
-                    power_profile = zwift_service.get_power_profile(access_token)
-                    if power_profile:
-                        db.collection('users').document(user_doc_id).set(with_schema_version({
-                            'zwiftPowerCurve': _power_profile_to_firestore(power_profile),
-                            'updatedAt': firestore.SERVER_TIMESTAMP,
-                        }), merge=True)
-        except Exception as exc:
-            logger.error(f"Failed to process PowerCurveUpdated webhook {notification_id}: {exc}")
-
     elif notif_type == 'UserDisconnected' and user_id:
         try:
             token_docs = (
