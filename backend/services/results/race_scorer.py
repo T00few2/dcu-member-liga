@@ -124,7 +124,8 @@ class RaceScorer:
         if not segment_efforts_map or not sprints_config:
             return
 
-        riders_by_id = {int(r['zwiftId']): r for r in riders if r.get('zwiftId')}
+        # Official results may use UUID-style rider IDs. Keep IDs as strings.
+        riders_by_id = {str(r['zwiftId']): r for r in riders if r.get('zwiftId')}
         participant_ids = set(riders_by_id.keys())
 
         # Group sprints by Zwift Segment ID for processing
@@ -132,22 +133,29 @@ class RaceScorer:
         for s in sprints_config:
             sprints_by_segment_id[s['id']].append(s)
 
-        for seg_id_str, raw_results in segment_efforts_map.items():
-            seg_id = int(seg_id_str) if seg_id_str.isdigit() else seg_id_str
-            sprints_for_seg = sprints_by_segment_id.get(str(seg_id)) or sprints_by_segment_id.get(int(seg_id))
+        for seg_id_raw, raw_results in segment_efforts_map.items():
+            seg_id_str = str(seg_id_raw)
+            seg_id_int = int(seg_id_str) if seg_id_str.isdigit() else None
+            sprints_for_seg = (
+                sprints_by_segment_id.get(seg_id_str)
+                or (sprints_by_segment_id.get(seg_id_int) if seg_id_int is not None else None)
+            )
 
             if not sprints_for_seg or not raw_results:
                 continue
 
             # Filter results to only include our riders
             results_list = raw_results.get('results', []) if isinstance(raw_results, dict) else raw_results
-            valid_entries = [e for e in results_list if e.get('athleteId') in participant_ids]
+            valid_entries = [
+                e for e in results_list
+                if str(e.get('athleteId')) in participant_ids
+            ]
 
             # Group entries by athlete to handle multiple laps
             # Sort by worldTime (earliest first) to determine lap count
-            entries_by_athlete: dict[int, list[Any]] = defaultdict(list)
+            entries_by_athlete: dict[str, list[Any]] = defaultdict(list)
             for entry in valid_entries:
-                entries_by_athlete[entry['athleteId']].append(entry)
+                entries_by_athlete[str(entry['athleteId'])].append(entry)
 
             for athlete_id, entries in entries_by_athlete.items():
                 entries.sort(key=lambda x: int(x.get('worldTime', 0)))
