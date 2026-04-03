@@ -37,13 +37,25 @@ class ZwiftFetcher:
         fetch_mode: str,
         filter_registered: bool,
         registered_riders: dict[str, Any],
+        sprint_segment_ids: set[str | int] | None = None,
+        route_segment_ids_ordered: list[str | int] | None = None,
     ) -> list[RiderResult]:
         """
         Fetches participants/finishers for a subgroup and maps them to registered riders.
+
+        sprint_segment_ids and route_segment_ids_ordered are used to identify
+        the finish-line segment by exclusion from sprint segments.
+        This is required for correct live/partial results.
         """
         finishers: list[RiderResult] = []
         if fetch_mode == 'finishers':
-            finish_results_raw = self.zwift.get_event_results(subgroup_id, event_secret=event_secret)
+            all_results_raw = self.zwift.get_event_results(
+                subgroup_id,
+                event_secret=event_secret,
+            )
+            finish_results_raw = self._filter_finish_entries(
+                all_results_raw, sprint_segment_ids, route_segment_ids_ordered
+            )
 
             for entry in finish_results_raw:
                 profile = entry.get('profileData', {})
@@ -95,6 +107,71 @@ class ZwiftFetcher:
             finishers.sort(key=lambda x: x['name'])
 
         return finishers
+
+    def _filter_finish_entries(
+        self,
+        entries: list[dict[str, Any]],
+        sprint_segment_ids: set[str | int] | None,
+        route_segment_ids_ordered: list[str | int] | None,
+    ) -> list[dict[str, Any]]:
+        """
+        Filter segment entries to finish-line entries only.
+
+        Groups entries by segmentId (from _officialSegmentResult), excludes sprint
+        segments, and uses route order or max-duration heuristic as tiebreaker.
+        Entries without a segmentId (legacy path) are returned as-is.
+        """
+        by_segment: dict[str, list[dict[str, Any]]] = {}
+        for e in entries:
+            raw = e.get("_officialSegmentResult") or {}
+            seg_id = str(raw.get("segmentId", ""))
+            by_segment.setdefault(seg_id, []).append(e)
+
+        # All entries have no segmentId → legacy path or single-segment; return as-is.
+        if set(by_segment.keys()) == {""}:
+            return entries
+
+        # Work only with entries that carry a segmentId.
+        segmented = {sid: ents for sid, ents in by_segment.items() if sid}
+
+        if not segmented:
+            return entries
+
+        if sprint_segment_ids:
+            sprint_ids_str = {str(s) for s in sprint_segment_ids}
+            non_sprint = {sid: ents for sid, ents in segmented.items() if sid not in sprint_ids_str}
+        else:
+            non_sprint = dict(segmented)
+
+        if not non_sprint:
+            logger.warning(
+                "segment-results: all entries are sprint segments; cannot identify finish. "
+                "Returning all entries."
+            )
+            return entries
+
+        if len(non_sprint) == 1:
+            return next(iter(non_sprint.values()))
+
+        # Multiple non-sprint segments: try route order (last segment = finish arch).
+        if route_segment_ids_ordered:
+            for seg_id in reversed([str(s) for s in route_segment_ids_ordered]):
+                if seg_id in non_sprint:
+                    return non_sprint[seg_id]
+
+        # Final fallback: segment with the highest maximum duration per rider.
+        logger.warning(
+            "segment-results: multiple non-sprint segments and no route order available. "
+            "Using max-duration heuristic to select finish segment."
+        )
+        finish_seg = max(
+            non_sprint,
+            key=lambda sid: max(
+                (e.get("activityData", {}).get("durationInMilliseconds", 0) for e in non_sprint[sid]),
+                default=0,
+            ),
+        )
+        return non_sprint[finish_seg]
 
     def fetch_segment_efforts(
         self,

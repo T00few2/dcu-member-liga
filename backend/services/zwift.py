@@ -303,69 +303,88 @@ class ZwiftService:
         response.raise_for_status()
         return {}
 
-    def get_event_results(self, event_sub_id: str, limit: int = 100, event_secret: str | None = None) -> list[dict[str, Any]]:
+    def get_subgroup_all_segment_results(
+        self,
+        subgroup_id: str,
+        limit: int = 100,
+    ) -> dict[str, list[dict[str, Any]]]:
         """
-        Uses official /api/link/events/subgroups/{subgroupId}/segment-results.
-        Normalizes entries to preserve legacy keys consumed by scorers.
+        Fetch every segment-results entry for a subgroup in one paginated sweep
+        and return them grouped by segmentId.
 
-        The segment-results endpoint returns entries for ALL segments in the
-        subgroup (finish line + any sprint/KOM segments).  We keep only the
-        entry with the highest durationInMilliseconds per userId, which is
-        the finish-line crossing (sprint sub-segments always have a shorter
-        duration than the total race time).
+        This is the canonical fetch used by both finish-result extraction and
+        sprint-effort extraction so the API is called only once per subgroup.
+
+        Returns: {segmentId_str: [raw_entry, ...]}
         """
-        del event_secret  # Official endpoint does not use eventSecret.
         cursor: str | None = None
-        raw_entries: list[dict[str, Any]] = []
+        by_segment: dict[str, list[dict[str, Any]]] = {}
 
         while True:
             params: dict[str, Any] = {}
             if cursor:
                 params["cursor"] = cursor
-            response = self._api_get(f"/api/link/events/subgroups/{event_sub_id}/segment-results", params=params)
-            if response.status_code != 200 and self.allow_legacy_fallback:
-                return self._get_event_results_legacy(event_sub_id, limit=limit)
+            response = self._api_get(
+                f"/api/link/events/subgroups/{subgroup_id}/segment-results",
+                params=params,
+            )
             response.raise_for_status()
             data = self._safe_json(response)
             entries = data.get("entries", [])
-            raw_entries.extend(entries)
+            for e in entries:
+                seg_id = str(e.get("segmentId", ""))
+                by_segment.setdefault(seg_id, []).append(e)
             cursor = data.get("cursor")
             if not cursor or len(entries) < limit:
                 break
 
-        # Keep only the entry with the longest duration per userId.
-        # The finish-line segment always has the greatest durationInMilliseconds
-        # (= total race time); sprint/KOM sub-segments have much shorter durations.
-        finish_by_user: dict[str, dict[str, Any]] = {}
-        for e in raw_entries:
-            user_id = e.get("userId")
-            if not user_id:
-                continue
-            existing = finish_by_user.get(user_id)
-            if existing is None or e.get("durationInMilliseconds", 0) > existing.get("durationInMilliseconds", 0):
-                finish_by_user[user_id] = e
+        return by_segment
+
+    def get_event_results(
+        self,
+        event_sub_id: str,
+        limit: int = 100,
+        event_secret: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        Returns all segment-results entries for a subgroup in legacy format.
+
+        All segments (finish line + sprints/KOMs) are included — callers are
+        responsible for filtering to the desired segmentId(s).  Each entry
+        preserves the raw official payload in _officialSegmentResult so the
+        segmentId is always accessible downstream.
+        """
+        del event_secret  # Official endpoint does not use eventSecret.
+
+        try:
+            by_segment = self.get_subgroup_all_segment_results(event_sub_id, limit=limit)
+        except Exception:
+            if self.allow_legacy_fallback:
+                return self._get_event_results_legacy(event_sub_id, limit=limit)
+            raise
 
         all_entries: list[dict[str, Any]] = []
-        for e in finish_by_user.values():
-            user_id = e.get("userId")
-            all_entries.append(
-                {
-                    "profileId": user_id,
-                    "profileData": {
-                        "id": user_id,
-                        "userId": user_id,
-                        "firstName": "",
-                        "lastName": "",
-                    },
-                    "activityData": {
-                        "durationInMilliseconds": e.get("durationInMilliseconds", 0),
-                    },
-                    "flaggedCheating": False,
-                    "flaggedSandbagging": False,
-                    "criticalP": {},
-                    "_officialSegmentResult": e,
-                }
-            )
+        for raw_list in by_segment.values():
+            for e in raw_list:
+                user_id = e.get("userId")
+                all_entries.append(
+                    {
+                        "profileId": user_id,
+                        "profileData": {
+                            "id": user_id,
+                            "userId": user_id,
+                            "firstName": "",
+                            "lastName": "",
+                        },
+                        "activityData": {
+                            "durationInMilliseconds": e.get("durationInMilliseconds", 0),
+                        },
+                        "flaggedCheating": False,
+                        "flaggedSandbagging": False,
+                        "criticalP": {},
+                        "_officialSegmentResult": e,
+                    }
+                )
         return all_entries
 
     def _get_event_results_legacy(self, event_sub_id: str, limit: int = 100) -> list[dict[str, Any]]:

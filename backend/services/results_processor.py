@@ -336,12 +336,8 @@ class ResultsProcessor:
                 logger.error(f"Time parse error: {e}")
                 continue
 
-            # Fetch Finishers using ZwiftFetcher
-            finishers = self.zwift_fetcher.fetch_finishers(
-                subgroup_id, event_secret, fetch_mode, filter_registered, registered_riders
-            )
-
-            # Determine Configs
+            # Determine Configs (must happen before fetch_finishers so sprint IDs
+            # can be forwarded for accurate finish-segment identification)
             category_sprints = source.get('sprints', [])
             category_segment_type = source.get('segmentType')
 
@@ -352,6 +348,31 @@ class ResultsProcessor:
                     logger.info(f"    Using per-category sprints for {category_label}: {len(category_sprints)} sprints")
                 if cat_cfg.get('segmentType'):
                     category_segment_type = cat_cfg['segmentType']
+
+            # Build ordered route segment list for finish-line identification.
+            # The finish segment = last non-sprint segment in route chronology.
+            route_segment_ids_ordered: list[Any] = []
+            route_id = race_data.get('routeId') or subgroup.get('routeId')
+            route_laps = subgroup.get('laps') or race_data.get('laps') or 1
+            if route_id:
+                try:
+                    route_segs = self.game.get_event_segments(str(route_id), int(route_laps))
+                    route_segment_ids_ordered = [s['id'] for s in route_segs if s.get('id')]
+                except Exception as e:
+                    logger.warning(f"Could not resolve route segments for {route_id}: {e}")
+
+            sprint_ids_set: set[str | int] = {s['id'] for s in category_sprints}
+
+            # Fetch Finishers using ZwiftFetcher
+            finishers = self.zwift_fetcher.fetch_finishers(
+                subgroup_id,
+                event_secret,
+                fetch_mode,
+                filter_registered,
+                registered_riders,
+                sprint_segment_ids=sprint_ids_set,
+                route_segment_ids_ordered=route_segment_ids_ordered,
+            )
 
             category_config = self._get_category_config(race_data, effective_category)
             category_config['sprints'] = category_sprints
