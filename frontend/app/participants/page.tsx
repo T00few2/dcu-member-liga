@@ -46,10 +46,13 @@ interface Participant {
   club: string;
   zwiftId?: string;
   category: string;
-  ftp: number | string;
   zftp: number | string;
   zmap: number | string;
   zwiftCategory: string;
+  cp5s: number | null;
+  cp1min: number | null;
+  cp5min: number | null;
+  cp20min: number | null;
   rating: number | string;
   max30Rating: number | string;
   max90Rating: number | string;
@@ -130,9 +133,12 @@ export default function ParticipantsPage() {
                 <th className="px-6 py-3 font-bold">ZR max30</th>
                 <th className="px-6 py-3 font-bold">Liga Kat</th>
                 <th className="px-6 py-3 font-bold">Zwift Kat</th>
-                <th className="px-6 py-3 font-bold">FTP</th>
                 <th className="px-6 py-3 font-bold">zFTP</th>
                 <th className="px-6 py-3 font-bold">zMAP</th>
+                <th className="px-6 py-3 font-bold">5s</th>
+                <th className="px-6 py-3 font-bold">1min</th>
+                <th className="px-6 py-3 font-bold">5min</th>
+                <th className="px-6 py-3 font-bold">20min</th>
                 <th className="px-6 py-3 font-bold">ZRS</th>
                 <th className="px-6 py-3 font-bold">vELO</th>
                 <th className="px-6 py-3 font-bold">vELO max30</th>
@@ -144,7 +150,7 @@ export default function ParticipantsPage() {
             <tbody className="divide-y divide-border">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={15} className="px-6 py-8 text-center text-muted-foreground">
+                  <td colSpan={18} className="px-6 py-8 text-center text-muted-foreground">
                     {search ? 'Ingen deltagere matcher søgningen.' : 'Ingen deltagere fundet endnu.'}
                   </td>
                 </tr>
@@ -205,15 +211,16 @@ export default function ParticipantsPage() {
                         </span>
                       ) : '-'}
                     </td>
-                    <td className="px-6 py-4">
-                      {typeof p.ftp === 'number' ? `${Math.round(p.ftp)} W` : '-'}
+                    <td className="px-6 py-4 font-mono text-card-foreground">
+                      {p.zftp !== 'N/A' && p.zftp !== undefined ? `${Math.round(Number(p.zftp))}` : '-'}
                     </td>
                     <td className="px-6 py-4 font-mono text-card-foreground">
-                      {p.zftp !== 'N/A' && p.zftp !== undefined ? `${Math.round(Number(p.zftp))} W` : '-'}
+                      {p.zmap !== 'N/A' && p.zmap !== undefined ? `${Math.round(Number(p.zmap))}` : '-'}
                     </td>
-                    <td className="px-6 py-4 font-mono text-card-foreground">
-                      {p.zmap !== 'N/A' && p.zmap !== undefined ? `${Math.round(Number(p.zmap))} W` : '-'}
-                    </td>
+                    <td className="px-6 py-4 font-mono text-muted-foreground">{p.cp5s ?? '-'}</td>
+                    <td className="px-6 py-4 font-mono text-muted-foreground">{p.cp1min ?? '-'}</td>
+                    <td className="px-6 py-4 font-mono text-muted-foreground">{p.cp5min ?? '-'}</td>
+                    <td className="px-6 py-4 font-mono text-muted-foreground">{p.cp20min ?? '-'}</td>
                     <td className="px-6 py-4 font-mono font-medium text-card-foreground">
                       {p.racingScore !== 'N/A' && p.racingScore ? Math.round(Number(p.racingScore)) : '-'}
                     </td>
