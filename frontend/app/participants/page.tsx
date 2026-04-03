@@ -47,6 +47,9 @@ interface Participant {
   zwiftId?: string;
   category: string;
   ftp: number | string;
+  zftp: number | string;
+  zmap: number | string;
+  zwiftCategory: string;
   rating: number | string;
   max30Rating: number | string;
   max90Rating: number | string;
@@ -126,7 +129,10 @@ export default function ParticipantsPage() {
                 <th className="px-6 py-3 font-bold">ZR Kat</th>
                 <th className="px-6 py-3 font-bold">ZR max30</th>
                 <th className="px-6 py-3 font-bold">Liga Kat</th>
-                <th className="px-6 py-3 font-bold">FTP (Zwift)</th>
+                <th className="px-6 py-3 font-bold">Zwift Kat</th>
+                <th className="px-6 py-3 font-bold">FTP</th>
+                <th className="px-6 py-3 font-bold">zFTP</th>
+                <th className="px-6 py-3 font-bold">zMAP</th>
                 <th className="px-6 py-3 font-bold">ZRS</th>
                 <th className="px-6 py-3 font-bold">vELO</th>
                 <th className="px-6 py-3 font-bold">vELO max30</th>
@@ -138,7 +144,7 @@ export default function ParticipantsPage() {
             <tbody className="divide-y divide-border">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="px-6 py-8 text-center text-muted-foreground">
+                  <td colSpan={15} className="px-6 py-8 text-center text-muted-foreground">
                     {search ? 'Ingen deltagere matcher søgningen.' : 'Ingen deltagere fundet endnu.'}
                   </td>
                 </tr>
@@ -193,7 +199,20 @@ export default function ParticipantsPage() {
                       ) : '-'}
                     </td>
                     <td className="px-6 py-4">
+                      {p.zwiftCategory && p.zwiftCategory !== 'N/A' ? (
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ZR_CATEGORY_STYLES[p.zwiftCategory] ?? 'bg-slate-100 text-slate-800'}`}>
+                          {p.zwiftCategory}
+                        </span>
+                      ) : '-'}
+                    </td>
+                    <td className="px-6 py-4">
                       {typeof p.ftp === 'number' ? `${Math.round(p.ftp)} W` : '-'}
+                    </td>
+                    <td className="px-6 py-4 font-mono text-card-foreground">
+                      {p.zftp !== 'N/A' && p.zftp !== undefined ? `${Math.round(Number(p.zftp))} W` : '-'}
+                    </td>
+                    <td className="px-6 py-4 font-mono text-card-foreground">
+                      {p.zmap !== 'N/A' && p.zmap !== undefined ? `${Math.round(Number(p.zmap))} W` : '-'}
                     </td>
                     <td className="px-6 py-4 font-mono font-medium text-card-foreground">
                       {p.racingScore !== 'N/A' && p.racingScore ? Math.round(Number(p.racingScore)) : '-'}
