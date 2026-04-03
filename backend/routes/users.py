@@ -394,12 +394,17 @@ def get_participants():
                 ftp_value = 'N/A'
 
             zpc = data.get('zwiftPowerCurve', {})
-            curve_watts = (zpc.get('cpBestEfforts') or {}).get('pointsWatts') or {}
+            relevant_efforts = {
+                e['duration']: e
+                for e in (zpc.get('relevantCpEfforts') or [])
+                if isinstance(e, dict) and 'duration' in e
+            }
 
-            def cp(duration_sec: str) -> int | None:
-                pt = curve_watts.get(duration_sec)
-                if pt and pt.get('value'):
-                    return round(pt['value'])
+            def cp(duration_sec: int) -> int | None:
+                effort = relevant_efforts.get(duration_sec)
+                if effort:
+                    w = effort.get('watts')
+                    return round(w) if w else None
                 return None
 
             participants.append({
@@ -410,10 +415,10 @@ def get_participants():
                 'zftp': zpro.get('zftp', 'N/A'),
                 'zmap': zpro.get('zmap', 'N/A'),
                 'zwiftCategory': zpro.get('category', 'N/A'),
-                'cp5s':   cp('5'),
-                'cp1min': cp('60'),
-                'cp5min': cp('300'),
-                'cp20min': cp('1200'),
+                'cp5s':   cp(5),
+                'cp1min': cp(60),
+                'cp5min': cp(300),
+                'cp20min': cp(1200),
                 'rating': zr.get('currentRating', 'N/A'),
                 'max30Rating': zr.get('max30Rating', 'N/A'),
                 'max90Rating': zr.get('max90Rating', 'N/A'),
