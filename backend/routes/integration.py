@@ -473,17 +473,24 @@ def zwift_webhook():
                 zwift_service = get_zwift_service()
                 access_token = get_valid_access_token(user_doc_id, zwift_service)
                 if access_token:
+                    # Both racing-score and power-curve subscriptions fire RacingScoreUpdated.
+                    # Fetch and store both in one pass.
                     profile = zwift_service.get_profile(user_access_token=access_token, include_competition_metrics=True)
+                    power_profile = zwift_service.get_power_profile(access_token)
+                    update: dict = {'updatedAt': firestore.SERVER_TIMESTAMP}
                     if profile:
                         competition = profile.get('competitionMetrics') or {}
-                        db.collection('users').document(user_doc_id).set(with_schema_version({
-                            'zwiftProfile': _competition_metrics_to_profile(competition, profile),
-                            'updatedAt': firestore.SERVER_TIMESTAMP,
-                        }), merge=True)
+                        update['zwiftProfile'] = _competition_metrics_to_profile(competition, profile)
+                    if power_profile:
+                        update['zwiftPowerCurve'] = _power_profile_to_firestore(power_profile)
+                    if len(update) > 1:
+                        db.collection('users').document(user_doc_id).set(with_schema_version(update), merge=True)
         except Exception as exc:
             logger.error(f"Failed to process RacingScoreUpdated webhook {notification_id}: {exc}")
 
     elif notif_type == 'PowerCurveUpdated' and user_id:
+        # Kept as fallback in case Zwift uses a separate type after all.
+        # If RacingScoreUpdated already handles both, this will never fire.
         try:
             token_docs = (
                 db.collection('zwift_tokens')
