@@ -247,3 +247,60 @@ Scripts are provided to manage user roles (specifically the `admin` custom claim
 *   **Revoke Admin Access**:
     *   `python backend/scripts/set_admin_claim.py --email <USER_EMAIL> --admin false`
 
+## Zwift Integration
+
+### OAuth & Profile
+
+When a user connects their Zwift account via OAuth (`/zwift/callback`), the backend:
+
+1. Exchanges the auth code for tokens (stored in `zwift_tokens/{userDocId}`)
+2. Fetches `GET /api/link/racing-profile?includeCompetitionMetrics=true`
+3. Stores all `competitionMetrics` fields in `zwiftProfile` on the user document:
+
+| Field | Description |
+|---|---|
+| `ftp` | Functional Threshold Power (watts) |
+| `zftp` | Zwift's calculated FTP — used for CE categorisation |
+| `zmap` | Zwift's Maximal Aerobic Power (1-min) — used for CE categorisation |
+| `racingScore` | Official Zwift Racing Score |
+| `powerCompoundScore` | Proprietary combined power metric |
+| `vo2max` | Estimated VO2max |
+| `category` | Zwift CE category (mixed-gender) |
+| `categoryWomen` | Zwift CE category (women's events) |
+| `weightInGrams` | Rider weight at time of snapshot |
+
+4. Automatically subscribes the user to `activity` and `racing-score` webhooks
+
+### Webhooks (`POST /zwift/webhook`)
+
+All incoming payloads are logged to the `zwift_webhooks` Firestore collection regardless of type.
+
+| `notificationType` | Action |
+|---|---|
+| `ActivitySaved` | Fetches and stores full activity via `/api/thirdparty/activity/{activityId}` |
+| `RacingScoreUpdated` | Re-fetches `competitionMetrics` and updates all `zwiftProfile` fields |
+| `UserDisconnected` | Deletes the user's `zwift_tokens` doc and clears `connections.zwift` |
+| `WorkoutProgressChanged` | Logged only, not handled |
+
+### Nightly Stats Refresh
+
+A GitHub Actions cron job runs nightly at **03:00 UTC** (`POST /admin/refresh-zr-stats`):
+- Batch-fetches **ZwiftRacing** (vELO) stats for all registered riders
+- Updates `zwiftRacing.currentRating`, `max30Rating`, `max90Rating`, `phenotype`
+- Re-evaluates liga category status based on new `max30Rating`
+
+Note: `competitionMetrics` (FTP, zFTP, etc.) is kept current via the `RacingScoreUpdated` webhook, not the nightly job.
+
+### Backfill for Existing Users (`POST /admin/refresh-zwift-profile`)
+
+Run this once after deploy to backfill users who connected Zwift before the full metrics + subscriptions were in place. For each user with a valid token it:
+- Re-fetches and stores all `competitionMetrics` fields
+- Subscribes them to `activity` and `racing-score` webhooks
+
+Accepts an admin Firebase token or the scheduler secret. Idempotent — safe to run multiple times. Users whose refresh token has expired will be reported as `skipped` and would need to re-link Zwift.
+
+```bash
+curl -X POST https://<backend-url>/admin/refresh-zwift-profile \
+  -H "Authorization: Bearer <admin-token>"
+```
+
