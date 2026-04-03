@@ -393,15 +393,27 @@ def get_participants():
             if ftp_value in (None, ''):
                 ftp_value = 'N/A'
 
+            zpc = data.get('zwiftPowerCurve', {})
+            curve_watts = (zpc.get('cpBestEfforts') or {}).get('pointsWatts') or {}
+
+            def cp(duration_sec: str) -> int | None:
+                pt = curve_watts.get(duration_sec)
+                if pt and pt.get('value'):
+                    return round(pt['value'])
+                return None
+
             participants.append({
                 'name': user.name,
                 'zwiftId': user.zwift_id,
                 'club': user.club,
                 'category': lc.get('category') or 'N/A',
-                'ftp': ftp_value,
                 'zftp': zpro.get('zftp', 'N/A'),
                 'zmap': zpro.get('zmap', 'N/A'),
                 'zwiftCategory': zpro.get('category', 'N/A'),
+                'cp5s':   cp('5'),
+                'cp1min': cp('60'),
+                'cp5min': cp('300'),
+                'cp20min': cp('1200'),
                 'rating': zr.get('currentRating', 'N/A'),
                 'max30Rating': zr.get('max30Rating', 'N/A'),
                 'max90Rating': zr.get('max90Rating', 'N/A'),
