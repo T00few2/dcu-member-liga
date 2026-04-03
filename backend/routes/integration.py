@@ -52,6 +52,7 @@ def _power_profile_to_firestore(power_profile: dict) -> dict:
         'validPowerProfile': power_profile.get('validPowerProfile'),
         'metricsTimestamp': power_profile.get('metricsTimestamp'),
         'cpBestEfforts': power_profile.get('cpBestEfforts'),
+        'relevantCpEfforts': power_profile.get('relevantCpEfforts'),
         'updatedAt': firestore.SERVER_TIMESTAMP,
     }
 
