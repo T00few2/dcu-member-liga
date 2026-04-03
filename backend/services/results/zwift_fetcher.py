@@ -101,11 +101,34 @@ class ZwiftFetcher:
         segment_ids: set[str | int],
         start_time: datetime,
         end_time: datetime,
+        subgroup_id: str | None = None,
+        registered_riders: dict[str, Any] | None = None,
     ) -> dict[str | int, Any]:
         """
-        Fetches results for a list of segments within a time window.
-        Returns a dictionary: { segment_id: raw_results }
+        Fetches sprint/KOM segment results for the given segment IDs.
+
+        When subgroup_id is provided (official API path) the method calls
+        ZwiftService.get_subgroup_segment_efforts which retrieves all
+        segment-results for the subgroup in one paginated sweep and filters
+        down to the configured sprint IDs.
+
+        Each entry is normalised into the legacy shape expected by
+        RaceScorer._map_segment_efforts:
+          athleteId  – canonical numeric zwiftId (UUID resolved via registered_riders)
+          elapsed    – durationInMilliseconds
+          worldTime  – endWorldTime
+          avgPower   – avgWatts
+
+        When subgroup_id is absent the method falls back to the legacy
+        per-segment global lookup (get_segment_results), which currently
+        returns an empty payload for official-only mode.
         """
+        if subgroup_id:
+            return self._fetch_segment_efforts_official(
+                segment_ids, subgroup_id, registered_riders or {}
+            )
+
+        # Legacy fallback path (returns empty in official_only mode)
         results: dict[str | int, Any] = {}
         for seg_id in segment_ids:
             try:
@@ -113,4 +136,50 @@ class ZwiftFetcher:
                 results[seg_id] = raw
             except Exception as e:
                 logger.error(f"Failed to fetch segment {seg_id}: {e}")
+        return results
+
+    def _fetch_segment_efforts_official(
+        self,
+        segment_ids: set[str | int],
+        subgroup_id: str,
+        registered_riders: dict[str, Any],
+    ) -> dict[str | int, Any]:
+        """
+        Official-API sprint data fetch via subgroup segment-results endpoint.
+        Normalises raw entries to the legacy athleteId/elapsed/worldTime/avgPower
+        schema so RaceScorer._map_segment_efforts requires no changes.
+        """
+        try:
+            raw_by_seg = self.zwift.get_subgroup_segment_efforts(subgroup_id, segment_ids)
+        except Exception as e:
+            logger.error(f"Failed to fetch subgroup segment efforts for {subgroup_id}: {e}")
+            return {}
+
+        results: dict[str | int, Any] = {}
+        for seg_id_str, entries in raw_by_seg.items():
+            normalised: list[dict[str, Any]] = []
+            for e in entries:
+                user_id = str(e.get("userId", ""))
+                # Resolve UUID -> canonical numeric zwiftId via registered_riders
+                profile = registered_riders.get(user_id)
+                canonical_id = (
+                    str(profile.get("zwiftId"))
+                    if profile and profile.get("zwiftId")
+                    else user_id
+                )
+                normalised.append({
+                    "athleteId": canonical_id,
+                    "elapsed": int(e.get("durationInMilliseconds", 0)),
+                    "worldTime": int(e.get("endWorldTime", 0)),
+                    "avgPower": int(e.get("avgWatts", 0)),
+                })
+            # Preserve the original seg_id type (str or int) from the input set
+            # so RaceScorer can match against sprint configs stored as either type.
+            original_key: str | int = seg_id_str
+            for sid in segment_ids:
+                if str(sid) == seg_id_str:
+                    original_key = sid
+                    break
+            results[original_key] = normalised
+
         return results

@@ -362,7 +362,13 @@ class ResultsProcessor:
             if fetch_mode in ['finishers', 'joined'] and category_sprints:
                 end_time = start_time + timedelta(hours=3)
                 unique_segment_ids = set(s['id'] for s in category_sprints)
-                segment_efforts = self.zwift_fetcher.fetch_segment_efforts(unique_segment_ids, start_time, end_time)
+                segment_efforts = self.zwift_fetcher.fetch_segment_efforts(
+                    unique_segment_ids,
+                    start_time,
+                    end_time,
+                    subgroup_id=subgroup_id,
+                    registered_riders=registered_riders,
+                )
 
             if custom_category:
                 custom_cat_finishers.extend(finishers)
