@@ -307,13 +307,19 @@ class ZwiftService:
         """
         Uses official /api/link/events/subgroups/{subgroupId}/segment-results.
         Normalizes entries to preserve legacy keys consumed by scorers.
+
+        The segment-results endpoint returns entries for ALL segments in the
+        subgroup (finish line + any sprint/KOM segments).  We keep only the
+        entry with the highest durationInMilliseconds per userId, which is
+        the finish-line crossing (sprint sub-segments always have a shorter
+        duration than the total race time).
         """
         del event_secret  # Official endpoint does not use eventSecret.
         cursor: str | None = None
-        all_entries: list[dict[str, Any]] = []
+        raw_entries: list[dict[str, Any]] = []
 
         while True:
-            params = {}
+            params: dict[str, Any] = {}
             if cursor:
                 params["cursor"] = cursor
             response = self._api_get(f"/api/link/events/subgroups/{event_sub_id}/segment-results", params=params)
@@ -322,29 +328,44 @@ class ZwiftService:
             response.raise_for_status()
             data = self._safe_json(response)
             entries = data.get("entries", [])
-            for e in entries:
-                user_id = e.get("userId")
-                all_entries.append(
-                    {
-                        "profileId": user_id,
-                        "profileData": {
-                            "id": user_id,
-                            "userId": user_id,
-                            "firstName": "",
-                            "lastName": "",
-                        },
-                        "activityData": {
-                            "durationInMilliseconds": e.get("durationInMilliseconds", 0),
-                        },
-                        "flaggedCheating": False,
-                        "flaggedSandbagging": False,
-                        "criticalP": {},
-                        "_officialSegmentResult": e,
-                    }
-                )
+            raw_entries.extend(entries)
             cursor = data.get("cursor")
             if not cursor or len(entries) < limit:
                 break
+
+        # Keep only the entry with the longest duration per userId.
+        # The finish-line segment always has the greatest durationInMilliseconds
+        # (= total race time); sprint/KOM sub-segments have much shorter durations.
+        finish_by_user: dict[str, dict[str, Any]] = {}
+        for e in raw_entries:
+            user_id = e.get("userId")
+            if not user_id:
+                continue
+            existing = finish_by_user.get(user_id)
+            if existing is None or e.get("durationInMilliseconds", 0) > existing.get("durationInMilliseconds", 0):
+                finish_by_user[user_id] = e
+
+        all_entries: list[dict[str, Any]] = []
+        for e in finish_by_user.values():
+            user_id = e.get("userId")
+            all_entries.append(
+                {
+                    "profileId": user_id,
+                    "profileData": {
+                        "id": user_id,
+                        "userId": user_id,
+                        "firstName": "",
+                        "lastName": "",
+                    },
+                    "activityData": {
+                        "durationInMilliseconds": e.get("durationInMilliseconds", 0),
+                    },
+                    "flaggedCheating": False,
+                    "flaggedSandbagging": False,
+                    "criticalP": {},
+                    "_officialSegmentResult": e,
+                }
+            )
         return all_entries
 
     def _get_event_results_legacy(self, event_sub_id: str, limit: int = 100) -> list[dict[str, Any]]:
@@ -415,6 +436,49 @@ class ZwiftService:
         """
         del segment_id, from_date, to_date
         return {}
+
+    def get_subgroup_segment_efforts(
+        self,
+        subgroup_id: str,
+        sprint_segment_ids: set[str | int],
+        limit: int = 100,
+    ) -> dict[str, list[dict[str, Any]]]:
+        """
+        Fetch sprint/KOM segment results for a specific event subgroup.
+
+        Calls the same /segment-results endpoint as get_event_results but
+        returns entries grouped by segmentId, filtered to only the segment IDs
+        listed in sprint_segment_ids.  Each entry uses the raw official fields
+        (userId, durationInMilliseconds, endWorldTime, avgWatts) so that
+        ZwiftFetcher can normalise them into the legacy format expected by
+        RaceScorer._map_segment_efforts.
+
+        Returns: {segmentId_str: [raw_entry, ...]}
+        """
+        sprint_ids_str = {str(s) for s in sprint_segment_ids}
+        cursor: str | None = None
+        by_segment: dict[str, list[dict[str, Any]]] = {}
+
+        while True:
+            params: dict[str, Any] = {}
+            if cursor:
+                params["cursor"] = cursor
+            response = self._api_get(
+                f"/api/link/events/subgroups/{subgroup_id}/segment-results",
+                params=params,
+            )
+            response.raise_for_status()
+            data = self._safe_json(response)
+            entries = data.get("entries", [])
+            for e in entries:
+                seg_id = str(e.get("segmentId", ""))
+                if seg_id in sprint_ids_str:
+                    by_segment.setdefault(seg_id, []).append(e)
+            cursor = data.get("cursor")
+            if not cursor or len(entries) < limit:
+                break
+
+        return by_segment
 
     # ------------------------------------------------------------------
     # Internal HTTP helpers
