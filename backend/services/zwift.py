@@ -303,149 +303,89 @@ class ZwiftService:
         response.raise_for_status()
         return {}
 
-    def get_event_results(
+    def get_subgroup_all_segment_results(
         self,
-        event_sub_id: str,
+        subgroup_id: str,
         limit: int = 100,
-        event_secret: str | None = None,
-        sprint_segment_ids: set[str | int] | None = None,
-        route_segment_ids_ordered: list[str | int] | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> dict[str, list[dict[str, Any]]]:
         """
-        Uses official /api/link/events/subgroups/{subgroupId}/segment-results.
-        Normalizes entries to preserve legacy keys consumed by scorers.
+        Fetch every segment-results entry for a subgroup in one paginated sweep
+        and return them grouped by segmentId.
 
-        The segment-results endpoint returns entries for ALL segments in the
-        subgroup (finish line + sprint/KOM segments).  This method isolates
-        the finish-line entries using a three-tier strategy:
+        This is the canonical fetch used by both finish-result extraction and
+        sprint-effort extraction so the API is called only once per subgroup.
 
-        1. Sprint exclusion (preferred): configured sprint_segment_ids are
-           removed; remaining segment(s) are finish candidates.
-        2. Route order tiebreak: when multiple non-sprint segments remain,
-           route_segment_ids_ordered (chronological) selects the last one –
-           the segment closest to the finish arch.
-        3. Max-duration fallback: if neither hint is available, keep the entry
-           with the highest durationInMilliseconds per userId (finish time is
-           always the race total, longer than any sub-segment).
-
-        Strategy 1+2 are required for correct live/partial results where
-        riders still racing have sprint entries but no finish entry yet.
+        Returns: {segmentId_str: [raw_entry, ...]}
         """
-        del event_secret  # Official endpoint does not use eventSecret.
         cursor: str | None = None
-        raw_entries: list[dict[str, Any]] = []
+        by_segment: dict[str, list[dict[str, Any]]] = {}
 
         while True:
             params: dict[str, Any] = {}
             if cursor:
                 params["cursor"] = cursor
-            response = self._api_get(f"/api/link/events/subgroups/{event_sub_id}/segment-results", params=params)
-            if response.status_code != 200 and self.allow_legacy_fallback:
-                return self._get_event_results_legacy(event_sub_id, limit=limit)
+            response = self._api_get(
+                f"/api/link/events/subgroups/{subgroup_id}/segment-results",
+                params=params,
+            )
             response.raise_for_status()
             data = self._safe_json(response)
             entries = data.get("entries", [])
-            raw_entries.extend(entries)
+            for e in entries:
+                seg_id = str(e.get("segmentId", ""))
+                by_segment.setdefault(seg_id, []).append(e)
             cursor = data.get("cursor")
             if not cursor or len(entries) < limit:
                 break
 
-        finish_raw = self._identify_finish_entries(raw_entries, sprint_segment_ids, route_segment_ids_ordered)
+        return by_segment
 
-        return [
-            {
-                "profileId": e.get("userId"),
-                "profileData": {
-                    "id": e.get("userId"),
-                    "userId": e.get("userId"),
-                    "firstName": "",
-                    "lastName": "",
-                },
-                "activityData": {
-                    "durationInMilliseconds": e.get("durationInMilliseconds", 0),
-                },
-                "flaggedCheating": False,
-                "flaggedSandbagging": False,
-                "criticalP": {},
-                "_officialSegmentResult": e,
-            }
-            for e in finish_raw
-        ]
-
-    def _identify_finish_entries(
+    def get_event_results(
         self,
-        raw_entries: list[dict[str, Any]],
-        sprint_segment_ids: set[str | int] | None,
-        route_segment_ids_ordered: list[str | int] | None,
+        event_sub_id: str,
+        limit: int = 100,
+        event_secret: str | None = None,
     ) -> list[dict[str, Any]]:
         """
-        Select finish-line entries from raw segment-results.
+        Returns all segment-results entries for a subgroup in legacy format.
 
-        Preference order:
-          1. Exclude sprint segment IDs → keep non-sprint entries.
-          2. If multiple non-sprint segments remain, use route order to pick
-             the chronologically last one (= closest to the finish arch).
-          3. Final fallback: one entry per userId with max durationInMilliseconds.
+        All segments (finish line + sprints/KOMs) are included — callers are
+        responsible for filtering to the desired segmentId(s).  Each entry
+        preserves the raw official payload in _officialSegmentResult so the
+        segmentId is always accessible downstream.
         """
-        if not raw_entries:
-            return []
+        del event_secret  # Official endpoint does not use eventSecret.
 
-        # Group by segmentId
-        by_segment: dict[str, list[dict[str, Any]]] = {}
-        for e in raw_entries:
-            seg_id = str(e.get("segmentId", ""))
-            if seg_id:
-                by_segment.setdefault(seg_id, []).append(e)
+        try:
+            by_segment = self.get_subgroup_all_segment_results(event_sub_id, limit=limit)
+        except Exception:
+            if self.allow_legacy_fallback:
+                return self._get_event_results_legacy(event_sub_id, limit=limit)
+            raise
 
-        if not by_segment:
-            return raw_entries
-
-        if sprint_segment_ids:
-            sprint_ids_str = {str(s) for s in sprint_segment_ids}
-            non_sprint = {sid: ents for sid, ents in by_segment.items() if sid not in sprint_ids_str}
-        else:
-            non_sprint = dict(by_segment)
-
-        if not non_sprint:
-            # Every segment in the response matched a configured sprint — unexpected.
-            # Fall back so we at least return something.
-            logger.warning(
-                "segment-results: all entries are sprint segments; cannot identify finish. "
-                "Falling back to max-duration-per-userId heuristic."
-            )
-            return self._max_duration_per_user(raw_entries)
-
-        if len(non_sprint) == 1:
-            return next(iter(non_sprint.values()))
-
-        # Multiple non-sprint segments: resolve via route order.
-        if route_segment_ids_ordered:
-            for seg_id in reversed([str(s) for s in route_segment_ids_ordered]):
-                if seg_id in non_sprint:
-                    return non_sprint[seg_id]
-
-        # Route order unavailable or unhelpful: pick the segment whose riders
-        # recorded the longest maximum duration (finish = end of full race).
-        logger.warning(
-            "segment-results: multiple non-sprint segments and no route order available. "
-            "Using max-duration heuristic to select finish segment."
-        )
-        finish_seg = max(
-            non_sprint,
-            key=lambda sid: max((e.get("durationInMilliseconds", 0) for e in non_sprint[sid]), default=0),
-        )
-        return non_sprint[finish_seg]
-
-    def _max_duration_per_user(self, raw_entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """One entry per userId: the one with the highest durationInMilliseconds."""
-        best: dict[str, dict[str, Any]] = {}
-        for e in raw_entries:
-            user_id = e.get("userId")
-            if not user_id:
-                continue
-            if user_id not in best or e.get("durationInMilliseconds", 0) > best[user_id].get("durationInMilliseconds", 0):
-                best[user_id] = e
-        return list(best.values())
+        all_entries: list[dict[str, Any]] = []
+        for raw_list in by_segment.values():
+            for e in raw_list:
+                user_id = e.get("userId")
+                all_entries.append(
+                    {
+                        "profileId": user_id,
+                        "profileData": {
+                            "id": user_id,
+                            "userId": user_id,
+                            "firstName": "",
+                            "lastName": "",
+                        },
+                        "activityData": {
+                            "durationInMilliseconds": e.get("durationInMilliseconds", 0),
+                        },
+                        "flaggedCheating": False,
+                        "flaggedSandbagging": False,
+                        "criticalP": {},
+                        "_officialSegmentResult": e,
+                    }
+                )
+        return all_entries
 
     def _get_event_results_legacy(self, event_sub_id: str, limit: int = 100) -> list[dict[str, Any]]:
         start = 0
