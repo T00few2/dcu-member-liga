@@ -37,13 +37,25 @@ class ZwiftFetcher:
         fetch_mode: str,
         filter_registered: bool,
         registered_riders: dict[str, Any],
+        sprint_segment_ids: set[str | int] | None = None,
+        route_segment_ids_ordered: list[str | int] | None = None,
     ) -> list[RiderResult]:
         """
         Fetches participants/finishers for a subgroup and maps them to registered riders.
+
+        sprint_segment_ids and route_segment_ids_ordered are forwarded to
+        ZwiftService.get_event_results so it can identify the finish-line
+        segment by exclusion rather than relying on duration heuristics.
+        This is required for correct live/partial results.
         """
         finishers: list[RiderResult] = []
         if fetch_mode == 'finishers':
-            finish_results_raw = self.zwift.get_event_results(subgroup_id, event_secret=event_secret)
+            finish_results_raw = self.zwift.get_event_results(
+                subgroup_id,
+                event_secret=event_secret,
+                sprint_segment_ids=sprint_segment_ids,
+                route_segment_ids_ordered=route_segment_ids_ordered,
+            )
 
             for entry in finish_results_raw:
                 profile = entry.get('profileData', {})
