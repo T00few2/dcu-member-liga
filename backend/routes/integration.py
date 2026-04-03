@@ -467,6 +467,26 @@ def zwift_webhook():
         except Exception as exc:
             logger.error(f"Failed to process RacingScoreUpdated webhook {notification_id}: {exc}")
 
+    elif notif_type == 'UserDisconnected' and user_id:
+        try:
+            token_docs = (
+                db.collection('zwift_tokens')
+                .where('zwiftUserId', '==', user_id)
+                .limit(1)
+                .stream()
+            )
+            token_doc = next(token_docs, None)
+            if token_doc:
+                user_doc_id = token_doc.id
+                db.collection('zwift_tokens').document(user_doc_id).delete()
+                db.collection('users').document(user_doc_id).set(with_schema_version({
+                    'connections': {'zwift': firestore.DELETE_FIELD},
+                    'updatedAt': firestore.SERVER_TIMESTAMP,
+                }), merge=True)
+                logger.info(f"Cleared Zwift connection for user {user_doc_id} after UserDisconnected webhook")
+        except Exception as exc:
+            logger.error(f"Failed to process UserDisconnected webhook {notification_id}: {exc}")
+
     return '', 204
 
 # --- ZWIFT GAME DATA ---
