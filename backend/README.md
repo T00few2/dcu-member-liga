@@ -279,6 +279,7 @@ All incoming payloads are logged to the `zwift_webhooks` Firestore collection re
 |---|---|
 | `ActivitySaved` | Fetches and stores full activity via `/api/thirdparty/activity/{activityId}` |
 | `RacingScoreUpdated` | Re-fetches `competitionMetrics` and updates all `zwiftProfile` fields |
+| `PowerCurveUpdated` | Re-fetches `power-profile` and stores into `zwiftPowerCurve` — **type unconfirmed, check `zwift_webhooks` on first receipt** |
 | `UserDisconnected` | Deletes the user's `zwift_tokens` doc and clears `connections.zwift` |
 | `WorkoutProgressChanged` | Logged only, not handled |
 
@@ -294,8 +295,9 @@ Note: `competitionMetrics` (FTP, zFTP, etc.) is kept current via the `RacingScor
 ### Backfill for Existing Users (`POST /admin/refresh-zwift-profile`)
 
 Run this once after deploy to backfill users who connected Zwift before the full metrics + subscriptions were in place. For each user with a valid token it:
-- Re-fetches and stores all `competitionMetrics` fields
-- Subscribes them to `activity` and `racing-score` webhooks
+- Re-fetches and stores all `competitionMetrics` fields into `zwiftProfile`
+- Re-fetches and stores the full `power-profile` into `zwiftPowerCurve`
+- Subscribes them to `activity`, `racing-score`, and `power-curve` webhooks
 
 Accepts an admin Firebase token or the scheduler secret. Idempotent — safe to run multiple times. Users whose refresh token has expired will be reported as `skipped` and would need to re-link Zwift.
 

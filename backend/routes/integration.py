@@ -41,6 +41,21 @@ def _competition_metrics_to_profile(competition: dict, profile: dict) -> dict:
     }
 
 
+def _power_profile_to_firestore(power_profile: dict) -> dict:
+    """Map /api/link/power-curve/power-profile response to the zwiftPowerCurve Firestore shape."""
+    return {
+        'zftp': power_profile.get('zftp'),
+        'zmap': power_profile.get('zmap'),
+        'vo2max': power_profile.get('vo2max'),
+        'category': power_profile.get('category'),
+        'categoryWomen': power_profile.get('categoryWomen'),
+        'validPowerProfile': power_profile.get('validPowerProfile'),
+        'metricsTimestamp': power_profile.get('metricsTimestamp'),
+        'cpBestEfforts': power_profile.get('cpBestEfforts'),
+        'updatedAt': firestore.SERVER_TIMESTAMP,
+    }
+
+
 def _resolve_user_doc_ref_from_uid(uid: str):
     user_doc_id = resolve_user_doc_id_from_auth_uid(uid)
     if not user_doc_id:
@@ -299,6 +314,7 @@ def zwift_callback():
         try:
             zwift_service.subscribe_activity(access_token)
             zwift_service.subscribe_racing_score(access_token)
+            zwift_service.subscribe_power_curve(access_token)
         except Exception as exc:
             logger.warning(f"Failed to subscribe to Zwift webhooks for {zwift_user_id}: {exc}")
     finally:
@@ -366,7 +382,7 @@ def zwift_sync_subscriptions():
     body = request.get_json(silent=True) or {}
     subscribe_activity = bool(body.get('activity', True))
     subscribe_racing = bool(body.get('racingScore', True))
-    subscribe_power_curve = bool(body.get('powerCurve', False))
+    subscribe_power_curve = bool(body.get('powerCurve', True))
 
     result: dict[str, dict[str, object]] = {}
     if subscribe_activity:
@@ -466,6 +482,29 @@ def zwift_webhook():
                         }), merge=True)
         except Exception as exc:
             logger.error(f"Failed to process RacingScoreUpdated webhook {notification_id}: {exc}")
+
+    elif notif_type == 'PowerCurveUpdated' and user_id:
+        try:
+            token_docs = (
+                db.collection('zwift_tokens')
+                .where('zwiftUserId', '==', user_id)
+                .limit(1)
+                .stream()
+            )
+            token_doc = next(token_docs, None)
+            if token_doc:
+                user_doc_id = token_doc.id
+                zwift_service = get_zwift_service()
+                access_token = get_valid_access_token(user_doc_id, zwift_service)
+                if access_token:
+                    power_profile = zwift_service.get_power_profile(access_token)
+                    if power_profile:
+                        db.collection('users').document(user_doc_id).set(with_schema_version({
+                            'zwiftPowerCurve': _power_profile_to_firestore(power_profile),
+                            'updatedAt': firestore.SERVER_TIMESTAMP,
+                        }), merge=True)
+        except Exception as exc:
+            logger.error(f"Failed to process PowerCurveUpdated webhook {notification_id}: {exc}")
 
     elif notif_type == 'UserDisconnected' and user_id:
         try:

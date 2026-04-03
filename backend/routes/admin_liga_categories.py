@@ -11,7 +11,7 @@ from authz import require_admin, require_scheduler, AuthzError
 from extensions import db, zr_service
 from extensions import get_zwift_service
 from services.zwift_tokens import get_valid_access_token
-from routes.integration import _competition_metrics_to_profile
+from routes.integration import _competition_metrics_to_profile, _power_profile_to_firestore
 from services.user_service import UserService
 from services.category_engine import (
     build_liga_category,
@@ -307,14 +307,21 @@ def refresh_zwift_profile():
                     continue
 
                 competition = profile.get('competitionMetrics') or {}
-                db.collection('users').document(user_doc_id).set(with_schema_version({
+                update: dict = {
                     'zwiftProfile': _competition_metrics_to_profile(competition, profile),
                     'updatedAt': firestore.SERVER_TIMESTAMP,
-                }), merge=True)
+                }
+
+                power_profile = zwift_service.get_power_profile(access_token)
+                if power_profile:
+                    update['zwiftPowerCurve'] = _power_profile_to_firestore(power_profile)
+
+                db.collection('users').document(user_doc_id).set(with_schema_version(update), merge=True)
 
                 try:
                     zwift_service.subscribe_activity(access_token)
                     zwift_service.subscribe_racing_score(access_token)
+                    zwift_service.subscribe_power_curve(access_token)
                 except Exception as sub_exc:
                     logger.warning(f"Subscription failed for {user_doc_id}: {sub_exc}")
 

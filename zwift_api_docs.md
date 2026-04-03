@@ -357,12 +357,13 @@ The following `notificationType` values are sent to registered callback URLs:
 
 | `notificationType` | Trigger | Handler implemented |
 |---|---|---|
-| `ActivitySaved` | User saves a new activity | ✅ Fetches and stores activity |
-| `RacingScoreUpdated` | Rider's racing score / competition metrics updated | ✅ Re-fetches and stores all `competitionMetrics` |
+| `ActivitySaved` | Rider saves a new activity | ✅ Fetches and stores activity |
+| `RacingScoreUpdated` | Rider's racing score / competition metrics updated | ✅ Re-fetches and stores all `competitionMetrics` into `zwiftProfile` |
+| `PowerCurveUpdated` | Rider's power curve recalculated | ✅ Re-fetches and stores full `power-profile` into `zwiftPowerCurve` — **type unconfirmed, educated guess** |
 | `UserDisconnected` | User disconnects the partner app from their Zwift account | ✅ Clears tokens and connection record |
 | `WorkoutProgressChanged` | Status update for a scheduled workout | ❌ Not handled (irrelevant for race league) |
 
-**Note:** `notificationType` is confirmed from `SubscriptionDto.subscriptionType` in the official schema.
+**Note:** `ActivitySaved`, `RacingScoreUpdated`, `UserDisconnected` are confirmed from `SubscriptionDto.subscriptionType` in the official schema. `PowerCurveUpdated` follows the same naming pattern but is unconfirmed — check the `zwift_webhooks` Firestore collection for the first received payload and update the webhook handler if the real type differs.
 All raw webhook payloads are always logged to the `zwift_webhooks` Firestore collection regardless of type.
 
 #### Subscription endpoints (per type)
