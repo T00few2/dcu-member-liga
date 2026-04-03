@@ -604,3 +604,26 @@ def reassign_liga_category(zwift_id):
     except Exception as e:
         logger.error(f"Reassign liga category error: {e}")
         return jsonify({'message': str(e)}), 500
+
+
+@admin_bp.route('/admin/debug-power-profile/<zwift_id>', methods=['GET'])
+def debug_power_profile(zwift_id):
+    """Return the raw Zwift power-profile API response for a user (admin debug only)."""
+    try:
+        require_admin(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    zwift_service = get_zwift_service()
+    access_token = get_valid_access_token(zwift_id, zwift_service)
+    if not access_token:
+        return jsonify({'error': 'No valid token for this user'}), 404
+
+    response = zwift_service._api_get("/api/link/power-curve/power-profile", token=access_token)
+    return jsonify({
+        'status_code': response.status_code,
+        'body': response.text[:4000],
+    }), 200
