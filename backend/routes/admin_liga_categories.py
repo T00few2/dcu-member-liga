@@ -64,6 +64,38 @@ def _resolve_categories(settings: dict):
     return None
 
 
+def _resolve_user_doc_id_for_token(token_doc_id: str) -> str:
+    """
+    Resolve the canonical users/{docId} for a zwift_tokens document ID.
+
+    Historically some token docs were keyed by auth UID while user docs are keyed
+    by Zwift ID. This helper maps token-owner IDs to the canonical user doc.
+    """
+    # 1) Already a direct users/{id} key.
+    if db.collection('users').document(token_doc_id).get().exists:
+        return token_doc_id
+
+    # 2) auth_mappings/{uid}.zwiftId -> users/{zwiftId}
+    mapping = db.collection('auth_mappings').document(token_doc_id).get()
+    if mapping.exists:
+        mapped_zwift_id = str((mapping.to_dict() or {}).get('zwiftId', '')).strip()
+        if mapped_zwift_id:
+            return mapped_zwift_id
+
+    # 3) Fallback lookup by users.authUid.
+    docs = (
+        db.collection('users')
+        .where('authUid', '==', token_doc_id)
+        .limit(1)
+        .stream()
+    )
+    for doc in docs:
+        return doc.id
+
+    # No mapping found; caller can decide whether to skip.
+    return token_doc_id
+
+
 
 def _compute_liga_update(eff_rating: int, existing_lc: dict | None, grace_period: int, categories) -> dict:
     """Return the Firestore update dict for ligaCategory fields.
@@ -310,10 +342,19 @@ def refresh_zwift_profile():
         errors = 0
 
         for token_doc in token_docs:
-            user_doc_id = token_doc.id
+            token_owner_id = token_doc.id
+            user_doc_id = _resolve_user_doc_id_for_token(token_owner_id)
             try:
-                access_token = get_valid_access_token(user_doc_id, zwift_service)
+                access_token = get_valid_access_token(token_owner_id, zwift_service)
                 if not access_token:
+                    skipped += 1
+                    continue
+
+                user_ref = db.collection('users').document(user_doc_id)
+                if not user_ref.get().exists:
+                    logger.warning(
+                        f"Skipping token {token_owner_id}: could not resolve user doc {user_doc_id}"
+                    )
                     skipped += 1
                     continue
 
@@ -332,7 +373,11 @@ def refresh_zwift_profile():
                 if power_profile:
                     update['zwiftPowerCurve'] = _power_profile_to_firestore(power_profile)
 
-                db.collection('users').document(user_doc_id).set(with_schema_version(update), merge=True)
+                if token_owner_id != user_doc_id:
+                    logger.info(
+                        f"Resolved token owner {token_owner_id} to user doc {user_doc_id} for profile backfill"
+                    )
+                user_ref.set(with_schema_version(update), merge=True)
 
                 try:
                     zwift_service.subscribe_activity(access_token)
