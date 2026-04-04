@@ -377,6 +377,7 @@ def get_participants():
 
     try:
         participants = []
+        malformed = 0
         raw_limit = request.args.get('limit', '1000')
         try:
             fetch_limit = min(int(raw_limit), 2000)
@@ -385,49 +386,53 @@ def get_participants():
         user_objects = UserService.get_all_participants(limit=fetch_limit)
         
         for user in user_objects:
-            data = user._data
-            zr = data.get('zwiftRacing', {})
-            zpro = data.get('zwiftProfile', {})
-            lc = serialize_liga_category(data.get('ligaCategory'))
-            ftp_value = zpro.get('ftp')
-            if ftp_value in (None, ''):
-                ftp_value = 'N/A'
+            try:
+                data = user._data
+                zr = data.get('zwiftRacing', {})
+                zpro = data.get('zwiftProfile', {})
+                lc = serialize_liga_category(data.get('ligaCategory'))
 
-            zpc = data.get('zwiftPowerCurve', {})
-            relevant_efforts = {
-                e['duration']: e
-                for e in (zpc.get('relevantCpEfforts') or [])
-                if isinstance(e, dict) and 'duration' in e
-            }
+                zpc = data.get('zwiftPowerCurve', {})
+                relevant_efforts = {
+                    e['duration']: e
+                    for e in (zpc.get('relevantCpEfforts') or [])
+                    if isinstance(e, dict) and 'duration' in e
+                }
 
-            def cp(duration_sec: int) -> int | None:
-                effort = relevant_efforts.get(duration_sec)
-                if effort:
-                    w = effort.get('watts')
-                    return round(w) if w else None
-                return None
+                def cp(duration_sec: int) -> int | None:
+                    effort = relevant_efforts.get(duration_sec)
+                    if effort:
+                        w = effort.get('watts')
+                        return round(w) if w else None
+                    return None
 
-            participants.append({
-                'name': user.name,
-                'zwiftId': user.zwift_id,
-                'club': user.club,
-                'category': lc.get('category') or 'N/A',
-                'zftp': zpro.get('zftp', 'N/A'),
-                'zmap': zpro.get('zmap', 'N/A'),
-                'zwiftCategory': zpro.get('category', 'N/A'),
-                'cp5s':   cp(5),
-                'cp1min': cp(60),
-                'cp5min': cp(300),
-                'cp20min': cp(1200),
-                'rating': zr.get('currentRating', 'N/A'),
-                'max30Rating': zr.get('max30Rating', 'N/A'),
-                'max90Rating': zr.get('max90Rating', 'N/A'),
-                'phenotype': zr.get('phenotype', 'N/A'),
-                'racingScore': zpro.get('racingScore', 'N/A'),
-                'weightVerificationStatus': user.verification_status,
-                'ligaCategory': lc,
-            })
+                participants.append({
+                    'name': user.name,
+                    'zwiftId': user.zwift_id,
+                    'club': user.club,
+                    'category': (lc.get('category') if lc else None) or 'N/A',
+                    'zftp': zpro.get('zftp', 'N/A'),
+                    'zmap': zpro.get('zmap', 'N/A'),
+                    'zwiftCategory': zpro.get('category', 'N/A'),
+                    'cp5s':   cp(5),
+                    'cp1min': cp(60),
+                    'cp5min': cp(300),
+                    'cp20min': cp(1200),
+                    'rating': zr.get('currentRating', 'N/A'),
+                    'max30Rating': zr.get('max30Rating', 'N/A'),
+                    'max90Rating': zr.get('max90Rating', 'N/A'),
+                    'phenotype': zr.get('phenotype', 'N/A'),
+                    'racingScore': zpro.get('racingScore', 'N/A'),
+                    'weightVerificationStatus': user.verification_status,
+                    'ligaCategory': lc,
+                })
+            except Exception as rider_error:
+                malformed += 1
+                logger.warning(f"Skipping malformed participant user_id={user.id}: {rider_error}")
         
+        if malformed:
+            logger.warning(f"Participants endpoint skipped malformed users: {malformed}")
+
         return jsonify({'participants': participants}), 200
     except Exception as e:
         logger.error(f"Participants List Error: {e}")
