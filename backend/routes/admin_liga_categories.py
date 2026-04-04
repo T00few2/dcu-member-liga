@@ -15,7 +15,6 @@ from routes.integration import _competition_metrics_to_profile, _power_profile_t
 from services.user_service import UserService
 from services.category_engine import (
     build_liga_category,
-    compute_category_status,
     reassign_to_next_category,
     serialize_liga_category,
     cats_from_defs,
@@ -76,13 +75,22 @@ def _compute_liga_update(eff_rating: int, existing_lc: dict | None, grace_period
     if existing_lc:
         auto = existing_lc.get('autoAssigned') or {}
         if existing_lc.get('locked'):
-            new_status = compute_category_status(
-                eff_rating, auto.get('upperBoundary'), auto.get('graceLimit')
+            # Locked riders cannot self-select anymore, but their auto-assigned
+            # category should still track stronger ratings so obvious under-placement
+            # (e.g. Copper while riding Diamond numbers) is corrected automatically.
+            new_auto = build_liga_category(eff_rating, grace_period, categories)
+            new_auto['assignedRating'] = auto.get('assignedRating', eff_rating)
+            new_auto['assignedAt'] = auto.get('assignedAt')
+            new_auto['lastCheckedAt'] = firestore.SERVER_TIMESTAMP
+
+            locked_effective = _effective_cat_name(
+                new_auto.get('category'),
+                existing_lc.get('category') or auto.get('category'),
+                categories,
             )
             return {
-                'ligaCategory.autoAssigned.status': new_status,
-                'ligaCategory.autoAssigned.lastCheckedRating': eff_rating,
-                'ligaCategory.autoAssigned.lastCheckedAt': firestore.SERVER_TIMESTAMP,
+                'ligaCategory.autoAssigned': new_auto,
+                'ligaCategory.category': locked_effective,
             }
         else:
             new_auto = build_liga_category(eff_rating, grace_period, categories)
