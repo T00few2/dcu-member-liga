@@ -70,6 +70,14 @@ export function useRegistration() {
             .catch(() => { setTrainersError('Failed to load trainers'); setLoadingTrainers(false); });
     }, []);
 
+    // Keep in-progress rider info locally so OAuth redirects and reloads do not wipe input.
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        localStorage.setItem('temp_reg_name', name || '');
+        localStorage.setItem('temp_reg_club', club || '');
+        localStorage.setItem('temp_reg_trainer', trainer || '');
+    }, [name, club, trainer]);
+
     useEffect(() => {
         const fetchProfile = async () => {
             if (!user) return;
@@ -84,7 +92,14 @@ export function useRegistration() {
                     setRequiredPublicResultsConsentVersion(data.requiredPublicResultsConsentVersion || null);
 
                     if (data.registered || data.hasDraft || data.zwiftConnected || data.zwiftId) {
-                        setName(data.name || '');
+                        const tempName = typeof window !== 'undefined' ? (localStorage.getItem('temp_reg_name') || '').trim() : '';
+                        const backendName = (data.name || '').trim();
+                        setName(prev => {
+                            if (backendName) return backendName;
+                            if ((prev || '').trim()) return prev;
+                            if (tempName) return tempName;
+                            return user.displayName || '';
+                        });
                         setZwiftId(data.zwiftId || '');
                         setClub(data.club || '');
                         setTrainer(data.trainer || '');
@@ -251,6 +266,9 @@ export function useRegistration() {
             setMessage(isDraft ? 'Kladde gemt.' : 'Profil opdateret!');
             showToast(isDraft ? 'Kladde gemt' : 'Gemt!', 'success');
             if (!isDraft) {
+                localStorage.removeItem('temp_reg_name');
+                localStorage.removeItem('temp_reg_club');
+                localStorage.removeItem('temp_reg_trainer');
                 setIsRegistered(true);
                 await refreshProfile();
                 router.push('/');
