@@ -3,7 +3,13 @@ from firebase_admin import firestore
 from extensions import db, get_zwift_service, zr_service, stats_queue
 from services.policy_store import POLICY_DATA_POLICY, POLICY_PUBLIC_RESULTS, PolicyError, get_policy_meta
 from services.user_service import UserService
-from services.category_engine import ZR_CATEGORIES, serialize_liga_category
+from services.category_engine import (
+    ZR_CATEGORIES,
+    serialize_liga_category,
+    build_liga_category,
+    effective_rating,
+    cats_from_defs,
+)
 from services.schema_validation import log_schema_issues, validate_user_doc, with_schema_version
 from services.zwift_tokens import (
     get_valid_access_token,
@@ -19,6 +25,64 @@ import logging
 logger = logging.getLogger(__name__)
 
 users_bp = Blueprint('users', __name__)
+
+
+def _resolve_liga_categories_from_settings(settings_doc: dict | None):
+    defs = (settings_doc or {}).get('ligaCategories')
+    if defs and isinstance(defs, list) and len(defs) >= 2:
+        try:
+            return cats_from_defs(defs)
+        except Exception:
+            pass
+    return None
+
+
+def _enrich_user_with_zwiftracing(user_doc_id: str, zwift_id: str) -> bool:
+    """
+    Fetch ZwiftRacing stats immediately and persist to the user document.
+
+    Returns True if stats were stored, False if no data was available.
+    Raises on hard failures so caller can decide on fallback behaviour.
+    """
+    zr_json = zr_service.get_rider_data(str(zwift_id))
+    if not zr_json:
+        return False
+
+    data = zr_json if 'race' in zr_json else zr_json.get('data', {})
+    race = data.get('race', {})
+    current_rating = (race.get('current') or {}).get('rating', 'N/A')
+    max30_rating = (race.get('max30') or {}).get('rating', 'N/A')
+    max90_rating = (race.get('max90') or {}).get('rating', 'N/A')
+
+    update_payload = {
+        'zwiftRacing': {
+            'currentRating': current_rating,
+            'max30Rating': max30_rating,
+            'max90Rating': max90_rating,
+            'phenotype': (data.get('phenotype') or {}).get('value', 'N/A'),
+            'updatedAt': firestore.SERVER_TIMESTAMP,
+        }
+    }
+
+    # Seed initial ligaCategory for brand-new riders when enough vELO data exists.
+    # We intentionally avoid overwriting existing ligaCategory state.
+    user_doc = db.collection('users').document(str(user_doc_id)).get()
+    user_data = user_doc.to_dict() if user_doc.exists else {}
+    if not (user_data.get('ligaCategory') or {}).get('autoAssigned'):
+        eff_rating = effective_rating(current_rating, max30_rating, max90_rating)
+        if eff_rating is not None:
+            settings_doc = db.collection('league').document('settings').get()
+            settings = settings_doc.to_dict() if settings_doc.exists else {}
+            grace_period = int(settings.get('gracePeriod', 35))
+            categories = _resolve_liga_categories_from_settings(settings)
+
+            auto = build_liga_category(eff_rating, grace_period, categories)
+            auto['assignedAt'] = firestore.SERVER_TIMESTAMP
+            auto['lastCheckedAt'] = firestore.SERVER_TIMESTAMP
+            update_payload['ligaCategory'] = {'autoAssigned': auto, 'locked': False}
+
+    db.collection('users').document(str(user_doc_id)).set(with_schema_version(update_payload), merge=True)
+    return True
 
 
 def _normalize_zwift_id(value) -> str | None:
@@ -306,8 +370,23 @@ def signup():
             
             db.collection('auth_mappings').document(uid).set(auth_map_data, merge=True)
             
-            if not is_draft and zwift_id and is_newly_registered:
-                stats_queue.enqueue(str(doc_id), str(zwift_id), rider_label=str(zwift_id or doc_id))
+            if not is_draft and zwift_id:
+                refreshed_doc = db.collection('users').document(str(doc_id)).get()
+                refreshed_data = refreshed_doc.to_dict() if refreshed_doc.exists else {}
+                zr = refreshed_data.get('zwiftRacing') or {}
+                has_stats = zr.get('max30Rating') not in (None, 'N/A', '')
+
+                # New signups should have stats quickly; do an immediate fetch.
+                # If this fails (or returns no data), keep the async queue fallback.
+                if is_newly_registered or not has_stats:
+                    stored_now = False
+                    try:
+                        stored_now = _enrich_user_with_zwiftracing(str(doc_id), str(zwift_id))
+                    except Exception as enrich_err:
+                        logger.warning(f"Inline ZwiftRacing enrichment failed for {doc_id}: {enrich_err}")
+
+                    if not stored_now:
+                        stats_queue.enqueue(str(doc_id), str(zwift_id), rider_label=str(zwift_id or doc_id))
         
         return jsonify({
             'message': 'Progress saved' if is_draft else ('Profile updated' if not is_newly_registered else 'Signup successful'),
