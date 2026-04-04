@@ -302,6 +302,11 @@ Accepts an admin Firebase token or the scheduler secret. Idempotent — safe to 
 
 ```bash
 curl -X POST https://<backend-url>/admin/refresh-zwift-profile \
-  -H "Authorization: Bearer <admin-token>"
+  -H "Authorization: Bearer <admin-token>" \
+  -H "Content-Type: application/json" \
+  --data "{}"
 ```
+
+Note (Cloud Functions / Google Front End): send an explicit body on POST (for
+example `--data "{}"`). Without it, some clients may receive `411 Length Required`.
 
