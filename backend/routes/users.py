@@ -458,10 +458,10 @@ def get_stats():
                         data = zr_json if 'race' in zr_json else zr_json.get('data', {})
                         race = data.get('race', {})
                         zr_data = {
-                            'currentRating': race.get('current', {}).get('rating', 'N/A'),
-                            'max30Rating': race.get('max30', {}).get('rating', 'N/A'),
-                            'max90Rating': race.get('max90', {}).get('rating', 'N/A'),
-                            'phenotype': data.get('phenotype', {}).get('value', 'N/A'),
+                            'currentRating': (race.get('current') or {}).get('rating', 'N/A'),
+                            'max30Rating': (race.get('max30') or {}).get('rating', 'N/A'),
+                            'max90Rating': (race.get('max90') or {}).get('rating', 'N/A'),
+                            'phenotype': (data.get('phenotype') or {}).get('value', 'N/A'),
                             'finishes': race.get('finishes', 0),
                             'wins': race.get('wins', 0),
                             'podiums': race.get('podiums', 0),

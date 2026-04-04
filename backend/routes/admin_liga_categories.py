@@ -16,9 +16,12 @@ from services.user_service import UserService
 from services.category_engine import (
     build_liga_category,
     compute_category_status,
+    get_zr_category,
     reassign_to_next_category,
     serialize_liga_category,
     cats_from_defs,
+    _effective_cat_name,
+    effective_rating,
 )
 from services.schema_validation import (
     log_schema_issues,
@@ -62,21 +65,6 @@ def _resolve_categories(settings: dict):
             pass
     return None
 
-
-def _effective_rating(current, max30) -> int | None:
-    """Return max(currentRating, max30Rating), handling N/A and None.
-
-    Uses the higher of the two values so that a missing 30-day rating does not
-    prevent category assignment when a current rating is available.
-    """
-    vals = []
-    for v in (current, max30):
-        if v is not None and v != 'N/A':
-            try:
-                vals.append(int(v))
-            except (ValueError, TypeError):
-                pass
-    return max(vals) if vals else None
 
 
 def _compute_liga_update(eff_rating: int, existing_lc: dict | None, grace_period: int, categories) -> dict:
@@ -213,16 +201,17 @@ def refresh_zr_stats():
 
             data = rider_data if 'race' in rider_data else rider_data.get('data', {})
             race = data.get('race', {})
-            new_current = race.get('current', {}).get('rating', 'N/A')
-            new_max30 = race.get('max30', {}).get('rating', 'N/A')
-            eff_rating = _effective_rating(new_current, new_max30)
+            new_current = (race.get('current') or {}).get('rating', 'N/A')
+            new_max30 = (race.get('max30') or {}).get('rating', 'N/A')
+            new_max90 = (race.get('max90') or {}).get('rating', 'N/A')
+            eff_rating = effective_rating(new_current, new_max30, new_max90)
 
             zr_update = {
                 'zwiftRacing': {
                     'currentRating': new_current,
                     'max30Rating':   new_max30,
-                    'max90Rating':   race.get('max90', {}).get('rating', 'N/A'),
-                    'phenotype':     data.get('phenotype', {}).get('value', 'N/A'),
+                    'max90Rating':   new_max90,
+                    'phenotype':     (data.get('phenotype') or {}).get('value', 'N/A'),
                     'updatedAt':     firestore.SERVER_TIMESTAMP,
                 }
             }
@@ -467,7 +456,11 @@ def assign_liga_categories():
         for doc in docs:
             data = doc.to_dict() or {}
             zr = data.get('zwiftRacing', {})
-            eff_rating = _effective_rating(zr.get('currentRating', 'N/A'), zr.get('max30Rating', 'N/A'))
+            eff_rating = effective_rating(
+                zr.get('currentRating', 'N/A'),
+                zr.get('max30Rating', 'N/A'),
+                zr.get('max90Rating', 'N/A'),
+            )
 
             if eff_rating is None:
                 skipped += 1
@@ -576,14 +569,33 @@ def reassign_liga_category(zwift_id):
         categories = _resolve_categories(liga_settings)
 
         zr = data.get('zwiftRacing', {})
-        eff_rating = _effective_rating(zr.get('currentRating', 'N/A'), zr.get('max30Rating', 'N/A'))
+        eff_rating = effective_rating(
+            zr.get('currentRating', 'N/A'),
+            zr.get('max30Rating', 'N/A'),
+            zr.get('max90Rating', 'N/A'),
+        )
         if eff_rating is None:
             return jsonify({'message': 'Rider has no vELO rating'}), 400
 
         auto = lc.get('autoAssigned') or {}
         current_cat = auto.get('category')
 
-        update_fields = reassign_to_next_category(current_cat, eff_rating, grace_period, categories)
+        # Jump directly to the category matching eff_rating (rather than one tier up)
+        # so admins can fix badly-assigned riders in a single action.
+        # Never downgrade: if eff_rating's category is the same or lower than the
+        # current category, fall back to the one-tier-up behaviour.
+        target = build_liga_category(eff_rating, grace_period, categories)
+        target_cat = target['category']
+        effective_new_cat = _effective_cat_name(target_cat, current_cat, categories)
+
+        if effective_new_cat != current_cat:
+            # eff_rating puts the rider in a strictly higher category — jump there.
+            update_fields = target
+            update_fields.pop('assignedRating', None)  # preserve historical assignedRating
+        else:
+            # eff_rating is at or below current category — bump up one tier as before.
+            update_fields = reassign_to_next_category(current_cat, eff_rating, grace_period, categories)
+
         update_fields['lastCheckedAt'] = firestore.SERVER_TIMESTAMP
 
         new_auto = {**auto, **update_fields}
