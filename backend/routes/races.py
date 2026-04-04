@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
 from extensions import db, get_zwift_service, get_zwift_game_service, strava_service
 from services.results_processor import ResultsProcessor
-from services.category_engine import _effective_cat_name
+from services.category_engine import _effective_cat_name, build_liga_category, effective_rating
 from services.schema_validation import log_schema_issues, validate_race_doc, with_schema_version
 from datetime import datetime
 from authz import require_admin, AuthzError
@@ -58,13 +58,24 @@ def _lock_categories_for_race(race_id):
             if str(data.get('zwiftId', '')).strip() in zwift_ids:
                 lc = data.get('ligaCategory') or {}
                 if not lc.get('locked'):
-                    # Compute effective category at lock time
+                    # Recompute the effective category from current stored ratings at
+                    # lock time so a stale auto-assigned category (e.g. assigned when
+                    # zwiftRacing data hadn't been refreshed yet) is corrected before
+                    # the rider is permanently locked.
                     auto = lc.get('autoAssigned') or {}
                     sel = lc.get('selfSelected') or {}
-                    effective = _effective_cat_name(
-                        auto.get('category'),
-                        sel.get('category'),
+                    zr = data.get('zwiftRacing', {})
+                    eff = effective_rating(
+                        zr.get('currentRating', 'N/A'),
+                        zr.get('max30Rating', 'N/A'),
+                        zr.get('max90Rating', 'N/A'),
                     )
+                    if eff is not None:
+                        recomputed = build_liga_category(eff)
+                        auto_cat = recomputed['category']
+                    else:
+                        auto_cat = auto.get('category')
+                    effective = _effective_cat_name(auto_cat, sel.get('category'))
                     batch.update(doc.reference, {
                         'ligaCategory.locked': True,
                         'ligaCategory.lockedAt': firestore.SERVER_TIMESTAMP,

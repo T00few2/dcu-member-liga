@@ -127,6 +127,22 @@ def build_liga_category(
     }
 
 
+def effective_rating(current, max30, max90=None) -> int | None:
+    """Return max(currentRating, max30Rating, max90Rating), handling N/A and None.
+
+    Uses the highest of the available values so that a missing or zero 30-day
+    rating (rider inactive for <90 days) does not cause under-assignment.
+    """
+    vals = []
+    for v in (current, max30, max90):
+        if v is not None and v != 'N/A':
+            try:
+                vals.append(int(v))
+            except (ValueError, TypeError):
+                pass
+    return max(vals) if vals else None
+
+
 def _effective_cat_name(
     auto_cat: str | None,
     sel_cat: str | None,
