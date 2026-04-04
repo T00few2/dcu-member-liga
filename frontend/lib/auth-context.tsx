@@ -9,6 +9,7 @@ import {
   signOut as firebaseSignOut
 } from 'firebase/auth';
 import { auth } from './firebase';
+import { isInAppBrowser } from './browser-detection';
 import { usePathname, useRouter } from 'next/navigation';
 import { API_URL } from './api';
 
@@ -232,6 +233,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const clearAuthIntent = useCallback(() => setAuthIntent(null), []);
 
   const signInWithGoogle = async (intent?: 'login' | 'register') => {
+    if (isInAppBrowser()) {
+      // Google OAuth is blocked in WebViews (error 403 disallowed_useragent).
+      // The InAppBrowserBanner already instructs the user to open in a real browser.
+      return;
+    }
     if (intent) setAuthIntent(intent);
     try {
       const provider = new GoogleAuthProvider();
