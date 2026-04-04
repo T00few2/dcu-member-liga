@@ -265,7 +265,7 @@ export function useRegistration() {
 
     // Validation
     const step0Valid = !!name && !!club && !!trainer;
-    const step1Valid = !!zwiftConnected && !!zwiftId;
+    const step1Valid = !!zwiftConnected;
     const step2Valid = acceptedCoC && acceptedDataPolicy && acceptedPublicResults;
 
     return {

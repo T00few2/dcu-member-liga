@@ -11,7 +11,7 @@ import CategoryTab from '@/components/register/CategoryTab';
 function RegisterContent() {
     const {
         authLoading, fetchingProfile,
-        name, setName, zwiftId,
+        name, setName,
         club, setClub, trainer, setTrainer, stravaConnected, zwiftConnected,
         acceptedCoC, setAcceptedCoC, acceptedDataPolicy, setAcceptedDataPolicy,
         acceptedPublicResults, setAcceptedPublicResults,
@@ -34,7 +34,6 @@ function RegisterContent() {
         clubs, loadingClubs, clubsError,
         trainers, loadingTrainers, trainersError,
         onRequestTrainer: handleRequestTrainer,
-        zwiftId, zwiftConnected,
     };
 
     const TabButton = ({ id, label, active, warning = false }: { id: string; label: string; active: boolean; warning?: boolean }) => (

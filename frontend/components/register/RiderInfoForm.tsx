@@ -29,9 +29,6 @@ interface RiderInfoFormProps {
     loadingTrainers: boolean;
     trainersError: string;
     onRequestTrainer: (name: string) => void;
-    // Zwift ID Props
-    zwiftId: string;
-    zwiftConnected: boolean;
     readOnly?: boolean;
 }
 
@@ -42,7 +39,6 @@ export default function RiderInfoForm({
     clubs, loadingClubs, clubsError,
     trainers, loadingTrainers, trainersError,
     onRequestTrainer,
-    zwiftId, zwiftConnected,
     readOnly = false
 }: RiderInfoFormProps) {
     // Club State
@@ -227,29 +223,6 @@ export default function RiderInfoForm({
                             )}
                         </div>
                     )}
-                </div>
-
-                {/* Zwift ID */}
-                <div>
-                    <label className="block font-semibold text-card-foreground mb-1">Zwift ID</label>
-                    <p className="text-sm text-muted-foreground mb-2">
-                        Zwift ID hentes automatisk fra din forbundne Zwift-konto i fanen “Forbindelser”.
-                    </p>
-
-                    <div className="space-y-2">
-                        <input
-                            type="text"
-                            value={zwiftId || ''}
-                            className={`w-full p-3 border rounded-lg bg-background text-foreground ${zwiftConnected ? 'border-green-500' : 'border-input'}`}
-                            placeholder={zwiftConnected ? '' : 'Forbind Zwift i fanen Forbindelser'}
-                            disabled
-                        />
-                        {zwiftConnected ? (
-                            <p className="text-sm text-green-700 dark:text-green-400">Forbundet via Zwift Link ✓</p>
-                        ) : (
-                            <p className="text-sm text-amber-700 dark:text-amber-400">Zwift skal forbindes før tilmelding kan gennemføres.</p>
-                        )}
-                    </div>
                 </div>
 
                 {/* Trainer */}
