@@ -6,6 +6,7 @@ import Image from "next/image";
 import { AuthProvider } from "@/lib/auth-context";
 import Navbar from "@/components/Navbar";
 import ToastProvider from "@/components/ToastProvider";
+import InAppBrowserBanner from "@/components/InAppBrowserBanner";
 import WeightVerificationModal from "@/components/WeightVerificationModal";
 import { Analytics } from "@vercel/analytics/next";
 
@@ -63,6 +64,7 @@ export default function RootLayout({
       <body className={`${inter.className} overflow-x-hidden`}>
         <AuthProvider>
           <ToastProvider>
+            <InAppBrowserBanner />
             <WeightVerificationModal />
             <Navbar />
             <main className="min-h-screen">
