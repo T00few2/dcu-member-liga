@@ -122,6 +122,8 @@ export function useRegistration() {
         if (stravaStatusParam === 'connected') {
             setStravaConnected(true);
             setMessage('Strava forbundet med succes!');
+            setActiveTab('connections');
+            setCurrentStep(1);
             const tempName = localStorage.getItem('temp_reg_name');
             if (tempName) {
                 setName(tempName);
@@ -136,6 +138,8 @@ export function useRegistration() {
         if (zwiftStatusParam === 'connected') {
             setZwiftConnected(true);
             setMessage('Zwift forbundet med succes!');
+            setActiveTab('connections');
+            setCurrentStep(1);
             const tempName = localStorage.getItem('temp_reg_name');
             if (tempName) {
                 setName(tempName);
