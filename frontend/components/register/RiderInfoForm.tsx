@@ -31,13 +31,7 @@ interface RiderInfoFormProps {
     onRequestTrainer: (name: string) => void;
     // Zwift ID Props
     zwiftId: string;
-    setZwiftId: (val: string) => void;
-    zwiftVerified: boolean;
-    verifyingZwift: boolean;
-    zwiftName: string;
-    zwiftError: string;
-    verifyZwiftId: () => void;
-    confirmZwiftIdentity: () => void;
+    zwiftConnected: boolean;
     readOnly?: boolean;
 }
 
@@ -48,7 +42,7 @@ export default function RiderInfoForm({
     clubs, loadingClubs, clubsError,
     trainers, loadingTrainers, trainersError,
     onRequestTrainer,
-    zwiftId, setZwiftId, zwiftVerified, verifyingZwift, zwiftName, zwiftError, verifyZwiftId, confirmZwiftIdentity,
+    zwiftId, zwiftConnected,
     readOnly = false
 }: RiderInfoFormProps) {
     // Club State
@@ -239,63 +233,23 @@ export default function RiderInfoForm({
                 <div>
                     <label className="block font-semibold text-card-foreground mb-1">Zwift ID</label>
                     <p className="text-sm text-muted-foreground mb-2">
-                        Forbind Zwift i fanen “Forbindelser” og bekræft derefter, at ID matcher din tilknyttede Zwift konto.
+                        Zwift ID hentes automatisk fra din forbundne Zwift-konto i fanen “Forbindelser”.
                     </p>
 
-                    <div className="flex gap-2 items-start">
-                        <div className="flex-1">
-                            <input
-                                type="text"
-                                value={zwiftId}
-                                onChange={(e) => !readOnly && setZwiftId(e.target.value)}
-                                className={`w-full p-3 border rounded-lg focus:ring-2 outline-none transition-all bg-background text-foreground ${zwiftVerified ? 'border-green-500 focus:ring-green-200' : zwiftError ? 'border-red-500 focus:ring-red-200' : 'border-input focus:ring-ring focus:border-ring'}`}
-                                placeholder="e.g. 123456"
-                                disabled={zwiftVerified || readOnly}
-                            />
-                            {zwiftError && <p className="text-sm text-red-500 mt-1">{zwiftError}</p>}
-                        </div>
-
-                        {zwiftVerified ? (
-                            <button
-                                onClick={() => !readOnly && setZwiftId('')}
-                                className="px-4 py-2 bg-green-100 text-green-700 border border-green-200 rounded-lg font-bold text-sm disabled:opacity-50"
-                                disabled={readOnly}
-                            >
-                                Bekræftet ✓
-                            </button>
+                    <div className="space-y-2">
+                        <input
+                            type="text"
+                            value={zwiftId || ''}
+                            className={`w-full p-3 border rounded-lg bg-background text-foreground ${zwiftConnected ? 'border-green-500' : 'border-input'}`}
+                            placeholder={zwiftConnected ? '' : 'Forbind Zwift i fanen Forbindelser'}
+                            disabled
+                        />
+                        {zwiftConnected ? (
+                            <p className="text-sm text-green-700 dark:text-green-400">Forbundet via Zwift Link ✓</p>
                         ) : (
-                            <button
-                                onClick={() => !readOnly && verifyZwiftId()}
-                                disabled={verifyingZwift || !zwiftId || readOnly}
-                                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg font-bold text-sm hover:bg-primary-dark disabled:opacity-50"
-                            >
-                                {verifyingZwift ? '...' : 'Bekræft'}
-                            </button>
+                            <p className="text-sm text-amber-700 dark:text-amber-400">Zwift skal forbindes før tilmelding kan gennemføres.</p>
                         )}
                     </div>
-
-                    {/* Confirmation Prompt */}
-                    {zwiftName && !zwiftVerified && !readOnly && (
-                        <div className="mt-3 p-4 bg-muted/30 rounded-lg border border-border">
-                            <p className="text-sm mb-3 text-foreground">
-                                Er det dig? <strong className="font-semibold">{zwiftName}</strong>
-                            </p>
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={confirmZwiftIdentity}
-                                    className="px-4 py-2 bg-primary text-primary-foreground font-medium rounded-lg text-sm hover:bg-primary-dark transition-colors"
-                                >
-                                    Ja, det er mig
-                                </button>
-                                <button
-                                    onClick={() => setZwiftId('')}
-                                    className="px-4 py-2 bg-secondary text-secondary-foreground font-medium rounded-lg text-sm hover:bg-secondary/80 transition-colors"
-                                >
-                                    Nej
-                                </button>
-                            </div>
-                        </div>
-                    )}
                 </div>
 
                 {/* Trainer */}

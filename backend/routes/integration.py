@@ -302,6 +302,7 @@ def zwift_callback():
         power_profile = zwift_service.get_power_profile(access_token)
 
         callback_update: dict = {
+            'authUid': uid,
             'zwiftUserId': zwift_user_id,
             'zwiftProfile': _competition_metrics_to_profile(competition, profile),
             'connections': {
@@ -315,6 +316,8 @@ def zwift_callback():
             },
             'updatedAt': firestore.SERVER_TIMESTAMP,
         }
+        if profile_numeric_id is not None:
+            callback_update['zwiftId'] = str(profile_numeric_id)
         if power_profile:
             callback_update['zwiftPowerCurve'] = _power_profile_to_firestore(power_profile)
 

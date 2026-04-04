@@ -11,7 +11,7 @@ import CategoryTab from '@/components/register/CategoryTab';
 function RegisterContent() {
     const {
         authLoading, fetchingProfile,
-        name, setName, zwiftId, setZwiftId,
+        name, setName, zwiftId,
         club, setClub, trainer, setTrainer, stravaConnected, zwiftConnected,
         acceptedCoC, setAcceptedCoC, acceptedDataPolicy, setAcceptedDataPolicy,
         acceptedPublicResults, setAcceptedPublicResults,
@@ -19,11 +19,9 @@ function RegisterContent() {
         weightVerificationDeadline, verificationRequests, refreshProfile,
         clubs, loadingClubs, clubsError,
         trainers, loadingTrainers, trainersError,
-        zwiftVerified, verifyingZwift, zwiftName, zwiftError,
         isRegistered, activeTab, setActiveTab, currentStep, setCurrentStep,
         submitting, savingProgress, message, error,
         step0Valid, step1Valid, step2Valid,
-        verifyZwiftId, confirmZwiftIdentity,
         handleConnectStrava, handleDisconnectStrava, handleConnectZwift, handleDisconnectZwift, handleRequestTrainer, saveData,
     } = useRegistration();
 
@@ -36,8 +34,7 @@ function RegisterContent() {
         clubs, loadingClubs, clubsError,
         trainers, loadingTrainers, trainersError,
         onRequestTrainer: handleRequestTrainer,
-        zwiftId, setZwiftId, zwiftVerified, verifyingZwift,
-        zwiftName, zwiftError, verifyZwiftId, confirmZwiftIdentity,
+        zwiftId, zwiftConnected,
     };
 
     const TabButton = ({ id, label, active, warning = false }: { id: string; label: string; active: boolean; warning?: boolean }) => (

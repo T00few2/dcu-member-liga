@@ -29,6 +29,17 @@ def _normalize_zwift_id(value) -> str | None:
         return None
     return s if s.isdigit() else None
 
+
+def _connected_zwift_id_from_user_data(data: dict | None) -> str | None:
+    if not isinstance(data, dict):
+        return None
+    direct = _normalize_zwift_id(data.get('zwiftId'))
+    if direct:
+        return direct
+    connections = data.get('connections') or {}
+    zwift = connections.get('zwift') if isinstance(connections, dict) else {}
+    return _normalize_zwift_id((zwift or {}).get('profileId'))
+
 @users_bp.route('/profile', methods=['GET'])
 def get_profile():
     try:
@@ -51,6 +62,25 @@ def get_profile():
             return jsonify({'message': e.message}), e.status_code
 
         if not user:
+            # Backward compatibility: pre-signup OAuth may create a UID-keyed shell doc.
+            shell = db.collection('users').document(uid).get()
+            if shell.exists:
+                shell_data = shell.to_dict() or {}
+                shell_conn = (shell_data.get('connections') or {}).get('zwift') or {}
+                shell_zwift_id = _connected_zwift_id_from_user_data(shell_data)
+                return jsonify({
+                    'registered': False,
+                    'hasDraft': False,
+                    'name': shell_data.get('name', ''),
+                    'zwiftId': shell_zwift_id,
+                    'club': shell_data.get('club', ''),
+                    'trainer': (shell_data.get('equipment') or {}).get('trainer', ''),
+                    'stravaConnected': bool((shell_data.get('connections') or {}).get('strava')),
+                    'zwiftConnected': bool(shell_conn.get('connected')),
+                    'requiredDataPolicyVersion': policy_meta.get(POLICY_DATA_POLICY, {}).get('requiredVersion'),
+                    'requiredPublicResultsConsentVersion': policy_meta.get(POLICY_PUBLIC_RESULTS, {}).get('requiredVersion'),
+                }), 200
+
             return jsonify({
                 'registered': False,
                 'requiredDataPolicyVersion': policy_meta.get(POLICY_DATA_POLICY, {}).get('requiredVersion'),
@@ -120,9 +150,15 @@ def signup():
         else:
             if not name:
                 return jsonify({'message': 'Missing name'}), 400
-            zwift_id = _normalize_zwift_id(zwift_id)
+
+            # Canonical Zwift ID must come from linked Zwift account data, not user input.
+            resolved_doc_id = resolve_user_doc_id_from_auth_uid(uid) or uid
+            source_doc = db.collection('users').document(str(resolved_doc_id)).get()
+            source_data = source_doc.to_dict() if source_doc.exists else {}
+            zwift_id = _connected_zwift_id_from_user_data(source_data)
             if not zwift_id:
-                return jsonify({'message': 'Missing or invalid Zwift ID'}), 400
+                return jsonify({'message': 'Connect your Zwift account first'}), 400
+
             if not accepted_data_policy:
                 return jsonify({'message': 'You must accept the data policy.'}), 400
             if not accepted_public_results:
@@ -151,6 +187,14 @@ def signup():
                 existing_zwift_user_id = (existing_user.to_dict() or {}).get('zwiftUserId')
                 if existing_zwift_user_id:
                     user_data['zwiftUserId'] = existing_zwift_user_id
+            else:
+                # Support pre-signup OAuth shell docs keyed by UID/auth mapping.
+                resolved_doc_id = resolve_user_doc_id_from_auth_uid(uid) or uid
+                shell_doc = db.collection('users').document(str(resolved_doc_id)).get()
+                if shell_doc.exists:
+                    shell_zwift_user_id = (shell_doc.to_dict() or {}).get('zwiftUserId')
+                    if shell_zwift_user_id:
+                        user_data['zwiftUserId'] = shell_zwift_user_id
             if name: user_data['name'] = name
             if club: user_data['club'] = club
             
@@ -574,69 +618,4 @@ def get_stats():
     }
     return jsonify(stats_data), 200
 
-@users_bp.route('/verify/zwift/<zwift_id>', methods=['GET'])
-def verify_zwift_id(zwift_id):
-    try:
-        try:
-            decoded_token = verify_user_token(request)
-        except AuthzError as e:
-            return jsonify({'message': e.message}), e.status_code
-
-        uid = decoded_token['uid']
-        user = UserService.get_user_by_auth_uid(uid)
-
-        # Resolve token owner robustly for both registered and in-progress users.
-        candidate_ids: list[str] = []
-        if user and user.id:
-            candidate_ids.append(str(user.id))
-        resolved_from_uid = resolve_user_doc_id_from_auth_uid(uid)
-        if resolved_from_uid and resolved_from_uid not in candidate_ids:
-            candidate_ids.append(str(resolved_from_uid))
-        if uid not in candidate_ids:
-            candidate_ids.append(uid)
-
-        zwift_service = get_zwift_service()
-        token_owner_id = None
-        token_doc = {}
-        for cid in candidate_ids:
-            doc = get_token_doc(cid) or {}
-            if doc:
-                token_owner_id = cid
-                token_doc = doc
-                break
-
-        if not token_doc:
-            return jsonify({'message': 'Connect your Zwift account first'}), 400
-
-        access_token = get_valid_access_token(str(token_owner_id), zwift_service)
-        profile = zwift_service.get_profile(user_access_token=access_token) if access_token else None
-
-        if not profile:
-            return jsonify({'message': 'Rider not found'}), 404
-
-        # Auto-heal token key to canonical user doc after successful verification.
-        if user and user.id and token_owner_id != str(user.id):
-            try:
-                save_token_doc(str(user.id), token_doc)
-                delete_token_doc(token_owner_id)
-            except Exception:
-                logger.warning(f"Could not migrate Zwift token doc from {token_owner_id} to {user.id}")
-
-        requested_zwift_id = _normalize_zwift_id(zwift_id)
-        if not requested_zwift_id:
-            return jsonify({'message': 'Invalid Zwift ID format'}), 400
-
-        profile_numeric_id = _normalize_zwift_id(profile.get('id'))
-        if not profile_numeric_id or requested_zwift_id != profile_numeric_id:
-            return jsonify({'message': 'Zwift ID does not match connected Zwift account'}), 400
-
-        return jsonify({
-            'firstName': profile.get('firstName'),
-            'lastName': profile.get('lastName'),
-            'id': profile.get('id'),
-            'userId': profile.get('userId'),
-        }), 200
-    except Exception as e:
-        logger.error(f"Zwift verify error for {zwift_id}: {e}")
-        return jsonify({'message': str(e)}), 500
 
