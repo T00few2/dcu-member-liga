@@ -19,6 +19,15 @@ interface TrainerRequest {
   createdAt: number;
 }
 
+interface GroupedTrainerRequest {
+  id: string;
+  trainerName: string;
+  status: string;
+  createdAt: number;
+  requestCount: number;
+  requesterNames: string[];
+}
+
 export default function TrainerManager() {
   const { user } = useAuth();
   const [trainers, setTrainers] = useState<Trainer[]>([]);
@@ -197,6 +206,29 @@ export default function TrainerManager() {
   const approvedTrainers = trainers.filter(t => t.status === 'approved');
   const notApprovedTrainers = trainers.filter(t => t.status === 'not_approved');
   const pendingRequests = requests.filter(r => r.status === 'pending');
+  const groupedPendingRequests = pendingRequests.reduce((acc, request) => {
+    const normalizedName = request.trainerName.trim().toLowerCase().replace(/\s+/g, ' ');
+    const existing = acc[normalizedName];
+
+    if (!existing) {
+      acc[normalizedName] = {
+        id: request.id,
+        trainerName: request.trainerName,
+        status: request.status,
+        createdAt: request.createdAt,
+        requestCount: 1,
+        requesterNames: request.requesterName ? [request.requesterName] : [],
+      };
+      return acc;
+    }
+
+    existing.requestCount += 1;
+    if (request.requesterName && !existing.requesterNames.includes(request.requesterName)) {
+      existing.requesterNames.push(request.requesterName);
+    }
+    return acc;
+  }, {} as Record<string, GroupedTrainerRequest>);
+  const bundledPendingRequests = Object.values(groupedPendingRequests);
 
   return (
     <div className="space-y-8">
@@ -212,20 +244,25 @@ export default function TrainerManager() {
       )}
 
       {/* Pending Requests Section */}
-      {pendingRequests.length > 0 && (
+      {bundledPendingRequests.length > 0 && (
         <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-6">
           <h2 className="text-xl font-bold mb-4 text-yellow-900 dark:text-yellow-100">
-            🔔 Pending Approval Requests ({pendingRequests.length})
+            🔔 Pending Approval Requests ({bundledPendingRequests.length})
           </h2>
           <div className="space-y-3">
-            {pendingRequests.map(request => (
+            {bundledPendingRequests.map(request => (
               <div key={request.id} className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-yellow-300 dark:border-yellow-700">
                 <div className="flex justify-between items-start">
                   <div>
                     <h3 className="font-bold text-lg">{request.trainerName}</h3>
                     <p className="text-sm text-muted-foreground">
-                      Requested by: {request.requesterName || 'Unknown'}
+                      Requested by: {request.requesterNames.length > 0 ? request.requesterNames.join(', ') : 'Unknown'}
                     </p>
+                    {request.requestCount > 1 && (
+                      <p className="text-xs font-semibold text-yellow-800 dark:text-yellow-200">
+                        {request.requestCount} duplicate requests bundled together
+                      </p>
+                    )}
                     <p className="text-xs text-muted-foreground">
                       {new Date(request.createdAt).toLocaleDateString()}
                     </p>

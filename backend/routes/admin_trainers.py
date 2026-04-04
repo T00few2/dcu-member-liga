@@ -15,6 +15,24 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _normalize_trainer_name(name: str) -> str:
+    """Normalize trainer names for duplicate detection across requests."""
+    return ' '.join((name or '').strip().lower().split())
+
+
+def _find_trainer_by_normalized_name(normalized_name: str):
+    """Return first trainer doc matching normalized name (or legacy raw name)."""
+    if not normalized_name:
+        return None
+
+    for doc in db.collection('trainers').stream():
+        td = doc.to_dict() or {}
+        current_normalized = td.get('normalizedName') or _normalize_trainer_name(td.get('name', ''))
+        if current_normalized == normalized_name:
+            return doc
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Trainer management (admin-only)
 # ---------------------------------------------------------------------------
@@ -50,9 +68,11 @@ def create_trainer():
         name = data.get('name')
         if not name:
             return jsonify({'message': 'Trainer name is required'}), 400
+        name = name.strip()
 
         trainer_data = {
             'name': name,
+            'normalizedName': _normalize_trainer_name(name),
             'status': data.get('status', 'approved'),
             'dualRecordingRequired': data.get('dualRecordingRequired', False),
             'createdAt': firestore.SERVER_TIMESTAMP,
@@ -78,7 +98,9 @@ def update_trainer(trainer_id):
         data = request.get_json()
         update_data = {'updatedAt': firestore.SERVER_TIMESTAMP}
         if 'name' in data:
-            update_data['name'] = data['name']
+            cleaned_name = (data['name'] or '').strip()
+            update_data['name'] = cleaned_name
+            update_data['normalizedName'] = _normalize_trainer_name(cleaned_name)
         if 'status' in data:
             update_data['status'] = data['status']
         if 'dualRecordingRequired' in data:
@@ -124,12 +146,37 @@ def request_trainer():
 
     try:
         data = request.get_json()
-        trainer_name = data.get('trainerName')
+        trainer_name = (data.get('trainerName') or '').strip()
         if not trainer_name:
             return jsonify({'message': 'Trainer name is required'}), 400
 
+        normalized_name = _normalize_trainer_name(trainer_name)
+
+        # If trainer already exists, no request is needed.
+        existing_trainer_doc = _find_trainer_by_normalized_name(normalized_name)
+        if existing_trainer_doc:
+            return jsonify({'message': 'Trainer already exists and does not need approval'}), 200
+
+        # Prevent duplicate pending requests for the same trainer.
+        pending_docs = (
+            db.collection('trainer_requests')
+            .where('status', '==', 'pending')
+            .stream()
+        )
+        for pending_doc in pending_docs:
+            pending_data = pending_doc.to_dict() or {}
+            pending_normalized = pending_data.get('normalizedTrainerName') or _normalize_trainer_name(
+                pending_data.get('trainerName', '')
+            )
+            if pending_normalized == normalized_name:
+                return jsonify({
+                    'message': 'Trainer approval request already pending',
+                    'id': pending_doc.id
+                }), 200
+
         request_data = {
             'trainerName': trainer_name,
+            'normalizedTrainerName': normalized_name,
             'requesterName': data.get('requesterName', ''),
             'requesterUid': uid,
             'status': 'pending',
@@ -185,20 +232,59 @@ def approve_trainer_request(request_id):
         if not request_doc.exists:
             return jsonify({'message': 'Request not found'}), 404
 
-        trainer_name = request_doc.to_dict().get('trainerName')
-        trainer_data = {
-            'name': trainer_name,
-            'status': 'approved',
-            'dualRecordingRequired': data.get('dualRecordingRequired', False),
-            'createdAt': firestore.SERVER_TIMESTAMP,
-            'updatedAt': firestore.SERVER_TIMESTAMP,
-        }
-        db.collection('trainers').add(trainer_data)
-        db.collection('trainer_requests').document(request_id).update({
-            'status': 'approved',
-            'approvedAt': firestore.SERVER_TIMESTAMP,
-        })
-        return jsonify({'message': 'Trainer approved and added'}), 200
+        request_data = request_doc.to_dict() or {}
+        trainer_name = (request_data.get('trainerName') or '').strip()
+        normalized_name = request_data.get('normalizedTrainerName') or _normalize_trainer_name(trainer_name)
+        require_dual_recording = data.get('dualRecordingRequired', False)
+
+        existing_trainer_doc = _find_trainer_by_normalized_name(normalized_name)
+        if existing_trainer_doc:
+            db.collection('trainers').document(existing_trainer_doc.id).update({
+                'status': 'approved',
+                'dualRecordingRequired': require_dual_recording,
+                'normalizedName': normalized_name,
+                'updatedAt': firestore.SERVER_TIMESTAMP,
+            })
+        else:
+            trainer_data = {
+                'name': trainer_name,
+                'normalizedName': normalized_name,
+                'status': 'approved',
+                'dualRecordingRequired': require_dual_recording,
+                'createdAt': firestore.SERVER_TIMESTAMP,
+                'updatedAt': firestore.SERVER_TIMESTAMP,
+            }
+            db.collection('trainers').add(trainer_data)
+
+        # Mark all matching pending requests as approved in one operation.
+        pending_docs = (
+            db.collection('trainer_requests')
+            .where('status', '==', 'pending')
+            .stream()
+        )
+        matching_pending = []
+        for pending_doc in pending_docs:
+            pending_data = pending_doc.to_dict() or {}
+            pending_normalized = pending_data.get('normalizedTrainerName') or _normalize_trainer_name(
+                pending_data.get('trainerName', '')
+            )
+            if pending_normalized == normalized_name:
+                matching_pending.append(pending_doc)
+
+        batch = db.batch()
+        for pending_doc in matching_pending:
+            batch.update(pending_doc.reference, {
+                'status': 'approved',
+                'approvedAt': firestore.SERVER_TIMESTAMP,
+                'normalizedTrainerName': normalized_name,
+            })
+        batch.commit()
+
+        approved_count = max(1, len(matching_pending))
+        return jsonify({
+            'message': 'Trainer approved and matching requests resolved',
+            'resolvedRequests': approved_count
+        }), 200
     except Exception as e:
         return jsonify({'message': str(e)}), 500
 
