@@ -5,7 +5,13 @@ from services.policy_store import POLICY_DATA_POLICY, POLICY_PUBLIC_RESULTS, Pol
 from services.user_service import UserService
 from services.category_engine import ZR_CATEGORIES, serialize_liga_category
 from services.schema_validation import log_schema_issues, validate_user_doc, with_schema_version
-from services.zwift_tokens import get_valid_access_token, get_token_doc, save_token_doc, delete_token_doc
+from services.zwift_tokens import (
+    get_valid_access_token,
+    get_token_doc,
+    save_token_doc,
+    delete_token_doc,
+    resolve_user_doc_id_from_auth_uid,
+)
 from authz import verify_user_token, AuthzError
 
 import logging
@@ -578,28 +584,38 @@ def verify_zwift_id(zwift_id):
 
         uid = decoded_token['uid']
         user = UserService.get_user_by_auth_uid(uid)
-        if not user:
-            return jsonify({'message': 'User profile not found'}), 404
+
+        # Resolve token owner robustly for both registered and in-progress users.
+        candidate_ids: list[str] = []
+        if user and user.id:
+            candidate_ids.append(str(user.id))
+        resolved_from_uid = resolve_user_doc_id_from_auth_uid(uid)
+        if resolved_from_uid and resolved_from_uid not in candidate_ids:
+            candidate_ids.append(str(resolved_from_uid))
+        if uid not in candidate_ids:
+            candidate_ids.append(uid)
 
         zwift_service = get_zwift_service()
-        token_owner_id = str(user.id)
-        token_doc = get_token_doc(token_owner_id) or {}
-        if not token_doc and uid:
-            # Backward compatibility: older flows could store token under auth UID.
-            token_doc = get_token_doc(uid) or {}
-            if token_doc:
-                token_owner_id = uid
+        token_owner_id = None
+        token_doc = {}
+        for cid in candidate_ids:
+            doc = get_token_doc(cid) or {}
+            if doc:
+                token_owner_id = cid
+                token_doc = doc
+                break
+
         if not token_doc:
             return jsonify({'message': 'Connect your Zwift account first'}), 400
 
-        access_token = get_valid_access_token(token_owner_id, zwift_service)
+        access_token = get_valid_access_token(str(token_owner_id), zwift_service)
         profile = zwift_service.get_profile(user_access_token=access_token) if access_token else None
 
         if not profile:
             return jsonify({'message': 'Rider not found'}), 404
 
         # Auto-heal token key to canonical user doc after successful verification.
-        if token_owner_id != str(user.id):
+        if user and user.id and token_owner_id != str(user.id):
             try:
                 save_token_doc(str(user.id), token_doc)
                 delete_token_doc(token_owner_id)
