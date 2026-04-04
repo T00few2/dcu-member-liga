@@ -201,6 +201,7 @@ def signup():
         club = request_json.get('club', '')
         trainer = request_json.get('trainer', '')
         is_draft = request_json.get('draft', False)
+        accepted_coc = bool(request_json.get('acceptedCoC', False))
         accepted_data_policy = bool(request_json.get('acceptedDataPolicy', False))
         accepted_public_results = bool(request_json.get('acceptedPublicResults', False))
         data_policy_version = request_json.get('dataPolicyVersion')
@@ -223,6 +224,8 @@ def signup():
             if not zwift_id:
                 return jsonify({'message': 'Connect your Zwift account first'}), 400
 
+            if not accepted_coc:
+                return jsonify({'message': 'You must accept the Code of Conduct.'}), 400
             if not accepted_data_policy:
                 return jsonify({'message': 'You must accept the data policy.'}), 400
             if not accepted_public_results:
@@ -268,7 +271,7 @@ def signup():
             
             # Registration Group
             registration = {
-                'cocAccepted': request_json.get('acceptedCoC', False)
+                'cocAccepted': accepted_coc
             }
             
             if accepted_data_policy:
