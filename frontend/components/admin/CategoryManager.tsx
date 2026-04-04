@@ -62,7 +62,10 @@ interface RiderEntry {
   zwiftId: string;
   name: string;
   club: string;
+  currentRating: number | string;
   max30Rating: number | string;
+  max90Rating: number | string;
+  effectiveRating: number | string;
   ligaCategory: LigaCategory | null;
 }
 
@@ -82,13 +85,13 @@ function getCatLower(cats: CategoryDef[], i: number): number {
   return cats[i + 1].upper ?? 0;
 }
 
-/** Count riders whose current max30 falls within [lower, upper). */
+/** Count riders whose effective rating falls within [lower, upper). */
 function countInRange(riders: RiderEntry[], lower: number, upper: number | null): number {
   return riders.filter(r => {
-    const max30 = parseFloat(String(r.max30Rating));
-    if (isNaN(max30)) return false;
-    if (max30 < lower) return false;
-    if (upper !== null && max30 >= upper) return false;
+    const effective = parseFloat(String(r.effectiveRating));
+    if (isNaN(effective)) return false;
+    if (effective < lower) return false;
+    if (upper !== null && effective >= upper) return false;
     return true;
   }).length;
 }
@@ -222,7 +225,7 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
   const handleAssign = async () => {
     if (!user) return;
     if (!confirm(
-      `Assign liga categories based on current max30 vELO?\n\nLimit buffer: ${gracePeriod} points\nCategories: ${ligaCategories.length} configured\n\nThis will overwrite existing assignments for all riders.`
+      `Assign liga categories based on effective vELO (max of current and 30-day max)?\n\nLimit buffer: ${gracePeriod} points\nCategories: ${ligaCategories.length} configured\n\nThis will overwrite existing assignments for all riders.`
     )) return;
 
     setAssigning(true);
@@ -270,7 +273,7 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
   const okCount = assigned.filter(r => r.ligaCategory?.status === 'ok').length;
   const filtered = filter === 'all' ? riders : riders.filter(r => r.ligaCategory?.status === filter);
 
-  const ridersWithRating = riders.filter(r => !isNaN(parseFloat(String(r.max30Rating))));
+  const ridersWithRating = riders.filter(r => !isNaN(parseFloat(String(r.effectiveRating))));
   const maxInAnyBucket = Math.max(
     1,
     ...ligaCategories.map((_, i) =>
@@ -329,8 +332,8 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
         </div>
         <p className="text-sm text-muted-foreground mb-5">
           Define vELO split points and category names. Defaults to the 10 standard ZR categories.
-          The distribution preview shows how current max30 ratings map to these categories.
-          Use <strong>Assign Liga Categories</strong> to apply this configuration to all riders based on their current max30 vELO.
+          The distribution preview shows how effective ratings (max of current and 30-day max) map to these categories.
+          Use <strong>Assign Liga Categories</strong> to apply this configuration to all riders based on effective vELO.
         </p>
 
         <div className="overflow-x-auto">
@@ -506,7 +509,7 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
                   <th className="px-4 py-3 text-right">Rating at Assignment</th>
                   <th className="px-4 py-3 text-right">Upper Boundary</th>
                   <th className="px-4 py-3 text-right">Grace Limit</th>
-                  <th className="px-4 py-3 text-right">Current max30</th>
+                  <th className="px-4 py-3 text-right">Effective vELO</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Actions</th>
                 </tr>
@@ -578,7 +581,7 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
                         <td className={`px-4 py-3 text-right font-mono font-semibold ${
                           isOver ? 'text-red-600' : isGrace ? 'text-yellow-600' : 'text-card-foreground'
                         }`}>
-                          {r.max30Rating !== 'N/A' ? Math.round(Number(r.max30Rating)) : '–'}
+                          {r.effectiveRating !== 'N/A' ? Math.round(Number(r.effectiveRating)) : '–'}
                         </td>
                         <td className="px-4 py-3">
                           {statusBadge(lc?.status)}

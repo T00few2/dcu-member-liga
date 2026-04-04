@@ -435,7 +435,7 @@ def save_liga_categories_config():
 
 @admin_bp.route('/admin/assign-liga-categories', methods=['POST'])
 def assign_liga_categories():
-    """Bulk-assign liga categories to all registered riders from their max30 vELO."""
+    """Bulk-assign liga categories to all registered riders from effective vELO."""
     try:
         require_admin(request)
     except AuthzError as e:
@@ -521,7 +521,7 @@ def assign_liga_categories():
 
 @admin_bp.route('/admin/liga-categories', methods=['GET'])
 def get_liga_categories():
-    """Return all registered riders with their ligaCategory data."""
+    """Return all registered riders with ligaCategory and effective vELO data."""
     try:
         require_admin(request)
     except AuthzError as e:
@@ -542,11 +542,18 @@ def get_liga_categories():
             data = doc.to_dict() or {}
             lc = serialize_liga_category(data.get('ligaCategory'))
             zr = data.get('zwiftRacing', {})
+            current_rating = zr.get('currentRating', 'N/A')
+            max30_rating = zr.get('max30Rating', 'N/A')
+            max90_rating = zr.get('max90Rating', 'N/A')
+            eff_rating = effective_rating(current_rating, max30_rating, max90_rating)
             riders.append({
                 'zwiftId': data.get('zwiftId', ''),
                 'name': data.get('name', ''),
                 'club': data.get('club', ''),
-                'max30Rating': zr.get('max30Rating', 'N/A'),
+                'currentRating': current_rating,
+                'max30Rating': max30_rating,
+                'max90Rating': max90_rating,
+                'effectiveRating': eff_rating if eff_rating is not None else 'N/A',
                 'ligaCategory': lc,
             })
 
