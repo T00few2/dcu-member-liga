@@ -10,7 +10,7 @@ from routes.admin import admin_bp
 from authz import require_admin, require_scheduler, AuthzError
 from extensions import db, zr_service
 from extensions import get_zwift_service
-from services.zwift_tokens import get_valid_access_token
+from services.zwift_tokens import get_valid_access_token, get_token_doc
 from routes.integration import _competition_metrics_to_profile, _power_profile_to_firestore
 from services.user_service import UserService
 from services.category_engine import (
@@ -608,22 +608,44 @@ def reassign_liga_category(zwift_id):
 
 @admin_bp.route('/admin/debug-power-profile/<zwift_id>', methods=['GET'])
 def debug_power_profile(zwift_id):
-    """Return the raw Zwift power-profile API response for a user (admin debug only)."""
+    """Return raw Zwift power-profile API response (admin or scheduler debug)."""
+    scheduler_ok = False
     try:
-        require_admin(request)
-    except AuthzError as e:
-        return jsonify({'message': e.message}), e.status_code
+        require_scheduler(request)
+        scheduler_ok = True
+    except AuthzError:
+        pass
+
+    if not scheduler_ok:
+        try:
+            require_admin(request)
+        except AuthzError as e:
+            return jsonify({'message': e.message}), e.status_code
 
     if not db:
         return jsonify({'error': 'DB not available'}), 500
 
     zwift_service = get_zwift_service()
+    token_doc = get_token_doc(zwift_id) or {}
     access_token = get_valid_access_token(zwift_id, zwift_service)
     if not access_token:
-        return jsonify({'error': 'No valid token for this user'}), 404
+        return jsonify({
+            'error': 'No valid token for this user',
+            'token_doc': {
+                'exists': bool(token_doc),
+                'scope': token_doc.get('scope'),
+                'zwiftUserId': token_doc.get('zwiftUserId'),
+                'expires_at': token_doc.get('expires_at'),
+            }
+        }), 404
 
     response = zwift_service._api_get("/api/link/power-curve/power-profile", token=access_token)
     return jsonify({
         'status_code': response.status_code,
         'body': response.text[:4000],
+        'token_doc': {
+            'scope': token_doc.get('scope'),
+            'zwiftUserId': token_doc.get('zwiftUserId'),
+            'expires_at': token_doc.get('expires_at'),
+        }
     }), 200
