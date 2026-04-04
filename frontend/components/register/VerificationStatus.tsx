@@ -59,9 +59,9 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
             });
 
             const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'Kunne ikke indsende bekræftelse');
+            if (!res.ok) throw new Error(data.message || 'Kunne ikke indsende verifikation');
 
-            setSuccess('Bekræftelse indsendt med succes! En administrator vil snart gennemgå den.');
+            setSuccess('Verifikation indsendt med succes! En administrator vil snart gennemgå den.');
             refreshProfile();
 
         } catch (e: any) {
@@ -75,9 +75,9 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
         return (
             <div className="p-8 text-center bg-gray-50 dark:bg-gray-900 rounded-lg border border-border">
                 <div className="text-4xl mb-4">✅</div>
-                <h3 className="text-xl font-bold mb-2">Ingen bekræftelse påkrævet</h3>
+                <h3 className="text-xl font-bold mb-2">Ingen verifikation påkrævet</h3>
                 <p className="text-muted-foreground">
-                    Du er ikke blevet udvalgt til en vægtbekræftelse på nuværende tidspunkt.
+                    Du er ikke blevet udvalgt til en vægtverifikation på nuværende tidspunkt.
                     Fortsæt dit løb!
                 </p>
             </div>
@@ -103,7 +103,7 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
 
                 {displayStatus === 'pending' && (
                     <p className="text-orange-700 dark:text-orange-300">
-                        Du er blevet udvalgt til en stikprøve vægtbekræftelse.
+                        Du er blevet udvalgt til en stikprøve vægtverifikation.
                         Optag venligst en indvejningsvideo og indsend linket nedenfor.
                         {deadline && <span className="block font-bold mt-1">Frist: {fromTimestamp(deadline)?.toLocaleDateString()}</span>}
                     </p>
@@ -115,12 +115,12 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
                 )}
                 {displayStatus === 'approved' && (
                     <p className="text-green-700 dark:text-green-300">
-                        Din vægtbekræftelse er blevet godkendt. Tak for dit samarbejde!
+                        Din vægtverifikation er blevet godkendt. Tak for dit samarbejde!
                     </p>
                 )}
                 {displayStatus === 'rejected' && (
                     <p className="text-red-700 dark:text-red-300">
-                        Din bekræftelse blev afvist. Kontakt venligst en administrator eller afvent en ny anmodning.
+                        Din verifikation blev afvist. Kontakt venligst en administrator eller afvent en ny anmodning.
                     </p>
                 )}
 
@@ -151,7 +151,7 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
             {/* Submission Form */}
             {displayStatus === 'pending' && (
                 <div className="bg-card p-6 border border-border rounded-lg shadow-sm">
-                    <h4 className="font-semibold mb-4 text-card-foreground">Indsend bekræftelsesvideo</h4>
+                    <h4 className="font-semibold mb-4 text-card-foreground">Indsend verifikationsvideo</h4>
 
                     <div className="mb-4 text-sm text-muted-foreground space-y-2">
                         <p><strong>Instruktioner:</strong></p>
@@ -160,6 +160,19 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
                             <li>Upload videoen til YouTube (vælg "Skjult" som synlighed).</li>
                             <li>Indsæt et link, der kan deles, nedenfor.</li>
                         </ol>
+                        <p className="pt-1">
+                            <a
+                                href="https://youtu.be/9EDuSQwsPSg?is=1gyEg5n_z0MT0d3H"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-primary hover:underline font-medium"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                                </svg>
+                                Se vejledningsvideo til verifikation
+                            </a>
+                        </p>
                     </div>
 
                     <div className="space-y-4">
@@ -182,7 +195,7 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
                             disabled={submitting || !linkInput}
                             className="w-full py-3 bg-primary text-primary-foreground font-bold rounded hover:bg-primary-dark transition-colors disabled:opacity-50"
                         >
-                            {submitting ? 'Indsender...' : 'Indsend bekræftelse'}
+                            {submitting ? 'Indsender...' : 'Indsend verifikation'}
                         </button>
                     </div>
                 </div>
