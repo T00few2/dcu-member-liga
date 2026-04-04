@@ -258,7 +258,7 @@ export default function RiderInfoForm({
                             {trainer && trainers.find(t => t.name === trainer)?.dualRecordingRequired && (
                                 <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
                                     <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                                        ⚠️ <strong>Dual Recording påkrævet</strong>: Strava skal forbindes og bruges som automatisk upload af dual recording.
+                                        ⚠️ <strong>Dual Recording påkrævet</strong>: Strava skal forbindes og bruges til automatisk upload af dual recording.
                                     </p>
                                 </div>
                             )}
