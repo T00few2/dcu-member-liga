@@ -71,18 +71,14 @@ def _resolve_user_doc_id_for_token(token_doc_id: str) -> str:
     Historically some token docs were keyed by auth UID while user docs are keyed
     by Zwift ID. This helper maps token-owner IDs to the canonical user doc.
     """
-    # 1) Already a direct users/{id} key.
-    if db.collection('users').document(token_doc_id).get().exists:
-        return token_doc_id
-
-    # 2) auth_mappings/{uid}.zwiftId -> users/{zwiftId}
+    # 1) auth_mappings/{uid}.zwiftId -> users/{zwiftId} (preferred canonical mapping)
     mapping = db.collection('auth_mappings').document(token_doc_id).get()
     if mapping.exists:
         mapped_zwift_id = str((mapping.to_dict() or {}).get('zwiftId', '')).strip()
         if mapped_zwift_id:
             return mapped_zwift_id
 
-    # 3) Fallback lookup by users.authUid.
+    # 2) Fallback lookup by users.authUid.
     docs = (
         db.collection('users')
         .where('authUid', '==', token_doc_id)
@@ -92,7 +88,11 @@ def _resolve_user_doc_id_for_token(token_doc_id: str) -> str:
     for doc in docs:
         return doc.id
 
-    # No mapping found; caller can decide whether to skip.
+    # 3) Direct users/{id} key if nothing else resolved.
+    if db.collection('users').document(token_doc_id).get().exists:
+        return token_doc_id
+
+    # No mapping found; caller can decide whether to skip or log.
     return token_doc_id
 
 

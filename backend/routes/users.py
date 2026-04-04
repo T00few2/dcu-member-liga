@@ -220,6 +220,33 @@ def signup():
                         db.collection('users').document(uid).delete()
                     except Exception:
                         pass
+                else:
+                    # Even if no full draft doc exists, OAuth callback may have created
+                    # a UID-keyed shell doc with Zwift profile fields. Migrate those too.
+                    uid_shell = db.collection('users').document(uid).get()
+                    if uid_shell.exists and uid_shell.id != str(zwift_id):
+                        uid_data = uid_shell.to_dict() or {}
+                        migrate_payload = {}
+                        for key in ('connections', 'zwiftUserId', 'zwiftProfile', 'zwiftPowerCurve'):
+                            if key in uid_data:
+                                migrate_payload[key] = uid_data[key]
+                        if migrate_payload:
+                            doc_ref.set(migrate_payload, merge=True)
+                        try:
+                            db.collection('users').document(uid).delete()
+                        except Exception:
+                            pass
+
+                    # Token migration should not depend on a draft document existing.
+                    uid_token = get_token_doc(uid)
+                    if uid_token and str(uid) != str(zwift_id):
+                        existing_target_token = get_token_doc(str(zwift_id))
+                        if not existing_target_token:
+                            save_token_doc(str(zwift_id), uid_token)
+                        try:
+                            delete_token_doc(uid)
+                        except Exception:
+                            pass
 
             # Update Auth Mapping
             auth_map_data = {
