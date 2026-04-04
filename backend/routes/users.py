@@ -94,6 +94,27 @@ def _normalize_zwift_id(value) -> str | None:
     return s if s.isdigit() else None
 
 
+def _normalize_trainer_name(value) -> str:
+    return ' '.join(str(value or '').strip().lower().split())
+
+
+def _trainer_requires_dual_recording(trainer_name: str) -> bool:
+    if not db or not trainer_name:
+        return False
+
+    target = _normalize_trainer_name(trainer_name)
+    for doc in db.collection('trainers').stream():
+        td = doc.to_dict() or {}
+        status = td.get('status')
+        if status != 'approved':
+            continue
+
+        normalized = td.get('normalizedName') or _normalize_trainer_name(td.get('name', ''))
+        if normalized == target:
+            return bool(td.get('dualRecordingRequired', False))
+    return False
+
+
 def _connected_zwift_id_from_user_data(data: dict | None) -> str | None:
     if not isinstance(data, dict):
         return None
@@ -240,6 +261,13 @@ def signup():
                 return jsonify({'message': 'Data policy version mismatch. Please review and accept the latest policy.'}), 400
             if public_results_consent_version != required_public:
                 return jsonify({'message': 'Public results consent version mismatch. Please review and accept the latest consent.'}), 400
+
+            if trainer and _trainer_requires_dual_recording(trainer):
+                strava_connected = bool((source_data.get('connections') or {}).get('strava'))
+                if not strava_connected:
+                    return jsonify({
+                        'message': 'Selected trainer requires Strava connection for dual recording. Connect Strava before completing profile.'
+                    }), 400
 
         if db:
             user_data = {

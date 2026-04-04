@@ -21,7 +21,7 @@ function RegisterContent() {
         trainers, loadingTrainers, trainersError,
         isRegistered, activeTab, setActiveTab, currentStep, setCurrentStep,
         submitting, savingProgress, message, error,
-        step0Valid, step1Valid, step2Valid,
+        step0Valid, step1Valid, step2Valid, trainerRequiresDualRecording,
         handleConnectStrava, handleDisconnectStrava, handleConnectZwift, handleDisconnectZwift, handleRequestTrainer, saveData,
     } = useRegistration();
 
@@ -90,6 +90,7 @@ function RegisterContent() {
                             <ConnectionsForm
                                 stravaConnected={stravaConnected}
                                 zwiftConnected={zwiftConnected}
+                                dualRecordingRequiresStrava={trainerRequiresDualRecording}
                                 handleConnectStrava={handleConnectStrava}
                                 handleDisconnectStrava={handleDisconnectStrava}
                                 handleConnectZwift={handleConnectZwift}
@@ -146,6 +147,7 @@ function RegisterContent() {
                                 <ConnectionsForm
                                     stravaConnected={stravaConnected}
                                     zwiftConnected={zwiftConnected}
+                                    dualRecordingRequiresStrava={trainerRequiresDualRecording}
                                     handleConnectStrava={handleConnectStrava}
                                     handleDisconnectStrava={handleDisconnectStrava}
                                     handleConnectZwift={handleConnectZwift}
@@ -172,7 +174,7 @@ function RegisterContent() {
                 {isRegistered ? (
                     <button
                         onClick={() => saveData(false)}
-                        disabled={submitting}
+                        disabled={submitting || (trainerRequiresDualRecording && !stravaConnected)}
                         className="px-6 py-2 bg-primary text-primary-foreground font-bold rounded-lg hover:bg-primary-dark disabled:opacity-50"
                     >
                         {submitting ? 'Gemmer...' : 'Gem ændringer'}
@@ -207,6 +209,11 @@ function RegisterContent() {
                     </>
                 )}
             </div>
+            {trainerRequiresDualRecording && !stravaConnected && (
+                <p className="mt-3 text-sm text-yellow-700 dark:text-yellow-300">
+                    Strava-forbindelse er påkrævet for den valgte hometrainer (dual recording).
+                </p>
+            )}
         </div>
     );
 }

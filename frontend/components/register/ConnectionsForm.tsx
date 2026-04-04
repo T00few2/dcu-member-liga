@@ -6,6 +6,7 @@ import StravaAttribution from '@/components/StravaAttribution';
 interface ConnectionsFormProps {
     stravaConnected: boolean;
     zwiftConnected: boolean;
+    dualRecordingRequiresStrava?: boolean;
     handleConnectStrava: () => void;
     handleDisconnectStrava: () => void;
     handleConnectZwift: () => void;
@@ -13,7 +14,7 @@ interface ConnectionsFormProps {
 }
 
 export default function ConnectionsForm({
-    stravaConnected, zwiftConnected, handleConnectStrava, handleDisconnectStrava, handleConnectZwift, handleDisconnectZwift
+    stravaConnected, zwiftConnected, dualRecordingRequiresStrava = false, handleConnectStrava, handleDisconnectStrava, handleConnectZwift, handleDisconnectZwift
 }: ConnectionsFormProps) {
     const [zwiftLogoFailed, setZwiftLogoFailed] = useState(false);
 
@@ -82,6 +83,11 @@ export default function ConnectionsForm({
                             Forbind Strava, så admins kan validere dobbeltregistrering ved behov.
                         </p>
                     </div>
+                    {dualRecordingRequiresStrava && !stravaConnected && (
+                        <div className="mb-4 rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800 dark:border-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200">
+                            ⚠️ Din valgte hometrainer kræver dual recording. Strava-forbindelse er påkrævet for at gennemføre din profil.
+                        </div>
+                    )}
 
                     {stravaConnected ? (
                         <div className="flex items-center justify-between bg-white dark:bg-black/20 p-4 rounded border border-border">

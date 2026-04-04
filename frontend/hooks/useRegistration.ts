@@ -283,8 +283,10 @@ export function useRegistration() {
 
     // Validation
     const step0Valid = !!name && !!club && !!trainer;
-    const step1Valid = !!zwiftConnected;
-    const step2Valid = acceptedCoC && acceptedDataPolicy && acceptedPublicResults;
+    const selectedTrainer = trainers.find(t => t.name === trainer);
+    const trainerRequiresDualRecording = !!selectedTrainer?.dualRecordingRequired;
+    const step1Valid = !!zwiftConnected && (!trainerRequiresDualRecording || !!stravaConnected);
+    const step2Valid = acceptedCoC && acceptedDataPolicy && acceptedPublicResults && (!trainerRequiresDualRecording || !!stravaConnected);
 
     return {
         // Auth
@@ -317,6 +319,7 @@ export function useRegistration() {
         message, error,
         // Validation
         step0Valid, step1Valid, step2Valid,
+        trainerRequiresDualRecording,
         // Actions
         handleConnectStrava,
         handleDisconnectStrava,
