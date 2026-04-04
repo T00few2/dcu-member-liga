@@ -59,9 +59,9 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
             });
 
             const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'Kunne ikke indsende bekræftelse');
+            if (!res.ok) throw new Error(data.message || 'Kunne ikke indsende verifikation');
 
-            setSuccess('Bekræftelse indsendt med succes! En administrator vil snart gennemgå den.');
+            setSuccess('Verifikation indsendt med succes! En administrator vil snart gennemgå den.');
             refreshProfile();
 
         } catch (e: any) {
@@ -75,9 +75,9 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
         return (
             <div className="p-8 text-center bg-gray-50 dark:bg-gray-900 rounded-lg border border-border">
                 <div className="text-4xl mb-4">✅</div>
-                <h3 className="text-xl font-bold mb-2">Ingen bekræftelse påkrævet</h3>
+                <h3 className="text-xl font-bold mb-2">Ingen verifikation påkrævet</h3>
                 <p className="text-muted-foreground">
-                    Du er ikke blevet udvalgt til en vægtbekræftelse på nuværende tidspunkt.
+                    Du er ikke blevet udvalgt til en vægtverifikation på nuværende tidspunkt.
                     Fortsæt dit løb!
                 </p>
             </div>
@@ -103,7 +103,7 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
 
                 {displayStatus === 'pending' && (
                     <p className="text-orange-700 dark:text-orange-300">
-                        Du er blevet udvalgt til en stikprøve vægtbekræftelse.
+                        Du er blevet udvalgt til en stikprøve vægtverifikation.
                         Optag venligst en indvejningsvideo og indsend linket nedenfor.
                         {deadline && <span className="block font-bold mt-1">Frist: {fromTimestamp(deadline)?.toLocaleDateString()}</span>}
                     </p>
@@ -115,12 +115,12 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
                 )}
                 {displayStatus === 'approved' && (
                     <p className="text-green-700 dark:text-green-300">
-                        Din vægtbekræftelse er blevet godkendt. Tak for dit samarbejde!
+                        Din vægtverifikation er blevet godkendt. Tak for dit samarbejde!
                     </p>
                 )}
                 {displayStatus === 'rejected' && (
                     <p className="text-red-700 dark:text-red-300">
-                        Din bekræftelse blev afvist. Kontakt venligst en administrator eller afvent en ny anmodning.
+                        Din verifikation blev afvist. Kontakt venligst en administrator eller afvent en ny anmodning.
                     </p>
                 )}
 
@@ -151,7 +151,7 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
             {/* Submission Form */}
             {displayStatus === 'pending' && (
                 <div className="bg-card p-6 border border-border rounded-lg shadow-sm">
-                    <h4 className="font-semibold mb-4 text-card-foreground">Indsend bekræftelsesvideo</h4>
+                    <h4 className="font-semibold mb-4 text-card-foreground">Indsend verifikationsvideo</h4>
 
                     <div className="mb-4 text-sm text-muted-foreground space-y-2">
                         <p><strong>Instruktioner:</strong></p>
@@ -182,7 +182,7 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
                             disabled={submitting || !linkInput}
                             className="w-full py-3 bg-primary text-primary-foreground font-bold rounded hover:bg-primary-dark transition-colors disabled:opacity-50"
                         >
-                            {submitting ? 'Indsender...' : 'Indsend bekræftelse'}
+                            {submitting ? 'Indsender...' : 'Indsend verifikation'}
                         </button>
                     </div>
                 </div>

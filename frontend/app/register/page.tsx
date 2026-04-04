@@ -83,7 +83,7 @@ function RegisterContent() {
                         <TabButton id="agreements" label="Aftaler" active={activeTab === 'agreements'} />
                         <TabButton
                             id="verification"
-                            label="Bekræftelse"
+                            label="Verifikation"
                             active={activeTab === 'verification'}
                             warning={weightVerificationStatus === 'pending'}
                         />
