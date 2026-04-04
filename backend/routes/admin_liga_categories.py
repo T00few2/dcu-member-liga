@@ -11,6 +11,7 @@ from authz import require_admin, require_scheduler, AuthzError
 from extensions import db, zr_service
 from extensions import get_zwift_service
 from services.zwift_tokens import get_valid_access_token, get_token_doc
+from services.zwift_tokens import resolve_canonical_user_doc_id
 from routes.integration import _competition_metrics_to_profile, _power_profile_to_firestore
 from services.user_service import UserService
 from services.category_engine import (
@@ -62,39 +63,6 @@ def _resolve_categories(settings: dict):
         except Exception:
             pass
     return None
-
-
-def _resolve_user_doc_id_for_token(token_doc_id: str) -> str:
-    """
-    Resolve the canonical users/{docId} for a zwift_tokens document ID.
-
-    Historically some token docs were keyed by auth UID while user docs are keyed
-    by Zwift ID. This helper maps token-owner IDs to the canonical user doc.
-    """
-    # 1) auth_mappings/{uid}.zwiftId -> users/{zwiftId} (preferred canonical mapping)
-    mapping = db.collection('auth_mappings').document(token_doc_id).get()
-    if mapping.exists:
-        mapped_zwift_id = str((mapping.to_dict() or {}).get('zwiftId', '')).strip()
-        if mapped_zwift_id:
-            return mapped_zwift_id
-
-    # 2) Fallback lookup by users.authUid.
-    docs = (
-        db.collection('users')
-        .where('authUid', '==', token_doc_id)
-        .limit(1)
-        .stream()
-    )
-    for doc in docs:
-        return doc.id
-
-    # 3) Direct users/{id} key if nothing else resolved.
-    if db.collection('users').document(token_doc_id).get().exists:
-        return token_doc_id
-
-    # No mapping found; caller can decide whether to skip or log.
-    return token_doc_id
-
 
 
 def _compute_liga_update(eff_rating: int, existing_lc: dict | None, grace_period: int, categories) -> dict:
@@ -343,7 +311,7 @@ def refresh_zwift_profile():
 
         for token_doc in token_docs:
             token_owner_id = token_doc.id
-            user_doc_id = _resolve_user_doc_id_for_token(token_owner_id)
+            user_doc_id = resolve_canonical_user_doc_id(token_owner_id) or token_owner_id
             try:
                 access_token = get_valid_access_token(token_owner_id, zwift_service)
                 if not access_token:

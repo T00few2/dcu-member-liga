@@ -29,6 +29,40 @@ def resolve_user_doc_id_from_auth_uid(auth_uid: str) -> str | None:
     return auth_uid
 
 
+def resolve_canonical_user_doc_id(candidate_id: str) -> str | None:
+    """
+    Resolve the canonical users/{docId} for an arbitrary identifier.
+
+    Priority:
+    1) auth_mappings/{candidate}.zwiftId
+    2) users where authUid == candidate
+    3) direct users/{candidate} if it exists
+    4) fallback to candidate
+    """
+    if not db or not candidate_id:
+        return None
+
+    candidate = str(candidate_id).strip()
+    if not candidate:
+        return None
+
+    mapping_doc = db.collection("auth_mappings").document(candidate).get()
+    if mapping_doc.exists:
+        mapping = mapping_doc.to_dict() or {}
+        mapped_zwift_id = mapping.get("zwiftId")
+        if mapped_zwift_id:
+            return str(mapped_zwift_id)
+
+    docs = db.collection("users").where("authUid", "==", candidate).limit(1).stream()
+    for doc in docs:
+        return doc.id
+
+    if db.collection("users").document(candidate).get().exists:
+        return candidate
+
+    return candidate
+
+
 def get_token_doc(user_doc_id: str) -> dict[str, Any] | None:
     if not db or not user_doc_id:
         return None

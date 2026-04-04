@@ -11,7 +11,9 @@ from services.zwift_tokens import (
     delete_token_doc,
     get_token_doc,
     get_valid_access_token,
+    resolve_canonical_user_doc_id,
     resolve_user_doc_id_from_auth_uid,
+    save_token_doc,
     upsert_from_token_response,
 )
 import secrets
@@ -450,9 +452,10 @@ def zwift_webhook():
             )
             token_doc = next(token_docs, None)
             if token_doc:
-                user_doc_id = token_doc.id
+                token_owner_id = token_doc.id
+                user_doc_id = resolve_canonical_user_doc_id(token_owner_id) or token_owner_id
                 zwift_service = get_zwift_service()
-                access_token = get_valid_access_token(user_doc_id, zwift_service)
+                access_token = get_valid_access_token(token_owner_id, zwift_service)
                 if access_token:
                     activity = zwift_service.get_user_activity(str(activity_id), access_token)
                     if activity:
@@ -463,6 +466,11 @@ def zwift_webhook():
                             'data': activity,
                             'updatedAt': firestore.SERVER_TIMESTAMP,
                         }), merge=True)
+                    if token_owner_id != user_doc_id:
+                        token_payload = get_token_doc(token_owner_id)
+                        if token_payload:
+                            save_token_doc(user_doc_id, token_payload)
+                            delete_token_doc(token_owner_id)
         except Exception as exc:
             logger.error(f"Failed to process ActivitySaved webhook {notification_id}: {exc}")
 
@@ -476,9 +484,10 @@ def zwift_webhook():
             )
             token_doc = next(token_docs, None)
             if token_doc:
-                user_doc_id = token_doc.id
+                token_owner_id = token_doc.id
+                user_doc_id = resolve_canonical_user_doc_id(token_owner_id) or token_owner_id
                 zwift_service = get_zwift_service()
-                access_token = get_valid_access_token(user_doc_id, zwift_service)
+                access_token = get_valid_access_token(token_owner_id, zwift_service)
                 if access_token:
                     # Both racing-score and power-curve subscriptions fire RacingScoreUpdated.
                     # Fetch and store both in one pass.
@@ -492,6 +501,11 @@ def zwift_webhook():
                         update['zwiftPowerCurve'] = _power_profile_to_firestore(power_profile)
                     if len(update) > 1:
                         db.collection('users').document(user_doc_id).set(with_schema_version(update), merge=True)
+                    if token_owner_id != user_doc_id:
+                        token_payload = get_token_doc(token_owner_id)
+                        if token_payload:
+                            save_token_doc(user_doc_id, token_payload)
+                            delete_token_doc(token_owner_id)
         except Exception as exc:
             logger.error(f"Failed to process RacingScoreUpdated webhook {notification_id}: {exc}")
 
@@ -505,8 +519,11 @@ def zwift_webhook():
             )
             token_doc = next(token_docs, None)
             if token_doc:
-                user_doc_id = token_doc.id
-                db.collection('zwift_tokens').document(user_doc_id).delete()
+                token_owner_id = token_doc.id
+                user_doc_id = resolve_canonical_user_doc_id(token_owner_id) or token_owner_id
+                delete_token_doc(token_owner_id)
+                if token_owner_id != user_doc_id:
+                    delete_token_doc(user_doc_id)
                 db.collection('users').document(user_doc_id).set(with_schema_version({
                     'connections': {'zwift': firestore.DELETE_FIELD},
                     'updatedAt': firestore.SERVER_TIMESTAMP,
