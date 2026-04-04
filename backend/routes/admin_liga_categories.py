@@ -16,7 +16,6 @@ from services.user_service import UserService
 from services.category_engine import (
     build_liga_category,
     compute_category_status,
-    get_zr_category,
     reassign_to_next_category,
     serialize_liga_category,
     cats_from_defs,
