@@ -5,7 +5,7 @@ from services.policy_store import POLICY_DATA_POLICY, POLICY_PUBLIC_RESULTS, Pol
 from services.user_service import UserService
 from services.category_engine import ZR_CATEGORIES, serialize_liga_category
 from services.schema_validation import log_schema_issues, validate_user_doc, with_schema_version
-from services.zwift_tokens import get_valid_access_token, get_token_doc
+from services.zwift_tokens import get_valid_access_token, get_token_doc, save_token_doc, delete_token_doc
 from authz import verify_user_token, AuthzError
 
 import logging
@@ -13,6 +13,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 users_bp = Blueprint('users', __name__)
+
+
+def _normalize_zwift_id(value) -> str | None:
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    return s if s.isdigit() else None
 
 @users_bp.route('/profile', methods=['GET'])
 def get_profile():
@@ -87,7 +96,8 @@ def signup():
              return jsonify({'message': 'Invalid JSON'}), 400
         
         name = request_json.get('name')
-        zwift_id = request_json.get('zwiftId')
+        raw_zwift_id = request_json.get('zwiftId')
+        zwift_id = str(raw_zwift_id).strip() if raw_zwift_id is not None else None
         club = request_json.get('club', '')
         trainer = request_json.get('trainer', '')
         is_draft = request_json.get('draft', False)
@@ -99,9 +109,14 @@ def signup():
         if is_draft:
             if not name:
                 return jsonify({'message': 'At least a name is required to save progress'}), 400
+            if zwift_id and not _normalize_zwift_id(zwift_id):
+                return jsonify({'message': 'Zwift ID must be numeric'}), 400
         else:
             if not name:
                 return jsonify({'message': 'Missing name'}), 400
+            zwift_id = _normalize_zwift_id(zwift_id)
+            if not zwift_id:
+                return jsonify({'message': 'Missing or invalid Zwift ID'}), 400
             if not accepted_data_policy:
                 return jsonify({'message': 'You must accept the data policy.'}), 400
             if not accepted_public_results:
@@ -182,9 +197,25 @@ def signup():
                 draft_doc = db.collection('users').document(uid).get()
                 if draft_doc.exists and draft_doc.id != str(zwift_id):
                     draft_data = draft_doc.to_dict() or {}
-                    # Migrate connections if any
-                    if 'connections' in draft_data:
-                         doc_ref.set({'connections': draft_data['connections']}, merge=True)
+                    # Migrate Zwift-linked fields captured during pre-signup OAuth flow.
+                    # This avoids losing lookup/profile data when re-keying UID -> Zwift ID.
+                    migrate_payload = {}
+                    for key in ('connections', 'zwiftUserId', 'zwiftProfile', 'zwiftPowerCurve'):
+                        if key in draft_data:
+                            migrate_payload[key] = draft_data[key]
+                    if migrate_payload:
+                        doc_ref.set(migrate_payload, merge=True)
+
+                    # Migrate Zwift token doc if it was written under UID before signup completion.
+                    uid_token = get_token_doc(uid)
+                    if uid_token:
+                        existing_target_token = get_token_doc(str(zwift_id))
+                        if not existing_target_token:
+                            save_token_doc(str(zwift_id), uid_token)
+                        try:
+                            delete_token_doc(uid)
+                        except Exception:
+                            pass
                     try:
                         db.collection('users').document(uid).delete()
                     except Exception:
@@ -524,18 +555,36 @@ def verify_zwift_id(zwift_id):
             return jsonify({'message': 'User profile not found'}), 404
 
         zwift_service = get_zwift_service()
-        token_doc = get_token_doc(str(user.id)) or {}
+        token_owner_id = str(user.id)
+        token_doc = get_token_doc(token_owner_id) or {}
+        if not token_doc and uid:
+            # Backward compatibility: older flows could store token under auth UID.
+            token_doc = get_token_doc(uid) or {}
+            if token_doc:
+                token_owner_id = uid
         if not token_doc:
             return jsonify({'message': 'Connect your Zwift account first'}), 400
 
-        access_token = get_valid_access_token(str(user.id), zwift_service)
+        access_token = get_valid_access_token(token_owner_id, zwift_service)
         profile = zwift_service.get_profile(user_access_token=access_token) if access_token else None
 
         if not profile:
             return jsonify({'message': 'Rider not found'}), 404
 
-        profile_numeric_id = str(profile.get('id', '')).strip()
-        if str(zwift_id).strip() != profile_numeric_id:
+        # Auto-heal token key to canonical user doc after successful verification.
+        if token_owner_id != str(user.id):
+            try:
+                save_token_doc(str(user.id), token_doc)
+                delete_token_doc(token_owner_id)
+            except Exception:
+                logger.warning(f"Could not migrate Zwift token doc from {token_owner_id} to {user.id}")
+
+        requested_zwift_id = _normalize_zwift_id(zwift_id)
+        if not requested_zwift_id:
+            return jsonify({'message': 'Invalid Zwift ID format'}), 400
+
+        profile_numeric_id = _normalize_zwift_id(profile.get('id'))
+        if not profile_numeric_id or requested_zwift_id != profile_numeric_id:
             return jsonify({'message': 'Zwift ID does not match connected Zwift account'}), 400
 
         return jsonify({
