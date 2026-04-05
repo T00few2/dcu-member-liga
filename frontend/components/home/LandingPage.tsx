@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import ECyclingClubsModal from '@/components/ECyclingClubsModal';
 import CodeOfConductModal from '@/components/CodeOfConductModal';
 import RegistrationIntroModal from '@/components/RegistrationIntroModal';
 import UnregisteredLoginModal from '@/components/UnregisteredLoginModal';
 import CommunitySection from './CommunitySection';
+import { API_URL } from '@/lib/api';
 
 interface LandingPageProps {
     showUnregisteredModal: boolean;
@@ -25,6 +26,14 @@ export default function LandingPage({
     const [showClubsModal, setShowClubsModal] = useState(false);
     const [showCoCModal, setShowCoCModal] = useState(false);
     const [showRegIntroModal, setShowRegIntroModal] = useState(false);
+    const [memberCount, setMemberCount] = useState<number | null>(null);
+
+    useEffect(() => {
+        fetch(`${API_URL}/public/member-count`)
+            .then(r => r.ok ? r.json() : null)
+            .then(d => d?.memberCount != null && setMemberCount(d.memberCount))
+            .catch(() => {});
+    }, []);
 
     return (
         <div className="w-full relative -mt-4 text-foreground bg-background">
@@ -52,6 +61,20 @@ export default function LandingPage({
                     <p className="text-xl md:text-2xl max-w-2xl text-slate-300 drop-shadow animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-300 fill-mode-both font-light">
                         Den førende kompetitive virtuelle cykeloplevelse for alle medlemmer af Danmarks Cykle Union.
                     </p>
+
+                    {memberCount !== null && (
+                        <div className="mt-8 animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-500 fill-mode-both">
+                            <div className="inline-flex items-center gap-2.5 px-5 py-2.5 rounded-full bg-white/10 border border-white/20 backdrop-blur-sm text-white/80 text-sm font-medium">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-70">
+                                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                                    <circle cx="9" cy="7" r="4" />
+                                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                                </svg>
+                                <span><span className="font-bold text-white">{memberCount}</span> ryttere tilmeldt</span>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center text-white/50 animate-bounce">

@@ -656,6 +656,19 @@ def get_participants():
         logger.error(f"Participants List Error: {e}")
         return jsonify({'message': str(e)}), 500
 
+@users_bp.route('/public/member-count', methods=['GET'])
+def get_public_member_count():
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+    try:
+        docs = db.collection('users').where('registration.status', '==', 'complete').stream()
+        count = sum(1 for _ in docs)
+        return jsonify({'memberCount': count}), 200
+    except Exception as e:
+        logger.error(f"Member count error: {e}")
+        return jsonify({'message': str(e)}), 500
+
+
 @users_bp.route('/stats', methods=['GET'])
 def get_stats():
     target_user = None
