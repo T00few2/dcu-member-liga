@@ -94,7 +94,9 @@ function getSortValue(p: Participant, col: SortColumn): string | number {
   }
 }
 
-function SortIcon({ active, direction }: { active: boolean; direction: SortDirection }) {
+const LIGA_KAT_ORDER = ['Diamond','Ruby','Emerald','Sapphire','Amethyst','Platinum','Gold','Silver','Bronze','Copper'];
+
+({ active, direction }: { active: boolean; direction: SortDirection }) {
   if (!active) {
     return (
       <svg className="inline ml-1 opacity-30" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
@@ -154,7 +156,13 @@ export default function ParticipantsPage() {
     for (const p of participants) {
       if (p.ligaCategory?.category) cats.add(p.ligaCategory.category);
     }
-    return Array.from(cats).sort();
+    return Array.from(cats).sort((a, b) => {
+      const ai = LIGA_KAT_ORDER.indexOf(a);
+      const bi = LIGA_KAT_ORDER.indexOf(b);
+      const ai2 = ai === -1 ? 999 : ai;
+      const bi2 = bi === -1 ? 999 : bi;
+      return ai2 - bi2;
+    });
   }, [participants]);
 
   const filtered = useMemo(() => {
@@ -209,7 +217,7 @@ export default function ParticipantsPage() {
             onChange={e => setLigaKatFilter(e.target.value)}
             className="px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           >
-            <option value="">Alle Liga Kat</option>
+            <option value="">-</option>
             {ligaKatOptions.map(cat => (
               <option key={cat} value={cat}>{cat}</option>
             ))}
