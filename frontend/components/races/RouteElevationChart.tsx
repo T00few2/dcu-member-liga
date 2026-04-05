@@ -85,15 +85,21 @@ function getSegmentName(name: unknown): string {
 
 function normalizeNameForMatch(name?: string): string {
     return getSegmentName(name)
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
         .toLowerCase()
+        .replace(/['’`]/g, ' ')
         .replace(/\s+\(.*\)\s*$/g, '')
         .replace(/\s+(reverse|rev\.?)$/g, '')
+        .replace(/[^a-z0-9\s-]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
 }
 
 function normalizeDirectionForMatch(direction?: string, name?: string): 'forward' | 'reverse' {
-    if ((direction || '').toLowerCase() === 'reverse') return 'reverse';
+    const d = (direction || '').trim().toLowerCase();
+    if (d === 'reverse' || d === 'rev' || d === 'r') return 'reverse';
+    if (d === 'forward' || d === 'f') return 'forward';
     const n = getSegmentName(name).toLowerCase();
     if (n.includes('reverse') || n.includes(' rev')) return 'reverse';
     return 'forward';
