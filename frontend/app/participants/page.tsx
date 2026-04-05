@@ -96,7 +96,7 @@ function getSortValue(p: Participant, col: SortColumn): string | number {
 
 const LIGA_KAT_ORDER = ['Diamond','Ruby','Emerald','Sapphire','Amethyst','Platinum','Gold','Silver','Bronze','Copper'];
 
-({ active, direction }: { active: boolean; direction: SortDirection }) {
+function SortIcon({ active, direction }: { active: boolean; direction: SortDirection }) {
   if (!active) {
     return (
       <svg className="inline ml-1 opacity-30" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
