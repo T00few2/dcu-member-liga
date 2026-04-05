@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getZwiftInsiderUrl } from '@/lib/api';
+import { API_URL, getZwiftInsiderUrl } from '@/lib/api';
 import { formatDateLong, formatTimeWithTz, fromTimestamp } from '@/lib/formatDate';
 import PointsSplitBadge from '@/components/races/PointsSplitBadge';
 import RouteElevationChart from '@/components/races/RouteElevationChart';
@@ -19,6 +19,13 @@ interface ProfileSegment {
 interface ProfileData {
     leadInDistance: number;
     profileSegments: ProfileSegment[];
+}
+
+interface EventSegmentInstance {
+    id: string;
+    count: number;
+    direction?: string;
+    lap?: number;
 }
 
 interface RaceCardProps {
@@ -244,6 +251,7 @@ export default function RaceCard({
     const raceDate = fromTimestamp(race.date) || new Date(NaN);
     const isPublicVariant = variant === 'public';
     const [profileData, setProfileData] = useState<ProfileData | null>(null);
+    const [eventSegments, setEventSegments] = useState<EventSegmentInstance[]>([]);
     const userConfig = race.eventMode === 'multi' ? getUserEventConfig(race, userCategory) : null;
     const userSingleConfig = race.eventMode !== 'multi' ? getUserSingleConfig(race, userCategory) : null;
 
@@ -263,6 +271,32 @@ export default function RaceCard({
         ? sprintsToShow
         : fallbackSprintsFromSelectedKeys(race.selectedSegments);
 
+    const resolvedProfileSprintsToShow = resolvedSprintsToShow.map((seg) => {
+        const segId = String(seg.id || '').trim();
+        if (!segId || eventSegments.length === 0) return seg;
+
+        const desiredCount = Number.isFinite(seg.count) && seg.count > 0 ? seg.count : 1;
+        const desiredDir = normalizeDirectionForMatch(seg.direction, seg.name);
+        const exact = eventSegments.find((e) => {
+            const sameId = String(e.id || '').trim() === segId;
+            const sameCount = (Number(e.count) || 0) === desiredCount;
+            const eDir = normalizeDirectionForMatch(e.direction, seg.name);
+            return sameId && sameCount && eDir === desiredDir;
+        });
+        if (!exact) return seg;
+
+        // Count occurrences on actual race laps only (lap >= 1), excluding lead-in (lap 0).
+        if ((exact.lap || 0) < 1) return seg;
+        const onRouteOccurrence = eventSegments.filter((e) => {
+            const sameId = String(e.id || '').trim() === segId;
+            const eDir = normalizeDirectionForMatch(e.direction, seg.name);
+            return sameId && eDir === desiredDir && (Number(e.lap) || 0) >= 1 && (Number(e.count) || 0) <= desiredCount;
+        }).length;
+
+        if (onRouteOccurrence < 1) return seg;
+        return { ...seg, count: onRouteOccurrence };
+    });
+
     useEffect(() => {
         if (!race.map || !race.routeName || resolvedSprintsToShow.length === 0) return;
         const params = new URLSearchParams({ world: race.map, route: race.routeName, laps: String(lapsToShow) });
@@ -277,6 +311,27 @@ export default function RaceCard({
             })
             .catch(() => {});
     }, [race.map, race.routeName, lapsToShow, resolvedSprintsToShow.length]);
+
+    useEffect(() => {
+        if (!race.routeId || resolvedSprintsToShow.length === 0) {
+            setEventSegments([]);
+            return;
+        }
+        const params = new URLSearchParams({ routeId: String(race.routeId), laps: String(lapsToShow) });
+        fetch(`${API_URL}/segments?${params}`)
+            .then((r) => (r.ok ? r.json() : null))
+            .then((json) => {
+                const raw = Array.isArray(json?.segments) ? json.segments : [];
+                const mapped = raw.map((s: any) => ({
+                    id: String(s?.id ?? ''),
+                    count: Number(s?.count) || 0,
+                    direction: s?.direction,
+                    lap: Number(s?.lap) || 0,
+                })) as EventSegmentInstance[];
+                setEventSegments(mapped);
+            })
+            .catch(() => setEventSegments([]));
+    }, [race.routeId, lapsToShow, resolvedSprintsToShow.length]);
 
     const racePassHref = race.eventMode === 'multi'
         ? (userConfig?.eventId ? getZwiftEventUrl(userConfig.eventId, userConfig.eventSecret) : null)
@@ -344,7 +399,7 @@ export default function RaceCard({
                             worldName={race.map}
                             routeName={race.routeName}
                             laps={lapsToShow}
-                            pointSegments={resolvedSprintsToShow}
+                            pointSegments={resolvedProfileSprintsToShow}
                         />
                     </div>
                 )}
@@ -363,7 +418,7 @@ export default function RaceCard({
                 {!isPublicVariant && resolvedSprintsToShow.length > 0 && (
                     <div className="border-t border-border pt-4 mb-6">
                         <h4 className="text-sm font-semibold text-card-foreground mb-3">Pointsprint</h4>
-                        <SprintsByLap sprints={resolvedSprintsToShow} profileData={profileData} />
+                        <SprintsByLap sprints={resolvedProfileSprintsToShow} profileData={profileData} />
                     </div>
                 )}
 

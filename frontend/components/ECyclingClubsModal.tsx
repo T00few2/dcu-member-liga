@@ -49,7 +49,7 @@ export default function ECyclingClubsModal({ isOpen, onClose }: ECyclingClubsMod
         },
         {
             name: "Stjær E-Cycling",
-            url: "https://www.xn--klvermotionscykellb-w7bq.dk/teams-stjaeligr-e-cycling.html",
+            url: "https://www.xn--klvermotionscykellb-w7bq.dk/",
             description: "En stærk e-cykling afdeling med fokus på holdløb, socialt sammenhold og udvikling på den virtuelle landevej."
         }
     ];
