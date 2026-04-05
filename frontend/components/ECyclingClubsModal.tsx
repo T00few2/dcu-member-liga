@@ -34,7 +34,7 @@ export default function ECyclingClubsModal({ isOpen, onClose }: ECyclingClubsMod
         },
         {
             name: "Danish Zwift Racers (DZR)",
-            url: "https://www.dzrracingseries.com/",
+            url: "https://www.dzrracingseries.com/join",
             description: "Landsdækkende dedikeret e-cykel klub med fokus på løb og træning på Zwift."
         },
         {
