@@ -7,6 +7,8 @@ import { AuthProvider } from "@/lib/auth-context";
 import Navbar from "@/components/Navbar";
 import ToastProvider from "@/components/ToastProvider";
 import InAppBrowserBanner from "@/components/InAppBrowserBanner";
+import MobileInstallBanner from "@/components/MobileInstallBanner";
+import NotificationPermissionBanner from "@/components/NotificationPermissionBanner";
 import WeightVerificationModal from "@/components/WeightVerificationModal";
 import { Analytics } from "@vercel/analytics/next";
 
@@ -65,6 +67,8 @@ export default function RootLayout({
         <AuthProvider>
           <ToastProvider>
             <InAppBrowserBanner />
+            <MobileInstallBanner />
+            <NotificationPermissionBanner />
             <WeightVerificationModal />
             <Navbar />
             <main className="min-h-screen">
