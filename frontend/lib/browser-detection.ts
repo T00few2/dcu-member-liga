@@ -12,3 +12,26 @@ export function isInAppBrowser(): boolean {
   // Matches Facebook app, Messenger, Instagram in-app browsers
   return /FBAN|FBAV|FB_IAB|FBIOS|FB4A|Messenger|Instagram/i.test(ua);
 }
+
+export function isIOS(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /iPad|iPhone|iPod/.test(navigator.userAgent);
+}
+
+export function isAndroid(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /Android/i.test(navigator.userAgent);
+}
+
+export function isMobileDevice(): boolean {
+  return isIOS() || isAndroid();
+}
+
+export function isStandalone(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (navigator as any).standalone === true
+  );
+}
