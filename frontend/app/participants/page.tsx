@@ -58,12 +58,70 @@ interface Participant {
   ligaCategory?: LigaCategory;
 }
 
+type SortColumn =
+  | 'name'
+  | 'club'
+  | 'zrKat'
+  | 'zrMax30'
+  | 'ligaKat'
+  | 'zwiftKat'
+  | 'zftp'
+  | 'zmap'
+  | 'zrs'
+  | 'velo'
+  | 'veloMax30'
+  | 'veloMax90'
+  | 'phenotype';
+
+type SortDirection = 'asc' | 'desc';
+
+function getSortValue(p: Participant, col: SortColumn): string | number {
+  switch (col) {
+    case 'name': return p.name?.toLowerCase() ?? '';
+    case 'club': return p.club?.toLowerCase() ?? '';
+    case 'zrKat': return p.rating !== 'N/A' ? Number(p.rating) : -Infinity;
+    case 'zrMax30': return p.max30Rating !== 'N/A' ? Number(p.max30Rating) : -Infinity;
+    case 'ligaKat': return p.ligaCategory?.category?.toLowerCase() ?? '';
+    case 'zwiftKat': return p.zwiftCategory?.toLowerCase() ?? '';
+    case 'zftp': return p.zftp !== 'N/A' && p.zftp !== undefined ? Number(p.zftp) : -Infinity;
+    case 'zmap': return p.zmap !== 'N/A' && p.zmap !== undefined ? Number(p.zmap) : -Infinity;
+    case 'zrs': return p.racingScore !== 'N/A' && p.racingScore ? Number(p.racingScore) : -Infinity;
+    case 'velo': return p.rating !== 'N/A' ? Number(p.rating) : -Infinity;
+    case 'veloMax30': return p.max30Rating !== 'N/A' ? Number(p.max30Rating) : -Infinity;
+    case 'veloMax90': return p.max90Rating !== 'N/A' ? Number(p.max90Rating) : -Infinity;
+    case 'phenotype': return p.phenotype !== 'N/A' ? p.phenotype?.toLowerCase() ?? '' : '';
+    default: return '';
+  }
+}
+
+function SortIcon({ active, direction }: { active: boolean; direction: SortDirection }) {
+  if (!active) {
+    return (
+      <svg className="inline ml-1 opacity-30" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M7 10l5-5 5 5zM7 14l5 5 5-5z" />
+      </svg>
+    );
+  }
+  return direction === 'asc' ? (
+    <svg className="inline ml-1" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M7 14l5-5 5 5z" />
+    </svg>
+  ) : (
+    <svg className="inline ml-1" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M7 10l5 5 5-5z" />
+    </svg>
+  );
+}
+
 export default function ParticipantsPage() {
   const { user, loading: authLoading, isRegistered } = useAuth();
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [ligaKatFilter, setLigaKatFilter] = useState('');
+  const [sortCol, setSortCol] = useState<SortColumn>('name');
+  const [sortDir, setSortDir] = useState<SortDirection>('asc');
 
   useEffect(() => {
     if (!user || !isRegistered) return;
@@ -91,14 +149,50 @@ export default function ParticipantsPage() {
     fetchParticipants();
   }, [user, isRegistered]);
 
+  const ligaKatOptions = useMemo(() => {
+    const cats = new Set<string>();
+    for (const p of participants) {
+      if (p.ligaCategory?.category) cats.add(p.ligaCategory.category);
+    }
+    return Array.from(cats).sort();
+  }, [participants]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return participants;
-    return participants.filter(p =>
-      p.name.toLowerCase().includes(q) ||
-      (p.club && p.club.toLowerCase().includes(q))
-    );
-  }, [participants, search]);
+    let result = participants.filter(p => {
+      const matchesSearch = !q || p.name.toLowerCase().includes(q) || (p.club && p.club.toLowerCase().includes(q));
+      const matchesLigaKat = !ligaKatFilter || p.ligaCategory?.category === ligaKatFilter;
+      return matchesSearch && matchesLigaKat;
+    });
+
+    result = [...result].sort((a, b) => {
+      const av = getSortValue(a, sortCol);
+      const bv = getSortValue(b, sortCol);
+      if (av === bv) return 0;
+      if (av === -Infinity) return 1;
+      if (bv === -Infinity) return -1;
+      const cmp = av < bv ? -1 : 1;
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+
+    return result;
+  }, [participants, search, ligaKatFilter, sortCol, sortDir]);
+
+  function handleSort(col: SortColumn) {
+    if (sortCol === col) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortCol(col);
+      setSortDir('asc');
+    }
+  }
+
+  function thProps(col: SortColumn) {
+    return {
+      onClick: () => handleSort(col),
+      className: 'px-6 py-3 font-bold cursor-pointer select-none hover:bg-muted/80 transition-colors whitespace-nowrap',
+    };
+  }
 
   if (authLoading || loading) return <div className="p-8 text-center text-muted-foreground">Indlæser deltagere...</div>;
 
@@ -109,13 +203,25 @@ export default function ParticipantsPage() {
       <h1 className="text-3xl font-bold mb-2 text-foreground">Deltagere</h1>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <p className="text-muted-foreground">Alle tilmeldte ryttere i ligaen ({participants.length}).</p>
-        <input
-          type="search"
-          placeholder="Søg navn eller klub..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="sm:w-72 px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-        />
+        <div className="flex flex-col sm:flex-row gap-2">
+          <select
+            value={ligaKatFilter}
+            onChange={e => setLigaKatFilter(e.target.value)}
+            className="px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="">Alle Liga Kat</option>
+            {ligaKatOptions.map(cat => (
+              <option key={cat} value={cat}>{cat}</option>
+            ))}
+          </select>
+          <input
+            type="search"
+            placeholder="Søg navn eller klub..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="sm:w-72 px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+        </div>
       </div>
 
       <div className="bg-card rounded-lg shadow overflow-hidden border border-border">
@@ -123,19 +229,45 @@ export default function ParticipantsPage() {
           <table className="w-full text-left text-sm text-muted-foreground">
             <thead className="bg-muted/50 text-xs uppercase text-muted-foreground border-b border-border">
               <tr>
-                <th className="px-6 py-3 font-bold">Navn</th>
-                <th className="px-6 py-3 font-bold">Klub</th>
-                <th className="px-6 py-3 font-bold">ZR Kat</th>
-                <th className="px-6 py-3 font-bold">ZR max30</th>
-                <th className="px-6 py-3 font-bold">Liga Kat</th>
-                <th className="px-6 py-3 font-bold">Zwift Kat</th>
-                <th className="px-6 py-3 font-bold">zFTP</th>
-                <th className="px-6 py-3 font-bold">zMAP</th>
-                <th className="px-6 py-3 font-bold">ZRS</th>
-                <th className="px-6 py-3 font-bold">vELO</th>
-                <th className="px-6 py-3 font-bold">vELO max30</th>
-                <th className="px-6 py-3 font-bold">vELO max90</th>
-                <th className="px-6 py-3 font-bold">Fænotype</th>
+                <th {...thProps('name')}>
+                  Navn <SortIcon active={sortCol === 'name'} direction={sortDir} />
+                </th>
+                <th {...thProps('club')}>
+                  Klub <SortIcon active={sortCol === 'club'} direction={sortDir} />
+                </th>
+                <th {...thProps('zrKat')}>
+                  ZR Kat <SortIcon active={sortCol === 'zrKat'} direction={sortDir} />
+                </th>
+                <th {...thProps('zrMax30')}>
+                  ZR max30 <SortIcon active={sortCol === 'zrMax30'} direction={sortDir} />
+                </th>
+                <th {...thProps('ligaKat')}>
+                  Liga Kat <SortIcon active={sortCol === 'ligaKat'} direction={sortDir} />
+                </th>
+                <th {...thProps('zwiftKat')}>
+                  Zwift Kat <SortIcon active={sortCol === 'zwiftKat'} direction={sortDir} />
+                </th>
+                <th {...thProps('zftp')}>
+                  zFTP <SortIcon active={sortCol === 'zftp'} direction={sortDir} />
+                </th>
+                <th {...thProps('zmap')}>
+                  zMAP <SortIcon active={sortCol === 'zmap'} direction={sortDir} />
+                </th>
+                <th {...thProps('zrs')}>
+                  ZRS <SortIcon active={sortCol === 'zrs'} direction={sortDir} />
+                </th>
+                <th {...thProps('velo')}>
+                  vELO <SortIcon active={sortCol === 'velo'} direction={sortDir} />
+                </th>
+                <th {...thProps('veloMax30')}>
+                  vELO max30 <SortIcon active={sortCol === 'veloMax30'} direction={sortDir} />
+                </th>
+                <th {...thProps('veloMax90')}>
+                  vELO max90 <SortIcon active={sortCol === 'veloMax90'} direction={sortDir} />
+                </th>
+                <th {...thProps('phenotype')}>
+                  Fænotype <SortIcon active={sortCol === 'phenotype'} direction={sortDir} />
+                </th>
                 <th className="px-6 py-3 font-bold">Profillinks</th>
               </tr>
             </thead>
@@ -143,7 +275,7 @@ export default function ParticipantsPage() {
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={14} className="px-6 py-8 text-center text-muted-foreground">
-                    {search ? 'Ingen deltagere matcher søgningen.' : 'Ingen deltagere fundet endnu.'}
+                    {search || ligaKatFilter ? 'Ingen deltagere matcher søgningen.' : 'Ingen deltagere fundet endnu.'}
                   </td>
                 </tr>
               ) : (
