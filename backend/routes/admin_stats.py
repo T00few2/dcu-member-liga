@@ -4,11 +4,11 @@ Admin: League statistics overview.
 Provides aggregated stats for the admin stats dashboard tab.
 Registered on admin_bp (defined in routes/admin.py).
 """
-from flask import jsonify
+from flask import request, jsonify
 from collections import Counter
 
 from routes.admin import admin_bp
-from authz import require_admin
+from authz import require_admin, AuthzError
 from extensions import db
 
 import logging
@@ -17,9 +17,13 @@ logger = logging.getLogger(__name__)
 
 
 @admin_bp.route('/admin/stats', methods=['GET'])
-@require_admin
 def get_league_stats():
     """Return aggregated league statistics."""
+    try:
+        require_admin(request)
+    except AuthzError as e:
+        return jsonify({'error': e.message}), e.status_code
+
     try:
         users_ref = db.collection('users')
         docs = users_ref.stream()
