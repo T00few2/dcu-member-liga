@@ -144,7 +144,9 @@ export default function RiderInfoForm({
                                                 if (!readOnly) {
                                                     setIsDropdownOpenedWithoutTyping(false);
                                                     setClubSearch(e.target.value);
-                                                    setClub(e.target.value);
+                                                    // Only propagate to parent when field is cleared;
+                                                    // a valid club is only set by selecting from the list.
+                                                    if (!e.target.value) setClub('');
                                                     setShowClubList(true);
                                                     setFocusedClubIndex(-1);
                                                 }
@@ -198,6 +200,9 @@ export default function RiderInfoForm({
                                 >
                                     ✕
                                 </button>
+                            )}
+                            {clubSearch && !club && !showClubList && !readOnly && (
+                                <p className="mt-1 text-xs text-red-500">Vælg en klub fra listen — fri tekst accepteres ikke</p>
                             )}
                         </div>
                     )}

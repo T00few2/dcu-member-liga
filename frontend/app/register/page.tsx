@@ -8,6 +8,15 @@ import AgreementsForm from '@/components/register/AgreementsForm';
 import VerificationStatus from '@/components/register/VerificationStatus';
 import CategoryTab from '@/components/register/CategoryTab';
 
+const MissingHints = ({ items }: { items: string[] }) => (
+    <div className="mt-3 text-sm text-red-600 dark:text-red-400 space-y-1">
+        <p className="font-medium">Mangler:</p>
+        <ul className="list-disc list-inside space-y-0.5">
+            {items.map((item, i) => <li key={i}>{item}</li>)}
+        </ul>
+    </div>
+);
+
 function RegisterContent() {
     const {
         authLoading, fetchingProfile,
@@ -21,7 +30,10 @@ function RegisterContent() {
         trainers, loadingTrainers, trainersError,
         isRegistered, activeTab, setActiveTab, currentStep, setCurrentStep,
         submitting, savingProgress, message, error,
-        step0Valid, step1Valid, step2Valid, trainerRequiresDualRecording,
+        clubValid,
+        step0Valid, step1Valid, step2Valid, step3Valid,
+        trainerRequiresDualRecording,
+        step0MissingItems, step1MissingItems, step2MissingItems,
         handleConnectStrava, handleDisconnectStrava, handleConnectZwift, handleDisconnectZwift, handleRequestTrainer, saveData,
     } = useRegistration();
 
@@ -48,6 +60,19 @@ function RegisterContent() {
             {label} {warning && '⚠️'}
         </button>
     );
+
+    // Which Next button is disabled
+    const nextDisabled =
+        currentStep === 0 ? !step0Valid :
+        currentStep === 1 ? !step1Valid :
+        !step2Valid;
+
+    // Missing hints for the current step
+    const currentMissingItems =
+        currentStep === 0 ? step0MissingItems :
+        currentStep === 1 ? step1MissingItems :
+        currentStep === 2 ? step2MissingItems :
+        [];
 
     return (
         <div className="max-w-2xl mx-auto mt-10 p-8 bg-card rounded-lg shadow-md border border-border">
@@ -118,20 +143,25 @@ function RegisterContent() {
                 </>
             )}
 
-            {/* STEPPER INTERFACE (New Users) */}
+            {/* STEPPER INTERFACE (New Users) — 4 steps: Info → Connections → Agreements → Review */}
             {!isRegistered && (
                 <>
                     <div className="flex items-center justify-between mb-8 relative">
                         <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-secondary rounded-full -z-10" />
-                        {[0, 1, 2].map(step => (
-                            <div
+                        {[0, 1, 2, 3].map(step => (
+                            <button
                                 key={step}
-                                className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm bg-background border-2 ${
-                                    currentStep >= step ? 'border-primary text-primary' : 'border-muted text-muted-foreground'
-                                }`}
+                                type="button"
+                                onClick={() => { if (step <= currentStep) setCurrentStep(step); }}
+                                disabled={step > currentStep}
+                                aria-label={`Gå til trin ${step + 1}`}
+                                className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm bg-background border-2 transition-colors
+                                    ${currentStep >= step ? 'border-primary text-primary' : 'border-muted text-muted-foreground'}
+                                    ${step < currentStep ? 'cursor-pointer hover:bg-secondary/30' : 'cursor-default'}
+                                `}
                             >
                                 {step + 1}
-                            </div>
+                            </button>
                         ))}
                     </div>
                     <div className="min-h-[300px]">
@@ -165,6 +195,42 @@ function RegisterContent() {
                                 />
                             </div>
                         )}
+                        {currentStep === 3 && (
+                            <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+                                <h2 className="text-xl font-semibold mb-4 text-card-foreground">Bekræft tilmelding</h2>
+                                <p className="text-sm text-muted-foreground mb-4">
+                                    Gennemse dine oplysninger nedenfor. Tryk &ldquo;Tilbage&rdquo; for at rette noget.
+                                </p>
+                                <div className="rounded-lg border border-border divide-y divide-border text-sm">
+                                    <div className="flex justify-between px-4 py-3">
+                                        <span className="text-muted-foreground">Navn</span>
+                                        <span className="font-medium text-foreground">{name}</span>
+                                    </div>
+                                    <div className="flex justify-between px-4 py-3">
+                                        <span className="text-muted-foreground">Klub</span>
+                                        <span className="font-medium text-foreground">{club}</span>
+                                    </div>
+                                    <div className="flex justify-between px-4 py-3">
+                                        <span className="text-muted-foreground">Hometrainer / Wattmåler</span>
+                                        <span className="font-medium text-foreground">{trainer}</span>
+                                    </div>
+                                    <div className="flex justify-between px-4 py-3">
+                                        <span className="text-muted-foreground">Zwift</span>
+                                        <span className="font-medium text-green-600 dark:text-green-400">Forbundet ✓</span>
+                                    </div>
+                                    {trainerRequiresDualRecording && (
+                                        <div className="flex justify-between px-4 py-3">
+                                            <span className="text-muted-foreground">Strava (dual recording)</span>
+                                            <span className="font-medium text-green-600 dark:text-green-400">Forbundet ✓</span>
+                                        </div>
+                                    )}
+                                    <div className="flex justify-between px-4 py-3">
+                                        <span className="text-muted-foreground">Aftaler</span>
+                                        <span className="font-medium text-green-600 dark:text-green-400">Alle accepteret ✓</span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </>
             )}
@@ -174,7 +240,7 @@ function RegisterContent() {
                 {isRegistered ? (
                     <button
                         onClick={() => saveData(false)}
-                        disabled={submitting || !club || (trainerRequiresDualRecording && !stravaConnected)}
+                        disabled={submitting || !clubValid || (trainerRequiresDualRecording && !stravaConnected)}
                         className="px-6 py-2 bg-primary text-primary-foreground font-bold rounded-lg hover:bg-primary-dark disabled:opacity-50"
                     >
                         {submitting ? 'Gemmer...' : 'Gem ændringer'}
@@ -189,10 +255,10 @@ function RegisterContent() {
                                 Tilbage
                             </button>
                         )}
-                        {currentStep < 2 ? (
+                        {currentStep < 3 ? (
                             <button
                                 onClick={() => setCurrentStep(prev => prev + 1)}
-                                disabled={currentStep === 0 ? !step0Valid : !step1Valid}
+                                disabled={nextDisabled}
                                 className="px-6 py-2 bg-primary text-primary-foreground font-bold rounded-lg hover:bg-primary-dark disabled:opacity-50"
                             >
                                 Næste
@@ -200,7 +266,7 @@ function RegisterContent() {
                         ) : (
                             <button
                                 onClick={() => saveData(false)}
-                                disabled={submitting || !step2Valid}
+                                disabled={submitting || !step3Valid}
                                 className="px-8 py-2 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 disabled:opacity-50"
                             >
                                 {submitting ? 'Tilmelder...' : 'Gennemfør tilmelding'}
@@ -209,26 +275,20 @@ function RegisterContent() {
                     </>
                 )}
             </div>
-            {isRegistered && !club && (
+
+            {/* Hints */}
+            {isRegistered && !clubValid && !loadingClubs && (
                 <p className="mt-3 text-sm text-red-600 dark:text-red-400">
-                    Du skal vælge din DCU-klub for at gemme ændringer.
+                    Du skal vælge din DCU-klub fra listen for at gemme ændringer.
                 </p>
             )}
-            {trainerRequiresDualRecording && !stravaConnected && (
+            {isRegistered && trainerRequiresDualRecording && !stravaConnected && (
                 <p className="mt-3 text-sm text-yellow-700 dark:text-yellow-300">
                     Strava-forbindelse er påkrævet for den valgte hometrainer (dual recording).
                 </p>
             )}
-            {!isRegistered && currentStep === 2 && !step2Valid && (
-                <div className="mt-3 text-sm text-red-600 dark:text-red-400 space-y-1">
-                    <p className="font-medium">Manglende for at gennemføre tilmelding:</p>
-                    <ul className="list-disc list-inside space-y-0.5">
-                        {!acceptedCoC && <li>Accepter adfærdskodekset</li>}
-                        {!acceptedDataPolicy && <li>Accepter datapolitikken</li>}
-                        {!acceptedPublicResults && <li>Accepter offentliggørelse af navn og resultater</li>}
-                        {trainerRequiresDualRecording && !stravaConnected && <li>Forbind Strava (påkrævet for din hometrainer)</li>}
-                    </ul>
-                </div>
+            {!isRegistered && currentStep < 3 && currentMissingItems.length > 0 && nextDisabled && (
+                <MissingHints items={currentMissingItems} />
             )}
         </div>
     );
