@@ -9,12 +9,13 @@ import PolicyManager from '@/components/admin/PolicyManager';
 import WeightVerificationManager from '@/components/admin/WeightVerificationManager';
 import CategoryManager from '@/components/admin/CategoryManager';
 import StatsDashboard from '@/components/admin/StatsDashboard';
+import UsersOverview from '@/components/admin/UsersOverview';
 
 export default function AdminPage() {
   const { user, loading: authLoading, isAdmin, refreshClaims } = useAuth();
 
   // Top Level Tab State
-  const [activeSection, setActiveSection] = useState<'league' | 'categories' | 'verification' | 'weight' | 'trainers' | 'policies' | 'stats'>('league');
+  const [activeSection, setActiveSection] = useState<'league' | 'categories' | 'verification' | 'weight' | 'trainers' | 'users' | 'stats' | 'policies'>('league');
 
   if (authLoading) return <div className="p-8 text-center">Loading...</div>;
   if (!user) return null;
@@ -79,6 +80,12 @@ export default function AdminPage() {
           Trainers
         </button>
         <button
+          onClick={() => setActiveSection('users')}
+          className={`pb-4 px-6 text-lg font-medium transition whitespace-nowrap ${activeSection === 'users' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          Users
+        </button>
+        <button
           onClick={() => setActiveSection('stats')}
           className={`pb-4 px-6 text-lg font-medium transition whitespace-nowrap ${activeSection === 'stats' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
         >
@@ -94,7 +101,9 @@ export default function AdminPage() {
 
       {/* Section Content */}
       <div className="min-h-[500px]">
-        {activeSection === 'stats' ? (
+        {activeSection === 'users' ? (
+          <UsersOverview />
+        ) : activeSection === 'stats' ? (
           <StatsDashboard />
         ) : activeSection === 'league' ? (
           <LeagueManager />
