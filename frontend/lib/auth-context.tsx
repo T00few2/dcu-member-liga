@@ -5,13 +5,11 @@ import {
   User,
   onAuthStateChanged,
   signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
   GoogleAuthProvider,
   signOut as firebaseSignOut
 } from 'firebase/auth';
 import { auth } from './firebase';
-import { isInAppBrowser, isSafari } from './browser-detection';
+import { isInAppBrowser } from './browser-detection';
 import { usePathname, useRouter } from 'next/navigation';
 import { API_URL } from './api';
 
@@ -27,7 +25,7 @@ interface AuthContextType {
   requiredPublicResultsConsentVersion: string | null;
   authIntent: 'login' | 'register' | null;
   clearAuthIntent: () => void;
-  signInWithGoogle: (intent?: 'login' | 'register') => Promise<void>;
+  signInWithGoogle: (intent?: 'login' | 'register') => void;
   logOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   refreshClaims: () => Promise<void>;
@@ -132,22 +130,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Handle the result of signInWithRedirect (Safari flow)
-  useEffect(() => {
-    getRedirectResult(auth).then((result) => {
-      if (result) {
-        const savedIntent = sessionStorage.getItem('authIntent') as 'login' | 'register' | null;
-        if (savedIntent) {
-          setAuthIntent(savedIntent);
-          sessionStorage.removeItem('authIntent');
-        }
-      }
-    }).catch((error) => {
-      console.error("Error getting redirect result", error);
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -250,26 +232,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const clearAuthIntent = useCallback(() => setAuthIntent(null), []);
 
-  const signInWithGoogle = async (intent?: 'login' | 'register') => {
+  const signInWithGoogle = (intent?: 'login' | 'register') => {
     if (isInAppBrowser()) {
       // Google OAuth is blocked in WebViews (error 403 disallowed_useragent).
       // The InAppBrowserBanner already instructs the user to open in a real browser.
       return;
     }
-    const provider = new GoogleAuthProvider();
-    if (isSafari()) {
-      // Safari blocks popups opened from async contexts. Use redirect flow instead.
-      if (intent) sessionStorage.setItem('authIntent', intent);
-      await signInWithRedirect(auth, provider);
-      return;
-    }
+    // Call signInWithPopup synchronously (no await before it) so that the
+    // window.open() inside Firebase fires within the user-gesture context.
+    // Safari blocks popups that are opened after any async/microtask boundary.
     if (intent) setAuthIntent(intent);
-    try {
-      await signInWithPopup(auth, provider);
-    } catch (error) {
+    const provider = new GoogleAuthProvider();
+    signInWithPopup(auth, provider).catch((error) => {
       setAuthIntent(null);
       console.error("Error signing in with Google", error);
-    }
+    });
   };
 
   const logOut = useCallback(async () => {

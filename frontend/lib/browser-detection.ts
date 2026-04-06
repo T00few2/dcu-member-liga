@@ -13,13 +13,6 @@ export function isInAppBrowser(): boolean {
   return /FBAN|FBAV|FB_IAB|FBIOS|FB4A|Messenger|Instagram/i.test(ua);
 }
 
-export function isSafari(): boolean {
-  if (typeof navigator === 'undefined') return false;
-  const ua = navigator.userAgent;
-  // Safari: contains "Safari" but not "Chrome" or "Chromium"
-  return /Safari/i.test(ua) && !/Chrome|Chromium|CriOS/i.test(ua);
-}
-
 export function isIOS(): boolean {
   if (typeof navigator === 'undefined') return false;
   return /iPad|iPhone|iPod/.test(navigator.userAgent);
