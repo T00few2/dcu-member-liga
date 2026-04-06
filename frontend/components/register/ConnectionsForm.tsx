@@ -80,7 +80,7 @@ export default function ConnectionsForm({
 
                     <div className="mb-4">
                         <p className="text-sm text-muted-foreground">
-                            Forbind Strava, så admins kan validere dobbeltregistrering ved behov.
+                            Forbind Strava, så admins kan validere dual recording ved behov.
                         </p>
                     </div>
                     {dualRecordingRequiresStrava && !stravaConnected && (
