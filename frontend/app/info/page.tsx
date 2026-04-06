@@ -110,7 +110,7 @@ function UdstyrSection() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {[
                     { label: 'Cykel', desc: 'Racer, mountainbike eller gravel – så længe den passer på hometraineren.' },
-                    { label: 'Smart hometrainer', desc: 'Godkendt direct drive med automatisk modstandsstyring – eller dobbeltregistrering med separat wattmåler og Strava-forbindelse.' },
+                    { label: 'Smart hometrainer', desc: 'Godkendt direct drive med automatisk modstandsstyring – eller dual recording med separat wattmåler og Strava-forbindelse.' },
                     { label: 'Enhed til software', desc: 'PC, Mac, Apple TV, iPad eller nyere smartphone.' },
                     { label: 'Zwift-konto', desc: 'Ligaen afvikles på Zwift. Du skal oprette en konto og tilmelde dig via denne hjemmeside.' },
                     { label: 'Pulsmåler', desc: 'Brystrem eller armbånd – påkrævet i de fleste løb for at sikre fair konkurrence.' },
@@ -329,12 +329,12 @@ const chapters = [
                         <p className="text-slate-600 dark:text-slate-400">Husk at forbinde din Zwift ID og andre nødvendige detaljer i dine brugerindstillinger her på siden, før du tilmelder dig et løb.</p>
                     </div>
                     <div className="pl-4 border-l-4 border-orange-400">
-                        <h4 className="font-bold text-slate-900 dark:text-white mb-1">Godkendt hometrainer eller dobbeltregistrering</h4>
+                        <h4 className="font-bold text-slate-900 dark:text-white mb-1">Godkendt hometrainer eller dual recording</h4>
                         <p className="text-slate-600 dark:text-slate-400 mb-2">
-                            Alle deltagere skal enten benytte en <strong>godkendt smart hometrainer</strong> (direct drive med automatisk modstandsstyring) eller foretage <strong>dobbeltregistrering</strong> med en separat wattmåler.
+                            Alle deltagere skal enten benytte en <strong>godkendt smart hometrainer</strong> (direct drive med automatisk modstandsstyring) eller foretage <strong>dual recording</strong> med en separat wattmåler.
                         </p>
                         <p className="text-slate-600 dark:text-slate-400">
-                            Ved dobbeltregistrering skal aktiviteten uploades til <strong>Strava</strong>, og din Strava-konto skal være forbundet med din profil her på siden. Strava-data bruges kun til admin kontrol af wattdata.
+                            Ved dual recording skal aktiviteten uploades til <strong>Strava</strong>, og din Strava-konto skal være forbundet med din profil her på siden. Strava-data bruges kun til admin kontrol af wattdata.
                         </p>
                     </div>
                     <div className="pl-4 border-l-4 border-slate-400">
