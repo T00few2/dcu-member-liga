@@ -319,8 +319,7 @@ const chapters = [
                     Det giver dig mulighed for at cykle på virtuelle ruter, træne med venner eller konkurrere i løb mod ryttere fra hele verden – uanset vind og vejr udenfor.
                 </p>
                 <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-lg">
-                    E-cykling er en af de hurtigst voksende cykeldiscipliner og afvikles på platforme som Zwift, RGT og MyWhoosh.
-                    DCU Ligaen afvikles på <strong>Zwift</strong>.
+                    E-cykling er en af de hurtigst voksende cykeldiscipliner og afvikles på platforme som Zwift, TrainingPeaks Virtual, ROUVY og MyWhoosh. DCU Ligaen afvikles på <strong>Zwift</strong>.
                 </p>
             </div>
         ),
