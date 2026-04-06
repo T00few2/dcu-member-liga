@@ -202,7 +202,7 @@ export default function RiderInfoForm({
                                 </button>
                             )}
                             {clubSearch && !club && !showClubList && !readOnly && (
-                                <p className="mt-1 text-xs text-red-500">Vælg en klub fra listen — fri tekst accepteres ikke</p>
+                                <p className="mt-1 text-xs text-red-500">Vælg en klub fra listen</p>
                             )}
                         </div>
                     )}
