@@ -45,12 +45,15 @@ def get_league_stats():
             if data.get('isTestData'):
                 continue
 
-            total += 1
-
-            # Registration status
+            # Only include completed signups in stats
             reg = data.get('registration') or {}
             status = reg.get('status', 'draft')
             reg_status_counter[status] += 1
+
+            if status != 'complete':
+                continue
+
+            total += 1
 
             # Club
             club = (data.get('club') or '').strip()
