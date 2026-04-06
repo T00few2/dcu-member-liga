@@ -137,11 +137,11 @@ function UdstyrSection() {
                         </svg>
                     </div>
                     <div className="flex-1 min-w-0">
-                        <span className="font-semibold text-slate-800 dark:text-slate-100 text-sm">Godkendte hometrainere</span>
+                        <div className="font-semibold text-slate-800 dark:text-slate-100 text-sm">Godkendte hometrainere</div>
                         {!listOpen && !loading && trainers.length > 0 && (
-                            <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">
+                            <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
                                 {approvedCount} godkendt · {dualCount} dual recording · {notApprovedCount} ikke godkendt
-                            </span>
+                            </div>
                         )}
                     </div>
                     <svg
