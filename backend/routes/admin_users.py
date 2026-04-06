@@ -79,7 +79,7 @@ def get_users_overview():
                 'category': category,
                 'categoryLocked': bool(liga.get('locked')),
                 'zwiftConnected': bool(zwift_conn.get('profileId') or data.get('zwiftId')),
-                'stravaConnected': bool(strava_conn.get('athleteId')),
+                'stravaConnected': bool(strava_conn.get('athlete_id') or strava_conn.get('athleteId')),
                 'verificationStatus': verification.get('status', 'none'),
                 'currentRating': zr.get('currentRating', ''),
                 'max30Rating': zr.get('max30Rating', ''),
