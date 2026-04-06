@@ -112,9 +112,6 @@ function UdstyrSection() {
                 {[
                     { label: 'Cykel', desc: 'Racer, mountainbike eller gravel – så længe den passer på hometraineren.' },
                     { label: 'Smart hometrainer', desc: 'Godkendt direct drive med automatisk modstandsstyring – eller dual recording med separat wattmåler og Strava-forbindelse.' },
-                    { label: 'Enhed til software', desc: 'PC, Mac, Apple TV, iPad eller nyere smartphone.' },
-                    { label: 'Zwift-konto', desc: 'Ligaen afvikles på Zwift. Du skal oprette en konto og tilmelde dig via denne hjemmeside.' },
-                    { label: 'Pulsmåler', desc: 'Brystrem eller armbånd – påkrævet i de fleste løb for at sikre fair konkurrence.' },
                 ].map((item, i) => (
                     <div key={i} className="flex items-start gap-3 p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800">
                         <div className="mt-0.5 flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">
@@ -220,6 +217,24 @@ function UdstyrSection() {
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {[
+                    { label: 'Enhed til software', desc: 'PC, Mac, Apple TV, iPad eller nyere smartphone.' },
+                    { label: 'Zwift-konto', desc: 'Ligaen afvikles på Zwift. Du skal oprette en konto og tilmelde dig via denne hjemmeside.' },
+                    { label: 'Pulsmåler', desc: 'Brystrem eller armbånd – påkrævet i de fleste løb for at sikre fair konkurrence.' },
+                ].map((item, i) => (
+                    <div key={i} className="flex items-start gap-3 p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800">
+                        <div className="mt-0.5 flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">
+                            {i + 3}
+                        </div>
+                        <div>
+                            <div className="font-semibold text-slate-800 dark:text-slate-100 mb-0.5">{item.label}</div>
+                            <div className="text-slate-600 dark:text-slate-400 text-sm">{item.desc}</div>
+                        </div>
+                    </div>
+                ))}
             </div>
         </div>
     );
