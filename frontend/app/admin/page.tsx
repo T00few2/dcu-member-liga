@@ -8,12 +8,13 @@ import TrainerManager from '@/components/admin/TrainerManager';
 import PolicyManager from '@/components/admin/PolicyManager';
 import WeightVerificationManager from '@/components/admin/WeightVerificationManager';
 import CategoryManager from '@/components/admin/CategoryManager';
+import StatsDashboard from '@/components/admin/StatsDashboard';
 
 export default function AdminPage() {
   const { user, loading: authLoading, isAdmin, refreshClaims } = useAuth();
 
   // Top Level Tab State
-  const [activeSection, setActiveSection] = useState<'league' | 'categories' | 'verification' | 'weight' | 'trainers' | 'policies'>('league');
+  const [activeSection, setActiveSection] = useState<'league' | 'categories' | 'verification' | 'weight' | 'trainers' | 'policies' | 'stats'>('league');
 
   if (authLoading) return <div className="p-8 text-center">Loading...</div>;
   if (!user) return null;
@@ -47,6 +48,12 @@ export default function AdminPage() {
 
       {/* Top Level Navigation */}
       <div className="flex border-b border-border mb-8 overflow-x-auto">
+        <button
+          onClick={() => setActiveSection('stats')}
+          className={`pb-4 px-6 text-lg font-medium transition whitespace-nowrap ${activeSection === 'stats' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          Stats
+        </button>
         <button
           onClick={() => setActiveSection('league')}
           className={`pb-4 px-6 text-lg font-medium transition whitespace-nowrap ${activeSection === 'league' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
@@ -87,7 +94,9 @@ export default function AdminPage() {
 
       {/* Section Content */}
       <div className="min-h-[500px]">
-        {activeSection === 'league' ? (
+        {activeSection === 'stats' ? (
+          <StatsDashboard />
+        ) : activeSection === 'league' ? (
           <LeagueManager />
         ) : activeSection === 'categories' ? (
           <CategoryManager user={user} />

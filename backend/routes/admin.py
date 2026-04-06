@@ -25,3 +25,4 @@ import routes.admin_verification    # noqa: E402, F401
 import routes.admin_trainers        # noqa: E402, F401
 import routes.admin_liga_categories # noqa: E402, F401
 import routes.admin_season          # noqa: E402, F401
+import routes.admin_stats           # noqa: E402, F401
