@@ -211,7 +211,7 @@ function RegisterContent() {
             </div>
             {isRegistered && !club && (
                 <p className="mt-3 text-sm text-red-600 dark:text-red-400">
-                    Du skal vælge en klub (eller &ldquo;Ingen&rdquo;) for at gemme ændringer.
+                    Du skal vælge din DCU-klub for at gemme ændringer.
                 </p>
             )}
             {trainerRequiresDualRecording && !stravaConnected && (

@@ -236,8 +236,8 @@ def signup():
         else:
             if not name:
                 return jsonify({'message': 'Missing name'}), 400
-            if not club:
-                return jsonify({'message': 'Du skal vælge en klub. Vælg "Ingen" hvis du ikke er tilknyttet en DCU-klub.'}), 400
+            if not club or club == 'None':
+                return jsonify({'message': 'Du skal være medlem af en DCU-klub for at deltage. Vælg din klub for at fortsætte.'}), 400
 
             # Canonical Zwift ID must come from linked Zwift account data, not user input.
             resolved_doc_id = resolve_user_doc_id_from_auth_uid(uid) or uid

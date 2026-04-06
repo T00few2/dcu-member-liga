@@ -282,7 +282,7 @@ export function useRegistration() {
     };
 
     // Validation
-    const step0Valid = !!name && !!club && !!trainer;
+    const step0Valid = !!name && !!club && club !== 'None' && !!trainer;
     const selectedTrainer = trainers.find(t => t.name === trainer);
     const trainerRequiresDualRecording = !!selectedTrainer?.dualRecordingRequired;
     const step1Valid = !!zwiftConnected && (!trainerRequiresDualRecording || !!stravaConnected);

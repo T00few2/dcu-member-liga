@@ -69,11 +69,11 @@ export default function RiderInfoForm({
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const handleClubKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, filteredClubs: Club[], selectClub: (c: Club | null) => void) => {
+    const handleClubKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, filteredClubs: Club[], selectClub: (c: Club) => void) => {
         if (!showClubList) return;
         if (e.key === 'ArrowDown') {
             e.preventDefault();
-            setFocusedClubIndex(i => Math.min(i + 1, filteredClubs.length)); // +1 for "Ingen" option
+            setFocusedClubIndex(i => Math.min(i + 1, filteredClubs.length - 1));
         } else if (e.key === 'ArrowUp') {
             e.preventDefault();
             setFocusedClubIndex(i => Math.max(i - 1, 0));
@@ -81,8 +81,6 @@ export default function RiderInfoForm({
             e.preventDefault();
             if (focusedClubIndex >= 0 && focusedClubIndex < filteredClubs.length) {
                 selectClub(filteredClubs[focusedClubIndex]);
-            } else if (focusedClubIndex === filteredClubs.length) {
-                selectClub(null); // "Ingen"
             }
         } else if (e.key === 'Escape') {
             setShowClubList(false);
@@ -130,9 +128,8 @@ export default function RiderInfoForm({
                                     c.type.toLowerCase().includes(searchLower) ||
                                     c.district.toLowerCase().includes(searchLower)
                                 );
-                                const selectClub = (c: Club | null) => {
-                                    if (c) { setClub(c.name); setClubSearch(c.name); }
-                                    else { setClub('None'); setClubSearch('None'); }
+                                const selectClub = (c: Club) => {
+                                    setClub(c.name); setClubSearch(c.name);
                                     setShowClubList(false);
                                     setIsDropdownOpenedWithoutTyping(false);
                                     setFocusedClubIndex(-1);
@@ -170,40 +167,21 @@ export default function RiderInfoForm({
 
                                         {showClubList && !readOnly && (
                                             <div className="absolute z-10 w-full mt-1 max-h-60 overflow-y-auto bg-background border border-border rounded-lg shadow-lg" role="listbox">
-                                                {filteredClubs.length === 0 && searchLower ? (
-                                                    <div className="p-2">
-                                                        <div className="p-3 text-sm text-muted-foreground">Ingen klubber fundet</div>
-                                                        <button
-                                                            onClick={() => selectClub(null)}
-                                                            className={`w-full p-3 text-left border-t border-border ${focusedClubIndex === 0 ? 'bg-secondary/70' : 'hover:bg-secondary/50'}`}
-                                                            role="option"
-                                                        >
-                                                            Ingen (Ingen klub)
-                                                        </button>
-                                                    </div>
+                                                {filteredClubs.length === 0 ? (
+                                                    <div className="p-3 text-sm text-muted-foreground">Ingen klubber fundet</div>
                                                 ) : (
-                                                    <>
-                                                        {filteredClubs.map((c, idx) => (
-                                                            <button
-                                                                key={idx}
-                                                                onClick={() => selectClub(c)}
-                                                                className={`w-full p-3 text-left border-b border-border last:border-b-0 ${focusedClubIndex === idx ? 'bg-secondary/70' : 'hover:bg-secondary/50'}`}
-                                                                role="option"
-                                                                aria-selected={focusedClubIndex === idx}
-                                                            >
-                                                                <div className="font-medium text-foreground">{c.name}</div>
-                                                                <div className="text-xs text-muted-foreground">{c.type} • {c.district}</div>
-                                                            </button>
-                                                        ))}
+                                                    filteredClubs.map((c, idx) => (
                                                         <button
-                                                            onClick={() => selectClub(null)}
-                                                            className={`w-full p-3 text-left border-t border-border bg-secondary/20 text-foreground ${focusedClubIndex === filteredClubs.length ? 'bg-secondary/70' : 'hover:bg-secondary/50'}`}
+                                                            key={idx}
+                                                            onClick={() => selectClub(c)}
+                                                            className={`w-full p-3 text-left border-b border-border last:border-b-0 ${focusedClubIndex === idx ? 'bg-secondary/70' : 'hover:bg-secondary/50'}`}
                                                             role="option"
-                                                            aria-selected={focusedClubIndex === filteredClubs.length}
+                                                            aria-selected={focusedClubIndex === idx}
                                                         >
-                                                            Ingen (Ingen klub)
+                                                            <div className="font-medium text-foreground">{c.name}</div>
+                                                            <div className="text-xs text-muted-foreground">{c.type} • {c.district}</div>
                                                         </button>
-                                                    </>
+                                                    ))
                                                 )}
                                             </div>
                                         )}
