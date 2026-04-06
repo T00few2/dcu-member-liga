@@ -5,11 +5,13 @@ import {
   User,
   onAuthStateChanged,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider,
   signOut as firebaseSignOut
 } from 'firebase/auth';
 import { auth } from './firebase';
-import { isInAppBrowser } from './browser-detection';
+import { isInAppBrowser, isSafari } from './browser-detection';
 import { usePathname, useRouter } from 'next/navigation';
 import { API_URL } from './api';
 
@@ -130,6 +132,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Handle the result of signInWithRedirect (Safari flow)
+  useEffect(() => {
+    getRedirectResult(auth).then((result) => {
+      if (result) {
+        const savedIntent = sessionStorage.getItem('authIntent') as 'login' | 'register' | null;
+        if (savedIntent) {
+          setAuthIntent(savedIntent);
+          sessionStorage.removeItem('authIntent');
+        }
+      }
+    }).catch((error) => {
+      console.error("Error getting redirect result", error);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -238,9 +256,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // The InAppBrowserBanner already instructs the user to open in a real browser.
       return;
     }
+    const provider = new GoogleAuthProvider();
+    if (isSafari()) {
+      // Safari blocks popups opened from async contexts. Use redirect flow instead.
+      if (intent) sessionStorage.setItem('authIntent', intent);
+      await signInWithRedirect(auth, provider);
+      return;
+    }
     if (intent) setAuthIntent(intent);
     try {
-      const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
     } catch (error) {
       setAuthIntent(null);
