@@ -282,11 +282,31 @@ export function useRegistration() {
     };
 
     // Validation
-    const step0Valid = !!name && !!club && !!trainer;
     const selectedTrainer = trainers.find(t => t.name === trainer);
     const trainerRequiresDualRecording = !!selectedTrainer?.dualRecordingRequired;
+    // Club is only valid when it matches an entry in the loaded list.
+    // While clubs are still loading we treat a non-empty value as tentatively valid
+    // so that drafts loaded from the server don't flash a false error.
+    const clubValid = loadingClubs ? !!club : clubs.some(c => c.name === club);
+    const step0Valid = !!name && clubValid && !!trainer;
     const step1Valid = !!zwiftConnected && (!trainerRequiresDualRecording || !!stravaConnected);
-    const step2Valid = acceptedCoC && acceptedDataPolicy && acceptedPublicResults && (!trainerRequiresDualRecording || !!stravaConnected);
+    const step2Valid = acceptedCoC && acceptedDataPolicy && acceptedPublicResults;
+    const step3Valid = step0Valid && step1Valid && step2Valid;
+
+    const step0MissingItems = [
+        ...(!name ? ['Angiv dit fulde navn'] : []),
+        ...(!clubValid ? ['Vælg din DCU-klub fra listen'] : []),
+        ...(!trainer ? ['Vælg hometrainer/wattmåler'] : []),
+    ];
+    const step1MissingItems = [
+        ...(!zwiftConnected ? ['Forbind din Zwift-konto'] : []),
+        ...(trainerRequiresDualRecording && !stravaConnected ? ['Forbind Strava (påkrævet for dual recording)'] : []),
+    ];
+    const step2MissingItems = [
+        ...(!acceptedCoC ? ['Accepter adfærdskodekset'] : []),
+        ...(!acceptedDataPolicy ? ['Accepter datapolitikken'] : []),
+        ...(!acceptedPublicResults ? ['Accepter offentliggørelse af navn og resultater'] : []),
+    ];
 
     return {
         // Auth
@@ -318,8 +338,10 @@ export function useRegistration() {
         submitting, savingProgress,
         message, error,
         // Validation
-        step0Valid, step1Valid, step2Valid,
+        clubValid,
+        step0Valid, step1Valid, step2Valid, step3Valid,
         trainerRequiresDualRecording,
+        step0MissingItems, step1MissingItems, step2MissingItems,
         // Actions
         handleConnectStrava,
         handleDisconnectStrava,
