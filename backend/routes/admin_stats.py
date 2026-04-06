@@ -57,16 +57,17 @@ def get_league_stats():
 
             total += 1
 
-            # Time series: bucket by calendar date of createdAt
-            created_at = data.get('createdAt')
-            if created_at is not None:
+            # Time series: use dataPolicy.acceptedAt as the signup completion timestamp
+            # (createdAt is not reliably set on user docs; acceptedAt is always present
+            # for completed signups since accepting the data policy is required)
+            accepted_at = (data.get('registration') or {}).get('dataPolicy', {}).get('acceptedAt')
+            if accepted_at is not None:
                 try:
                     import datetime
-                    # Firestore timestamps have a .date() or can be converted
-                    if hasattr(created_at, 'date'):
-                        day = created_at.date().isoformat()
+                    if hasattr(accepted_at, 'date'):
+                        day = accepted_at.date().isoformat()
                     else:
-                        day = datetime.date.fromtimestamp(int(created_at)).isoformat()
+                        day = datetime.date.fromtimestamp(int(accepted_at)).isoformat()
                     if day not in daily:
                         daily[day] = {'signups': 0, 'clubs': set()}
                     daily[day]['signups'] += 1
@@ -74,7 +75,7 @@ def get_league_stats():
                     if club_val:
                         daily[day]['clubs'].add(club_val)
                 except Exception:
-                    pass
+                    logger.warning('Failed to parse acceptedAt for user %s', doc.id, exc_info=True)
 
             # Club
             club = (data.get('club') or '').strip()
