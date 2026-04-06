@@ -6,6 +6,7 @@ import { API_URL } from '@/lib/api';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     PieChart, Pie, Cell, Legend,
+    LineChart, Line,
 } from 'recharts';
 
 // ── Category colour mapping (matches ZwiftRacing tier colours) ────────────────
@@ -36,6 +37,7 @@ interface StatsData {
     selfSelectedCount: number;
     leagueName?: string;
     seasonStart?: string;
+    growthSeries: { date: string; signups: number; clubs: number }[];
     registrationStatus: { status: string; count: number }[];
     categoryDistribution: { category: string; count: number }[];
     clubDistribution: { club: string; count: number }[];
@@ -188,6 +190,62 @@ export default function StatsDashboard() {
                 />
                 <StatCard label="Race-Locked" value={stats.lockedCount} sub="locked after first race" />
             </div>
+
+            {/* ── Signup Growth ── */}
+            {stats.growthSeries.length > 0 && (
+                <div className="bg-card rounded-xl border border-border p-6 shadow-sm">
+                    <SectionTitle>Signup Growth Over Time</SectionTitle>
+                    <ResponsiveContainer width="100%" height={280}>
+                        <LineChart data={stats.growthSeries} margin={{ top: 4, right: 40, left: 0, bottom: 4 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+                            <XAxis
+                                dataKey="date"
+                                tick={{ fill: 'var(--color-muted-foreground)', fontSize: 11 }}
+                                tickFormatter={(d) => {
+                                    const [, m, day] = d.split('-');
+                                    return `${day}/${m}`;
+                                }}
+                                interval="preserveStartEnd"
+                            />
+                            <YAxis
+                                yAxisId="signups"
+                                allowDecimals={false}
+                                tick={{ fill: 'var(--color-muted-foreground)', fontSize: 11 }}
+                                label={{ value: 'Signups', angle: -90, position: 'insideLeft', offset: 10, style: { fill: 'var(--color-muted-foreground)', fontSize: 11 } }}
+                            />
+                            <YAxis
+                                yAxisId="clubs"
+                                orientation="right"
+                                allowDecimals={false}
+                                tick={{ fill: 'var(--color-muted-foreground)', fontSize: 11 }}
+                                label={{ value: 'Clubs', angle: 90, position: 'insideRight', offset: 10, style: { fill: 'var(--color-muted-foreground)', fontSize: 11 } }}
+                            />
+                            <Tooltip content={<ChartTip />} />
+                            <Legend wrapperStyle={{ fontSize: 12 }} />
+                            <Line
+                                yAxisId="signups"
+                                type="monotone"
+                                dataKey="signups"
+                                name="Completed Signups"
+                                stroke="#c00418"
+                                strokeWidth={2}
+                                dot={false}
+                                activeDot={{ r: 4 }}
+                            />
+                            <Line
+                                yAxisId="clubs"
+                                type="monotone"
+                                dataKey="clubs"
+                                name="Unique Clubs"
+                                stroke="#122f3b"
+                                strokeWidth={2}
+                                dot={false}
+                                activeDot={{ r: 4 }}
+                            />
+                        </LineChart>
+                    </ResponsiveContainer>
+                </div>
+            )}
 
             {/* ── Kategori Distribution ── */}
             <div className="bg-card rounded-xl border border-border p-6 shadow-sm">

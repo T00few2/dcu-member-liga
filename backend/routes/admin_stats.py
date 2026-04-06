@@ -37,6 +37,8 @@ def get_league_stats():
         phenotype_counter = Counter()
         locked_count = 0
         self_selected_count = 0
+        # {date_str -> {'signups': int, 'clubs': set}}
+        daily: dict = {}
 
         for doc in docs:
             data = doc.to_dict() or {}
@@ -45,12 +47,34 @@ def get_league_stats():
             if data.get('isTestData'):
                 continue
 
-            total += 1
-
-            # Registration status
+            # Always tally registration status (all users)
             reg = data.get('registration') or {}
             status = reg.get('status', 'draft')
             reg_status_counter[status] += 1
+
+            if status != 'complete':
+                continue
+
+            total += 1
+
+            # Time series: bucket by calendar date of createdAt
+            created_at = data.get('createdAt')
+            if created_at is not None:
+                try:
+                    import datetime
+                    # Firestore timestamps have a .date() or can be converted
+                    if hasattr(created_at, 'date'):
+                        day = created_at.date().isoformat()
+                    else:
+                        day = datetime.date.fromtimestamp(int(created_at)).isoformat()
+                    if day not in daily:
+                        daily[day] = {'signups': 0, 'clubs': set()}
+                    daily[day]['signups'] += 1
+                    club_val = (data.get('club') or '').strip()
+                    if club_val:
+                        daily[day]['clubs'].add(club_val)
+                except Exception:
+                    pass
 
             # Club
             club = (data.get('club') or '').strip()
@@ -130,8 +154,22 @@ def get_league_stats():
             key=lambda x: -x['count']
         )
 
+        # Build cumulative time series sorted by date
+        seen_clubs: set = set()
+        cumulative_signups = 0
+        growth_series = []
+        for day in sorted(daily.keys()):
+            cumulative_signups += daily[day]['signups']
+            seen_clubs |= daily[day]['clubs']
+            growth_series.append({
+                'date': day,
+                'signups': cumulative_signups,
+                'clubs': len(seen_clubs),
+            })
+
         return jsonify({
             'total': total,
+            'growthSeries': growth_series,
             'registrationStatus': [
                 {'status': k, 'count': v}
                 for k, v in reg_status_counter.most_common()
