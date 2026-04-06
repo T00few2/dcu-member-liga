@@ -41,7 +41,7 @@ function TrainerStatusBadge({ trainer }: { trainer: Trainer }) {
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
-                Dobbeltregistrering
+                Dual recording
             </span>
         );
     }
@@ -155,7 +155,7 @@ function UdstyrSection() {
                             onClick={() => setFilter('dual')}
                             className={`px-2.5 py-1 rounded-full font-medium transition-colors ${filter === 'dual' ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
                         >
-                            Dobbeltregistrering ({dualCount})
+                            Dual recording ({dualCount})
                         </button>
                         <button
                             onClick={() => setFilter('not_approved')}
