@@ -174,7 +174,7 @@ function RegisterContent() {
                 {isRegistered ? (
                     <button
                         onClick={() => saveData(false)}
-                        disabled={submitting || (trainerRequiresDualRecording && !stravaConnected)}
+                        disabled={submitting || !club || (trainerRequiresDualRecording && !stravaConnected)}
                         className="px-6 py-2 bg-primary text-primary-foreground font-bold rounded-lg hover:bg-primary-dark disabled:opacity-50"
                     >
                         {submitting ? 'Gemmer...' : 'Gem ændringer'}
@@ -209,10 +209,26 @@ function RegisterContent() {
                     </>
                 )}
             </div>
+            {isRegistered && !club && (
+                <p className="mt-3 text-sm text-red-600 dark:text-red-400">
+                    Du skal vælge en klub (eller &ldquo;Ingen&rdquo;) for at gemme ændringer.
+                </p>
+            )}
             {trainerRequiresDualRecording && !stravaConnected && (
                 <p className="mt-3 text-sm text-yellow-700 dark:text-yellow-300">
                     Strava-forbindelse er påkrævet for den valgte hometrainer (dual recording).
                 </p>
+            )}
+            {!isRegistered && currentStep === 2 && !step2Valid && (
+                <div className="mt-3 text-sm text-red-600 dark:text-red-400 space-y-1">
+                    <p className="font-medium">Manglende for at gennemføre tilmelding:</p>
+                    <ul className="list-disc list-inside space-y-0.5">
+                        {!acceptedCoC && <li>Accepter adfærdskodekset</li>}
+                        {!acceptedDataPolicy && <li>Accepter datapolitikken</li>}
+                        {!acceptedPublicResults && <li>Accepter offentliggørelse af navn og resultater</li>}
+                        {trainerRequiresDualRecording && !stravaConnected && <li>Forbind Strava (påkrævet for din hometrainer)</li>}
+                    </ul>
+                </div>
             )}
         </div>
     );
