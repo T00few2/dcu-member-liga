@@ -105,8 +105,8 @@ def get_league_stats():
         # Sort category distribution by configured order
         def cat_sort_key(item):
             try:
-                return cat_order.index(item[0])
-            except ValueError:
+                return cat_order.index(item['category'])
+            except (ValueError, KeyError):
                 return len(cat_order)
 
         category_dist = sorted(

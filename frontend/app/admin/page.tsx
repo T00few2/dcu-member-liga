@@ -49,12 +49,6 @@ export default function AdminPage() {
       {/* Top Level Navigation */}
       <div className="flex border-b border-border mb-8 overflow-x-auto">
         <button
-          onClick={() => setActiveSection('stats')}
-          className={`pb-4 px-6 text-lg font-medium transition whitespace-nowrap ${activeSection === 'stats' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
-        >
-          Stats
-        </button>
-        <button
           onClick={() => setActiveSection('league')}
           className={`pb-4 px-6 text-lg font-medium transition whitespace-nowrap ${activeSection === 'league' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
         >
@@ -83,6 +77,12 @@ export default function AdminPage() {
           className={`pb-4 px-6 text-lg font-medium transition whitespace-nowrap ${activeSection === 'trainers' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
         >
           Trainers
+        </button>
+        <button
+          onClick={() => setActiveSection('stats')}
+          className={`pb-4 px-6 text-lg font-medium transition whitespace-nowrap ${activeSection === 'stats' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          Stats
         </button>
         <button
           onClick={() => setActiveSection('policies')}
