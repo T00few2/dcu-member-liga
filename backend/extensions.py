@@ -165,7 +165,7 @@ class StatsQueue:
             self.enqueue(user_doc_id, zwift_id, attempt + 1, rider_label=label)
             return
 
-        data = zr_json if 'race' in zr_json else zr_json.get('data', {})
+        data = zr_json if 'race' in zr_json else (zr_json.get('data') or {})
         race = data.get('race', {})
         payload = with_schema_version({
             'zwiftRacing': {

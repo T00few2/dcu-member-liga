@@ -48,7 +48,7 @@ def _enrich_user_with_zwiftracing(user_doc_id: str, zwift_id: str) -> bool:
     if not zr_json:
         return False
 
-    data = zr_json if 'race' in zr_json else zr_json.get('data', {})
+    data = zr_json if 'race' in zr_json else (zr_json.get('data') or {})
     race = data.get('race', {})
     current_rating = (race.get('current') or {}).get('rating', 'N/A')
     max30_rating = (race.get('max30') or {}).get('rating', 'N/A')
@@ -693,7 +693,7 @@ def get_stats():
                 try:
                     zr_json = zr_service.get_rider_data(str(zwift_id))
                     if zr_json:
-                        data = zr_json if 'race' in zr_json else zr_json.get('data', {})
+                        data = zr_json if 'race' in zr_json else (zr_json.get('data') or {})
                         race = data.get('race', {})
                         zr_data = {
                             'currentRating': (race.get('current') or {}).get('rating', 'N/A'),
