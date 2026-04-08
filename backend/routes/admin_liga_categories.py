@@ -236,11 +236,14 @@ def refresh_zr_stats():
         batch = db.batch()
         batch_count = 0
 
+        skipped_ids: list[str] = []
+
         for zwift_id, user_ref in riders.items():
             rider_label = rider_labels.get(zwift_id, user_ref.id)
             rider_data = zr_by_id.get(zwift_id)
             if not rider_data:
                 skipped += 1
+                skipped_ids.append(zwift_id)
                 continue
 
             data = rider_data if 'race' in rider_data else (rider_data.get('data') or {})
@@ -286,14 +289,19 @@ def refresh_zr_stats():
         if batch_count > 0:
             batch.commit()
 
+        if skipped_ids:
+            logger.info(
+                f"ZR nightly refresh: {skipped} rider(s) skipped (no ZR data): {skipped_ids}"
+            )
         logger.info(
-            f"ZR nightly refresh complete: {updated} updated, {skipped} skipped (no ZR data)"
+            f"ZR nightly refresh complete: {updated} updated, {skipped} skipped"
         )
         return jsonify({
             'message': 'ZR stats refresh complete',
             'total': len(riders),
             'updated': updated,
             'skipped': skipped,
+            'skippedIds': skipped_ids,
         }), 200
 
     except Exception as e:
