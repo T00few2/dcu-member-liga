@@ -244,7 +244,7 @@ def refresh_zr_stats():
                 continue
 
             data = rider_data if 'race' in rider_data else (rider_data.get('data') or {})
-            race = data.get('race', {})
+            race = data.get('race') or {}
             new_current = (race.get('current') or {}).get('rating', 'N/A')
             new_max30 = (race.get('max30') or {}).get('rating', 'N/A')
             new_max90 = (race.get('max90') or {}).get('rating', 'N/A')
