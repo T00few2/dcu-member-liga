@@ -193,6 +193,8 @@ def refresh_zr_stats():
             # Normalise the chunk response into zr_by_id.
             if isinstance(batch_response, list):
                 for r in batch_response:
+                    if not isinstance(r, dict):
+                        continue
                     key = str(r.get('riderId', r.get('zwiftId', '')))
                     if key:
                         zr_by_id[key] = r
@@ -200,6 +202,8 @@ def refresh_zr_stats():
                 inner = batch_response.get('data', batch_response)
                 if isinstance(inner, list):
                     for r in inner:
+                        if not isinstance(r, dict):
+                            continue
                         key = str(r.get('riderId', r.get('zwiftId', '')))
                         if key:
                             zr_by_id[key] = r
