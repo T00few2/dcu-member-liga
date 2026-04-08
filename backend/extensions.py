@@ -166,7 +166,7 @@ class StatsQueue:
             return
 
         data = zr_json if 'race' in zr_json else (zr_json.get('data') or {})
-        race = data.get('race', {})
+        race = data.get('race') or {}
         payload = with_schema_version({
             'zwiftRacing': {
                 'currentRating': (race.get('current') or {}).get('rating', 'N/A'),
