@@ -26,12 +26,19 @@ class ZwiftRacingService:
                     return resp.json()
                 if resp.status_code == 429:
                     raise RateLimitError(f"Rate limited on GET {url}")
-                logger.warning(f"HTTP {resp.status_code} on GET {url} (attempt {attempt})")
+                try:
+                    body_preview = resp.text[:200]
+                except Exception:
+                    body_preview = "<unreadable>"
+                logger.warning(
+                    f"HTTP {resp.status_code} on GET {url} (attempt {attempt}): {body_preview}"
+                )
             except RateLimitError:
                 raise
             except Exception as e:
-                logger.warning(f"Attempt {attempt} failed: {e}")
+                logger.warning(f"Attempt {attempt} failed for GET {url}: {e}")
             time.sleep(backoff * attempt)
+        logger.error(f"All {retries} attempts failed for GET {url}")
         return None
 
     def _post(self, path: str, body: Any, retries: int = 3, backoff: float = 1.0) -> Optional[Any]:
@@ -43,12 +50,19 @@ class ZwiftRacingService:
                     return resp.json()
                 if resp.status_code == 429:
                     raise RateLimitError(f"Rate limited on POST {url}")
-                logger.warning(f"HTTP {resp.status_code} on POST {url} (attempt {attempt})")
+                try:
+                    body_preview = resp.text[:200]
+                except Exception:
+                    body_preview = "<unreadable>"
+                logger.warning(
+                    f"HTTP {resp.status_code} on POST {url} (attempt {attempt}): {body_preview}"
+                )
             except RateLimitError:
                 raise
             except Exception as e:
-                logger.warning(f"Attempt {attempt} failed: {e}")
+                logger.warning(f"Attempt {attempt} failed for POST {url}: {e}")
             time.sleep(backoff * attempt)
+        logger.error(f"All {retries} attempts failed for POST {url}")
         return None
 
     # --- Riders ---
