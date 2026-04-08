@@ -3,12 +3,15 @@ Admin: Liga category management and nightly ZwiftRacing stats refresh.
 
 Registered on admin_bp (defined in routes/admin.py).
 """
+from typing import Any
+
 from flask import request, jsonify
 from firebase_admin import firestore
 
 from routes.admin import admin_bp
 from authz import require_admin, require_scheduler, AuthzError
 from extensions import db, zr_service
+from services.zwiftracing import RateLimitError
 from extensions import get_zwift_service
 from services.zwift_tokens import get_valid_access_token, get_token_doc
 from services.zwift_tokens import resolve_canonical_user_doc_id
@@ -153,29 +156,59 @@ def refresh_zr_stats():
         if not riders:
             return jsonify({'message': 'No registered riders found', 'updated': 0}), 200
 
-        logger.info(f"ZR nightly refresh: fetching stats for {len(riders)} riders")
+        # Safe int conversion — skip any rider whose zwiftId is not a valid integer.
+        zwift_ids: list[int] = []
+        for zid in riders.keys():
+            try:
+                zwift_ids.append(int(zid))
+            except (ValueError, TypeError):
+                logger.warning(f"ZR nightly refresh: skipping non-integer zwiftId {zid!r}")
 
-        zwift_ids = [int(zid) for zid in riders.keys()]
-        batch_response = zr_service.get_riders_batch(zwift_ids)
+        if not zwift_ids:
+            return jsonify({'message': 'No valid numeric zwiftIds found', 'updated': 0}), 200
 
-        if not batch_response:
-            return jsonify({'message': 'ZR batch call returned no data', 'updated': 0}), 502
+        logger.info(
+            f"ZR nightly refresh: fetching stats for {len(zwift_ids)} riders "
+            f"({len(riders) - len(zwift_ids)} skipped for non-numeric id)"
+        )
 
-        # Normalise the ZR response to { zwiftId_str: rider_data }.
-        if isinstance(batch_response, list):
-            zr_by_id = {
-                str(r.get('riderId', r.get('zwiftId', ''))): r
-                for r in batch_response
-            }
-        elif isinstance(batch_response, dict):
-            inner = batch_response.get('data', batch_response)
-            if isinstance(inner, list):
-                zr_by_id = {str(r.get('riderId', r.get('zwiftId', ''))): r for r in inner}
+        # API allows up to 1000 rider IDs per batch call — chunk if needed.
+        _ZR_BATCH_LIMIT = 1000
+        zr_by_id: dict[str, Any] = {}
+
+        for chunk_start in range(0, len(zwift_ids), _ZR_BATCH_LIMIT):
+            chunk = zwift_ids[chunk_start:chunk_start + _ZR_BATCH_LIMIT]
+            try:
+                batch_response = zr_service.get_riders_batch(chunk)
+            except RateLimitError as exc:
+                logger.error(f"ZR API rate limit hit during batch call: {exc}")
+                return jsonify({'message': 'ZR API rate limit exceeded — retry later', 'updated': 0}), 503
+
+            if not batch_response:
+                logger.error(
+                    f"ZR batch call returned no data for chunk [{chunk_start}:{chunk_start + len(chunk)}]"
+                )
+                return jsonify({'message': 'ZR batch call returned no data', 'updated': 0}), 502
+
+            # Normalise the chunk response into zr_by_id.
+            if isinstance(batch_response, list):
+                for r in batch_response:
+                    key = str(r.get('riderId', r.get('zwiftId', '')))
+                    if key:
+                        zr_by_id[key] = r
+            elif isinstance(batch_response, dict):
+                inner = batch_response.get('data', batch_response)
+                if isinstance(inner, list):
+                    for r in inner:
+                        key = str(r.get('riderId', r.get('zwiftId', '')))
+                        if key:
+                            zr_by_id[key] = r
+                else:
+                    for k, v in inner.items():
+                        zr_by_id[str(k)] = v
             else:
-                zr_by_id = {str(k): v for k, v in inner.items()}
-        else:
-            logger.error(f"Unexpected ZR batch response type: {type(batch_response)}")
-            return jsonify({'message': 'Unexpected ZR response format', 'updated': 0}), 502
+                logger.error(f"Unexpected ZR batch response type: {type(batch_response)}")
+                return jsonify({'message': 'Unexpected ZR response format', 'updated': 0}), 502
 
         # Load league settings once for all updates.
         liga_settings = _load_liga_settings(db)
@@ -260,7 +293,7 @@ def refresh_zr_stats():
         }), 200
 
     except Exception as e:
-        logger.error(f"ZR nightly refresh error: {e}")
+        logger.error(f"ZR nightly refresh error: {e}", exc_info=True)
         return jsonify({'message': str(e)}), 500
 
 
