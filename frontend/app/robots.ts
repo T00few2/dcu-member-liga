@@ -6,8 +6,19 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: "*",
-        allow: ["/info", "/datapolitik", "/offentliggoerelse"],
-        disallow: "/",
+        allow: [
+          "/",
+          "/info",
+          "/results",
+          "/schedule",
+          "/participants",
+          "/historik",
+          "/stats",
+          "/register",
+          "/datapolitik",
+          "/offentliggoerelse",
+        ],
+        disallow: ["/admin", "/live", "/api", "/consent"],
       },
     ],
     sitemap: `${siteUrl}/sitemap.xml`,

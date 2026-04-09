@@ -56,6 +56,17 @@ export const metadata: Metadata = {
   },
 };
 
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SportsOrganization",
+  name: "DCU forårsliga",
+  url: siteUrl,
+  description: "E-cycling liga for DCU-medlemmer. Kør virtuelle løb på Zwift og konkurrér om ligaen.",
+  sport: "Cycling",
+  logo: `${siteUrl}/icon-512.png`,
+  sameAs: ["https://www.cycling.dk"],
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -63,6 +74,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="da">
+      <head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+      </head>
       <body className={`${inter.className} overflow-x-hidden`}>
         <AuthProvider>
           <ToastProvider>
