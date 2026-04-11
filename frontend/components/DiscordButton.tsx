@@ -8,12 +8,12 @@ const STORAGE_KEY = "discord-button-collapsed";
 
 export default function DiscordButton() {
   const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === "true") setCollapsed(true);
+    if (stored === "false") setCollapsed(false);
     setMounted(true);
   }, []);
 
