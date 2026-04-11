@@ -1,0 +1,35 @@
+# DCU forårsliga
+
+> DCU forårsliga er en e-cycling liga for DCU-medlemmer (Danmarks Cykle Union). Deltagerne kører virtuelle løb på Zwift-platformen og konkurrerer i en pointbaseret liga opdelt i kategorier.
+
+## Hvad er DCU forårsliga?
+
+DCU forårsliga er en organiseret virtuel cykelliga, der afholdes i forårsperioden. Ligaen er forbeholdt aktive DCU-licensindehavere og bruger Zwift som cykelplatform. Løb køres online, og resultater registreres automatisk.
+
+## Nøgleinformation
+
+- **Sport**: E-cycling / Virtuel cykling
+- **Platform**: Zwift
+- **Sprog**: Dansk
+- **Organisation**: Danmarks Cykle Union (DCU)
+- **Hjemmeside**: https://www.dansk-ecykling.dk
+
+## Sider
+
+- /info – Ligaformat, kategorier, pointsystem og regler
+- /results – Aktuelle ligastillinger og løbsresultater fordelt på kategorier
+- /schedule – Kommende og afviklede løb i ligaen
+- /participants – Liste over tilmeldte ryttere og deres kategorier
+- /historik – Arkiverede resultater fra tidligere ligasæsoner
+- /stats – Personlige statistikker og præstationsdata
+- /register – Tilmelding til ligaen (kræver DCU-licens og Zwift-konto)
+- /datapolitik – Privatlivspolitik og databeskyttelse
+- /offentliggoerelse – Offentliggørelse og transparens
+
+## Kategorier
+
+Ligaen er opdelt i rytterkategorier baseret på præstationsniveau (typisk A, B, C, D). Kategorisering sker via Zwift Racing Score (ZRS) eller tilsvarende vurdering.
+
+## Pointsystem
+
+Ryttere optjener point baseret på placering i hvert løb. Slutstillingen beregnes ud fra de bedste resultater i sæsonen (typisk de 5 bedste løb tæller).

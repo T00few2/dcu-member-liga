@@ -6,8 +6,15 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: "*",
-        allow: ["/info", "/datapolitik", "/offentliggoerelse"],
-        disallow: "/",
+        allow: [
+          "/",
+          "/info",
+          "/historik",
+          "/register",
+          "/datapolitik",
+          "/offentliggoerelse",
+        ],
+        disallow: ["/admin", "/live", "/api", "/consent", "/results", "/schedule", "/participants", "/stats"],
       },
     ],
     sitemap: `${siteUrl}/sitemap.xml`,
