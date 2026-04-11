@@ -7,7 +7,6 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 from flask import request, jsonify
-from google.cloud.firestore_v1.base_query import FieldFilter
 
 from routes.admin import admin_bp
 from authz import require_admin, AuthzError
@@ -321,7 +320,7 @@ def list_zwift_activities(rider_id):
 
         docs = (
             db.collection('zwift_activities')
-            .where(filter=FieldFilter('userId', '==', str(zwift_user_id)))
+            .where('userId', '==', str(zwift_user_id))
             .order_by('updatedAt', direction='DESCENDING')
             .limit(30)
             .stream()
