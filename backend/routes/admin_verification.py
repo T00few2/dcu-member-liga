@@ -4,6 +4,7 @@ Admin: Weight/rider verification routes.
 Registered on admin_bp (defined in routes/admin.py).
 """
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
 
 from flask import request, jsonify
 
@@ -58,9 +59,32 @@ def verify_rider(rider_id):
             if not access_token:
                 return None
             service = get_zwift_service()
-            power_profile = service.get_power_profile(access_token)
-            best_curve = service.get_best_power_curve_all_time(access_token)
-            return {'powerProfile': power_profile, 'bestCurve': best_curve}
+
+            # Fetch the power profile and all time-range curves in parallel.
+            with ThreadPoolExecutor(max_workers=6) as curve_executor:
+                f_pp     = curve_executor.submit(service.get_power_profile, access_token)
+                f_all    = curve_executor.submit(service.get_best_power_curve_all_time, access_token)
+                f_30d    = curve_executor.submit(service.get_best_power_curve_last, access_token, 30)
+                f_90d    = curve_executor.submit(service.get_best_power_curve_last, access_token, 90)
+                f_180d   = curve_executor.submit(service.get_best_power_curve_last, access_token, 180)
+                f_360d   = curve_executor.submit(service.get_best_power_curve_last, access_token, 360)
+
+            curves = {}
+            for key, fut in [('allTime', f_all), ('last30d', f_30d), ('last90d', f_90d),
+                              ('last180d', f_180d), ('last360d', f_360d)]:
+                try:
+                    curves[key] = fut.result()
+                except Exception as e:
+                    logger.error(f"Error fetching {key} curve: {e}")
+                    curves[key] = None
+
+            power_profile = None
+            try:
+                power_profile = f_pp.result()
+            except Exception as e:
+                logger.error(f"Error fetching power profile: {e}")
+
+            return {'powerProfile': power_profile, 'curves': curves}
 
         with ThreadPoolExecutor(max_workers=3) as executor:
             f_profile = executor.submit(fetch_zwift_profile)
@@ -91,23 +115,61 @@ def verify_rider(rider_id):
             logger.error(f"Strava Verification Fetch Error: {e}")
 
         try:
-            power_data = f_power.result(timeout=30)
+            power_data = f_power.result(timeout=60)
             if power_data:
                 response_data['officialMetrics'] = power_data
-                best_curve = (power_data.get('bestCurve') or {}).get('pointsWatts') or {}
+                curves = power_data.get('curves') or {}
+                now = datetime.utcnow()
+
+                # Each entry is given a synthetic date that places it inside exactly
+                # the right time-range bucket so the frontend's filter works:
+                #
+                #   30-day entry  → 15 days ago   (passes 30d/90d/180d/360d/all-time)
+                #   90-day entry  → 60 days ago   (passes 90d/180d/360d/all-time)
+                #   180-day entry → 120 days ago  (passes 180d/360d/all-time)
+                #   360-day entry → 240 days ago  (passes 360d/all-time)
+                #   all-time entry→ 400 days ago  (passes all-time only)
+                #
+                # The chart takes max() across all matching entries, which gives the
+                # correct best value for every selected range.
+                range_configs = [
+                    ('last30d',  now - timedelta(days=15),  'Best Power (Last 30 Days)'),
+                    ('last90d',  now - timedelta(days=60),  'Best Power (Last 90 Days)'),
+                    ('last180d', now - timedelta(days=120), 'Best Power (Last 180 Days)'),
+                    ('last360d', now - timedelta(days=240), 'Best Power (Last 360 Days)'),
+                    ('allTime',  now - timedelta(days=400), 'Best Power (All Time)'),
+                ]
+
                 history = []
-                for duration_sec, point in best_curve.items():
+                rider_weight = response_data['profile'].get('weight') or 0
+                rider_height = response_data['profile'].get('height') or 0
+
+                for curve_key, entry_dt, title in range_configs:
+                    curve_data = curves.get(curve_key)
+                    if not curve_data:
+                        continue
+                    points = curve_data.get('pointsWatts') or {}
+                    if not points:
+                        continue
+
+                    # Map duration keys from '5' → 'w5', '300' → 'w300', etc.
+                    cp_curve = {
+                        f'w{duration_sec}': point.get('value', 0)
+                        for duration_sec, point in points.items()
+                    }
+
                     history.append({
-                        'date': point.get('date'),
-                        'event_title': f"Best effort {duration_sec}s",
-                        'avg_watts': point.get('value', 0),
+                        'date': entry_dt.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                        'event_title': title,
+                        'avg_watts': cp_curve.get('w1200', 0),
                         'avg_hr': 0,
                         'wkg': 0,
                         'category': '',
-                        'weight': 0,
-                        'height': 0,
-                        'cp_curve': {str(duration_sec): point.get('value', 0)},
+                        'weight': rider_weight,
+                        'height': rider_height,
+                        'cp_curve': cp_curve,
                     })
+
                 response_data['zwiftPowerHistory'] = history
         except Exception as e:
             logger.error(f"Official metrics fetch error: {e}")

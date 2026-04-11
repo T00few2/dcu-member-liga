@@ -55,9 +55,13 @@ export function useRiderVerification(user: User | null) {
     const [loadingStreams, setLoadingStreams] = useState(false);
 
     useEffect(() => {
+        if (!user) return;
         const fetchParticipants = async () => {
             try {
-                const res = await fetch(`${API_URL}/participants`);
+                const token = await user.getIdToken();
+                const res = await fetch(`${API_URL}/participants`, {
+                    headers: { 'Authorization': `Bearer ${token}` },
+                });
                 if (res.ok) {
                     const data = await res.json();
                     setParticipants(data.participants || []);
@@ -69,7 +73,7 @@ export function useRiderVerification(user: User | null) {
             }
         };
         fetchParticipants();
-    }, []);
+    }, [user]);
 
     const selectRider = async (rider: Participant) => {
         setSelectedRider(rider);
