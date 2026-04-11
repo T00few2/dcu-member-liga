@@ -247,6 +247,43 @@ class StravaService:
             logger.error(f"Error obtaining service token: {e}")
             return None
 
+    def get_activities_for_matching(self, rider_id, per_page=30):
+        """
+        Return recent activities with full UTC timestamps and raw numeric fields,
+        used for auto-matching a Strava activity to a Zwift activity.
+        """
+        access_token = self._get_valid_token(rider_id)
+        if not access_token:
+            return []
+        try:
+            res = requests.get(
+                f"https://www.strava.com/api/v3/athlete/activities?per_page={per_page}",
+                headers={'Authorization': f'Bearer {access_token}'},
+                timeout=15,
+            )
+            if res.status_code != 200:
+                logger.error(f"Strava activities-for-matching failed: {res.status_code}")
+                return []
+            return [
+                {
+                    'id': a['id'],
+                    'name': a['name'],
+                    'startDate': a['start_date'],          # UTC ISO-8601
+                    'startDateLocal': a['start_date_local'],
+                    'durationSec': a.get('elapsed_time', 0),
+                    'movingTimeSec': a.get('moving_time', 0),
+                    'averageWatts': a.get('average_watts'),
+                    'averageHeartrate': a.get('average_heartrate'),
+                    'distanceM': a.get('distance', 0),
+                    'sport': a.get('sport_type', a.get('type', 'Ride')),
+                    'hasPowerMeter': bool(a.get('device_watts', False)),
+                }
+                for a in res.json()
+            ]
+        except Exception as e:
+            logger.error(f"Error fetching Strava activities for matching: {e}")
+            return []
+
     def get_segment_streams(self, segment_id: int):
         """Fetch distance and altitude streams for a public Strava segment."""
         access_token = self._get_service_token()

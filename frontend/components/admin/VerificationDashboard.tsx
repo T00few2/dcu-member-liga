@@ -4,9 +4,11 @@ import { useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import StravaAttribution from '@/components/StravaAttribution';
 import { useRiderVerification } from '@/hooks/useRiderVerification';
+import { useDualRecording } from '@/hooks/useDualRecording';
 import RiderSearch from './verification/RiderSearch';
 import VerificationCharts from './verification/VerificationCharts';
 import StravaActivityDetail from './verification/StravaActivityDetail';
+import DualRecordingPanel from './verification/DualRecordingPanel';
 
 export default function VerificationDashboard() {
     const { user } = useAuth();
@@ -23,8 +25,11 @@ export default function VerificationDashboard() {
     const [powerTrendStat, setPowerTrendStat] = useState('avg');
     const [curveTimeRange, setCurveTimeRange] = useState(90);
 
+    const dual = useDualRecording(user, selectedRider?.zwiftId ?? null);
+
     const handleSelectRider = (rider: typeof participants[0]) => {
         setSelectedRaceDate(null);
+        dual.reset();
         selectRider(rider);
     };
 
@@ -88,6 +93,23 @@ export default function VerificationDashboard() {
                                     onClose={() => selectStravaActivity({ ...selectedStravaActivity, id: -1 })}
                                 />
                             )}
+
+                            {/* Dual Recording Verification */}
+                            <DualRecordingPanel
+                                riderId={selectedRider.zwiftId}
+                                zwiftActivities={dual.zwiftActivities}
+                                stravaActivities={dual.stravaActivities}
+                                loadingActivities={dual.loadingActivities}
+                                selectedZwiftId={dual.selectedZwiftId}
+                                setSelectedZwiftId={dual.setSelectedZwiftId}
+                                selectedStravaId={dual.selectedStravaId}
+                                setSelectedStravaId={dual.setSelectedStravaId}
+                                result={dual.result}
+                                loadingComparison={dual.loadingComparison}
+                                error={dual.error}
+                                onLoadActivities={dual.loadActivities}
+                                onCompare={dual.fetchComparison}
+                            />
 
                             {/* Data Tables */}
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
