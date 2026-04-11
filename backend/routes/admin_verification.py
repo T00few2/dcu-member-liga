@@ -532,7 +532,7 @@ def dual_recording(rider_id):
         zwift_avg  = zwift_avg_watts
         strava_avg = strava_avg_synced
         avg_diff_w   = round((zwift_avg or 0) - (strava_avg or 0), 1) if (zwift_avg and strava_avg) else None
-        avg_diff_pct = round(avg_diff_w / strava_avg * 100, 1)        if (avg_diff_w is not None and strava_avg) else None
+        avg_diff_pct = round(avg_diff_w / strava_avg * 100, 1) if (avg_diff_w is not None and strava_avg) else None
 
         return jsonify({
             'zwift': {
