@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
     ResponsiveContainer, LineChart, Line, ReferenceLine, ReferenceArea,
@@ -245,6 +245,7 @@ export default function DualRecordingPanel({
     onCompare,
 }: Props) {
     const loaded = useRef(false);
+    const [manualZwiftId, setManualZwiftId] = useState('');
 
     // Auto-load activity lists when this panel first renders for a rider
     useEffect(() => {
@@ -257,11 +258,15 @@ export default function DualRecordingPanel({
     // Reset loaded flag when rider changes
     useEffect(() => {
         loaded.current = false;
+        setManualZwiftId('');
     }, [riderId]);
 
+    // Manual ID takes precedence over the dropdown selection
+    const effectiveZwiftId = manualZwiftId.trim() || selectedZwiftId;
+
     const handleCompare = () => {
-        if (!selectedZwiftId) return;
-        onCompare(selectedZwiftId, selectedStravaId);
+        if (!effectiveZwiftId) return;
+        onCompare(effectiveZwiftId, selectedStravaId);
     };
 
     return (
@@ -287,22 +292,18 @@ export default function DualRecordingPanel({
                 {/* Activity selectors */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Zwift */}
-                    <div>
-                        <label className="block text-xs font-medium text-muted-foreground mb-1">
+                    <div className="space-y-2">
+                        <label className="block text-xs font-medium text-muted-foreground">
                             Zwift Activity (primary)
                         </label>
                         {loadingActivities ? (
                             <div className="h-9 bg-muted/40 rounded animate-pulse" />
-                        ) : zwiftActivities.length === 0 ? (
-                            <p className="text-xs text-muted-foreground italic p-2">
-                                No Zwift activities found. Activities are captured automatically
-                                when the rider saves a ride via the Zwift webhook.
-                            </p>
-                        ) : (
+                        ) : zwiftActivities.length > 0 ? (
                             <select
-                                value={selectedZwiftId ?? ''}
-                                onChange={e => setSelectedZwiftId(e.target.value)}
-                                className="w-full text-sm bg-background border border-input rounded px-2 py-1.5 text-foreground focus:ring-1 focus:ring-primary"
+                                value={manualZwiftId ? '' : (selectedZwiftId ?? '')}
+                                onChange={e => { setSelectedZwiftId(e.target.value); setManualZwiftId(''); }}
+                                disabled={!!manualZwiftId}
+                                className="w-full text-sm bg-background border border-input rounded px-2 py-1.5 text-foreground focus:ring-1 focus:ring-primary disabled:opacity-40"
                             >
                                 <option value="">— select an activity —</option>
                                 {zwiftActivities.map(a => (
@@ -313,7 +314,25 @@ export default function DualRecordingPanel({
                                     </option>
                                 ))}
                             </select>
+                        ) : (
+                            <p className="text-xs text-muted-foreground italic">
+                                No webhook-captured activities yet. Paste an activity ID below.
+                            </p>
                         )}
+                        {/* Manual fallback — always visible */}
+                        <div>
+                            <input
+                                type="text"
+                                placeholder="Or paste Zwift activity ID manually…"
+                                value={manualZwiftId}
+                                onChange={e => setManualZwiftId(e.target.value)}
+                                className="w-full text-sm bg-background border border-input rounded px-2 py-1.5 text-foreground placeholder:text-muted-foreground/50 focus:ring-1 focus:ring-primary font-mono"
+                            />
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                                Find the ID in the race results or the Zwift activity URL.
+                                Overrides the dropdown above.
+                            </p>
+                        </div>
                     </div>
 
                     {/* Strava */}
@@ -351,7 +370,7 @@ export default function DualRecordingPanel({
                 <div className="flex items-center gap-3">
                     <button
                         onClick={handleCompare}
-                        disabled={!selectedZwiftId || loadingComparison}
+                        disabled={!effectiveZwiftId || loadingComparison}
                         className="px-5 py-2 bg-[#FC6719] text-white rounded font-medium text-sm hover:opacity-90 disabled:opacity-40"
                     >
                         {loadingComparison ? 'Analysing…' : 'Compare'}
