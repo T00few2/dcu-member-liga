@@ -56,51 +56,55 @@ def _resample_to_1hz(times: list, values: list) -> list:
     return result
 
 
-def _elevation_sync_offset(
-    z_times: list, z_alt: list,
-    s_times: list, s_alt: list,
+def _xcorr_sync_offset(
+    z_times: list, z_signal: list,
+    s_times: list, s_signal: list,
     search_sec: int = 600,
 ) -> 'int | None':
     """
-    Find the integer-second offset to add to Strava times so its elevation
-    profile aligns with Zwift's.  Uses sliding-window cross-correlation on
-    1 Hz-resampled altitude data.
+    Find the integer-second offset to add to Strava times so its signal
+    aligns with Zwift's.  Uses sliding-window cross-correlation on
+    1 Hz-resampled data.
+
+    Best signal for Zwift dual-recording is POWER: both devices read from
+    the same power meter so the shapes are identical regardless of any
+    systematic calibration difference.  Elevation must NOT be used for
+    Zwift because Strava stores GPS altitude (0 for indoor/trainer rides),
+    not virtual terrain elevation.
 
     Returns the offset in seconds (positive = Strava started later than Zwift),
     or None if there is insufficient data.
     """
-    if not z_times or not z_alt or not s_times or not s_alt:
+    if not z_times or not z_signal or not s_times or not s_signal:
         return None
 
-    # Resample both to 1 Hz
-    z_1hz = _resample_to_1hz(z_times, z_alt)
-    s_1hz = _resample_to_1hz(s_times, s_alt)
+    # Resample both to 1 Hz; replace None with 0
+    z_1hz = [v if v is not None else 0.0 for v in _resample_to_1hz(z_times, z_signal)]
+    s_1hz = [v if v is not None else 0.0 for v in _resample_to_1hz(s_times, s_signal)]
 
     nz, ns = len(z_1hz), len(s_1hz)
     if nz < 30 or ns < 30:
         return None
 
-    # Replace None with 0 for maths
-    z_arr = [v if v is not None else 0.0 for v in z_1hz]
-    s_arr = [v if v is not None else 0.0 for v in s_1hz]
+    # Require that the signal has some variance (not flat zero)
+    if max(z_1hz) == 0 or max(s_1hz) == 0:
+        return None
 
     best_corr = None
     best_offset = 0
 
     # τ = how many seconds to shift s relative to z.
-    # Positive τ: Strava started τ seconds after Zwift — shift s forward by τ.
+    # Positive τ: Strava started τ seconds after Zwift.
     for tau in range(-search_sec, search_sec + 1):
-        # Window where both signals overlap after applying shift τ
         z_start = max(0, tau)
         s_start = max(0, -tau)
         length = min(nz - z_start, ns - s_start)
         if length < 30:
             continue
 
-        zw = z_arr[z_start: z_start + length]
-        sw = s_arr[s_start: s_start + length]
+        zw = z_1hz[z_start: z_start + length]
+        sw = s_1hz[s_start: s_start + length]
 
-        # Pearson-like dot product (fast proxy for correlation)
         dot = sum(a * b for a, b in zip(zw, sw))
 
         if best_corr is None or dot > best_corr:
@@ -491,12 +495,18 @@ def verify_rider(rider_id):
                         for duration_sec, point in points.items()
                     }
 
+                    # W/Kg from pointsWattsPerKg (same structure as pointsWatts)
+                    wkg_points = curve_data.get('pointsWattsPerKg') or {}
+                    wkg_1200 = (wkg_points.get('1200') or {}).get('value', 0)
+                    if not wkg_1200 and rider_weight:
+                        wkg_1200 = round(cp_curve.get('w1200', 0) / rider_weight, 2)
+
                     history.append({
                         'date': entry_dt.strftime('%Y-%m-%dT%H:%M:%SZ'),
                         'event_title': title,
                         'avg_watts': cp_curve.get('w1200', 0),
-                        'avg_hr': 0,
-                        'wkg': 0,
+                        'avg_hr': 0,   # not available from power-curve API
+                        'wkg': wkg_1200,
                         'category': '',
                         'weight': rider_weight,
                         'height': rider_height,
@@ -973,11 +983,14 @@ def dual_recording(rider_id):
         s_hr      = _extract_stream(raw_streams, 'heartrate')
         s_alt     = _extract_stream(raw_streams, 'altitude')
 
-        # ── 5 & 6. Align streams via elevation cross-correlation ─────────────
-        # Both Zwift and Strava record the same virtual terrain, so their
-        # altitude profiles are identical in shape.  Cross-correlating them
-        # gives the exact time offset without relying on potentially-unreliable
-        # startedAt timestamps.
+        # ── 5 & 6. Align streams via power cross-correlation ─────────────────
+        # Both Zwift and Strava capture output from the same power meter, so
+        # their power profiles are identical in shape but shifted in time.
+        # Cross-correlating the power signals gives the exact offset.
+        #
+        # NOTE: elevation must NOT be used here.  Strava stores GPS altitude
+        # (zero for indoor/trainer rides), not Zwift's virtual terrain elevation.
+        #
         # strava_offset: seconds to add to every Strava time so it lands on
         # the Zwift time axis (t=0 = Zwift recording start).
         strava_started_at = (matched_strava or {}).get('startDate', '')
@@ -986,12 +999,12 @@ def dual_recording(rider_id):
         s_dt = _parse_iso_utc(strava_started_at) if strava_started_at else None
         ts_offset = int((s_dt - z_dt).total_seconds()) if (z_dt and s_dt) else 0
 
-        z_alt_raw = (zwift_streams or {}).get('altitude') or []
+        z_watts_raw = (zwift_streams or {}).get('watts') or []
         z_times_raw = (zwift_streams or {}).get('time') or []
 
-        elev_offset = _elevation_sync_offset(z_times_raw, z_alt_raw, s_times, s_alt)
-        strava_offset = elev_offset if elev_offset is not None else ts_offset
-        sync_method = 'elevation_xcorr' if elev_offset is not None else 'timestamp'
+        power_offset = _xcorr_sync_offset(z_times_raw, z_watts_raw, s_times, s_watts)
+        strava_offset = power_offset if power_offset is not None else ts_offset
+        sync_method = 'power_xcorr' if power_offset is not None else 'timestamp'
 
         s_aligned_times = [strava_offset + t for t in s_times] if s_times else []
 

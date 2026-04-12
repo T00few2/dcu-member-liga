@@ -58,7 +58,7 @@ function SyncBadge({ sync }: { sync: NonNullable<DualRecordingResult['sync']> })
         <span className="text-xs text-muted-foreground italic">
             {fmtOffset(sync.stravaOffsetSec)}
             {' · '}
-            <span className="font-mono">{sync.syncMethod === 'elevation_xcorr' ? 'elevation sync' : 'timestamp sync'}</span>
+            <span className="font-mono">{sync.syncMethod === 'power_xcorr' ? 'power sync' : 'timestamp sync'}</span>
         </span>
     );
 }
@@ -109,7 +109,7 @@ function StatsTable({ result }: { result: DualRecordingResult }) {
             </table>
             <p className="text-xs text-muted-foreground mt-2 px-1">
                 Strava values computed from the synchronised race window
-                {sync ? ` · ${fmtOffset(sync.stravaOffsetSec)} · ${sync.syncMethod === 'elevation_xcorr' ? 'elevation sync' : 'timestamp sync'}` : ''}.
+                {sync ? ` · ${fmtOffset(sync.stravaOffsetSec)} · ${sync.syncMethod === 'power_xcorr' ? 'power sync' : 'timestamp sync'}` : ''}.
                 Diff = Zwift − Strava.
             </p>
         </div>
@@ -665,7 +665,7 @@ export default function DualRecordingPanel({
                                 <h4 className="text-sm font-semibold mb-2 text-card-foreground">
                                     Recording Streams
                                     <span className="ml-2 text-xs font-normal text-muted-foreground">
-                                        t=0 = Zwift recording start · Strava aligned by elevation · click legend to toggle
+                                        t=0 = Zwift recording start · Strava aligned by power cross-correlation · click legend to toggle
                                     </span>
                                 </h4>
                                 <DualStreamChart result={result} />
