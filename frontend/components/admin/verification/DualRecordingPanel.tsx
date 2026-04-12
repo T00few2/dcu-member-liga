@@ -227,21 +227,28 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
     const hasCad = chartData.some(d => d.cad !== null);
 
     // Legend click handler — Recharts passes the legend item payload
-    const handleLegendClick = (e: { dataKey?: string }) => {
-        if (e.dataKey) toggleSeries(e.dataKey);
+    // dataKey is DataKey<any> (string | number | fn), coerce to string.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const handleLegendClick = (e: any) => {
+        const key = e?.dataKey != null ? String(e.dataKey) : null;
+        if (key) toggleSeries(key);
     };
 
     // Style legend labels to reflect hidden state
-    const legendFormatter = (value: string, entry: { dataKey?: string }) => (
-        <span style={{
-            cursor: 'pointer',
-            opacity: hidden.has(entry.dataKey ?? '') ? 0.35 : 1,
-            textDecoration: hidden.has(entry.dataKey ?? '') ? 'line-through' : 'none',
-            userSelect: 'none',
-        }}>
-            {value}
-        </span>
-    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const legendFormatter = (value: string, entry: any) => {
+        const key = entry?.dataKey != null ? String(entry.dataKey) : '';
+        return (
+            <span style={{
+                cursor: 'pointer',
+                opacity: hidden.has(key) ? 0.35 : 1,
+                textDecoration: hidden.has(key) ? 'line-through' : 'none',
+                userSelect: 'none',
+            }}>
+                {value}
+            </span>
+        );
+    };
 
     return (
         <div className="h-[360px] w-full">
