@@ -122,7 +122,12 @@ def _parse_binary_fit_url(fit_url: str, access_token: str) -> 'tuple[dict | None
     import io
     try:
         import requests as _req
-        headers = {'Authorization': f'Bearer {access_token}', 'Accept': '*/*'}
+        # S3 presigned URLs embed auth in query params — adding an Authorization
+        # header causes a SignatureDoesNotMatch 403. Detect by URL content.
+        if 'X-Amz-Signature' in fit_url or 'amazonaws.com' in fit_url:
+            headers = {'Accept': '*/*'}
+        else:
+            headers = {'Authorization': f'Bearer {access_token}', 'Accept': '*/*'}
         resp = _req.get(fit_url, headers=headers, timeout=30)
         if resp.status_code != 200:
             return None, f'http_{resp.status_code}'
@@ -832,11 +837,17 @@ def dual_recording(rider_id):
                         zwift_streams = _parse_json_fit_streams(fit_resp)
                         n = len((zwift_streams or {}).get('time') or [])
                         zwift_debug['parsedPoints'] = n
-                elif fit_file_url:
-                    zwift_streams, status = _parse_binary_fit_url(fit_file_url, access_token)
-                    zwift_debug['fitFetchStatus'] = status
-                    zwift_debug['parsedPoints'] = len((zwift_streams or {}).get('time') or [])
-                else:
+
+                # Fall back to binary FIT if JSON FIT yielded no usable data
+                if zwift_debug['parsedPoints'] == 0 and fit_file_url:
+                    bin_streams, bin_status = _parse_binary_fit_url(fit_file_url, access_token)
+                    bin_n = len((bin_streams or {}).get('time') or [])
+                    zwift_debug['binaryFitStatus'] = bin_status
+                    zwift_debug['binaryFitPoints'] = bin_n
+                    if bin_n > 0:
+                        zwift_streams = bin_streams
+                        zwift_debug['parsedPoints'] = bin_n
+                elif fit_file_url is None and json_fit_url is None:
                     zwift_debug['fitFetchStatus'] = 'no_url'
             except Exception as e:
                 zwift_debug['fitFetchStatus'] = str(e)
