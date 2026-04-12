@@ -109,6 +109,11 @@ export default function VerificationDashboard() {
                                 error={dual.error}
                                 onLoadActivities={dual.loadActivities}
                                 onCompare={dual.fetchComparison}
+                                eventId={dual.eventId}
+                                setEventId={dual.setEventId}
+                                loadingEventActivity={dual.loadingEventActivity}
+                                eventActivityResult={dual.eventActivityResult}
+                                onLoadEventActivity={dual.loadEventActivity}
                             />
 
                             {/* Data Tables */}

@@ -371,6 +371,154 @@ def list_strava_activities(rider_id):
 
 
 # ---------------------------------------------------------------------------
+# Dual-recording: resolve activity from Zwift event
+# ---------------------------------------------------------------------------
+
+@admin_bp.route('/admin/verification/event-activity/<rider_id>', methods=['GET'])
+def event_activity(rider_id):
+    """
+    Given a Zwift event ID, locate this rider's segment result in the event,
+    then look for their matching Zwift activity in the webhook store.
+
+    Query params:
+      eventId  – required; any Zwift event ID (from race admin page)
+
+    Returns:
+      found, eventStartIso, subgroupLabel, riderResult {durationSec, avgWatts},
+      zwiftActivity {activityId, startedAt, durationSec, avgWatts} | null
+    """
+    try:
+        require_admin(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    event_id = request.args.get('eventId')
+    if not event_id:
+        return jsonify({'message': 'eventId is required'}), 400
+
+    try:
+        user = UserService.get_user_by_id(rider_id)
+        if not user:
+            return jsonify({'message': 'User not found'}), 404
+
+        token_doc = get_token_doc(str(user.id))
+        if not token_doc:
+            return jsonify({'message': 'No Zwift connection found for this rider'}), 404
+
+        zwift_user_id = token_doc.get('zwiftUserId')
+        if not zwift_user_id:
+            return jsonify({'message': 'No Zwift user ID on token'}), 404
+
+        zwift_user_id_str = str(zwift_user_id)
+
+        # ── 1. Fetch event info ────────────────────────────────────────────────
+        zwift_service = get_zwift_service()
+        event_info = zwift_service.get_event_info(str(event_id))
+        if not event_info:
+            return jsonify({'message': f'Event {event_id} not found'}), 404
+
+        subgroups = event_info.get('eventSubgroups') or []
+        if not subgroups:
+            return jsonify({'message': 'No subgroups found for this event'}), 404
+
+        # ── 2. Search each subgroup for the rider ──────────────────────────────
+        found_subgroup = None
+        found_entry = None
+
+        for sg in subgroups:
+            sg_id = str(sg.get('id', ''))
+            if not sg_id:
+                continue
+            try:
+                by_segment = zwift_service.get_subgroup_all_segment_results(sg_id)
+            except Exception as exc:
+                logger.warning(f"event_activity: subgroup {sg_id} fetch failed: {exc}")
+                continue
+
+            # Flatten all segment entries; prefer the one with the longest duration
+            # (that's the finish line, not a sprint intermediate).
+            for entries in by_segment.values():
+                for entry in entries:
+                    if str(entry.get('userId', '')) == zwift_user_id_str:
+                        if found_entry is None or (
+                            entry.get('durationInMilliseconds', 0)
+                            > found_entry.get('durationInMilliseconds', 0)
+                        ):
+                            found_subgroup = sg
+                            found_entry = entry
+
+            if found_entry is not None:
+                break  # Found the rider; no need to search further subgroups
+
+        if not found_entry:
+            return jsonify({
+                'found': False,
+                'message': 'Rider not found in any subgroup of this event',
+            }), 200
+
+        event_start_iso = found_subgroup.get('eventSubgroupStart') or ''
+        subgroup_label = (
+            found_subgroup.get('subgroupLabel')
+            or found_subgroup.get('name')
+            or found_subgroup.get('label', '')
+        )
+        duration_ms = found_entry.get('durationInMilliseconds', 0)
+        duration_sec = int(duration_ms / 1000) if duration_ms else None
+        avg_watts = found_entry.get('avgWatts')
+
+        # ── 3. Find the Zwift activity in the webhook store by event timing ────
+        zwift_activity = None
+        event_dt = _parse_iso_utc(event_start_iso) if event_start_iso else None
+        if event_dt:
+            docs = (
+                db.collection('zwift_activities')
+                .where('userId', '==', zwift_user_id_str)
+                .order_by('updatedAt', direction='DESCENDING')
+                .limit(50)
+                .stream()
+            )
+            best_delta = float('inf')
+            for doc in docs:
+                d = doc.to_dict() or {}
+                raw = d.get('data') or {}
+                started = (raw.get('startedAt') or raw.get('startDate')
+                           or raw.get('start_date'))
+                act_dt = _parse_iso_utc(started) if started else None
+                if act_dt:
+                    delta = abs((act_dt - event_dt).total_seconds())
+                    if delta < best_delta and delta < 7200:  # within 2 hours
+                        best_delta = delta
+                        raw_dur_ms = (raw.get('durationInMilliseconds')
+                                      or raw.get('duration_in_milliseconds', 0))
+                        zwift_activity = {
+                            'activityId': d.get('activityId'),
+                            'startedAt': started,
+                            'durationSec': int(raw_dur_ms / 1000) if raw_dur_ms else None,
+                            'avgWatts': (raw.get('avgWatts')
+                                         or raw.get('averagePowerInWatts')
+                                         or raw.get('average_watts')),
+                        }
+
+        return jsonify({
+            'found': True,
+            'eventStartIso': event_start_iso,
+            'subgroupLabel': subgroup_label,
+            'riderResult': {
+                'durationSec': duration_sec,
+                'avgWatts': avg_watts,
+            },
+            'zwiftActivity': zwift_activity,
+        }), 200
+
+    except Exception as e:
+        logger.error(f"event_activity error: {e}")
+        return jsonify({'message': str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
 # Dual-recording: main comparison endpoint
 # ---------------------------------------------------------------------------
 
@@ -394,6 +542,7 @@ def dual_recording(rider_id):
 
     zwift_activity_id = request.args.get('zwiftActivityId')
     strava_activity_id = request.args.get('stravaActivityId')
+    event_start_iso = request.args.get('eventStartIso')  # fallback anchor for Strava matching
 
     if not zwift_activity_id:
         return jsonify({'message': 'zwiftActivityId is required'}), 400
@@ -403,14 +552,25 @@ def dual_recording(rider_id):
         if not user:
             return jsonify({'message': 'User not found'}), 404
 
-        # ── 1. Fetch Zwift activity metadata from Firestore ──────────────────
-        zwift_doc = db.collection('zwift_activities').document(str(zwift_activity_id)).get()
-        if not zwift_doc.exists:
-            return jsonify({'message': 'Zwift activity not found in database. '
-                                       'It may not have been captured via webhook yet.'}), 404
+        # Fetch token early — needed for both Firestore fallback and CP curve.
+        access_token = get_valid_access_token(str(user.id), get_zwift_service())
 
-        zwift_stored = zwift_doc.to_dict() or {}
-        zwift_raw = zwift_stored.get('data') or {}
+        # ── 1. Fetch Zwift activity metadata (webhook store → Zwift API) ──────
+        zwift_doc = db.collection('zwift_activities').document(str(zwift_activity_id)).get()
+        zwift_raw = {}
+        if zwift_doc.exists:
+            zwift_stored = zwift_doc.to_dict() or {}
+            zwift_raw = zwift_stored.get('data') or {}
+        elif access_token:
+            api_data = get_zwift_service().get_user_activity(
+                str(zwift_activity_id), access_token
+            )
+            if api_data:
+                zwift_raw = api_data
+            else:
+                return jsonify({'message': 'Zwift activity not found in database or via API.'}), 404
+        else:
+            return jsonify({'message': 'Zwift activity not found and no Zwift token available.'}), 404
 
         zwift_started_at = (zwift_raw.get('startedAt') or zwift_raw.get('startDate')
                             or zwift_raw.get('start_date'))
@@ -421,7 +581,6 @@ def dual_recording(rider_id):
                            or zwift_raw.get('average_watts'))
 
         # ── 2. Fetch Zwift CP curve for this activity ─────────────────────────
-        access_token = get_valid_access_token(str(user.id), get_zwift_service())
         zwift_cp_curve = {}
         if access_token:
             try:
@@ -444,8 +603,10 @@ def dual_recording(rider_id):
             matched_strava = next(
                 (a for a in strava_activities if str(a['id']) == str(strava_activity_id)), None
             )
-        elif zwift_started_at:
-            zwift_dt = _parse_iso_utc(zwift_started_at)
+        else:
+            # Anchor on Zwift start time; fall back to the event start time if unavailable.
+            anchor_iso = zwift_started_at or event_start_iso
+            zwift_dt = _parse_iso_utc(anchor_iso) if anchor_iso else None
             if zwift_dt:
                 closest, min_delta = None, float('inf')
                 for act in strava_activities:

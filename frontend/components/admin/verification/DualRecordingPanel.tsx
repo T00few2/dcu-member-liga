@@ -5,7 +5,10 @@ import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
     ResponsiveContainer, LineChart, Line, ReferenceLine, ReferenceArea,
 } from 'recharts';
-import type { ZwiftActivity, StravaMatchActivity, DualRecordingResult, CpDiffRow } from '@/hooks/useDualRecording';
+import type {
+    ZwiftActivity, StravaMatchActivity, DualRecordingResult, CpDiffRow,
+    EventActivityResult,
+} from '@/hooks/useDualRecording';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -33,7 +36,6 @@ function fmtOffset(sec: number) {
         : `Strava started ${label} after Zwift`;
 }
 
-/** Colour-code a % difference. */
 function diffColour(pct: number | null | undefined): string {
     if (pct == null) return 'text-muted-foreground';
     const abs = Math.abs(pct);
@@ -144,16 +146,14 @@ function StravaStreamChart({ result }: { result: DualRecordingResult }) {
 
     const { time: rawTime, watts, cadence, heartrate } = strava.streams;
 
-    // Downsample to every 5 seconds for display performance
     const step = 5;
     const points = rawTime
         .filter((_, i) => i % step === 0)
         .map((t, idx) => ({
             t,
-            timeLabel: new Date(t * 1000).toISOString().substr(11, 5),
-            watts:    watts?.[idx * step] ?? null,
-            cadence:  cadence?.[idx * step] ?? null,
-            hr:       heartrate?.[idx * step] ?? null,
+            watts:   watts?.[idx * step] ?? null,
+            cadence: cadence?.[idx * step] ?? null,
+            hr:      heartrate?.[idx * step] ?? null,
         }));
 
     const winStart = sync?.stravaWindowStart ?? null;
@@ -178,7 +178,6 @@ function StravaStreamChart({ result }: { result: DualRecordingResult }) {
                         formatter={(v: number, name: string) => [`${Math.round(v)}`, name]}
                     />
                     <Legend verticalAlign="top" height={28} />
-                    {/* Highlight the synchronised race window */}
                     {winStart != null && winEnd != null && (
                         <ReferenceArea yAxisId="w" x1={winStart} x2={winEnd}
                             fill="#FC6719" fillOpacity={0.08} />
@@ -211,6 +210,37 @@ function StravaStreamChart({ result }: { result: DualRecordingResult }) {
     );
 }
 
+// ─── Event lookup status badge ─────────────────────────────────────────────────
+
+function EventLookupStatus({ res }: { res: EventActivityResult }) {
+    if (!res.found) {
+        return (
+            <p className="text-sm text-red-600 mt-2">
+                {res.message || 'Rider not found in this event.'}
+            </p>
+        );
+    }
+    const { subgroupLabel, riderResult, zwiftActivity } = res;
+    return (
+        <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded text-sm space-y-1">
+            <p className="font-medium text-green-800">
+                Found in {subgroupLabel || 'event'}
+                {riderResult?.durationSec ? ` · ${fmtDuration(riderResult.durationSec)}` : ''}
+                {riderResult?.avgWatts ? ` · ${riderResult.avgWatts} W avg` : ''}
+            </p>
+            {zwiftActivity ? (
+                <p className="text-green-700 text-xs">
+                    Zwift activity matched ({fmtDate(zwiftActivity.startedAt)}) — ready to compare.
+                </p>
+            ) : (
+                <p className="text-amber-700 text-xs">
+                    Zwift activity not in webhook store yet. Paste the activity ID manually below.
+                </p>
+            )}
+        </div>
+    );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 interface Props {
@@ -227,6 +257,12 @@ interface Props {
     error: string;
     onLoadActivities: () => void;
     onCompare: (zwiftId: string, stravaId?: number | null) => void;
+    // Event-based lookup
+    eventId: string;
+    setEventId: (id: string) => void;
+    loadingEventActivity: boolean;
+    eventActivityResult: EventActivityResult | null;
+    onLoadEventActivity: (eventId: string) => void;
 }
 
 export default function DualRecordingPanel({
@@ -243,6 +279,11 @@ export default function DualRecordingPanel({
     error,
     onLoadActivities,
     onCompare,
+    eventId,
+    setEventId,
+    loadingEventActivity,
+    eventActivityResult,
+    onLoadEventActivity,
 }: Props) {
     const loaded = useRef(false);
     const [manualZwiftId, setManualZwiftId] = useState('');
@@ -255,14 +296,16 @@ export default function DualRecordingPanel({
         }
     }, [riderId, onLoadActivities]);
 
-    // Reset loaded flag when rider changes
+    // Reset loaded flag and manual input when rider changes
     useEffect(() => {
         loaded.current = false;
         setManualZwiftId('');
     }, [riderId]);
 
-    // Manual ID takes precedence over the dropdown selection
-    const effectiveZwiftId = manualZwiftId.trim() || selectedZwiftId;
+    // Manual input overrides the dropdown / event-matched ID
+    const effectiveZwiftId = manualZwiftId.trim()
+        || (eventActivityResult?.zwiftActivity?.activityId ?? null)
+        || selectedZwiftId;
 
     const handleCompare = () => {
         if (!effectiveZwiftId) return;
@@ -288,81 +331,127 @@ export default function DualRecordingPanel({
                 </button>
             </div>
 
-            <div className="p-4 space-y-4">
-                {/* Activity selectors */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Zwift */}
-                    <div className="space-y-2">
-                        <label className="block text-xs font-medium text-muted-foreground">
-                            Zwift Activity (primary)
-                        </label>
-                        {loadingActivities ? (
-                            <div className="h-9 bg-muted/40 rounded animate-pulse" />
-                        ) : zwiftActivities.length > 0 ? (
-                            <select
-                                value={manualZwiftId ? '' : (selectedZwiftId ?? '')}
-                                onChange={e => { setSelectedZwiftId(e.target.value); setManualZwiftId(''); }}
-                                disabled={!!manualZwiftId}
-                                className="w-full text-sm bg-background border border-input rounded px-2 py-1.5 text-foreground focus:ring-1 focus:ring-primary disabled:opacity-40"
-                            >
-                                <option value="">— select an activity —</option>
-                                {zwiftActivities.map(a => (
-                                    <option key={a.activityId} value={a.activityId ?? ''}>
-                                        {a.name}
-                                        {a.startedAt ? ` · ${new Date(a.startedAt).toLocaleDateString()}` : ''}
-                                        {a.avgWatts ? ` · ${a.avgWatts}W` : ''}
-                                    </option>
-                                ))}
-                            </select>
-                        ) : (
-                            <p className="text-xs text-muted-foreground italic">
-                                No webhook-captured activities yet. Paste an activity ID below.
-                            </p>
-                        )}
-                        {/* Manual fallback — always visible */}
-                        <div>
-                            <input
-                                type="text"
-                                placeholder="Or paste Zwift activity ID manually…"
-                                value={manualZwiftId}
-                                onChange={e => setManualZwiftId(e.target.value)}
-                                className="w-full text-sm bg-background border border-input rounded px-2 py-1.5 text-foreground placeholder:text-muted-foreground/50 focus:ring-1 focus:ring-primary font-mono"
-                            />
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                                Find the ID in the race results or the Zwift activity URL.
-                                Overrides the dropdown above.
-                            </p>
-                        </div>
-                    </div>
+            <div className="p-4 space-y-5">
 
-                    {/* Strava */}
-                    <div>
-                        <label className="block text-xs font-medium text-muted-foreground mb-1">
-                            Strava Activity (secondary) — auto-matched or override
-                        </label>
-                        {loadingActivities ? (
-                            <div className="h-9 bg-muted/40 rounded animate-pulse" />
-                        ) : stravaActivities.length === 0 ? (
-                            <p className="text-xs text-muted-foreground italic p-2">
-                                No Strava activities found or Strava not connected.
-                            </p>
-                        ) : (
-                            <select
-                                value={selectedStravaId ?? ''}
-                                onChange={e => setSelectedStravaId(e.target.value ? Number(e.target.value) : null)}
-                                className="w-full text-sm bg-background border border-input rounded px-2 py-1.5 text-foreground focus:ring-1 focus:ring-primary"
-                            >
-                                <option value="">— auto-match by timestamp —</option>
-                                {stravaActivities.map(a => (
-                                    <option key={a.id} value={a.id}>
-                                        {a.name}
-                                        {a.startDateLocal ? ` · ${new Date(a.startDateLocal).toLocaleDateString()}` : ''}
-                                        {a.averageWatts ? ` · ${a.averageWatts}W` : ''}
-                                        {a.hasPowerMeter ? ' ⚡' : ''}
-                                    </option>
-                                ))}
-                            </select>
-                        )}
+                {/* ── Step 1: Event ID lookup (primary path) ───────────────── */}
+                <div className="border border-border rounded-lg p-4 space-y-3">
+                    <p className="text-xs font-semibold text-foreground uppercase tracking-wide">
+                        Step 1 — Look up by Zwift Event ID
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                        Paste the Zwift event ID from the race admin page. The system will find
+                        this rider&apos;s result and auto-match the Strava activity.
+                    </p>
+                    <div className="flex gap-2">
+                        <input
+                            type="text"
+                            placeholder="e.g. 4567890"
+                            value={eventId}
+                            onChange={e => setEventId(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && onLoadEventActivity(eventId)}
+                            className="flex-1 text-sm bg-background border border-input rounded px-3 py-1.5 text-foreground placeholder:text-muted-foreground/50 focus:ring-1 focus:ring-primary font-mono"
+                        />
+                        <button
+                            onClick={() => onLoadEventActivity(eventId)}
+                            disabled={!eventId.trim() || loadingEventActivity}
+                            className="px-4 py-1.5 bg-[#FC6719] text-white rounded text-sm font-medium hover:opacity-90 disabled:opacity-40 whitespace-nowrap"
+                        >
+                            {loadingEventActivity ? 'Looking up…' : 'Lookup'}
+                        </button>
+                    </div>
+                    {eventActivityResult && (
+                        <EventLookupStatus res={eventActivityResult} />
+                    )}
+                </div>
+
+                {/* ── Step 2: Activity selectors (advanced / fallback) ─────── */}
+                <div className="border border-border rounded-lg p-4 space-y-4">
+                    <p className="text-xs font-semibold text-foreground uppercase tracking-wide">
+                        Step 2 — Activity Selection
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Zwift */}
+                        <div className="space-y-2">
+                            <label className="block text-xs font-medium text-muted-foreground">
+                                Zwift Activity (primary)
+                            </label>
+                            {/* Show event-resolved activity if available */}
+                            {eventActivityResult?.found && eventActivityResult.zwiftActivity && !manualZwiftId && (
+                                <div className="text-xs bg-green-50 border border-green-200 rounded px-2 py-1.5 font-mono text-green-800">
+                                    {eventActivityResult.zwiftActivity.activityId}
+                                    <span className="ml-2 text-green-600 font-sans">(from event lookup)</span>
+                                </div>
+                            )}
+                            {/* Webhook dropdown — shown when no event result yet */}
+                            {!eventActivityResult?.zwiftActivity && (
+                                loadingActivities ? (
+                                    <div className="h-9 bg-muted/40 rounded animate-pulse" />
+                                ) : zwiftActivities.length > 0 ? (
+                                    <select
+                                        value={manualZwiftId ? '' : (selectedZwiftId ?? '')}
+                                        onChange={e => { setSelectedZwiftId(e.target.value); setManualZwiftId(''); }}
+                                        disabled={!!manualZwiftId}
+                                        className="w-full text-sm bg-background border border-input rounded px-2 py-1.5 text-foreground focus:ring-1 focus:ring-primary disabled:opacity-40"
+                                    >
+                                        <option value="">— select from webhook history —</option>
+                                        {zwiftActivities.map(a => (
+                                            <option key={a.activityId} value={a.activityId ?? ''}>
+                                                {a.name}
+                                                {a.startedAt ? ` · ${new Date(a.startedAt).toLocaleDateString()}` : ''}
+                                                {a.avgWatts ? ` · ${a.avgWatts}W` : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    <p className="text-xs text-muted-foreground italic">
+                                        No webhook-captured activities. Use event lookup above or paste ID below.
+                                    </p>
+                                )
+                            )}
+                            {/* Always-visible manual override */}
+                            <div>
+                                <input
+                                    type="text"
+                                    placeholder="Or paste Zwift activity ID manually…"
+                                    value={manualZwiftId}
+                                    onChange={e => setManualZwiftId(e.target.value)}
+                                    className="w-full text-sm bg-background border border-input rounded px-2 py-1.5 text-foreground placeholder:text-muted-foreground/50 focus:ring-1 focus:ring-primary font-mono"
+                                />
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                    Overrides event lookup and dropdown. Find the ID in the Zwift activity URL.
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Strava */}
+                        <div>
+                            <label className="block text-xs font-medium text-muted-foreground mb-1">
+                                Strava Activity (secondary) — auto-matched or override
+                            </label>
+                            {loadingActivities ? (
+                                <div className="h-9 bg-muted/40 rounded animate-pulse" />
+                            ) : stravaActivities.length === 0 ? (
+                                <p className="text-xs text-muted-foreground italic p-2">
+                                    No Strava activities found or Strava not connected.
+                                </p>
+                            ) : (
+                                <select
+                                    value={selectedStravaId ?? ''}
+                                    onChange={e => setSelectedStravaId(e.target.value ? Number(e.target.value) : null)}
+                                    className="w-full text-sm bg-background border border-input rounded px-2 py-1.5 text-foreground focus:ring-1 focus:ring-primary"
+                                >
+                                    <option value="">— auto-match by timestamp —</option>
+                                    {stravaActivities.map(a => (
+                                        <option key={a.id} value={a.id}>
+                                            {a.name}
+                                            {a.startDateLocal ? ` · ${new Date(a.startDateLocal).toLocaleDateString()}` : ''}
+                                            {a.averageWatts ? ` · ${a.averageWatts}W` : ''}
+                                            {a.hasPowerMeter ? ' ⚡' : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                            )}
+                        </div>
                     </div>
                 </div>
 

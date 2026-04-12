@@ -81,6 +81,20 @@ export interface DualRecordingResult {
     warning?: string;
 }
 
+export interface EventActivityResult {
+    found: boolean;
+    message?: string;
+    eventStartIso?: string;
+    subgroupLabel?: string;
+    riderResult?: { durationSec: number | null; avgWatts: number | null };
+    zwiftActivity?: {
+        activityId: string;
+        startedAt: string | null;
+        durationSec: number | null;
+        avgWatts: number | null;
+    } | null;
+}
+
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useDualRecording(user: User | null, riderId: string | null) {
@@ -90,6 +104,12 @@ export function useDualRecording(user: User | null, riderId: string | null) {
 
     const [selectedZwiftId, setSelectedZwiftId] = useState<string | null>(null);
     const [selectedStravaId, setSelectedStravaId] = useState<number | null>(null);
+
+    // Event-based lookup
+    const [eventId, setEventId] = useState('');
+    const [loadingEventActivity, setLoadingEventActivity] = useState(false);
+    const [eventActivityResult, setEventActivityResult] = useState<EventActivityResult | null>(null);
+    const [eventStartIso, setEventStartIso] = useState<string | null>(null);
 
     const [result, setResult] = useState<DualRecordingResult | null>(null);
     const [loadingComparison, setLoadingComparison] = useState(false);
@@ -126,6 +146,34 @@ export function useDualRecording(user: User | null, riderId: string | null) {
         }
     }, [user, riderId, authHeader]);
 
+    const loadEventActivity = useCallback(async (lookupEventId: string) => {
+        if (!user || !riderId || !lookupEventId.trim()) return;
+        setLoadingEventActivity(true);
+        setError('');
+        setEventActivityResult(null);
+        try {
+            const headers = await authHeader();
+            const params = new URLSearchParams({ eventId: lookupEventId.trim() });
+            const res = await fetch(
+                `${API_URL}/admin/verification/event-activity/${riderId}?${params}`,
+                { headers },
+            );
+            const data: EventActivityResult = await res.json();
+            setEventActivityResult(data);
+            if (data.found) {
+                setEventStartIso(data.eventStartIso ?? null);
+                if (data.zwiftActivity?.activityId) {
+                    setSelectedZwiftId(data.zwiftActivity.activityId);
+                }
+            }
+        } catch (e) {
+            console.error('Error loading event activity', e);
+            setEventActivityResult({ found: false, message: 'Network error' });
+        } finally {
+            setLoadingEventActivity(false);
+        }
+    }, [user, riderId, authHeader]);
+
     const fetchComparison = useCallback(async (
         zwiftActivityId: string,
         stravaActivityId?: number | null,
@@ -138,6 +186,7 @@ export function useDualRecording(user: User | null, riderId: string | null) {
             const headers = await authHeader();
             const params = new URLSearchParams({ zwiftActivityId });
             if (stravaActivityId) params.set('stravaActivityId', String(stravaActivityId));
+            if (eventStartIso) params.set('eventStartIso', eventStartIso);
 
             const res = await fetch(
                 `${API_URL}/admin/verification/dual-recording/${riderId}?${params}`,
@@ -146,7 +195,6 @@ export function useDualRecording(user: User | null, riderId: string | null) {
             const data = await res.json();
             if (res.ok) {
                 setResult(data);
-                // Record what was auto-matched
                 if (data.strava?.activityId) setSelectedStravaId(data.strava.activityId);
             } else {
                 setError(data.message || 'Failed to fetch comparison');
@@ -157,13 +205,16 @@ export function useDualRecording(user: User | null, riderId: string | null) {
         } finally {
             setLoadingComparison(false);
         }
-    }, [user, riderId, authHeader]);
+    }, [user, riderId, authHeader, eventStartIso]);
 
     const reset = useCallback(() => {
         setSelectedZwiftId(null);
         setSelectedStravaId(null);
         setResult(null);
         setError('');
+        setEventId('');
+        setEventActivityResult(null);
+        setEventStartIso(null);
     }, []);
 
     return {
@@ -174,6 +225,12 @@ export function useDualRecording(user: User | null, riderId: string | null) {
         setSelectedZwiftId,
         selectedStravaId,
         setSelectedStravaId,
+        // Event-based lookup
+        eventId,
+        setEventId,
+        loadingEventActivity,
+        eventActivityResult,
+        loadEventActivity,
         result,
         loadingComparison,
         error,
