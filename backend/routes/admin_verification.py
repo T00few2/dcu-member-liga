@@ -919,23 +919,40 @@ def dual_recording(rider_id):
         s_hr      = _extract_stream(raw_streams, 'heartrate')
         s_alt     = _extract_stream(raw_streams, 'altitude')
 
-        # ── 5. Compute time offset (seconds into Strava recording where race begins)
+        # ── 5. Compute race-start positions in each stream ───────────────────────
+        # t=0 on the output axis = actual race gun time (eventStartIso when
+        # provided, otherwise the later of the two device starts as fallback).
+        # zwift_race_start_sec  = seconds into the Zwift recording when race starts
+        # strava_race_start_sec = seconds into the Strava recording when race starts
         strava_started_at = (matched_strava or {}).get('startDate', '')
         offset_sec = 0
-        if zwift_started_at and strava_started_at:
-            z_dt = _parse_iso_utc(zwift_started_at)
-            s_dt = _parse_iso_utc(strava_started_at)
-            if z_dt and s_dt:
-                # positive = Strava started earlier (common: Garmin on before the race)
-                offset_sec = int((z_dt - s_dt).total_seconds())
+        zwift_race_start_sec = 0
+        strava_race_start_sec = 0
+
+        z_dt = _parse_iso_utc(zwift_started_at) if zwift_started_at else None
+        s_dt = _parse_iso_utc(strava_started_at) if strava_started_at else None
+
+        if z_dt and s_dt:
+            # positive = Strava started earlier (common: Garmin on before the race)
+            offset_sec = int((z_dt - s_dt).total_seconds())
+
+        if event_start_iso:
+            race_dt = _parse_iso_utc(event_start_iso)
+            if race_dt:
+                if z_dt:
+                    zwift_race_start_sec = max(0, int((race_dt - z_dt).total_seconds()))
+                if s_dt:
+                    strava_race_start_sec = max(0, int((race_dt - s_dt).total_seconds()))
+        else:
+            # Fallback: race starts at whichever device started later
+            strava_race_start_sec = max(0, offset_sec)
+            zwift_race_start_sec = max(0, -offset_sec)
 
         # ── 6. Trim Strava to race window & normalise both streams to race time ──
-        # Race time t=0 = the moment both recordings are active (the later start).
-        # • Zwift shift  = min(0, offset_sec): Zwift pre-race shows at t < 0.
-        # • Strava streams: trimmed to [win_start, win_end] and shifted so t=0
-        #   is race start.  All parallel arrays (cadence, HR, alt) are trimmed
-        #   to the same window so the index correspondence is preserved.
-        win_start = max(0, offset_sec)
+        # Race time t=0 = race gun time.  Zwift pre-race warmup appears at t < 0.
+        # All parallel arrays (cadence, HR, alt) are trimmed to the same window
+        # so index correspondence is preserved.
+        win_start = strava_race_start_sec
         win_end   = win_start + (zwift_duration_sec or 0)
 
         if s_times and zwift_duration_sec:
@@ -956,8 +973,8 @@ def dual_recording(rider_id):
             hr_trimmed = list(s_hr) if s_hr else []
             alt_trimmed = list(s_alt) if s_alt else []
 
-        # Normalise Zwift time so race start = t 0 (pre-race warmup is t < 0).
-        zwift_time_shift = min(0, offset_sec)
+        # Normalise Zwift time so race start = t=0 (pre-race warmup is t < 0).
+        zwift_time_shift = -zwift_race_start_sec
         if zwift_streams and zwift_time_shift != 0 and zwift_streams.get('time'):
             zwift_streams = {
                 **zwift_streams,
@@ -1015,8 +1032,10 @@ def dual_recording(rider_id):
             'sync': {
                 'offsetSec': offset_sec,
                 'zwiftDurationSec': zwift_duration_sec,
-                'stravaWindowStart': max(0, offset_sec),
-                'stravaWindowEnd': max(0, offset_sec) + (zwift_duration_sec or 0),
+                'stravaWindowStart': strava_race_start_sec,
+                'stravaWindowEnd': strava_race_start_sec + (zwift_duration_sec or 0),
+                'zwiftRaceStartSec': zwift_race_start_sec,
+                'anchoredByEventStart': event_start_iso is not None,
             },
             'comparison': {
                 'cpDiff': cp_diff,
