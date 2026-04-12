@@ -919,67 +919,33 @@ def dual_recording(rider_id):
         s_hr      = _extract_stream(raw_streams, 'heartrate')
         s_alt     = _extract_stream(raw_streams, 'altitude')
 
-        # ── 5. Compute race-start positions in each stream ───────────────────────
-        # t=0 on the output axis = actual race gun time (eventStartIso when
-        # provided, otherwise the later of the two device starts as fallback).
-        # zwift_race_start_sec  = seconds into the Zwift recording when race starts
-        # strava_race_start_sec = seconds into the Strava recording when race starts
+        # ── 5 & 6. Align streams by startedAt timestamps ─────────────────────
+        # Zwift t[i]  = seconds since zwift_startedAt  → keep as-is (t=0 = Zwift start)
+        # Strava t[i] = seconds since strava_startedAt → shift by (strava_start - zwift_start)
         strava_started_at = (matched_strava or {}).get('startDate', '')
-        offset_sec = 0
-        zwift_race_start_sec = 0
-        strava_race_start_sec = 0
 
         z_dt = _parse_iso_utc(zwift_started_at) if zwift_started_at else None
         s_dt = _parse_iso_utc(strava_started_at) if strava_started_at else None
 
-        if z_dt and s_dt:
-            # positive = Strava started earlier (common: Garmin on before the race)
-            offset_sec = int((z_dt - s_dt).total_seconds())
+        strava_offset = int((s_dt - z_dt).total_seconds()) if (z_dt and s_dt) else 0
+        s_aligned_times = [strava_offset + t for t in s_times] if s_times else []
 
-        if event_start_iso:
-            race_dt = _parse_iso_utc(event_start_iso)
-            if race_dt:
-                if z_dt:
-                    zwift_race_start_sec = max(0, int((race_dt - z_dt).total_seconds()))
-                if s_dt:
-                    strava_race_start_sec = max(0, int((race_dt - s_dt).total_seconds()))
+        # Trim Strava to the Zwift activity window [0, zwift_duration_sec].
+        win_end = zwift_duration_sec or 0
+
+        if s_aligned_times and zwift_duration_sec:
+            mask = [0 <= t <= win_end for t in s_aligned_times]
+            t_trimmed   = [t for t, m in zip(s_aligned_times, mask) if m]
+            w_trimmed   = [v for v, m in zip(s_watts or [], mask) if m]
+            cad_trimmed = [v for v, m in zip(s_cadence or [], mask) if m]
+            hr_trimmed  = [v for v, m in zip(s_hr or [], mask) if m]
+            alt_trimmed = [v for v, m in zip(s_alt or [], mask) if m]
         else:
-            # Fallback: race starts at whichever device started later
-            strava_race_start_sec = max(0, offset_sec)
-            zwift_race_start_sec = max(0, -offset_sec)
-
-        # ── 6. Trim Strava to race window & normalise both streams to race time ──
-        # Race time t=0 = race gun time.  Zwift pre-race warmup appears at t < 0.
-        # All parallel arrays (cadence, HR, alt) are trimmed to the same window
-        # so index correspondence is preserved.
-        win_start = strava_race_start_sec
-        win_end   = win_start + (zwift_duration_sec or 0)
-
-        if s_times and zwift_duration_sec:
-            def _trim(vals):
-                if not vals:
-                    return []
-                return [v for t, v in zip(s_times, vals) if win_start <= t <= win_end]
-
-            t_trimmed   = [t - win_start for t in s_times if win_start <= t <= win_end]
-            w_trimmed   = _trim(s_watts)
-            cad_trimmed = _trim(s_cadence)
-            hr_trimmed  = _trim(s_hr)
-            alt_trimmed = _trim(s_alt)
-        else:
-            t_trimmed = list(s_times) if s_times else []
-            w_trimmed = list(s_watts) if s_watts else []
+            t_trimmed   = list(s_aligned_times)
+            w_trimmed   = list(s_watts) if s_watts else []
             cad_trimmed = list(s_cadence) if s_cadence else []
-            hr_trimmed = list(s_hr) if s_hr else []
+            hr_trimmed  = list(s_hr) if s_hr else []
             alt_trimmed = list(s_alt) if s_alt else []
-
-        # Normalise Zwift time so race start = t=0 (pre-race warmup is t < 0).
-        zwift_time_shift = -zwift_race_start_sec
-        if zwift_streams and zwift_time_shift != 0 and zwift_streams.get('time'):
-            zwift_streams = {
-                **zwift_streams,
-                'time': [t + zwift_time_shift for t in zwift_streams['time']],
-            }
 
         # ── 7. Compute Strava CP curves ───────────────────────────────────────
         strava_w_full   = _resample_to_1hz(s_times, s_watts) if s_watts else []
@@ -1030,12 +996,8 @@ def dual_recording(rider_id):
                 },
             },
             'sync': {
-                'offsetSec': offset_sec,
+                'stravaOffsetSec': strava_offset,
                 'zwiftDurationSec': zwift_duration_sec,
-                'stravaWindowStart': strava_race_start_sec,
-                'stravaWindowEnd': strava_race_start_sec + (zwift_duration_sec or 0),
-                'zwiftRaceStartSec': zwift_race_start_sec,
-                'anchoredByEventStart': event_start_iso is not None,
             },
             'comparison': {
                 'cpDiff': cp_diff,
