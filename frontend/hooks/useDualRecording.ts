@@ -71,10 +71,10 @@ export interface DualRecordingResult {
         };
     } | null;
     sync: {
-        offsetSec: number;
+        stravaOffsetSec: number;
         zwiftDurationSec: number | null;
-        stravaWindowStart: number;
-        stravaWindowEnd: number;
+        syncMethod: string;
+        timestampOffsetSec: number;
     } | null;
     comparison: {
         cpDiff: CpDiffRow[];
