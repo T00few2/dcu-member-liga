@@ -164,44 +164,58 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
     const hasStrava = (strava?.streams?.time?.length ?? 0) > 0;
     if (!hasZwift && !hasStrava) return null;
 
-    // Both streams are pre-normalised by the backend to race-relative seconds.
-    // Zwift: t < 0 = pre-race staging; t = 0 = race start.
-    // Strava: trimmed to the race window, t = 0 = race start.
-    // No client-side shift is needed — plot time values directly.
+    // Build time→value lookup maps for each stream (O(n) inserts, O(1) lookups).
+    // Both streams are pre-normalised by the backend: t=0 = race start.
+    // Zwift pre-race staging appears at t < 0.
     type StreamPoint = { w: number | null; hr: number | null; cad: number | null };
-    const zwiftMap = new Map<number, StreamPoint>();
+
+    const zwiftByTime = new Map<number, StreamPoint>();
     if (hasZwift) {
         const { time, watts, heartrate, cadence } = zwift.streams!;
-        time.filter((_, i) => i % step === 0).forEach((t, i) => {
-            zwiftMap.set(t, {
-                w:   watts[i * step]     ?? null,
-                hr:  heartrate[i * step] ?? null,
-                cad: cadence[i * step]   ?? null,
-            });
-        });
+        time.forEach((t, i) => zwiftByTime.set(t, {
+            w:   watts[i]     ?? null,
+            hr:  heartrate[i] ?? null,
+            cad: cadence[i]   ?? null,
+        }));
     }
 
-    const stravaMap = new Map<number, StreamPoint>();
+    const stravaByTime = new Map<number, StreamPoint>();
     if (hasStrava) {
         const { time, watts, heartrate, cadence } = strava!.streams;
-        time.filter((_, i) => i % step === 0).forEach((t, i) => {
-            stravaMap.set(t, {
-                w:   watts[i * step]     ?? null,
-                hr:  heartrate[i * step] ?? null,
-                cad: cadence[i * step]   ?? null,
-            });
-        });
+        time.forEach((t, i) => stravaByTime.set(t, {
+            w:   watts[i]     ?? null,
+            hr:  heartrate[i] ?? null,
+            cad: cadence[i]   ?? null,
+        }));
     }
 
-    // Merge all race-time ticks and sort
-    const allTimes = [...new Set([...zwiftMap.keys(), ...stravaMap.keys()])].sort((a, b) => a - b);
-    const chartData = allTimes.map(t => ({
-        t,
-        zwiftW:  zwiftMap.get(t)?.w   ?? null,
-        stravaW: stravaMap.get(t)?.w  ?? null,
-        hr:      (zwiftMap.get(t)?.hr ?? stravaMap.get(t)?.hr) ?? null,
-        cad:     (zwiftMap.get(t)?.cad ?? stravaMap.get(t)?.cad) ?? null,
-    }));
+    // Sample both streams at a shared 5-second grid so the lines always share
+    // the same x-values. Without this, index-based downsampling creates offset
+    // grids (e.g. Zwift at t=1,6,11,… vs Strava at t=0,5,10,…) which makes
+    // every other point null for each line and connectNulls=false renders them
+    // as invisible dots.
+    // Streams are 1 Hz so every grid point has an exact match in both maps.
+    const lookup = (m: Map<number, StreamPoint>, t: number) =>
+        m.get(t) ?? m.get(t - 1) ?? m.get(t + 1);
+
+    const zwiftTimes  = hasZwift  ? zwift.streams!.time      : [];
+    const stravaTimes = hasStrava ? strava!.streams.time : [];
+    const allT = [...zwiftTimes, ...stravaTimes];
+    const minT = Math.floor(Math.min(...allT) / step) * step;
+    const maxT = Math.ceil(Math.max(...allT)  / step) * step;
+
+    const chartData: { t: number; zwiftW: number | null; stravaW: number | null; hr: number | null; cad: number | null }[] = [];
+    for (let t = minT; t <= maxT; t += step) {
+        const zp = lookup(zwiftByTime, t);
+        const sp = lookup(stravaByTime, t);
+        chartData.push({
+            t,
+            zwiftW:  zp?.w   ?? null,
+            stravaW: sp?.w   ?? null,
+            hr:      (zp?.hr  ?? sp?.hr)  ?? null,
+            cad:     (zp?.cad ?? sp?.cad) ?? null,
+        });
+    }
 
     const hasHR  = chartData.some(d => d.hr  !== null);
     const hasCad = chartData.some(d => d.cad !== null);
