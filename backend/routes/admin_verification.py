@@ -56,6 +56,60 @@ def _resample_to_1hz(times: list, values: list) -> list:
     return result
 
 
+def _elevation_sync_offset(
+    z_times: list, z_alt: list,
+    s_times: list, s_alt: list,
+    search_sec: int = 600,
+) -> 'int | None':
+    """
+    Find the integer-second offset to add to Strava times so its elevation
+    profile aligns with Zwift's.  Uses sliding-window cross-correlation on
+    1 Hz-resampled altitude data.
+
+    Returns the offset in seconds (positive = Strava started later than Zwift),
+    or None if there is insufficient data.
+    """
+    if not z_times or not z_alt or not s_times or not s_alt:
+        return None
+
+    # Resample both to 1 Hz
+    z_1hz = _resample_to_1hz(z_times, z_alt)
+    s_1hz = _resample_to_1hz(s_times, s_alt)
+
+    nz, ns = len(z_1hz), len(s_1hz)
+    if nz < 30 or ns < 30:
+        return None
+
+    # Replace None with 0 for maths
+    z_arr = [v if v is not None else 0.0 for v in z_1hz]
+    s_arr = [v if v is not None else 0.0 for v in s_1hz]
+
+    best_corr = None
+    best_offset = 0
+
+    # τ = how many seconds to shift s relative to z.
+    # Positive τ: Strava started τ seconds after Zwift — shift s forward by τ.
+    for tau in range(-search_sec, search_sec + 1):
+        # Window where both signals overlap after applying shift τ
+        z_start = max(0, tau)
+        s_start = max(0, -tau)
+        length = min(nz - z_start, ns - s_start)
+        if length < 30:
+            continue
+
+        zw = z_arr[z_start: z_start + length]
+        sw = s_arr[s_start: s_start + length]
+
+        # Pearson-like dot product (fast proxy for correlation)
+        dot = sum(a * b for a, b in zip(zw, sw))
+
+        if best_corr is None or dot > best_corr:
+            best_corr = dot
+            best_offset = tau
+
+    return best_offset
+
+
 def _compute_best_efforts(w_1hz: list, durations=(5, 15, 30, 60, 120, 300, 1200)) -> dict:
     """
     Rolling-window best average power at each duration.
@@ -919,15 +973,26 @@ def dual_recording(rider_id):
         s_hr      = _extract_stream(raw_streams, 'heartrate')
         s_alt     = _extract_stream(raw_streams, 'altitude')
 
-        # ── 5 & 6. Align streams by startedAt timestamps ─────────────────────
-        # Zwift t[i]  = seconds since zwift_startedAt  → keep as-is (t=0 = Zwift start)
-        # Strava t[i] = seconds since strava_startedAt → shift by (strava_start - zwift_start)
+        # ── 5 & 6. Align streams via elevation cross-correlation ─────────────
+        # Both Zwift and Strava record the same virtual terrain, so their
+        # altitude profiles are identical in shape.  Cross-correlating them
+        # gives the exact time offset without relying on potentially-unreliable
+        # startedAt timestamps.
+        # strava_offset: seconds to add to every Strava time so it lands on
+        # the Zwift time axis (t=0 = Zwift recording start).
         strava_started_at = (matched_strava or {}).get('startDate', '')
 
         z_dt = _parse_iso_utc(zwift_started_at) if zwift_started_at else None
         s_dt = _parse_iso_utc(strava_started_at) if strava_started_at else None
+        ts_offset = int((s_dt - z_dt).total_seconds()) if (z_dt and s_dt) else 0
 
-        strava_offset = int((s_dt - z_dt).total_seconds()) if (z_dt and s_dt) else 0
+        z_alt_raw = (zwift_streams or {}).get('altitude') or []
+        z_times_raw = (zwift_streams or {}).get('time') or []
+
+        elev_offset = _elevation_sync_offset(z_times_raw, z_alt_raw, s_times, s_alt)
+        strava_offset = elev_offset if elev_offset is not None else ts_offset
+        sync_method = 'elevation_xcorr' if elev_offset is not None else 'timestamp'
+
         s_aligned_times = [strava_offset + t for t in s_times] if s_times else []
 
         # Trim Strava to the Zwift activity window [0, zwift_duration_sec].
@@ -998,6 +1063,8 @@ def dual_recording(rider_id):
             'sync': {
                 'stravaOffsetSec': strava_offset,
                 'zwiftDurationSec': zwift_duration_sec,
+                'syncMethod': sync_method,
+                'timestampOffsetSec': ts_offset,
             },
             'comparison': {
                 'cpDiff': cp_diff,
