@@ -7,3 +7,4 @@ beautifulsoup4~=4.12
 pytz~=2024.1
 backoff~=2.2
 protobuf~=4.25
+fitdecode~=0.10
