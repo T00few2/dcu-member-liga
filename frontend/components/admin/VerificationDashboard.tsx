@@ -149,8 +149,8 @@ export default function VerificationDashboard() {
                                                             </div>
                                                             <div className="bg-secondary/50 rounded p-1">
                                                                 <div className="text-xs text-muted-foreground">HR</div>
-                                                                <div className={`font-mono font-bold ${race.avg_hr === 0 ? 'text-red-500' : ''}`}>
-                                                                    {race.avg_hr > 0 ? race.avg_hr : 'MISSING'}
+                                                                <div className={`font-mono font-bold ${race.avg_hr > 0 ? '' : 'text-muted-foreground'}`}>
+                                                                    {race.avg_hr > 0 ? race.avg_hr : '—'}
                                                                 </div>
                                                             </div>
                                                         </div>

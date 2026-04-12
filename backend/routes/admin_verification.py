@@ -491,12 +491,18 @@ def verify_rider(rider_id):
                         for duration_sec, point in points.items()
                     }
 
+                    # W/Kg from pointsWattsPerKg (same structure as pointsWatts)
+                    wkg_points = curve_data.get('pointsWattsPerKg') or {}
+                    wkg_1200 = (wkg_points.get('1200') or {}).get('value', 0)
+                    if not wkg_1200 and rider_weight:
+                        wkg_1200 = round(cp_curve.get('w1200', 0) / rider_weight, 2)
+
                     history.append({
                         'date': entry_dt.strftime('%Y-%m-%dT%H:%M:%SZ'),
                         'event_title': title,
                         'avg_watts': cp_curve.get('w1200', 0),
-                        'avg_hr': 0,
-                        'wkg': 0,
+                        'avg_hr': 0,   # not available from power-curve API
+                        'wkg': wkg_1200,
                         'category': '',
                         'weight': rider_weight,
                         'height': rider_height,
