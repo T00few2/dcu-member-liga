@@ -778,27 +778,38 @@ def dual_recording(rider_id):
         zwift_avg_watts = zf['avgWatts']
 
         # ── 1b. Fetch Zwift FIT streams ───────────────────────────────────────
-        # Always get a fresh activity from the Zwift API — the URL stored in
-        # Firestore may have expired (they are short-lived).
+        # jsonFitFileUrl (webhook key, lowercase) is a non-expiring API URL —
+        # use directly from zwift_raw.  fitFileURL is a presigned S3 URL
+        # (expires in ~3 h) so we fetch a fresh copy from the API.
         zwift_streams = None
         zwift_debug = {'fitFileURL': None, 'jsonFitFileURL': None,
                        'fitFetchStatus': None, 'parsedPoints': 0,
-                       'activityKeys': []}
+                       'activityKeys': list(zwift_raw.keys())}
         if access_token:
             try:
+                # Zwift webhook stores the key as 'jsonFitFileUrl' (lowercase u);
+                # thirdparty API may use 'jsonFitFileURL' (uppercase) — check both.
+                json_fit_url = (zwift_raw.get('jsonFitFileUrl') or
+                                zwift_raw.get('jsonFitFileURL'))
+
+                # For fitFileURL, fetch fresh to get a non-expired presigned URL.
                 fresh = get_zwift_service().get_user_activity(
                     str(zwift_activity_id), access_token
                 ) or {}
-                zwift_debug['activityKeys'] = list(fresh.keys())
-                json_fit_url = fresh.get('jsonFitFileURL')
                 fit_file_url = fresh.get('fitFileURL')
+                # Also pick up jsonFit from fresh response if not in stored data
+                if not json_fit_url:
+                    json_fit_url = (fresh.get('jsonFitFileURL') or
+                                    fresh.get('jsonFitFileUrl'))
+                    zwift_debug['activityKeys'] = list(fresh.keys())
+
                 zwift_debug['jsonFitFileURL'] = json_fit_url
                 zwift_debug['fitFileURL'] = fit_file_url
                 logger.info(
-                    "dual_recording: activity keys=%s fitFileURL=%s jsonFitFileURL=%s",
-                    list(fresh.keys()), fit_file_url or 'NONE', json_fit_url or 'NONE',
+                    "dual_recording: stored keys=%s fitFileURL=%s jsonFitFileURL=%s",
+                    list(zwift_raw.keys()), fit_file_url or 'NONE', json_fit_url or 'NONE',
                 )
-                # Prefer JSON FIT; fall back to binary FIT (parsed with fitdecode if available)
+                # Prefer JSON FIT; fall back to binary FIT (parsed with fitdecode)
                 if json_fit_url:
                     fit_resp = get_zwift_service().get_activity_json_fit(
                         json_fit_url, access_token
@@ -812,6 +823,8 @@ def dual_recording(rider_id):
                     zwift_streams, status = _parse_binary_fit_url(fit_file_url, access_token)
                     zwift_debug['fitFetchStatus'] = status
                     zwift_debug['parsedPoints'] = len((zwift_streams or {}).get('time') or [])
+                else:
+                    zwift_debug['fitFetchStatus'] = 'no_url'
             except Exception as e:
                 zwift_debug['fitFetchStatus'] = str(e)
                 logger.warning("Could not fetch Zwift FIT streams: %s", e)
