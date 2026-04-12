@@ -721,34 +721,37 @@ def dual_recording(rider_id):
         # Always get a fresh activity from the Zwift API for the jsonFitFileURL —
         # the URL stored in Firestore may have expired (they are short-lived).
         zwift_streams = None
+        zwift_debug = {'jsonFitUrl': None, 'fitFetchStatus': None, 'parsedPoints': 0}
         if access_token:
             try:
                 fresh = get_zwift_service().get_user_activity(
                     str(zwift_activity_id), access_token
                 ) or {}
                 json_fit_url = fresh.get('jsonFitFileURL')
+                zwift_debug['jsonFitUrl'] = json_fit_url
                 logger.info(
                     "dual_recording: jsonFitFileURL for %s → %s",
                     zwift_activity_id,
                     json_fit_url or 'NOT FOUND',
                 )
                 if json_fit_url:
-                    fit_data = get_zwift_service().get_activity_json_fit(
+                    fit_resp = get_zwift_service().get_activity_json_fit(
                         json_fit_url, access_token
                     )
+                    zwift_debug['fitFetchStatus'] = 'ok' if fit_resp is not None else 'empty'
                     logger.info(
                         "dual_recording: JSON FIT response type=%s keys=%s",
-                        type(fit_data).__name__,
-                        list(fit_data.keys()) if isinstance(fit_data, dict) else
-                        f'list[{len(fit_data)}]' if isinstance(fit_data, list) else 'None',
+                        type(fit_resp).__name__,
+                        list(fit_resp.keys()) if isinstance(fit_resp, dict) else
+                        f'list[{len(fit_resp)}]' if isinstance(fit_resp, list) else 'None',
                     )
-                    if fit_data:
-                        zwift_streams = _parse_json_fit_streams(fit_data)
-                        logger.info(
-                            "dual_recording: parsed Zwift streams — %d time points",
-                            len((zwift_streams or {}).get('time') or []),
-                        )
+                    if fit_resp:
+                        zwift_streams = _parse_json_fit_streams(fit_resp)
+                        n = len((zwift_streams or {}).get('time') or [])
+                        zwift_debug['parsedPoints'] = n
+                        logger.info("dual_recording: parsed Zwift streams — %d time points", n)
             except Exception as e:
+                zwift_debug['fitFetchStatus'] = str(e)
                 logger.warning("Could not fetch Zwift JSON FIT streams: %s", e)
 
         # ── 2. Fetch Zwift CP curve for this activity ─────────────────────────
@@ -874,6 +877,7 @@ def dual_recording(rider_id):
                 'avgWatts': zwift_avg_watts,
                 'cpCurve': zwift_cp_curve,
                 'streams': zwift_streams,
+                '_debug': zwift_debug,
             },
             'strava': {
                 'activityId': int(strava_activity_id) if strava_activity_id else None,
