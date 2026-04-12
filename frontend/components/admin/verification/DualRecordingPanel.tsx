@@ -420,8 +420,6 @@ export default function DualRecordingPanel({
     onLoadEventActivity,
 }: Props) {
     const loaded = useRef(false);
-    const [manualZwiftId, setManualZwiftId] = useState('');
-
     // Auto-load activity lists when this panel first renders for a rider
     useEffect(() => {
         if (!loaded.current && riderId) {
@@ -430,15 +428,13 @@ export default function DualRecordingPanel({
         }
     }, [riderId, onLoadActivities]);
 
-    // Reset loaded flag and manual input when rider changes
+    // Reset loaded flag when rider changes
     useEffect(() => {
         loaded.current = false;
-        setManualZwiftId('');
     }, [riderId]);
 
-    // Manual input overrides the dropdown / event-matched ID
-    const effectiveZwiftId = manualZwiftId.trim()
-        || (eventActivityResult?.zwiftActivity?.activityId ?? null)
+    const effectiveZwiftId =
+        (eventActivityResult?.zwiftActivity?.activityId ?? null)
         || selectedZwiftId;
 
     const handleCompare = () => {
@@ -465,16 +461,12 @@ export default function DualRecordingPanel({
                 </button>
             </div>
 
-            <div className="p-4 space-y-5">
+            <div className="p-4 space-y-4">
 
-                {/* ── Step 1: Event ID lookup (primary path) ───────────────── */}
+                {/* ── Option A: Event ID lookup ────────────────────────────── */}
                 <div className="border border-border rounded-lg p-4 space-y-3">
                     <p className="text-xs font-semibold text-foreground uppercase tracking-wide">
-                        Step 1 — Look up by Zwift Event ID
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                        Paste the Zwift event ID from the race admin page. The system will find
-                        this rider&apos;s result and auto-match the Strava activity.
+                        Look up by Zwift Event ID
                     </p>
                     <div className="flex gap-2">
                         <input
@@ -498,94 +490,75 @@ export default function DualRecordingPanel({
                     )}
                 </div>
 
-                {/* ── Step 2: Activity selectors (advanced / fallback) ─────── */}
-                <div className="border border-border rounded-lg p-4 space-y-4">
-                    <p className="text-xs font-semibold text-foreground uppercase tracking-wide">
-                        Step 2 — Activity Selection
-                    </p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Zwift */}
-                        <div className="space-y-2">
-                            <label className="block text-xs font-medium text-muted-foreground">
-                                Zwift Activity (primary)
-                            </label>
-                            {/* Show event-resolved activity if available */}
-                            {eventActivityResult?.found && eventActivityResult.zwiftActivity && !manualZwiftId && (
-                                <div className="text-xs bg-green-50 border border-green-200 rounded px-2 py-1.5 font-mono text-green-800">
-                                    {eventActivityResult.zwiftActivity.activityId}
-                                    <span className="ml-2 text-green-600 font-sans">(from event lookup)</span>
-                                </div>
-                            )}
-                            {/* Webhook dropdown — shown when no event result yet */}
-                            {!eventActivityResult?.zwiftActivity && (
-                                loadingActivities ? (
-                                    <div className="h-9 bg-muted/40 rounded animate-pulse" />
-                                ) : zwiftActivities.length > 0 ? (
-                                    <select
-                                        value={manualZwiftId ? '' : (selectedZwiftId ?? '')}
-                                        onChange={e => { setSelectedZwiftId(e.target.value); setManualZwiftId(''); }}
-                                        disabled={!!manualZwiftId}
-                                        className="w-full text-sm bg-background border border-input rounded px-2 py-1.5 text-foreground focus:ring-1 focus:ring-primary disabled:opacity-40"
-                                    >
-                                        <option value="">— select from webhook history —</option>
-                                        {zwiftActivities.map(a => (
-                                            <option key={a.activityId} value={a.activityId ?? ''}>
-                                                {a.name}
-                                                {a.startedAt ? ` · ${new Date(a.startedAt).toLocaleDateString()}` : ''}
-                                                {a.avgWatts ? ` · ${a.avgWatts}W` : ''}
-                                            </option>
-                                        ))}
-                                    </select>
-                                ) : (
-                                    <p className="text-xs text-muted-foreground italic">
-                                        No webhook-captured activities. Use event lookup above or paste ID below.
-                                    </p>
-                                )
-                            )}
-                            {/* Always-visible manual override */}
-                            <div>
-                                <input
-                                    type="text"
-                                    placeholder="Or paste Zwift activity ID manually…"
-                                    value={manualZwiftId}
-                                    onChange={e => setManualZwiftId(e.target.value)}
-                                    className="w-full text-sm bg-background border border-input rounded px-2 py-1.5 text-foreground placeholder:text-muted-foreground/50 focus:ring-1 focus:ring-primary font-mono"
-                                />
-                                <p className="text-xs text-muted-foreground mt-0.5">
-                                    Overrides event lookup and dropdown. Find the ID in the Zwift activity URL.
-                                </p>
-                            </div>
-                        </div>
+                {/* ── Divider ──────────────────────────────────────────────── */}
+                <div className="flex items-center gap-3">
+                    <div className="flex-1 h-px bg-border" />
+                    <span className="text-xs text-muted-foreground">or select manually</span>
+                    <div className="flex-1 h-px bg-border" />
+                </div>
 
-                        {/* Strava */}
-                        <div>
-                            <label className="block text-xs font-medium text-muted-foreground mb-1">
-                                Strava Activity (secondary) — auto-matched or override
-                            </label>
-                            {loadingActivities ? (
-                                <div className="h-9 bg-muted/40 rounded animate-pulse" />
-                            ) : stravaActivities.length === 0 ? (
-                                <p className="text-xs text-muted-foreground italic p-2">
-                                    No Strava activities found or Strava not connected.
-                                </p>
-                            ) : (
-                                <select
-                                    value={selectedStravaId ?? ''}
-                                    onChange={e => setSelectedStravaId(e.target.value ? Number(e.target.value) : null)}
-                                    className="w-full text-sm bg-background border border-input rounded px-2 py-1.5 text-foreground focus:ring-1 focus:ring-primary"
-                                >
-                                    <option value="">— auto-match by timestamp —</option>
-                                    {stravaActivities.map(a => (
-                                        <option key={a.id} value={a.id}>
-                                            {a.name}
-                                            {a.startDateLocal ? ` · ${new Date(a.startDateLocal).toLocaleDateString()}` : ''}
-                                            {a.averageWatts ? ` · ${a.averageWatts}W` : ''}
-                                            {a.hasPowerMeter ? ' ⚡' : ''}
-                                        </option>
-                                    ))}
-                                </select>
-                            )}
-                        </div>
+                {/* ── Option B: Manual activity selection ──────────────────── */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Zwift */}
+                    <div className="space-y-2">
+                        <label className="block text-xs font-medium text-muted-foreground">
+                            Zwift Activity
+                        </label>
+                        {eventActivityResult?.found && eventActivityResult.zwiftActivity ? (
+                            <div className="text-xs bg-green-50 border border-green-200 rounded px-2 py-1.5 font-mono text-green-800">
+                                {eventActivityResult.zwiftActivity.activityId}
+                                <span className="ml-2 text-green-600 font-sans">(from event lookup)</span>
+                            </div>
+                        ) : loadingActivities ? (
+                            <div className="h-9 bg-muted/40 rounded animate-pulse" />
+                        ) : zwiftActivities.length > 0 ? (
+                            <select
+                                value={selectedZwiftId ?? ''}
+                                onChange={e => setSelectedZwiftId(e.target.value)}
+                                className="w-full text-sm bg-background border border-input rounded px-2 py-1.5 text-foreground focus:ring-1 focus:ring-primary"
+                            >
+                                <option value="">— select activity —</option>
+                                {zwiftActivities.map(a => (
+                                    <option key={a.activityId} value={a.activityId ?? ''}>
+                                        {a.name}
+                                        {a.startedAt ? ` · ${new Date(a.startedAt).toLocaleDateString()}` : ''}
+                                        {a.avgWatts ? ` · ${a.avgWatts}W` : ''}
+                                    </option>
+                                ))}
+                            </select>
+                        ) : (
+                            <p className="text-xs text-muted-foreground italic">No webhook-captured activities.</p>
+                        )}
+                    </div>
+
+                    {/* Strava */}
+                    <div className="space-y-2">
+                        <label className="block text-xs font-medium text-muted-foreground">
+                            Strava Activity
+                        </label>
+                        {loadingActivities ? (
+                            <div className="h-9 bg-muted/40 rounded animate-pulse" />
+                        ) : stravaActivities.length === 0 ? (
+                            <p className="text-xs text-muted-foreground italic">
+                                No Strava activities found or Strava not connected.
+                            </p>
+                        ) : (
+                            <select
+                                value={selectedStravaId ?? ''}
+                                onChange={e => setSelectedStravaId(e.target.value ? Number(e.target.value) : null)}
+                                className="w-full text-sm bg-background border border-input rounded px-2 py-1.5 text-foreground focus:ring-1 focus:ring-primary"
+                            >
+                                <option value="">— auto-match by timestamp —</option>
+                                {stravaActivities.map(a => (
+                                    <option key={a.id} value={a.id}>
+                                        {a.name}
+                                        {a.startDateLocal ? ` · ${new Date(a.startDateLocal).toLocaleDateString()}` : ''}
+                                        {a.averageWatts ? ` · ${a.averageWatts}W` : ''}
+                                        {a.hasPowerMeter ? ' ⚡' : ''}
+                                    </option>
+                                ))}
+                            </select>
+                        )}
                     </div>
                 </div>
 
