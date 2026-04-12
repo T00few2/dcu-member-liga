@@ -109,6 +109,66 @@ def _build_cp_comparison(zwift_curve: dict, strava_curve: dict) -> list:
     return rows
 
 
+def _parse_binary_fit_url(fit_url: str, access_token: str) -> 'tuple[dict | None, str]':
+    """
+    Download the binary FIT file from *fit_url* and extract per-second streams.
+    Returns (streams_dict, status_string).  Requires the ``fitdecode`` package.
+    """
+    try:
+        import fitdecode  # noqa: PLC0415
+    except ImportError:
+        return None, 'fitdecode_not_installed'
+
+    import io
+    try:
+        import requests as _req
+        headers = {'Authorization': f'Bearer {access_token}', 'Accept': '*/*'}
+        resp = _req.get(fit_url, headers=headers, timeout=30)
+        if resp.status_code != 200:
+            return None, f'http_{resp.status_code}'
+        raw = resp.content
+    except Exception as exc:
+        return None, f'download_error:{exc}'
+
+    time_arr, watts_arr, hr_arr, cad_arr, alt_arr = [], [], [], [], []
+    base_ts = None
+    try:
+        with fitdecode.FitReader(io.BytesIO(raw)) as fit:
+            for frame in fit:
+                if not isinstance(frame, fitdecode.FitDataMessage):
+                    continue
+                if frame.name != 'record':
+                    continue
+                ts = frame.get_value('timestamp')
+                if ts is None:
+                    continue
+                # fitdecode returns datetime objects for timestamp
+                try:
+                    epoch = ts.timestamp()
+                except AttributeError:
+                    epoch = float(ts)
+                if base_ts is None:
+                    base_ts = epoch
+                time_arr.append(int(epoch - base_ts))
+                watts_arr.append(frame.get_value('power'))
+                hr_arr.append(frame.get_value('heart_rate'))
+                cad_arr.append(frame.get_value('cadence'))
+                alt_arr.append(frame.get_value('altitude'))
+    except Exception as exc:
+        return None, f'parse_error:{exc}'
+
+    if not time_arr:
+        return None, 'no_records'
+
+    return {
+        'time':      time_arr,
+        'watts':     watts_arr,
+        'heartrate': hr_arr,
+        'cadence':   cad_arr,
+        'altitude':  alt_arr,
+    }, f'ok_{len(time_arr)}_points'
+
+
 def _parse_json_fit_streams(data: 'dict | list') -> dict:
     """
     Parse a Zwift JSON FIT response into parallel stream arrays.
@@ -717,42 +777,57 @@ def dual_recording(rider_id):
         zwift_duration_sec = zf['durationSec']
         zwift_avg_watts = zf['avgWatts']
 
-        # ── 1b. Fetch Zwift JSON FIT streams ──────────────────────────────────
-        # Always get a fresh activity from the Zwift API for the jsonFitFileURL —
-        # the URL stored in Firestore may have expired (they are short-lived).
+        # ── 1b. Fetch Zwift FIT streams ───────────────────────────────────────
+        # jsonFitFileUrl (webhook key, lowercase) is a non-expiring API URL —
+        # use directly from zwift_raw.  fitFileURL is a presigned S3 URL
+        # (expires in ~3 h) so we fetch a fresh copy from the API.
         zwift_streams = None
-        zwift_debug = {'jsonFitUrl': None, 'fitFetchStatus': None, 'parsedPoints': 0}
+        zwift_debug = {'fitFileURL': None, 'jsonFitFileURL': None,
+                       'fitFetchStatus': None, 'parsedPoints': 0,
+                       'activityKeys': list(zwift_raw.keys())}
         if access_token:
             try:
+                # Zwift webhook stores the key as 'jsonFitFileUrl' (lowercase u);
+                # thirdparty API may use 'jsonFitFileURL' (uppercase) — check both.
+                json_fit_url = (zwift_raw.get('jsonFitFileUrl') or
+                                zwift_raw.get('jsonFitFileURL'))
+
+                # For fitFileURL, fetch fresh to get a non-expired presigned URL.
                 fresh = get_zwift_service().get_user_activity(
                     str(zwift_activity_id), access_token
                 ) or {}
-                json_fit_url = fresh.get('jsonFitFileURL')
-                zwift_debug['jsonFitUrl'] = json_fit_url
+                fit_file_url = fresh.get('fitFileURL')
+                # Also pick up jsonFit from fresh response if not in stored data
+                if not json_fit_url:
+                    json_fit_url = (fresh.get('jsonFitFileURL') or
+                                    fresh.get('jsonFitFileUrl'))
+                    zwift_debug['activityKeys'] = list(fresh.keys())
+
+                zwift_debug['jsonFitFileURL'] = json_fit_url
+                zwift_debug['fitFileURL'] = fit_file_url
                 logger.info(
-                    "dual_recording: jsonFitFileURL for %s → %s",
-                    zwift_activity_id,
-                    json_fit_url or 'NOT FOUND',
+                    "dual_recording: stored keys=%s fitFileURL=%s jsonFitFileURL=%s",
+                    list(zwift_raw.keys()), fit_file_url or 'NONE', json_fit_url or 'NONE',
                 )
+                # Prefer JSON FIT; fall back to binary FIT (parsed with fitdecode)
                 if json_fit_url:
                     fit_resp = get_zwift_service().get_activity_json_fit(
                         json_fit_url, access_token
                     )
-                    zwift_debug['fitFetchStatus'] = 'ok' if fit_resp is not None else 'empty'
-                    logger.info(
-                        "dual_recording: JSON FIT response type=%s keys=%s",
-                        type(fit_resp).__name__,
-                        list(fit_resp.keys()) if isinstance(fit_resp, dict) else
-                        f'list[{len(fit_resp)}]' if isinstance(fit_resp, list) else 'None',
-                    )
+                    zwift_debug['fitFetchStatus'] = 'json_ok' if fit_resp is not None else 'json_empty'
                     if fit_resp:
                         zwift_streams = _parse_json_fit_streams(fit_resp)
                         n = len((zwift_streams or {}).get('time') or [])
                         zwift_debug['parsedPoints'] = n
-                        logger.info("dual_recording: parsed Zwift streams — %d time points", n)
+                elif fit_file_url:
+                    zwift_streams, status = _parse_binary_fit_url(fit_file_url, access_token)
+                    zwift_debug['fitFetchStatus'] = status
+                    zwift_debug['parsedPoints'] = len((zwift_streams or {}).get('time') or [])
+                else:
+                    zwift_debug['fitFetchStatus'] = 'no_url'
             except Exception as e:
                 zwift_debug['fitFetchStatus'] = str(e)
-                logger.warning("Could not fetch Zwift JSON FIT streams: %s", e)
+                logger.warning("Could not fetch Zwift FIT streams: %s", e)
 
         # ── 2. Fetch Zwift CP curve for this activity ─────────────────────────
         zwift_cp_curve = {}
