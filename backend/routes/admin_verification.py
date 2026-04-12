@@ -56,62 +56,72 @@ def _resample_to_1hz(times: list, values: list) -> list:
     return result
 
 
-def _xcorr_sync_offset(
-    z_times: list, z_signal: list,
-    s_times: list, s_signal: list,
+def _mse_sync_offset(
+    z_times: list, z_watts: list,
+    s_times: list, s_watts: list,
     search_sec: int = 600,
 ) -> 'int | None':
     """
-    Find the integer-second offset to add to Strava times so its signal
-    aligns with Zwift's.  Uses sliding-window cross-correlation on
-    1 Hz-resampled data.
+    Find the integer-second offset τ to add to Strava times so its power
+    stream best matches Zwift's, by minimising mean squared error:
 
-    Best signal for Zwift dual-recording is POWER: both devices read from
-    the same power meter so the shapes are identical regardless of any
-    systematic calibration difference.  Elevation must NOT be used for
-    Zwift because Strava stores GPS altitude (0 for indoor/trainer rides),
-    not virtual terrain elevation.
+        min_τ  mean_t[ (strava_watts_{t+τ} - zwift_watts_t)² ]
 
-    Returns the offset in seconds (positive = Strava started later than Zwift),
-    or None if there is insufficient data.
+    The MSE approach correctly handles a constant power offset between
+    devices (systematic calibration difference) and naturally returns 0
+    when no shift improves the fit.
+
+    Confidence gate: if no shift improves the MSE at τ=0 by at least 3%,
+    we return 0 — a flat/steady signal doesn't have enough features to
+    reliably distinguish offsets.
+
+    Returns τ in seconds (positive = Strava started later than Zwift),
+    or None if data is insufficient.
     """
-    if not z_times or not z_signal or not s_times or not s_signal:
+    if not z_times or not z_watts or not s_times or not s_watts:
         return None
 
-    # Resample both to 1 Hz; replace None with 0
-    z_1hz = [v if v is not None else 0.0 for v in _resample_to_1hz(z_times, z_signal)]
-    s_1hz = [v if v is not None else 0.0 for v in _resample_to_1hz(s_times, s_signal)]
+    z_1hz = [v if v is not None else 0.0 for v in _resample_to_1hz(z_times, z_watts)]
+    s_1hz = [v if v is not None else 0.0 for v in _resample_to_1hz(s_times, s_watts)]
 
     nz, ns = len(z_1hz), len(s_1hz)
-    if nz < 30 or ns < 30:
+    if nz < 60 or ns < 60:
         return None
-
-    # Require that the signal has some variance (not flat zero)
     if max(z_1hz) == 0 or max(s_1hz) == 0:
         return None
 
-    best_corr = None
-    best_offset = 0
-
-    # τ = how many seconds to shift s relative to z.
-    # Positive τ: Strava started τ seconds after Zwift.
-    for tau in range(-search_sec, search_sec + 1):
+    def _mse(tau):
         z_start = max(0, tau)
         s_start = max(0, -tau)
         length = min(nz - z_start, ns - s_start)
-        if length < 30:
-            continue
-
+        if length < 60:
+            return None
         zw = z_1hz[z_start: z_start + length]
         sw = s_1hz[s_start: s_start + length]
+        return sum((a - b) ** 2 for a, b in zip(zw, sw)) / length
 
-        dot = sum(a * b for a, b in zip(zw, sw))
+    # MSE at τ=0 is our baseline — beats nothing is still nothing
+    mse_zero = _mse(0)
+    if mse_zero is None:
+        return None
 
-        if best_corr is None or dot > best_corr:
-            best_corr = dot
-            best_offset = tau
+    best_mse = mse_zero
+    best_tau = 0
 
-    return best_offset
+    for tau in range(-search_sec, search_sec + 1):
+        if tau == 0:
+            continue
+        m = _mse(tau)
+        if m is not None and m < best_mse:
+            best_mse = m
+            best_tau = tau
+
+    # Only trust the result if it meaningfully beats τ=0
+    if best_tau != 0 and best_mse >= mse_zero * 0.97:
+        return 0   # not convincingly better — no shift
+
+    return best_tau
+
 
 
 def _compute_best_efforts(w_1hz: list, durations=(5, 15, 30, 60, 120, 300, 1200)) -> dict:
@@ -1002,9 +1012,9 @@ def dual_recording(rider_id):
         z_watts_raw = (zwift_streams or {}).get('watts') or []
         z_times_raw = (zwift_streams or {}).get('time') or []
 
-        power_offset = _xcorr_sync_offset(z_times_raw, z_watts_raw, s_times, s_watts)
+        power_offset = _mse_sync_offset(z_times_raw, z_watts_raw, s_times, s_watts)
         strava_offset = power_offset if power_offset is not None else ts_offset
-        sync_method = 'power_xcorr' if power_offset is not None else 'timestamp'
+        sync_method = 'power_mse' if power_offset is not None else 'timestamp'
 
         s_aligned_times = [strava_offset + t for t in s_times] if s_times else []
 
