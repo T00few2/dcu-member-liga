@@ -919,56 +919,29 @@ def dual_recording(rider_id):
         s_hr      = _extract_stream(raw_streams, 'heartrate')
         s_alt     = _extract_stream(raw_streams, 'altitude')
 
-        # ── 5. Convert both streams to race-relative time via absolute timestamps ─
-        # Zwift stream t[i]  = seconds since zwift_startedAt
-        # Strava stream t[i] = seconds since strava_startedAt
-        # Both have absolute UTC anchors in their startedAt fields, so we can
-        # compute race-relative time without any guesswork:
-        #   race_t = (startedAt + stream_t) - race_anchor
-        # where race_anchor = eventStartIso (if provided) else min(z_dt, s_dt).
+        # ── 5 & 6. Align streams by startedAt timestamps ─────────────────────
+        # Zwift t[i]  = seconds since zwift_startedAt  → keep as-is (t=0 = Zwift start)
+        # Strava t[i] = seconds since strava_startedAt → shift by (strava_start - zwift_start)
         strava_started_at = (matched_strava or {}).get('startDate', '')
 
         z_dt = _parse_iso_utc(zwift_started_at) if zwift_started_at else None
         s_dt = _parse_iso_utc(strava_started_at) if strava_started_at else None
 
-        # Choose race anchor (t=0 on the chart)
-        if event_start_iso:
-            race_anchor = _parse_iso_utc(event_start_iso) or z_dt or s_dt
-        elif z_dt and s_dt:
-            race_anchor = min(z_dt, s_dt)
-        else:
-            race_anchor = z_dt or s_dt
+        strava_offset = int((s_dt - z_dt).total_seconds()) if (z_dt and s_dt) else 0
+        s_aligned_times = [strava_offset + t for t in s_times] if s_times else []
 
-        # Seconds from race_anchor to each activity's start (may be negative
-        # if the activity started before the race anchor).
-        zwift_base = int((z_dt - race_anchor).total_seconds()) if (z_dt and race_anchor) else 0
-        strava_base = int((s_dt - race_anchor).total_seconds()) if (s_dt and race_anchor) else 0
+        # Trim Strava to the Zwift activity window [0, zwift_duration_sec].
+        win_end = zwift_duration_sec or 0
 
-        # ── 6. Normalise Zwift stream & trim Strava to race window ────────────
-        # Zwift: shift raw t so t=0 is race_anchor (pre-race warmup → t < 0).
-        if zwift_streams and zwift_base != 0 and zwift_streams.get('time'):
-            zwift_streams = {
-                **zwift_streams,
-                'time': [t + zwift_base for t in zwift_streams['time']],
-            }
-
-        # Strava: convert to race-relative time, then keep only the race window.
-        # strava_base may be positive (Strava started before race anchor)
-        # or negative (Strava started after race anchor — missing early seconds).
-        s_race_times = [strava_base + t for t in s_times] if s_times else []
-
-        win_start = 0
-        win_end   = zwift_duration_sec or 0
-
-        if s_race_times and zwift_duration_sec:
-            mask = [win_start <= t <= win_end for t in s_race_times]
-            t_trimmed   = [t for t, m in zip(s_race_times, mask) if m]
+        if s_aligned_times and zwift_duration_sec:
+            mask = [0 <= t <= win_end for t in s_aligned_times]
+            t_trimmed   = [t for t, m in zip(s_aligned_times, mask) if m]
             w_trimmed   = [v for v, m in zip(s_watts or [], mask) if m]
             cad_trimmed = [v for v, m in zip(s_cadence or [], mask) if m]
             hr_trimmed  = [v for v, m in zip(s_hr or [], mask) if m]
             alt_trimmed = [v for v, m in zip(s_alt or [], mask) if m]
         else:
-            t_trimmed   = list(s_race_times)
+            t_trimmed   = list(s_aligned_times)
             w_trimmed   = list(s_watts) if s_watts else []
             cad_trimmed = list(s_cadence) if s_cadence else []
             hr_trimmed  = list(s_hr) if s_hr else []
@@ -1023,10 +996,8 @@ def dual_recording(rider_id):
                 },
             },
             'sync': {
-                'zwiftBase': zwift_base,
-                'stravaBase': strava_base,
+                'stravaOffsetSec': strava_offset,
                 'zwiftDurationSec': zwift_duration_sec,
-                'anchoredByEventStart': event_start_iso is not None,
             },
             'comparison': {
                 'cpDiff': cp_diff,
