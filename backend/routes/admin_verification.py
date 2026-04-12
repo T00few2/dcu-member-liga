@@ -816,6 +816,19 @@ def dual_recording(rider_id):
                     )
                     zwift_debug['fitFetchStatus'] = 'json_ok' if fit_resp is not None else 'json_empty'
                     if fit_resp:
+                        # Capture top-level structure for debugging unknown formats
+                        if isinstance(fit_resp, dict):
+                            zwift_debug['jsonFitStructure'] = {
+                                'type': 'dict',
+                                'keys': list(fit_resp.keys())[:20],
+                            }
+                        elif isinstance(fit_resp, list):
+                            first = fit_resp[0] if fit_resp else None
+                            zwift_debug['jsonFitStructure'] = {
+                                'type': 'list',
+                                'length': len(fit_resp),
+                                'firstItemKeys': list(first.keys())[:20] if isinstance(first, dict) else str(type(first)),
+                            }
                         zwift_streams = _parse_json_fit_streams(fit_resp)
                         n = len((zwift_streams or {}).get('time') or [])
                         zwift_debug['parsedPoints'] = n
