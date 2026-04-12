@@ -321,8 +321,7 @@ def list_zwift_activities(rider_id):
         docs = (
             db.collection('zwift_activities')
             .where('userId', '==', str(zwift_user_id))
-            .order_by('updatedAt', direction='DESCENDING')
-            .limit(30)
+            .limit(100)
             .stream()
         )
 
@@ -341,6 +340,10 @@ def list_zwift_activities(rider_id):
                              or raw.get('average_watts')),
                 'sport': raw.get('sport', raw.get('type', 'CYCLING')),
             })
+
+        # Sort newest first in Python (avoids composite Firestore index on userId+updatedAt)
+        activities.sort(key=lambda a: a.get('startedAt') or '', reverse=True)
+        activities = activities[:30]
 
         return jsonify({'activities': activities}), 200
 
@@ -469,15 +472,40 @@ def event_activity(rider_id):
         duration_sec = int(duration_ms / 1000) if duration_ms else None
         avg_watts = found_entry.get('avgWatts')
 
-        # ── 3. Find the Zwift activity in the webhook store by event timing ────
+        # ── 3. Find the Zwift activity ─────────────────────────────────────────
         zwift_activity = None
+        access_token = get_valid_access_token(str(user.id), get_zwift_service())
+
+        # 3a. Try activityId from segment result (live API may include it)
+        candidate_id = (found_entry.get('activityId') or found_entry.get('id'))
+        if candidate_id and access_token:
+            try:
+                act_data = get_zwift_service().get_user_activity(
+                    str(candidate_id), access_token
+                )
+                if act_data:
+                    started = (act_data.get('startedAt') or act_data.get('startDate')
+                               or act_data.get('start_date'))
+                    raw_dur_ms = (act_data.get('durationInMilliseconds')
+                                  or act_data.get('duration_in_milliseconds', 0))
+                    zwift_activity = {
+                        'activityId': str(candidate_id),
+                        'startedAt': started,
+                        'durationSec': int(raw_dur_ms / 1000) if raw_dur_ms else None,
+                        'avgWatts': (act_data.get('avgWatts')
+                                     or act_data.get('averagePowerInWatts')
+                                     or act_data.get('average_watts')),
+                    }
+            except Exception as exc:
+                logger.debug(f"event_activity: segment entry id {candidate_id} not a valid activity: {exc}")
+
+        # 3b. Search webhook store by event start time (no composite index — sort in Python)
         event_dt = _parse_iso_utc(event_start_iso) if event_start_iso else None
-        if event_dt:
+        if not zwift_activity and event_dt and db:
             docs = (
                 db.collection('zwift_activities')
                 .where('userId', '==', zwift_user_id_str)
-                .order_by('updatedAt', direction='DESCENDING')
-                .limit(50)
+                .limit(100)
                 .stream()
             )
             best_delta = float('inf')
