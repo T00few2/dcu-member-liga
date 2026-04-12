@@ -644,7 +644,6 @@ def dual_recording(rider_id):
 
         zf = _extract_zwift_activity_fields(zwift_raw)
         zwift_started_at = zf['startedAt']
-        zwift_duration_ms = zf['durationMs']
         zwift_duration_sec = zf['durationSec']
         zwift_avg_watts = zf['avgWatts']
 
