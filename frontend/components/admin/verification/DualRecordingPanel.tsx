@@ -156,14 +156,17 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
     if (!hasZwift && !hasStrava) return null;
 
     // Build race-time maps: key = race-time in seconds (0 = race start)
-    // Zwift time is already race-relative.
-    // Strava time needs offsetSec subtracted.
+    // Strava time 0 IS race start (stravaWindowStart = 0 anchor).
+    // offsetSec = zwift_start − strava_start, so to align Zwift onto the
+    // race-time axis we add offsetSec to each Zwift timestamp.
+    // e.g. offsetSec = −234 → Zwift t=234 maps to race_time 0.
     type StreamPoint = { w: number | null; hr: number | null; cad: number | null };
     const zwiftMap = new Map<number, StreamPoint>();
     if (hasZwift) {
         const { time, watts, heartrate, cadence } = zwift.streams!;
         time.filter((_, i) => i % step === 0).forEach((t, i) => {
-            zwiftMap.set(t, {
+            const raceT = t + offsetSec;
+            zwiftMap.set(raceT, {
                 w:   watts[i * step]     ?? null,
                 hr:  heartrate[i * step] ?? null,
                 cad: cadence[i * step]   ?? null,
@@ -175,8 +178,7 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
     if (hasStrava) {
         const { time, watts, heartrate, cadence } = strava!.streams;
         time.filter((_, i) => i % step === 0).forEach((t, i) => {
-            const raceT = t - offsetSec;
-            stravaMap.set(raceT, {
+            stravaMap.set(t, {
                 w:   watts[i * step]     ?? null,
                 hr:  heartrate[i * step] ?? null,
                 cad: cadence[i * step]   ?? null,
@@ -564,7 +566,7 @@ export default function DualRecordingPanel({
                                 <h4 className="text-sm font-semibold mb-2 text-card-foreground">
                                     Recording Streams
                                     <span className="ml-2 text-xs font-normal text-muted-foreground">
-                                        race time axis · Strava aligned to Zwift start
+                                        race time axis · Zwift shifted to race start (t=0)
                                     </span>
                                 </h4>
                                 <DualStreamChart result={result} />
