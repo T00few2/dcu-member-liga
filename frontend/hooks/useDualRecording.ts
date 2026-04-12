@@ -45,6 +45,13 @@ export interface DualRecordingResult {
         durationSec: number | null;
         avgWatts: number | null;
         cpCurve: Record<string, number>;
+        streams: {
+            time: number[];
+            watts: (number | null)[];
+            cadence: (number | null)[];
+            heartrate: (number | null)[];
+            altitude: (number | null)[];
+        } | null;
     };
     strava: {
         activityId: number | null;

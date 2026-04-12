@@ -188,6 +188,28 @@ class ZwiftService:
             return None
         return self._safe_json(response)
 
+    def get_activity_json_fit(self, json_fit_url: str, user_access_token: str) -> dict[str, Any] | list | None:
+        """
+        Fetch the JSON FIT file for an activity from its absolute URL.
+
+        The URL comes from the ``jsonFitFileURL`` field of the activity response
+        and may be on a different host than the primary API, so we issue a direct
+        request rather than going through ``_api_request``.
+        """
+        try:
+            headers = {
+                "Authorization": f"Bearer {user_access_token}",
+                "Accept": "application/json",
+            }
+            response = requests.get(json_fit_url, headers=headers, timeout=30)
+            if response.status_code == 200:
+                return response.json()
+            logger.warning("JSON FIT fetch returned %s for %s", response.status_code, json_fit_url)
+            return None
+        except Exception as exc:
+            logger.error("JSON FIT fetch error: %s", exc)
+            return None
+
     def get_power_profile(self, user_access_token: str) -> dict[str, Any] | None:
         response = self._api_get("/api/link/power-curve/power-profile", token=user_access_token)
         if response.status_code != 200:

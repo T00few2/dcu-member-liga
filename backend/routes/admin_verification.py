@@ -109,6 +109,76 @@ def _build_cp_comparison(zwift_curve: dict, strava_curve: dict) -> list:
     return rows
 
 
+def _parse_json_fit_streams(data: 'dict | list') -> dict:
+    """
+    Parse a Zwift JSON FIT response into parallel stream arrays.
+
+    Handles three layouts:
+      • Top-level list of record objects
+          [{"timestamp": N, "power": W, "heart_rate": HR, "cadence": C, "altitude": A}, ...]
+      • Records wrapped under a key ("records", "data", "record"):
+          {"records": [...]}  /  {"messages": {"record": [...]}}
+      • Parallel arrays (Strava-style):
+          {"power": [...], "heart_rate": [...], "time": [...], ...}
+    """
+    records = None
+
+    if isinstance(data, list):
+        records = data
+    elif isinstance(data, dict):
+        records = (
+            data.get('records') or data.get('data') or
+            data.get('record') or (data.get('messages') or {}).get('record')
+        )
+        if records is None and ('power' in data or 'watts' in data):
+            # Parallel-arrays layout
+            n = len(data.get('power') or data.get('watts') or [])
+            return {
+                'time':      data.get('time') or list(range(n)),
+                'watts':     data.get('power') or data.get('watts') or [],
+                'heartrate': data.get('heart_rate') or data.get('heartrate') or data.get('hr') or [],
+                'cadence':   data.get('cadence') or [],
+                'altitude':  data.get('altitude') or [],
+            }
+
+    if not records:
+        return {'time': [], 'watts': [], 'heartrate': [], 'cadence': [], 'altitude': []}
+
+    time_arr, watts_arr, hr_arr, cad_arr, alt_arr = [], [], [], [], []
+    base_ts = None
+
+    for rec in records:
+        if not isinstance(rec, dict):
+            continue
+        ts = rec.get('timestamp')
+        if ts is None:
+            continue
+        if isinstance(ts, str):
+            dt = _parse_iso_utc(ts)
+            epoch = dt.timestamp() if dt else None
+        elif isinstance(ts, (int, float)):
+            epoch = float(ts)
+        else:
+            continue
+        if epoch is None:
+            continue
+        if base_ts is None:
+            base_ts = epoch
+        time_arr.append(int(epoch - base_ts))
+        watts_arr.append(rec.get('power') or rec.get('watts'))
+        hr_arr.append(rec.get('heart_rate') or rec.get('heartrate') or rec.get('hr'))
+        cad_arr.append(rec.get('cadence'))
+        alt_arr.append(rec.get('altitude'))
+
+    return {
+        'time':      time_arr,
+        'watts':     watts_arr,
+        'heartrate': hr_arr,
+        'cadence':   cad_arr,
+        'altitude':  alt_arr,
+    }
+
+
 def _extract_zwift_activity_fields(raw: dict) -> dict:
     """
     Extract normalised fields from a Zwift activity payload.
@@ -647,6 +717,17 @@ def dual_recording(rider_id):
         zwift_duration_sec = zf['durationSec']
         zwift_avg_watts = zf['avgWatts']
 
+        # ── 1b. Fetch Zwift JSON FIT streams ──────────────────────────────────
+        zwift_streams = None
+        json_fit_url = zwift_raw.get('jsonFitFileURL')
+        if json_fit_url and access_token:
+            try:
+                fit_data = get_zwift_service().get_activity_json_fit(json_fit_url, access_token)
+                if fit_data:
+                    zwift_streams = _parse_json_fit_streams(fit_data)
+            except Exception as e:
+                logger.warning(f"Could not fetch Zwift JSON FIT streams: {e}")
+
         # ── 2. Fetch Zwift CP curve for this activity ─────────────────────────
         zwift_cp_curve = {}
         if access_token:
@@ -697,6 +778,7 @@ def dual_recording(rider_id):
                     'durationSec': zwift_duration_sec,
                     'avgWatts': zwift_avg_watts,
                     'cpCurve': zwift_cp_curve,
+                    'streams': zwift_streams,
                 },
                 'strava': None,
                 'sync': None,
@@ -768,6 +850,7 @@ def dual_recording(rider_id):
                 'durationSec': zwift_duration_sec,
                 'avgWatts': zwift_avg_watts,
                 'cpCurve': zwift_cp_curve,
+                'streams': zwift_streams,
             },
             'strava': {
                 'activityId': int(strava_activity_id) if strava_activity_id else None,
