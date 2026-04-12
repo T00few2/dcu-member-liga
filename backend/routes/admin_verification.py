@@ -950,11 +950,11 @@ def dual_recording(rider_id):
             hr_trimmed  = _trim(s_hr)
             alt_trimmed = _trim(s_alt)
         else:
-            t_trimmed   = list(s_times)    if s_times    else []
-            w_trimmed   = list(s_watts)    if s_watts    else []
-            cad_trimmed = list(s_cadence)  if s_cadence  else []
-            hr_trimmed  = list(s_hr)       if s_hr       else []
-            alt_trimmed = list(s_alt)      if s_alt      else []
+            t_trimmed = list(s_times) if s_times else []
+            w_trimmed = list(s_watts) if s_watts else []
+            cad_trimmed = list(s_cadence) if s_cadence else []
+            hr_trimmed = list(s_hr) if s_hr else []
+            alt_trimmed = list(s_alt) if s_alt else []
 
         # Normalise Zwift time so race start = t 0 (pre-race warmup is t < 0).
         zwift_time_shift = min(0, offset_sec)
