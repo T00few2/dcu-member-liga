@@ -420,8 +420,6 @@ export default function DualRecordingPanel({
     onLoadEventActivity,
 }: Props) {
     const loaded = useRef(false);
-    const [manualZwiftId, setManualZwiftId] = useState('');
-
     // Auto-load activity lists when this panel first renders for a rider
     useEffect(() => {
         if (!loaded.current && riderId) {
@@ -430,15 +428,13 @@ export default function DualRecordingPanel({
         }
     }, [riderId, onLoadActivities]);
 
-    // Reset loaded flag and manual input when rider changes
+    // Reset loaded flag when rider changes
     useEffect(() => {
         loaded.current = false;
-        setManualZwiftId('');
     }, [riderId]);
 
-    // Manual input overrides the dropdown / event-matched ID
-    const effectiveZwiftId = manualZwiftId.trim()
-        || (eventActivityResult?.zwiftActivity?.activityId ?? null)
+    const effectiveZwiftId =
+        (eventActivityResult?.zwiftActivity?.activityId ?? null)
         || selectedZwiftId;
 
     const handleCompare = () => {
@@ -508,7 +504,7 @@ export default function DualRecordingPanel({
                         <label className="block text-xs font-medium text-muted-foreground">
                             Zwift Activity
                         </label>
-                        {eventActivityResult?.found && eventActivityResult.zwiftActivity && !manualZwiftId ? (
+                        {eventActivityResult?.found && eventActivityResult.zwiftActivity ? (
                             <div className="text-xs bg-green-50 border border-green-200 rounded px-2 py-1.5 font-mono text-green-800">
                                 {eventActivityResult.zwiftActivity.activityId}
                                 <span className="ml-2 text-green-600 font-sans">(from event lookup)</span>
@@ -517,10 +513,9 @@ export default function DualRecordingPanel({
                             <div className="h-9 bg-muted/40 rounded animate-pulse" />
                         ) : zwiftActivities.length > 0 ? (
                             <select
-                                value={manualZwiftId ? '' : (selectedZwiftId ?? '')}
-                                onChange={e => { setSelectedZwiftId(e.target.value); setManualZwiftId(''); }}
-                                disabled={!!manualZwiftId}
-                                className="w-full text-sm bg-background border border-input rounded px-2 py-1.5 text-foreground focus:ring-1 focus:ring-primary disabled:opacity-40"
+                                value={selectedZwiftId ?? ''}
+                                onChange={e => setSelectedZwiftId(e.target.value)}
+                                className="w-full text-sm bg-background border border-input rounded px-2 py-1.5 text-foreground focus:ring-1 focus:ring-primary"
                             >
                                 <option value="">— select activity —</option>
                                 {zwiftActivities.map(a => (
@@ -534,13 +529,6 @@ export default function DualRecordingPanel({
                         ) : (
                             <p className="text-xs text-muted-foreground italic">No webhook-captured activities.</p>
                         )}
-                        <input
-                            type="text"
-                            placeholder="Or paste Zwift activity ID…"
-                            value={manualZwiftId}
-                            onChange={e => setManualZwiftId(e.target.value)}
-                            className="w-full text-sm bg-background border border-input rounded px-2 py-1.5 text-foreground placeholder:text-muted-foreground/50 focus:ring-1 focus:ring-primary font-mono"
-                        />
                     </div>
 
                     {/* Strava */}
