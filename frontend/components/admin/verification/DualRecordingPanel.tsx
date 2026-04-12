@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-    ResponsiveContainer, LineChart, Line,
+    ResponsiveContainer, LineChart, Line, Brush,
 } from 'recharts';
 import type {
     ZwiftActivity, StravaMatchActivity, DualRecordingResult, CpDiffRow,
@@ -151,6 +151,14 @@ function fmtRaceTime(sec: number) {
 function DualStreamChart({ result }: { result: DualRecordingResult }) {
     const { zwift, strava, sync } = result;
     const step = 5;
+    const [hidden, setHidden] = useState<Set<string>>(new Set());
+
+    const toggleSeries = (dataKey: string) =>
+        setHidden(prev => {
+            const next = new Set(prev);
+            if (next.has(dataKey)) next.delete(dataKey); else next.add(dataKey);
+            return next;
+        });
 
     const hasZwift = (zwift.streams?.time?.length ?? 0) > 0;
     const hasStrava = (strava?.streams?.time?.length ?? 0) > 0;
@@ -218,10 +226,34 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
     const hasHR  = chartData.some(d => d.hr  !== null);
     const hasCad = chartData.some(d => d.cad !== null);
 
+    // Legend click handler — Recharts passes the legend item payload
+    // dataKey is DataKey<any> (string | number | fn), coerce to string.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const handleLegendClick = (e: any) => {
+        const key = e?.dataKey != null ? String(e.dataKey) : null;
+        if (key) toggleSeries(key);
+    };
+
+    // Style legend labels to reflect hidden state
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const legendFormatter = (value: string, entry: any) => {
+        const key = entry?.dataKey != null ? String(entry.dataKey) : '';
+        return (
+            <span style={{
+                cursor: 'pointer',
+                opacity: hidden.has(key) ? 0.35 : 1,
+                textDecoration: hidden.has(key) ? 'line-through' : 'none',
+                userSelect: 'none',
+            }}>
+                {value}
+            </span>
+        );
+    };
+
     return (
-        <div className="h-[280px] w-full">
+        <div className="h-[360px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData}>
+                <LineChart data={chartData} margin={{ top: 0, right: 10, bottom: 0, left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.3} />
                     <XAxis dataKey="t" type="number" domain={['dataMin', 'dataMax']}
                         tickFormatter={fmtRaceTime}
@@ -237,26 +269,39 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
                         formatter={(v: unknown, name: string) =>
                             v != null ? [`${Math.round(v as number)}`, name] : ['—', name]}
                     />
-                    <Legend verticalAlign="top" height={28} />
+                    <Legend
+                        verticalAlign="top" height={28}
+                        onClick={handleLegendClick}
+                        formatter={legendFormatter}
+                    />
+                    <Brush
+                        dataKey="t" height={22}
+                        stroke="var(--border)" fill="var(--background)"
+                        tickFormatter={fmtRaceTime}
+                    />
                     {hasZwift && (
                         <Line yAxisId="w" type="monotone" dataKey="zwiftW"
                             stroke="#FC6719" dot={false} strokeWidth={2}
-                            name="Zwift Power (W)" isAnimationActive={false} connectNulls={false} />
+                            name="Zwift Power (W)" isAnimationActive={false} connectNulls={false}
+                            hide={hidden.has('zwiftW')} />
                     )}
                     {hasStrava && (
                         <Line yAxisId="w" type="monotone" dataKey="stravaW"
                             stroke="#FC4C02" dot={false} strokeWidth={1.5} strokeDasharray="5 3"
-                            name="Strava Power (W)" isAnimationActive={false} connectNulls={false} />
+                            name="Strava Power (W)" isAnimationActive={false} connectNulls={false}
+                            hide={hidden.has('stravaW')} />
                     )}
                     {hasHR && (
                         <Line yAxisId="hr" type="monotone" dataKey="hr"
                             stroke="#ef4444" dot={false} strokeWidth={1} strokeDasharray="3 3"
-                            name="HR (bpm)" isAnimationActive={false} />
+                            name="HR (bpm)" isAnimationActive={false}
+                            hide={hidden.has('hr')} />
                     )}
                     {hasCad && (
                         <Line yAxisId="hr" type="monotone" dataKey="cad"
                             stroke="#82ca9d" dot={false} strokeWidth={1} strokeDasharray="2 2"
-                            name="Cadence (rpm)" isAnimationActive={false} />
+                            name="Cadence (rpm)" isAnimationActive={false}
+                            hide={hidden.has('cad')} />
                     )}
                 </LineChart>
             </ResponsiveContainer>
