@@ -718,15 +718,38 @@ def dual_recording(rider_id):
         zwift_avg_watts = zf['avgWatts']
 
         # ── 1b. Fetch Zwift JSON FIT streams ──────────────────────────────────
+        # Always get a fresh activity from the Zwift API for the jsonFitFileURL —
+        # the URL stored in Firestore may have expired (they are short-lived).
         zwift_streams = None
-        json_fit_url = zwift_raw.get('jsonFitFileURL')
-        if json_fit_url and access_token:
+        if access_token:
             try:
-                fit_data = get_zwift_service().get_activity_json_fit(json_fit_url, access_token)
-                if fit_data:
-                    zwift_streams = _parse_json_fit_streams(fit_data)
+                fresh = get_zwift_service().get_user_activity(
+                    str(zwift_activity_id), access_token
+                ) or {}
+                json_fit_url = fresh.get('jsonFitFileURL')
+                logger.info(
+                    "dual_recording: jsonFitFileURL for %s → %s",
+                    zwift_activity_id,
+                    json_fit_url or 'NOT FOUND',
+                )
+                if json_fit_url:
+                    fit_data = get_zwift_service().get_activity_json_fit(
+                        json_fit_url, access_token
+                    )
+                    logger.info(
+                        "dual_recording: JSON FIT response type=%s keys=%s",
+                        type(fit_data).__name__,
+                        list(fit_data.keys()) if isinstance(fit_data, dict) else
+                        f'list[{len(fit_data)}]' if isinstance(fit_data, list) else 'None',
+                    )
+                    if fit_data:
+                        zwift_streams = _parse_json_fit_streams(fit_data)
+                        logger.info(
+                            "dual_recording: parsed Zwift streams — %d time points",
+                            len((zwift_streams or {}).get('time') or []),
+                        )
             except Exception as e:
-                logger.warning(f"Could not fetch Zwift JSON FIT streams: {e}")
+                logger.warning("Could not fetch Zwift JSON FIT streams: %s", e)
 
         # ── 2. Fetch Zwift CP curve for this activity ─────────────────────────
         zwift_cp_curve = {}
