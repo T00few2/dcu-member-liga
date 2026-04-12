@@ -30,6 +30,146 @@ def _extract_stream(streams, stream_type):
     return []
 
 
+def _mask_streams(mask: list, **arrays: list) -> dict:
+    """Apply a boolean mask to one or more parallel stream arrays.
+
+    Example:
+        _mask_streams(mask, time=t, watts=w, cadence=c)
+    Returns a dict with the same keys, each filtered to only the True entries.
+    """
+    return {k: [v for v, m in zip(arr, mask) if m] for k, arr in arrays.items()}
+
+
+def _fetch_zwift_streams(zwift_raw: dict, zwift_activity_id: str, access_token: str) -> dict:
+    """Fetch Zwift FIT streams for *zwift_activity_id*.
+
+    Tries JSON FIT first (non-expiring API URL); falls back to binary FIT
+    (fitdecode).  Returns a streams dict (may be empty) plus a debug dict.
+    """
+    streams = None
+    debug = {
+        'fitFileURL': None, 'jsonFitFileURL': None,
+        'fitFetchStatus': None, 'parsedPoints': 0,
+        'activityKeys': list(zwift_raw.keys()),
+    }
+
+    json_fit_url = zwift_raw.get('jsonFitFileUrl') or zwift_raw.get('jsonFitFileURL')
+
+    # Fetch a fresh copy of the activity to get a non-expired presigned S3 URL.
+    fresh = get_zwift_service().get_user_activity(str(zwift_activity_id), access_token) or {}
+    fit_file_url = fresh.get('fitFileURL')
+    if not json_fit_url:
+        json_fit_url = fresh.get('jsonFitFileURL') or fresh.get('jsonFitFileUrl')
+        debug['activityKeys'] = list(fresh.keys())
+
+    debug['jsonFitFileURL'] = json_fit_url
+    debug['fitFileURL'] = fit_file_url
+
+    if json_fit_url:
+        fit_resp = get_zwift_service().get_activity_json_fit(json_fit_url, access_token)
+        debug['fitFetchStatus'] = 'json_ok' if fit_resp is not None else 'json_empty'
+        if fit_resp:
+            streams = _parse_json_fit_streams(fit_resp)
+            debug['parsedPoints'] = len((streams or {}).get('time') or [])
+
+    if debug['parsedPoints'] == 0 and fit_file_url:
+        bin_streams, bin_status = _parse_binary_fit_url(fit_file_url, access_token)
+        bin_n = len((bin_streams or {}).get('time') or [])
+        debug['binaryFitStatus'] = bin_status
+        debug['binaryFitPoints'] = bin_n
+        if bin_n > 0:
+            streams = bin_streams
+            debug['parsedPoints'] = bin_n
+    elif fit_file_url is None and json_fit_url is None:
+        debug['fitFetchStatus'] = 'no_url'
+
+    return streams or {}, debug
+
+
+def _match_strava_activity(
+    user_id: str, strava_activity_id: 'str | None',
+    zwift_started_at: 'str | None', event_start_iso: 'str | None',
+) -> 'tuple[dict | None, str | None]':
+    """Return (matched_strava_dict, resolved_strava_id) for the best Strava match.
+
+    Prefers an explicit *strava_activity_id*; otherwise auto-matches within 4 h
+    of the Zwift start time (falling back to *event_start_iso*).
+    """
+    activities = strava_service.get_activities_for_matching(user_id)
+
+    if strava_activity_id:
+        match = next((a for a in activities if str(a['id']) == str(strava_activity_id)), None)
+        return match, strava_activity_id if match else None
+
+    anchor_iso = zwift_started_at or event_start_iso
+    anchor_dt = _parse_iso_utc(anchor_iso) if anchor_iso else None
+    if not anchor_dt:
+        return None, None
+
+    closest, min_delta = None, float('inf')
+    for act in activities:
+        act_dt = _parse_iso_utc(act.get('startDate', ''))
+        if act_dt:
+            delta = abs((act_dt - anchor_dt).total_seconds())
+            if delta < min_delta:
+                min_delta = delta
+                closest = act
+
+    if closest and min_delta < 4 * 3600:
+        return closest, str(closest['id'])
+    return None, None
+
+
+def _trim_strava_streams(
+    s_times: list, s_watts: list, s_cadence: list, s_hr: list, s_alt: list,
+    z_times: list, z_watts: list,
+    zwift_started_at: str, strava_started_at: str,
+    zwift_duration_sec: 'int | None',
+) -> 'tuple[dict, int, str]':
+    """Align Strava streams to the Zwift time axis and trim to the race window.
+
+    Returns (trimmed_streams_dict, strava_offset_sec, sync_method).
+    The streams dict has keys: time, watts, cadence, heartrate, altitude.
+    """
+    z_dt = _parse_iso_utc(zwift_started_at) if zwift_started_at else None
+    s_dt = _parse_iso_utc(strava_started_at) if strava_started_at else None
+    ts_offset = int((s_dt - z_dt).total_seconds()) if (z_dt and s_dt) else 0
+
+    power_offset = _mse_sync_offset(z_times, z_watts, s_times, s_watts)
+    strava_offset = power_offset if power_offset is not None else ts_offset
+    sync_method = 'power_mse' if power_offset is not None else 'timestamp'
+
+    s_aligned = [strava_offset + t for t in s_times] if s_times else []
+    win_end = zwift_duration_sec or 0
+
+    if s_aligned and zwift_duration_sec:
+        mask = [0 <= t <= win_end for t in s_aligned]
+        trimmed = _mask_streams(
+            mask,
+            time=s_aligned, watts=s_watts or [], cadence=s_cadence or [],
+            heartrate=s_hr or [], altitude=s_alt or [],
+        )
+    else:
+        trimmed = {
+            'time': list(s_aligned), 'watts': list(s_watts or []),
+            'cadence': list(s_cadence or []), 'heartrate': list(s_hr or []),
+            'altitude': list(s_alt or []),
+        }
+
+    return trimmed, strava_offset, sync_method, ts_offset
+
+
+def _compute_avg_power_diff(
+    zwift_avg: 'float | None', strava_avg: 'float | None',
+) -> 'tuple[float | None, float | None]':
+    """Return (diff_watts, diff_pct) or (None, None) if either value is missing."""
+    if not zwift_avg or not strava_avg:
+        return None, None
+    diff_w = round(zwift_avg - strava_avg, 1)
+    diff_pct = round(diff_w / strava_avg * 100, 1)
+    return diff_w, diff_pct
+
+
 def _resample_to_1hz(times: list, values: list) -> list:
     """
     Linearly interpolate (time, value) pairs onto an integer-second grid
@@ -834,19 +974,14 @@ def dual_recording(rider_id):
         # Fetch token early — needed for both Firestore fallback and CP curve.
         access_token = get_valid_access_token(str(user.id), get_zwift_service())
 
-        # ── 1. Fetch Zwift activity metadata (webhook store → Zwift API) ──────
+        # ── 1. Fetch Zwift activity metadata ──────────────────────────────────
         zwift_doc = db.collection('zwift_activities').document(str(zwift_activity_id)).get()
         zwift_raw = {}
         if zwift_doc.exists:
-            zwift_stored = zwift_doc.to_dict() or {}
-            zwift_raw = zwift_stored.get('data') or {}
+            zwift_raw = (zwift_doc.to_dict() or {}).get('data') or {}
         elif access_token:
-            api_data = get_zwift_service().get_user_activity(
-                str(zwift_activity_id), access_token
-            )
-            if api_data:
-                zwift_raw = api_data
-            else:
+            zwift_raw = get_zwift_service().get_user_activity(str(zwift_activity_id), access_token) or {}
+            if not zwift_raw:
                 return jsonify({'message': 'Zwift activity not found in database or via API.'}), 404
         else:
             return jsonify({'message': 'Zwift activity not found and no Zwift token available.'}), 404
@@ -856,78 +991,15 @@ def dual_recording(rider_id):
         zwift_duration_sec = zf['durationSec']
         zwift_avg_watts = zf['avgWatts']
 
-        # ── 1b. Fetch Zwift FIT streams ───────────────────────────────────────
-        # jsonFitFileUrl (webhook key, lowercase) is a non-expiring API URL —
-        # use directly from zwift_raw.  fitFileURL is a presigned S3 URL
-        # (expires in ~3 h) so we fetch a fresh copy from the API.
-        zwift_streams = None
-        zwift_debug = {'fitFileURL': None, 'jsonFitFileURL': None,
-                       'fitFetchStatus': None, 'parsedPoints': 0,
-                       'activityKeys': list(zwift_raw.keys())}
+        # ── 2. Fetch Zwift FIT streams ────────────────────────────────────────
+        zwift_streams = {}
         if access_token:
             try:
-                # Zwift webhook stores the key as 'jsonFitFileUrl' (lowercase u);
-                # thirdparty API may use 'jsonFitFileURL' (uppercase) — check both.
-                json_fit_url = (zwift_raw.get('jsonFitFileUrl') or
-                                zwift_raw.get('jsonFitFileURL'))
-
-                # For fitFileURL, fetch fresh to get a non-expired presigned URL.
-                fresh = get_zwift_service().get_user_activity(
-                    str(zwift_activity_id), access_token
-                ) or {}
-                fit_file_url = fresh.get('fitFileURL')
-                # Also pick up jsonFit from fresh response if not in stored data
-                if not json_fit_url:
-                    json_fit_url = (fresh.get('jsonFitFileURL') or
-                                    fresh.get('jsonFitFileUrl'))
-                    zwift_debug['activityKeys'] = list(fresh.keys())
-
-                zwift_debug['jsonFitFileURL'] = json_fit_url
-                zwift_debug['fitFileURL'] = fit_file_url
-                logger.info(
-                    "dual_recording: stored keys=%s fitFileURL=%s jsonFitFileURL=%s",
-                    list(zwift_raw.keys()), fit_file_url or 'NONE', json_fit_url or 'NONE',
-                )
-                # Prefer JSON FIT; fall back to binary FIT (parsed with fitdecode)
-                if json_fit_url:
-                    fit_resp = get_zwift_service().get_activity_json_fit(
-                        json_fit_url, access_token
-                    )
-                    zwift_debug['fitFetchStatus'] = 'json_ok' if fit_resp is not None else 'json_empty'
-                    if fit_resp:
-                        # Capture top-level structure for debugging unknown formats
-                        if isinstance(fit_resp, dict):
-                            zwift_debug['jsonFitStructure'] = {
-                                'type': 'dict',
-                                'keys': list(fit_resp.keys())[:20],
-                            }
-                        elif isinstance(fit_resp, list):
-                            first = fit_resp[0] if fit_resp else None
-                            zwift_debug['jsonFitStructure'] = {
-                                'type': 'list',
-                                'length': len(fit_resp),
-                                'firstItemKeys': list(first.keys())[:20] if isinstance(first, dict) else str(type(first)),
-                            }
-                        zwift_streams = _parse_json_fit_streams(fit_resp)
-                        n = len((zwift_streams or {}).get('time') or [])
-                        zwift_debug['parsedPoints'] = n
-
-                # Fall back to binary FIT if JSON FIT yielded no usable data
-                if zwift_debug['parsedPoints'] == 0 and fit_file_url:
-                    bin_streams, bin_status = _parse_binary_fit_url(fit_file_url, access_token)
-                    bin_n = len((bin_streams or {}).get('time') or [])
-                    zwift_debug['binaryFitStatus'] = bin_status
-                    zwift_debug['binaryFitPoints'] = bin_n
-                    if bin_n > 0:
-                        zwift_streams = bin_streams
-                        zwift_debug['parsedPoints'] = bin_n
-                elif fit_file_url is None and json_fit_url is None:
-                    zwift_debug['fitFetchStatus'] = 'no_url'
+                zwift_streams, _ = _fetch_zwift_streams(zwift_raw, zwift_activity_id, access_token)
             except Exception as e:
-                zwift_debug['fitFetchStatus'] = str(e)
                 logger.warning("Could not fetch Zwift FIT streams: %s", e)
 
-        # ── 2. Fetch Zwift CP curve for this activity ─────────────────────────
+        # ── 3. Fetch Zwift CP curve ───────────────────────────────────────────
         zwift_cp_curve = {}
         if access_token:
             try:
@@ -935,41 +1007,16 @@ def dual_recording(rider_id):
                     access_token, str(zwift_activity_id)
                 )
                 points = (curve_data or {}).get('pointsWatts') or {}
-                zwift_cp_curve = {
-                    f'w{dur}': pt.get('value', 0)
-                    for dur, pt in points.items()
-                }
+                zwift_cp_curve = {f'w{dur}': pt.get('value', 0) for dur, pt in points.items()}
             except Exception as e:
                 logger.error(f"Zwift CP curve fetch error: {e}")
 
-        # ── 3. Auto-match Strava activity if not specified ────────────────────
-        strava_activities = strava_service.get_activities_for_matching(str(user.id))
-        matched_strava = None
+        # ── 4. Match Strava activity ──────────────────────────────────────────
+        matched_strava, strava_activity_id = _match_strava_activity(
+            str(user.id), strava_activity_id, zwift_started_at, event_start_iso
+        )
 
-        if strava_activity_id:
-            matched_strava = next(
-                (a for a in strava_activities if str(a['id']) == str(strava_activity_id)), None
-            )
-        else:
-            # Anchor on Zwift start time; fall back to the event start time if unavailable.
-            anchor_iso = zwift_started_at or event_start_iso
-            zwift_dt = _parse_iso_utc(anchor_iso) if anchor_iso else None
-            if zwift_dt:
-                closest, min_delta = None, float('inf')
-                for act in strava_activities:
-                    act_dt = _parse_iso_utc(act.get('startDate', ''))
-                    if act_dt:
-                        delta = abs((act_dt - zwift_dt).total_seconds())
-                        if delta < min_delta:
-                            min_delta = delta
-                            closest = act
-                # Accept matches within 4 hours
-                if closest and min_delta < 4 * 3600:
-                    matched_strava = closest
-                    strava_activity_id = str(matched_strava['id'])
-
-        if not matched_strava and not strava_activity_id:
-            # Return what we have from Zwift with a warning
+        if not matched_strava:
             return jsonify({
                 'zwift': {
                     'activityId': zwift_activity_id,
@@ -977,15 +1024,13 @@ def dual_recording(rider_id):
                     'durationSec': zwift_duration_sec,
                     'avgWatts': zwift_avg_watts,
                     'cpCurve': zwift_cp_curve,
-                    'streams': zwift_streams,
+                    'streams': zwift_streams or None,
                 },
-                'strava': None,
-                'sync': None,
-                'comparison': None,
+                'strava': None, 'sync': None, 'comparison': None,
                 'warning': 'No matching Strava activity found within 4 hours of the Zwift activity.',
             }), 200
 
-        # ── 4. Fetch Strava streams ────────────────────────────────────────────
+        # ── 5. Fetch Strava streams ───────────────────────────────────────────
         raw_streams = strava_service.get_activity_streams(str(user.id), strava_activity_id)
         s_times   = _extract_stream(raw_streams, 'time')
         s_watts   = _extract_stream(raw_streams, 'watts')
@@ -993,68 +1038,25 @@ def dual_recording(rider_id):
         s_hr      = _extract_stream(raw_streams, 'heartrate')
         s_alt     = _extract_stream(raw_streams, 'altitude')
 
-        # ── 5 & 6. Align streams via power cross-correlation ─────────────────
-        # Both Zwift and Strava capture output from the same power meter, so
-        # their power profiles are identical in shape but shifted in time.
-        # Cross-correlating the power signals gives the exact offset.
-        #
-        # NOTE: elevation must NOT be used here.  Strava stores GPS altitude
-        # (zero for indoor/trainer rides), not Zwift's virtual terrain elevation.
-        #
-        # strava_offset: seconds to add to every Strava time so it lands on
-        # the Zwift time axis (t=0 = Zwift recording start).
-        strava_started_at = (matched_strava or {}).get('startDate', '')
-
-        z_dt = _parse_iso_utc(zwift_started_at) if zwift_started_at else None
-        s_dt = _parse_iso_utc(strava_started_at) if strava_started_at else None
-        ts_offset = int((s_dt - z_dt).total_seconds()) if (z_dt and s_dt) else 0
-
-        z_watts_raw = (zwift_streams or {}).get('watts') or []
-        z_times_raw = (zwift_streams or {}).get('time') or []
-
-        power_offset = _mse_sync_offset(z_times_raw, z_watts_raw, s_times, s_watts)
-        strava_offset = power_offset if power_offset is not None else ts_offset
-        sync_method = 'power_mse' if power_offset is not None else 'timestamp'
-
-        s_aligned_times = [strava_offset + t for t in s_times] if s_times else []
-
-        # Trim Strava to the Zwift activity window [0, zwift_duration_sec].
-        win_end = zwift_duration_sec or 0
-
-        if s_aligned_times and zwift_duration_sec:
-            mask = [0 <= t <= win_end for t in s_aligned_times]
-            t_trimmed   = [t for t, m in zip(s_aligned_times, mask) if m]
-            w_trimmed   = [v for v, m in zip(s_watts or [], mask) if m]
-            cad_trimmed = [v for v, m in zip(s_cadence or [], mask) if m]
-            hr_trimmed  = [v for v, m in zip(s_hr or [], mask) if m]
-            alt_trimmed = [v for v, m in zip(s_alt or [], mask) if m]
-        else:
-            t_trimmed   = list(s_aligned_times)
-            w_trimmed   = list(s_watts) if s_watts else []
-            cad_trimmed = list(s_cadence) if s_cadence else []
-            hr_trimmed  = list(s_hr) if s_hr else []
-            alt_trimmed = list(s_alt) if s_alt else []
-
-        # ── 7. Compute Strava CP curves ───────────────────────────────────────
-        strava_w_full   = _resample_to_1hz(s_times, s_watts) if s_watts else []
-        strava_w_synced = _resample_to_1hz(t_trimmed, w_trimmed) if w_trimmed else []
-
-        durations = (5, 15, 30, 60, 120, 300, 1200)
-        strava_cp_raw    = _compute_best_efforts(strava_w_full,   durations)
-        strava_cp_synced = _compute_best_efforts(strava_w_synced, durations)
-
-        strava_avg_synced = (
-            round(sum(strava_w_synced) / len(strava_w_synced), 1)
-            if strava_w_synced else None
+        # ── 6. Align and trim Strava streams to Zwift time axis ──────────────
+        strava_started_at = matched_strava.get('startDate', '')
+        trimmed, strava_offset, sync_method, ts_offset = _trim_strava_streams(
+            s_times, s_watts, s_cadence, s_hr, s_alt,
+            zwift_streams.get('time') or [], zwift_streams.get('watts') or [],
+            zwift_started_at, strava_started_at, zwift_duration_sec,
         )
 
-        # ── 8. Build comparison ───────────────────────────────────────────────
-        cp_diff = _build_cp_comparison(zwift_cp_curve, strava_cp_synced)
+        # ── 7. Compute Strava CP curves ───────────────────────────────────────
+        durations = (5, 15, 30, 60, 120, 300, 1200)
+        strava_cp_raw    = _compute_best_efforts(_resample_to_1hz(s_times, s_watts), durations)
+        strava_cp_synced = _compute_best_efforts(
+            _resample_to_1hz(trimmed['time'], trimmed['watts']), durations
+        )
+        synced_1hz = _resample_to_1hz(trimmed['time'], trimmed['watts'])
+        strava_avg_synced = round(sum(synced_1hz) / len(synced_1hz), 1) if synced_1hz else None
 
-        zwift_avg  = zwift_avg_watts
-        strava_avg = strava_avg_synced
-        avg_diff_w   = round((zwift_avg or 0) - (strava_avg or 0), 1) if (zwift_avg and strava_avg) else None
-        avg_diff_pct = round(avg_diff_w / strava_avg * 100, 1) if (avg_diff_w is not None and strava_avg) else None
+        # ── 8. Build comparison ───────────────────────────────────────────────
+        avg_diff_w, avg_diff_pct = _compute_avg_power_diff(zwift_avg_watts, strava_avg_synced)
 
         return jsonify({
             'zwift': {
@@ -1063,25 +1065,18 @@ def dual_recording(rider_id):
                 'durationSec': zwift_duration_sec,
                 'avgWatts': zwift_avg_watts,
                 'cpCurve': zwift_cp_curve,
-                'streams': zwift_streams,
-                '_debug': zwift_debug,
+                'streams': zwift_streams or None,
             },
             'strava': {
                 'activityId': int(strava_activity_id) if strava_activity_id else None,
-                'name': (matched_strava or {}).get('name', ''),
+                'name': matched_strava.get('name', ''),
                 'startedAt': strava_started_at,
-                'durationSec': (matched_strava or {}).get('durationSec'),
-                'avgWattsRaw': (matched_strava or {}).get('averageWatts'),
+                'durationSec': matched_strava.get('durationSec'),
+                'avgWattsRaw': matched_strava.get('averageWatts'),
                 'avgWattsSynced': strava_avg_synced,
                 'cpCurveRaw': strava_cp_raw,
                 'cpCurveSynced': strava_cp_synced,
-                'streams': {
-                    'time':      t_trimmed,
-                    'watts':     w_trimmed,
-                    'cadence':   cad_trimmed,
-                    'heartrate': hr_trimmed,
-                    'altitude':  alt_trimmed,
-                },
+                'streams': trimmed,
             },
             'sync': {
                 'stravaOffsetSec': strava_offset,
@@ -1090,10 +1085,10 @@ def dual_recording(rider_id):
                 'timestampOffsetSec': ts_offset,
             },
             'comparison': {
-                'cpDiff': cp_diff,
+                'cpDiff': _build_cp_comparison(zwift_cp_curve, strava_cp_synced),
                 'avgPower': {
-                    'zwift': zwift_avg,
-                    'strava': strava_avg,
+                    'zwift': zwift_avg_watts,
+                    'strava': strava_avg_synced,
                     'diffW': avg_diff_w,
                     'diffPct': avg_diff_pct,
                 },
