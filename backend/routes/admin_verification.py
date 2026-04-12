@@ -233,7 +233,7 @@ def _extract_zwift_activity_fields(raw: dict) -> dict:
     }
 
 
-
+@admin_bp.route('/admin/verification/rider/<rider_id>', methods=['GET'])
 def verify_rider(rider_id):
     try:
         require_admin(request)
