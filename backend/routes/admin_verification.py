@@ -109,7 +109,61 @@ def _build_cp_comparison(zwift_curve: dict, strava_curve: dict) -> list:
     return rows
 
 
-@admin_bp.route('/admin/verification/rider/<rider_id>', methods=['GET'])
+def _extract_zwift_activity_fields(raw: dict) -> dict:
+    """
+    Extract normalised fields from a Zwift activity payload.
+    The /api/thirdparty/activity endpoint uses different field names from
+    what we initially guessed, so we try a wide set of candidates.
+    """
+    # Start date — ISO string or numeric Unix timestamp (ms or s)
+    # Official Zwift API field is `startDateTime`; accept legacy variants too.
+    started_at = (raw.get('startDateTime') or raw.get('startedAt') or
+                  raw.get('startDate') or raw.get('start_date') or
+                  raw.get('started_at') or raw.get('startTime') or
+                  raw.get('activityStartDate'))
+    # If numeric timestamp (ms), convert to ISO
+    if isinstance(started_at, (int, float)) and started_at > 1e10:
+        try:
+            from datetime import timezone as _tz
+            started_at = datetime.fromtimestamp(started_at / 1000, tz=_tz.utc).isoformat()
+        except Exception:
+            started_at = None
+    elif isinstance(started_at, (int, float)):
+        # seconds
+        try:
+            from datetime import timezone as _tz
+            started_at = datetime.fromtimestamp(started_at, tz=_tz.utc).isoformat()
+        except Exception:
+            started_at = None
+
+    # Duration — try ms fields first (official: totalDurationInMilliSec), then seconds
+    dur_ms = (raw.get('totalDurationInMilliSec') or raw.get('durationInMilliseconds') or
+              raw.get('duration_in_milliseconds'))
+    if not dur_ms:
+        dur_sec_field = (raw.get('duration') or raw.get('durationInSeconds') or
+                         raw.get('totalDurationInSeconds') or raw.get('elapsed_time'))
+        if dur_sec_field:
+            dur_ms = dur_sec_field * 1000
+
+    # Name
+    name = (raw.get('activityName') or raw.get('name') or
+            raw.get('activity_name') or '')
+
+    # Average power
+    avg_watts = (raw.get('avgWatts') or raw.get('averagePowerInWatts') or
+                 raw.get('average_watts') or raw.get('avg_watts'))
+
+    return {
+        'startedAt': started_at or None,
+        'durationMs': dur_ms or 0,
+        'durationSec': int(dur_ms / 1000) if dur_ms else None,
+        'avgWatts': avg_watts,
+        'name': name,
+        'sport': raw.get('sport') or raw.get('type') or 'CYCLING',
+    }
+
+
+
 def verify_rider(rider_id):
     try:
         require_admin(request)
@@ -329,16 +383,14 @@ def list_zwift_activities(rider_id):
         for doc in docs:
             d = doc.to_dict() or {}
             raw = d.get('data') or {}
+            fields = _extract_zwift_activity_fields(raw)
             activities.append({
                 'activityId': d.get('activityId'),
-                'startedAt': (raw.get('startedAt') or raw.get('startDate')
-                              or raw.get('start_date') or raw.get('date')),
-                'name': raw.get('name', f"Activity {d.get('activityId')}"),
-                'durationMs': (raw.get('durationInMilliseconds')
-                               or raw.get('duration_in_milliseconds', 0)),
-                'avgWatts': (raw.get('avgWatts') or raw.get('averagePowerInWatts')
-                             or raw.get('average_watts')),
-                'sport': raw.get('sport', raw.get('type', 'CYCLING')),
+                'startedAt': fields['startedAt'],
+                'name': fields['name'] or f"Activity {d.get('activityId')}",
+                'durationMs': fields['durationMs'],
+                'avgWatts': fields['avgWatts'],
+                'sport': fields['sport'],
             })
 
         # Sort newest first in Python (avoids composite Firestore index on userId+updatedAt)
@@ -484,17 +536,12 @@ def event_activity(rider_id):
                     str(candidate_id), access_token
                 )
                 if act_data:
-                    started = (act_data.get('startedAt') or act_data.get('startDate')
-                               or act_data.get('start_date'))
-                    raw_dur_ms = (act_data.get('durationInMilliseconds')
-                                  or act_data.get('duration_in_milliseconds', 0))
+                    af = _extract_zwift_activity_fields(act_data)
                     zwift_activity = {
                         'activityId': str(candidate_id),
-                        'startedAt': started,
-                        'durationSec': int(raw_dur_ms / 1000) if raw_dur_ms else None,
-                        'avgWatts': (act_data.get('avgWatts')
-                                     or act_data.get('averagePowerInWatts')
-                                     or act_data.get('average_watts')),
+                        'startedAt': af['startedAt'],
+                        'durationSec': af['durationSec'],
+                        'avgWatts': af['avgWatts'],
                     }
             except Exception as exc:
                 logger.debug(f"event_activity: segment entry id {candidate_id} not a valid activity: {exc}")
@@ -512,22 +559,17 @@ def event_activity(rider_id):
             for doc in docs:
                 d = doc.to_dict() or {}
                 raw = d.get('data') or {}
-                started = (raw.get('startedAt') or raw.get('startDate')
-                           or raw.get('start_date'))
-                act_dt = _parse_iso_utc(started) if started else None
+                wf = _extract_zwift_activity_fields(raw)
+                act_dt = _parse_iso_utc(wf['startedAt']) if wf['startedAt'] else None
                 if act_dt:
                     delta = abs((act_dt - event_dt).total_seconds())
                     if delta < best_delta and delta < 7200:  # within 2 hours
                         best_delta = delta
-                        raw_dur_ms = (raw.get('durationInMilliseconds')
-                                      or raw.get('duration_in_milliseconds', 0))
                         zwift_activity = {
                             'activityId': d.get('activityId'),
-                            'startedAt': started,
-                            'durationSec': int(raw_dur_ms / 1000) if raw_dur_ms else None,
-                            'avgWatts': (raw.get('avgWatts')
-                                         or raw.get('averagePowerInWatts')
-                                         or raw.get('average_watts')),
+                            'startedAt': wf['startedAt'],
+                            'durationSec': wf['durationSec'],
+                            'avgWatts': wf['avgWatts'],
                         }
 
         return jsonify({
@@ -600,13 +642,10 @@ def dual_recording(rider_id):
         else:
             return jsonify({'message': 'Zwift activity not found and no Zwift token available.'}), 404
 
-        zwift_started_at = (zwift_raw.get('startedAt') or zwift_raw.get('startDate')
-                            or zwift_raw.get('start_date'))
-        zwift_duration_ms = (zwift_raw.get('durationInMilliseconds')
-                             or zwift_raw.get('duration_in_milliseconds') or 0)
-        zwift_duration_sec = int(zwift_duration_ms / 1000) if zwift_duration_ms else None
-        zwift_avg_watts = (zwift_raw.get('avgWatts') or zwift_raw.get('averagePowerInWatts')
-                           or zwift_raw.get('average_watts'))
+        zf = _extract_zwift_activity_fields(zwift_raw)
+        zwift_started_at = zf['startedAt']
+        zwift_duration_sec = zf['durationSec']
+        zwift_avg_watts = zf['avgWatts']
 
         # ── 2. Fetch Zwift CP curve for this activity ─────────────────────────
         zwift_cp_curve = {}
