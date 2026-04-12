@@ -149,7 +149,7 @@ function fmtRaceTime(sec: number) {
 }
 
 function DualStreamChart({ result }: { result: DualRecordingResult }) {
-    const { zwift, strava, sync } = result;
+    const { zwift, strava } = result;
     const step = 5;
     const [hidden, setHidden] = useState<Set<string>>(new Set());
 
@@ -164,35 +164,16 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
     const hasStrava = (strava?.streams?.time?.length ?? 0) > 0;
     if (!hasZwift && !hasStrava) return null;
 
-    // Align streams by wall-clock time using each activity's startedAt timestamp.
-    // Each stream's `time` array is seconds-from-activity-start.
-    // Converting both to epoch seconds puts them on the same absolute axis.
-    // We anchor t=0 to whichever activity started later, so any pre-race
-    // staging from the earlier recording appears at negative race-time.
-    const zwiftEpochS  = zwift.startedAt  ? Date.parse(zwift.startedAt)  / 1000 : null;
-    const stravaEpochS = strava?.startedAt ? Date.parse(strava.startedAt) / 1000 : null;
-
-    // Shifts relative to the anchor (both ≤ 0; earlier start gets negative offset)
-    let zwiftShift  = 0;
-    let stravaShift = 0;
-    if (zwiftEpochS !== null && stravaEpochS !== null) {
-        const refEpochS = Math.max(zwiftEpochS, stravaEpochS);
-        zwiftShift  = zwiftEpochS  - refEpochS;
-        stravaShift = stravaEpochS - refEpochS;
-    } else {
-        // Fallback when timestamps are unavailable: use server-computed offset.
-        // offsetSec = zwift_start − strava_start → shift Zwift by that amount.
-        zwiftShift  = sync?.offsetSec ?? 0;
-        stravaShift = 0;
-    }
-
+    // Both streams are pre-normalised by the backend to race-relative seconds.
+    // Zwift: t < 0 = pre-race staging; t = 0 = race start.
+    // Strava: trimmed to the race window, t = 0 = race start.
+    // No client-side shift is needed — plot time values directly.
     type StreamPoint = { w: number | null; hr: number | null; cad: number | null };
     const zwiftMap = new Map<number, StreamPoint>();
     if (hasZwift) {
         const { time, watts, heartrate, cadence } = zwift.streams!;
         time.filter((_, i) => i % step === 0).forEach((t, i) => {
-            const raceT = Math.round(t + zwiftShift);
-            zwiftMap.set(raceT, {
+            zwiftMap.set(t, {
                 w:   watts[i * step]     ?? null,
                 hr:  heartrate[i * step] ?? null,
                 cad: cadence[i * step]   ?? null,
@@ -204,8 +185,7 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
     if (hasStrava) {
         const { time, watts, heartrate, cadence } = strava!.streams;
         time.filter((_, i) => i % step === 0).forEach((t, i) => {
-            const raceT = Math.round(t + stravaShift);
-            stravaMap.set(raceT, {
+            stravaMap.set(t, {
                 w:   watts[i * step]     ?? null,
                 hr:  heartrate[i * step] ?? null,
                 cad: cadence[i * step]   ?? null,
@@ -630,7 +610,7 @@ export default function DualRecordingPanel({
                                 <h4 className="text-sm font-semibold mb-2 text-card-foreground">
                                     Recording Streams
                                     <span className="ml-2 text-xs font-normal text-muted-foreground">
-                                        wall-clock aligned · t=0 is the later activity start
+                                        race-time axis · t=0 = race start · Zwift pre-race at t&lt;0
                                     </span>
                                 </h4>
                                 <DualStreamChart result={result} />

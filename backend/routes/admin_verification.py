@@ -929,23 +929,40 @@ def dual_recording(rider_id):
                 # positive = Strava started earlier (common: Garmin on before the race)
                 offset_sec = int((z_dt - s_dt).total_seconds())
 
-        # ── 6. Trim Strava streams to Zwift race window ───────────────────────
+        # ── 6. Trim Strava to race window & normalise both streams to race time ──
+        # Race time t=0 = the moment both recordings are active (the later start).
+        # • Zwift shift  = min(0, offset_sec): Zwift pre-race shows at t < 0.
+        # • Strava streams: trimmed to [win_start, win_end] and shifted so t=0
+        #   is race start.  All parallel arrays (cadence, HR, alt) are trimmed
+        #   to the same window so the index correspondence is preserved.
+        win_start = max(0, offset_sec)
+        win_end   = win_start + (zwift_duration_sec or 0)
+
         if s_times and zwift_duration_sec:
-            # Find indices for the race window
-            win_start = max(0, offset_sec)
-            win_end   = win_start + zwift_duration_sec
+            def _trim(vals):
+                if not vals:
+                    return []
+                return [v for t, v in zip(s_times, vals) if win_start <= t <= win_end]
 
-            def trim(vals, reference_times):
-                return [
-                    v for t, v in zip(reference_times, vals)
-                    if win_start <= t <= win_end
-                ]
-
-            t_trimmed = [t - win_start for t in s_times if win_start <= t <= win_end]
-            w_trimmed = trim(s_watts, s_times) if s_watts else []
+            t_trimmed   = [t - win_start for t in s_times if win_start <= t <= win_end]
+            w_trimmed   = _trim(s_watts)
+            cad_trimmed = _trim(s_cadence)
+            hr_trimmed  = _trim(s_hr)
+            alt_trimmed = _trim(s_alt)
         else:
-            t_trimmed = list(s_times)
-            w_trimmed = list(s_watts) if s_watts else []
+            t_trimmed   = list(s_times)    if s_times    else []
+            w_trimmed   = list(s_watts)    if s_watts    else []
+            cad_trimmed = list(s_cadence)  if s_cadence  else []
+            hr_trimmed  = list(s_hr)       if s_hr       else []
+            alt_trimmed = list(s_alt)      if s_alt      else []
+
+        # Normalise Zwift time so race start = t 0 (pre-race warmup is t < 0).
+        zwift_time_shift = min(0, offset_sec)
+        if zwift_streams and zwift_time_shift != 0 and zwift_streams.get('time'):
+            zwift_streams = {
+                **zwift_streams,
+                'time': [t + zwift_time_shift for t in zwift_streams['time']],
+            }
 
         # ── 7. Compute Strava CP curves ───────────────────────────────────────
         strava_w_full   = _resample_to_1hz(s_times, s_watts) if s_watts else []
@@ -988,11 +1005,11 @@ def dual_recording(rider_id):
                 'cpCurveRaw': strava_cp_raw,
                 'cpCurveSynced': strava_cp_synced,
                 'streams': {
-                    'time':     s_times,
-                    'watts':    s_watts,
-                    'cadence':  s_cadence,
-                    'heartrate': s_hr,
-                    'altitude': s_alt,
+                    'time':      t_trimmed,
+                    'watts':     w_trimmed,
+                    'cadence':   cad_trimmed,
+                    'heartrate': hr_trimmed,
+                    'altitude':  alt_trimmed,
                 },
             },
             'sync': {
