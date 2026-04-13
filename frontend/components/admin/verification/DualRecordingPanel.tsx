@@ -248,113 +248,127 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
     const hasZwiftAlt  = chartData.some(d => d.zwiftAlt  !== null);
     const hasStravaAlt = chartData.some(d => d.stravaAlt !== null);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handleLegendClick = (e: any) => {
-        const key = e?.dataKey != null ? String(e.dataKey) : null;
-        if (key) toggleSeries(key);
-    };
+    const hasAlt = hasZwiftAlt || hasStravaAlt;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const legendFormatter = (value: string, entry: any) => {
-        const key = entry?.dataKey != null ? String(entry.dataKey) : '';
-        return (
-            <span style={{
-                cursor: 'pointer',
-                opacity: hidden.has(key) ? 0.35 : 1,
-                textDecoration: hidden.has(key) ? 'line-through' : 'none',
-                userSelect: 'none',
-            }}>
-                {value}
-            </span>
-        );
-    };
+    const seriesMeta = [
+        { key: 'zwiftW',    label: 'Zwift Power',   color: '#FC6719', show: hasZwift },
+        { key: 'stravaW',   label: 'Strava Power',  color: '#e05c00', show: hasStrava },
+        { key: 'zwiftHR',   label: 'Zwift HR',      color: '#ef4444', show: hasZwiftHR },
+        { key: 'stravaHR',  label: 'Strava HR',     color: '#f87171', show: hasStravaHR },
+        { key: 'zwiftCad',  label: 'Zwift Cad',     color: '#22c55e', show: hasZwiftCad },
+        { key: 'stravaCad', label: 'Strava Cad',    color: '#86efac', show: hasStravaCad },
+        { key: 'zwiftAlt',  label: 'Zwift Elev',    color: '#6366f1', show: hasZwiftAlt },
+        { key: 'stravaAlt', label: 'Strava Elev',   color: '#a5b4fc', show: hasStravaAlt },
+    ].filter(s => s.show);
+
+    // Right margin: need extra space only when the alt axis is visible
+    const rightMargin = hasAlt ? 50 : 30;
 
     return (
-        <div className="h-[400px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData} margin={{ top: 0, right: 50, bottom: 0, left: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.3} />
-                    <XAxis dataKey="t" type="number" domain={['dataMin', 'dataMax']}
-                        tickFormatter={fmtRaceTime}
-                        tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }} />
-                    <YAxis yAxisId="w" orientation="left"
-                        label={{ value: 'W', angle: -90, position: 'insideLeft', style: { fontSize: 11 } }}
-                        tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }} />
-                    <YAxis yAxisId="hr" orientation="right"
-                        label={{ value: 'bpm / rpm', angle: 90, position: 'insideRight', style: { fontSize: 10 } }}
-                        tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }} />
-                    <YAxis yAxisId="alt" orientation="right" width={40}
-                        label={{ value: 'm', angle: 90, position: 'insideRight', offset: 10, style: { fontSize: 10 } }}
-                        tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }} />
-                    <Tooltip
-                        labelFormatter={(t: number) => fmtRaceTime(Number(t))}
-                        formatter={(v: unknown, name: string) =>
-                            v != null ? [`${Math.round(v as number)}`, name] : ['—', name]}
-                    />
-                    <Legend
-                        verticalAlign="top" height={36}
-                        onClick={handleLegendClick}
-                        formatter={legendFormatter}
-                    />
-                    <Brush
-                        dataKey="t" height={22}
-                        stroke="var(--border)" fill="var(--background)"
-                        tickFormatter={fmtRaceTime}
-                    />
-                    {/* Power */}
-                    {hasZwift && (
-                        <Line yAxisId="w" type="monotone" dataKey="zwiftW"
-                            stroke="#FC6719" dot={false} strokeWidth={2}
-                            name="Zwift Power (W)" isAnimationActive={false} connectNulls={false}
-                            hide={hidden.has('zwiftW')} />
-                    )}
-                    {hasStrava && (
-                        <Line yAxisId="w" type="monotone" dataKey="stravaW"
-                            stroke="#e05c00" dot={false} strokeWidth={1.5} strokeDasharray="5 3"
-                            name="Strava Power (W)" isAnimationActive={false} connectNulls={false}
-                            hide={hidden.has('stravaW')} />
-                    )}
-                    {/* Heart rate */}
-                    {hasZwiftHR && (
-                        <Line yAxisId="hr" type="monotone" dataKey="zwiftHR"
-                            stroke="#ef4444" dot={false} strokeWidth={1.5}
-                            name="Zwift HR (bpm)" isAnimationActive={false}
-                            hide={hidden.has('zwiftHR')} />
-                    )}
-                    {hasStravaHR && (
-                        <Line yAxisId="hr" type="monotone" dataKey="stravaHR"
-                            stroke="#f87171" dot={false} strokeWidth={1} strokeDasharray="4 2"
-                            name="Strava HR (bpm)" isAnimationActive={false}
-                            hide={hidden.has('stravaHR')} />
-                    )}
-                    {/* Cadence */}
-                    {hasZwiftCad && (
-                        <Line yAxisId="hr" type="monotone" dataKey="zwiftCad"
-                            stroke="#22c55e" dot={false} strokeWidth={1.5}
-                            name="Zwift Cadence (rpm)" isAnimationActive={false}
-                            hide={hidden.has('zwiftCad')} />
-                    )}
-                    {hasStravaCad && (
-                        <Line yAxisId="hr" type="monotone" dataKey="stravaCad"
-                            stroke="#86efac" dot={false} strokeWidth={1} strokeDasharray="4 2"
-                            name="Strava Cadence (rpm)" isAnimationActive={false}
-                            hide={hidden.has('stravaCad')} />
-                    )}
-                    {/* Elevation */}
-                    {hasZwiftAlt && (
-                        <Line yAxisId="alt" type="monotone" dataKey="zwiftAlt"
-                            stroke="#6366f1" dot={false} strokeWidth={1.5}
-                            name="Zwift Elevation (m)" isAnimationActive={false}
-                            hide={hidden.has('zwiftAlt')} />
-                    )}
-                    {hasStravaAlt && (
-                        <Line yAxisId="alt" type="monotone" dataKey="stravaAlt"
-                            stroke="#a5b4fc" dot={false} strokeWidth={1} strokeDasharray="4 2"
-                            name="Strava Elevation (m)" isAnimationActive={false}
-                            hide={hidden.has('stravaAlt')} />
-                    )}
-                </LineChart>
-            </ResponsiveContainer>
+        <div className="w-full">
+            {/* Custom wrapping legend — avoids Recharts overflow on narrow screens */}
+            <div className="flex flex-wrap gap-x-4 gap-y-1 mb-2 px-1">
+                {seriesMeta.map(s => (
+                    <button
+                        key={s.key}
+                        onClick={() => toggleSeries(s.key)}
+                        className="flex items-center gap-1.5 text-xs select-none"
+                        style={{
+                            opacity: hidden.has(s.key) ? 0.35 : 1,
+                            textDecoration: hidden.has(s.key) ? 'line-through' : 'none',
+                            color: 'var(--muted-foreground)',
+                        }}
+                    >
+                        <span className="inline-block w-4 h-[2px] rounded flex-shrink-0"
+                            style={{ backgroundColor: s.color }} />
+                        {s.label}
+                    </button>
+                ))}
+            </div>
+
+            <div className="h-[360px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={chartData} margin={{ top: 4, right: rightMargin, bottom: 0, left: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.3} />
+                        <XAxis dataKey="t" type="number" domain={['dataMin', 'dataMax']}
+                            tickFormatter={fmtRaceTime}
+                            tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }} />
+                        <YAxis yAxisId="w" orientation="left"
+                            label={{ value: 'W', angle: -90, position: 'insideLeft', style: { fontSize: 11 } }}
+                            tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }} />
+                        <YAxis yAxisId="hr" orientation="right"
+                            label={{ value: 'bpm/rpm', angle: 90, position: 'insideRight', style: { fontSize: 9 } }}
+                            tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }} />
+                        {hasAlt && (
+                            <YAxis yAxisId="alt" orientation="right" width={36}
+                                label={{ value: 'm', angle: 90, position: 'insideRight', offset: 10, style: { fontSize: 9 } }}
+                                tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }} />
+                        )}
+                        <Tooltip
+                            labelFormatter={(t: number) => fmtRaceTime(Number(t))}
+                            formatter={(v: unknown, name: string) =>
+                                v != null ? [`${Math.round(v as number)}`, name] : ['—', name]}
+                        />
+                        <Brush
+                            dataKey="t" height={20}
+                            stroke="var(--border)" fill="var(--background)"
+                            tickFormatter={fmtRaceTime}
+                        />
+                        {/* Power */}
+                        {hasZwift && (
+                            <Line yAxisId="w" type="monotone" dataKey="zwiftW"
+                                stroke="#FC6719" dot={false} strokeWidth={2}
+                                name="Zwift Power (W)" isAnimationActive={false} connectNulls={false}
+                                hide={hidden.has('zwiftW')} />
+                        )}
+                        {hasStrava && (
+                            <Line yAxisId="w" type="monotone" dataKey="stravaW"
+                                stroke="#e05c00" dot={false} strokeWidth={1.5} strokeDasharray="5 3"
+                                name="Strava Power (W)" isAnimationActive={false} connectNulls={false}
+                                hide={hidden.has('stravaW')} />
+                        )}
+                        {/* Heart rate */}
+                        {hasZwiftHR && (
+                            <Line yAxisId="hr" type="monotone" dataKey="zwiftHR"
+                                stroke="#ef4444" dot={false} strokeWidth={1.5}
+                                name="Zwift HR (bpm)" isAnimationActive={false}
+                                hide={hidden.has('zwiftHR')} />
+                        )}
+                        {hasStravaHR && (
+                            <Line yAxisId="hr" type="monotone" dataKey="stravaHR"
+                                stroke="#f87171" dot={false} strokeWidth={1} strokeDasharray="4 2"
+                                name="Strava HR (bpm)" isAnimationActive={false}
+                                hide={hidden.has('stravaHR')} />
+                        )}
+                        {/* Cadence */}
+                        {hasZwiftCad && (
+                            <Line yAxisId="hr" type="monotone" dataKey="zwiftCad"
+                                stroke="#22c55e" dot={false} strokeWidth={1.5}
+                                name="Zwift Cadence (rpm)" isAnimationActive={false}
+                                hide={hidden.has('zwiftCad')} />
+                        )}
+                        {hasStravaCad && (
+                            <Line yAxisId="hr" type="monotone" dataKey="stravaCad"
+                                stroke="#86efac" dot={false} strokeWidth={1} strokeDasharray="4 2"
+                                name="Strava Cadence (rpm)" isAnimationActive={false}
+                                hide={hidden.has('stravaCad')} />
+                        )}
+                        {/* Elevation — only rendered when data exists */}
+                        {hasZwiftAlt && (
+                            <Line yAxisId="alt" type="monotone" dataKey="zwiftAlt"
+                                stroke="#6366f1" dot={false} strokeWidth={1.5}
+                                name="Zwift Elevation (m)" isAnimationActive={false}
+                                hide={hidden.has('zwiftAlt')} />
+                        )}
+                        {hasStravaAlt && (
+                            <Line yAxisId="alt" type="monotone" dataKey="stravaAlt"
+                                stroke="#a5b4fc" dot={false} strokeWidth={1} strokeDasharray="4 2"
+                                name="Strava Elevation (m)" isAnimationActive={false}
+                                hide={hidden.has('stravaAlt')} />
+                        )}
+                    </LineChart>
+                </ResponsiveContainer>
+            </div>
         </div>
     );
 }
