@@ -248,7 +248,16 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
     const hasZwiftAlt  = chartData.some(d => d.zwiftAlt  !== null);
     const hasStravaAlt = chartData.some(d => d.stravaAlt !== null);
 
-    const hasAlt = hasZwiftAlt || hasStravaAlt;
+    // Single right axis for all secondary data (HR, cadence, elevation).
+    // Elevation shares the right axis — avoids a second right axis that would
+    // squeeze the chart to half-width on mobile.
+    // The axis collapses to width=0 when every secondary series is toggled off.
+    const hrAxisOn = (hasZwiftHR   && !hidden.has('zwiftHR'))   ||
+                     (hasStravaHR  && !hidden.has('stravaHR'))  ||
+                     (hasZwiftCad  && !hidden.has('zwiftCad'))  ||
+                     (hasStravaCad && !hidden.has('stravaCad')) ||
+                     (hasZwiftAlt  && !hidden.has('zwiftAlt'))  ||
+                     (hasStravaAlt && !hidden.has('stravaAlt'));
 
     const seriesMeta = [
         { key: 'zwiftW',    label: 'Zwift Power',   color: '#FC6719', show: hasZwift },
@@ -260,9 +269,6 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
         { key: 'zwiftAlt',  label: 'Zwift Elev',    color: '#6366f1', show: hasZwiftAlt },
         { key: 'stravaAlt', label: 'Strava Elev',   color: '#a5b4fc', show: hasStravaAlt },
     ].filter(s => s.show);
-
-    // Right margin: need extra space only when the alt axis is visible
-    const rightMargin = hasAlt ? 50 : 30;
 
     return (
         <div className="w-full">
@@ -288,7 +294,7 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
 
             <div className="h-[360px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData} margin={{ top: 4, right: rightMargin, bottom: 0, left: 0 }}>
+                    <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.3} />
                         <XAxis dataKey="t" type="number" domain={['dataMin', 'dataMax']}
                             tickFormatter={fmtRaceTime}
@@ -296,14 +302,12 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
                         <YAxis yAxisId="w" orientation="left"
                             label={{ value: 'W', angle: -90, position: 'insideLeft', style: { fontSize: 11 } }}
                             tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }} />
+                        {/* Single right axis — HR, cadence AND elevation all share it.
+                            Collapses to 0 width when every secondary series is toggled off. */}
                         <YAxis yAxisId="hr" orientation="right"
-                            label={{ value: 'bpm/rpm', angle: 90, position: 'insideRight', style: { fontSize: 9 } }}
-                            tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }} />
-                        {hasAlt && (
-                            <YAxis yAxisId="alt" orientation="right" width={36}
-                                label={{ value: 'm', angle: 90, position: 'insideRight', offset: 10, style: { fontSize: 9 } }}
-                                tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }} />
-                        )}
+                            hide={!hrAxisOn} width={hrAxisOn ? 40 : 0}
+                            label={hrAxisOn ? { value: 'bpm/rpm/m', angle: 90, position: 'insideRight', style: { fontSize: 9 } } : undefined}
+                            tick={hrAxisOn ? { fontSize: 9, fill: 'var(--muted-foreground)' } : false} />
                         <Tooltip
                             labelFormatter={(t: number) => fmtRaceTime(Number(t))}
                             formatter={(v: unknown, name: string) =>
@@ -353,15 +357,15 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
                                 name="Strava Cadence (rpm)" isAnimationActive={false}
                                 hide={hidden.has('stravaCad')} />
                         )}
-                        {/* Elevation — only rendered when data exists */}
+                        {/* Elevation — shares the right axis with HR/cadence */}
                         {hasZwiftAlt && (
-                            <Line yAxisId="alt" type="monotone" dataKey="zwiftAlt"
+                            <Line yAxisId="hr" type="monotone" dataKey="zwiftAlt"
                                 stroke="#6366f1" dot={false} strokeWidth={1.5}
                                 name="Zwift Elevation (m)" isAnimationActive={false}
                                 hide={hidden.has('zwiftAlt')} />
                         )}
                         {hasStravaAlt && (
-                            <Line yAxisId="alt" type="monotone" dataKey="stravaAlt"
+                            <Line yAxisId="hr" type="monotone" dataKey="stravaAlt"
                                 stroke="#a5b4fc" dot={false} strokeWidth={1} strokeDasharray="4 2"
                                 name="Strava Elevation (m)" isAnimationActive={false}
                                 hide={hidden.has('stravaAlt')} />
