@@ -24,11 +24,11 @@ function formatDateTick(dateStr: string) {
     return `${parts[1]}-${parts[0].slice(2)}`;
 }
 
-function getAxisTicks(data: any[]) {
+function getAxisTicks(data: { date: string }[]) {
     if (!data?.length) return [];
     if (data.length <= 5) return data.map(d => d.date);
     const step = Math.floor(data.length / 4);
-    const ticks = [];
+    const ticks: string[] = [];
     for (let i = 0; i < data.length; i += step) ticks.push(data[i].date);
     if (ticks[ticks.length - 1] !== data[data.length - 1].date) ticks.push(data[data.length - 1].date);
     return ticks;
@@ -36,22 +36,24 @@ function getAxisTicks(data: any[]) {
 
 interface VerificationChartsProps {
     zpData: ZwiftPowerResult[];
-    selectedRaceDate: number | string | null;
-    onSelectRaceDate: (date: number | string) => void;
     powerTrendStat: string;
     onPowerTrendStatChange: (v: string) => void;
     curveTimeRange: number;
     onCurveTimeRangeChange: (v: number) => void;
+    /** CP curve of the specific race being verified (from dual recording result). */
+    selectedRaceCpCurve?: Record<string, number> | null;
+    /** Short label shown beside the highlighted curve, e.g. "12 Apr · 247 W avg" */
+    selectedRaceLabel?: string | null;
 }
 
 export default function VerificationCharts({
     zpData,
-    selectedRaceDate,
-    onSelectRaceDate,
     powerTrendStat,
     onPowerTrendStatChange,
     curveTimeRange,
     onCurveTimeRangeChange,
+    selectedRaceCpCurve,
+    selectedRaceLabel,
 }: VerificationChartsProps) {
     const toEpochSeconds = (value: number | string): number => {
         if (typeof value === 'number') return value;
@@ -83,12 +85,13 @@ export default function VerificationCharts({
     CP_DURATIONS.forEach(dur => {
         bestCurve[dur.key] = curveRaces.reduce((max, race) => Math.max(max, race.cp_curve?.[dur.key] ?? 0), 0);
     });
-    const highlightedRace = selectedRaceDate ? zpData.find(d => d.date === selectedRaceDate) : null;
+
     const cpCurveData = CP_DURATIONS.map(dur => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const point: Record<string, any> = {
             name: dur.label,
             maxPower: bestCurve[dur.key],
-            highlightedPower: highlightedRace?.cp_curve?.[dur.key] ?? null,
+            racePower: selectedRaceCpCurve?.[dur.key] ?? null,
         };
         curveRaces.forEach(race => {
             if (race.cp_curve) point[`race_${toEpochSeconds(race.date)}`] = race.cp_curve[dur.key] || null;
@@ -103,7 +106,7 @@ export default function VerificationCharts({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* CP Curve */}
             <div className="bg-card p-4 rounded-lg shadow border border-border lg:col-span-1 flex flex-col">
-                <div className="flex justify-between items-start mb-4">
+                <div className="flex justify-between items-start mb-2">
                     <h3 className="text-lg font-semibold text-card-foreground">
                         {curveTimeRange === 0 ? 'All Time' : `${curveTimeRange} Day`} Power Curve
                     </h3>
@@ -119,6 +122,28 @@ export default function VerificationCharts({
                         <option value={0}>All Time</option>
                     </select>
                 </div>
+
+                {/* Selected race stat strip */}
+                {selectedRaceCpCurve && (
+                    <div className="mb-3 p-2 bg-orange-50 border border-orange-200 rounded text-xs">
+                        <span className="font-medium text-orange-700">
+                            Selected race{selectedRaceLabel ? `: ${selectedRaceLabel}` : ''}
+                        </span>
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 font-mono text-orange-800">
+                            {CP_DURATIONS.map(dur => {
+                                const v = selectedRaceCpCurve[dur.key];
+                                const best = bestCurve[dur.key];
+                                const overBest = v && best && v > best;
+                                return v ? (
+                                    <span key={dur.key} className={overBest ? 'font-bold text-red-600' : ''}>
+                                        {dur.label}: {Math.round(v)}W{overBest ? ' ▲' : ''}
+                                    </span>
+                                ) : null;
+                            })}
+                        </div>
+                    </div>
+                )}
+
                 <div className="h-[300px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={cpCurveData}>
@@ -138,10 +163,10 @@ export default function VerificationCharts({
                                             <span className="block w-3 h-[2px] bg-[#8884d8]"></span>
                                             <span>Best ({curveTimeRange === 0 ? 'All' : `${curveTimeRange}d`})</span>
                                         </div>
-                                        {selectedRaceDate && (
+                                        {selectedRaceCpCurve && (
                                             <div className="flex items-center gap-2">
                                                 <span className="block w-3 h-[2px] bg-[#ff7300]"></span>
-                                                <span>Selected Race</span>
+                                                <span>This Race</span>
                                             </div>
                                         )}
                                     </div>
@@ -153,9 +178,9 @@ export default function VerificationCharts({
                             ))}
                             <Line type="monotone" dataKey="maxPower" stroke="#8884d8"
                                 name={`Best (${curveTimeRange === 0 ? 'All' : `${curveTimeRange}d`})`} unit="W" strokeWidth={2} dot={{ r: 3 }} />
-                            {selectedRaceDate && (
-                                <Line type="monotone" dataKey="highlightedPower" stroke="#ff7300"
-                                    name="Selected Race" unit="W" strokeWidth={2} dot={{ r: 4 }} />
+                            {selectedRaceCpCurve && (
+                                <Line type="monotone" dataKey="racePower" stroke="#ff7300"
+                                    name="This Race" unit="W" strokeWidth={2.5} dot={{ r: 4 }} isAnimationActive={false} />
                             )}
                         </LineChart>
                     </ResponsiveContainer>
@@ -217,13 +242,7 @@ export default function VerificationCharts({
                             <Legend verticalAlign="top" height={36} />
                             <Line type="monotone" dataKey="power" stroke="#ff7300"
                                 name={powerTrendStat === 'avg' ? 'Avg Power' : `${powerTrendStat} Power`} unit="W"
-                                strokeWidth={2} activeDot={{ r: 8 }}
-                                dot={(props: any) => {
-                                    if (selectedRaceDate && props.payload.timestamp === toEpochSeconds(selectedRaceDate))
-                                        return <circle cx={props.cx} cy={props.cy} r={6} fill="#ff0000" stroke="none" />;
-                                    return <circle cx={props.cx} cy={props.cy} r={0} />;
-                                }}
-                            />
+                                strokeWidth={2} activeDot={{ r: 8 }} dot={false} />
                             <Line type="monotone" dataKey="hr" stroke="#ff0000" name="Avg HR" unit="bpm"
                                 strokeWidth={1} strokeDasharray="5 5" opacity={0.6} dot={false} />
                             <Brush dataKey="date" height={30} stroke="#ff7300" tickFormatter={formatDateTick} />
