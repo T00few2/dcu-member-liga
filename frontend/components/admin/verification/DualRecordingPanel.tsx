@@ -11,6 +11,10 @@ import type {
     EventActivityResult,
 } from '@/hooks/useDualRecording';
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const CHART_STEP = 5; // seconds between chart data points
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmtDate(iso: string | null | undefined) {
@@ -54,12 +58,18 @@ function diffBadge(pct: number | null | undefined) {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
+function syncMethodLabel(method: string): string {
+    if (method === 'power_mse') return 'power MSE sync';
+    if (method === 'power_mse_no_shift') return 'power MSE · no shift';
+    return 'timestamp sync (fallback)';
+}
+
 function SyncBadge({ sync }: { sync: NonNullable<DualRecordingResult['sync']> }) {
     return (
         <span className="text-xs text-muted-foreground italic">
             {fmtOffset(sync.stravaOffsetSec)}
             {' · '}
-            <span className="font-mono">{sync.syncMethod === 'power_mse' ? 'power MSE sync' : 'timestamp sync'}</span>
+            <span className="font-mono">{syncMethodLabel(sync.syncMethod)}</span>
         </span>
     );
 }
@@ -110,7 +120,7 @@ function StatsTable({ result }: { result: DualRecordingResult }) {
             </table>
             <p className="text-xs text-muted-foreground mt-2 px-1">
                 Strava values computed from the synchronised race window
-                {sync ? ` · ${fmtOffset(sync.stravaOffsetSec)} · ${sync.syncMethod === 'power_mse' ? 'power MSE sync' : 'timestamp sync'}` : ''}.
+                {sync ? ` · ${fmtOffset(sync.stravaOffsetSec)} · ${syncMethodLabel(sync.syncMethod)}` : ''}.
                 Diff = Zwift − Strava.
             </p>
         </div>
@@ -153,7 +163,6 @@ function fmtRaceTime(sec: number) {
 
 function DualStreamChart({ result }: { result: DualRecordingResult }) {
     const { zwift, strava } = result;
-    const step = 5;
     const [hidden, setHidden] = useState<Set<string>>(
         () => new Set(['zwiftHR', 'stravaHR', 'zwiftCad', 'stravaCad', 'zwiftAlt', 'stravaAlt'])
     );
@@ -208,11 +217,11 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
         const zwiftTimes  = hasZwift  ? zwift.streams!.time : [];
         const stravaTimes = hasStrava ? strava!.streams.time : [];
         const allT = [...zwiftTimes, ...stravaTimes];
-        const minT = Math.floor(Math.min(...allT) / step) * step;
-        const maxT = Math.ceil(Math.max(...allT)  / step) * step;
+        const minT = Math.floor(Math.min(...allT) / CHART_STEP) * CHART_STEP;
+        const maxT = Math.ceil(Math.max(...allT)  / CHART_STEP) * CHART_STEP;
 
         const rows: ChartRow[] = [];
-        for (let t = minT; t <= maxT; t += step) {
+        for (let t = minT; t <= maxT; t += CHART_STEP) {
             const zp = lookup(zwiftByTime, t);
             const sp = lookup(stravaByTime, t);
             rows.push({
@@ -228,7 +237,7 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
             });
         }
         return rows;
-    }, [hasZwift, hasStrava, zwift.streams, strava?.streams, step]);
+    }, [hasZwift, hasStrava, zwift.streams, strava?.streams]);
 
     if (!hasZwift && !hasStrava) return null;
 
@@ -443,6 +452,18 @@ export default function DualRecordingPanel({ riderId, hook }: Props) {
             </div>
 
             <div className="p-4 space-y-4">
+
+                {/* ── Strava not linked warning ─────────────────────────────── */}
+                {!loadingActivities && stravaActivities.length === 0 && (
+                    <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-800 p-3 rounded-lg text-sm">
+                        <span className="mt-0.5 text-base leading-none">⚠</span>
+                        <div>
+                            <span className="font-medium">Strava not linked.</span>
+                            {' '}This rider has no connected Strava account or no recent activities.
+                            Dual recording comparison requires a Strava power stream.
+                        </div>
+                    </div>
+                )}
 
                 {/* ── Option A: Event ID lookup ────────────────────────────── */}
                 <div className="border border-border rounded-lg p-4 space-y-3">

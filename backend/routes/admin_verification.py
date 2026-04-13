@@ -40,7 +40,7 @@ def _mask_streams(mask: list, **arrays: list) -> dict:
     return {k: [v for v, m in zip(arr, mask) if m] for k, arr in arrays.items()}
 
 
-def _fetch_zwift_streams(zwift_raw: dict, zwift_activity_id: str, access_token: str) -> dict:
+def _fetch_zwift_streams(zwift_raw: dict, zwift_activity_id: str, access_token: str) -> 'tuple[dict, dict]':
     """Fetch Zwift FIT streams for *zwift_activity_id*.
 
     Tries JSON FIT first (non-expiring API URL); falls back to binary FIT
@@ -125,19 +125,27 @@ def _trim_strava_streams(
     z_times: list, z_watts: list,
     zwift_started_at: str, strava_started_at: str,
     zwift_duration_sec: 'int | None',
-) -> 'tuple[dict, int, str]':
+) -> 'tuple[dict, int, str, int]':
     """Align Strava streams to the Zwift time axis and trim to the race window.
 
-    Returns (trimmed_streams_dict, strava_offset_sec, sync_method).
+    Returns (trimmed_streams_dict, strava_offset_sec, sync_method, ts_offset_sec).
     The streams dict has keys: time, watts, cadence, heartrate, altitude.
+    sync_method is one of: 'power_mse' | 'power_mse_no_shift' | 'timestamp'.
     """
     z_dt = _parse_iso_utc(zwift_started_at) if zwift_started_at else None
     s_dt = _parse_iso_utc(strava_started_at) if strava_started_at else None
     ts_offset = int((s_dt - z_dt).total_seconds()) if (z_dt and s_dt) else 0
 
     power_offset = _mse_sync_offset(z_times, z_watts, s_times, s_watts)
-    strava_offset = power_offset if power_offset is not None else ts_offset
-    sync_method = 'power_mse' if power_offset is not None else 'timestamp'
+    if power_offset is None:
+        strava_offset = ts_offset
+        sync_method = 'timestamp'
+    elif power_offset == 0:
+        strava_offset = 0
+        sync_method = 'power_mse_no_shift'
+    else:
+        strava_offset = power_offset
+        sync_method = 'power_mse'
 
     s_aligned = [strava_offset + t for t in s_times] if s_times else []
     win_end = zwift_duration_sec or 0
