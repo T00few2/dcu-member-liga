@@ -250,6 +250,16 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
 
     const hasAlt = hasZwiftAlt || hasStravaAlt;
 
+    // An axis only needs space when at least one of its series is visible (not toggled off).
+    // Setting width=0 + hide collapses the axis without breaking the yAxisId references on Lines.
+    const hrAxisOn = (hasZwiftHR  && !hidden.has('zwiftHR'))  ||
+                     (hasStravaHR && !hidden.has('stravaHR')) ||
+                     (hasZwiftCad && !hidden.has('zwiftCad')) ||
+                     (hasStravaCad && !hidden.has('stravaCad'));
+    const altAxisOn = hasAlt &&
+                     ((hasZwiftAlt  && !hidden.has('zwiftAlt')) ||
+                      (hasStravaAlt && !hidden.has('stravaAlt')));
+
     const seriesMeta = [
         { key: 'zwiftW',    label: 'Zwift Power',   color: '#FC6719', show: hasZwift },
         { key: 'stravaW',   label: 'Strava Power',  color: '#e05c00', show: hasStrava },
@@ -260,9 +270,6 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
         { key: 'zwiftAlt',  label: 'Zwift Elev',    color: '#6366f1', show: hasZwiftAlt },
         { key: 'stravaAlt', label: 'Strava Elev',   color: '#a5b4fc', show: hasStravaAlt },
     ].filter(s => s.show);
-
-    // Right margin: need extra space only when the alt axis is visible
-    const rightMargin = hasAlt ? 50 : 30;
 
     return (
         <div className="w-full">
@@ -288,7 +295,7 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
 
             <div className="h-[360px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData} margin={{ top: 4, right: rightMargin, bottom: 0, left: 0 }}>
+                    <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.3} />
                         <XAxis dataKey="t" type="number" domain={['dataMin', 'dataMax']}
                             tickFormatter={fmtRaceTime}
@@ -296,13 +303,17 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
                         <YAxis yAxisId="w" orientation="left"
                             label={{ value: 'W', angle: -90, position: 'insideLeft', style: { fontSize: 11 } }}
                             tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }} />
+                        {/* hr axis: always declared (Lines reference it), but collapses to 0 width when all series hidden */}
                         <YAxis yAxisId="hr" orientation="right"
-                            label={{ value: 'bpm/rpm', angle: 90, position: 'insideRight', style: { fontSize: 9 } }}
-                            tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }} />
+                            hide={!hrAxisOn} width={hrAxisOn ? 40 : 0}
+                            label={hrAxisOn ? { value: 'bpm/rpm', angle: 90, position: 'insideRight', style: { fontSize: 9 } } : undefined}
+                            tick={hrAxisOn ? { fontSize: 9, fill: 'var(--muted-foreground)' } : false} />
+                        {/* alt axis: only mounted when altitude data exists; collapses when hidden */}
                         {hasAlt && (
-                            <YAxis yAxisId="alt" orientation="right" width={36}
-                                label={{ value: 'm', angle: 90, position: 'insideRight', offset: 10, style: { fontSize: 9 } }}
-                                tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }} />
+                            <YAxis yAxisId="alt" orientation="right"
+                                hide={!altAxisOn} width={altAxisOn ? 36 : 0}
+                                label={altAxisOn ? { value: 'm', angle: 90, position: 'insideRight', offset: 10, style: { fontSize: 9 } } : undefined}
+                                tick={altAxisOn ? { fontSize: 9, fill: 'var(--muted-foreground)' } : false} />
                         )}
                         <Tooltip
                             labelFormatter={(t: number) => fmtRaceTime(Number(t))}
