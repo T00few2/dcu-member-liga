@@ -397,9 +397,11 @@ type DualHook = ReturnType<typeof useDualRecording>;
 interface Props {
     riderId: string;
     hook: DualHook;
+    /** Slot rendered between the compare controls and the comparison results. */
+    children?: React.ReactNode;
 }
 
-export default function DualRecordingPanel({ riderId, hook }: Props) {
+export default function DualRecordingPanel({ riderId, hook, children }: Props) {
     const {
         zwiftActivities, stravaActivities, loadingActivities,
         selectedZwiftId, setSelectedZwiftId,
@@ -437,7 +439,7 @@ export default function DualRecordingPanel({ riderId, hook }: Props) {
             {/* Header */}
             <div className="bg-[#FC6719]/10 p-4 border-b border-[#FC6719]/20 flex items-center justify-between">
                 <div>
-                    <h3 className="text-lg font-semibold text-[#FC6719]">Dual Recording Verification</h3>
+                    <h3 className="text-lg font-semibold text-[#FC6719]">Race Performance Verification</h3>
                     <p className="text-xs text-muted-foreground mt-0.5">
                         Compare Zwift (primary) with Strava (secondary) for the same race.
                     </p>
@@ -587,6 +589,13 @@ export default function DualRecordingPanel({ riderId, hook }: Props) {
                 {result?.warning && !result.strava && (
                     <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-3 rounded text-sm">
                         {result.warning}
+                    </div>
+                )}
+
+                {/* Charts slot — power curve, physical profile, power trend */}
+                {children && (
+                    <div className="pt-2 border-t border-border">
+                        {children}
                     </div>
                 )}
 
