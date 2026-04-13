@@ -10,6 +10,77 @@ import VerificationCharts from './verification/VerificationCharts';
 import StravaActivityDetail from './verification/StravaActivityDetail';
 import DualRecordingPanel from './verification/DualRecordingPanel';
 
+// ─── Module-level helpers ──────────────────────────────────────────────────────
+
+function formatRaceDate(value: number | string) {
+    if (typeof value === 'number') {
+        return new Date(value * 1000).toLocaleDateString();
+    }
+    return new Date(value).toLocaleDateString();
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+interface ZwiftOfficialFeedCardProps {
+    zpData: {
+        date: number | string;
+        event_title: string;
+        avg_watts: number;
+        wkg: number;
+        avg_hr: number;
+    }[];
+    selectedRaceDate: number | string | null;
+    onSelectRaceDate: (date: number | string) => void;
+}
+
+function ZwiftOfficialFeedCard({ zpData, selectedRaceDate, onSelectRaceDate }: ZwiftOfficialFeedCardProps) {
+    return (
+        <div className="bg-card rounded-lg shadow border border-border overflow-hidden">
+            <div className="bg-[#FC6719]/10 p-3 border-b border-[#FC6719]/20 font-semibold text-[#FC6719] flex justify-between items-center">
+                <span>Zwift Official Feed</span>
+                <span className="text-xs bg-[#FC6719] text-white px-2 py-0.5 rounded-full">Last 10 Races</span>
+            </div>
+            <div className="divide-y divide-border max-h-[500px] overflow-y-auto">
+                {zpData.length === 0 ? (
+                    <div className="p-6 text-center text-muted-foreground italic">No recent race data found.</div>
+                ) : (
+                    [...zpData].reverse().slice(0, 10).map((race, idx) => {
+                        const isSelected = selectedRaceDate === race.date;
+                        return (
+                            <div
+                                key={idx}
+                                onClick={() => onSelectRaceDate(race.date)}
+                                className={`p-4 transition cursor-pointer border-l-4 ${isSelected ? 'bg-muted/50 border-primary' : 'hover:bg-muted/30 border-transparent'}`}
+                            >
+                                <div className="font-medium text-sm text-card-foreground truncate mb-1">{race.event_title}</div>
+                                <div className="text-xs text-muted-foreground mb-2">{formatRaceDate(race.date)}</div>
+                                <div className="grid grid-cols-3 gap-2 text-center text-sm">
+                                    <div className="bg-secondary/50 rounded p-1">
+                                        <div className="text-xs text-muted-foreground">Power</div>
+                                        <div className="font-mono font-bold">{race.avg_watts}w</div>
+                                    </div>
+                                    <div className="bg-secondary/50 rounded p-1">
+                                        <div className="text-xs text-muted-foreground">W/Kg</div>
+                                        <div className="font-mono font-bold">{race.wkg.toFixed(2)}</div>
+                                    </div>
+                                    <div className="bg-secondary/50 rounded p-1">
+                                        <div className="text-xs text-muted-foreground">HR</div>
+                                        <div className={`font-mono font-bold ${race.avg_hr > 0 ? '' : 'text-muted-foreground'}`}>
+                                            {race.avg_hr > 0 ? race.avg_hr : '—'}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })
+                )}
+            </div>
+        </div>
+    );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
 export default function VerificationDashboard() {
     const { user } = useAuth();
     const {
@@ -34,12 +105,6 @@ export default function VerificationDashboard() {
     };
 
     const selectedStravaActivity = stravaData.find(a => a.id === selectedStravaActivityId);
-    const formatRaceDate = (value: number | string) => {
-        if (typeof value === 'number') {
-            return new Date(value * 1000).toLocaleDateString();
-        }
-        return new Date(value).toLocaleDateString();
-    };
 
     return (
         <div className="max-w-6xl mx-auto pb-12">
@@ -97,69 +162,16 @@ export default function VerificationDashboard() {
                             {/* Dual Recording Verification */}
                             <DualRecordingPanel
                                 riderId={selectedRider.zwiftId}
-                                zwiftActivities={dual.zwiftActivities}
-                                stravaActivities={dual.stravaActivities}
-                                loadingActivities={dual.loadingActivities}
-                                selectedZwiftId={dual.selectedZwiftId}
-                                setSelectedZwiftId={dual.setSelectedZwiftId}
-                                selectedStravaId={dual.selectedStravaId}
-                                setSelectedStravaId={dual.setSelectedStravaId}
-                                result={dual.result}
-                                loadingComparison={dual.loadingComparison}
-                                error={dual.error}
-                                onLoadActivities={dual.loadActivities}
-                                onCompare={dual.fetchComparison}
-                                eventId={dual.eventId}
-                                setEventId={dual.setEventId}
-                                loadingEventActivity={dual.loadingEventActivity}
-                                eventActivityResult={dual.eventActivityResult}
-                                onLoadEventActivity={dual.loadEventActivity}
+                                hook={dual}
                             />
 
                             {/* Data Tables */}
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-                                {/* Zwift Official Feed */}
-                                <div className="bg-card rounded-lg shadow border border-border overflow-hidden">
-                                    <div className="bg-[#FC6719]/10 p-3 border-b border-[#FC6719]/20 font-semibold text-[#FC6719] flex justify-between items-center">
-                                        <span>Zwift Official Feed</span>
-                                        <span className="text-xs bg-[#FC6719] text-white px-2 py-0.5 rounded-full">Last 10 Races</span>
-                                    </div>
-                                    <div className="divide-y divide-border max-h-[500px] overflow-y-auto">
-                                        {zpData.length === 0 ? (
-                                            <div className="p-6 text-center text-muted-foreground italic">No recent race data found.</div>
-                                        ) : (
-                                            [...zpData].reverse().slice(0, 10).map((race, idx) => {
-                                                const isSelected = selectedRaceDate === race.date;
-                                                return (
-                                                    <div
-                                                        key={idx}
-                                                        onClick={() => setSelectedRaceDate(race.date)}
-                                                        className={`p-4 transition cursor-pointer border-l-4 ${isSelected ? 'bg-muted/50 border-primary' : 'hover:bg-muted/30 border-transparent'}`}
-                                                    >
-                                                        <div className="font-medium text-sm text-card-foreground truncate mb-1">{race.event_title}</div>
-                                                        <div className="text-xs text-muted-foreground mb-2">{formatRaceDate(race.date)}</div>
-                                                        <div className="grid grid-cols-3 gap-2 text-center text-sm">
-                                                            <div className="bg-secondary/50 rounded p-1">
-                                                                <div className="text-xs text-muted-foreground">Power</div>
-                                                                <div className="font-mono font-bold">{race.avg_watts}w</div>
-                                                            </div>
-                                                            <div className="bg-secondary/50 rounded p-1">
-                                                                <div className="text-xs text-muted-foreground">W/Kg</div>
-                                                                <div className="font-mono font-bold">{race.wkg.toFixed(2)}</div>
-                                                            </div>
-                                                            <div className="bg-secondary/50 rounded p-1">
-                                                                <div className="text-xs text-muted-foreground">HR</div>
-                                                                <div className={`font-mono font-bold ${race.avg_hr > 0 ? '' : 'text-muted-foreground'}`}>
-                                                                    {race.avg_hr > 0 ? race.avg_hr : '—'}
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })
-                                        )}
-                                    </div>
-                                </div>
+                                <ZwiftOfficialFeedCard
+                                    zpData={zpData}
+                                    selectedRaceDate={selectedRaceDate}
+                                    onSelectRaceDate={setSelectedRaceDate}
+                                />
 
                                 {/* Strava Feed */}
                                 <div className="bg-card rounded-lg shadow border border-border overflow-hidden">

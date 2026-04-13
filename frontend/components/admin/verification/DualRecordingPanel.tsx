@@ -1,14 +1,19 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
     ResponsiveContainer, LineChart, Line, Brush,
 } from 'recharts';
+import type { useDualRecording } from '@/hooks/useDualRecording';
 import type {
-    ZwiftActivity, StravaMatchActivity, DualRecordingResult, CpDiffRow,
+    DualRecordingResult, CpDiffRow,
     EventActivityResult,
 } from '@/hooks/useDualRecording';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const CHART_STEP = 5; // seconds between chart data points
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -53,12 +58,18 @@ function diffBadge(pct: number | null | undefined) {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
+function syncMethodLabel(method: string): string {
+    if (method === 'power_mse') return 'power MSE sync';
+    if (method === 'power_mse_no_shift') return 'power MSE · no shift';
+    return 'timestamp sync (fallback)';
+}
+
 function SyncBadge({ sync }: { sync: NonNullable<DualRecordingResult['sync']> }) {
     return (
         <span className="text-xs text-muted-foreground italic">
             {fmtOffset(sync.stravaOffsetSec)}
             {' · '}
-            <span className="font-mono">{sync.syncMethod === 'power_mse' ? 'power MSE sync' : 'timestamp sync'}</span>
+            <span className="font-mono">{syncMethodLabel(sync.syncMethod)}</span>
         </span>
     );
 }
@@ -109,7 +120,7 @@ function StatsTable({ result }: { result: DualRecordingResult }) {
             </table>
             <p className="text-xs text-muted-foreground mt-2 px-1">
                 Strava values computed from the synchronised race window
-                {sync ? ` · ${fmtOffset(sync.stravaOffsetSec)} · ${sync.syncMethod === 'power_mse' ? 'power MSE sync' : 'timestamp sync'}` : ''}.
+                {sync ? ` · ${fmtOffset(sync.stravaOffsetSec)} · ${syncMethodLabel(sync.syncMethod)}` : ''}.
                 Diff = Zwift − Strava.
             </p>
         </div>
@@ -152,8 +163,6 @@ function fmtRaceTime(sec: number) {
 
 function DualStreamChart({ result }: { result: DualRecordingResult }) {
     const { zwift, strava } = result;
-    const step = 5;
-    // Default: hide secondary series so the chart isn't overwhelming on first load
     const [hidden, setHidden] = useState<Set<string>>(
         () => new Set(['zwiftHR', 'stravaHR', 'zwiftCad', 'stravaCad', 'zwiftAlt', 'stravaAlt'])
     );
@@ -165,43 +174,10 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
             return next;
         });
 
-    const hasZwift = (zwift.streams?.time?.length ?? 0) > 0;
+    const hasZwift  = (zwift.streams?.time?.length ?? 0) > 0;
     const hasStrava = (strava?.streams?.time?.length ?? 0) > 0;
-    if (!hasZwift && !hasStrava) return null;
 
     type StreamPoint = { w: number | null; hr: number | null; cad: number | null; alt: number | null };
-
-    const zwiftByTime = new Map<number, StreamPoint>();
-    if (hasZwift) {
-        const { time, watts, heartrate, cadence, altitude } = zwift.streams!;
-        time.forEach((t, i) => zwiftByTime.set(t, {
-            w:   watts[i]     ?? null,
-            hr:  heartrate[i] ?? null,
-            cad: cadence[i]   ?? null,
-            alt: altitude[i]  ?? null,
-        }));
-    }
-
-    const stravaByTime = new Map<number, StreamPoint>();
-    if (hasStrava) {
-        const { time, watts, heartrate, cadence, altitude } = strava!.streams;
-        time.forEach((t, i) => stravaByTime.set(t, {
-            w:   watts[i]     ?? null,
-            hr:  heartrate[i] ?? null,
-            cad: cadence[i]   ?? null,
-            alt: altitude[i]  ?? null,
-        }));
-    }
-
-    const lookup = (m: Map<number, StreamPoint>, t: number) =>
-        m.get(t) ?? m.get(t - 1) ?? m.get(t + 1);
-
-    const zwiftTimes  = hasZwift  ? zwift.streams!.time : [];
-    const stravaTimes = hasStrava ? strava!.streams.time : [];
-    const allT = [...zwiftTimes, ...stravaTimes];
-    const minT = Math.floor(Math.min(...allT) / step) * step;
-    const maxT = Math.ceil(Math.max(...allT)  / step) * step;
-
     type ChartRow = {
         t: number;
         zwiftW: number | null; stravaW: number | null;
@@ -209,22 +185,61 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
         zwiftCad: number | null; stravaCad: number | null;
         zwiftAlt: number | null; stravaAlt: number | null;
     };
-    const chartData: ChartRow[] = [];
-    for (let t = minT; t <= maxT; t += step) {
-        const zp = lookup(zwiftByTime, t);
-        const sp = lookup(stravaByTime, t);
-        chartData.push({
-            t,
-            zwiftW:    zp?.w   ?? null,
-            stravaW:   sp?.w   ?? null,
-            zwiftHR:   zp?.hr  ?? null,
-            stravaHR:  sp?.hr  ?? null,
-            zwiftCad:  zp?.cad ?? null,
-            stravaCad: sp?.cad ?? null,
-            zwiftAlt:  zp?.alt ?? null,
-            stravaAlt: sp?.alt ?? null,
-        });
-    }
+
+    const chartData = useMemo<ChartRow[]>(() => {
+        if (!hasZwift && !hasStrava) return [];
+
+        const zwiftByTime = new Map<number, StreamPoint>();
+        if (hasZwift) {
+            const { time, watts, heartrate, cadence, altitude } = zwift.streams!;
+            time.forEach((t, i) => zwiftByTime.set(t, {
+                w:   watts[i]     ?? null,
+                hr:  heartrate[i] ?? null,
+                cad: cadence[i]   ?? null,
+                alt: altitude[i]  ?? null,
+            }));
+        }
+
+        const stravaByTime = new Map<number, StreamPoint>();
+        if (hasStrava) {
+            const { time, watts, heartrate, cadence, altitude } = strava!.streams;
+            time.forEach((t, i) => stravaByTime.set(t, {
+                w:   watts[i]     ?? null,
+                hr:  heartrate[i] ?? null,
+                cad: cadence[i]   ?? null,
+                alt: altitude[i]  ?? null,
+            }));
+        }
+
+        const lookup = (m: Map<number, StreamPoint>, t: number) =>
+            m.get(t) ?? m.get(t - 1) ?? m.get(t + 1);
+
+        const zwiftTimes  = hasZwift  ? zwift.streams!.time : [];
+        const stravaTimes = hasStrava ? strava!.streams.time : [];
+        const allT = [...zwiftTimes, ...stravaTimes];
+        const minT = Math.floor(Math.min(...allT) / CHART_STEP) * CHART_STEP;
+        const maxT = Math.ceil(Math.max(...allT)  / CHART_STEP) * CHART_STEP;
+
+        const rows: ChartRow[] = [];
+        for (let t = minT; t <= maxT; t += CHART_STEP) {
+            const zp = lookup(zwiftByTime, t);
+            const sp = lookup(stravaByTime, t);
+            rows.push({
+                t,
+                zwiftW:    zp?.w   ?? null,
+                stravaW:   sp?.w   ?? null,
+                zwiftHR:   zp?.hr  ?? null,
+                stravaHR:  sp?.hr  ?? null,
+                zwiftCad:  zp?.cad ?? null,
+                stravaCad: sp?.cad ?? null,
+                zwiftAlt:  zp?.alt ?? null,
+                stravaAlt: sp?.alt ?? null,
+            });
+        }
+        return rows;
+    }, [hasZwift, hasStrava, zwift.streams, strava?.streams]);
+
+    if (!hasZwift && !hasStrava) return null;
 
     const hasZwiftHR   = chartData.some(d => d.zwiftHR   !== null);
     const hasStravaHR  = chartData.some(d => d.stravaHR  !== null);
@@ -368,7 +383,7 @@ function EventLookupStatus({ res }: { res: EventActivityResult }) {
                 </p>
             ) : (
                 <p className="text-amber-700 text-xs">
-                    Zwift activity not in webhook store yet. Paste the activity ID manually below.
+                    Zwift activity not in webhook store yet. Select an activity manually below.
                 </p>
             )}
         </div>
@@ -377,58 +392,33 @@ function EventLookupStatus({ res }: { res: EventActivityResult }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
+type DualHook = ReturnType<typeof useDualRecording>;
+
 interface Props {
     riderId: string;
-    zwiftActivities: ZwiftActivity[];
-    stravaActivities: StravaMatchActivity[];
-    loadingActivities: boolean;
-    selectedZwiftId: string | null;
-    setSelectedZwiftId: (id: string) => void;
-    selectedStravaId: number | null;
-    setSelectedStravaId: (id: number | null) => void;
-    result: DualRecordingResult | null;
-    loadingComparison: boolean;
-    error: string;
-    onLoadActivities: () => void;
-    onCompare: (zwiftId: string, stravaId?: number | null) => void;
-    // Event-based lookup
-    eventId: string;
-    setEventId: (id: string) => void;
-    loadingEventActivity: boolean;
-    eventActivityResult: EventActivityResult | null;
-    onLoadEventActivity: (eventId: string) => void;
+    hook: DualHook;
 }
 
-export default function DualRecordingPanel({
-    riderId,
-    zwiftActivities,
-    stravaActivities,
-    loadingActivities,
-    selectedZwiftId,
-    setSelectedZwiftId,
-    selectedStravaId,
-    setSelectedStravaId,
-    result,
-    loadingComparison,
-    error,
-    onLoadActivities,
-    onCompare,
-    eventId,
-    setEventId,
-    loadingEventActivity,
-    eventActivityResult,
-    onLoadEventActivity,
-}: Props) {
+export default function DualRecordingPanel({ riderId, hook }: Props) {
+    const {
+        zwiftActivities, stravaActivities, loadingActivities,
+        selectedZwiftId, setSelectedZwiftId,
+        selectedStravaId, setSelectedStravaId,
+        eventId, setEventId,
+        loadingEventActivity, eventActivityResult,
+        lookupByEventId,
+        result, loadingComparison, error,
+        fetchActivityLists, fetchComparison,
+    } = hook;
+
     const loaded = useRef(false);
-    // Auto-load activity lists when this panel first renders for a rider
     useEffect(() => {
         if (!loaded.current && riderId) {
             loaded.current = true;
-            onLoadActivities();
+            fetchActivityLists();
         }
-    }, [riderId, onLoadActivities]);
+    }, [riderId, fetchActivityLists]);
 
-    // Reset loaded flag when rider changes
     useEffect(() => {
         loaded.current = false;
     }, [riderId]);
@@ -439,7 +429,7 @@ export default function DualRecordingPanel({
 
     const handleCompare = () => {
         if (!effectiveZwiftId) return;
-        onCompare(effectiveZwiftId, selectedStravaId);
+        fetchComparison(effectiveZwiftId, selectedStravaId);
     };
 
     return (
@@ -453,7 +443,7 @@ export default function DualRecordingPanel({
                     </p>
                 </div>
                 <button
-                    onClick={onLoadActivities}
+                    onClick={fetchActivityLists}
                     disabled={loadingActivities}
                     className="text-xs px-3 py-1.5 rounded border border-[#FC6719]/40 text-[#FC6719] hover:bg-[#FC6719]/10 disabled:opacity-50"
                 >
@@ -462,6 +452,18 @@ export default function DualRecordingPanel({
             </div>
 
             <div className="p-4 space-y-4">
+
+                {/* ── Strava not linked warning ─────────────────────────────── */}
+                {!loadingActivities && stravaActivities.length === 0 && (
+                    <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-800 p-3 rounded-lg text-sm">
+                        <span className="mt-0.5 text-base leading-none">⚠</span>
+                        <div>
+                            <span className="font-medium">Strava not linked.</span>
+                            {' '}This rider has no connected Strava account or no recent activities.
+                            Dual recording comparison requires a Strava power stream.
+                        </div>
+                    </div>
+                )}
 
                 {/* ── Option A: Event ID lookup ────────────────────────────── */}
                 <div className="border border-border rounded-lg p-4 space-y-3">
@@ -474,11 +476,11 @@ export default function DualRecordingPanel({
                             placeholder="e.g. 4567890"
                             value={eventId}
                             onChange={e => setEventId(e.target.value)}
-                            onKeyDown={e => e.key === 'Enter' && onLoadEventActivity(eventId)}
+                            onKeyDown={e => e.key === 'Enter' && lookupByEventId(eventId)}
                             className="flex-1 text-sm bg-background border border-input rounded px-3 py-1.5 text-foreground placeholder:text-muted-foreground/50 focus:ring-1 focus:ring-primary font-mono"
                         />
                         <button
-                            onClick={() => onLoadEventActivity(eventId)}
+                            onClick={() => lookupByEventId(eventId)}
                             disabled={!eventId.trim() || loadingEventActivity}
                             className="px-4 py-1.5 bg-[#FC6719] text-white rounded text-sm font-medium hover:opacity-90 disabled:opacity-40 whitespace-nowrap"
                         >

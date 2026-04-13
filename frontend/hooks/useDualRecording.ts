@@ -128,7 +128,7 @@ export function useDualRecording(user: User | null, riderId: string | null) {
         return { Authorization: `Bearer ${token}` };
     }, [user]);
 
-    const loadActivities = useCallback(async () => {
+    const fetchActivityLists = useCallback(async () => {
         if (!user || !riderId) return;
         setLoadingActivities(true);
         setError('');
@@ -153,7 +153,7 @@ export function useDualRecording(user: User | null, riderId: string | null) {
         }
     }, [user, riderId, authHeader]);
 
-    const loadEventActivity = useCallback(async (lookupEventId: string) => {
+    const lookupByEventId = useCallback(async (lookupEventId: string) => {
         if (!user || !riderId || !lookupEventId.trim()) return;
         setLoadingEventActivity(true);
         setError('');
@@ -237,11 +237,11 @@ export function useDualRecording(user: User | null, riderId: string | null) {
         setEventId,
         loadingEventActivity,
         eventActivityResult,
-        loadEventActivity,
         result,
         loadingComparison,
         error,
-        loadActivities,
+        fetchActivityLists,
+        lookupByEventId,
         fetchComparison,
         reset,
     };
