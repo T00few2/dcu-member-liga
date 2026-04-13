@@ -74,9 +74,10 @@ export default function VerificationCharts({
         date: new Date(toEpochSeconds(d.date) * 1000).toISOString().split('T')[0],
         timestamp: toEpochSeconds(d.date),
         power: powerTrendStat === 'avg' ? d.avg_watts : (d.cp_curve?.[powerTrendStat] ?? 0),
-        hr: d.avg_hr,
+        hr: d.avg_hr > 0 ? d.avg_hr : null,
         title: d.event_title,
     }));
+    const hasTrendHr = powerData.some(d => d.hr != null);
 
     // CP curve data
     const curveCutoff = curveTimeRange === 0 ? 0 : Date.now() / 1000 - curveTimeRange * 24 * 60 * 60;
@@ -243,8 +244,10 @@ export default function VerificationCharts({
                             <Line type="monotone" dataKey="power" stroke="#ff7300"
                                 name={powerTrendStat === 'avg' ? 'Avg Power' : `${powerTrendStat} Power`} unit="W"
                                 strokeWidth={2} activeDot={{ r: 8 }} dot={false} />
-                            <Line type="monotone" dataKey="hr" stroke="#ff0000" name="Avg HR" unit="bpm"
-                                strokeWidth={1} strokeDasharray="5 5" opacity={0.6} dot={false} />
+                            {hasTrendHr && (
+                                <Line type="monotone" dataKey="hr" stroke="#ff0000" name="Avg HR" unit="bpm"
+                                    strokeWidth={1} strokeDasharray="5 5" opacity={0.6} dot={false} />
+                            )}
                             <Brush dataKey="date" height={30} stroke="#ff7300" tickFormatter={formatDateTick} />
                         </LineChart>
                     </ResponsiveContainer>
