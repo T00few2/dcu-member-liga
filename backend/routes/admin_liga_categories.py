@@ -33,6 +33,7 @@ from services.schema_validation import (
 )
 
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -354,6 +355,13 @@ def refresh_zwift_profile():
             chunk_size = 25
         chunk_size = max(1, min(chunk_size, 200))
         cursor = str(raw_cursor).strip() if raw_cursor is not None else ''
+        raw_max_seconds = body.get('maxSeconds', request.args.get('maxSeconds', 45))
+        try:
+            max_seconds = int(raw_max_seconds)
+        except (TypeError, ValueError):
+            max_seconds = 45
+        max_seconds = max(10, min(max_seconds, 240))
+        subscribe = bool(body.get('subscribe', request.args.get('subscribe', 'false')).__str__().lower() in ('1', 'true', 'yes', 'on'))
 
         zwift_service = get_zwift_service()
         token_query = db.collection('zwift_tokens').order_by('__name__')
@@ -378,14 +386,25 @@ def refresh_zwift_profile():
         updated = 0
         skipped = 0
         errors = 0
+        processed = 0
+        timed_out = False
+        last_processed_id = None
+        started_at = time.monotonic()
 
         for token_doc in chunk_docs:
+            elapsed = time.monotonic() - started_at
+            if elapsed >= max_seconds:
+                timed_out = True
+                break
+
             token_owner_id = token_doc.id
             user_doc_id = resolve_canonical_user_doc_id(token_owner_id) or token_owner_id
             try:
                 access_token = get_valid_access_token(token_owner_id, zwift_service)
                 if not access_token:
                     skipped += 1
+                    processed += 1
+                    last_processed_id = token_doc.id
                     continue
 
                 user_ref = db.collection('users').document(user_doc_id)
@@ -394,11 +413,15 @@ def refresh_zwift_profile():
                         f"Skipping token {token_owner_id}: could not resolve user doc {user_doc_id}"
                     )
                     skipped += 1
+                    processed += 1
+                    last_processed_id = token_doc.id
                     continue
 
                 profile = zwift_service.get_profile(user_access_token=access_token, include_competition_metrics=True)
                 if not profile:
                     skipped += 1
+                    processed += 1
+                    last_processed_id = token_doc.id
                     continue
 
                 competition = profile.get('competitionMetrics') or {}
@@ -417,34 +440,50 @@ def refresh_zwift_profile():
                     )
                 user_ref.set(with_schema_version(update), merge=True)
 
-                try:
-                    zwift_service.subscribe_activity(access_token)
-                    zwift_service.subscribe_racing_score(access_token)
-                    zwift_service.subscribe_power_curve(access_token)
-                except Exception as sub_exc:
-                    logger.warning(f"Subscription failed for {user_doc_id}: {sub_exc}")
+                if subscribe:
+                    try:
+                        zwift_service.subscribe_activity(access_token)
+                        zwift_service.subscribe_racing_score(access_token)
+                        zwift_service.subscribe_power_curve(access_token)
+                    except Exception as sub_exc:
+                        logger.warning(f"Subscription failed for {user_doc_id}: {sub_exc}")
 
                 updated += 1
+                processed += 1
+                last_processed_id = token_doc.id
 
             except Exception as exc:
                 logger.error(f"refresh-zwift-profile failed for {user_doc_id}: {exc}")
                 errors += 1
+                processed += 1
+                last_processed_id = token_doc.id
 
-        done = len(token_docs) <= chunk_size
-        next_cursor = None if done else chunk_docs[-1].id
+        has_more_docs = len(token_docs) > chunk_size
+        if processed == 0:
+            # No progress this call (likely very slow upstream); retry with lower maxSeconds/chunkSize.
+            next_cursor = cursor or None
+            done = False
+        else:
+            next_cursor = last_processed_id
+            done = (not has_more_docs) and (not timed_out)
+            if done:
+                next_cursor = None
 
         logger.info(
             "refresh-zwift-profile chunk complete: "
             f"updated={updated}, skipped={skipped}, errors={errors}, "
-            f"processed={len(chunk_docs)}, done={done}, nextCursor={next_cursor}"
+            f"processed={processed}, timedOut={timed_out}, done={done}, nextCursor={next_cursor}, subscribe={subscribe}"
         )
         return jsonify({
             'message': 'Zwift profile refresh chunk complete',
             'updated': updated,
             'skipped': skipped,
             'errors': errors,
-            'processed': len(chunk_docs),
+            'processed': processed,
             'chunkSize': chunk_size,
+            'maxSeconds': max_seconds,
+            'timedOut': timed_out,
+            'subscribe': subscribe,
             'cursor': cursor or None,
             'nextCursor': next_cursor,
             'done': done,
