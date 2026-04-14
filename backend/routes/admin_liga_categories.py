@@ -322,7 +322,7 @@ def refresh_zwift_profile():
     For each user:
     - Re-fetches GET /api/link/racing-profile?includeCompetitionMetrics=true
     - Updates zwiftProfile with all CompetitionMetrics fields
-    - Subscribes to activity and racing-score webhooks
+    - Subscribes to activity, racing-score, and power-curve webhooks
 
     Safe to run multiple times (idempotent).
     Accepts scheduler token or admin Firebase token.
@@ -344,17 +344,60 @@ def refresh_zwift_profile():
         return jsonify({'error': 'DB not available'}), 500
 
     try:
+        body = request.get_json(silent=True) or {}
+        raw_chunk_size = body.get('chunkSize', request.args.get('chunkSize', 25))
+        raw_cursor = body.get('cursor', request.args.get('cursor'))
+
+        try:
+            chunk_size = int(raw_chunk_size)
+        except (TypeError, ValueError):
+            chunk_size = 25
+        chunk_size = max(1, min(chunk_size, 200))
+        cursor = str(raw_cursor).strip() if raw_cursor is not None else ''
+
         zwift_service = get_zwift_service()
-        token_docs = list(db.collection('zwift_tokens').stream())
+        token_docs = sorted(
+            list(db.collection('zwift_tokens').stream()),
+            key=lambda d: d.id,
+        )
 
         if not token_docs:
-            return jsonify({'message': 'No Zwift token documents found', 'updated': 0}), 200
+            return jsonify({
+                'message': 'No Zwift token documents found',
+                'updated': 0,
+                'skipped': 0,
+                'errors': 0,
+                'processed': 0,
+                'chunkSize': chunk_size,
+                'nextCursor': None,
+                'done': True,
+            }), 200
+
+        start_index = 0
+        if cursor:
+            while start_index < len(token_docs) and token_docs[start_index].id <= cursor:
+                start_index += 1
+
+        chunk_docs = token_docs[start_index:start_index + chunk_size]
+        if not chunk_docs:
+            return jsonify({
+                'message': 'No more Zwift token documents to process',
+                'updated': 0,
+                'skipped': 0,
+                'errors': 0,
+                'processed': 0,
+                'chunkSize': chunk_size,
+                'nextCursor': None,
+                'done': True,
+                'totalTokens': len(token_docs),
+                'processedSoFar': start_index,
+            }), 200
 
         updated = 0
         skipped = 0
         errors = 0
 
-        for token_doc in token_docs:
+        for token_doc in chunk_docs:
             token_owner_id = token_doc.id
             user_doc_id = resolve_canonical_user_doc_id(token_owner_id) or token_owner_id
             try:
@@ -405,8 +448,29 @@ def refresh_zwift_profile():
                 logger.error(f"refresh-zwift-profile failed for {user_doc_id}: {exc}")
                 errors += 1
 
-        logger.info(f"refresh-zwift-profile complete: updated={updated}, skipped={skipped}, errors={errors}")
-        return jsonify({'message': 'Zwift profile refresh complete', 'updated': updated, 'skipped': skipped, 'errors': errors}), 200
+        end_index = start_index + len(chunk_docs)
+        done = end_index >= len(token_docs)
+        next_cursor = None if done else chunk_docs[-1].id
+
+        logger.info(
+            "refresh-zwift-profile chunk complete: "
+            f"updated={updated}, skipped={skipped}, errors={errors}, "
+            f"processed={len(chunk_docs)}, start={start_index}, end={end_index}, total={len(token_docs)}"
+        )
+        return jsonify({
+            'message': 'Zwift profile refresh chunk complete',
+            'updated': updated,
+            'skipped': skipped,
+            'errors': errors,
+            'processed': len(chunk_docs),
+            'chunkSize': chunk_size,
+            'cursor': cursor or None,
+            'nextCursor': next_cursor,
+            'done': done,
+            'totalTokens': len(token_docs),
+            'processedSoFar': end_index,
+            'remaining': max(len(token_docs) - end_index, 0),
+        }), 200
 
     except Exception as e:
         logger.error(f"refresh-zwift-profile error: {e}")
