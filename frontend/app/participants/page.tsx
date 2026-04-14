@@ -257,39 +257,41 @@ export default function ParticipantsPage() {
       <h1 className="text-3xl font-bold mb-2 text-foreground">Deltagere</h1>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <p className="text-muted-foreground">Alle tilmeldte ryttere i ligaen ({participants.length}).</p>
-        <div className="flex flex-col sm:flex-row gap-2">
-          <div className="inline-flex rounded-lg border border-input overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setPowerUnit('watts')}
-              className={`px-3 py-2 text-sm transition-colors ${powerUnit === 'watts' ? 'bg-primary text-primary-foreground' : 'bg-background text-foreground hover:bg-muted/60'}`}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="flex flex-row gap-2 items-center">
+            <div className="inline-flex rounded-lg border border-input overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setPowerUnit('watts')}
+                className={`px-3 py-2 text-sm transition-colors ${powerUnit === 'watts' ? 'bg-primary text-primary-foreground' : 'bg-background text-foreground hover:bg-muted/60'}`}
+              >
+                Watt
+              </button>
+              <button
+                type="button"
+                onClick={() => setPowerUnit('wkg')}
+                className={`px-3 py-2 text-sm transition-colors border-l border-input ${powerUnit === 'wkg' ? 'bg-primary text-primary-foreground' : 'bg-background text-foreground hover:bg-muted/60'}`}
+              >
+                W/kg
+              </button>
+            </div>
+            <select
+              value={ligaKatFilter}
+              onChange={e => setLigaKatFilter(e.target.value)}
+              className="w-fit px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             >
-              Watt
-            </button>
-            <button
-              type="button"
-              onClick={() => setPowerUnit('wkg')}
-              className={`px-3 py-2 text-sm transition-colors border-l border-input ${powerUnit === 'wkg' ? 'bg-primary text-primary-foreground' : 'bg-background text-foreground hover:bg-muted/60'}`}
-            >
-              W/kg
-            </button>
+              <option value="">-</option>
+              {ligaKatOptions.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
           </div>
-          <select
-            value={ligaKatFilter}
-            onChange={e => setLigaKatFilter(e.target.value)}
-            className="px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="">-</option>
-            {ligaKatOptions.map(cat => (
-              <option key={cat} value={cat}>{cat}</option>
-            ))}
-          </select>
           <input
             type="search"
             placeholder="Søg navn eller klub..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="sm:w-72 px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            className="w-full sm:w-72 px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
       </div>
