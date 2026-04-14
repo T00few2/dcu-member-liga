@@ -356,10 +356,11 @@ def refresh_zwift_profile():
         cursor = str(raw_cursor).strip() if raw_cursor is not None else ''
 
         zwift_service = get_zwift_service()
-        token_docs = sorted(
-            list(db.collection('zwift_tokens').stream()),
-            key=lambda d: d.id,
-        )
+        token_query = db.collection('zwift_tokens').order_by('__name__')
+        if cursor:
+            cursor_ref = db.collection('zwift_tokens').document(cursor)
+            token_query = token_query.where('__name__', '>', cursor_ref)
+        token_docs = list(token_query.limit(chunk_size + 1).stream())
 
         if not token_docs:
             return jsonify({
@@ -372,26 +373,7 @@ def refresh_zwift_profile():
                 'nextCursor': None,
                 'done': True,
             }), 200
-
-        start_index = 0
-        if cursor:
-            while start_index < len(token_docs) and token_docs[start_index].id <= cursor:
-                start_index += 1
-
-        chunk_docs = token_docs[start_index:start_index + chunk_size]
-        if not chunk_docs:
-            return jsonify({
-                'message': 'No more Zwift token documents to process',
-                'updated': 0,
-                'skipped': 0,
-                'errors': 0,
-                'processed': 0,
-                'chunkSize': chunk_size,
-                'nextCursor': None,
-                'done': True,
-                'totalTokens': len(token_docs),
-                'processedSoFar': start_index,
-            }), 200
+        chunk_docs = token_docs[:chunk_size]
 
         updated = 0
         skipped = 0
@@ -448,14 +430,13 @@ def refresh_zwift_profile():
                 logger.error(f"refresh-zwift-profile failed for {user_doc_id}: {exc}")
                 errors += 1
 
-        end_index = start_index + len(chunk_docs)
-        done = end_index >= len(token_docs)
+        done = len(token_docs) <= chunk_size
         next_cursor = None if done else chunk_docs[-1].id
 
         logger.info(
             "refresh-zwift-profile chunk complete: "
             f"updated={updated}, skipped={skipped}, errors={errors}, "
-            f"processed={len(chunk_docs)}, start={start_index}, end={end_index}, total={len(token_docs)}"
+            f"processed={len(chunk_docs)}, done={done}, nextCursor={next_cursor}"
         )
         return jsonify({
             'message': 'Zwift profile refresh chunk complete',
@@ -467,9 +448,6 @@ def refresh_zwift_profile():
             'cursor': cursor or None,
             'nextCursor': next_cursor,
             'done': done,
-            'totalTokens': len(token_docs),
-            'processedSoFar': end_index,
-            'remaining': max(len(token_docs) - end_index, 0),
         }), 200
 
     except Exception as e:
