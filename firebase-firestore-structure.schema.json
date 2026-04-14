@@ -744,7 +744,16 @@
             "ftp": {
               "type": "number"
             },
+            "zftp": {
+              "type": "number"
+            },
+            "zmap": {
+              "type": "number"
+            },
             "weight": {
+              "type": "number"
+            },
+            "weightInGrams": {
               "type": "number"
             },
             "height": {
@@ -752,6 +761,73 @@
             },
             "racingScore": {
               "type": "number"
+            },
+            "powerCompoundScore": {
+              "type": "number"
+            },
+            "vo2max": {
+              "type": "number"
+            },
+            "category": {
+              "type": "string"
+            },
+            "categoryWomen": {
+              "type": "string"
+            },
+            "updatedAt": {
+              "$ref": "#/$defs/timestampString"
+            }
+          }
+        },
+        "zwiftPowerCurve": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "zftp": {
+              "type": "number"
+            },
+            "zmap": {
+              "type": "number"
+            },
+            "vo2max": {
+              "type": "number"
+            },
+            "category": {
+              "type": "string"
+            },
+            "categoryWomen": {
+              "type": "string"
+            },
+            "validPowerProfile": {
+              "type": "boolean"
+            },
+            "metricsTimestamp": {
+              "type": "string"
+            },
+            "cpBestEfforts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "relevantCpEfforts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "duration": {
+                    "type": "number"
+                  },
+                  "watts": {
+                    "type": "number"
+                  },
+                  "wkg": {
+                    "type": "number"
+                  }
+                }
+              }
             },
             "updatedAt": {
               "$ref": "#/$defs/timestampString"

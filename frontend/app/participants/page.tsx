@@ -54,9 +54,16 @@ interface Participant {
   max90Rating: number | string;
   phenotype: string;
   racingScore: number | string;
+  weightInGrams?: number | string;
+  cp5s?: number | null;
+  cp1min?: number | null;
+  cp5min?: number | null;
+  cp20min?: number | null;
   weightVerificationStatus?: 'none' | 'pending' | 'submitted' | 'approved' | 'rejected';
   ligaCategory?: LigaCategory;
 }
+
+type PowerUnit = 'watts' | 'wkg';
 
 type SortColumn =
   | 'name'
@@ -67,6 +74,10 @@ type SortColumn =
   | 'zwiftKat'
   | 'zftp'
   | 'zmap'
+  | 'cp5s'
+  | 'cp1min'
+  | 'cp5min'
+  | 'cp20min'
   | 'zrs'
   | 'velo'
   | 'veloMax30'
@@ -75,7 +86,37 @@ type SortColumn =
 
 type SortDirection = 'asc' | 'desc';
 
-function getSortValue(p: Participant, col: SortColumn): string | number {
+function getNumericValue(value: number | string | null | undefined): number | null {
+  if (value === undefined || value === null || value === '' || value === 'N/A') {
+    return null;
+  }
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function getWeightKg(p: Participant): number | null {
+  const grams = getNumericValue(p.weightInGrams);
+  if (!grams || grams <= 0) return null;
+  return grams / 1000;
+}
+
+function toDisplayPower(powerWatts: number | string | null | undefined, p: Participant, unit: PowerUnit): number | null {
+  const watts = getNumericValue(powerWatts);
+  if (watts === null) return null;
+  if (unit === 'watts') return watts;
+  const weightKg = getWeightKg(p);
+  if (!weightKg) return null;
+  return watts / weightKg;
+}
+
+function formatPower(powerWatts: number | string | null | undefined, p: Participant, unit: PowerUnit): string {
+  const value = toDisplayPower(powerWatts, p, unit);
+  if (value === null) return '-';
+  if (unit === 'watts') return `${Math.round(value)}`;
+  return value.toFixed(2);
+}
+
+function getSortValue(p: Participant, col: SortColumn, powerUnit: PowerUnit): string | number {
   switch (col) {
     case 'name': return p.name?.toLowerCase() ?? '';
     case 'club': return p.club?.toLowerCase() ?? '';
@@ -83,8 +124,12 @@ function getSortValue(p: Participant, col: SortColumn): string | number {
     case 'zrMax30': return p.max30Rating !== 'N/A' ? Number(p.max30Rating) : -Infinity;
     case 'ligaKat': return p.ligaCategory?.category?.toLowerCase() ?? '';
     case 'zwiftKat': return p.zwiftCategory?.toLowerCase() ?? '';
-    case 'zftp': return p.zftp !== 'N/A' && p.zftp !== undefined ? Number(p.zftp) : -Infinity;
-    case 'zmap': return p.zmap !== 'N/A' && p.zmap !== undefined ? Number(p.zmap) : -Infinity;
+    case 'zftp': return toDisplayPower(p.zftp, p, powerUnit) ?? -Infinity;
+    case 'zmap': return toDisplayPower(p.zmap, p, powerUnit) ?? -Infinity;
+    case 'cp5s': return toDisplayPower(p.cp5s, p, powerUnit) ?? -Infinity;
+    case 'cp1min': return toDisplayPower(p.cp1min, p, powerUnit) ?? -Infinity;
+    case 'cp5min': return toDisplayPower(p.cp5min, p, powerUnit) ?? -Infinity;
+    case 'cp20min': return toDisplayPower(p.cp20min, p, powerUnit) ?? -Infinity;
     case 'zrs': return p.racingScore !== 'N/A' && p.racingScore ? Number(p.racingScore) : -Infinity;
     case 'velo': return p.rating !== 'N/A' ? Number(p.rating) : -Infinity;
     case 'veloMax30': return p.max30Rating !== 'N/A' ? Number(p.max30Rating) : -Infinity;
@@ -124,6 +169,7 @@ export default function ParticipantsPage() {
   const [ligaKatFilter, setLigaKatFilter] = useState('');
   const [sortCol, setSortCol] = useState<SortColumn>('name');
   const [sortDir, setSortDir] = useState<SortDirection>('asc');
+  const [powerUnit, setPowerUnit] = useState<PowerUnit>('watts');
 
   useEffect(() => {
     if (!user || !isRegistered) return;
@@ -174,8 +220,8 @@ export default function ParticipantsPage() {
     });
 
     result = [...result].sort((a, b) => {
-      const av = getSortValue(a, sortCol);
-      const bv = getSortValue(b, sortCol);
+      const av = getSortValue(a, sortCol, powerUnit);
+      const bv = getSortValue(b, sortCol, powerUnit);
       if (av === bv) return 0;
       if (av === -Infinity) return 1;
       if (bv === -Infinity) return -1;
@@ -184,7 +230,7 @@ export default function ParticipantsPage() {
     });
 
     return result;
-  }, [participants, search, ligaKatFilter, sortCol, sortDir]);
+  }, [participants, search, ligaKatFilter, sortCol, sortDir, powerUnit]);
 
   function handleSort(col: SortColumn) {
     if (sortCol === col) {
@@ -212,6 +258,22 @@ export default function ParticipantsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <p className="text-muted-foreground">Alle tilmeldte ryttere i ligaen ({participants.length}).</p>
         <div className="flex flex-col sm:flex-row gap-2">
+          <div className="inline-flex rounded-lg border border-input overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setPowerUnit('watts')}
+              className={`px-3 py-2 text-sm transition-colors ${powerUnit === 'watts' ? 'bg-primary text-primary-foreground' : 'bg-background text-foreground hover:bg-muted/60'}`}
+            >
+              Watt
+            </button>
+            <button
+              type="button"
+              onClick={() => setPowerUnit('wkg')}
+              className={`px-3 py-2 text-sm transition-colors border-l border-input ${powerUnit === 'wkg' ? 'bg-primary text-primary-foreground' : 'bg-background text-foreground hover:bg-muted/60'}`}
+            >
+              W/kg
+            </button>
+          </div>
           <select
             value={ligaKatFilter}
             onChange={e => setLigaKatFilter(e.target.value)}
@@ -261,6 +323,18 @@ export default function ParticipantsPage() {
                 <th {...thProps('zmap')}>
                   zMAP <SortIcon active={sortCol === 'zmap'} direction={sortDir} />
                 </th>
+                <th {...thProps('cp5s')}>
+                  CP 5s <SortIcon active={sortCol === 'cp5s'} direction={sortDir} />
+                </th>
+                <th {...thProps('cp1min')}>
+                  CP 1m <SortIcon active={sortCol === 'cp1min'} direction={sortDir} />
+                </th>
+                <th {...thProps('cp5min')}>
+                  CP 5m <SortIcon active={sortCol === 'cp5min'} direction={sortDir} />
+                </th>
+                <th {...thProps('cp20min')}>
+                  CP 20m <SortIcon active={sortCol === 'cp20min'} direction={sortDir} />
+                </th>
                 <th {...thProps('zrs')}>
                   ZRS <SortIcon active={sortCol === 'zrs'} direction={sortDir} />
                 </th>
@@ -282,7 +356,7 @@ export default function ParticipantsPage() {
             <tbody className="divide-y divide-border">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={14} className="px-6 py-8 text-center text-muted-foreground">
+                  <td colSpan={18} className="px-6 py-8 text-center text-muted-foreground">
                     {search || ligaKatFilter ? 'Ingen deltagere matcher søgningen.' : 'Ingen deltagere fundet endnu.'}
                   </td>
                 </tr>
@@ -344,10 +418,22 @@ export default function ParticipantsPage() {
                       ) : '-'}
                     </td>
                     <td className="px-6 py-4 font-mono text-card-foreground">
-                      {p.zftp !== 'N/A' && p.zftp !== undefined ? `${Math.round(Number(p.zftp))}` : '-'}
+                      {formatPower(p.zftp, p, powerUnit)}
                     </td>
                     <td className="px-6 py-4 font-mono text-card-foreground">
-                      {p.zmap !== 'N/A' && p.zmap !== undefined ? `${Math.round(Number(p.zmap))}` : '-'}
+                      {formatPower(p.zmap, p, powerUnit)}
+                    </td>
+                    <td className="px-6 py-4 font-mono text-card-foreground">
+                      {formatPower(p.cp5s, p, powerUnit)}
+                    </td>
+                    <td className="px-6 py-4 font-mono text-card-foreground">
+                      {formatPower(p.cp1min, p, powerUnit)}
+                    </td>
+                    <td className="px-6 py-4 font-mono text-card-foreground">
+                      {formatPower(p.cp5min, p, powerUnit)}
+                    </td>
+                    <td className="px-6 py-4 font-mono text-card-foreground">
+                      {formatPower(p.cp20min, p, powerUnit)}
                     </td>
                     <td className="px-6 py-4 font-mono font-medium text-card-foreground">
                       {p.racingScore !== 'N/A' && p.racingScore ? Math.round(Number(p.racingScore)) : '-'}

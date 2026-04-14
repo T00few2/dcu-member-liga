@@ -634,6 +634,7 @@ def get_participants():
                     'zftp': zpro.get('zftp', 'N/A'),
                     'zmap': zpro.get('zmap', 'N/A'),
                     'zwiftCategory': zpro.get('category', 'N/A'),
+                    'weightInGrams': zpro.get('weightInGrams') or zpro.get('weight'),
                     'cp5s':   cp(5),
                     'cp1min': cp(60),
                     'cp5min': cp(300),

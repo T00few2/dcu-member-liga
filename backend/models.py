@@ -258,9 +258,35 @@ class ZwiftRacingProfile(TypedDict, total=False):
 
 class ZwiftGameProfile(TypedDict, total=False):
     ftp: int
+    zftp: int
+    zmap: int
     weight: int
+    weightInGrams: int
     height: int
     racingScore: int
+    powerCompoundScore: int
+    vo2max: int
+    category: str
+    categoryWomen: str
+    updatedAt: Any
+
+
+class RelevantCpEffort(TypedDict, total=False):
+    duration: int
+    watts: int
+    wkg: float
+
+
+class ZwiftPowerCurve(TypedDict, total=False):
+    zftp: int
+    zmap: int
+    vo2max: int
+    category: str
+    categoryWomen: str
+    validPowerProfile: bool
+    metricsTimestamp: str
+    cpBestEfforts: list[dict[str, Any]]
+    relevantCpEfforts: list[RelevantCpEffort]
     updatedAt: Any
 
 
@@ -283,6 +309,7 @@ class UserDoc(TypedDict, total=False):
     zwiftPower: ZwiftPowerProfile
     zwiftRacing: ZwiftRacingProfile
     zwiftProfile: ZwiftGameProfile
+    zwiftPowerCurve: ZwiftPowerCurve
     stravaSummary: dict[str, Any]
     ligaCategory: LigaCategoryDoc
     welcomeSeen: bool

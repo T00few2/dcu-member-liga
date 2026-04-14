@@ -273,9 +273,49 @@
       },
       "zwiftProfile": {
         "ftp": 295,
+        "zftp": 295,
+        "zmap": 400,
         "weight": 75000,
+        "weightInGrams": 75000,
         "height": 1780,
         "racingScore": 250.7,
+        "powerCompoundScore": 248.3,
+        "vo2max": 62.1,
+        "category": "B",
+        "categoryWomen": "A",
+        "updatedAt": "2026-03-14T10:07:00+00:00"
+      },
+      "zwiftPowerCurve": {
+        "zftp": 295,
+        "zmap": 400,
+        "vo2max": 62.1,
+        "category": "B",
+        "categoryWomen": "A",
+        "validPowerProfile": true,
+        "metricsTimestamp": "2026-03-14T10:06:30+00:00",
+        "cpBestEfforts": [],
+        "relevantCpEfforts": [
+          {
+            "duration": 5,
+            "watts": 1200,
+            "wkg": 16.0
+          },
+          {
+            "duration": 60,
+            "watts": 650,
+            "wkg": 8.67
+          },
+          {
+            "duration": 300,
+            "watts": 420,
+            "wkg": 5.6
+          },
+          {
+            "duration": 1200,
+            "watts": 320,
+            "wkg": 4.27
+          }
+        ],
         "updatedAt": "2026-03-14T10:07:00+00:00"
       },
       "zwiftRacing": {
