@@ -317,24 +317,6 @@ export default function ParticipantsPage() {
                 <th {...thProps('zwiftKat')}>
                   Zwift Kat <SortIcon active={sortCol === 'zwiftKat'} direction={sortDir} />
                 </th>
-                <th {...thProps('zftp')}>
-                  zFTP <SortIcon active={sortCol === 'zftp'} direction={sortDir} />
-                </th>
-                <th {...thProps('zmap')}>
-                  zMAP <SortIcon active={sortCol === 'zmap'} direction={sortDir} />
-                </th>
-                <th {...thProps('cp5s')}>
-                  CP 5s <SortIcon active={sortCol === 'cp5s'} direction={sortDir} />
-                </th>
-                <th {...thProps('cp1min')}>
-                  CP 1m <SortIcon active={sortCol === 'cp1min'} direction={sortDir} />
-                </th>
-                <th {...thProps('cp5min')}>
-                  CP 5m <SortIcon active={sortCol === 'cp5min'} direction={sortDir} />
-                </th>
-                <th {...thProps('cp20min')}>
-                  CP 20m <SortIcon active={sortCol === 'cp20min'} direction={sortDir} />
-                </th>
                 <th {...thProps('zrs')}>
                   ZRS <SortIcon active={sortCol === 'zrs'} direction={sortDir} />
                 </th>
@@ -346,6 +328,24 @@ export default function ParticipantsPage() {
                 </th>
                 <th {...thProps('veloMax90')}>
                   vELO max90 <SortIcon active={sortCol === 'veloMax90'} direction={sortDir} />
+                </th>
+                <th {...thProps('zftp')}>
+                  zFTP <SortIcon active={sortCol === 'zftp'} direction={sortDir} />
+                </th>
+                <th {...thProps('zmap')}>
+                  zMAP <SortIcon active={sortCol === 'zmap'} direction={sortDir} />
+                </th>
+                <th {...thProps('cp5s')}>
+                  5s <SortIcon active={sortCol === 'cp5s'} direction={sortDir} />
+                </th>
+                <th {...thProps('cp1min')}>
+                  1m <SortIcon active={sortCol === 'cp1min'} direction={sortDir} />
+                </th>
+                <th {...thProps('cp5min')}>
+                  5m <SortIcon active={sortCol === 'cp5min'} direction={sortDir} />
+                </th>
+                <th {...thProps('cp20min')}>
+                  20m <SortIcon active={sortCol === 'cp20min'} direction={sortDir} />
                 </th>
                 <th {...thProps('phenotype')}>
                   Fænotype <SortIcon active={sortCol === 'phenotype'} direction={sortDir} />
@@ -417,6 +417,18 @@ export default function ParticipantsPage() {
                         </span>
                       ) : '-'}
                     </td>
+                    <td className="px-6 py-4 font-mono font-medium text-card-foreground">
+                      {p.racingScore !== 'N/A' && p.racingScore ? Math.round(Number(p.racingScore)) : '-'}
+                    </td>
+                    <td className="px-6 py-4 font-mono font-medium text-card-foreground">
+                      {p.rating !== 'N/A' ? Math.round(Number(p.rating)) : '-'}
+                    </td>
+                    <td className="px-6 py-4 font-mono text-muted-foreground">
+                      {p.max30Rating !== 'N/A' ? Math.round(Number(p.max30Rating)) : '-'}
+                    </td>
+                    <td className="px-6 py-4 font-mono text-muted-foreground">
+                      {p.max90Rating !== 'N/A' ? Math.round(Number(p.max90Rating)) : '-'}
+                    </td>
                     <td className="px-6 py-4 font-mono text-card-foreground">
                       {formatPower(p.zftp, p, powerUnit)}
                     </td>
@@ -434,18 +446,6 @@ export default function ParticipantsPage() {
                     </td>
                     <td className="px-6 py-4 font-mono text-card-foreground">
                       {formatPower(p.cp20min, p, powerUnit)}
-                    </td>
-                    <td className="px-6 py-4 font-mono font-medium text-card-foreground">
-                      {p.racingScore !== 'N/A' && p.racingScore ? Math.round(Number(p.racingScore)) : '-'}
-                    </td>
-                    <td className="px-6 py-4 font-mono font-medium text-card-foreground">
-                      {p.rating !== 'N/A' ? Math.round(Number(p.rating)) : '-'}
-                    </td>
-                    <td className="px-6 py-4 font-mono text-muted-foreground">
-                      {p.max30Rating !== 'N/A' ? Math.round(Number(p.max30Rating)) : '-'}
-                    </td>
-                    <td className="px-6 py-4 font-mono text-muted-foreground">
-                      {p.max90Rating !== 'N/A' ? Math.round(Number(p.max90Rating)) : '-'}
                     </td>
                     <td className="px-6 py-4">
                       {p.phenotype !== 'N/A' ? p.phenotype : '-'}
