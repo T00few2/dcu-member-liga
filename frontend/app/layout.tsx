@@ -16,6 +16,7 @@ import { Analytics } from "@vercel/analytics/next";
 const inter = Inter({ subsets: ["latin"] });
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://www.dansk-ecykling.dk";
+const socialImagePath = process.env.NEXT_PUBLIC_SOCIAL_IMAGE || "/social-share.png";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -42,18 +43,18 @@ export const metadata: Metadata = {
     url: siteUrl,
     images: [
       {
-        url: "/icon-512.png",
-        width: 512,
-        height: 512,
+        url: socialImagePath,
+        width: 1024,
+        height: 576,
         alt: "DCU forårsliga",
       },
     ],
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: "DCU forårsliga",
     description: "E-cycling liga for DCU-medlemmer. Kør virtuelle løb på Zwift og konkurrér om ligaen.",
-    images: ["/icon-512.png"],
+    images: [socialImagePath],
   },
 };
 

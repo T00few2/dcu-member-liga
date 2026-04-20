@@ -310,3 +310,34 @@ curl -X POST https://<backend-url>/admin/refresh-zwift-profile \
 Note (Cloud Functions / Google Front End): send an explicit body on POST (for
 example `--data "{}"`). Without it, some clients may receive `411 Length Required`.
 
+#### Chunked mode (recommended)
+
+The endpoint supports chunked execution to avoid gateway timeouts on large backfills:
+
+- `chunkSize` (default `25`, max `200`)
+- `cursor` (document ID returned as `nextCursor`)
+- `maxSeconds` (time budget per request, default `45`)
+- `subscribe` (default `false`; set `true` only if you also want to force re-subscribe webhooks during backfill)
+
+The endpoint returns:
+
+- `processed`, `updated`, `skipped`, `errors`
+- `timedOut`
+- `nextCursor`
+- `done`
+
+Proven stable settings for production backfill:
+
+- `chunkSize=25`
+- `maxSeconds=40`
+- `subscribe=false`
+
+Example:
+
+```bash
+curl -X POST https://<backend-url>/admin/refresh-zwift-profile \
+  -H "X-Scheduler-Token: <scheduler-secret>" \
+  -H "Content-Type: application/json" \
+  --data '{"chunkSize":25,"maxSeconds":40,"subscribe":false}'
+```
+
