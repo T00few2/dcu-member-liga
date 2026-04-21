@@ -187,6 +187,14 @@ def _hydrate_event_config_subgroup_ids(data: dict[str, Any]) -> tuple[dict[str, 
         subgroup_id = _select_subgroup_id(event_payload, cfg.get("customCategory"))
         if subgroup_id:
             cfg["subgroupId"] = subgroup_id
+            # Store event start time for webhook activity matching (if not already set)
+            if not cfg.get("startTime"):
+                for sg in (event_payload.get("eventSubgroups") or []):
+                    if str(sg.get("id")) == subgroup_id:
+                        start_iso = sg.get("eventSubgroupStart")
+                        if start_iso:
+                            cfg["startTime"] = start_iso
+                        break
             continue
 
         warnings.append(

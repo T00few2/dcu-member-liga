@@ -396,6 +396,49 @@
         }
       }
     },
+    "drVerificationDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Stored at races/{raceId}/dr_verifications/{zwiftId}",
+      "properties": {
+        "_id": {
+          "type": "string",
+          "description": "canonicalZwiftId"
+        },
+        "zwiftId": {
+          "type": "string"
+        },
+        "raceId": {
+          "type": "string"
+        },
+        "activityId": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["passed", "failed", "missing_strava", "missing_activity", "error"]
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "verifiedAt": {
+          "$ref": "#/$defs/timestampString"
+        },
+        "stravaActivityId": {
+          "type": "integer"
+        },
+        "failingMetrics": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "comparison": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
     "segmentObject": {
       "type": "object",
       "additionalProperties": true,
@@ -570,6 +613,13 @@
         "data": {
           "type": "object",
           "additionalProperties": true
+        },
+        "likelyRaceId": {
+          "type": "string",
+          "description": "Firestore race document ID if this activity was matched to a league race"
+        },
+        "likelyEventId": {
+          "type": "string"
         },
         "updatedAt": {
           "$ref": "#/$defs/timestampString"

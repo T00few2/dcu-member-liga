@@ -1,8 +1,13 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
-import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
-import type { Race, RaceResult, LoadingStatus } from '@/types/admin';
+import { doc, updateDoc, arrayUnion, arrayRemove, collection, getDocs } from 'firebase/firestore';
+import { useAuth } from '@/lib/auth-context';
+import { API_URL } from '@/lib/api';
+import type { Race, RaceResult, LoadingStatus, DualRecordingVerification } from '@/types/admin';
+import DualRecordingStatusBadge from '@/components/DualRecordingStatusBadge';
+import DualRecordingResultModal from '@/components/DualRecordingResultModal';
 
 interface ResultsModalProps {
     race: Race | null;
@@ -19,6 +24,57 @@ export default function ResultsModal({
     onRefresh,
     onRaceUpdate,
 }: ResultsModalProps) {
+    const { user } = useAuth();
+    const [drVerifications, setDrVerifications] = useState<Map<string, DualRecordingVerification>>(new Map());
+    const [drModal, setDrModal] = useState<{ name: string; verification: DualRecordingVerification } | null>(null);
+    const [drRunning, setDrRunning] = useState(false);
+    const [drStatus, setDrStatus] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!race) return;
+        const colRef = collection(db, 'races', race.id, 'dr_verifications');
+        getDocs(colRef).then(snap => {
+            const map = new Map<string, DualRecordingVerification>();
+            snap.forEach(d => {
+                const data = d.data() as DualRecordingVerification;
+                map.set(d.id, data);
+            });
+            setDrVerifications(map);
+        }).catch(() => {});
+    }, [race?.id]);
+
+    const handleVerifyDR = async () => {
+        if (!race || !user) return;
+        setDrRunning(true);
+        setDrStatus(null);
+        try {
+            const token = await user.getIdToken();
+            const res = await fetch(`${API_URL}/admin/races/${race.id}/verify-dual-recording`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const body = await res.json();
+            if (res.ok) {
+                setDrStatus(`Trigget: ${body.triggered ?? 0} ryttere. Mangler aktivitet: ${body.missing_activity ?? 0}.`);
+                // Refresh DR verifications after a short delay to let background threads finish
+                setTimeout(() => {
+                    const colRef = collection(db, 'races', race.id, 'dr_verifications');
+                    getDocs(colRef).then(snap => {
+                        const map = new Map<string, DualRecordingVerification>();
+                        snap.forEach(d => map.set(d.id, d.data() as DualRecordingVerification));
+                        setDrVerifications(map);
+                    }).catch(() => {});
+                }, 5000);
+            } else {
+                setDrStatus(`Fejl: ${body.message || 'Ukendt fejl'}`);
+            }
+        } catch {
+            setDrStatus('Netværksfejl');
+        } finally {
+            setDrRunning(false);
+        }
+    };
+
     if (!race) return null;
 
     const results = race.results || {};
@@ -139,20 +195,32 @@ export default function ResultsModal({
     };
 
     return (
+        <>
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
             <div className="bg-card w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-lg shadow-2xl border border-border flex flex-col">
                 <div className="p-4 border-b border-border flex justify-between items-center bg-muted/30">
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3 flex-wrap">
                         <h3 className="text-lg font-bold text-card-foreground">
                             Results: {race.name}
                         </h3>
-                        <button 
+                        <button
                             onClick={onRefresh}
                             disabled={status === 'refreshing'}
                             className="text-xs bg-primary text-primary-foreground px-3 py-1 rounded hover:opacity-90 font-medium"
                         >
                             {status === 'refreshing' ? 'Calculating...' : 'Recalculate Results'}
                         </button>
+                        <button
+                            onClick={handleVerifyDR}
+                            disabled={drRunning}
+                            title="Kør dual recording verifikation for DR-krævede ryttere"
+                            className="text-xs bg-blue-600 text-white px-3 py-1 rounded hover:opacity-90 font-medium disabled:opacity-50"
+                        >
+                            {drRunning ? 'Verificerer DR...' : 'Verificer DR'}
+                        </button>
+                        {drStatus && (
+                            <span className="text-xs text-muted-foreground">{drStatus}</span>
+                        )}
                     </div>
                     <button 
                         onClick={onClose}
@@ -197,9 +265,11 @@ export default function ResultsModal({
                                     manualDQs={race.manualDQs || []}
                                     manualDeclassifications={race.manualDeclassifications || []}
                                     manualExclusions={race.manualExclusions || []}
+                                    drVerifications={drVerifications}
                                     onToggleDQ={handleToggleDQ}
                                     onToggleDeclass={handleToggleDeclass}
                                     onToggleExclude={handleToggleExclude}
+                                    onOpenDR={(name, v) => setDrModal({ name, verification: v })}
                                 />
                             ))}
                         </>
@@ -207,6 +277,15 @@ export default function ResultsModal({
                 </div>
             </div>
         </div>
+        {drModal && (
+            <DualRecordingResultModal
+                open
+                onClose={() => setDrModal(null)}
+                riderName={drModal.name}
+                verification={drModal.verification}
+            />
+        )}
+    </>
     );
 }
 
@@ -217,9 +296,11 @@ interface CategoryResultsTableProps {
     manualDQs: string[];
     manualDeclassifications: string[];
     manualExclusions: string[];
+    drVerifications: Map<string, DualRecordingVerification>;
     onToggleDQ: (zwiftId: string, isCurrentlyDQ: boolean) => void;
     onToggleDeclass: (zwiftId: string, isCurrentlyDeclass: boolean) => void;
     onToggleExclude: (zwiftId: string, isCurrentlyExcluded: boolean) => void;
+    onOpenDR: (riderName: string, v: DualRecordingVerification) => void;
 }
 
 function CategoryResultsTable({
@@ -228,9 +309,11 @@ function CategoryResultsTable({
     manualDQs,
     manualDeclassifications,
     manualExclusions,
+    drVerifications,
     onToggleDQ,
     onToggleDeclass,
     onToggleExclude,
+    onOpenDR,
 }: CategoryResultsTableProps) {
     return (
         <div className="border border-border rounded-lg overflow-hidden">
@@ -304,7 +387,15 @@ function CategoryResultsTable({
                                     )}
                                 </td>
                                 <td className="px-4 py-2 text-center">
-                                    {isFlagged && <span className="text-xl" title="Flagged">🚩</span>}
+                                    <div className="flex items-center justify-center gap-1">
+                                        {isFlagged && <span className="text-xl" title="Flagged">🚩</span>}
+                                        {drVerifications.has(rider.zwiftId) && (
+                                            <DualRecordingStatusBadge
+                                                verification={drVerifications.get(rider.zwiftId)}
+                                                onClick={() => onOpenDR(rider.name, drVerifications.get(rider.zwiftId)!)}
+                                            />
+                                        )}
+                                    </div>
                                 </td>
                                 <td className="px-4 py-2 text-center">
                                     <input 

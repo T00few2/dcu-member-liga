@@ -73,6 +73,35 @@ export interface SprintDataEntry {
     rank?: number;
 }
 
+export interface CpDiffRow {
+    label: string;
+    key: string;
+    zwift: number | null;
+    strava: number | null;
+    diffW: number;
+    diffPct: number | null;
+}
+
+export type DualRecordingStatus = 'passed' | 'failed' | 'missing_strava' | 'missing_activity' | 'error';
+
+export interface DualRecordingVerification {
+    status: DualRecordingStatus;
+    passed?: boolean;
+    verifiedAt?: string;
+    zwiftActivityId?: string;
+    stravaActivityId?: number | null;
+    failingMetrics?: string[];
+    comparison?: {
+        cpDiff: CpDiffRow[];
+        avgPower: {
+            zwift: number | null;
+            strava: number | null;
+            diffW: number | null;
+            diffPct: number | null;
+        };
+    };
+}
+
 export interface RaceResult {
     zwiftId: string;
     name: string;
@@ -84,6 +113,8 @@ export interface RaceResult {
     sprintData?: Record<string, SprintDataEntry>;
     flaggedCheating?: boolean;
     flaggedSandbagging?: boolean;
+    activityId?: string;
+    dualRecordingVerification?: DualRecordingVerification;
 }
 
 export interface LeagueSettings {
