@@ -3,9 +3,9 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { db } from '@/lib/firebase';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, collection, getDocs } from 'firebase/firestore';
 import { API_URL } from '@/lib/api';
-import type { Race, Sprint, ResultEntry, StandingEntry } from '@/types/live';
+import type { Race, Sprint, ResultEntry, StandingEntry, DualRecordingVerification } from '@/types/live';
 import StandingsTable from './_components/StandingsTable';
 import RaceResultsTable from './_components/RaceResultsTable';
 
@@ -21,6 +21,7 @@ export default function ResultsPage() {
     const [activeTab, setActiveTab] = useState<'standings' | 'results'>('standings');
     const [selectedRaceId, setSelectedRaceId] = useState<string>('');
     const [selectedCategory, setSelectedCategory] = useState<string>('A');
+    const [drVerifications, setDrVerifications] = useState<Map<string, DualRecordingVerification>>(new Map());
     const [standingsCategory, setStandingsCategory] = useState<string>('');
     const [autoSelectStandingsCategory, setAutoSelectStandingsCategory] = useState(true);
     const [bestRacesCount, setBestRacesCount] = useState<number>(5);
@@ -81,6 +82,16 @@ export default function ResultsPage() {
             }
         }, (err) => console.error('Error listening to race updates:', err));
         return () => unsubscribe();
+    }, [selectedRaceId]);
+
+    useEffect(() => {
+        if (!selectedRaceId) return;
+        const colRef = collection(db, 'races', selectedRaceId, 'dr_verifications');
+        getDocs(colRef).then(snap => {
+            const map = new Map<string, DualRecordingVerification>();
+            snap.forEach(d => map.set(d.id, d.data() as DualRecordingVerification));
+            setDrVerifications(map);
+        }).catch(() => {});
     }, [selectedRaceId]);
 
     useEffect(() => {
@@ -322,6 +333,7 @@ export default function ResultsPage() {
                     bestSplitTimes={bestSplitTimes}
                     getSprintHeader={getSprintHeader}
                     leaguePointsByZwiftId={leaguePointsByZwiftId}
+                    drVerifications={drVerifications}
                 />
             )}
         </div>

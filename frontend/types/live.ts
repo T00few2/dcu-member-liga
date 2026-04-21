@@ -25,6 +25,28 @@ export interface EventCategoryConfig {
     startTime?: string;
 }
 
+export type DualRecordingStatus = 'passed' | 'failed' | 'missing_strava' | 'missing_activity' | 'error';
+
+export interface DualRecordingVerification {
+    status: DualRecordingStatus;
+    passed?: boolean;
+    verifiedAt?: string;
+    zwiftActivityId?: string;
+    stravaActivityId?: number | null;
+    failingMetrics?: string[];
+    comparison?: {
+        cpDiff: Array<{
+            label: string; key: string;
+            zwift: number | null; strava: number | null;
+            diffW: number; diffPct: number | null;
+        }>;
+        avgPower: {
+            zwift: number | null; strava: number | null;
+            diffW: number | null; diffPct: number | null;
+        };
+    };
+}
+
 export interface ResultEntry {
     zwiftId: string;
     name: string;
@@ -36,6 +58,7 @@ export interface ResultEntry {
     sprintDetails?: Record<string, number | string>;
     sprintData?: Record<string, SprintPerformance>;
     criticalP?: CriticalPower;
+    dualRecordingVerification?: DualRecordingVerification;
 }
 
 export interface SprintPerformance {

@@ -1,6 +1,11 @@
-import type { Race, Sprint, ResultEntry } from '@/types/live';
+'use client';
+
+import { useState } from 'react';
+import type { Race, Sprint, ResultEntry, DualRecordingVerification } from '@/types/live';
 import { formatDateShort } from '@/lib/formatDate';
 import { formatTime, formatGap } from './formatTime';
+import DualRecordingStatusBadge from '@/components/DualRecordingStatusBadge';
+import DualRecordingResultModal from '@/components/DualRecordingResultModal';
 
 interface Props {
     races: Race[];
@@ -17,6 +22,7 @@ interface Props {
     bestSplitTimes: Record<string, number>;
     getSprintHeader: (key: string) => string;
     leaguePointsByZwiftId?: Map<string, number>;
+    drVerifications?: Map<string, DualRecordingVerification>;
 }
 
 export default function RaceResultsTable({
@@ -34,12 +40,17 @@ export default function RaceResultsTable({
     bestSplitTimes,
     getSprintHeader,
     leaguePointsByZwiftId,
+    drVerifications,
 }: Props) {
+    const [drModal, setDrModal] = useState<{ name: string; verification: DualRecordingVerification } | null>(null);
+
     const showFinishPointsColumn = raceResults.some(r => (r.finishPoints ?? 0) > 0);
     const showTotalPointsColumn = raceResults.some(r => (r.totalPoints ?? 0) > 0);
     const showLeaguePointsColumn = !!leaguePointsByZwiftId && raceResults.some(r => leaguePointsByZwiftId.has(r.zwiftId));
+    const showDrColumn = !!drVerifications && drVerifications.size > 0;
 
     return (
+        <>
         <div className="space-y-6">
             {/* Race Selector */}
             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between bg-card border border-border p-4 rounded-lg shadow-sm">
@@ -110,10 +121,15 @@ export default function RaceResultsTable({
                                     {showLeaguePointsColumn && (
                                         <th className="px-4 py-3 text-right font-bold text-primary">Ligapoint</th>
                                     )}
+                                    {showDrColumn && (
+                                        <th className="px-4 py-3 text-center w-12" title="Dual Recording">DR</th>
+                                    )}
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border">
-                                {raceResults.map((rider, idx) => (
+                                {raceResults.map((rider, idx) => {
+                                    const drVerification = drVerifications?.get(rider.zwiftId);
+                                    return (
                                     <tr key={rider.zwiftId} className="hover:bg-muted/20 transition odd:bg-transparent even:bg-[#f1efe7]">
                                         <td className="px-4 py-3 text-center font-medium text-muted-foreground">{idx + 1}</td>
                                         <td className="px-4 py-3 font-medium text-card-foreground">{rider.name}</td>
@@ -151,8 +167,19 @@ export default function RaceResultsTable({
                                                 {leaguePointsByZwiftId?.get(rider.zwiftId) ?? '-'}
                                             </td>
                                         )}
+                                        {showDrColumn && (
+                                            <td className="px-4 py-3 text-center">
+                                                {drVerification && (
+                                                    <DualRecordingStatusBadge
+                                                        verification={drVerification}
+                                                        onClick={() => setDrModal({ name: rider.name, verification: drVerification })}
+                                                    />
+                                                )}
+                                            </td>
+                                        )}
                                     </tr>
-                                ))}
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
@@ -174,5 +201,14 @@ export default function RaceResultsTable({
                 )}
             </div>
         </div>
+        {drModal && (
+            <DualRecordingResultModal
+                open
+                onClose={() => setDrModal(null)}
+                riderName={drModal.name}
+                verification={drModal.verification}
+            />
+        )}
+    </>
     );
 }

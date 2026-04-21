@@ -1,5 +1,6 @@
 import logging
 import datetime
+import threading
 
 from flask import Blueprint, request, jsonify, redirect
 from firebase_admin import firestore
@@ -422,6 +423,105 @@ def zwift_sync_subscriptions():
     return jsonify({'message': 'Subscription sync complete', 'result': result}), 200
 
 
+def _try_link_and_verify_activity(
+    db_ref: object,
+    activity_id: str,
+    user_doc_id: str,
+    zwift_user_id: str,
+) -> None:
+    """Find a matching league race for *activity_id* and trigger DR if required.
+
+    Called fire-and-forget after an ActivitySaved webhook is processed.
+    All errors are swallowed so they never affect the webhook response.
+    """
+    try:
+        from routes.admin_verification import (  # noqa: PLC0415 — lazy import avoids circular dep
+            _extract_zwift_activity_fields,
+            _is_dual_recording_required,
+            _parse_iso_utc,
+            _run_dr_verification_background,
+        )
+
+        # Load the stored activity to get start time
+        act_doc = db_ref.collection('zwift_activities').document(str(activity_id)).get()
+        if not act_doc.exists:
+            return
+        act_data = (act_doc.to_dict() or {}).get('data') or {}
+        fields = _extract_zwift_activity_fields(act_data)
+        started_at = fields.get('startedAt')
+        if not started_at:
+            return
+
+        act_dt = _parse_iso_utc(started_at)
+        if not act_dt:
+            return
+
+        # Extract just the date part for a Firestore range query
+        date_str = act_dt.strftime('%Y-%m-%d')
+        # Use a slightly wider window: query races on the same day or ±1 day
+        from datetime import timedelta as _td
+        date_prev = (act_dt - _td(days=1)).strftime('%Y-%m-%d')
+        date_next = (act_dt + _td(days=1)).strftime('%Y-%m-%d')
+
+        race_docs = (
+            db_ref.collection('races')
+            .where('date', '>=', date_prev)
+            .where('date', '<=', date_next)
+            .stream()
+        )
+
+        matched_race_id: str | None = None
+        matched_event_start: str | None = None
+
+        for race_doc in race_docs:
+            race_data = race_doc.to_dict() or {}
+            for cfg in (race_data.get('eventConfiguration') or []):
+                event_start_iso = cfg.get('startTime') or race_data.get('date') or ''
+                event_dt = _parse_iso_utc(event_start_iso) if event_start_iso else None
+                if event_dt is None:
+                    # Fall back: treat the race date itself as start (accurate to ±24h)
+                    event_dt = _parse_iso_utc(race_data.get('date') or '')
+                if event_dt and abs((act_dt - event_dt).total_seconds()) <= 7200:
+                    matched_race_id = race_doc.id
+                    matched_event_start = event_start_iso or race_data.get('date')
+                    break
+            if matched_race_id:
+                break
+
+        if not matched_race_id:
+            return
+
+        # Tag the activity document with the likely race
+        db_ref.collection('zwift_activities').document(str(activity_id)).set({
+            'likelyRaceId': matched_race_id,
+        }, merge=True)
+
+        # Check if this rider requires dual recording
+        if not _is_dual_recording_required(db_ref, user_doc_id):
+            return
+
+        # Resolve canonical zwift ID (user doc ID is canonical zwiftId in this system)
+        user_doc = db_ref.collection('users').document(user_doc_id).get()
+        canonical_zwift_id = (
+            (user_doc.to_dict() or {}).get('zwiftId') or user_doc_id
+            if user_doc.exists else user_doc_id
+        )
+
+        threading.Thread(
+            target=_run_dr_verification_background,
+            args=(db_ref, user_doc_id, canonical_zwift_id, str(activity_id),
+                  matched_race_id, matched_event_start),
+            daemon=True,
+        ).start()
+
+        logger.info(
+            'Triggered DR verification: activity=%s race=%s rider=%s',
+            activity_id, matched_race_id, canonical_zwift_id,
+        )
+    except Exception as exc:
+        logger.error('_try_link_and_verify_activity(%s): %s', activity_id, exc)
+
+
 @integration_bp.route('/zwift/webhook', methods=['POST'])
 def zwift_webhook():
     if not db:
@@ -469,6 +569,8 @@ def zwift_webhook():
                             'data': activity,
                             'updatedAt': firestore.SERVER_TIMESTAMP,
                         }), merge=True)
+                        # Try to link activity to a league race and trigger DR if required
+                        _try_link_and_verify_activity(db, str(activity_id), user_doc_id, str(user_id))
                     if token_owner_id != user_doc_id:
                         token_payload = get_token_doc(token_owner_id)
                         if token_payload:
