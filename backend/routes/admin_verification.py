@@ -3,7 +3,6 @@ Admin: Weight/rider verification routes.
 
 Registered on admin_bp (defined in routes/admin.py).
 """
-import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 

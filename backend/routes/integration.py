@@ -456,8 +456,6 @@ def _try_link_and_verify_activity(
         if not act_dt:
             return
 
-        # Extract just the date part for a Firestore range query
-        date_str = act_dt.strftime('%Y-%m-%d')
         # Use a slightly wider window: query races on the same day or ±1 day
         from datetime import timedelta as _td
         date_prev = (act_dt - _td(days=1)).strftime('%Y-%m-%d')
