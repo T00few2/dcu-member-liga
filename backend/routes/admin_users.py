@@ -10,7 +10,7 @@ import re
 from routes.admin import admin_bp
 from authz import require_admin, AuthzError
 from extensions import db
-from utils.email_sender import send_plain_email, EmailConfigError, EmailSendError
+from utils.email_sender import send_html_email, _strip_html, EmailConfigError, EmailSendError
 
 import logging
 
@@ -115,13 +115,13 @@ def send_email_to_selected_users():
     payload = request.get_json(silent=True) or {}
     user_ids_raw = payload.get('userIds')
     subject = str(payload.get('subject') or '').strip()
-    message = str(payload.get('message') or '').strip()
+    message = str(payload.get('message') or '')
 
     if not isinstance(user_ids_raw, list):
         return jsonify({'error': 'userIds must be an array of user document IDs.'}), 400
     if not subject:
         return jsonify({'error': 'subject is required.'}), 400
-    if not message:
+    if not _strip_html(message).strip():
         return jsonify({'error': 'message is required.'}), 400
     if '\r' in subject or '\n' in subject:
         return jsonify({'error': 'subject must be a single line.'}), 400
@@ -176,7 +176,7 @@ def send_email_to_selected_users():
                 continue
 
             try:
-                send_plain_email(to_email=email, subject=subject, message=message)
+                send_html_email(to_email=email, subject=subject, html_body=message)
                 sent += 1
                 results.append({
                     'userId': user_id,

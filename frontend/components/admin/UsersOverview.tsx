@@ -1,8 +1,19 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
+
+const RichTextEditor = dynamic(
+    () => import('@/components/admin/RichTextEditor'),
+    {
+        ssr: false,
+        loading: () => (
+            <div className="min-h-48 border border-border rounded-lg bg-muted/10 animate-pulse" />
+        ),
+    }
+);
 
 interface UserRow {
     userId: string;
@@ -221,14 +232,17 @@ export default function UsersOverview() {
         setSendError(null);
     };
 
+    const isMessageEmpty = (html: string) =>
+        html.replace(/<[^>]*>/g, '').trim().length === 0;
+
     const handleSendEmail = async () => {
         if (!user || selectedCount === 0 || sendingEmail) return;
         const subject = emailSubject.trim();
-        const message = emailMessage.trim();
-        if (!subject || !message) {
+        if (!subject || isMessageEmpty(emailMessage)) {
             setSendError('Subject and message are required.');
             return;
         }
+        const message = emailMessage;
 
         setSendingEmail(true);
         setSendError(null);
@@ -481,11 +495,10 @@ export default function UsersOverview() {
 
                         <div className="space-y-2">
                             <label className="block text-sm font-medium">Message</label>
-                            <textarea
-                                value={emailMessage}
-                                onChange={e => setEmailMessage(e.target.value)}
-                                className="w-full min-h-48 border border-border rounded-lg px-3 py-2 text-sm bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                                placeholder="Write your message"
+                            <RichTextEditor
+                                key={isComposeOpen ? 'open' : 'closed'}
+                                onChange={setEmailMessage}
+                                disabled={sendingEmail}
                             />
                         </div>
 
