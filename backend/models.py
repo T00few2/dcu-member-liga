@@ -51,6 +51,17 @@ class SprintDataEntry(TypedDict, total=False):
 # Race results
 # ---------------------------------------------------------------------------
 
+class DualRecordingVerification(TypedDict, total=False):
+    """Stored in races/{raceId}/dr_verifications/{zwiftId}."""
+    status: str           # 'passed' | 'failed' | 'missing_strava' | 'missing_activity' | 'error'
+    passed: bool
+    verifiedAt: str       # ISO-8601
+    zwiftActivityId: str
+    stravaActivityId: int | None
+    failingMetrics: list[str]    # e.g. ['w1200', 'w300']
+    comparison: dict[str, Any]  # cpDiff rows + avgPower for display
+
+
 class RiderResult(TypedDict, total=False):
     """
     A single rider's result within a race category.
@@ -74,6 +85,7 @@ class RiderResult(TypedDict, total=False):
     sprintData: dict[str, SprintDataEntry]
     sprintDetails: dict[str, int | float]   # points (sprint) or worldTime (split)
     isTestData: bool
+    activityId: str                          # Zwift activity ID for this race event
 
 
 # category label → ordered list of rider results
