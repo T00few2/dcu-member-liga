@@ -26,6 +26,13 @@ ZWIFT_MIGRATION_MODE = os.getenv('ZWIFT_MIGRATION_MODE', 'official_only')
 
 SCHEDULER_SECRET = os.getenv('SCHEDULER_SECRET')
 
+# Zoho SMTP (admin email sending)
+ZOHO_SMTP_HOST = os.getenv('ZOHO_SMTP_HOST', 'smtp.zoho.com')
+ZOHO_SMTP_PORT = int(os.getenv('ZOHO_SMTP_PORT', '587'))
+ZOHO_SMTP_USE_TLS = os.getenv('ZOHO_SMTP_USE_TLS', 'true').strip().lower() in {'1', 'true', 'yes', 'on'}
+ZOHO_SMTP_USER = os.getenv('ZOHO_SMTP_USER')
+ZOHO_SMTP_APP_PASSWORD = os.getenv('ZOHO_SMTP_APP_PASSWORD')
+
 # Critical secrets — raise at startup so the app fails loudly.
 # In CI (GitHub Actions sets CI=true automatically), downgrade to a warning
 # so tests can run without real credentials.
@@ -49,6 +56,8 @@ for _name, _val, _hint in [
     ('STRAVA_CLIENT_ID', STRAVA_CLIENT_ID, 'Strava OAuth will be unavailable.'),
     ('STRAVA_CLIENT_SECRET', STRAVA_CLIENT_SECRET, 'Strava OAuth will be unavailable.'),
     ('ZR_AUTH_KEY', ZR_AUTH_KEY, 'ZwiftRacing integration will fail.'),
+    ('ZOHO_SMTP_USER', ZOHO_SMTP_USER, 'Admin email sending will be unavailable.'),
+    ('ZOHO_SMTP_APP_PASSWORD', ZOHO_SMTP_APP_PASSWORD, 'Admin email sending will be unavailable.'),
 ]:
     if not _val:
         logger.warning(f"Optional config '{_name}' is not set. {_hint}")
