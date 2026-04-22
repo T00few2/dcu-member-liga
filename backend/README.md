@@ -173,6 +173,21 @@ For local frontend usage, make sure this is set:
 ALLOW_LOCALHOST=true
 ```
 
+For admin email sending (Zoho SMTP), also configure:
+
+```env
+ZOHO_SMTP_HOST=smtp.zoho.com
+ZOHO_SMTP_PORT=587
+ZOHO_SMTP_USE_TLS=true
+ZOHO_SMTP_USER=your-full-zoho-email
+ZOHO_SMTP_APP_PASSWORD=your-zoho-app-password
+```
+
+Notes:
+- `ZOHO_SMTP_USER` must be the full mailbox address used for SMTP login.
+- `ZOHO_SMTP_APP_PASSWORD` is generated in Zoho Security > App Passwords (2FA required).
+- In production, provide these via GitHub repo secrets so deploy writes them to Cloud Functions env.
+
 ### 5) Start backend on port 8080
 
 ```bash
@@ -246,6 +261,25 @@ Scripts are provided to manage user roles (specifically the `admin` custom claim
     *   `python backend/scripts/set_admin_claim.py --email <USER_EMAIL> --admin true`
 *   **Revoke Admin Access**:
     *   `python backend/scripts/set_admin_claim.py --email <USER_EMAIL> --admin false`
+
+## Admin Email Endpoint
+
+The admin users workflow supports sending plain-text emails to selected users:
+
+- Endpoint: `POST /admin/users/send-email`
+- Auth: Admin Firebase token (`Authorization: Bearer <id-token>`)
+- Request body:
+
+```json
+{
+  "userIds": ["<firestore-user-doc-id>"],
+  "subject": "Race update",
+  "message": "Hello riders, ... "
+}
+```
+
+- Response includes a `summary` object with `requested`, `sent`, `failed`, and `skipped` counts.
+- Invalid/missing recipient emails are skipped safely.
 
 ## Zwift Integration
 

@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
 
 interface UserRow {
+    userId: string;
     zwiftId: string;
     name: string;
     email: string;
@@ -23,6 +24,13 @@ interface UserRow {
 
 type SortKey = keyof UserRow;
 type SortDir = 'asc' | 'desc';
+
+interface EmailSendSummary {
+    requested: number;
+    sent: number;
+    failed: number;
+    skipped: number;
+}
 
 const CATEGORY_STYLES: Record<string, string> = {
     Diamond:  'bg-cyan-100 text-cyan-800',
@@ -75,6 +83,16 @@ export default function UsersOverview() {
     const [search, setSearch] = useState('');
     const [sortKey, setSortKey] = useState<SortKey>('club');
     const [sortDir, setSortDir] = useState<SortDir>('asc');
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [isComposeOpen, setIsComposeOpen] = useState(false);
+    const [emailSubject, setEmailSubject] = useState('');
+    const [emailMessage, setEmailMessage] = useState('');
+    const [sendingEmail, setSendingEmail] = useState(false);
+    const [sendError, setSendError] = useState<string | null>(null);
+    const [lastSendSummary, setLastSendSummary] = useState<EmailSendSummary | null>(null);
+    const selectAllRef = useRef<HTMLInputElement>(null);
+
+    const getRowId = useCallback((row: UserRow) => row.userId || row.zwiftId, []);
 
     const fetchUsers = useCallback(async () => {
         if (!user) return;
@@ -87,13 +105,16 @@ export default function UsersOverview() {
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
-            setRows(data.users ?? []);
+            const nextRows = data.users ?? [];
+            setRows(nextRows);
+            const validIds = new Set(nextRows.map((row: UserRow) => getRowId(row)));
+            setSelectedIds(prev => new Set(Array.from(prev).filter(id => validIds.has(id))));
         } catch (e: any) {
             setError(e.message ?? 'Failed to load users');
         } finally {
             setLoading(false);
         }
-    }, [user]);
+    }, [user, getRowId]);
 
     useEffect(() => { fetchUsers(); }, [fetchUsers]);
 
@@ -124,12 +145,123 @@ export default function UsersOverview() {
         });
     }, [rows, search, sortKey, sortDir]);
 
+    const filteredIds = useMemo(
+        () => filtered.map(row => getRowId(row)).filter(Boolean),
+        [filtered, getRowId]
+    );
+
+    const selectedCount = selectedIds.size;
+    const selectedFilteredCount = filteredIds.filter(id => selectedIds.has(id)).length;
+    const allFilteredSelected = filteredIds.length > 0 && selectedFilteredCount === filteredIds.length;
+    const someFilteredSelected = selectedFilteredCount > 0 && !allFilteredSelected;
+
+    const selectedRows = useMemo(
+        () => rows.filter(row => selectedIds.has(getRowId(row))),
+        [rows, selectedIds, getRowId]
+    );
+    const selectedWithoutEmail = selectedRows.filter(r => !r.email?.trim()).length;
+
+    useEffect(() => {
+        if (!selectAllRef.current) return;
+        selectAllRef.current.indeterminate = someFilteredSelected;
+    }, [someFilteredSelected]);
+
     const handleSort = (key: SortKey) => {
         if (key === sortKey) {
             setSortDir(d => d === 'asc' ? 'desc' : 'asc');
         } else {
             setSortKey(key);
             setSortDir('asc');
+        }
+    };
+
+    const toggleRowSelection = (rowId: string, checked: boolean) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (checked) next.add(rowId);
+            else next.delete(rowId);
+            return next;
+        });
+    };
+
+    const toggleSelectAllFiltered = () => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (allFilteredSelected) {
+                filteredIds.forEach(id => next.delete(id));
+            } else {
+                filteredIds.forEach(id => next.add(id));
+            }
+            return next;
+        });
+    };
+
+    const clearFilteredSelection = () => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            filteredIds.forEach(id => next.delete(id));
+            return next;
+        });
+    };
+
+    const closeComposeModal = () => {
+        if (sendingEmail) return;
+        setIsComposeOpen(false);
+        setSendError(null);
+        setEmailSubject('');
+        setEmailMessage('');
+    };
+
+    const openComposeModal = () => {
+        setIsComposeOpen(true);
+        setSendError(null);
+    };
+
+    const handleSendEmail = async () => {
+        if (!user || selectedCount === 0 || sendingEmail) return;
+        const subject = emailSubject.trim();
+        const message = emailMessage.trim();
+        if (!subject || !message) {
+            setSendError('Subject and message are required.');
+            return;
+        }
+
+        setSendingEmail(true);
+        setSendError(null);
+        try {
+            const token = await user.getIdToken();
+            const res = await fetch(`${API_URL}/admin/users/send-email`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    userIds: Array.from(selectedIds),
+                    subject,
+                    message,
+                }),
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.error ?? `HTTP ${res.status}`);
+            }
+
+            const summary: EmailSendSummary = data.summary ?? {
+                requested: selectedCount,
+                sent: 0,
+                failed: 0,
+                skipped: 0,
+            };
+            setLastSendSummary(summary);
+            setSelectedIds(new Set());
+            closeComposeModal();
+        } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : 'Failed to send email';
+            setSendError(msg);
+        } finally {
+            setSendingEmail(false);
         }
     };
 
@@ -157,7 +289,7 @@ export default function UsersOverview() {
         <div className="space-y-4 pb-12">
             {/* Toolbar */}
             <div className="flex items-center justify-between gap-4 flex-wrap">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                     <input
                         type="text"
                         placeholder="Search name, email, club, Zwift ID…"
@@ -166,20 +298,60 @@ export default function UsersOverview() {
                         className="border border-border rounded-lg px-3 py-1.5 text-sm bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary w-72"
                     />
                     <span className="text-sm text-muted-foreground">{filtered.length} / {rows.length} riders</span>
+                    <span className="text-sm text-muted-foreground">{selectedCount} selected</span>
+                    <button
+                        onClick={toggleSelectAllFiltered}
+                        className="text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg px-3 py-1.5 transition disabled:opacity-50"
+                        disabled={filteredIds.length === 0}
+                    >
+                        {allFilteredSelected ? 'Deselect filtered' : 'Select all filtered'}
+                    </button>
+                    <button
+                        onClick={clearFilteredSelection}
+                        className="text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg px-3 py-1.5 transition disabled:opacity-50"
+                        disabled={selectedFilteredCount === 0}
+                    >
+                        Clear filtered
+                    </button>
+                    <button
+                        onClick={openComposeModal}
+                        className="text-sm bg-primary text-primary-foreground rounded-lg px-3 py-1.5 transition hover:opacity-90 disabled:opacity-50"
+                        disabled={selectedCount === 0}
+                    >
+                        Compose email
+                    </button>
                 </div>
-                <button
-                    onClick={fetchUsers}
-                    className="text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg px-3 py-1.5 transition"
-                >
-                    Refresh
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={fetchUsers}
+                        className="text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg px-3 py-1.5 transition"
+                    >
+                        Refresh
+                    </button>
+                </div>
             </div>
+
+            {lastSendSummary && (
+                <div className="rounded-lg border border-border bg-card px-4 py-3 text-sm">
+                    Last send: requested {lastSendSummary.requested}, sent {lastSendSummary.sent}, failed {lastSendSummary.failed}, skipped {lastSendSummary.skipped}.
+                </div>
+            )}
 
             {/* Table */}
             <div className="rounded-xl border border-border overflow-x-auto shadow-sm">
                 <table className="w-full text-sm">
                     <thead className="bg-muted border-b border-border">
                         <tr>
+                            <th className="px-3 py-2.5 text-left">
+                                <input
+                                    ref={selectAllRef}
+                                    type="checkbox"
+                                    checked={allFilteredSelected}
+                                    onChange={toggleSelectAllFiltered}
+                                    disabled={filteredIds.length === 0}
+                                    aria-label="Select all filtered users"
+                                />
+                            </th>
                             <Th label="Zwift ID"   k="zwiftId" />
                             <Th label="Name"       k="name" />
                             <Th label="Email"      k="email" />
@@ -196,13 +368,21 @@ export default function UsersOverview() {
                     <tbody className="divide-y divide-border">
                         {filtered.length === 0 && (
                             <tr>
-                                <td colSpan={11} className="px-4 py-8 text-center text-muted-foreground">
+                                <td colSpan={12} className="px-4 py-8 text-center text-muted-foreground">
                                     No users found.
                                 </td>
                             </tr>
                         )}
                         {filtered.map(row => (
-                            <tr key={row.zwiftId} className="bg-card hover:bg-muted/50 transition">
+                            <tr key={getRowId(row)} className="bg-card hover:bg-muted/50 transition">
+                                <td className="px-3 py-2">
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedIds.has(getRowId(row))}
+                                        onChange={e => toggleRowSelection(getRowId(row), e.target.checked)}
+                                        aria-label={`Select ${row.name}`}
+                                    />
+                                </td>
                                 <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{row.zwiftId}</td>
                                 <td className="px-3 py-2 font-medium text-foreground whitespace-nowrap">{row.name}</td>
                                 <td className="px-3 py-2 text-muted-foreground text-xs">{row.email}</td>
@@ -247,6 +427,71 @@ export default function UsersOverview() {
                     </tbody>
                 </table>
             </div>
+
+            {isComposeOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                    <div className="w-full max-w-2xl rounded-xl border border-border bg-card p-5 shadow-xl space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-lg font-semibold">Compose email</h3>
+                            <button
+                                onClick={closeComposeModal}
+                                className="text-sm text-muted-foreground hover:text-foreground"
+                                disabled={sendingEmail}
+                            >
+                                Close
+                            </button>
+                        </div>
+
+                        <div className="text-sm text-muted-foreground">
+                            Sending to {selectedCount} selected users.
+                            {selectedWithoutEmail > 0 && ` ${selectedWithoutEmail} selected user(s) have no email and will be skipped.`}
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="block text-sm font-medium">Subject</label>
+                            <input
+                                type="text"
+                                value={emailSubject}
+                                onChange={e => setEmailSubject(e.target.value)}
+                                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                                placeholder="Email subject"
+                                maxLength={200}
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="block text-sm font-medium">Message</label>
+                            <textarea
+                                value={emailMessage}
+                                onChange={e => setEmailMessage(e.target.value)}
+                                className="w-full min-h-48 border border-border rounded-lg px-3 py-2 text-sm bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                                placeholder="Write your message"
+                            />
+                        </div>
+
+                        {sendError && (
+                            <p className="text-sm text-red-600">{sendError}</p>
+                        )}
+
+                        <div className="flex items-center justify-end gap-2">
+                            <button
+                                onClick={closeComposeModal}
+                                className="text-sm border border-border rounded-lg px-3 py-1.5 hover:bg-muted/50"
+                                disabled={sendingEmail}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleSendEmail}
+                                className="text-sm bg-primary text-primary-foreground rounded-lg px-3 py-1.5 hover:opacity-90 disabled:opacity-60"
+                                disabled={sendingEmail || selectedCount === 0}
+                            >
+                                {sendingEmail ? 'Sending…' : 'Send email'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
