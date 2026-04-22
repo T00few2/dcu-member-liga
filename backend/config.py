@@ -27,7 +27,7 @@ ZWIFT_MIGRATION_MODE = os.getenv('ZWIFT_MIGRATION_MODE', 'official_only')
 SCHEDULER_SECRET = os.getenv('SCHEDULER_SECRET')
 
 # Zoho SMTP (admin email sending)
-ZOHO_SMTP_HOST = os.getenv('ZOHO_SMTP_HOST', 'smtp.zoho.com')
+ZOHO_SMTP_HOST = os.getenv('ZOHO_SMTP_HOST', 'smtp.zoho.eu')
 ZOHO_SMTP_PORT = int(os.getenv('ZOHO_SMTP_PORT', '587'))
 ZOHO_SMTP_USE_TLS = os.getenv('ZOHO_SMTP_USE_TLS', 'true').strip().lower() in {'1', 'true', 'yes', 'on'}
 ZOHO_SMTP_USER = os.getenv('ZOHO_SMTP_USER')
