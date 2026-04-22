@@ -159,6 +159,10 @@ export default function UsersOverview() {
         () => rows.filter(row => selectedIds.has(getRowId(row))),
         [rows, selectedIds, getRowId]
     );
+    const selectedRowsSorted = useMemo(
+        () => [...selectedRows].sort((a, b) => a.name.localeCompare(b.name)),
+        [selectedRows]
+    );
     const selectedWithoutEmail = selectedRows.filter(r => !r.email?.trim()).length;
 
     useEffect(() => {
@@ -445,6 +449,22 @@ export default function UsersOverview() {
                         <div className="text-sm text-muted-foreground">
                             Sending to {selectedCount} selected users.
                             {selectedWithoutEmail > 0 && ` ${selectedWithoutEmail} selected user(s) have no email and will be skipped.`}
+                        </div>
+
+                        <div className="rounded-lg border border-border bg-muted/30">
+                            <div className="px-3 py-2 border-b border-border text-sm font-medium">
+                                Recipients ({selectedCount})
+                            </div>
+                            <div className="max-h-44 overflow-y-auto">
+                                {selectedRowsSorted.map(row => (
+                                    <div key={getRowId(row)} className="px-3 py-2 text-sm border-b last:border-b-0 border-border">
+                                        <div className="font-medium text-foreground">{row.name || row.zwiftId || 'Unknown rider'}</div>
+                                        <div className="text-xs text-muted-foreground">
+                                            {row.email?.trim() ? row.email : 'No email on profile (will be skipped)'}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
 
                         <div className="space-y-2">
