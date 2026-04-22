@@ -176,7 +176,7 @@ ALLOW_LOCALHOST=true
 For admin email sending (Zoho SMTP), also configure:
 
 ```env
-ZOHO_SMTP_HOST=smtp.zoho.com
+ZOHO_SMTP_HOST=smtp.zoho.eu
 ZOHO_SMTP_PORT=587
 ZOHO_SMTP_USE_TLS=true
 ZOHO_SMTP_USER=your-full-zoho-email
