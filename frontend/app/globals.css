@@ -126,3 +126,9 @@ body {
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+.tiptap-editor strong { font-weight: 600; }
+.tiptap-editor em { font-style: italic; }
+.tiptap-editor u { text-decoration: underline; }
+.tiptap-editor p { margin-bottom: 0.375rem; }
+.tiptap-editor p:last-child { margin-bottom: 0; }
+.tiptap-editor [contenteditable]:focus { outline: none; }
