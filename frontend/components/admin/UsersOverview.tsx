@@ -101,6 +101,11 @@ export default function UsersOverview() {
     const [sendingEmail, setSendingEmail] = useState(false);
     const [sendError, setSendError] = useState<string | null>(null);
     const [lastSendSummary, setLastSendSummary] = useState<EmailSendSummary | null>(null);
+    const [recipientMode, setRecipientMode] = useState<'to' | 'cc' | 'bcc'>('bcc');
+    const [manualCc, setManualCc] = useState('');
+    const [manualBcc, setManualBcc] = useState('');
+    const [ccError, setCcError] = useState<string | null>(null);
+    const [bccError, setBccError] = useState<string | null>(null);
     const selectAllRef = useRef<HTMLInputElement>(null);
 
     const getRowId = useCallback((row: UserRow) => row.userId || row.zwiftId, []);
@@ -225,15 +230,31 @@ export default function UsersOverview() {
         setSendError(null);
         setEmailSubject('');
         setEmailMessage('');
+        setManualCc('');
+        setManualBcc('');
+        setCcError(null);
+        setBccError(null);
     };
 
     const openComposeModal = () => {
         setIsComposeOpen(true);
         setSendError(null);
+        setRecipientMode(selectedIds.size === 1 ? 'to' : 'bcc');
+        setManualCc('');
+        setManualBcc('');
+        setCcError(null);
+        setBccError(null);
     };
 
     const isMessageEmpty = (html: string) =>
         html.replace(/<[^>]*>/g, '').trim().length === 0;
+
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const parseManualEmails = (raw: string) => {
+        if (!raw.trim()) return { valid: [], invalid: [] };
+        const c = raw.split(',').map(s => s.trim()).filter(Boolean);
+        return { valid: c.filter(e => EMAIL_RE.test(e)), invalid: c.filter(e => !EMAIL_RE.test(e)) };
+    };
 
     const handleSendEmail = async () => {
         if (!user || selectedCount === 0 || sendingEmail) return;
@@ -242,7 +263,15 @@ export default function UsersOverview() {
             setSendError('Subject and message are required.');
             return;
         }
-        const message = emailMessage;
+
+        const { invalid: ccInvalid }  = parseManualEmails(manualCc);
+        const { invalid: bccInvalid } = parseManualEmails(manualBcc);
+        let hasFieldError = false;
+        if (ccInvalid.length > 0) { setCcError(`Invalid: ${ccInvalid.join(', ')}`); hasFieldError = true; }
+        else setCcError(null);
+        if (bccInvalid.length > 0) { setBccError(`Invalid: ${bccInvalid.join(', ')}`); hasFieldError = true; }
+        else setBccError(null);
+        if (hasFieldError) return;
 
         setSendingEmail(true);
         setSendError(null);
@@ -257,7 +286,10 @@ export default function UsersOverview() {
                 body: JSON.stringify({
                     userIds: Array.from(selectedIds),
                     subject,
-                    message,
+                    message: emailMessage,
+                    recipientMode,
+                    manualCc: manualCc.trim(),
+                    manualBcc: manualBcc.trim(),
                 }),
             });
 
@@ -351,7 +383,11 @@ export default function UsersOverview() {
 
             {lastSendSummary && (
                 <div className="rounded-lg border border-border bg-card px-4 py-3 text-sm">
-                    Last send: requested {lastSendSummary.requested}, sent {lastSendSummary.sent}, failed {lastSendSummary.failed}, skipped {lastSendSummary.skipped}.
+                    Last send: {lastSendSummary.requested} user(s) requested, {lastSendSummary.skipped} skipped,{' '}
+                    {lastSendSummary.sent === 1
+                        ? <span className="text-green-600 font-medium">email sent successfully</span>
+                        : <span className="text-red-600 font-medium">send failed — check server logs</span>
+                    }.
                 </div>
             )}
 
@@ -465,9 +501,34 @@ export default function UsersOverview() {
                             {selectedWithoutEmail > 0 && ` ${selectedWithoutEmail} selected user(s) have no email and will be skipped.`}
                         </div>
 
+                        <div className="space-y-1.5">
+                            <label className="block text-sm font-medium">Send selected recipients as</label>
+                            <div className="flex items-center gap-4">
+                                {(['to', 'cc', 'bcc'] as const).map(mode => (
+                                    <label key={mode} className="flex items-center gap-1.5 text-sm cursor-pointer select-none">
+                                        <input
+                                            type="radio"
+                                            name="recipientMode"
+                                            value={mode}
+                                            checked={recipientMode === mode}
+                                            onChange={() => setRecipientMode(mode)}
+                                            disabled={sendingEmail}
+                                            className="accent-primary"
+                                        />
+                                        {mode.toUpperCase()}
+                                    </label>
+                                ))}
+                            </div>
+                            {(recipientMode === 'to' || recipientMode === 'cc') && selectedCount > 1 && (
+                                <p className="text-xs text-amber-600">
+                                    {recipientMode.toUpperCase()} mode: all {selectedCount} recipients will see each other&apos;s addresses. Consider BCC for bulk sends.
+                                </p>
+                            )}
+                        </div>
+
                         <div className="rounded-lg border border-border bg-muted/30">
                             <div className="px-3 py-2 border-b border-border text-sm font-medium">
-                                Recipients ({selectedCount})
+                                {recipientMode.toUpperCase()} Recipients ({selectedCount})
                             </div>
                             <div className="max-h-44 overflow-y-auto">
                                 {selectedRowsSorted.map(row => (
@@ -491,6 +552,36 @@ export default function UsersOverview() {
                                 placeholder="Email subject"
                                 maxLength={200}
                             />
+                        </div>
+
+                        <div className="space-y-1">
+                            <label className="block text-sm font-medium">
+                                CC <span className="text-muted-foreground font-normal">(optional, comma-separated)</span>
+                            </label>
+                            <input
+                                type="text"
+                                value={manualCc}
+                                onChange={e => { setManualCc(e.target.value); setCcError(null); }}
+                                disabled={sendingEmail}
+                                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
+                                placeholder="cc@example.com, another@example.com"
+                            />
+                            {ccError && <p className="text-xs text-red-600">{ccError}</p>}
+                        </div>
+
+                        <div className="space-y-1">
+                            <label className="block text-sm font-medium">
+                                BCC <span className="text-muted-foreground font-normal">(optional, comma-separated)</span>
+                            </label>
+                            <input
+                                type="text"
+                                value={manualBcc}
+                                onChange={e => { setManualBcc(e.target.value); setBccError(null); }}
+                                disabled={sendingEmail}
+                                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
+                                placeholder="bcc@example.com"
+                            />
+                            {bccError && <p className="text-xs text-red-600">{bccError}</p>}
                         </div>
 
                         <div className="space-y-2">

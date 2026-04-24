@@ -23,6 +23,16 @@ def _is_valid_email(email: str) -> bool:
     return bool(EMAIL_PATTERN.match((email or '').strip()))
 
 
+def _parse_manual_emails(raw: str) -> tuple[list[str], list[str]]:
+    if not raw.strip():
+        return [], []
+    candidates = [a.strip() for a in raw.split(',') if a.strip()]
+    return (
+        [e for e in candidates if _is_valid_email(e)],
+        [e for e in candidates if not _is_valid_email(e)],
+    )
+
+
 @admin_bp.route('/admin/users', methods=['GET'])
 def get_users_overview():
     """Return all registered users with key fields for the admin table."""
@@ -106,25 +116,40 @@ def get_users_overview():
 
 @admin_bp.route('/admin/users/send-email', methods=['POST'])
 def send_email_to_selected_users():
-    """Send one email to each selected user (admin-only)."""
+    """Send a single bulk email to admin-selected users (admin-only).
+
+    Table-selected users are placed in the header specified by recipientMode
+    (to | cc | bcc). manualCc and manualBcc are comma-separated extra addresses.
+    """
     try:
         require_admin(request)
     except AuthzError as e:
         return jsonify({'error': e.message}), e.status_code
 
     payload = request.get_json(silent=True) or {}
-    user_ids_raw = payload.get('userIds')
-    subject = str(payload.get('subject') or '').strip()
-    message = str(payload.get('message') or '')
+    user_ids_raw    = payload.get('userIds')
+    subject         = str(payload.get('subject') or '').strip()
+    message         = str(payload.get('message') or '')
+    recipient_mode  = str(payload.get('recipientMode') or 'bcc').strip().lower()
+    manual_cc_raw   = str(payload.get('manualCc') or '')
+    manual_bcc_raw  = str(payload.get('manualBcc') or '')
 
     if not isinstance(user_ids_raw, list):
         return jsonify({'error': 'userIds must be an array of user document IDs.'}), 400
+    if recipient_mode not in ('to', 'cc', 'bcc'):
+        return jsonify({'error': "recipientMode must be one of: 'to', 'cc', 'bcc'."}), 400
     if not subject:
         return jsonify({'error': 'subject is required.'}), 400
     if not _strip_html(message).strip():
         return jsonify({'error': 'message is required.'}), 400
     if '\r' in subject or '\n' in subject:
         return jsonify({'error': 'subject must be a single line.'}), 400
+
+    manual_cc_valid, manual_cc_invalid   = _parse_manual_emails(manual_cc_raw)
+    manual_bcc_valid, manual_bcc_invalid = _parse_manual_emails(manual_bcc_raw)
+    invalid_manual = manual_cc_invalid + manual_bcc_invalid
+    if invalid_manual:
+        return jsonify({'error': f"Invalid email address(es) in CC/BCC: {', '.join(invalid_manual)}"}), 400
 
     unique_user_ids = []
     seen_ids = set()
@@ -137,13 +162,15 @@ def send_email_to_selected_users():
         seen_ids.add(cleaned)
         unique_user_ids.append(cleaned)
 
-    if not unique_user_ids:
-        return jsonify({'error': 'No valid user IDs provided.'}), 400
-    if len(unique_user_ids) > MAX_EMAIL_RECIPIENTS:
+    total_manual = len(manual_cc_valid) + len(manual_bcc_valid)
+    if not unique_user_ids and total_manual == 0:
+        return jsonify({'error': 'No valid recipients provided.'}), 400
+    if len(unique_user_ids) + total_manual > MAX_EMAIL_RECIPIENTS:
         return jsonify({'error': f'Maximum recipients per request is {MAX_EMAIL_RECIPIENTS}.'}), 400
 
-    sent = 0
-    failed = 0
+    to_emails_from_users:  list[str] = []
+    cc_emails_from_users:  list[str] = []
+    bcc_emails_from_users: list[str] = []
     skipped = 0
     results = []
 
@@ -152,11 +179,7 @@ def send_email_to_selected_users():
             user_doc = db.collection('users').document(user_id).get()
             if not user_doc.exists:
                 skipped += 1
-                results.append({
-                    'userId': user_id,
-                    'status': 'skipped',
-                    'reason': 'user_not_found',
-                })
+                results.append({'userId': user_id, 'status': 'skipped', 'reason': 'user_not_found'})
                 continue
 
             user_data = user_doc.to_dict() or {}
@@ -175,38 +198,71 @@ def send_email_to_selected_users():
                 })
                 continue
 
-            try:
-                send_html_email(to_email=email, subject=subject, html_body=message)
-                sent += 1
-                results.append({
-                    'userId': user_id,
-                    'name': name,
-                    'zwiftId': zwift_id,
-                    'email': email,
-                    'status': 'sent',
-                })
-            except EmailConfigError as exc:
-                logger.error('Email config error: %s', exc)
-                return jsonify({'error': str(exc)}), 503
-            except EmailSendError as exc:
-                failed += 1
-                logger.warning('Failed email send for user %s: %s', user_id, exc)
-                results.append({
-                    'userId': user_id,
-                    'name': name,
-                    'zwiftId': zwift_id,
-                    'email': email,
-                    'status': 'failed',
-                    'reason': str(exc),
-                })
+            if recipient_mode == 'to':
+                to_emails_from_users.append(email)
+            elif recipient_mode == 'cc':
+                cc_emails_from_users.append(email)
+            else:
+                bcc_emails_from_users.append(email)
+
+            results.append({
+                'userId': user_id,
+                'name': name,
+                'zwiftId': zwift_id,
+                'email': email,
+                'status': 'resolved',
+            })
+
+        all_to_emails  = to_emails_from_users
+        all_cc_emails  = cc_emails_from_users  + manual_cc_valid
+        all_bcc_emails = bcc_emails_from_users + manual_bcc_valid
+
+        if not all_to_emails and not all_cc_emails and not all_bcc_emails:
+            summary = {
+                'requested': len(unique_user_ids),
+                'skipped': skipped,
+                'sent': 0,
+                'failed': 0,
+            }
+            return jsonify({
+                'summary': summary,
+                'results': results,
+                'error': 'All selected users were skipped (no valid email addresses).',
+            }), 200
+
+        sent = 0
+        failed = 0
+        try:
+            send_html_email(
+                to_emails=all_to_emails,
+                cc_emails=all_cc_emails,
+                bcc_emails=all_bcc_emails,
+                subject=subject,
+                html_body=message,
+            )
+            sent = 1
+            for r in results:
+                if r['status'] == 'resolved':
+                    r['status'] = 'sent'
+        except EmailConfigError as exc:
+            logger.error('Email config error: %s', exc)
+            return jsonify({'error': str(exc)}), 503
+        except EmailSendError as exc:
+            failed = 1
+            logger.warning('Failed bulk email send: %s', exc)
+            for r in results:
+                if r['status'] == 'resolved':
+                    r['status'] = 'failed'
+                    r['reason'] = str(exc)
 
         summary = {
             'requested': len(unique_user_ids),
+            'skipped': skipped,
             'sent': sent,
             'failed': failed,
-            'skipped': skipped,
         }
         return jsonify({'summary': summary, 'results': results}), 200
+
     except Exception as e:
         logger.exception('Error sending admin emails')
         return jsonify({'error': str(e)}), 500

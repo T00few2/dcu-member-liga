@@ -88,14 +88,29 @@ def send_plain_email(*, to_email: str, subject: str, message: str) -> None:
         raise EmailSendError(f'Network error while sending email: {exc}') from exc
 
 
-def send_html_email(*, to_email: str, subject: str, html_body: str) -> None:
+def send_html_email(
+    *,
+    to_emails: list[str],
+    cc_emails: list[str] | None = None,
+    bcc_emails: list[str] | None = None,
+    subject: str,
+    html_body: str,
+) -> None:
     """
-    Send a single HTML email via Zoho SMTP with a plain-text fallback.
+    Send one HTML email via Zoho SMTP with explicit To/Cc/Bcc headers.
+
+    Python's smtp.send_message() collects all Bcc addresses as RCPT TO
+    targets and strips the Bcc header from the transmitted message, so
+    Bcc recipients are never exposed to other recipients.
     """
     _validate_smtp_config()
 
-    if not to_email:
-        raise EmailSendError('Recipient email is required.')
+    cc_emails = cc_emails or []
+    bcc_emails = bcc_emails or []
+    all_recipients = to_emails + cc_emails + bcc_emails
+
+    if not all_recipients:
+        raise EmailSendError('At least one recipient (To, Cc, or Bcc) is required.')
     if not subject.strip():
         raise EmailSendError('Email subject is required.')
 
@@ -105,8 +120,12 @@ def send_html_email(*, to_email: str, subject: str, html_body: str) -> None:
 
     email = EmailMessage()
     email['From'] = ZOHO_SMTP_USER
-    email['To'] = to_email
     email['Subject'] = subject.strip()
+    email['To'] = ', '.join(to_emails) if to_emails else 'undisclosed-recipients:;'
+    if cc_emails:
+        email['Cc'] = ', '.join(cc_emails)
+    if bcc_emails:
+        email['Bcc'] = ', '.join(bcc_emails)
     email.set_content(plain_body)
     email.add_alternative(html_body.strip(), subtype='html')
 
