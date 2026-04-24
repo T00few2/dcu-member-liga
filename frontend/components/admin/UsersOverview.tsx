@@ -106,6 +106,7 @@ export default function UsersOverview() {
     const [manualBcc, setManualBcc] = useState('');
     const [ccError, setCcError] = useState<string | null>(null);
     const [bccError, setBccError] = useState<string | null>(null);
+    const [recipientsOpen, setRecipientsOpen] = useState(false);
     const selectAllRef = useRef<HTMLInputElement>(null);
 
     const getRowId = useCallback((row: UserRow) => row.userId || row.zwiftId, []);
@@ -234,6 +235,7 @@ export default function UsersOverview() {
         setManualBcc('');
         setCcError(null);
         setBccError(null);
+        setRecipientsOpen(false);
     };
 
     const openComposeModal = () => {
@@ -242,6 +244,7 @@ export default function UsersOverview() {
         setRecipientMode(selectedIds.size === 1 ? 'to' : 'bcc');
         setManualCc('');
         setManualBcc('');
+        setRecipientsOpen(false);
         setCcError(null);
         setBccError(null);
     };
@@ -483,135 +486,160 @@ export default function UsersOverview() {
             </div>
 
             {isComposeOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-                    <div className="w-full max-w-2xl rounded-xl border border-border bg-card p-5 shadow-xl space-y-4">
-                        <div className="flex items-center justify-between">
-                            <h3 className="text-lg font-semibold">Compose email</h3>
-                            <button
-                                onClick={closeComposeModal}
-                                className="text-sm text-muted-foreground hover:text-foreground"
-                                disabled={sendingEmail}
-                            >
-                                Close
-                            </button>
-                        </div>
-
-                        <div className="text-sm text-muted-foreground">
-                            Sending to {selectedCount} selected users.
-                            {selectedWithoutEmail > 0 && ` ${selectedWithoutEmail} selected user(s) have no email and will be skipped.`}
-                        </div>
-
-                        <div className="space-y-1.5">
-                            <label className="block text-sm font-medium">Send selected recipients as</label>
-                            <div className="flex items-center gap-4">
-                                {(['to', 'cc', 'bcc'] as const).map(mode => (
-                                    <label key={mode} className="flex items-center gap-1.5 text-sm cursor-pointer select-none">
-                                        <input
-                                            type="radio"
-                                            name="recipientMode"
-                                            value={mode}
-                                            checked={recipientMode === mode}
-                                            onChange={() => setRecipientMode(mode)}
-                                            disabled={sendingEmail}
-                                            className="accent-primary"
-                                        />
-                                        {mode.toUpperCase()}
-                                    </label>
-                                ))}
+                <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50">
+                    <div className="flex min-h-full items-start sm:items-center justify-center p-4">
+                        <div className="w-full max-w-2xl rounded-xl border border-border bg-card p-5 shadow-xl space-y-4 my-4">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-lg font-semibold">Compose email</h3>
+                                <button
+                                    onClick={closeComposeModal}
+                                    className="text-sm text-muted-foreground hover:text-foreground"
+                                    disabled={sendingEmail}
+                                >
+                                    Close
+                                </button>
                             </div>
-                            {(recipientMode === 'to' || recipientMode === 'cc') && selectedCount > 1 && (
-                                <p className="text-xs text-amber-600">
-                                    {recipientMode.toUpperCase()} mode: all {selectedCount} recipients will see each other&apos;s addresses. Consider BCC for bulk sends.
-                                </p>
-                            )}
-                        </div>
 
-                        <div className="rounded-lg border border-border bg-muted/30">
-                            <div className="px-3 py-2 border-b border-border text-sm font-medium">
-                                {recipientMode.toUpperCase()} Recipients ({selectedCount})
-                            </div>
-                            <div className="max-h-44 overflow-y-auto">
-                                {selectedRowsSorted.map(row => (
-                                    <div key={getRowId(row)} className="px-3 py-2 text-sm border-b last:border-b-0 border-border">
-                                        <div className="font-medium text-foreground">{row.name || row.zwiftId || 'Unknown rider'}</div>
-                                        <div className="text-xs text-muted-foreground">
-                                            {row.email?.trim() ? row.email : 'No email on profile (will be skipped)'}
+                            {/* Collapsible recipients + TO/CC/BCC + manual CC/BCC */}
+                            <div className="rounded-lg border border-border">
+                                <button
+                                    type="button"
+                                    onClick={() => setRecipientsOpen(o => !o)}
+                                    className="w-full flex items-center justify-between px-3 py-2.5 text-sm font-medium hover:bg-muted/40 transition rounded-lg"
+                                >
+                                    <span>Recipients</span>
+                                    <span className="flex items-center gap-2 text-muted-foreground font-normal">
+                                        <span>
+                                            {recipientMode.toUpperCase()}: {selectedCount}
+                                            {manualCc.trim() ? ` · CC: ${parseManualEmails(manualCc).valid.length || '…'}` : ''}
+                                            {manualBcc.trim() ? ` · BCC+: ${parseManualEmails(manualBcc).valid.length || '…'}` : ''}
+                                            {selectedWithoutEmail > 0 ? ` · ${selectedWithoutEmail} skipped` : ''}
+                                        </span>
+                                        <span className="text-xs">{recipientsOpen ? '▲' : '▼'}</span>
+                                    </span>
+                                </button>
+
+                                {recipientsOpen && (
+                                    <div className="border-t border-border space-y-3 p-3">
+                                        {/* Mode selector */}
+                                        <div className="space-y-1.5">
+                                            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Send selected as</p>
+                                            <div className="flex items-center gap-4">
+                                                {(['to', 'cc', 'bcc'] as const).map(mode => (
+                                                    <label key={mode} className="flex items-center gap-1.5 text-sm cursor-pointer select-none">
+                                                        <input
+                                                            type="radio"
+                                                            name="recipientMode"
+                                                            value={mode}
+                                                            checked={recipientMode === mode}
+                                                            onChange={() => setRecipientMode(mode)}
+                                                            disabled={sendingEmail}
+                                                            className="accent-primary"
+                                                        />
+                                                        {mode.toUpperCase()}
+                                                    </label>
+                                                ))}
+                                            </div>
+                                            {(recipientMode === 'to' || recipientMode === 'cc') && selectedCount > 1 && (
+                                                <p className="text-xs text-amber-600">
+                                                    All {selectedCount} recipients will see each other&apos;s addresses. Consider BCC for bulk sends.
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        {/* Recipients list */}
+                                        <div className="rounded-md border border-border bg-muted/30">
+                                            <div className="px-3 py-1.5 border-b border-border text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                                {recipientMode.toUpperCase()} ({selectedCount})
+                                            </div>
+                                            <div className="max-h-36 overflow-y-auto">
+                                                {selectedRowsSorted.map(row => (
+                                                    <div key={getRowId(row)} className="px-3 py-1.5 text-sm border-b last:border-b-0 border-border">
+                                                        <span className="font-medium">{row.name || row.zwiftId || 'Unknown rider'}</span>
+                                                        <span className="ml-2 text-xs text-muted-foreground">
+                                                            {row.email?.trim() ? row.email : '— no email (skipped)'}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* Manual CC */}
+                                        <div className="space-y-1">
+                                            <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                                CC <span className="normal-case font-normal">(optional, comma-separated)</span>
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={manualCc}
+                                                onChange={e => { setManualCc(e.target.value); setCcError(null); }}
+                                                disabled={sendingEmail}
+                                                className="w-full border border-border rounded-md px-3 py-1.5 text-sm bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
+                                                placeholder="cc@example.com, another@example.com"
+                                            />
+                                            {ccError && <p className="text-xs text-red-600">{ccError}</p>}
+                                        </div>
+
+                                        {/* Manual BCC */}
+                                        <div className="space-y-1">
+                                            <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                                BCC <span className="normal-case font-normal">(optional, comma-separated)</span>
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={manualBcc}
+                                                onChange={e => { setManualBcc(e.target.value); setBccError(null); }}
+                                                disabled={sendingEmail}
+                                                className="w-full border border-border rounded-md px-3 py-1.5 text-sm bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
+                                                placeholder="bcc@example.com"
+                                            />
+                                            {bccError && <p className="text-xs text-red-600">{bccError}</p>}
                                         </div>
                                     </div>
-                                ))}
+                                )}
                             </div>
-                        </div>
 
-                        <div className="space-y-2">
-                            <label className="block text-sm font-medium">Subject</label>
-                            <input
-                                type="text"
-                                value={emailSubject}
-                                onChange={e => setEmailSubject(e.target.value)}
-                                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                                placeholder="Email subject"
-                                maxLength={200}
-                            />
-                        </div>
+                            <div className="space-y-2">
+                                <label className="block text-sm font-medium">Subject</label>
+                                <input
+                                    type="text"
+                                    value={emailSubject}
+                                    onChange={e => setEmailSubject(e.target.value)}
+                                    className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                                    placeholder="Email subject"
+                                    maxLength={200}
+                                />
+                            </div>
 
-                        <div className="space-y-1">
-                            <label className="block text-sm font-medium">
-                                CC <span className="text-muted-foreground font-normal">(optional, comma-separated)</span>
-                            </label>
-                            <input
-                                type="text"
-                                value={manualCc}
-                                onChange={e => { setManualCc(e.target.value); setCcError(null); }}
-                                disabled={sendingEmail}
-                                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
-                                placeholder="cc@example.com, another@example.com"
-                            />
-                            {ccError && <p className="text-xs text-red-600">{ccError}</p>}
-                        </div>
+                            <div className="space-y-2">
+                                <label className="block text-sm font-medium">Message</label>
+                                <RichTextEditor
+                                    key={isComposeOpen ? 'open' : 'closed'}
+                                    onChange={setEmailMessage}
+                                    disabled={sendingEmail}
+                                />
+                            </div>
 
-                        <div className="space-y-1">
-                            <label className="block text-sm font-medium">
-                                BCC <span className="text-muted-foreground font-normal">(optional, comma-separated)</span>
-                            </label>
-                            <input
-                                type="text"
-                                value={manualBcc}
-                                onChange={e => { setManualBcc(e.target.value); setBccError(null); }}
-                                disabled={sendingEmail}
-                                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
-                                placeholder="bcc@example.com"
-                            />
-                            {bccError && <p className="text-xs text-red-600">{bccError}</p>}
-                        </div>
+                            {sendError && (
+                                <p className="text-sm text-red-600">{sendError}</p>
+                            )}
 
-                        <div className="space-y-2">
-                            <label className="block text-sm font-medium">Message</label>
-                            <RichTextEditor
-                                key={isComposeOpen ? 'open' : 'closed'}
-                                onChange={setEmailMessage}
-                                disabled={sendingEmail}
-                            />
-                        </div>
-
-                        {sendError && (
-                            <p className="text-sm text-red-600">{sendError}</p>
-                        )}
-
-                        <div className="flex items-center justify-end gap-2">
-                            <button
-                                onClick={closeComposeModal}
-                                className="text-sm border border-border rounded-lg px-3 py-1.5 hover:bg-muted/50"
-                                disabled={sendingEmail}
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handleSendEmail}
-                                className="text-sm bg-primary text-primary-foreground rounded-lg px-3 py-1.5 hover:opacity-90 disabled:opacity-60"
-                                disabled={sendingEmail || selectedCount === 0}
-                            >
-                                {sendingEmail ? 'Sending…' : 'Send email'}
-                            </button>
+                            <div className="flex items-center justify-end gap-2">
+                                <button
+                                    onClick={closeComposeModal}
+                                    className="text-sm border border-border rounded-lg px-3 py-1.5 hover:bg-muted/50"
+                                    disabled={sendingEmail}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleSendEmail}
+                                    className="text-sm bg-primary text-primary-foreground rounded-lg px-3 py-1.5 hover:opacity-90 disabled:opacity-60"
+                                    disabled={sendingEmail || selectedCount === 0}
+                                >
+                                    {sendingEmail ? 'Sending…' : 'Send email'}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
