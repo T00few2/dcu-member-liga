@@ -61,6 +61,9 @@ export default function LeagueManager() {
     const singleModeCategoryLapSignature = raceForm.formState.singleModeCategories
         .map(cat => cat.laps || 0)
         .join(',');
+    const raceGroupLapSignature = raceForm.formState.raceGroups
+        .map(g => g.laps || 0)
+        .join(',');
 
     // Fetch segments when route or laps change
     useEffect(() => {
@@ -77,10 +80,15 @@ export default function LeagueManager() {
                 const cfgMax = Math.max(...raceForm.formState.eventConfiguration.map(c => c.laps || 0));
                 if (cfgMax > maxLaps) maxLaps = cfgMax;
             }
-            
+
             if (raceForm.formState.eventMode === 'single' && raceForm.formState.singleModeCategories.length > 0) {
                 const catMax = Math.max(...raceForm.formState.singleModeCategories.map(c => c.laps || 0));
                 if (catMax > maxLaps) maxLaps = catMax;
+            }
+
+            if (raceForm.formState.eventMode === 'grouped' && raceForm.formState.raceGroups.length > 0) {
+                const groupMax = Math.max(...raceForm.formState.raceGroups.map(g => g.laps || 0));
+                if (groupMax > maxLaps) maxLaps = groupMax;
             }
 
             const segments = await fetchSegments(raceForm.formState.selectedRouteId, maxLaps);
@@ -89,11 +97,12 @@ export default function LeagueManager() {
 
         loadSegments();
     }, [
-        raceForm.formState.selectedRouteId, 
-        raceForm.formState.laps, 
+        raceForm.formState.selectedRouteId,
+        raceForm.formState.laps,
         raceForm.formState.eventMode,
         eventConfigurationLapSignature,
         singleModeCategoryLapSignature,
+        raceGroupLapSignature,
         fetchSegments,
     ]);
 
@@ -164,13 +173,24 @@ export default function LeagueManager() {
                 raceData.eventId = formState.eventId;
                 raceData.eventSecret = formState.eventSecret;
                 raceData.eventConfiguration = [];
-                raceData.singleModeCategories = formState.singleModeCategories.length > 0 
-                    ? formState.singleModeCategories 
+                raceData.singleModeCategories = formState.singleModeCategories.length > 0
+                    ? formState.singleModeCategories
                     : [];
+                raceData.raceGroups = [];
                 raceData.linkedEventIds = formState.eventId ? [formState.eventId] : [];
+            } else if (formState.eventMode === 'grouped') {
+                raceData.raceGroups = formState.raceGroups;
+                raceData.eventConfiguration = [];
+                raceData.singleModeCategories = [];
+                raceData.eventId = '';
+                raceData.eventSecret = '';
+                raceData.linkedEventIds = [
+                    ...new Set(formState.raceGroups.map(g => g.eventId).filter(Boolean)),
+                ];
             } else {
                 raceData.eventConfiguration = formState.eventConfiguration;
                 raceData.singleModeCategories = [];
+                raceData.raceGroups = [];
                 raceData.eventId = '';
                 raceData.eventSecret = '';
                 raceData.linkedEventIds = formState.eventConfiguration
@@ -413,6 +433,14 @@ export default function LeagueManager() {
                         onRemoveSingleModeCategory={raceForm.removeSingleModeCategory}
                         onUpdateSingleModeCategory={raceForm.updateSingleModeCategory}
                         onToggleSingleModeCategorySprint={raceForm.toggleSingleModeCategorySprint}
+                        onAddRaceGroup={raceForm.addRaceGroup}
+                        onRemoveRaceGroup={raceForm.removeRaceGroup}
+                        onUpdateRaceGroup={raceForm.updateRaceGroup}
+                        onAddGroupCategory={raceForm.addGroupCategory}
+                        onRemoveGroupCategory={raceForm.removeGroupCategory}
+                        onUpdateGroupCategory={raceForm.updateGroupCategory}
+                        onToggleGroupCategorySprint={raceForm.toggleGroupCategorySprint}
+                        onToggleGroupSprint={raceForm.toggleGroupSprint}
                         onCancel={handleCancel}
                         onSave={handleSaveRace}
                     />

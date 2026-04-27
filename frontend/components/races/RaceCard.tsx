@@ -6,7 +6,7 @@ import { formatDateLong, formatTimeWithTz, fromTimestamp } from '@/lib/formatDat
 import PointsSplitBadge from '@/components/races/PointsSplitBadge';
 import RouteElevationChart from '@/components/races/RouteElevationChart';
 import type { Race, Sprint, EventCategoryConfig, CategoryConfig } from '@/types/live';
-import type { LeagueSettings } from '@/types/admin';
+import type { LeagueSettings, RaceGroup } from '@/types/admin';
 
 interface ProfileSegment {
     name: string;
@@ -214,6 +214,15 @@ function getUserSingleConfig(race: Race, userCategory?: string | null): Category
     return race.singleModeCategories.find(c => normalize(c.category) === wanted) || null;
 }
 
+function getUserGroupConfig(race: Race, userCategory?: string | null): RaceGroup | null {
+    if (!race.raceGroups || race.raceGroups.length === 0) return null;
+    if (!userCategory) return race.raceGroups[0] || null;
+    const wanted = normalize(userCategory);
+    return race.raceGroups.find(g =>
+        g.categories.some(c => normalize(c.category) === wanted)
+    ) || null;
+}
+
 function fallbackSprintsFromSelectedKeys(selectedSegments?: string[]): Sprint[] {
     return (selectedSegments || [])
         .map((key) => {
@@ -231,6 +240,9 @@ function fallbackSprintsFromSelectedKeys(selectedSegments?: string[]): Sprint[] 
 }
 
 function getPublicSprints(race: Race): Sprint[] {
+    if (race.eventMode === 'grouped' && race.raceGroups?.length) {
+        return race.raceGroups[0]?.sprints || [];
+    }
     if (race.eventConfiguration?.length) {
         return race.eventConfiguration[0]?.sprints || [];
     }
@@ -253,19 +265,31 @@ export default function RaceCard({
     const [profileData, setProfileData] = useState<ProfileData | null>(null);
     const [eventSegments, setEventSegments] = useState<EventSegmentInstance[]>([]);
     const userConfig = race.eventMode === 'multi' ? getUserEventConfig(race, userCategory) : null;
-    const userSingleConfig = race.eventMode !== 'multi' ? getUserSingleConfig(race, userCategory) : null;
+    const userSingleConfig = (race.eventMode !== 'multi' && race.eventMode !== 'grouped') ? getUserSingleConfig(race, userCategory) : null;
+    const userGroupConfig = race.eventMode === 'grouped' ? getUserGroupConfig(race, userCategory) : null;
+    const userGroupCatConfig = userGroupConfig?.categories.find(
+        c => normalize(c.category) === normalize(userCategory)
+    ) || null;
 
     const lapsToShow = race.eventMode === 'multi'
         ? (userConfig?.laps || race.laps)
+        : race.eventMode === 'grouped'
+        ? (userGroupCatConfig?.laps || userGroupConfig?.laps || race.laps)
         : (userSingleConfig?.laps || race.laps);
 
     const sprintsToShow = isPublicVariant
         ? getPublicSprints(race)
-        : (
-            race.eventMode === 'multi'
-                ? ((userConfig?.sprints && userConfig.sprints.length > 0) ? userConfig.sprints : (race.sprints || []))
-                : ((userSingleConfig?.sprints && userSingleConfig.sprints.length > 0) ? userSingleConfig.sprints : (race.sprints || []))
-        );
+        : race.eventMode === 'multi'
+        ? ((userConfig?.sprints && userConfig.sprints.length > 0) ? userConfig.sprints : (race.sprints || []))
+        : race.eventMode === 'grouped'
+        ? (
+            (userGroupCatConfig?.sprints && userGroupCatConfig.sprints.length > 0)
+                ? userGroupCatConfig.sprints
+                : (userGroupConfig?.sprints && userGroupConfig.sprints.length > 0)
+                ? userGroupConfig.sprints
+                : (race.sprints || [])
+          )
+        : ((userSingleConfig?.sprints && userSingleConfig.sprints.length > 0) ? userSingleConfig.sprints : (race.sprints || []));
 
     const resolvedSprintsToShow = sprintsToShow.length > 0
         ? sprintsToShow
@@ -335,6 +359,8 @@ export default function RaceCard({
 
     const racePassHref = race.eventMode === 'multi'
         ? (userConfig?.eventId ? getZwiftEventUrl(userConfig.eventId, userConfig.eventSecret) : null)
+        : race.eventMode === 'grouped'
+        ? (userGroupConfig?.eventId ? getZwiftEventUrl(userGroupConfig.eventId, userGroupConfig.eventSecret) : null)
         : (race.eventId ? getZwiftEventUrl(race.eventId, race.eventSecret) : null);
 
     return (

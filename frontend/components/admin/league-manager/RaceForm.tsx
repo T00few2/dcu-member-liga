@@ -2,12 +2,13 @@
 
 import { User } from 'firebase/auth';
 import { useEffect, useState } from 'react';
-import type { Route, Segment, RaceFormState, EventConfig, CategoryConfig, LoadingStatus } from '@/types/admin';
+import type { Route, Segment, RaceFormState, EventConfig, CategoryConfig, RaceGroup, RaceGroupCategoryConfig, LoadingStatus } from '@/types/admin';
 import { getRouteHelpers } from '@/hooks/useLeagueData';
 import { API_URL } from '@/lib/api';
 import SegmentPicker from './SegmentPicker';
 import SingleModeConfig from './SingleModeConfig';
 import MultiModeConfig from './MultiModeConfig';
+import GroupedModeConfig from './GroupedModeConfig';
 
 interface RaceFormProps {
     user: User | null;
@@ -25,6 +26,14 @@ interface RaceFormProps {
     onRemoveSingleModeCategory: (index: number) => void;
     onUpdateSingleModeCategory: (index: number, field: keyof CategoryConfig, value: CategoryConfig[keyof CategoryConfig]) => void;
     onToggleSingleModeCategorySprint: (configIndex: number, seg: Segment) => void;
+    onAddRaceGroup: () => void;
+    onRemoveRaceGroup: (groupIndex: number) => void;
+    onUpdateRaceGroup: (groupIndex: number, field: keyof RaceGroup, value: RaceGroup[keyof RaceGroup]) => void;
+    onAddGroupCategory: (groupIndex: number) => void;
+    onRemoveGroupCategory: (groupIndex: number, catIndex: number) => void;
+    onUpdateGroupCategory: (groupIndex: number, catIndex: number, field: keyof RaceGroupCategoryConfig, value: RaceGroupCategoryConfig[keyof RaceGroupCategoryConfig]) => void;
+    onToggleGroupCategorySprint: (groupIndex: number, catIndex: number, seg: Segment) => void;
+    onToggleGroupSprint: (groupIndex: number, seg: Segment) => void;
     onCancel: () => void;
     onSave: (e: React.FormEvent) => void;
 }
@@ -60,6 +69,14 @@ export default function RaceForm({
     onRemoveSingleModeCategory,
     onUpdateSingleModeCategory,
     onToggleSingleModeCategorySprint,
+    onAddRaceGroup,
+    onRemoveRaceGroup,
+    onUpdateRaceGroup,
+    onAddGroupCategory,
+    onRemoveGroupCategory,
+    onUpdateGroupCategory,
+    onToggleGroupCategorySprint,
+    onToggleGroupSprint,
     onCancel,
     onSave,
 }: RaceFormProps) {
@@ -343,7 +360,7 @@ export default function RaceForm({
                             <label className="block text-sm font-medium text-muted-foreground mb-2">
                                 Result Source Configuration
                             </label>
-                            <div className="flex gap-4 mb-4">
+                            <div className="flex flex-wrap gap-4 mb-4">
                                 <label className="flex items-center gap-2 cursor-pointer">
                                     <input
                                         type="radio"
@@ -362,7 +379,17 @@ export default function RaceForm({
                                         onChange={() => onFieldChange('eventMode', 'multi')}
                                         className="text-primary focus:ring-primary"
                                     />
-                                    <span className="text-sm">Multi-Category (Multiple IDs)</span>
+                                    <span className="text-sm">Multi-Category (One Event per Category)</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="radio"
+                                        name="eventMode"
+                                        checked={formState.eventMode === 'grouped'}
+                                        onChange={() => onFieldChange('eventMode', 'grouped')}
+                                        className="text-primary focus:ring-primary"
+                                    />
+                                    <span className="text-sm">Grouped (Multiple Events, Each Covering Multiple Categories)</span>
                                 </label>
                             </div>
 
@@ -392,10 +419,28 @@ export default function RaceForm({
                                 />
                             )}
 
+                            {formState.eventMode === 'grouped' && (
+                                <GroupedModeConfig
+                                    formState={formState}
+                                    segments={segments}
+                                    segmentsByLap={segmentsByLap}
+                                    onAddRaceGroup={onAddRaceGroup}
+                                    onRemoveRaceGroup={onRemoveRaceGroup}
+                                    onUpdateRaceGroup={onUpdateRaceGroup}
+                                    onAddGroupCategory={onAddGroupCategory}
+                                    onRemoveGroupCategory={onRemoveGroupCategory}
+                                    onUpdateGroupCategory={onUpdateGroupCategory}
+                                    onToggleGroupCategorySprint={onToggleGroupCategorySprint}
+                                    onToggleGroupSprint={onToggleGroupSprint}
+                                />
+                            )}
+
                             <p className="text-xs text-muted-foreground mt-2">
                                 {formState.eventMode === 'single'
                                     ? 'Used to fetch race results automatically from a single event.'
-                                    : 'Map multiple Zwift Events to specific categories (e.g. Event 101 -> Elite Men, Event 102 -> H40).'}
+                                    : formState.eventMode === 'multi'
+                                    ? 'Map one Zwift Event per category (e.g. Event 101 → Elite Men, Event 102 → H40).'
+                                    : 'Group multiple categories under each Zwift Event (e.g. "High end" event covers Diamond + Ruby).'}
                             </p>
                         </div>
 
