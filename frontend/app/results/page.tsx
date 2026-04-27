@@ -25,6 +25,7 @@ export default function ResultsPage() {
     const [standingsCategory, setStandingsCategory] = useState<string>('');
     const [autoSelectStandingsCategory, setAutoSelectStandingsCategory] = useState(true);
     const [bestRacesCount, setBestRacesCount] = useState<number>(5);
+    const [configuredCategoryNames, setConfiguredCategoryNames] = useState<string[]>([]);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -45,6 +46,10 @@ export default function ResultsPage() {
                     const settingsData = await settingsRes.json();
                     if (settingsData.settings?.bestRacesCount) {
                         setBestRacesCount(settingsData.settings.bestRacesCount);
+                    }
+                    const cats = settingsData.settings?.ligaCategories;
+                    if (Array.isArray(cats) && cats.length > 0) {
+                        setConfiguredCategoryNames(cats.map((c: { name: string }) => c.name));
                     }
                 }
 
@@ -119,7 +124,7 @@ export default function ResultsPage() {
     } else if (selectedRace?.singleModeCategories?.length) {
         availableRaceCategories = selectedRace.singleModeCategories.map(c => c.category).filter(Boolean);
     } else {
-        availableRaceCategories = ['A', 'B', 'C', 'D', 'E'];
+        availableRaceCategories = configuredCategoryNames.length > 0 ? configuredCategoryNames : ['A', 'B', 'C', 'D', 'E'];
     }
 
     // Sort race categories by configured order
