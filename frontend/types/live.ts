@@ -87,9 +87,10 @@ export interface Race {
     type?: 'scratch' | 'points' | 'time-trial';
     eventId?: string;
     eventSecret?: string;
-    eventMode?: 'single' | 'multi';
+    eventMode?: 'single' | 'multi' | 'grouped';
     eventConfiguration?: EventCategoryConfig[];
     singleModeCategories?: CategoryConfig[];
+    raceGroups?: import('./admin').RaceGroup[];
     selectedSegments?: string[];
     results?: Record<string, ResultEntry[]>;
     sprints?: Sprint[];

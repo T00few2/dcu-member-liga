@@ -43,6 +43,20 @@ def race_data_multi_mode(event_configuration=None, sprints=None, segment_type='s
 SPRINT_A = {'id': 1, 'name': 'Sprint 1'}
 SPRINT_B = {'id': 2, 'name': 'Sprint 2'}
 SPRINT_GLOBAL = {'id': 99, 'name': 'Global Sprint'}
+SPRINT_GROUP = {'id': 50, 'name': 'Group Sprint'}
+
+
+def race_data_grouped_mode(groups=None, sprints=None, segment_type='sprint'):
+    """Build a race_data dict using grouped-event mode config."""
+    return {
+        'eventMode': 'grouped',
+        'raceGroups': groups or [],
+        'sprints': sprints or [],
+        'segmentType': segment_type,
+        'manualDQs': [],
+        'manualDeclassifications': [],
+        'manualExclusions': [],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +106,43 @@ class TestGetSprints:
     def test_empty_race_data_returns_empty_list(self):
         assert CategoryConfigResolver.get_sprints({}, 'A') == []
 
+    def test_grouped_mode_per_category_sprints_override_group(self):
+        rd = race_data_grouped_mode(
+            sprints=[SPRINT_GLOBAL],
+            groups=[{
+                'id': 'g1', 'name': 'High end', 'eventId': '1',
+                'sprints': [SPRINT_GROUP],
+                'categories': [
+                    {'category': 'Diamond', 'sprints': [SPRINT_A]},
+                    {'category': 'Ruby'},
+                ],
+            }],
+        )
+        # Per-category sprint wins over group-level sprint
+        assert CategoryConfigResolver.get_sprints(rd, 'Diamond') == [SPRINT_A]
+        # No per-category sprint → falls back to group-level sprint
+        assert CategoryConfigResolver.get_sprints(rd, 'Ruby') == [SPRINT_GROUP]
+
+    def test_grouped_mode_falls_back_to_race_when_group_has_no_sprints(self):
+        rd = race_data_grouped_mode(
+            sprints=[SPRINT_GLOBAL],
+            groups=[{
+                'id': 'g1', 'name': 'High end', 'eventId': '1',
+                'categories': [{'category': 'Diamond'}],
+            }],
+        )
+        assert CategoryConfigResolver.get_sprints(rd, 'Diamond') == [SPRINT_GLOBAL]
+
+    def test_grouped_mode_unknown_category_returns_global(self):
+        rd = race_data_grouped_mode(
+            sprints=[SPRINT_GLOBAL],
+            groups=[{
+                'id': 'g1', 'name': 'High end', 'eventId': '1',
+                'categories': [{'category': 'Diamond'}],
+            }],
+        )
+        assert CategoryConfigResolver.get_sprints(rd, 'Copper') == [SPRINT_GLOBAL]
+
 
 # ---------------------------------------------------------------------------
 # get_segment_type
@@ -114,6 +165,34 @@ class TestGetSegmentType:
 
     def test_defaults_to_sprint_when_no_segment_type(self):
         assert CategoryConfigResolver.get_segment_type({}, 'A') == 'sprint'
+
+    def test_grouped_mode_per_category_segment_type_overrides_group(self):
+        rd = race_data_grouped_mode(
+            segment_type='sprint',
+            groups=[{
+                'id': 'g1', 'name': 'High end', 'eventId': '1',
+                'segmentType': 'split',
+                'categories': [
+                    {'category': 'Diamond', 'segmentType': 'sprint'},
+                    {'category': 'Ruby'},
+                ],
+            }],
+        )
+        # Per-category wins over group
+        assert CategoryConfigResolver.get_segment_type(rd, 'Diamond') == 'sprint'
+        # No per-category → group value
+        assert CategoryConfigResolver.get_segment_type(rd, 'Ruby') == 'split'
+
+    def test_grouped_mode_group_segment_type_overrides_race(self):
+        rd = race_data_grouped_mode(
+            segment_type='sprint',
+            groups=[{
+                'id': 'g1', 'name': 'High end', 'eventId': '1',
+                'segmentType': 'split',
+                'categories': [{'category': 'Diamond'}],
+            }],
+        )
+        assert CategoryConfigResolver.get_segment_type(rd, 'Diamond') == 'split'
 
     def test_multi_mode_per_category_segment_type(self):
         rd = race_data_multi_mode(
@@ -162,3 +241,25 @@ class TestGetRaceConfig:
         assert config['manualExclusions'] == []
         assert config['sprints'] == []
         assert config['segmentType'] == 'sprint'
+
+    def test_grouped_mode_merges_group_and_per_category_config(self):
+        rd = race_data_grouped_mode(
+            sprints=[SPRINT_GLOBAL],
+            segment_type='sprint',
+            groups=[{
+                'id': 'g1', 'name': 'High end', 'eventId': '1',
+                'segmentType': 'split',
+                'sprints': [SPRINT_GROUP],
+                'categories': [
+                    {'category': 'Diamond', 'sprints': [SPRINT_A]},
+                    {'category': 'Ruby'},
+                ],
+            }],
+        )
+        cfg_diamond = CategoryConfigResolver.get_race_config(rd, 'Diamond')
+        assert cfg_diamond['sprints'] == [SPRINT_A]     # per-category wins
+        assert cfg_diamond['segmentType'] == 'split'    # group fallback
+
+        cfg_ruby = CategoryConfigResolver.get_race_config(rd, 'Ruby')
+        assert cfg_ruby['sprints'] == [SPRINT_GROUP]    # group wins over race
+        assert cfg_ruby['segmentType'] == 'split'

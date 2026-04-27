@@ -40,6 +40,24 @@ export interface EventConfig {
     segmentType?: 'sprint' | 'split';
 }
 
+export interface RaceGroupCategoryConfig {
+    category: string;
+    laps?: number;
+    sprints?: SelectedSegment[];
+    segmentType?: 'sprint' | 'split';
+}
+
+export interface RaceGroup {
+    id: string;
+    name: string;
+    eventId: string;
+    eventSecret?: string;
+    categories: RaceGroupCategoryConfig[];
+    laps?: number;
+    sprints?: SelectedSegment[];
+    segmentType?: 'sprint' | 'split';
+}
+
 export interface Race {
     id: string;
     name: string;
@@ -53,10 +71,11 @@ export interface Race {
     type?: 'scratch' | 'points' | 'time-trial';
     eventId?: string;
     eventSecret?: string;
-    eventMode?: 'single' | 'multi';
+    eventMode?: 'single' | 'multi' | 'grouped';
     linkedEventIds?: string[];
     eventConfiguration?: EventConfig[];
     singleModeCategories?: CategoryConfig[];
+    raceGroups?: RaceGroup[];
     selectedSegments?: string[];
     sprints?: SelectedSegment[];
     segmentType?: 'sprint' | 'split';
@@ -135,9 +154,10 @@ export interface RaceFormState {
     raceType: 'scratch' | 'points' | 'time-trial';
     eventId: string;
     eventSecret: string;
-    eventMode: 'single' | 'multi';
+    eventMode: 'single' | 'multi' | 'grouped';
     eventConfiguration: EventConfig[];
     singleModeCategories: CategoryConfig[];
+    raceGroups: RaceGroup[];
     selectedMap: string;
     selectedRouteId: string;
     laps: number;

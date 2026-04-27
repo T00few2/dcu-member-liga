@@ -1,13 +1,15 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import type { 
-    Race, 
-    RaceFormState, 
-    Segment, 
-    SelectedSegment, 
-    CategoryConfig, 
+import type {
+    Race,
+    RaceFormState,
+    Segment,
+    SelectedSegment,
+    CategoryConfig,
     EventConfig,
+    RaceGroup,
+    RaceGroupCategoryConfig,
 } from '@/types/admin';
 
 const initialFormState: RaceFormState = {
@@ -20,6 +22,7 @@ const initialFormState: RaceFormState = {
     eventMode: 'single',
     eventConfiguration: [],
     singleModeCategories: [],
+    raceGroups: [],
     selectedMap: '',
     selectedRouteId: '',
     laps: 1,
@@ -64,17 +67,25 @@ export function useRaceForm() {
             selectedSprints: race.sprints || [],
             eventConfiguration: [],
             singleModeCategories: [],
+            raceGroups: [],
         };
 
-        // Handle multi mode
-        if (race.eventMode === 'multi' && race.eventConfiguration) {
+        if (race.eventMode === 'grouped' && race.raceGroups) {
+            newState.raceGroups = race.raceGroups.map(g => ({
+                ...g,
+                sprints: g.sprints || [],
+                categories: (g.categories || []).map(c => ({
+                    ...c,
+                    sprints: c.sprints || [],
+                })),
+            }));
+        } else if (race.eventMode === 'multi' && race.eventConfiguration) {
             newState.eventConfiguration = race.eventConfiguration.map(c => ({
                 ...c,
                 sprints: c.sprints || [],
                 segmentType: c.segmentType || 'sprint',
             }));
         } else {
-            // Handle single mode category config
             if (race.singleModeCategories && race.singleModeCategories.length > 0) {
                 newState.singleModeCategories = race.singleModeCategories.map(c => ({
                     ...c,
@@ -222,6 +233,134 @@ export function useRaceForm() {
         }));
     }, []);
 
+    // Race group helpers (grouped mode)
+    const addRaceGroup = useCallback(() => {
+        setFormState(prev => ({
+            ...prev,
+            raceGroups: [
+                ...prev.raceGroups,
+                {
+                    id: `group-${Date.now()}`,
+                    name: '',
+                    eventId: '',
+                    eventSecret: '',
+                    categories: [],
+                    laps: prev.laps,
+                    sprints: [],
+                    segmentType: 'sprint' as const,
+                },
+            ],
+        }));
+    }, []);
+
+    const removeRaceGroup = useCallback((groupIndex: number) => {
+        setFormState(prev => ({
+            ...prev,
+            raceGroups: prev.raceGroups.filter((_, i) => i !== groupIndex),
+        }));
+    }, []);
+
+    const updateRaceGroup = useCallback((
+        groupIndex: number,
+        field: keyof RaceGroup,
+        value: RaceGroup[keyof RaceGroup]
+    ) => {
+        setFormState(prev => ({
+            ...prev,
+            raceGroups: prev.raceGroups.map((g, i) =>
+                i === groupIndex ? { ...g, [field]: value } : g
+            ),
+        }));
+    }, []);
+
+    const addGroupCategory = useCallback((groupIndex: number) => {
+        setFormState(prev => ({
+            ...prev,
+            raceGroups: prev.raceGroups.map((g, i) => {
+                if (i !== groupIndex) return g;
+                return {
+                    ...g,
+                    categories: [
+                        ...g.categories,
+                        { category: '', sprints: [], segmentType: 'sprint' as const },
+                    ],
+                };
+            }),
+        }));
+    }, []);
+
+    const removeGroupCategory = useCallback((groupIndex: number, catIndex: number) => {
+        setFormState(prev => ({
+            ...prev,
+            raceGroups: prev.raceGroups.map((g, i) => {
+                if (i !== groupIndex) return g;
+                return { ...g, categories: g.categories.filter((_, ci) => ci !== catIndex) };
+            }),
+        }));
+    }, []);
+
+    const updateGroupCategory = useCallback((
+        groupIndex: number,
+        catIndex: number,
+        field: keyof RaceGroupCategoryConfig,
+        value: RaceGroupCategoryConfig[keyof RaceGroupCategoryConfig]
+    ) => {
+        setFormState(prev => ({
+            ...prev,
+            raceGroups: prev.raceGroups.map((g, i) => {
+                if (i !== groupIndex) return g;
+                return {
+                    ...g,
+                    categories: g.categories.map((c, ci) =>
+                        ci === catIndex ? { ...c, [field]: value } : c
+                    ),
+                };
+            }),
+        }));
+    }, []);
+
+    const toggleGroupCategorySprint = useCallback((groupIndex: number, catIndex: number, seg: Segment) => {
+        const key = `${seg.id}_${seg.count}`;
+        setFormState(prev => ({
+            ...prev,
+            raceGroups: prev.raceGroups.map((g, i) => {
+                if (i !== groupIndex) return g;
+                return {
+                    ...g,
+                    categories: g.categories.map((c, ci) => {
+                        if (ci !== catIndex) return c;
+                        const currentSprints = c.sprints || [];
+                        const isSelected = currentSprints.some(s => s.key === key);
+                        return {
+                            ...c,
+                            sprints: isSelected
+                                ? currentSprints.filter(s => s.key !== key)
+                                : [...currentSprints, { ...seg, key }],
+                        };
+                    }),
+                };
+            }),
+        }));
+    }, []);
+
+    const toggleGroupSprint = useCallback((groupIndex: number, seg: Segment) => {
+        const key = `${seg.id}_${seg.count}`;
+        setFormState(prev => ({
+            ...prev,
+            raceGroups: prev.raceGroups.map((g, i) => {
+                if (i !== groupIndex) return g;
+                const currentSprints = g.sprints || [];
+                const isSelected = currentSprints.some(s => s.key === key);
+                return {
+                    ...g,
+                    sprints: isSelected
+                        ? currentSprints.filter(s => s.key !== key)
+                        : [...currentSprints, { ...seg, key }],
+                };
+            }),
+        }));
+    }, []);
+
     return {
         formState,
         updateField,
@@ -238,6 +377,15 @@ export function useRaceForm() {
         removeSingleModeCategory,
         updateSingleModeCategory,
         toggleSingleModeCategorySprint,
+        // Race groups (grouped mode)
+        addRaceGroup,
+        removeRaceGroup,
+        updateRaceGroup,
+        addGroupCategory,
+        removeGroupCategory,
+        updateGroupCategory,
+        toggleGroupCategorySprint,
+        toggleGroupSprint,
         // Convenience getters
         isEditing: formState.editingRaceId !== null,
     };

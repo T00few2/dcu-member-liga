@@ -21,7 +21,7 @@ SegmentType = Literal['sprint', 'split']
 RaceType = Literal['scratch', 'points', 'time-trial']
 RegistrationStatus = Literal['draft', 'complete']
 VerificationStatus = Literal['none', 'pending', 'submitted', 'approved', 'rejected']
-EventMode = Literal['single', 'multi']
+EventMode = Literal['single', 'multi', 'grouped']
 CategoryStatus = Literal['ok', 'grace', 'over']
 
 
@@ -115,6 +115,27 @@ class EventConfig(TypedDict, total=False):
     startTime: str
 
 
+class RaceGroupCategoryConfig(TypedDict, total=False):
+    """Per-category config within a race group (grouped-mode)."""
+    category: str
+    sprints: list[SprintConfig]
+    segmentType: SegmentType
+    laps: int
+
+
+class RaceGroup(TypedDict, total=False):
+    """One group in grouped-mode: one Zwift event covering multiple categories."""
+    id: str
+    name: str
+    eventId: str
+    eventSecret: str
+    categories: list[RaceGroupCategoryConfig]
+    laps: int
+    sprints: list[SprintConfig]
+    segmentType: SegmentType
+    startTime: str
+
+
 class RaceConfig(TypedDict, total=False):
     """
     The dict passed into RaceScorer.calculate_results and LeagueEngine methods.
@@ -130,6 +151,7 @@ class RaceConfig(TypedDict, total=False):
     eventMode: EventMode
     eventConfiguration: list[EventConfig]
     singleModeCategories: list[CategoryConfig]
+    raceGroups: list[RaceGroup]
     startTime: str
     date: str
 

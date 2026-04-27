@@ -39,6 +39,24 @@ class CategoryConfigResolver:
         race_data: dict[str, Any], category: str
     ) -> dict[str, Any] | None:
         """Return the per-category config block, or None if not found."""
+        # Grouped mode: each group has one event covering multiple categories.
+        # Merge group-level defaults with per-category overrides so callers get
+        # a single flat dict (per-category values win over group values).
+        if race_data.get('eventMode') == 'grouped':
+            for group in race_data.get('raceGroups', []):
+                for cat_cfg in group.get('categories', []):
+                    if cat_cfg.get('category') == category:
+                        merged: dict[str, Any] = {}
+                        for key in ('sprints', 'segmentType', 'laps'):
+                            group_val = group.get(key)
+                            if group_val is not None:
+                                merged[key] = group_val
+                        for key, val in cat_cfg.items():
+                            if val is not None:
+                                merged[key] = val
+                        return merged
+            return None
+
         # Multi-event mode
         if race_data.get('eventMode') == 'multi' and race_data.get('eventConfiguration'):
             for cfg in race_data['eventConfiguration']:

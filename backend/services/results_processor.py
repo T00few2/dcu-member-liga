@@ -60,19 +60,35 @@ class ResultsProcessor:
 
         # Determine Event Sources
         event_sources: list[dict[str, Any]] = []
-        event_config = race_data.get('eventConfiguration', [])
-        if event_config and len(event_config) > 0:
-            logger.info("Using eventConfiguration sources")
-            for cfg in event_config:
+        event_mode = race_data.get('eventMode', 'single')
+
+        if event_mode == 'grouped':
+            logger.info("Using raceGroups sources (grouped mode)")
+            for group in race_data.get('raceGroups', []):
+                allowed = {c.get('category') for c in group.get('categories', []) if c.get('category')}
                 event_sources.append({
-                    'id': cfg.get('eventId'),
-                    'subgroupId': cfg.get('subgroupId'),
-                    'secret': cfg.get('eventSecret'),
-                    'customCategory': cfg.get('customCategory'),
-                    'sprints': cfg.get('sprints', []),
-                    'segmentType': cfg.get('segmentType') or race_data.get('segmentType'),
-                    'startTime': cfg.get('startTime') or race_data.get('date'),
+                    'id': group.get('eventId'),
+                    'secret': group.get('eventSecret', ''),
+                    'customCategory': None,
+                    'allowedCategories': allowed,
+                    'sprints': group.get('sprints', []),
+                    'segmentType': group.get('segmentType') or race_data.get('segmentType'),
+                    'startTime': group.get('startTime') or race_data.get('date'),
                 })
+        else:
+            event_config = race_data.get('eventConfiguration', [])
+            if event_config and len(event_config) > 0:
+                logger.info("Using eventConfiguration sources (multi mode)")
+                for cfg in event_config:
+                    event_sources.append({
+                        'id': cfg.get('eventId'),
+                        'subgroupId': cfg.get('subgroupId'),
+                        'secret': cfg.get('eventSecret'),
+                        'customCategory': cfg.get('customCategory'),
+                        'sprints': cfg.get('sprints', []),
+                        'segmentType': cfg.get('segmentType') or race_data.get('segmentType'),
+                        'startTime': cfg.get('startTime') or race_data.get('date'),
+                    })
 
         if not event_sources:
             raise Exception("No Zwift Event ID(s) linked to this race")
@@ -296,6 +312,13 @@ class ResultsProcessor:
                 ]
                 if matched:
                     subgroups = matched
+            # Grouped mode: restrict to the categories assigned to this group.
+            allowed_categories = source.get('allowedCategories')
+            if allowed_categories:
+                subgroups = [
+                    sg for sg in subgroups
+                    if sg.get('subgroupLabel') in allowed_categories
+                ]
         logger.info(f"  Found {len(subgroups)} subgroups.")
 
         custom_cat_finishers: list[Any] = []
