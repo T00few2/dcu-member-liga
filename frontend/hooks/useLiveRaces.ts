@@ -12,13 +12,16 @@ export interface LiveRace {
     name: string;
     date: string;
     type?: 'scratch' | 'points' | 'time-trial';
-    eventMode?: 'single' | 'multi';
+    eventMode?: 'single' | 'multi' | 'grouped';
     eventConfiguration?: {
         eventId: string;
         customCategory: string;
     }[];
     singleModeCategories?: {
         category: string;
+    }[];
+    raceGroups?: {
+        categories: { category: string }[];
     }[];
     results?: Record<string, any[]>;
     manualDQs?: string[];
@@ -81,6 +84,11 @@ export function useLiveRaces(user: User | null): UseLiveRacesReturn {
                     if (c.category) categories.add(c.category);
                 });
             }
+            if (race.raceGroups?.length) {
+                race.raceGroups.forEach(g =>
+                    g.categories.forEach(c => { if (c.category) categories.add(c.category); })
+                );
+            }
             if (race.results) {
                 Object.keys(race.results).forEach(c => categories.add(c));
             }
@@ -136,13 +144,18 @@ export function useLiveRaces(user: User | null): UseLiveRacesReturn {
         const raceCats = new Set<string>();
         
         if (race.eventConfiguration?.length) {
-            race.eventConfiguration.forEach(c => 
+            race.eventConfiguration.forEach(c =>
                 c.customCategory && raceCats.add(c.customCategory)
             );
         }
         if (race.singleModeCategories?.length) {
-            race.singleModeCategories.forEach(c => 
+            race.singleModeCategories.forEach(c =>
                 c.category && raceCats.add(c.category)
+            );
+        }
+        if (race.raceGroups?.length) {
+            race.raceGroups.forEach(g =>
+                g.categories.forEach(c => c.category && raceCats.add(c.category))
             );
         }
         if (race.results) {
