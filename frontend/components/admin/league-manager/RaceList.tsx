@@ -263,7 +263,7 @@ export default function RaceList({
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
-                                        {(race.eventId || (race.eventConfiguration && race.eventConfiguration.length > 0)) && (
+                                        {(race.eventId || (race.eventConfiguration && race.eventConfiguration.length > 0) || (race.raceGroups && race.raceGroups.length > 0)) && (
                                             <>
                                                 <button
                                                     onClick={() => onRefreshResults(race.id)}
