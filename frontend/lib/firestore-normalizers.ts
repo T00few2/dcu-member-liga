@@ -54,6 +54,7 @@ export function normalizeRace(raw: unknown, id: string): Race {
         eventMode: (asString(data.eventMode) as Race['eventMode']) || undefined,
         eventConfiguration: Array.isArray(data.eventConfiguration) ? (data.eventConfiguration as Race['eventConfiguration']) : [],
         singleModeCategories: Array.isArray(data.singleModeCategories) ? (data.singleModeCategories as Race['singleModeCategories']) : [],
+        raceGroups: Array.isArray(data.raceGroups) ? (data.raceGroups as Race['raceGroups']) : [],
         selectedSegments: asStringArray(data.selectedSegments),
         results: asObject(data.results) as Race['results'],
         sprints: Array.isArray(data.sprints) ? (data.sprints as Race['sprints']) : [],

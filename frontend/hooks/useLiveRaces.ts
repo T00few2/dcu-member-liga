@@ -161,7 +161,7 @@ export function useLiveRaces(user: User | null): UseLiveRacesReturn {
         if (race.results) {
             Object.keys(race.results).forEach(c => raceCats.add(c));
         }
-        if (raceCats.size === 0) {
+        if (raceCats.size === 0 && race.eventMode !== 'grouped') {
             ['A', 'B', 'C', 'D', 'E'].forEach(c => raceCats.add(c));
         }
         
