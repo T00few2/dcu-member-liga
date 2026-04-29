@@ -363,6 +363,18 @@ export default function RaceCard({
         ? (userGroupConfig?.eventId ? getZwiftEventUrl(userGroupConfig.eventId, userGroupConfig.eventSecret) : null)
         : (race.eventId ? getZwiftEventUrl(race.eventId, race.eventSecret) : null);
 
+    // Show a category hint when multiple categories share the same Zwift event so the user
+    // knows which category to select after clicking the race pass link.
+    const categoryHint = (() => {
+        if (race.eventMode === 'single' && (race.singleModeCategories?.length ?? 0) > 1) {
+            return userSingleConfig?.category || userCategory || null;
+        }
+        if (race.eventMode === 'grouped' && (userGroupConfig?.categories?.length ?? 0) > 1) {
+            return userGroupCatConfig?.category || userCategory || null;
+        }
+        return null;
+    })();
+
     return (
         <div className={`bg-card border border-border rounded-lg shadow-sm overflow-hidden mb-6 ${isPast ? 'opacity-75' : ''}`}>
             <div className={isPublicVariant ? 'p-4 md:p-5' : 'p-6'}>
@@ -449,15 +461,23 @@ export default function RaceCard({
                 )}
 
                 {!isPublicVariant && racePassHref ? (
-                    <a
-                        href={racePassHref}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block w-full bg-primary hover:bg-primary-dark text-white font-bold py-3 px-4 rounded-lg text-center transition shadow-md flex items-center justify-center gap-2"
-                    >
-                        <span>Løbspas</span>
-                        <ExternalLinkIcon size={16} />
-                    </a>
+                    <div className="flex flex-col gap-2">
+                        {categoryHint && (
+                            <div className="flex items-center justify-center gap-2 text-sm bg-muted/40 border border-border rounded-lg px-4 py-2">
+                                <span className="text-muted-foreground">Vælg kategori i Zwift:</span>
+                                <span className="font-semibold text-card-foreground">{categoryHint}</span>
+                            </div>
+                        )}
+                        <a
+                            href={racePassHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block w-full bg-primary hover:bg-primary-dark text-white font-bold py-3 px-4 rounded-lg text-center transition shadow-md flex items-center justify-center gap-2"
+                        >
+                            <span>Løbspas</span>
+                            <ExternalLinkIcon size={16} />
+                        </a>
+                    </div>
                 ) : !isPublicVariant ? (
                     <div
                         className="block w-full bg-muted text-muted-foreground font-bold py-3 px-4 rounded-lg text-center shadow-sm cursor-not-allowed"
