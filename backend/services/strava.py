@@ -102,6 +102,19 @@ class StravaService:
             doc_id = self._resolve_doc_id(rider_id)
 
             token_doc = self._token_ref(doc_id).get()
+            if not token_doc.exists:
+                # Token may be stored under authUid if the rider connected Strava
+                # before the auth_mappings entry was created (older registrations).
+                # Look up authUid from the user document and try that key.
+                try:
+                    user_ref = self.db.collection('users').document(doc_id).get()
+                    if user_ref.exists:
+                        auth_uid = (user_ref.to_dict() or {}).get('authUid')
+                        if auth_uid:
+                            token_doc = self._token_ref(auth_uid).get()
+                except Exception as e:
+                    logger.warning(f"Strava token uid fallback failed for {rider_id}: {e}")
+
             if token_doc.exists:
                 strava_auth = token_doc.to_dict()
             else:
