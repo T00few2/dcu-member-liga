@@ -83,7 +83,6 @@ const FEATURE_DEFS: FeatureDef[] = [
     fromInputs: (inp) => inp.wkg20m,
   },
   {
-  {
     key: 'watts5s', label: '5s watts', requires: ['cp5s'],
     description: 'Absolute 5-second peak watts. Scale-free on flat sprints.',
     fromCP: (_kg, c5s) => c5s,
