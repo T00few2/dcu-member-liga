@@ -123,19 +123,12 @@ def strava_callback():
             state_ref.delete()
             return jsonify({'message': 'OAuth state expired, please try again'}), 400
 
-    # Try to find the real user document from auth_mappings
-    user_doc_ref = None
-    
-    mapping_doc = db.collection('auth_mappings').document(uid).get()
-    if mapping_doc.exists:
-        mapping_data = mapping_doc.to_dict()
-        mapped_zwift_id = mapping_data.get('zwiftId')
-        if mapped_zwift_id:
-            user_doc_ref = db.collection('users').document(str(mapped_zwift_id))
-    
+    # Resolve the canonical user document the same way Zwift OAuth does:
+    # auth_mappings → authUid query → fallback to uid.
+    # This ensures tokens land at strava_tokens/{zwiftDocId}, not strava_tokens/{authUid}.
+    user_doc_ref = _resolve_user_doc_ref_from_uid(uid)
     if not user_doc_ref:
-         # Fallback: Just update the UID doc (drafts/unregistered)
-         user_doc_ref = db.collection('users').document(uid)
+        user_doc_ref = db.collection('users').document(uid)
 
     try:
         status_code, token_data = strava_service.exchange_code_for_tokens(code)
