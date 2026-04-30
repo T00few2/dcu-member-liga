@@ -32,12 +32,13 @@ interface Participant {
   cp1min: number | null;
   cp5min: number | null;
   cp20min: number | null;
+  racingScore: number | string | null;
   max30Rating: number | string | null;
   ligaCategory: { locked?: boolean; category?: string } | null;
 }
 
-type CPField = 'cp5s' | 'cp1min' | 'cp5min' | 'cp20min';
-type FeatureKey = 'weight_kg' | 'wkg5s' | 'wkg1m' | 'wkg5m' | 'wkg20m'
+type CPField = 'cp5s' | 'cp1min' | 'cp5min' | 'cp20min' | 'racingScore';
+type FeatureKey = 'weight_kg' | 'zrs' | 'wkg5s' | 'wkg1m' | 'wkg5m' | 'wkg20m'
   | 'watts5s' | 'watts1m' | 'watts5m' | 'watts20m'
   | 'compound5s' | 'compound1m' | 'compound5m' | 'compound20m';
 
@@ -46,8 +47,8 @@ interface FeatureDef {
   label: string;
   description: string;
   requires: CPField[];
-  // args: kg, cp5s, cp1min, cp5min, cp20min
-  fromCP: (kg: number, c5s: number, c1: number, c5: number, c20: number) => number;
+  // args: kg, cp5s, cp1min, cp5min, cp20min, racingScore
+  fromCP: (kg: number, c5s: number, c1: number, c5: number, c20: number, zrs: number) => number;
   fromInputs: (inp: Inputs) => number;
 }
 
@@ -58,6 +59,12 @@ const FEATURE_DEFS: FeatureDef[] = [
     fromCP: (kg) => kg,
     fromInputs: (inp) => inp.weightKg,
   },
+  {
+    key: 'zrs', label: 'ZRS', requires: ['racingScore'],
+    description: "Zwift Racing Score — Zwift's in-game ranking. Directly comparable to vELO and often the strongest single predictor.",
+    fromCP: (_kg, _s, _1, _5, _20, zrs) => zrs,
+    fromInputs: (inp) => inp.racingScore,
+  } as FeatureDef,
   {
     key: 'wkg5s', label: '5s W/kg', requires: ['cp5s'],
     description: '5-second peak power per kg — pure neuromuscular / sprint ceiling.',
@@ -134,7 +141,7 @@ const FEATURE_DEFS: FeatureDef[] = [
 
 const STORAGE_KEY = 'categoryPredictor_features';
 const ALL_ON: Record<FeatureKey, boolean> = {
-  weight_kg: true, wkg5s: false, wkg1m: true, wkg5m: false, wkg20m: true,
+  weight_kg: true, zrs: false, wkg5s: false, wkg1m: true, wkg5m: false, wkg20m: true,
   watts5s: false, watts1m: false, watts5m: false, watts20m: false,
   compound5s: false, compound1m: false, compound5m: true, compound20m: false,
 };
@@ -169,6 +176,7 @@ interface Inputs {
   wkg1m:   number;
   wkg5m:   number;
   wkg20m:  number;
+  racingScore: number;
 }
 
 interface CategoryPredictorProps {
@@ -296,10 +304,14 @@ function buildModel(participants: Participant[], enabled: Record<FeatureKey, boo
     const wg = p.weightInGrams;
     const velo = typeof p.max30Rating === 'number' ? p.max30Rating : parseFloat(String(p.max30Rating ?? ''));
     if (!wg || wg <= 0 || isNaN(velo) || velo <= 0) return false;
-    if (needed.has('cp5s')   && !(p.cp5s   && p.cp5s   > 0)) return false;
-    if (needed.has('cp1min') && !(p.cp1min && p.cp1min > 0)) return false;
-    if (needed.has('cp5min') && !(p.cp5min && p.cp5min > 0)) return false;
-    if (needed.has('cp20min') && !(p.cp20min && p.cp20min > 0)) return false;
+    if (needed.has('cp5s')        && !(p.cp5s   && p.cp5s   > 0)) return false;
+    if (needed.has('cp1min')      && !(p.cp1min && p.cp1min > 0)) return false;
+    if (needed.has('cp5min')      && !(p.cp5min && p.cp5min > 0)) return false;
+    if (needed.has('cp20min')     && !(p.cp20min && p.cp20min > 0)) return false;
+    if (needed.has('racingScore')) {
+      const rs = typeof p.racingScore === 'number' ? p.racingScore : parseFloat(String(p.racingScore ?? ''));
+      if (isNaN(rs) || rs <= 0) return false;
+    }
     return true;
   });
 
@@ -311,7 +323,8 @@ function buildModel(participants: Participant[], enabled: Record<FeatureKey, boo
   for (const p of training) {
     const kg = p.weightInGrams! / 1000;
     const velo = typeof p.max30Rating === 'number' ? p.max30Rating : parseFloat(String(p.max30Rating!));
-    rows.push(active.map(f => f.fromCP(kg, p.cp5s ?? 0, p.cp1min ?? 0, p.cp5min ?? 0, p.cp20min ?? 0)));
+    const zrs = typeof p.racingScore === 'number' ? p.racingScore : parseFloat(String(p.racingScore ?? '0')) || 0;
+    rows.push(active.map(f => f.fromCP(kg, p.cp5s ?? 0, p.cp1min ?? 0, p.cp5min ?? 0, p.cp20min ?? 0, zrs)));
     y.push(velo);
   }
 
@@ -377,7 +390,7 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   const [powerSource, setPowerSource] = useState<'zwift' | 'strava'>('zwift');
   const [loadingStrava, setLoadingStrava] = useState(false);
   const [stravaError, setStravaError] = useState('');
-  const [inputs, setInputs] = useState<Inputs>({ weightKg: 0, wkg5s: 0, wkg1m: 0, wkg5m: 0, wkg20m: 0 });
+  const [inputs, setInputs] = useState<Inputs>({ weightKg: 0, wkg5s: 0, wkg1m: 0, wkg5m: 0, wkg20m: 0, racingScore: 0 });
   const [manualCategory, setManualCategory] = useState('');
   const [assigning, setAssigning] = useState(false);
   const [assignResult, setAssignResult] = useState<{ category: string } | null>(null);
@@ -437,15 +450,17 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
     setAssignError('');
     setStravaError('');
     const p = participants.find(pp => pp.zwiftId === zwiftId);
-    if (!p) { setInputs({ weightKg: 0, wkg5s: 0, wkg1m: 0, wkg5m: 0, wkg20m: 0 }); return; }
+    if (!p) { setInputs({ weightKg: 0, wkg5s: 0, wkg1m: 0, wkg5m: 0, wkg20m: 0, racingScore: 0 }); return; }
     const kg = (p.weightInGrams ?? 0) / 1000;
     const wkg = (w: number | null) => (kg > 0 && w && w > 0) ? parseFloat((w / kg).toFixed(2)) : 0;
+    const rs = typeof p.racingScore === 'number' ? p.racingScore : parseFloat(String(p.racingScore ?? '')) || 0;
     setInputs({
       weightKg: kg,
       wkg5s:  wkg(p.cp5s),
       wkg1m:  wkg(p.cp1min),
       wkg5m:  wkg(p.cp5min),
       wkg20m: wkg(p.cp20min),
+      racingScore: rs,
     });
   }
 
@@ -813,11 +828,12 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
         {/* Input fields */}
         <div className="grid grid-cols-2 gap-x-8 gap-y-3 max-w-sm mb-4">
           {([
-            ['weightKg', 'Weight (kg)', '0.1'],
-            ['wkg5s',    '5s W/kg',    '0.01'],
-            ['wkg1m',    '1min W/kg',  '0.01'],
-            ['wkg5m',    '5min W/kg',  '0.01'],
-            ['wkg20m',   '20min W/kg', '0.01'],
+            ['weightKg',    'Weight (kg)', '0.1'],
+            ['racingScore', 'ZRS',         '1'],
+            ['wkg5s',       '5s W/kg',    '0.01'],
+            ['wkg1m',       '1min W/kg',  '0.01'],
+            ['wkg5m',       '5min W/kg',  '0.01'],
+            ['wkg20m',      '20min W/kg', '0.01'],
           ] as [keyof Inputs, string, string][]).map(([field, label, step]) => (
             <>
               <label key={field + '_lbl'} className="text-sm text-foreground self-center">{label}</label>
