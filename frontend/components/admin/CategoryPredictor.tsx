@@ -697,7 +697,8 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
                     type="number"
                     dataKey="actual"
                     name="Actual vELO"
-                    domain={[minVelo, maxVelo]}
+                    domain={[Math.floor(minVelo), Math.ceil(maxVelo)]}
+                    tickFormatter={(v: number) => Math.round(v).toLocaleString()}
                     label={{ value: 'Actual vELO', position: 'insideBottom', offset: -15, fontSize: 12 }}
                     tick={{ fontSize: 11 }}
                   />
@@ -705,7 +706,8 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
                     type="number"
                     dataKey="predicted"
                     name="Predicted vELO"
-                    domain={[minVelo, maxVelo]}
+                    domain={[Math.floor(minVelo), Math.ceil(maxVelo)]}
+                    tickFormatter={(v: number) => Math.round(v).toLocaleString()}
                     label={{ value: 'Predicted vELO', angle: -90, position: 'insideLeft', offset: 10, fontSize: 12 }}
                     tick={{ fontSize: 11 }}
                   />
@@ -873,17 +875,20 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
               )}
             </div>
             {predLow != null && predHigh != null && (
-              <div className="text-xs text-muted-foreground">
-                ±{model!.rmse} pts → {predLow.toLocaleString()}–{predHigh.toLocaleString()}
-                {catLow && catHigh && catLow !== catHigh && (
-                  <span className="ml-1">
-                    ({catLow !== predictedCategory && (
-                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full font-medium mr-1 ${ZR_CATEGORY_STYLES[catLow] ?? 'bg-slate-100 text-slate-800'}`}>{catLow}</span>
-                    )}–
-                    {catHigh !== predictedCategory && (
-                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full font-medium ml-1 ${ZR_CATEGORY_STYLES[catHigh] ?? 'bg-slate-100 text-slate-800'}`}>{catHigh}</span>
-                    )})
-                  </span>
+              <div className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
+                <span>±{model!.rmse} pts → {predLow.toLocaleString()}–{predHigh.toLocaleString()}</span>
+                {catLow && catHigh && (
+                  <>
+                    <span>(</span>
+                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full font-medium ${ZR_CATEGORY_STYLES[catLow] ?? 'bg-slate-100 text-slate-800'}`}>{catLow}</span>
+                    {catLow !== catHigh && (
+                      <>
+                        <span>–</span>
+                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full font-medium ${ZR_CATEGORY_STYLES[catHigh] ?? 'bg-slate-100 text-slate-800'}`}>{catHigh}</span>
+                      </>
+                    )}
+                    <span>)</span>
+                  </>
                 )}
               </div>
             )}
