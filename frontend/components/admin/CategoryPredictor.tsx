@@ -139,26 +139,18 @@ const FEATURE_DEFS: FeatureDef[] = [
   },
 ];
 
-const STORAGE_KEY = 'categoryPredictor_features';
 const ALL_ON: Record<FeatureKey, boolean> = {
   weight_kg: true, zrs: false, wkg5s: false, wkg1m: true, wkg5m: false, wkg20m: true,
   watts5s: false, watts1m: false, watts5m: false, watts20m: false,
   compound5s: false, compound1m: false, compound5m: true, compound20m: false,
 };
 
-function loadStoredFeatures(): Record<FeatureKey, boolean> {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const p = JSON.parse(raw);
-      const out = { ...ALL_ON };
-      for (const k of Object.keys(ALL_ON) as FeatureKey[]) {
-        if (typeof p[k] === 'boolean') out[k] = p[k];
-      }
-      return out;
-    }
-  } catch { /* ignore */ }
-  return { ...ALL_ON };
+function mergeFeatures(saved: Record<string, unknown>): Record<FeatureKey, boolean> {
+  const out = { ...ALL_ON };
+  for (const k of Object.keys(ALL_ON) as FeatureKey[]) {
+    if (typeof saved[k] === 'boolean') out[k] = saved[k] as boolean;
+  }
+  return out;
 }
 
 interface ModelResult {
@@ -396,8 +388,24 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   const [assignResult, setAssignResult] = useState<{ category: string } | null>(null);
   const [assignError, setAssignError] = useState('');
 
-  // Load saved feature selection from localStorage on first render
-  useEffect(() => { setSelectedFeatures(loadStoredFeatures()); }, []);
+  // Load saved feature selection from Firestore on first render
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      try {
+        const token = await user.getIdToken();
+        const res = await fetch(`${API_URL}/admin/predictor-config`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.features && typeof data.features === 'object') {
+            setSelectedFeatures(mergeFeatures(data.features));
+          }
+        }
+      } catch { /* fall back to defaults */ }
+    })();
+  }, [user]);
 
   // Fetch participants
   useEffect(() => {
@@ -540,10 +548,20 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
     ? ['Intercept', ...model.activeFeatureKeys.map(k => FEATURE_DEFS.find(f => f.key === k)!.label)]
     : [];
 
-  function saveDefaults() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(selectedFeatures));
-    setSavedFeedback(true);
-    setTimeout(() => setSavedFeedback(false), 2000);
+  async function saveDefaults() {
+    if (!user) return;
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch(`${API_URL}/admin/predictor-config`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ features: selectedFeatures }),
+      });
+      if (res.ok) {
+        setSavedFeedback(true);
+        setTimeout(() => setSavedFeedback(false), 2000);
+      }
+    } catch { /* ignore */ }
   }
 
   // Scatter chart domain

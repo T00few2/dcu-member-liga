@@ -816,6 +816,52 @@ def debug_power_profile(zwift_id):
     }), 200
 
 
+@admin_bp.route('/admin/predictor-config', methods=['GET'])
+def get_predictor_config():
+    """Return saved vELO predictor feature selection from league settings."""
+    try:
+        require_admin(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    try:
+        doc = db.collection('league').document('settings').get()
+        s = doc.to_dict() if doc.exists else {}
+        return jsonify({'features': s.get('predictorFeatures')}), 200
+    except Exception as e:
+        logger.error(f"get_predictor_config error: {e}")
+        return jsonify({'message': str(e)}), 500
+
+
+@admin_bp.route('/admin/predictor-config', methods=['POST'])
+def save_predictor_config():
+    """Persist vELO predictor feature selection to league settings."""
+    try:
+        require_admin(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    body = request.get_json(silent=True) or {}
+    features = body.get('features')
+    if not isinstance(features, dict):
+        return jsonify({'message': 'features must be an object'}), 400
+
+    try:
+        db.collection('league').document('settings').set(
+            {'predictorFeatures': features}, merge=True
+        )
+        return jsonify({'message': 'Saved'}), 200
+    except Exception as e:
+        logger.error(f"save_predictor_config error: {e}")
+        return jsonify({'message': str(e)}), 500
+
+
 # ---------------------------------------------------------------------------
 # Predicted vELO → assign category
 # ---------------------------------------------------------------------------
