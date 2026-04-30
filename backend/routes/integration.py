@@ -168,14 +168,7 @@ def strava_deauthorize():
 
     if not db: return jsonify({'error': 'DB not available'}), 500
 
-    # Locate user doc via mapping
-    user_doc_ref = None
-    mapping_doc = db.collection('auth_mappings').document(uid).get()
-    if mapping_doc.exists:
-        mapping_data = mapping_doc.to_dict()
-        if mapping_data.get('zwiftId'):
-            user_doc_ref = db.collection('users').document(str(mapping_data.get('zwiftId')))
-    
+    user_doc_ref = _resolve_user_doc_ref_from_uid(uid)
     if not user_doc_ref:
         user_doc_ref = db.collection('users').document(uid)
 
@@ -185,21 +178,26 @@ def strava_deauthorize():
         user_data = user_doc.to_dict() or {}
         access_token = (user_data.get('connections') or {}).get('strava', {}).get('access_token')
 
-    # Also check strava_tokens collection for the access token
+    # Check strava_tokens — try the resolved doc ID (zwiftId) first, then the
+    # raw auth UID as a fallback for tokens stored under the old scheme.
     if not access_token:
-        try:
-            token_doc = db.collection('strava_tokens').document(user_doc_ref.id).get()
-            if token_doc.exists:
-                access_token = (token_doc.to_dict() or {}).get('access_token')
-        except Exception as e:
-            logger.warning(f"Failed to fetch Strava tokens doc: {e}")
+        for candidate in dict.fromkeys([user_doc_ref.id, uid]):  # deduplicated, order preserved
+            try:
+                token_doc = db.collection('strava_tokens').document(candidate).get()
+                if token_doc.exists:
+                    access_token = (token_doc.to_dict() or {}).get('access_token')
+                    break
+            except Exception as e:
+                logger.warning(f"Failed to fetch Strava tokens doc {candidate}: {e}")
 
     revoked = strava_service.deauthorize(access_token) if access_token else False
 
-    try:
-        db.collection('strava_tokens').document(user_doc_ref.id).delete()
-    except Exception as e:
-        logger.warning(f"Failed to delete Strava tokens doc: {e}")
+    # Delete from both possible locations so we don't leave orphaned token docs.
+    for candidate in dict.fromkeys([user_doc_ref.id, uid]):
+        try:
+            db.collection('strava_tokens').document(candidate).delete()
+        except Exception as e:
+            logger.warning(f"Failed to delete Strava tokens doc {candidate}: {e}")
 
     try:
         user_doc_ref.update({
