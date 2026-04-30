@@ -1,6 +1,7 @@
 const VISIBLE_KEYS = new Set([
     'maxPower', 'highlightedPower', 'watts', 'cadence',
     'power', 'hr', 'weight', 'height', 'altitude',
+    'racePower', 'stravaPower',
 ]);
 
 export default function ChartTooltip({ active, payload, label }: any) {

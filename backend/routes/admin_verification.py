@@ -359,6 +359,41 @@ def _check_dr_pass(comparison: dict) -> 'tuple[bool, list[str]]':
     return len(failing) == 0, failing
 
 
+def _compute_strava_power_curve(rider_id: str, activities: list, max_workers: int = 10) -> dict:
+    """
+    For each activity fetch time+watts streams in parallel, compute per-activity
+    best efforts, then return the peak power at each duration across all activities.
+    """
+    merged: dict = {}
+    futures = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        for act in activities:
+            fut = executor.submit(
+                strava_service.get_activity_streams,
+                rider_id, act['id'], 'time,watts',
+            )
+            futures[fut] = act['id']
+    # executor.__exit__ waits for all futures; safe to call .result() now
+
+    for fut, act_id in futures.items():
+        try:
+            streams = fut.result()
+            times = _extract_stream(streams or [], 'time')
+            watts = _extract_stream(streams or [], 'watts')
+            if not times or not watts:
+                continue
+            w_1hz = _resample_to_1hz(times, watts)
+            if not w_1hz:
+                continue
+            efforts = _compute_best_efforts(w_1hz)
+            for k, v in efforts.items():
+                if v > merged.get(k, 0):
+                    merged[k] = v
+        except Exception as e:
+            logger.warning(f"_compute_strava_power_curve: stream error for activity {act_id}: {e}")
+    return merged
+
+
 def _is_dual_recording_required(db: object, user_doc_id: str) -> bool:
     """Return True if the rider's registered trainer requires dual recording."""
     try:
@@ -929,6 +964,37 @@ def verify_rider(rider_id):
         return jsonify(response_data), 200
 
     except Exception as e:
+        return jsonify({'message': str(e)}), 500
+
+
+@admin_bp.route('/admin/verification/strava-power-curve/<rider_id>', methods=['GET'])
+def strava_power_curve(rider_id):
+    """Return the rider's peak Strava power curve across hardware-power-meter rides over the last N days."""
+    try:
+        require_admin(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    days = request.args.get('days', 90, type=int)
+    if days not in (30, 90, 180, 360):
+        return jsonify({'message': 'days must be one of 30, 90, 180, 360'}), 400
+
+    try:
+        user = UserService.get_user_by_id(rider_id)
+        if not user:
+            return jsonify({'message': 'User not found'}), 404
+
+        after_ts = int((datetime.now(timezone.utc) - timedelta(days=days)).timestamp())
+        activities = strava_service.get_power_activities(str(user.id), after_ts)
+
+        if not activities:
+            return jsonify({'curve': {}, 'activityCount': 0, 'days': days}), 200
+
+        curve = _compute_strava_power_curve(str(user.id), activities)
+        return jsonify({'curve': curve, 'activityCount': len(activities), 'days': days}), 200
+
+    except Exception as e:
+        logger.error(f"strava_power_curve error: {e}")
         return jsonify({'message': str(e)}), 500
 
 
