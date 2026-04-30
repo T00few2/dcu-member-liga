@@ -10,7 +10,7 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  ReferenceLine,
+  Cell,
 } from 'recharts';
 import { API_URL } from '@/lib/api';
 
@@ -362,14 +362,38 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
 
   return (
     <div className="space-y-8">
+      {/* ── Intro ── */}
+      <div className="bg-muted/40 border border-border rounded-lg p-4 text-sm text-muted-foreground space-y-1">
+        <p>
+          <span className="font-medium text-foreground">What this tool does:</span> Riders with thin Zwift profiles
+          may not have a ZwiftRacing vELO score, so the automatic category assignment can't place them. This tool
+          fits a linear model from riders <em>who do</em> have vELO scores, then uses it to predict a vELO for
+          any rider based on their power data — either from Zwift or from Strava — and assigns them a starting
+          category using the same engine as the nightly job.
+        </p>
+        <p>
+          <span className="font-medium text-foreground">Workflow:</span> Review the model fit below, then scroll
+          to <em>Predict &amp; Assign</em>. Select a rider, optionally switch to Strava power data and click Load,
+          adjust any values if needed, and click Assign. The predicted vELO is written as{' '}
+          <code className="bg-muted px-1 rounded text-xs">assignedFrom: &quot;predicted&quot;</code> so the nightly
+          job will re-evaluate them normally going forward.
+        </p>
+      </div>
+
       {/* ── Section 1: Model ── */}
       <div className="bg-card border border-border rounded-lg p-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-1">
           <h2 className="text-xl font-semibold text-foreground">vELO Prediction Model</h2>
           {loadingParticipants && (
             <span className="text-sm text-muted-foreground">Loading data…</span>
           )}
         </div>
+        <p className="text-sm text-muted-foreground mb-4">
+          Fitted automatically from all league members who have both Zwift CP efforts and a ZwiftRacing vELO
+          score. Features: rider weight (kg), 1-minute W/kg (sprint), 20-minute W/kg (aerobic ceiling), and
+          the 5-minute compound score (5min watts² ÷ weight). The compound score rewards heavier riders with
+          the same W/kg — because on flat terrain, absolute watts matter as much as power-to-weight.
+        </p>
 
         {!model && !loadingParticipants && (
           <p className="text-muted-foreground text-sm">
@@ -422,18 +446,24 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
 
             {/* Scatter: predicted vs actual */}
             <div>
-              <h3 className="text-sm font-medium text-muted-foreground mb-2">
+              <h3 className="text-sm font-medium text-muted-foreground mb-1">
                 Predicted vs Actual vELO
               </h3>
+              <p className="text-xs text-muted-foreground mb-3">
+                Each dot is a rider with a known vELO score used to train the model.
+                A perfect model would place every dot on the diagonal.
+                Dots above the diagonal are over-predicted; dots below are under-predicted.
+                Hover a dot to see the rider name and values.
+              </p>
               <ResponsiveContainer width="100%" height={320}>
-                <ScatterChart margin={{ top: 10, right: 20, bottom: 20, left: 10 }}>
+                <ScatterChart margin={{ top: 10, right: 20, bottom: 30, left: 20 }}>
                   <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                   <XAxis
                     type="number"
                     dataKey="actual"
                     name="Actual vELO"
                     domain={[minVelo, maxVelo]}
-                    label={{ value: 'Actual vELO', position: 'insideBottom', offset: -10, fontSize: 12 }}
+                    label={{ value: 'Actual vELO', position: 'insideBottom', offset: -15, fontSize: 12 }}
                     tick={{ fontSize: 11 }}
                   />
                   <YAxis
@@ -441,7 +471,7 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
                     dataKey="predicted"
                     name="Predicted vELO"
                     domain={[minVelo, maxVelo]}
-                    label={{ value: 'Predicted vELO', angle: -90, position: 'insideLeft', fontSize: 12 }}
+                    label={{ value: 'Predicted vELO', angle: -90, position: 'insideLeft', offset: 10, fontSize: 12 }}
                     tick={{ fontSize: 11 }}
                   />
                   <Tooltip
@@ -459,32 +489,14 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
                       );
                     }}
                   />
-                  <ReferenceLine
-                    segment={[{ x: minVelo, y: minVelo }, { x: maxVelo, y: maxVelo }]}
-                    stroke="#94a3b8"
-                    strokeDasharray="4 4"
-                    strokeWidth={1}
-                  />
-                  {/* One Scatter per category so each gets its own colour */}
-                  {Object.keys(SCATTER_COLORS).map(cat => {
-                    const pts = model.trainingPoints.filter(p => p.category === cat);
-                    if (!pts.length) return null;
-                    return (
-                      <Scatter
-                        key={cat}
-                        name={cat}
-                        data={pts}
-                        fill={SCATTER_COLORS[cat]}
-                        opacity={0.8}
-                        r={5}
-                      />
-                    );
-                  })}
+                  {/* Single Scatter with Cell children for per-point colours */}
+                  <Scatter data={model.trainingPoints} r={5} opacity={0.85}>
+                    {model.trainingPoints.map((pt, idx) => (
+                      <Cell key={idx} fill={SCATTER_COLORS[pt.category] ?? '#94a3b8'} />
+                    ))}
+                  </Scatter>
                 </ScatterChart>
               </ResponsiveContainer>
-              <p className="text-xs text-muted-foreground mt-1">
-                Dashed line = perfect prediction. Points above the line are over-predicted; below are under-predicted.
-              </p>
             </div>
           </div>
         )}
@@ -492,7 +504,17 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
 
       {/* ── Section 2: Predict & Assign ── */}
       <div className="bg-card border border-border rounded-lg p-6">
-        <h2 className="text-xl font-semibold text-foreground mb-4">Predict &amp; Assign</h2>
+        <h2 className="text-xl font-semibold text-foreground mb-1">Predict &amp; Assign</h2>
+        <p className="text-sm text-muted-foreground mb-4">
+          Locked riders are excluded from the dropdown. Selecting a rider pre-fills their Zwift power data.
+          Switch to <em>Strava</em> and click <strong>Load</strong> to use Strava 90-day power instead — useful
+          for riders who train outdoors but race on Zwift. All fields are editable; the prediction updates live.
+          <br />
+          <span className="text-xs">
+            5min watts is the raw absolute figure (not W/kg) — the compound score is derived from it automatically.
+            If the rider&apos;s weight is wrong, correct it here before assigning.
+          </span>
+        </p>
 
         {/* Rider dropdown */}
         <div className="mb-4">
