@@ -814,3 +814,61 @@ def debug_power_profile(zwift_id):
             'expires_at': token_doc.get('expires_at'),
         }
     }), 200
+
+
+# ---------------------------------------------------------------------------
+# Predicted vELO → assign category
+# ---------------------------------------------------------------------------
+
+@admin_bp.route('/admin/liga-categories/<zwift_id>/predict-assign', methods=['POST'])
+def predict_assign_liga_category(zwift_id):
+    """Assign a rider's liga category from an admin-supplied predicted vELO score."""
+    try:
+        require_admin(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    body = request.get_json(silent=True) or {}
+    predicted_velo = body.get('predictedVelo')
+    if predicted_velo is None or not isinstance(predicted_velo, (int, float)) or predicted_velo <= 0:
+        return jsonify({'message': 'predictedVelo must be a positive number'}), 400
+
+    predicted_velo = float(predicted_velo)
+
+    try:
+        user = UserService.get_user_by_id(zwift_id)
+        if not user:
+            return jsonify({'message': 'User not found'}), 404
+
+        liga_settings = _load_liga_settings(db)
+        grace_period = liga_settings['gracePeriod']
+        categories = _resolve_categories(liga_settings)
+
+        result = build_liga_category(predicted_velo, grace_period, categories)
+        result['assignedFrom'] = 'predicted'
+        result['predictedVelo'] = predicted_velo
+        result['lastCheckedAt'] = firestore.SERVER_TIMESTAMP
+
+        existing_lc = (user._data.get('ligaCategory') or {})
+        locked = existing_lc.get('locked', False)
+
+        doc_update: dict = {'ligaCategory.autoAssigned': result}
+        if not locked:
+            doc_update['ligaCategory.category'] = result['category']
+
+        user_update = with_schema_version(doc_update)
+        log_schema_issues(logger, f"users/{user.id} (predict-assign)", validate_user_doc(user_update, partial=True))
+        db.collection('users').document(str(user.id)).update(user_update)
+
+        return jsonify({
+            'message': f"Rider assigned to {result['category']} from predicted vELO {predicted_velo:.0f}",
+            'category': result['category'],
+            'predictedVelo': predicted_velo,
+        }), 200
+
+    except Exception as e:
+        logger.error(f"predict_assign_liga_category error: {e}")
+        return jsonify({'message': str(e)}), 500

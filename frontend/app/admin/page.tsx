@@ -8,6 +8,7 @@ import TrainerManager from '@/components/admin/TrainerManager';
 import PolicyManager from '@/components/admin/PolicyManager';
 import WeightVerificationManager from '@/components/admin/WeightVerificationManager';
 import CategoryManager from '@/components/admin/CategoryManager';
+import CategoryPredictor from '@/components/admin/CategoryPredictor';
 import StatsDashboard from '@/components/admin/StatsDashboard';
 import UsersOverview from '@/components/admin/UsersOverview';
 
@@ -15,7 +16,7 @@ export default function AdminPage() {
   const { user, loading: authLoading, isAdmin, refreshClaims } = useAuth();
 
   // Top Level Tab State
-  const [activeSection, setActiveSection] = useState<'league' | 'categories' | 'verification' | 'weight' | 'trainers' | 'users' | 'stats' | 'policies'>('league');
+  const [activeSection, setActiveSection] = useState<'league' | 'categories' | 'predictor' | 'verification' | 'weight' | 'trainers' | 'users' | 'stats' | 'policies'>('league');
 
   if (authLoading) return <div className="p-8 text-center">Loading...</div>;
   if (!user) return null;
@@ -60,6 +61,12 @@ export default function AdminPage() {
           className={`pb-4 px-6 text-lg font-medium transition whitespace-nowrap ${activeSection === 'categories' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
         >
           Categories
+        </button>
+        <button
+          onClick={() => setActiveSection('predictor')}
+          className={`pb-4 px-6 text-lg font-medium transition whitespace-nowrap ${activeSection === 'predictor' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          vELO Predictor
         </button>
         <button
           onClick={() => setActiveSection('verification')}
@@ -109,6 +116,8 @@ export default function AdminPage() {
           <LeagueManager />
         ) : activeSection === 'categories' ? (
           <CategoryManager user={user} />
+        ) : activeSection === 'predictor' ? (
+          <CategoryPredictor user={user} />
         ) : activeSection === 'verification' ? (
           <VerificationDashboard />
         ) : activeSection === 'weight' ? (
