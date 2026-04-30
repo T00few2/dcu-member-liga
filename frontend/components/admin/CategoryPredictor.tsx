@@ -35,11 +35,72 @@ interface Participant {
   ligaCategory: { locked?: boolean; category?: string } | null;
 }
 
+type FeatureKey = 'weight_kg' | 'wkg1m' | 'wkg20m' | 'compound';
+
+interface FeatureDef {
+  key: FeatureKey;
+  label: string;
+  description: string;
+  fromCP: (kg: number, cp1: number, cp5: number, cp20: number) => number;
+  fromInputs: (inp: Inputs) => number;
+}
+
+const FEATURE_DEFS: FeatureDef[] = [
+  {
+    key: 'weight_kg',
+    label: 'Weight (kg)',
+    description: 'Raw rider weight. Lets the model reward heavier riders at the same W/kg — on flat terrain absolute watts matter.',
+    fromCP: (kg) => kg,
+    fromInputs: (inp) => inp.weightKg,
+  },
+  {
+    key: 'wkg1m',
+    label: '1min W/kg',
+    description: 'Sprint / neuromuscular power relative to weight.',
+    fromCP: (kg, cp1) => cp1 / kg,
+    fromInputs: (inp) => inp.wkg1m,
+  },
+  {
+    key: 'wkg20m',
+    label: '20min W/kg',
+    description: 'Sustained aerobic ceiling (FTP proxy) — typically the strongest single predictor of vELO.',
+    fromCP: (kg, _c1, _c5, cp20) => cp20 / kg,
+    fromInputs: (inp) => inp.wkg20m,
+  },
+  {
+    key: 'compound',
+    label: '5m²/kg',
+    description: '5min watts² ÷ weight. Captures flat-terrain performance: same W/kg but heavier → higher score.',
+    fromCP: (kg, _c1, cp5) => (cp5 * cp5) / kg,
+    fromInputs: (inp) => inp.weightKg > 0 ? (inp.cp5minWatts ** 2) / inp.weightKg : 0,
+  },
+];
+
+const STORAGE_KEY = 'categoryPredictor_features';
+const ALL_ON: Record<FeatureKey, boolean> = { weight_kg: true, wkg1m: true, wkg20m: true, compound: true };
+
+function loadStoredFeatures(): Record<FeatureKey, boolean> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const p = JSON.parse(raw);
+      return {
+        weight_kg: p.weight_kg !== false,
+        wkg1m:     p.wkg1m     !== false,
+        wkg20m:    p.wkg20m    !== false,
+        compound:  p.compound  !== false,
+      };
+    }
+  } catch { /* ignore */ }
+  return { ...ALL_ON };
+}
+
 interface ModelResult {
-  coeffs: number[]; // [intercept, weight_kg, wkg1m, wkg20m, compound]
+  coeffs: number[];
   r2: number;
   rmse: number;
   n: number;
+  activeFeatureKeys: FeatureKey[];
   trainingPoints: { actual: number; predicted: number; name: string; category: string }[];
 }
 
@@ -165,54 +226,36 @@ function categoryFromVelo(velo: number, cats: CategoryDef[]): string {
 // Model builder
 // ---------------------------------------------------------------------------
 
-function buildModel(participants: Participant[]): ModelResult | null {
+function buildModel(participants: Participant[], enabled: Record<FeatureKey, boolean>): ModelResult | null {
+  const active = FEATURE_DEFS.filter(f => enabled[f.key]);
+  if (active.length === 0) return null;
+
   const training = participants.filter(p => {
     const wg = p.weightInGrams;
-    const cp1 = p.cp1min;
-    const cp5 = p.cp5min;
-    const cp20 = p.cp20min;
     const velo = typeof p.max30Rating === 'number' ? p.max30Rating : parseFloat(String(p.max30Rating ?? ''));
-    return (
-      wg && wg > 0 &&
-      cp1 && cp1 > 0 &&
-      cp5 && cp5 > 0 &&
-      cp20 && cp20 > 0 &&
-      !isNaN(velo) && velo > 0
-    );
+    return wg && wg > 0 && p.cp1min! > 0 && p.cp5min! > 0 && p.cp20min! > 0 && !isNaN(velo) && velo > 0;
   });
 
-  if (training.length < 5) return null;
+  if (training.length < active.length + 2) return null;
 
   const rows: number[][] = [];
   const y: number[] = [];
 
   for (const p of training) {
-    const wg = p.weightInGrams!;
-    const kg = wg / 1000;
-    const cp1 = p.cp1min!;
-    const cp5 = p.cp5min!;
-    const cp20 = p.cp20min!;
+    const kg = p.weightInGrams! / 1000;
     const velo = typeof p.max30Rating === 'number' ? p.max30Rating : parseFloat(String(p.max30Rating!));
-    const wkg1 = cp1 / kg;
-    const wkg20 = cp20 / kg;
-    const compound = (cp5 * cp5) / kg;
-    rows.push([kg, wkg1, wkg20, compound]);
+    rows.push(active.map(f => f.fromCP(kg, p.cp1min!, p.cp5min!, p.cp20min!)));
     y.push(velo);
   }
 
   let coeffs: number[];
-  try {
-    coeffs = fitOLS(rows, y);
-  } catch {
-    return null;
-  }
+  try { coeffs = fitOLS(rows, y); } catch { return null; }
 
   const preds = rows.map(r => predict(coeffs, r));
   const yMean = y.reduce((s, v) => s + v, 0) / y.length;
   const ssTot = y.reduce((s, v) => s + (v - yMean) ** 2, 0);
   const ssRes = y.reduce((s, v, i) => s + (v - preds[i]) ** 2, 0);
   const r2 = ssTot > 0 ? 1 - ssRes / ssTot : 0;
-  const rmse = Math.sqrt(ssRes / y.length);
 
   const trainingPoints = training.map((p, i) => ({
     actual: y[i],
@@ -221,7 +264,7 @@ function buildModel(participants: Participant[]): ModelResult | null {
     category: p.ligaCategory?.category ?? categoryFromVelo(y[i], ZR_CATEGORY_DEFAULTS),
   }));
 
-  return { coeffs, r2, rmse: Math.round(rmse), n: training.length, trainingPoints };
+  return { coeffs, r2, rmse: Math.round(Math.sqrt(ssRes / y.length)), n: training.length, activeFeatureKeys: active.map(f => f.key), trainingPoints };
 }
 
 // ---------------------------------------------------------------------------
@@ -250,6 +293,9 @@ function DiagonalLine({ xAxisMap, yAxisMap, minV, maxV }: { xAxisMap?: Record<st
 export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loadingParticipants, setLoadingParticipants] = useState(true);
+  const [selectedFeatures, setSelectedFeatures] = useState<Record<FeatureKey, boolean>>(ALL_ON);
+  const [featuresOpen, setFeaturesOpen] = useState(false);
+  const [savedFeedback, setSavedFeedback] = useState(false);
   const [selectedZwiftId, setSelectedZwiftId] = useState('');
   const [showUnassignedOnly, setShowUnassignedOnly] = useState(false);
   const [powerSource, setPowerSource] = useState<'zwift' | 'strava'>('zwift');
@@ -259,6 +305,9 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   const [assigning, setAssigning] = useState(false);
   const [assignResult, setAssignResult] = useState<{ category: string } | null>(null);
   const [assignError, setAssignError] = useState('');
+
+  // Load saved feature selection from localStorage on first render
+  useEffect(() => { setSelectedFeatures(loadStoredFeatures()); }, []);
 
   // Fetch participants
   useEffect(() => {
@@ -281,14 +330,15 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
     })();
   }, [user]);
 
-  const model = useMemo(() => buildModel(participants), [participants]);
+  const model = useMemo(() => buildModel(participants, selectedFeatures), [participants, selectedFeatures]);
 
   // Derived values
   const compound = inputs.weightKg > 0 ? (inputs.cp5minWatts ** 2) / inputs.weightKg : 0;
-  const predictedVelo =
-    model && inputs.weightKg > 0 && inputs.wkg1m > 0 && inputs.wkg20m > 0 && compound > 0
-      ? Math.round(predict(model.coeffs, [inputs.weightKg, inputs.wkg1m, inputs.wkg20m, compound]))
-      : null;
+  const activeFeatures = FEATURE_DEFS.filter(f => model?.activeFeatureKeys.includes(f.key));
+  const predRow = activeFeatures.map(f => f.fromInputs(inputs));
+  const predictedVelo = model && predRow.length > 0 && predRow.every(v => v > 0)
+    ? Math.round(predict(model.coeffs, predRow))
+    : null;
   const predictedCategory = predictedVelo != null ? categoryFromVelo(predictedVelo, ZR_CATEGORY_DEFAULTS) : null;
 
   const selectedParticipant = participants.find(p => p.zwiftId === selectedZwiftId) ?? null;
@@ -374,7 +424,15 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
     setInputs(prev => ({ ...prev, [field]: isNaN(num) ? 0 : num }));
   }
 
-  const featureLabels = ['Intercept', 'Weight (kg)', '1min W/kg', '20min W/kg', '5m²/kg'];
+  const coeffLabels = model
+    ? ['Intercept', ...model.activeFeatureKeys.map(k => FEATURE_DEFS.find(f => f.key === k)!.label)]
+    : [];
+
+  function saveDefaults() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(selectedFeatures));
+    setSavedFeedback(true);
+    setTimeout(() => setSavedFeedback(false), 2000);
+  }
 
   // Scatter chart domain
   const scatterVelos = model?.trainingPoints.map(p => p.actual) ?? [];
@@ -422,6 +480,50 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
           </p>
         )}
 
+        {/* Regressor selector */}
+        <div className="mb-4 border border-border rounded-lg overflow-hidden">
+          <button
+            onClick={() => setFeaturesOpen(o => !o)}
+            className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium text-foreground bg-muted/40 hover:bg-muted/70 transition"
+          >
+            <span>Regressors</span>
+            <span className="text-muted-foreground text-xs">{featuresOpen ? '▲' : '▼'}</span>
+          </button>
+          {featuresOpen && (
+            <div className="px-4 py-3 space-y-3 bg-card">
+              {FEATURE_DEFS.map(f => (
+                <label key={f.key} className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 shrink-0"
+                    checked={selectedFeatures[f.key]}
+                    onChange={e => setSelectedFeatures(prev => ({ ...prev, [f.key]: e.target.checked }))}
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-foreground">{f.label}</span>
+                    <p className="text-xs text-muted-foreground">{f.description}</p>
+                  </div>
+                </label>
+              ))}
+              <div className="flex items-center gap-3 pt-1 border-t border-border">
+                <button
+                  onClick={saveDefaults}
+                  className="px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90"
+                >
+                  Save as default
+                </button>
+                {savedFeedback && <span className="text-xs text-green-600">Saved.</span>}
+                <button
+                  onClick={() => setSelectedFeatures({ ...ALL_ON })}
+                  className="px-3 py-1.5 text-xs rounded border border-border text-muted-foreground hover:text-foreground"
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
         {model && (
           <div className="space-y-6">
             {/* Stats */}
@@ -454,7 +556,7 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
                   <tbody>
                     {model.coeffs.map((c, i) => (
                       <tr key={i} className="border-t border-border">
-                        <td className="pr-8 py-1 text-foreground">{featureLabels[i]}</td>
+                        <td className="pr-8 py-1 text-foreground">{coeffLabels[i]}</td>
                         <td className="text-right py-1 font-mono text-foreground">
                           {c >= 0 ? '+' : ''}{c.toFixed(1)}
                         </td>
