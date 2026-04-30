@@ -73,6 +73,14 @@ export default function RaceList({
             addSegments(cfg.sprints);
         }
 
+        // Grouped mode: group-level and per-category segments
+        for (const group of race.raceGroups || []) {
+            addSegments(group.sprints);
+            for (const cat of group.categories || []) {
+                addSegments(cat.sprints);
+            }
+        }
+
         return segmentKeys.size;
     };
 
@@ -106,6 +114,25 @@ export default function RaceList({
             for (const seg of cfg.sprints || []) {
                 const key = getSegmentKey(seg);
                 if (key) segmentKeys.add(key);
+            }
+        }
+
+        // Grouped mode: group-level and per-category segments
+        for (const group of race.raceGroups || []) {
+            const groupType = group.segmentType || defaultType;
+            if (groupType !== 'split') {
+                for (const seg of group.sprints || []) {
+                    const key = getSegmentKey(seg);
+                    if (key) segmentKeys.add(key);
+                }
+            }
+            for (const cat of group.categories || []) {
+                const catType = cat.segmentType || groupType;
+                if (catType === 'split') continue;
+                for (const seg of cat.sprints || []) {
+                    const key = getSegmentKey(seg);
+                    if (key) segmentKeys.add(key);
+                }
             }
         }
 
