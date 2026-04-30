@@ -41,6 +41,12 @@ export interface StravaStream {
     altitude: number;
 }
 
+export interface StravaPowerCurveResult {
+    curve: Record<string, number>;
+    activityCount: number;
+    days: number;
+}
+
 export function useRiderVerification(user: User | null) {
     const [participants, setParticipants] = useState<Participant[]>([]);
     const [loadingList, setLoadingList] = useState(true);
@@ -53,6 +59,9 @@ export function useRiderVerification(user: User | null) {
     const [selectedStravaActivityId, setSelectedStravaActivityId] = useState<number | null>(null);
     const [stravaStreams, setStravaStreams] = useState<StravaStream[]>([]);
     const [loadingStreams, setLoadingStreams] = useState(false);
+    const [stravaPowerCurve, setStravaPowerCurve] = useState<StravaPowerCurveResult | null>(null);
+    const [loadingStravaCurve, setLoadingStravaCurve] = useState(false);
+    const [stravaCurveError, setStravaCurveError] = useState('');
 
     useEffect(() => {
         if (!user) return;
@@ -84,6 +93,8 @@ export function useRiderVerification(user: User | null) {
         setRiderProfile(null);
         setSelectedStravaActivityId(null);
         setStravaStreams([]);
+        setStravaPowerCurve(null);
+        setStravaCurveError('');
 
         if (!user) return;
 
@@ -155,6 +166,31 @@ export function useRiderVerification(user: User | null) {
         }
     };
 
+    const fetchStravaPowerCurve = async (days: number) => {
+        if (!user || !selectedRider) return;
+        setLoadingStravaCurve(true);
+        setStravaCurveError('');
+        setStravaPowerCurve(null);
+        try {
+            const token = await user.getIdToken();
+            const res = await fetch(
+                `${API_URL}/admin/verification/strava-power-curve/${selectedRider.zwiftId}?days=${days}`,
+                { headers: { Authorization: `Bearer ${token}` } },
+            );
+            const data = await res.json();
+            if (res.ok) {
+                setStravaPowerCurve(data);
+            } else {
+                setStravaCurveError(data.message || 'Failed to fetch Strava power curve');
+            }
+        } catch (e) {
+            setStravaCurveError('Network error fetching Strava power curve');
+            console.error(e);
+        } finally {
+            setLoadingStravaCurve(false);
+        }
+    };
+
     return {
         participants,
         loadingList,
@@ -167,7 +203,11 @@ export function useRiderVerification(user: User | null) {
         selectedStravaActivityId,
         stravaStreams,
         loadingStreams,
+        stravaPowerCurve,
+        loadingStravaCurve,
+        stravaCurveError,
         selectRider,
         selectStravaActivity,
+        fetchStravaPowerCurve,
     };
 }

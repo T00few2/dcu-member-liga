@@ -5,7 +5,7 @@ import {
     ResponsiveContainer, ComposedChart, Brush,
 } from 'recharts';
 import ChartTooltip from './ChartTooltip';
-import type { ZwiftPowerResult } from '@/hooks/useRiderVerification';
+import type { ZwiftPowerResult, StravaPowerCurveResult } from '@/hooks/useRiderVerification';
 
 const CP_DURATIONS = [
     { key: 'w5', label: '5s' },
@@ -44,6 +44,10 @@ interface VerificationChartsProps {
     selectedRaceCpCurve?: Record<string, number> | null;
     /** Short label shown beside the highlighted curve, e.g. "12 Apr · 247 W avg" */
     selectedRaceLabel?: string | null;
+    stravaPowerCurve?: StravaPowerCurveResult | null;
+    loadingStravaCurve?: boolean;
+    stravaCurveError?: string;
+    onFetchStravaCurve?: (days: number) => void;
 }
 
 export default function VerificationCharts({
@@ -54,6 +58,10 @@ export default function VerificationCharts({
     onCurveTimeRangeChange,
     selectedRaceCpCurve,
     selectedRaceLabel,
+    stravaPowerCurve,
+    loadingStravaCurve,
+    stravaCurveError,
+    onFetchStravaCurve,
 }: VerificationChartsProps) {
     const toEpochSeconds = (value: number | string): number => {
         if (typeof value === 'number') return value;
@@ -87,12 +95,19 @@ export default function VerificationCharts({
         bestCurve[dur.key] = curveRaces.reduce((max, race) => Math.max(max, race.cp_curve?.[dur.key] ?? 0), 0);
     });
 
+    const stravaBestCurve: Record<string, number | null> = {};
+    CP_DURATIONS.forEach(dur => {
+        stravaBestCurve[dur.key] = stravaPowerCurve?.curve?.[dur.key] ?? null;
+    });
+    const hasStravaCurve = Object.values(stravaBestCurve).some(v => v !== null);
+
     const cpCurveData = CP_DURATIONS.map(dur => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const point: Record<string, any> = {
             name: dur.label,
             maxPower: bestCurve[dur.key],
             racePower: selectedRaceCpCurve?.[dur.key] ?? null,
+            stravaPower: stravaBestCurve[dur.key],
         };
         curveRaces.forEach(race => {
             if (race.cp_curve) point[`race_${toEpochSeconds(race.date)}`] = race.cp_curve[dur.key] || null;
@@ -123,6 +138,29 @@ export default function VerificationCharts({
                         <option value={0}>All Time</option>
                     </select>
                 </div>
+                {onFetchStravaCurve && (
+                    <div className="mb-3">
+                        <button
+                            onClick={() => onFetchStravaCurve(curveTimeRange === 0 ? 360 : curveTimeRange)}
+                            disabled={loadingStravaCurve}
+                            className="w-full text-xs px-2 py-1 border border-[#FC4C02]/40 text-[#FC4C02] rounded hover:bg-[#FC4C02]/10 disabled:opacity-50"
+                        >
+                            {loadingStravaCurve
+                                ? 'Fetching Strava…'
+                                : stravaPowerCurve
+                                    ? `Strava (${stravaPowerCurve.activityCount} rides, ${stravaPowerCurve.days}d) — refresh?`
+                                    : 'Load Strava Curve'}
+                        </button>
+                        {stravaCurveError && (
+                            <p className="text-xs text-red-500 mt-1">{stravaCurveError}</p>
+                        )}
+                        {stravaPowerCurve && stravaPowerCurve.activityCount === 0 && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                                No hardware power meter rides found in this period.
+                            </p>
+                        )}
+                    </div>
+                )}
 
                 {/* Selected race stat strip */}
                 {selectedRaceCpCurve && (
@@ -159,11 +197,17 @@ export default function VerificationCharts({
                                 verticalAlign="top"
                                 height={36}
                                 content={() => (
-                                    <div className="flex justify-center gap-4 text-sm text-muted-foreground">
+                                    <div className="flex justify-center gap-4 text-sm text-muted-foreground flex-wrap">
                                         <div className="flex items-center gap-2">
                                             <span className="block w-3 h-[2px] bg-[#8884d8]"></span>
-                                            <span>Best ({curveTimeRange === 0 ? 'All' : `${curveTimeRange}d`})</span>
+                                            <span>Best Zwift ({curveTimeRange === 0 ? 'All' : `${curveTimeRange}d`})</span>
                                         </div>
+                                        {hasStravaCurve && (
+                                            <div className="flex items-center gap-2">
+                                                <span className="block w-3 h-[2px] border-t-2 border-dashed border-[#FC4C02]"></span>
+                                                <span>Best Strava ({stravaPowerCurve!.days}d)</span>
+                                            </div>
+                                        )}
                                         {selectedRaceCpCurve && (
                                             <div className="flex items-center gap-2">
                                                 <span className="block w-3 h-[2px] bg-[#ff7300]"></span>
@@ -182,6 +226,12 @@ export default function VerificationCharts({
                             {selectedRaceCpCurve && (
                                 <Line type="monotone" dataKey="racePower" stroke="#ff7300"
                                     name="This Race" unit="W" strokeWidth={2.5} dot={{ r: 4 }} isAnimationActive={false} />
+                            )}
+                            {hasStravaCurve && (
+                                <Line type="monotone" dataKey="stravaPower" stroke="#FC4C02"
+                                    name={`Strava Best (${stravaPowerCurve!.days}d)`} unit="W"
+                                    strokeWidth={2} strokeDasharray="6 3" dot={{ r: 3 }}
+                                    isAnimationActive={false} connectNulls={false} />
                             )}
                         </LineChart>
                     </ResponsiveContainer>

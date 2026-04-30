@@ -166,13 +166,13 @@ class StravaService:
             'activities': recent_activities
         }
 
-    def get_activity_streams(self, rider_id, activity_id):
+    def get_activity_streams(self, rider_id, activity_id, keys='time,watts,cadence,heartrate,altitude'):
         access_token = self._get_valid_token(rider_id)
         if not access_token:
             return None
 
         try:
-            url = f"https://www.strava.com/api/v3/activities/{activity_id}/streams?keys=time,watts,cadence,heartrate,altitude"
+            url = f"https://www.strava.com/api/v3/activities/{activity_id}/streams?keys={keys}"
             res = requests.get(url, headers={'Authorization': f"Bearer {access_token}"})
 
             if res.status_code == 200:
@@ -282,6 +282,29 @@ class StravaService:
             ]
         except Exception as e:
             logger.error(f"Error fetching Strava activities for matching: {e}")
+            return []
+
+    def get_power_activities(self, rider_id: str, after_timestamp: int, max_activities: int = 50) -> list:
+        """Return rides with a hardware power meter recorded after `after_timestamp` (Unix seconds)."""
+        access_token = self._get_valid_token(rider_id)
+        if not access_token:
+            return []
+        try:
+            res = requests.get(
+                f"https://www.strava.com/api/v3/athlete/activities?per_page={max_activities}&after={after_timestamp}",
+                headers={'Authorization': f'Bearer {access_token}'},
+                timeout=15,
+            )
+            if res.status_code != 200:
+                logger.error(f"get_power_activities failed: {res.status_code}")
+                return []
+            return [
+                {'id': a['id'], 'name': a['name'], 'startDate': a['start_date']}
+                for a in res.json()
+                if a.get('device_watts', False)
+            ]
+        except Exception as e:
+            logger.error(f"Error fetching power activities: {e}")
             return []
 
     def get_segment_streams(self, segment_id: int):

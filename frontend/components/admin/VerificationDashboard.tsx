@@ -17,7 +17,8 @@ export default function VerificationDashboard() {
         zpData, stravaData,
         error,
         selectedStravaActivityId, stravaStreams, loadingStreams,
-        selectRider, selectStravaActivity,
+        stravaPowerCurve, loadingStravaCurve, stravaCurveError,
+        selectRider, selectStravaActivity, fetchStravaPowerCurve,
     } = useRiderVerification(user);
 
     const [powerTrendStat, setPowerTrendStat] = useState('avg');
@@ -102,6 +103,10 @@ export default function VerificationDashboard() {
                                     onCurveTimeRangeChange={setCurveTimeRange}
                                     selectedRaceCpCurve={raceCpCurve}
                                     selectedRaceLabel={selectedRaceLabel}
+                                    stravaPowerCurve={stravaPowerCurve}
+                                    loadingStravaCurve={loadingStravaCurve}
+                                    stravaCurveError={stravaCurveError}
+                                    onFetchStravaCurve={fetchStravaPowerCurve}
                                 />
                             </DualRecordingPanel>
                         </>
