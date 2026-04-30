@@ -38,6 +38,7 @@ interface Participant {
 
 type CPField = 'cp5s' | 'cp1min' | 'cp5min' | 'cp20min';
 type FeatureKey = 'weight_kg' | 'wkg5s' | 'wkg1m' | 'wkg5m' | 'wkg20m'
+  | 'watts5s' | 'watts1m' | 'watts5m' | 'watts20m'
   | 'compound5s' | 'compound1m' | 'compound5m' | 'compound20m';
 
 interface FeatureDef {
@@ -82,6 +83,30 @@ const FEATURE_DEFS: FeatureDef[] = [
     fromInputs: (inp) => inp.wkg20m,
   },
   {
+    key: 'watts5s', label: '5s watts', requires: ['cp5s'],
+    description: 'Absolute 5-second peak watts. Scale-free on flat sprints.',
+    fromCP: (_kg, c5s) => c5s,
+    fromInputs: (inp) => inp.wkg5s * inp.weightKg,
+  },
+  {
+    key: 'watts1m', label: '1min watts', requires: ['cp1min'],
+    description: 'Absolute 1-minute watts.',
+    fromCP: (_kg, _s, c1) => c1,
+    fromInputs: (inp) => inp.wkg1m * inp.weightKg,
+  },
+  {
+    key: 'watts5m', label: '5min watts', requires: ['cp5min'],
+    description: 'Absolute 5-minute watts.',
+    fromCP: (_kg, _s, _1, c5) => c5,
+    fromInputs: (inp) => inp.wkg5m * inp.weightKg,
+  },
+  {
+    key: 'watts20m', label: '20min watts', requires: ['cp20min'],
+    description: 'Absolute 20-minute watts (FTP in absolute terms).',
+    fromCP: (_kg, _s, _1, _5, c20) => c20,
+    fromInputs: (inp) => inp.wkg20m * inp.weightKg,
+  },
+  {
     key: 'compound5s', label: '5s²/kg', requires: ['cp5s'],
     description: '5s watts² ÷ weight. Sprint compound score — rewards heavier sprinters.',
     fromCP: (kg, c5s) => (c5s * c5s) / kg,
@@ -110,6 +135,7 @@ const FEATURE_DEFS: FeatureDef[] = [
 const STORAGE_KEY = 'categoryPredictor_features';
 const ALL_ON: Record<FeatureKey, boolean> = {
   weight_kg: true, wkg5s: false, wkg1m: true, wkg5m: false, wkg20m: true,
+  watts5s: false, watts1m: false, watts5m: false, watts20m: false,
   compound5s: false, compound1m: false, compound5m: true, compound20m: false,
 };
 
@@ -391,6 +417,10 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
     ? Math.round(predict(model.coeffs, predRow))
     : null;
   const predictedCategory = predictedVelo != null ? categoryFromVelo(predictedVelo, ZR_CATEGORY_DEFAULTS) : null;
+  const predLow  = predictedVelo != null && model ? Math.round(predictedVelo - model.rmse) : null;
+  const predHigh = predictedVelo != null && model ? Math.round(predictedVelo + model.rmse) : null;
+  const catLow   = predLow  != null ? categoryFromVelo(predLow,  ZR_CATEGORY_DEFAULTS) : null;
+  const catHigh  = predHigh != null ? categoryFromVelo(predHigh, ZR_CATEGORY_DEFAULTS) : null;
 
   const selectedParticipant = participants.find(p => p.zwiftId === selectedZwiftId) ?? null;
   const actualVelo =
@@ -809,20 +839,37 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
 
         {/* Prediction result */}
         <div className="flex flex-wrap gap-6 mb-4 text-sm">
-          <div>
-            <span className="text-muted-foreground">Predicted vELO: </span>
-            {predictedVelo != null ? (
-              <span className="font-semibold text-foreground">{predictedVelo.toLocaleString()}</span>
-            ) : (
-              <span className="text-muted-foreground">—</span>
-            )}
-            {predictedCategory && (
-              <>
-                {' → '}
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ml-1 ${ZR_CATEGORY_STYLES[predictedCategory] ?? 'bg-slate-100 text-slate-800'}`}>
-                  {predictedCategory}
-                </span>
-              </>
+          <div className="space-y-1">
+            <div>
+              <span className="text-muted-foreground">Predicted vELO: </span>
+              {predictedVelo != null ? (
+                <span className="font-semibold text-foreground">{predictedVelo.toLocaleString()}</span>
+              ) : (
+                <span className="text-muted-foreground">—</span>
+              )}
+              {predictedCategory && (
+                <>
+                  {' → '}
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ml-1 ${ZR_CATEGORY_STYLES[predictedCategory] ?? 'bg-slate-100 text-slate-800'}`}>
+                    {predictedCategory}
+                  </span>
+                </>
+              )}
+            </div>
+            {predLow != null && predHigh != null && (
+              <div className="text-xs text-muted-foreground">
+                ±{model!.rmse} pts → {predLow.toLocaleString()}–{predHigh.toLocaleString()}
+                {catLow && catHigh && catLow !== catHigh && (
+                  <span className="ml-1">
+                    ({catLow !== predictedCategory && (
+                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full font-medium mr-1 ${ZR_CATEGORY_STYLES[catLow] ?? 'bg-slate-100 text-slate-800'}`}>{catLow}</span>
+                    )}–
+                    {catHigh !== predictedCategory && (
+                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full font-medium ml-1 ${ZR_CATEGORY_STYLES[catHigh] ?? 'bg-slate-100 text-slate-800'}`}>{catHigh}</span>
+                    )})
+                  </span>
+                )}
+              </div>
             )}
           </div>
           <div>
