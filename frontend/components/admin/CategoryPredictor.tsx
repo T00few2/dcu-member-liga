@@ -462,10 +462,10 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
       if (!res.ok) { setStravaError(data.message ?? 'Failed to load Strava data'); return; }
       const curve: Record<string, number> = data.curve ?? {};
       const kg = inputs.weightKg > 0 ? inputs.weightKg : (selectedParticipant?.weightInGrams ?? 0) / 1000;
-      const c5s  = curve['5']    ?? curve['6']    ?? 0;
-      const cp1  = curve['60']   ?? curve['61']   ?? 0;
-      const cp5  = curve['300']  ?? curve['301']  ?? 0;
-      const cp20 = curve['1200'] ?? curve['1201'] ?? 0;
+      const c5s  = curve['w5']    ?? 0;
+      const cp1  = curve['w60']   ?? 0;
+      const cp5  = curve['w300']  ?? 0;
+      const cp20 = curve['w1200'] ?? 0;
       const wkg = (w: number, prev: number) => kg > 0 && w > 0 ? parseFloat((w / kg).toFixed(2)) : prev;
       setInputs(prev => ({
         ...prev,
