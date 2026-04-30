@@ -28,6 +28,7 @@ interface Participant {
   name: string;
   zwiftId: string;
   weightInGrams: number | null;
+  cp5s:   number | null;
   cp1min: number | null;
   cp5min: number | null;
   cp20min: number | null;
@@ -35,61 +36,93 @@ interface Participant {
   ligaCategory: { locked?: boolean; category?: string } | null;
 }
 
-type FeatureKey = 'weight_kg' | 'wkg1m' | 'wkg20m' | 'compound';
+type CPField = 'cp5s' | 'cp1min' | 'cp5min' | 'cp20min';
+type FeatureKey = 'weight_kg' | 'wkg5s' | 'wkg1m' | 'wkg5m' | 'wkg20m'
+  | 'compound5s' | 'compound1m' | 'compound5m' | 'compound20m';
 
 interface FeatureDef {
   key: FeatureKey;
   label: string;
   description: string;
-  fromCP: (kg: number, cp1: number, cp5: number, cp20: number) => number;
+  requires: CPField[];
+  // args: kg, cp5s, cp1min, cp5min, cp20min
+  fromCP: (kg: number, c5s: number, c1: number, c5: number, c20: number) => number;
   fromInputs: (inp: Inputs) => number;
 }
 
 const FEATURE_DEFS: FeatureDef[] = [
   {
-    key: 'weight_kg',
-    label: 'Weight (kg)',
-    description: 'Raw rider weight. Lets the model reward heavier riders at the same W/kg — on flat terrain absolute watts matter.',
+    key: 'weight_kg', label: 'Weight (kg)', requires: [],
+    description: 'Raw rider weight. Lets the model reward heavier riders at the same W/kg — on flat terrain, absolute watts matter.',
     fromCP: (kg) => kg,
     fromInputs: (inp) => inp.weightKg,
   },
   {
-    key: 'wkg1m',
-    label: '1min W/kg',
-    description: 'Sprint / neuromuscular power relative to weight.',
-    fromCP: (kg, cp1) => cp1 / kg,
+    key: 'wkg5s', label: '5s W/kg', requires: ['cp5s'],
+    description: '5-second peak power per kg — pure neuromuscular / sprint ceiling.',
+    fromCP: (kg, c5s) => c5s / kg,
+    fromInputs: (inp) => inp.wkg5s,
+  },
+  {
+    key: 'wkg1m', label: '1min W/kg', requires: ['cp1min'],
+    description: '1-minute power per kg — anaerobic capacity.',
+    fromCP: (kg, _s, c1) => c1 / kg,
     fromInputs: (inp) => inp.wkg1m,
   },
   {
-    key: 'wkg20m',
-    label: '20min W/kg',
+    key: 'wkg5m', label: '5min W/kg', requires: ['cp5min'],
+    description: '5-minute power per kg — VO₂max proxy.',
+    fromCP: (kg, _s, _1, c5) => c5 / kg,
+    fromInputs: (inp) => inp.wkg5m,
+  },
+  {
+    key: 'wkg20m', label: '20min W/kg', requires: ['cp20min'],
     description: 'Sustained aerobic ceiling (FTP proxy) — typically the strongest single predictor of vELO.',
-    fromCP: (kg, _c1, _c5, cp20) => cp20 / kg,
+    fromCP: (kg, _s, _1, _5, c20) => c20 / kg,
     fromInputs: (inp) => inp.wkg20m,
   },
   {
-    key: 'compound',
-    label: '5m²/kg',
-    description: '5min watts² ÷ weight. Captures flat-terrain performance: same W/kg but heavier → higher score.',
-    fromCP: (kg, _c1, cp5) => (cp5 * cp5) / kg,
-    fromInputs: (inp) => inp.weightKg > 0 ? (inp.cp5minWatts ** 2) / inp.weightKg : 0,
+    key: 'compound5s', label: '5s²/kg', requires: ['cp5s'],
+    description: '5s watts² ÷ weight. Sprint compound score — rewards heavier sprinters.',
+    fromCP: (kg, c5s) => (c5s * c5s) / kg,
+    fromInputs: (inp) => inp.weightKg > 0 ? (inp.wkg5s * inp.weightKg) ** 2 / inp.weightKg : 0,
+  },
+  {
+    key: 'compound1m', label: '1m²/kg', requires: ['cp1min'],
+    description: '1min watts² ÷ weight. Anaerobic compound score.',
+    fromCP: (kg, _s, c1) => (c1 * c1) / kg,
+    fromInputs: (inp) => inp.weightKg > 0 ? (inp.wkg1m * inp.weightKg) ** 2 / inp.weightKg : 0,
+  },
+  {
+    key: 'compound5m', label: '5m²/kg', requires: ['cp5min'],
+    description: '5min watts² ÷ weight. Flat-terrain VO₂max — same W/kg but heavier → higher score.',
+    fromCP: (kg, _s, _1, c5) => (c5 * c5) / kg,
+    fromInputs: (inp) => inp.weightKg > 0 ? (inp.wkg5m * inp.weightKg) ** 2 / inp.weightKg : 0,
+  },
+  {
+    key: 'compound20m', label: '20m²/kg', requires: ['cp20min'],
+    description: '20min watts² ÷ weight. Sustained flat power — the FTP compound score.',
+    fromCP: (kg, _s, _1, _5, c20) => (c20 * c20) / kg,
+    fromInputs: (inp) => inp.weightKg > 0 ? (inp.wkg20m * inp.weightKg) ** 2 / inp.weightKg : 0,
   },
 ];
 
 const STORAGE_KEY = 'categoryPredictor_features';
-const ALL_ON: Record<FeatureKey, boolean> = { weight_kg: true, wkg1m: true, wkg20m: true, compound: true };
+const ALL_ON: Record<FeatureKey, boolean> = {
+  weight_kg: true, wkg5s: false, wkg1m: true, wkg5m: false, wkg20m: true,
+  compound5s: false, compound1m: false, compound5m: true, compound20m: false,
+};
 
 function loadStoredFeatures(): Record<FeatureKey, boolean> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const p = JSON.parse(raw);
-      return {
-        weight_kg: p.weight_kg !== false,
-        wkg1m:     p.wkg1m     !== false,
-        wkg20m:    p.wkg20m    !== false,
-        compound:  p.compound  !== false,
-      };
+      const out = { ...ALL_ON };
+      for (const k of Object.keys(ALL_ON) as FeatureKey[]) {
+        if (typeof p[k] === 'boolean') out[k] = p[k];
+      }
+      return out;
     }
   } catch { /* ignore */ }
   return { ...ALL_ON };
@@ -106,9 +139,10 @@ interface ModelResult {
 
 interface Inputs {
   weightKg: number;
-  wkg1m: number;
-  cp5minWatts: number;
-  wkg20m: number;
+  wkg5s:   number;
+  wkg1m:   number;
+  wkg5m:   number;
+  wkg20m:  number;
 }
 
 interface CategoryPredictorProps {
@@ -230,10 +264,17 @@ function buildModel(participants: Participant[], enabled: Record<FeatureKey, boo
   const active = FEATURE_DEFS.filter(f => enabled[f.key]);
   if (active.length === 0) return null;
 
+  const needed = new Set<CPField>(active.flatMap(f => f.requires));
+
   const training = participants.filter(p => {
     const wg = p.weightInGrams;
     const velo = typeof p.max30Rating === 'number' ? p.max30Rating : parseFloat(String(p.max30Rating ?? ''));
-    return wg && wg > 0 && p.cp1min! > 0 && p.cp5min! > 0 && p.cp20min! > 0 && !isNaN(velo) && velo > 0;
+    if (!wg || wg <= 0 || isNaN(velo) || velo <= 0) return false;
+    if (needed.has('cp5s')   && !(p.cp5s   && p.cp5s   > 0)) return false;
+    if (needed.has('cp1min') && !(p.cp1min && p.cp1min > 0)) return false;
+    if (needed.has('cp5min') && !(p.cp5min && p.cp5min > 0)) return false;
+    if (needed.has('cp20min') && !(p.cp20min && p.cp20min > 0)) return false;
+    return true;
   });
 
   if (training.length < active.length + 2) return null;
@@ -244,7 +285,7 @@ function buildModel(participants: Participant[], enabled: Record<FeatureKey, boo
   for (const p of training) {
     const kg = p.weightInGrams! / 1000;
     const velo = typeof p.max30Rating === 'number' ? p.max30Rating : parseFloat(String(p.max30Rating!));
-    rows.push(active.map(f => f.fromCP(kg, p.cp1min!, p.cp5min!, p.cp20min!)));
+    rows.push(active.map(f => f.fromCP(kg, p.cp5s ?? 0, p.cp1min ?? 0, p.cp5min ?? 0, p.cp20min ?? 0)));
     y.push(velo);
   }
 
@@ -270,6 +311,15 @@ function buildModel(participants: Participant[], enabled: Record<FeatureKey, boo
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
+
+// Returns a vELO that sits in the middle of the given category's range.
+function veloForCategory(catName: string): number | null {
+  const idx = ZR_CATEGORY_DEFAULTS.findIndex(c => c.name === catName);
+  if (idx === -1) return null;
+  const upper = ZR_CATEGORY_DEFAULTS[idx].upper;
+  const lower = ZR_CATEGORY_DEFAULTS[idx + 1]?.upper ?? 0;
+  return upper === null ? lower + 300 : Math.round((upper + lower) / 2);
+}
 
 // ---------------------------------------------------------------------------
 // Diagonal reference line drawn via Recharts Customized + axis scales
@@ -301,7 +351,8 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   const [powerSource, setPowerSource] = useState<'zwift' | 'strava'>('zwift');
   const [loadingStrava, setLoadingStrava] = useState(false);
   const [stravaError, setStravaError] = useState('');
-  const [inputs, setInputs] = useState<Inputs>({ weightKg: 0, wkg1m: 0, cp5minWatts: 0, wkg20m: 0 });
+  const [inputs, setInputs] = useState<Inputs>({ weightKg: 0, wkg5s: 0, wkg1m: 0, wkg5m: 0, wkg20m: 0 });
+  const [manualCategory, setManualCategory] = useState('');
   const [assigning, setAssigning] = useState(false);
   const [assignResult, setAssignResult] = useState<{ category: string } | null>(null);
   const [assignError, setAssignError] = useState('');
@@ -333,7 +384,7 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   const model = useMemo(() => buildModel(participants, selectedFeatures), [participants, selectedFeatures]);
 
   // Derived values
-  const compound = inputs.weightKg > 0 ? (inputs.cp5minWatts ** 2) / inputs.weightKg : 0;
+  const compound5m = inputs.weightKg > 0 ? (inputs.wkg5m * inputs.weightKg) ** 2 / inputs.weightKg : 0;
   const activeFeatures = FEATURE_DEFS.filter(f => model?.activeFeatureKeys.includes(f.key));
   const predRow = activeFeatures.map(f => f.fromInputs(inputs));
   const predictedVelo = model && predRow.length > 0 && predRow.every(v => v > 0)
@@ -351,17 +402,20 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
 
   function handleSelectRider(zwiftId: string) {
     setSelectedZwiftId(zwiftId);
+    setManualCategory('');
     setAssignResult(null);
     setAssignError('');
     setStravaError('');
     const p = participants.find(pp => pp.zwiftId === zwiftId);
-    if (!p) { setInputs({ weightKg: 0, wkg1m: 0, cp5minWatts: 0, wkg20m: 0 }); return; }
+    if (!p) { setInputs({ weightKg: 0, wkg5s: 0, wkg1m: 0, wkg5m: 0, wkg20m: 0 }); return; }
     const kg = (p.weightInGrams ?? 0) / 1000;
+    const wkg = (w: number | null) => (kg > 0 && w && w > 0) ? parseFloat((w / kg).toFixed(2)) : 0;
     setInputs({
       weightKg: kg,
-      wkg1m: kg > 0 && p.cp1min ? parseFloat((p.cp1min / kg).toFixed(2)) : 0,
-      cp5minWatts: p.cp5min ?? 0,
-      wkg20m: kg > 0 && p.cp20min ? parseFloat((p.cp20min / kg).toFixed(2)) : 0,
+      wkg5s:  wkg(p.cp5s),
+      wkg1m:  wkg(p.cp1min),
+      wkg5m:  wkg(p.cp5min),
+      wkg20m: wkg(p.cp20min),
     });
   }
 
@@ -378,15 +432,18 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
       if (!res.ok) { setStravaError(data.message ?? 'Failed to load Strava data'); return; }
       const curve: Record<string, number> = data.curve ?? {};
       const kg = inputs.weightKg > 0 ? inputs.weightKg : (selectedParticipant?.weightInGrams ?? 0) / 1000;
-      const cp1 = curve['60'] ?? curve['61'] ?? 0;
-      const cp5 = curve['300'] ?? curve['301'] ?? 0;
+      const c5s  = curve['5']    ?? curve['6']    ?? 0;
+      const cp1  = curve['60']   ?? curve['61']   ?? 0;
+      const cp5  = curve['300']  ?? curve['301']  ?? 0;
       const cp20 = curve['1200'] ?? curve['1201'] ?? 0;
+      const wkg = (w: number, prev: number) => kg > 0 && w > 0 ? parseFloat((w / kg).toFixed(2)) : prev;
       setInputs(prev => ({
         ...prev,
         weightKg: kg || prev.weightKg,
-        wkg1m: kg > 0 && cp1 > 0 ? parseFloat((cp1 / kg).toFixed(2)) : prev.wkg1m,
-        cp5minWatts: cp5 > 0 ? Math.round(cp5) : prev.cp5minWatts,
-        wkg20m: kg > 0 && cp20 > 0 ? parseFloat((cp20 / kg).toFixed(2)) : prev.wkg20m,
+        wkg5s:  wkg(c5s,  prev.wkg5s),
+        wkg1m:  wkg(cp1,  prev.wkg1m),
+        wkg5m:  wkg(cp5,  prev.wkg5m),
+        wkg20m: wkg(cp20, prev.wkg20m),
       }));
     } catch (e: unknown) {
       setStravaError(e instanceof Error ? e.message : 'Error loading Strava data');
@@ -396,7 +453,17 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   }
 
   async function handleAssign() {
-    if (!selectedZwiftId || !user || predictedVelo == null) return;
+    const targetCat = manualCategory || predictedCategory;
+    if (!selectedZwiftId || !user || !targetCat) return;
+    let veloToSend: number;
+    if (manualCategory) {
+      const mid = veloForCategory(manualCategory);
+      if (!mid) { setAssignError('Could not compute a vELO for the chosen category'); return; }
+      veloToSend = mid;
+    } else {
+      if (predictedVelo == null) return;
+      veloToSend = predictedVelo;
+    }
     setAssigning(true);
     setAssignResult(null);
     setAssignError('');
@@ -405,7 +472,7 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
       const res = await fetch(`${API_URL}/admin/liga-categories/${selectedZwiftId}/predict-assign`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ predictedVelo }),
+        body: JSON.stringify({ predictedVelo: veloToSend }),
       });
       const data = await res.json();
       if (!res.ok) { setAssignError(data.message ?? 'Assignment failed'); return; }
@@ -715,45 +782,28 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
 
         {/* Input fields */}
         <div className="grid grid-cols-2 gap-x-8 gap-y-3 max-w-sm mb-4">
-          <label className="text-sm text-foreground self-center">Weight (kg)</label>
-          <input
-            type="number"
-            step="0.1"
-            value={inputs.weightKg || ''}
-            onChange={e => setInput('weightKg', e.target.value)}
-            className="border border-border rounded px-2 py-1 text-sm bg-background text-foreground w-24"
-          />
-
-          <label className="text-sm text-foreground self-center">1min W/kg</label>
-          <input
-            type="number"
-            step="0.01"
-            value={inputs.wkg1m || ''}
-            onChange={e => setInput('wkg1m', e.target.value)}
-            className="border border-border rounded px-2 py-1 text-sm bg-background text-foreground w-24"
-          />
-
-          <label className="text-sm text-foreground self-center">5min watts (raw)</label>
-          <input
-            type="number"
-            step="1"
-            value={inputs.cp5minWatts || ''}
-            onChange={e => setInput('cp5minWatts', e.target.value)}
-            className="border border-border rounded px-2 py-1 text-sm bg-background text-foreground w-24"
-          />
-
-          <label className="text-sm text-foreground self-center">20min W/kg</label>
-          <input
-            type="number"
-            step="0.01"
-            value={inputs.wkg20m || ''}
-            onChange={e => setInput('wkg20m', e.target.value)}
-            className="border border-border rounded px-2 py-1 text-sm bg-background text-foreground w-24"
-          />
-
+          {([
+            ['weightKg', 'Weight (kg)', '0.1'],
+            ['wkg5s',    '5s W/kg',    '0.01'],
+            ['wkg1m',    '1min W/kg',  '0.01'],
+            ['wkg5m',    '5min W/kg',  '0.01'],
+            ['wkg20m',   '20min W/kg', '0.01'],
+          ] as [keyof Inputs, string, string][]).map(([field, label, step]) => (
+            <>
+              <label key={field + '_lbl'} className="text-sm text-foreground self-center">{label}</label>
+              <input
+                key={field}
+                type="number"
+                step={step}
+                value={inputs[field] || ''}
+                onChange={e => setInput(field, e.target.value)}
+                className="border border-border rounded px-2 py-1 text-sm bg-background text-foreground w-24"
+              />
+            </>
+          ))}
           <label className="text-sm text-muted-foreground self-center">5m²/kg (auto)</label>
           <span className="text-sm text-muted-foreground py-1 w-24 font-mono">
-            {compound > 0 ? compound.toFixed(1) : '—'}
+            {compound5m > 0 ? compound5m.toFixed(1) : '—'}
           </span>
         </div>
 
@@ -785,18 +835,27 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
           </div>
         </div>
 
-        {/* Assign button */}
-        <button
-          onClick={handleAssign}
-          disabled={!selectedZwiftId || predictedVelo == null || assigning || !model}
-          className="px-4 py-2 rounded bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50"
-        >
-          {assigning
-            ? 'Assigning…'
-            : predictedCategory
-            ? `Assign to ${predictedCategory}`
-            : 'Assign'}
-        </button>
+        {/* Category override + assign */}
+        <div className="flex flex-wrap items-center gap-3 mb-2">
+          <label className="text-sm font-medium text-foreground">Assign as</label>
+          <select
+            value={manualCategory}
+            onChange={e => { setManualCategory(e.target.value); setAssignResult(null); setAssignError(''); }}
+            className="border border-border rounded px-2 py-1.5 text-sm bg-background text-foreground"
+          >
+            <option value="">Predicted ({predictedCategory ?? '—'})</option>
+            {ZR_CATEGORY_DEFAULTS.map(c => (
+              <option key={c.name} value={c.name}>{c.name}</option>
+            ))}
+          </select>
+          <button
+            onClick={handleAssign}
+            disabled={!selectedZwiftId || (!manualCategory && predictedVelo == null) || assigning}
+            className="px-4 py-2 rounded bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50"
+          >
+            {assigning ? 'Assigning…' : `Assign to ${manualCategory || predictedCategory || '—'}`}
+          </button>
+        </div>
 
         {assignResult && (
           <p className="mt-3 text-green-600 text-sm font-medium">
