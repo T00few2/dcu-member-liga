@@ -11,6 +11,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   Cell,
+  Customized,
 } from 'recharts';
 import { API_URL } from '@/lib/api';
 
@@ -227,10 +228,30 @@ function buildModel(participants: Participant[]): ModelResult | null {
 // Component
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Diagonal reference line drawn via Recharts Customized + axis scales
+// ---------------------------------------------------------------------------
+
+function DiagonalLine({ xAxisMap, yAxisMap, minV, maxV }: { xAxisMap?: Record<string, { scale: (v: number) => number }>; yAxisMap?: Record<string, { scale: (v: number) => number }>; minV: number; maxV: number }) {
+  const xAxis = xAxisMap?.[0];
+  const yAxis = yAxisMap?.[0];
+  if (!xAxis?.scale || !yAxis?.scale) return null;
+  return (
+    <line
+      x1={xAxis.scale(minV)} y1={yAxis.scale(minV)}
+      x2={xAxis.scale(maxV)} y2={yAxis.scale(maxV)}
+      stroke="#94a3b8"
+      strokeDasharray="5 4"
+      strokeWidth={1.5}
+    />
+  );
+}
+
 export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loadingParticipants, setLoadingParticipants] = useState(true);
   const [selectedZwiftId, setSelectedZwiftId] = useState('');
+  const [showUnassignedOnly, setShowUnassignedOnly] = useState(false);
   const [powerSource, setPowerSource] = useState<'zwift' | 'strava'>('zwift');
   const [loadingStrava, setLoadingStrava] = useState(false);
   const [stravaError, setStravaError] = useState('');
@@ -489,6 +510,8 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
                       );
                     }}
                   />
+                  {/* y=x reference diagonal via axis scales */}
+                  <Customized component={(props: any) => <DiagonalLine {...props} minV={minVelo} maxV={maxVelo} />} />
                   {/* Single Scatter with Cell children for per-point colours */}
                   <Scatter data={model.trainingPoints} r={5} opacity={0.85}>
                     {model.trainingPoints.map((pt, idx) => (
@@ -518,7 +541,17 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
 
         {/* Rider dropdown */}
         <div className="mb-4">
-          <label className="block text-sm font-medium text-foreground mb-1">Rider</label>
+          <div className="flex items-center gap-4 mb-1">
+            <label className="text-sm font-medium text-foreground">Rider</label>
+            <label className="flex items-center gap-1.5 text-sm text-muted-foreground cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showUnassignedOnly}
+                onChange={e => setShowUnassignedOnly(e.target.checked)}
+              />
+              Unassigned only
+            </label>
+          </div>
           <select
             value={selectedZwiftId}
             onChange={e => handleSelectRider(e.target.value)}
@@ -526,7 +559,11 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
           >
             <option value="">— select a rider —</option>
             {participants
-              .filter(p => !p.ligaCategory?.locked)
+              .filter(p => {
+                if (p.ligaCategory?.locked) return false;
+                if (showUnassignedOnly && p.ligaCategory?.category) return false;
+                return true;
+              })
               .sort((a, b) => a.name.localeCompare(b.name))
               .map(p => (
                 <option key={p.zwiftId} value={p.zwiftId}>
