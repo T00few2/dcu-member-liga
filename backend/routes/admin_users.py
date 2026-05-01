@@ -42,6 +42,14 @@ def get_users_overview():
         return jsonify({'error': e.message}), e.status_code
 
     try:
+        # Build trainer -> dualRecordingRequired lookup (normalised name as key)
+        trainer_dr: dict[str, bool] = {}
+        for tdoc in db.collection('trainers').stream():
+            td = tdoc.to_dict() or {}
+            norm = td.get('normalizedName') or ' '.join((td.get('name') or '').strip().lower().split())
+            if norm:
+                trainer_dr[norm] = bool(td.get('dualRecordingRequired'))
+
         docs = (
             db.collection('users')
             .where('registration.status', '==', 'complete')
@@ -58,6 +66,7 @@ def get_users_overview():
             connections = data.get('connections') or {}
             zwift_conn = connections.get('zwift') or {}
             strava_conn = connections.get('strava') or {}
+            strava_connected = bool(strava_conn.get('athlete_id') or strava_conn.get('athleteId'))
 
             equipment = data.get('equipment') or {}
             zr = data.get('zwiftRacing') or {}
@@ -75,6 +84,14 @@ def get_users_overview():
                     or auto.get('category')
                     or ''
                 )
+
+            # Flag: trainer requires dual recording but Strava is not linked
+            trainer_name = equipment.get('trainer', '')
+            trainer_norm = ' '.join(trainer_name.strip().lower().split()) if trainer_name else ''
+            needs_strava_for_dr = (
+                bool(trainer_dr.get(trainer_norm))
+                and not strava_connected
+            )
 
             # Signed-up timestamp
             accepted_at = (data.get('registration') or {}).get('dataPolicy', {}).get('acceptedAt')
@@ -98,7 +115,8 @@ def get_users_overview():
                 'category': category,
                 'categoryLocked': bool(liga.get('locked')),
                 'zwiftConnected': bool(zwift_conn.get('profileId') or data.get('zwiftId')),
-                'stravaConnected': bool(strava_conn.get('athlete_id') or strava_conn.get('athleteId')),
+                'stravaConnected': strava_connected,
+                'needsStravaForDR': needs_strava_for_dr,
                 'verificationStatus': verification.get('status', 'none'),
                 'currentRating': zr.get('currentRating', ''),
                 'max30Rating': zr.get('max30Rating', ''),

@@ -26,6 +26,7 @@ interface UserRow {
     categoryLocked: boolean;
     zwiftConnected: boolean;
     stravaConnected: boolean;
+    needsStravaForDR: boolean;
     verificationStatus: string;
     currentRating: number | string;
     max30Rating: number | string;
@@ -466,6 +467,14 @@ export default function UsersOverview() {
                                         <span className="text-xs text-muted-foreground">Z</span>
                                         <ConnDot ok={row.stravaConnected} title={row.stravaConnected ? 'Strava connected' : 'Strava not connected'} />
                                         <span className="text-xs text-muted-foreground">S</span>
+                                        {row.needsStravaForDR && (
+                                            <span
+                                                title="Trainer requires dual recording but Strava is not connected"
+                                                className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-100 text-amber-700 text-xs font-bold leading-none"
+                                            >
+                                                !
+                                            </span>
+                                        )}
                                     </div>
                                 </td>
                                 <td className="px-3 py-2">
