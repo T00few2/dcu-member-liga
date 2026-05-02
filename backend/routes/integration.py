@@ -648,16 +648,25 @@ def get_segments():
 
 # --- CLUBS ---
 
+EXTRA_CLUBS = [
+    {'name': 'Fjallasúkklufelagið', 'district': '', 'type': ''},
+    {'name': 'Norðstrok', 'district': '', 'type': ''},
+    {'name': 'Sersambandið fyri súkkling og triathlon', 'district': '', 'type': ''},
+    {'name': 'Tórshavnar súkklu- og triathlonfelag', 'district': '', 'type': ''},
+    {'name': 'Troy', 'district': '', 'type': ''},
+    {'name': 'Vága súkklufelag', 'district': '', 'type': ''},
+]
+
 @integration_bp.route('/clubs', methods=['GET'])
 def get_clubs():
     try:
         response = requests.get('https://dcumedlem.sportstiming.dk/clubs', timeout=10)
         response.raise_for_status()
-        
+
         soup = BeautifulSoup(response.content, 'html.parser')
         table = soup.find('table')
         if not table: return jsonify({'message': 'Could not find clubs table'}), 500
-        
+
         clubs = []
         rows = table.find_all('tr')[1:]
         for row in rows:
@@ -668,6 +677,13 @@ def get_clubs():
                     'district': cols[1].get_text(strip=True),
                     'type': cols[2].get_text(strip=True)
                 })
+
+        existing_names = {c['name'] for c in clubs}
+        for extra in EXTRA_CLUBS:
+            if extra['name'] not in existing_names:
+                clubs.append(extra)
+
+        clubs.sort(key=lambda c: c['name'].lower())
         return jsonify({'clubs': clubs}), 200
     except Exception as e:
         return jsonify({'message': f'Failed to fetch clubs: {str(e)}'}), 500
