@@ -38,6 +38,7 @@ export default function Navbar() {
         { href: '/results', label: 'Resultater' },
         { href: '/stats', label: 'Statistik' },
         { href: '/historik', label: 'Historik' },
+        { href: '/nyheder', label: 'Nyheder' },
     ];
 
     if (hideNavbar) return null;
@@ -174,6 +175,12 @@ export default function Navbar() {
                                         >
                                             Historik
                                         </Link>
+                                        <Link
+                                            href="/nyheder"
+                                            className={`hidden md:inline hover:bg-white/10 px-3 py-2 rounded-md text-base transition-colors ${pathname === '/nyheder' ? 'text-white font-bold' : 'text-white/90 font-bold'}`}
+                                        >
+                                            Nyheder
+                                        </Link>
                                         <button
                                             onClick={() => signInWithGoogle('login')}
                                             className="hidden md:inline cursor-pointer hover:bg-white/10 px-3 py-2 rounded-md text-base text-white/90 font-bold hover:text-white transition-colors"
@@ -282,6 +289,13 @@ export default function Navbar() {
                                     onClick={() => setIsDrawerOpen(false)}
                                 >
                                     Historik
+                                </Link>
+                                <Link
+                                    href="/nyheder"
+                                    className="block px-4 py-3 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg"
+                                    onClick={() => setIsDrawerOpen(false)}
+                                >
+                                    Nyheder
                                 </Link>
                                 <button
                                     onClick={() => {
