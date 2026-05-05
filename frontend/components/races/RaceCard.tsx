@@ -48,16 +48,20 @@ const slugify = (value?: string | null) =>
         .replace(/^-|-$/g, '');
 
 const getZwiftEventUrl = (eventId: string, eventSecret?: string) => {
+    const secret = eventSecret ? `?eventSecret=${eventSecret}` : '';
     if (typeof window === 'undefined') {
-        return `https://www.zwift.com/eu/events/view/${eventId}${eventSecret ? `?eventSecret=${eventSecret}` : ''}`;
+        return `https://www.zwift.com/events/view/${eventId}${secret}`;
     }
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true;
-    // On mobile devices the Zwift app intercepts the HTTPS Universal Link but strips
-    // the eventSecret and ignores the /eu/ path prefix, landing users on the companion
-    // home screen instead of the race. The zwift:// URI scheme passes all params correctly.
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    const baseUrl = (isStandalone || isMobile) ? 'zwift://events/view/' : 'https://www.zwift.com/eu/events/view/';
-    return `${baseUrl}${eventId}${eventSecret ? `?eventSecret=${eventSecret}` : ''}`;
+    if (isStandalone) {
+        // PWA/standalone: use the custom URI scheme for direct in-app navigation
+        return `zwift://events/view/${eventId}${secret}`;
+    }
+    // Browser (mobile and desktop): use the canonical HTTPS Universal Link.
+    // The /eu/ regional prefix is NOT registered in Zwift's apple-app-site-association,
+    // so the companion app falls back to its home screen when it receives that path.
+    // The prefix-free URL matches the registered path and routes to the correct event.
+    return `https://www.zwift.com/events/view/${eventId}${secret}`;
 };
 
 function normalizeNameForMatch(name?: string): string {
