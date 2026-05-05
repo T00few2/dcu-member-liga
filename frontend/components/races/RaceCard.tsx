@@ -49,23 +49,11 @@ const slugify = (value?: string | null) =>
 
 const getZwiftEventUrl = (eventId: string, eventSecret?: string) => {
     const secret = eventSecret ? `?eventSecret=${eventSecret}` : '';
-    if (typeof window === 'undefined') {
-        return `https://www.zwift.com/events/view/${eventId}${secret}`;
-    }
+    const webUrl = `https://www.zwift.com/events/view/${eventId}${secret}`;
+    if (typeof window === 'undefined') return webUrl;
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true;
-    if (isStandalone) {
-        return `zwift://events/view/${eventId}${secret}`;
-    }
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    if (isMobile) {
-        // Mobile: open via Universal Link so the Zwift Companion app handles it.
-        // The companion app is a logged-in experience — club membership grants access,
-        // so eventSecret is not included (it is a web-only token for anonymous browser access
-        // and may confuse the companion app's URL router).
-        return `https://www.zwift.com/events/view/${eventId}`;
-    }
-    // Desktop browser: include eventSecret so non-logged-in users can view the event page.
-    return `https://www.zwift.com/events/view/${eventId}${secret}`;
+    if (isStandalone) return `zwift://events/view/${eventId}${secret}`;
+    return webUrl;
 };
 
 function normalizeNameForMatch(name?: string): string {
