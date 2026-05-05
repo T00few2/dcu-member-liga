@@ -159,7 +159,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (loading) return;
 
     const publicRoutes = ['/', '/info', '/historik', '/datapolitik', '/offentliggoerelse', '/register'];
-    const isPublicRoute = publicRoutes.includes(pathname) || pathname.startsWith('/live');
+    const isPublicRoute = publicRoutes.includes(pathname) || pathname.startsWith('/live') || pathname.startsWith('/nyheder');
 
     // Unauthenticated users can only access public routes.
     if (!user) {

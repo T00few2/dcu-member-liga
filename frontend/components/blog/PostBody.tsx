@@ -2,9 +2,7 @@
 
 import { useEditor, EditorContent, JSONContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import Underline from '@tiptap/extension-underline';
 import Image from '@tiptap/extension-image';
-import Link from '@tiptap/extension-link';
 
 interface Props {
     content: JSONContent;
@@ -12,7 +10,7 @@ interface Props {
 
 export default function PostBody({ content }: Props) {
     const editor = useEditor({
-        extensions: [StarterKit, Underline, Image, Link],
+        extensions: [StarterKit, Image],
         content,
         editable: false,
         immediatelyRender: false,

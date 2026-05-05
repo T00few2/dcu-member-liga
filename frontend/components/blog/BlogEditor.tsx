@@ -2,9 +2,7 @@
 
 import { useEditor, EditorContent, JSONContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import Underline from '@tiptap/extension-underline';
 import Image from '@tiptap/extension-image';
-import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
 import { useRef, useCallback } from 'react';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -21,10 +19,10 @@ export default function BlogEditor({ initialContent, onChange, disabled = false 
 
     const editor = useEditor({
         extensions: [
-            StarterKit,
-            Underline,
+            StarterKit.configure({
+                link: { openOnClick: false, autolink: true },
+            }),
             Image.configure({ inline: false, allowBase64: false }),
-            Link.configure({ openOnClick: false, autolink: true }),
             Placeholder.configure({ placeholder: 'Skriv dit indlæg her...' }),
         ],
         content: initialContent ?? '',
