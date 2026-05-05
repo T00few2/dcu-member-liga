@@ -49,11 +49,7 @@ const slugify = (value?: string | null) =>
 
 const getZwiftEventUrl = (eventId: string, eventSecret?: string) => {
     const secret = eventSecret ? `?eventSecret=${eventSecret}` : '';
-    const webUrl = `https://www.zwift.com/events/view/${eventId}${secret}`;
-    if (typeof window === 'undefined') return webUrl;
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true;
-    if (isStandalone) return `zwift://events/view/${eventId}${secret}`;
-    return webUrl;
+    return `https://www.zwift.com/events/view/${eventId}${secret}`;
 };
 
 function normalizeNameForMatch(name?: string): string {
@@ -470,7 +466,7 @@ export default function RaceCard({
                         )}
                         <a
                             href={racePassHref}
-                            target={racePassHref.startsWith('zwift://') ? '_self' : '_blank'}
+                            target="_blank"
                             rel="noopener noreferrer"
                             className="block w-full bg-primary hover:bg-primary-dark text-white font-bold py-3 px-4 rounded-lg text-center transition shadow-md flex items-center justify-center gap-2"
                         >
