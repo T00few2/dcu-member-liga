@@ -474,7 +474,7 @@ export default function RaceCard({
                         )}
                         <a
                             href={racePassHref}
-                            target="_blank"
+                            target={racePassHref.startsWith('zwift://') ? '_self' : '_blank'}
                             rel="noopener noreferrer"
                             className="block w-full bg-primary hover:bg-primary-dark text-white font-bold py-3 px-4 rounded-lg text-center transition shadow-md flex items-center justify-center gap-2"
                         >
