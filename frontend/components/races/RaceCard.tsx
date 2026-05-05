@@ -52,7 +52,11 @@ const getZwiftEventUrl = (eventId: string, eventSecret?: string) => {
         return `https://www.zwift.com/eu/events/view/${eventId}${eventSecret ? `?eventSecret=${eventSecret}` : ''}`;
     }
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true;
-    const baseUrl = isStandalone ? 'zwift://events/view/' : 'https://www.zwift.com/eu/events/view/';
+    // On mobile devices the Zwift app intercepts the HTTPS Universal Link but strips
+    // the eventSecret and ignores the /eu/ path prefix, landing users on the companion
+    // home screen instead of the race. The zwift:// URI scheme passes all params correctly.
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    const baseUrl = (isStandalone || isMobile) ? 'zwift://events/view/' : 'https://www.zwift.com/eu/events/view/';
     return `${baseUrl}${eventId}${eventSecret ? `?eventSecret=${eventSecret}` : ''}`;
 };
 
