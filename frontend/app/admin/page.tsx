@@ -11,12 +11,13 @@ import CategoryManager from '@/components/admin/CategoryManager';
 import CategoryPredictor from '@/components/admin/CategoryPredictor';
 import StatsDashboard from '@/components/admin/StatsDashboard';
 import UsersOverview from '@/components/admin/UsersOverview';
+import PostsManager from '@/components/admin/PostsManager';
 
 export default function AdminPage() {
   const { user, loading: authLoading, isAdmin, refreshClaims } = useAuth();
 
   // Top Level Tab State
-  const [activeSection, setActiveSection] = useState<'league' | 'categories' | 'predictor' | 'verification' | 'weight' | 'trainers' | 'users' | 'stats' | 'policies'>('league');
+  const [activeSection, setActiveSection] = useState<'league' | 'categories' | 'predictor' | 'verification' | 'weight' | 'trainers' | 'users' | 'stats' | 'policies' | 'nyheder'>('league');
 
   if (authLoading) return <div className="p-8 text-center">Loading...</div>;
   if (!user) return null;
@@ -104,6 +105,12 @@ export default function AdminPage() {
         >
           Policies
         </button>
+        <button
+          onClick={() => setActiveSection('nyheder')}
+          className={`pb-4 px-6 text-lg font-medium transition whitespace-nowrap ${activeSection === 'nyheder' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          Nyheder
+        </button>
       </div>
 
       {/* Section Content */}
@@ -124,6 +131,8 @@ export default function AdminPage() {
           <WeightVerificationManager />
         ) : activeSection === 'trainers' ? (
           <TrainerManager />
+        ) : activeSection === 'nyheder' ? (
+          <PostsManager />
         ) : (
           <PolicyManager user={user} />
         )}
