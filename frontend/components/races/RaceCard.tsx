@@ -54,13 +54,17 @@ const getZwiftEventUrl = (eventId: string, eventSecret?: string) => {
     }
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true;
     if (isStandalone) {
-        // PWA/standalone: use the custom URI scheme for direct in-app navigation
         return `zwift://events/view/${eventId}${secret}`;
     }
-    // Browser (mobile and desktop): use the canonical HTTPS Universal Link.
-    // The /eu/ regional prefix is NOT registered in Zwift's apple-app-site-association,
-    // so the companion app falls back to its home screen when it receives that path.
-    // The prefix-free URL matches the registered path and routes to the correct event.
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    if (isMobile) {
+        // Mobile: open via Universal Link so the Zwift Companion app handles it.
+        // The companion app is a logged-in experience — club membership grants access,
+        // so eventSecret is not included (it is a web-only token for anonymous browser access
+        // and may confuse the companion app's URL router).
+        return `https://www.zwift.com/events/view/${eventId}`;
+    }
+    // Desktop browser: include eventSecret so non-logged-in users can view the event page.
     return `https://www.zwift.com/events/view/${eventId}${secret}`;
 };
 
