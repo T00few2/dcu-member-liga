@@ -9,12 +9,19 @@ type SegmentConfig = {
     sprints?: SegmentRef[];
 };
 
+type RaceGroupConfig = {
+    segmentType?: 'sprint' | 'split';
+    sprints?: SegmentRef[];
+    categories?: SegmentConfig[];
+};
+
 type RacePointsInput = {
     segmentType?: 'sprint' | 'split';
     sprints?: SegmentRef[];
     selectedSegments?: string[];
     singleModeCategories?: SegmentConfig[];
     eventConfiguration?: SegmentConfig[];
+    raceGroups?: RaceGroupConfig[];
 };
 
 export interface RacePointsSplit {
@@ -62,6 +69,24 @@ export const getSprintSegmentCountForPoints = (race: RacePointsInput): number =>
         for (const seg of cfg.sprints || []) {
             const key = getSegmentKey(seg);
             if (key) segmentKeys.add(key);
+        }
+    }
+
+    for (const group of race.raceGroups || []) {
+        const groupType = group.segmentType || defaultType;
+        if (groupType !== 'split') {
+            for (const seg of group.sprints || []) {
+                const key = getSegmentKey(seg);
+                if (key) segmentKeys.add(key);
+            }
+        }
+        for (const cat of group.categories || []) {
+            const catType = cat.segmentType || groupType;
+            if (catType === 'split') continue;
+            for (const seg of cat.sprints || []) {
+                const key = getSegmentKey(seg);
+                if (key) segmentKeys.add(key);
+            }
         }
     }
 
