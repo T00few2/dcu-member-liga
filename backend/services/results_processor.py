@@ -11,6 +11,7 @@ from services.results.race_scorer import RaceScorer
 from services.results.league_engine import LeagueEngine
 from services.results.zwift_fetcher import ZwiftFetcher
 from services.category_config import CategoryConfigResolver
+from services.category_engine import _effective_cat_name
 from services.schema_validation import (
     log_schema_issues,
     validate_league_standings_doc,
@@ -65,12 +66,17 @@ class ResultsProcessor:
         if event_mode == 'grouped':
             logger.info("Using raceGroups sources (grouped mode)")
             for group in race_data.get('raceGroups', []):
-                allowed = {c.get('category') for c in group.get('categories', []) if c.get('category')}
+                category_config_map = {
+                    str(c.get('category')).strip(): c
+                    for c in group.get('categories', [])
+                    if str(c.get('category', '')).strip()
+                }
                 event_sources.append({
                     'id': group.get('eventId'),
                     'secret': group.get('eventSecret', ''),
                     'customCategory': None,
-                    'allowedCategories': allowed,
+                    'groupedMode': True,
+                    'categoryConfigMap': category_config_map,
                     'sprints': group.get('sprints', []),
                     'segmentType': group.get('segmentType') or race_data.get('segmentType'),
                     'startTime': group.get('startTime') or race_data.get('date'),
@@ -279,6 +285,8 @@ class ResultsProcessor:
         event_secret = source['secret']
         custom_category = source['customCategory']
         category_config_map = source.get('categoryConfigMap', {})
+        grouped_mode = bool(source.get('groupedMode'))
+        configured_categories = list(category_config_map.keys()) if grouped_mode else []
 
         if not event_id and not direct_subgroup_id:
             return
@@ -312,29 +320,28 @@ class ResultsProcessor:
                 ]
                 if matched:
                     subgroups = matched
-            # Grouped mode: restrict to the categories assigned to this group.
-            allowed_categories = source.get('allowedCategories')
-            if allowed_categories:
-                subgroups = [
-                    sg for sg in subgroups
-                    if sg.get('subgroupLabel') in allowed_categories
-                ]
         logger.info(f"  Found {len(subgroups)} subgroups.")
 
         custom_cat_finishers: list[Any] = []
         custom_cat_segment_efforts: dict[str | int, Any] = {}
+        grouped_finishers_by_category: dict[str, list[Any]] = defaultdict(list)
+        grouped_segment_efforts: dict[str | int, list[Any]] = {}
+        grouped_sprints_union = self._merge_grouped_sprints(source)
 
         for subgroup in subgroups:
             category_label = subgroup['subgroupLabel']
             effective_category = custom_category if custom_category else category_label
 
             if category_filter and category_filter != 'All':
-                if custom_category:
-                     if category_filter != custom_category:
-                         continue
+                if grouped_mode:
+                    if category_filter not in configured_categories:
+                        continue
+                elif custom_category:
+                    if category_filter != custom_category:
+                        continue
                 else:
-                     if category_label != category_filter:
-                         continue
+                    if category_label != category_filter:
+                        continue
 
             subgroup_id = subgroup['id']
             start_time_str = subgroup['eventSubgroupStart']
@@ -363,6 +370,8 @@ class ResultsProcessor:
             # can be forwarded for accurate finish-segment identification)
             category_sprints = source.get('sprints', [])
             category_segment_type = source.get('segmentType')
+            if grouped_mode:
+                category_sprints = grouped_sprints_union
 
             if not custom_category and category_label in category_config_map:
                 cat_cfg = category_config_map[category_label]
@@ -397,10 +406,6 @@ class ResultsProcessor:
                 route_segment_ids_ordered=route_segment_ids_ordered,
             )
 
-            category_config = self._get_category_config(race_data, effective_category)
-            category_config['sprints'] = category_sprints
-            category_config['segmentType'] = category_segment_type
-
             # Fetch Segment Efforts using ZwiftFetcher
             segment_efforts: dict[str | int, Any] = {}
             if fetch_mode in ['finishers', 'joined'] and category_sprints:
@@ -414,10 +419,28 @@ class ResultsProcessor:
                     registered_riders=registered_riders,
                 )
 
-            if custom_category:
+            if grouped_mode:
+                for seg_id, efforts in segment_efforts.items():
+                    existing = grouped_segment_efforts.setdefault(seg_id, [])
+                    if isinstance(efforts, list):
+                        existing.extend(efforts)
+                for finisher in finishers:
+                    mapped_category = self._resolve_grouped_category(
+                        finisher,
+                        registered_riders,
+                        configured_categories,
+                        category_label,
+                    )
+                    if not mapped_category:
+                        continue
+                    grouped_finishers_by_category[mapped_category].append(finisher)
+            elif custom_category:
                 custom_cat_finishers.extend(finishers)
                 custom_cat_segment_efforts.update(segment_efforts)
             else:
+                category_config = self._get_category_config(race_data, effective_category)
+                category_config['sprints'] = category_sprints
+                category_config['segmentType'] = category_segment_type
                 if category_config_map and category_label not in category_config_map:
                     logger.info(f"    Skipping category {category_label} (not in configured categories)")
                     continue
@@ -426,7 +449,18 @@ class ResultsProcessor:
                 all_results[category_label] = processed_batch
                 logger.info(f"    Saved {len(processed_batch)} results to {category_label}")
 
-        if custom_category and custom_cat_finishers:
+        if grouped_mode:
+            for category_name in configured_categories:
+                if category_filter and category_filter != 'All' and category_name != category_filter:
+                    continue
+                riders = self._dedupe_finishers(grouped_finishers_by_category.get(category_name, []))
+                if not riders:
+                    continue
+                cat_config = self._get_category_config(race_data, category_name)
+                processed_batch = scorer.calculate_results(riders, cat_config, grouped_segment_efforts)
+                all_results[category_name] = processed_batch
+                logger.info(f"    Saved {len(processed_batch)} grouped results to {category_name}")
+        elif custom_category and custom_cat_finishers:
             cat_config = self._get_category_config(race_data, custom_category)
             cat_config['sprints'] = source.get('sprints', [])
             cat_config['segmentType'] = source.get('segmentType')
@@ -438,3 +472,78 @@ class ResultsProcessor:
     def _get_category_config(self, race_data: dict[str, Any], category: str) -> RaceConfig:
         """Build a RaceConfig for a category, delegating to CategoryConfigResolver."""
         return CategoryConfigResolver.get_race_config(race_data, category)
+
+    def _merge_grouped_sprints(self, source: dict[str, Any]) -> list[dict[str, Any]]:
+        merged: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for sprint in source.get('sprints', []) or []:
+            key = str(sprint.get('key') or f"{sprint.get('id')}_{sprint.get('count', '')}")
+            if key and key not in seen:
+                merged.append(sprint)
+                seen.add(key)
+        for cfg in (source.get('categoryConfigMap') or {}).values():
+            for sprint in cfg.get('sprints', []) or []:
+                key = str(sprint.get('key') or f"{sprint.get('id')}_{sprint.get('count', '')}")
+                if key and key not in seen:
+                    merged.append(sprint)
+                    seen.add(key)
+        return merged
+
+    def _resolve_grouped_category(
+        self,
+        finisher: dict[str, Any],
+        registered_riders: dict[str, Any],
+        configured_categories: list[str],
+        subgroup_label: str | None,
+    ) -> str | None:
+        if not configured_categories:
+            return None
+        configured_map = {str(c).strip().lower(): str(c).strip() for c in configured_categories if str(c).strip()}
+
+        zid = str(finisher.get('zwiftId') or '').strip()
+        rider_doc = registered_riders.get(zid)
+        candidate = self._effective_registered_category(rider_doc)
+        if candidate:
+            matched = configured_map.get(str(candidate).strip().lower())
+            if matched:
+                return matched
+
+        subgroup_name = str(subgroup_label or '').strip()
+        matched_subgroup = configured_map.get(subgroup_name.lower())
+        if matched_subgroup:
+            return matched_subgroup
+        return None
+
+    def _effective_registered_category(self, rider_doc: dict[str, Any] | None) -> str | None:
+        if not rider_doc:
+            return None
+        liga = rider_doc.get('ligaCategory') or {}
+        if liga.get('locked') and liga.get('category'):
+            return str(liga.get('category'))
+
+        auto_cat = (liga.get('autoAssigned') or {}).get('category')
+        self_cat = (liga.get('selfSelected') or {}).get('category')
+        effective = _effective_cat_name(auto_cat, self_cat)
+        if effective:
+            return str(effective)
+        if auto_cat:
+            return str(auto_cat)
+        if self_cat:
+            return str(self_cat)
+        return None
+
+    def _dedupe_finishers(self, riders: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        by_id: dict[str, dict[str, Any]] = {}
+        for rider in riders:
+            zid = str(rider.get('zwiftId') or '').strip()
+            if not zid:
+                continue
+            existing = by_id.get(zid)
+            if not existing:
+                by_id[zid] = rider
+                continue
+            current_time = int(rider.get('finishTime') or 0)
+            existing_time = int(existing.get('finishTime') or 0)
+            if existing_time == 0 or (current_time > 0 and current_time < existing_time):
+                by_id[zid] = rider
+        return list(by_id.values())

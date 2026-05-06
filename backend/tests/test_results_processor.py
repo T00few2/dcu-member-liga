@@ -107,6 +107,45 @@ class TestResultsProcessorInit:
             rp.process_race_results('race1')
 
 
+class TestGroupedCategoryResolution:
+
+    def test_prefers_registered_liga_category_when_grouped(self):
+        from services.results_processor import ResultsProcessor
+        rp = ResultsProcessor(MagicMock(), MagicMock(), MagicMock())
+
+        finisher = {'zwiftId': '123'}
+        registered = {
+            '123': {
+                'zwiftId': '123',
+                'ligaCategory': {
+                    'locked': True,
+                    'category': 'Diamond',
+                },
+            }
+        }
+
+        resolved = rp._resolve_grouped_category(
+            finisher=finisher,
+            registered_riders=registered,
+            configured_categories=['Diamond', 'Ruby'],
+            subgroup_label='A',
+        )
+        assert resolved == 'Diamond'
+
+    def test_falls_back_to_subgroup_label_when_category_matches(self):
+        from services.results_processor import ResultsProcessor
+        rp = ResultsProcessor(MagicMock(), MagicMock(), MagicMock())
+
+        finisher = {'zwiftId': '999'}
+        resolved = rp._resolve_grouped_category(
+            finisher=finisher,
+            registered_riders={},
+            configured_categories=['A', 'B'],
+            subgroup_label='A',
+        )
+        assert resolved == 'A'
+
+
 # ---------------------------------------------------------------------------
 # calculate_league_standings (pure aggregation, no Firestore writes)
 # ---------------------------------------------------------------------------
