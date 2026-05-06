@@ -289,17 +289,19 @@ class ZwiftService:
     # Event and race helpers (official path variants)
     # ------------------------------------------------------------------
 
-    def get_public_event_info(self, event_id: str) -> dict[str, Any] | None:
+    def get_public_event_info(self, event_id: str, event_secret: str | None = None) -> dict[str, Any] | None:
         """
         Practical event->subgroup resolver using public event payload.
         Note: this path is not listed in the official developer docs.
         """
         url = f"{self.api_base_url}/api/public/events/{event_id}"
+        params = {"eventSecret": event_secret} if event_secret else None
         try:
             response = requests.request(
                 method="GET",
                 url=url,
                 headers={"Accept": "application/json"},
+                params=params,
                 timeout=20,
             )
         except RequestException as exc:
@@ -322,7 +324,7 @@ class ZwiftService:
         Uses /api/public/events/{eventId} as the primary event->subgroup bridge.
         Falls back to legacy /api/events/{eventId} only when migration mode allows it.
         """
-        public_payload = self.get_public_event_info(event_id)
+        public_payload = self.get_public_event_info(event_id, event_secret=event_secret)
         if public_payload:
             return public_payload
 
