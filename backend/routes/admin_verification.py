@@ -1312,6 +1312,44 @@ def dual_recording(rider_id):
 # Batch dual-recording verification (admin-triggered re-run)
 # ---------------------------------------------------------------------------
 
+@admin_bp.route('/admin/races/<race_id>/dr-verifications', methods=['GET'])
+def get_race_dual_recording_verifications(race_id):
+    """Return stored DR verification docs for a race.
+
+    Uses admin privileges on the backend so the frontend does not depend on
+    client Firestore rules for this subcollection.
+    """
+    try:
+        require_admin(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    try:
+        race_doc = db.collection('races').document(race_id).get()
+        if not race_doc.exists:
+            return jsonify({'message': 'Race not found'}), 404
+
+        out: list[dict] = []
+        docs = (
+            db.collection('races')
+            .document(race_id)
+            .collection('dr_verifications')
+            .stream()
+        )
+        for d in docs:
+            payload = d.to_dict() or {}
+            payload['zwiftId'] = str(payload.get('zwiftId') or d.id)
+            out.append(payload)
+
+        return jsonify({'verifications': out}), 200
+    except Exception as e:
+        logger.error(f"get_race_dual_recording_verifications error: {e}")
+        return jsonify({'message': str(e)}), 500
+
+
 @admin_bp.route('/admin/races/<race_id>/verify-dual-recording', methods=['POST'])
 def batch_verify_dual_recording(race_id):
     """Run DR verification for every DR-required rider in the race.

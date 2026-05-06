@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
-import { doc, updateDoc, arrayUnion, arrayRemove, collection, getDocs } from 'firebase/firestore';
+import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
 import type { Race, RaceResult, LoadingStatus, DualRecordingVerification } from '@/types/admin';
@@ -30,18 +30,31 @@ export default function ResultsModal({
     const [drRunning, setDrRunning] = useState(false);
     const [drStatus, setDrStatus] = useState<string | null>(null);
 
-    useEffect(() => {
-        if (!race) return;
-        const colRef = collection(db, 'races', race.id, 'dr_verifications');
-        getDocs(colRef).then(snap => {
+    const loadDrVerifications = async (raceId: string) => {
+        if (!user) return;
+        try {
+            const token = await user.getIdToken();
+            const res = await fetch(`${API_URL}/admin/races/${raceId}/dr-verifications`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!res.ok) return;
+            const body = await res.json();
             const map = new Map<string, DualRecordingVerification>();
-            snap.forEach(d => {
-                const data = d.data() as DualRecordingVerification;
-                map.set(String(d.id), data);
+            (body.verifications || []).forEach((v: DualRecordingVerification & { zwiftId?: string | number }) => {
+                const key = String(v.zwiftId || '');
+                if (!key) return;
+                map.set(key, v);
             });
             setDrVerifications(map);
-        }).catch(() => {});
-    }, [race?.id]);
+        } catch {
+            // Keep UI stable on background load errors.
+        }
+    };
+
+    useEffect(() => {
+        if (!race || !user) return;
+        void loadDrVerifications(race.id);
+    }, [race?.id, user]);
 
     const handleVerifyDR = async () => {
         if (!race || !user) return;
@@ -58,12 +71,7 @@ export default function ResultsModal({
                 setDrStatus(`Trigget: ${body.triggered ?? 0} ryttere. Mangler aktivitet: ${body.missing_activity ?? 0}.`);
                 // Refresh DR verifications after a short delay to let background threads finish
                 setTimeout(() => {
-                    const colRef = collection(db, 'races', race.id, 'dr_verifications');
-                    getDocs(colRef).then(snap => {
-                        const map = new Map<string, DualRecordingVerification>();
-                        snap.forEach(d => map.set(String(d.id), d.data() as DualRecordingVerification));
-                        setDrVerifications(map);
-                    }).catch(() => {});
+                    void loadDrVerifications(race.id);
                 }, 5000);
             } else {
                 setDrStatus(`Fejl: ${body.message || 'Ukendt fejl'}`);

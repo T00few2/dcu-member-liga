@@ -170,3 +170,30 @@ class TestEdgeCases:
         # First rider gets full points; riders beyond scheme get 0.
         assert by_id['1']['finishPoints'] == FINISH_POINTS[0]
         assert by_id['20']['finishPoints'] == 0
+
+    def test_dnf_does_not_receive_or_influence_sprint_points(self, scorer):
+        riders = [
+            make_rider(1, finish_time=3600000),
+            make_rider(2, finish_time=3700000),
+            make_rider(3, finish_time=0),  # DNF with fast split that should be ignored
+        ]
+        sprints = [{'id': 'seg1', 'count': 1, 'key': 'seg1_1', 'name': 'Sprint 1'}]
+        segment_efforts = {
+            'seg1': [
+                {'athleteId': '3', 'elapsed': 1000, 'worldTime': 100, 'avgPower': 400},
+                {'athleteId': '1', 'elapsed': 1200, 'worldTime': 200, 'avgPower': 350},
+                {'athleteId': '2', 'elapsed': 1300, 'worldTime': 300, 'avgPower': 340},
+            ]
+        }
+        result = scorer.calculate_results(
+            riders,
+            make_config(sprints=sprints, segment_type='sprint'),
+            segment_efforts_map=segment_efforts,
+        )
+        by_id = {r['zwiftId']: r for r in result}
+
+        assert by_id['1']['sprintPoints'] == SPRINT_POINTS[0]
+        assert by_id['2']['sprintPoints'] == SPRINT_POINTS[1]
+        assert by_id['3']['sprintPoints'] == 0
+        assert by_id['3']['sprintDetails'] == {}
+        assert by_id['3']['totalPoints'] == 0

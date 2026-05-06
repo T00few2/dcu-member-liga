@@ -129,12 +129,20 @@ export default function RaceResultsTable({
                             <tbody className="divide-y divide-border">
                                 {raceResults.map((rider, idx) => {
                                     const drVerification = drVerifications?.get(rider.zwiftId);
+                                    const isDnf = !rider.finishTime || rider.finishTime <= 0;
                                     return (
                                     <tr key={rider.zwiftId} className="hover:bg-muted/20 transition odd:bg-transparent even:bg-[#f1efe7]">
                                         <td className="px-4 py-3 text-center font-medium text-muted-foreground">{idx + 1}</td>
                                         <td className="px-4 py-3 font-medium text-card-foreground">{rider.name}</td>
                                         <td className="px-4 py-3 text-right font-mono text-muted-foreground">{formatTime(rider.finishTime)}</td>
                                         {sprintColumns.map(sprintKey => {
+                                            if (isDnf) {
+                                                return (
+                                                    <td key={sprintKey} className="px-4 py-3 text-center text-muted-foreground">
+                                                        -
+                                                    </td>
+                                                );
+                                            }
                                             const val = rider.sprintDetails?.[sprintKey];
                                             const best = bestSplitTimes[sprintKey];
 
@@ -157,14 +165,14 @@ export default function RaceResultsTable({
                                             );
                                         })}
                                         {showFinishPointsColumn && (
-                                            <td className="px-4 py-3 text-right text-muted-foreground font-medium">{rider.finishPoints}</td>
+                                            <td className="px-4 py-3 text-right text-muted-foreground font-medium">{isDnf ? '-' : rider.finishPoints}</td>
                                         )}
                                         {showTotalPointsColumn && (
-                                            <td className="px-4 py-3 text-right font-bold text-foreground">{rider.totalPoints}</td>
+                                            <td className="px-4 py-3 text-right font-bold text-foreground">{isDnf ? '-' : rider.totalPoints}</td>
                                         )}
                                         {showLeaguePointsColumn && (
                                             <td className="px-4 py-3 text-right font-bold text-foreground">
-                                                {leaguePointsByZwiftId?.get(rider.zwiftId) ?? '-'}
+                                                {isDnf ? '-' : (leaguePointsByZwiftId?.get(rider.zwiftId) ?? '-')}
                                             </td>
                                         )}
                                         {showDrColumn && (

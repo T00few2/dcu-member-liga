@@ -98,6 +98,17 @@ class RaceScorer:
         # 5. Calculate Sprint Points (using data on rider objects)
         self._calculate_sprint_points(active_riders, race_config, manual_dqs, manual_declass)
 
+        # DNF riders should be visible in results, but never earn points.
+        # Also clear segment details so UI shows '-' across sprint/point columns.
+        for rider in active_riders:
+            if rider.get('finishTime', 0) > 0:
+                continue
+            rider['finishRank'] = 0
+            rider['finishPoints'] = 0
+            rider['sprintPoints'] = 0
+            rider['sprintData'] = {}
+            rider['sprintDetails'] = {}
+
         # 6. Sum Total & Final Sort
         for rider in active_riders:
             rider['totalPoints'] = rider.get('finishPoints', 0) + rider.get('sprintPoints', 0)
@@ -214,7 +225,7 @@ class RaceScorer:
         # Collect all sprint keys present in data
         all_keys: set[str] = set()
         for r in riders:
-            if r.get('sprintData'):
+            if r.get('finishTime', 0) > 0 and r.get('sprintData'):
                 all_keys.update(r['sprintData'].keys())
 
         for key in all_keys:
@@ -224,6 +235,8 @@ class RaceScorer:
             # 1. Collect Valid Efforts
             efforts: list[dict[str, Any]] = []
             for r in riders:
+                if r.get('finishTime', 0) <= 0:
+                    continue
                 data = r.get('sprintData', {}).get(key)
                 if data:
                     efforts.append({

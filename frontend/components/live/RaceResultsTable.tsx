@@ -270,7 +270,9 @@ export function RaceResultsTable({ race, results, category, config, overlay, sta
                 className={`text-white font-bold ${tableBodyTextSize}`}
                 style={{ color: resolveColor(overlay.rowText, overlay.text) }}
             >
-                {results.map((rider, idx) => (
+                {results.map((rider, idx) => {
+                    const isDnf = !rider.finishTime || rider.finishTime <= 0;
+                    return (
                     <tr 
                         key={rider.zwiftId} 
                         className="border-b border-slate-700/50 even:bg-slate-800/40"
@@ -298,7 +300,7 @@ export function RaceResultsTable({ race, results, category, config, overlay, sta
                                         className={`${bodyCellPadding} px-2 text-center font-extrabold text-blue-400 align-middle`}
                                         style={{ color: resolveColor(overlay.accent, overlay.rowText || overlay.text || undefined) }}
                                     >
-                                        {formatSprintValue(rider.sprintDetails?.[key], key)}
+                                        {isDnf ? '-' : formatSprintValue(rider.sprintDetails?.[key], key)}
                                     </td>
                                 ))}
                                 {showTotalPoints && (
@@ -306,7 +308,7 @@ export function RaceResultsTable({ race, results, category, config, overlay, sta
                                         className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-300 align-middle`}
                                         style={{ color: resolveColor(overlay.accent, overlay.rowText || overlay.text || undefined) }}
                                     >
-                                        {rider.totalPoints ?? 0}
+                                        {isDnf ? '-' : (rider.totalPoints ?? 0)}
                                     </td>
                                 )}
                                 {showFinishTime && (
@@ -322,7 +324,7 @@ export function RaceResultsTable({ race, results, category, config, overlay, sta
                                         className={`${bodyCellPadding} px-2 text-right font-extrabold ${leaguePointsCellClass} align-middle`}
                                         style={{ color: resolveColor(overlay.rowText, overlay.text) }}
                                     >
-                                        {standingsPoints.get(rider.zwiftId) ?? '-'}
+                                        {isDnf ? '-' : (standingsPoints.get(rider.zwiftId) ?? '-')}
                                     </td>
                                 )}
                             </>
@@ -333,7 +335,7 @@ export function RaceResultsTable({ race, results, category, config, overlay, sta
                                         className={`${bodyCellPadding} px-2 text-right font-extrabold text-blue-300 align-middle`}
                                         style={{ color: resolveColor(overlay.accent, overlay.rowText || overlay.text || undefined) }}
                                     >
-                                        {rider.totalPoints ?? 0}
+                                        {isDnf ? '-' : (rider.totalPoints ?? 0)}
                                     </td>
                                 )}
                                 {showFinishTime && (
@@ -349,13 +351,14 @@ export function RaceResultsTable({ race, results, category, config, overlay, sta
                                         className={`${bodyCellPadding} px-2 text-right font-extrabold ${leaguePointsCellClass} align-middle`}
                                         style={{ color: resolveColor(overlay.rowText, overlay.text) }}
                                     >
-                                        {standingsPoints.get(rider.zwiftId) ?? '-'}
+                                        {isDnf ? '-' : (standingsPoints.get(rider.zwiftId) ?? '-')}
                                     </td>
                                 )}
                             </>
                         )}
                     </tr>
-                ))}
+                    );
+                })}
                 {results.length === 0 && (
                     <tr>
                         <td
