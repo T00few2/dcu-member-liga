@@ -157,3 +157,59 @@ def send_html_email(
         raise EmailSendError(f'SMTP error while sending email: {exc}') from exc
     except OSError as exc:
         raise EmailSendError(f'Network error while sending email: {exc}') from exc
+
+
+def send_html_emails_individually(
+    *,
+    addresses: list[str],
+    subject: str,
+    html_body: str,
+) -> list[tuple[str, str | None]]:
+    """
+    Send one email per address, reusing a single SMTP connection.
+    Returns [(address, None), ...] on success or [(address, error_str), ...] per failure.
+    Per-recipient SMTPRecipientsRefused is recorded without aborting the rest;
+    all other SMTP / network errors are fatal and raised immediately.
+    """
+    _validate_smtp_config()
+
+    if not addresses:
+        raise EmailSendError('At least one recipient is required.')
+    if not subject.strip():
+        raise EmailSendError('Email subject is required.')
+
+    plain_body = _strip_html(html_body).strip()
+    if not plain_body:
+        raise EmailSendError('Email message is required.')
+
+    subject = subject.strip()
+    html_body = html_body.strip()
+    outcomes: list[tuple[str, str | None]] = []
+
+    try:
+        with smtplib.SMTP(ZOHO_SMTP_HOST, ZOHO_SMTP_PORT, timeout=SMTP_TIMEOUT_SECONDS) as smtp:
+            if ZOHO_SMTP_USE_TLS:
+                smtp.starttls()
+            smtp.login(ZOHO_SMTP_USER, ZOHO_SMTP_APP_PASSWORD)
+
+            for address in addresses:
+                msg = EmailMessage()
+                msg['From'] = ZOHO_SMTP_USER
+                msg['To'] = address
+                msg['Subject'] = subject
+                msg.set_content(plain_body)
+                msg.add_alternative(html_body, subtype='html')
+                try:
+                    smtp.send_message(msg)
+                    outcomes.append((address, None))
+                except smtplib.SMTPRecipientsRefused as exc:
+                    outcomes.append((address, str(exc)))
+
+    except smtplib.SMTPAuthenticationError as exc:
+        raise EmailConfigError('SMTP authentication failed. Check Zoho SMTP credentials.') from exc
+    except smtplib.SMTPException as exc:
+        raise EmailSendError(f'SMTP error while sending email: {exc}') from exc
+    except OSError as exc:
+        raise EmailSendError(f'Network error while sending email: {exc}') from exc
+
+    return outcomes
