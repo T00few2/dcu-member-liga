@@ -192,7 +192,7 @@ def send_html_emails_individually(
                 smtp.starttls()
             smtp.login(ZOHO_SMTP_USER, ZOHO_SMTP_APP_PASSWORD)
 
-            for address in addresses:
+            for i, address in enumerate(addresses):
                 msg = EmailMessage()
                 msg['From'] = ZOHO_SMTP_USER
                 msg['To'] = address
@@ -202,8 +202,17 @@ def send_html_emails_individually(
                 try:
                     smtp.send_message(msg)
                     outcomes.append((address, None))
-                except smtplib.SMTPRecipientsRefused as exc:
+                except (smtplib.SMTPRecipientsRefused, smtplib.SMTPDataError) as exc:
+                    # Per-recipient error — record and continue with remaining addresses.
                     outcomes.append((address, str(exc)))
+                except (smtplib.SMTPException, OSError) as exc:
+                    # Fatal mid-loop error (connection dropped, rate-limited, etc.).
+                    # Mark this address and all remaining ones as failed so the caller
+                    # gets an accurate partial picture rather than losing the outcomes
+                    # already recorded above.
+                    for addr in addresses[i:]:
+                        outcomes.append((addr, f'Connection lost: {exc}'))
+                    return outcomes
 
     except smtplib.SMTPAuthenticationError as exc:
         raise EmailConfigError('SMTP authentication failed. Check Zoho SMTP credentials.') from exc
