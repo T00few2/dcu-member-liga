@@ -12,6 +12,7 @@ from config import (
 
 
 SMTP_TIMEOUT_SECONDS = 20
+BCC_BATCH_SIZE = 50
 
 
 class _HTMLStripper(HTMLParser):
@@ -97,19 +98,18 @@ def send_html_email(
     html_body: str,
 ) -> None:
     """
-    Send one HTML email via Zoho SMTP with explicit To/Cc/Bcc headers.
+    Send an HTML email via Zoho SMTP with explicit To/Cc/Bcc headers.
 
-    Python's smtp.send_message() collects all Bcc addresses as RCPT TO
-    targets and strips the Bcc header from the transmitted message, so
-    Bcc recipients are never exposed to other recipients.
+    BCC recipients are split into batches of BCC_BATCH_SIZE to stay within
+    Zoho's per-message recipient limit. All batches share one SMTP connection.
+    To/CC recipients are included only in the first batch to avoid duplicates.
     """
     _validate_smtp_config()
 
     cc_emails = cc_emails or []
     bcc_emails = bcc_emails or []
-    all_recipients = to_emails + cc_emails + bcc_emails
 
-    if not all_recipients:
+    if not to_emails and not cc_emails and not bcc_emails:
         raise EmailSendError('At least one recipient (To, Cc, or Bcc) is required.')
     if not subject.strip():
         raise EmailSendError('Email subject is required.')
@@ -118,23 +118,39 @@ def send_html_email(
     if not plain_body:
         raise EmailSendError('Email message is required.')
 
-    email = EmailMessage()
-    email['From'] = ZOHO_SMTP_USER
-    email['Subject'] = subject.strip()
-    email['To'] = ', '.join(to_emails) if to_emails else 'undisclosed-recipients:;'
-    if cc_emails:
-        email['Cc'] = ', '.join(cc_emails)
-    if bcc_emails:
-        email['Bcc'] = ', '.join(bcc_emails)
-    email.set_content(plain_body)
-    email.add_alternative(html_body.strip(), subtype='html')
+    subject = subject.strip()
+    html_body = html_body.strip()
+
+    bcc_batches = (
+        [bcc_emails[i:i + BCC_BATCH_SIZE] for i in range(0, len(bcc_emails), BCC_BATCH_SIZE)]
+        if bcc_emails else [[]]
+    )
 
     try:
         with smtplib.SMTP(ZOHO_SMTP_HOST, ZOHO_SMTP_PORT, timeout=SMTP_TIMEOUT_SECONDS) as smtp:
             if ZOHO_SMTP_USE_TLS:
                 smtp.starttls()
             smtp.login(ZOHO_SMTP_USER, ZOHO_SMTP_APP_PASSWORD)
-            smtp.send_message(email)
+
+            for batch_index, bcc_batch in enumerate(bcc_batches):
+                msg = EmailMessage()
+                msg['From'] = ZOHO_SMTP_USER
+                msg['Subject'] = subject
+
+                if batch_index == 0:
+                    msg['To'] = ', '.join(to_emails) if to_emails else 'undisclosed-recipients:;'
+                    if cc_emails:
+                        msg['Cc'] = ', '.join(cc_emails)
+                else:
+                    msg['To'] = 'undisclosed-recipients:;'
+
+                if bcc_batch:
+                    msg['Bcc'] = ', '.join(bcc_batch)
+
+                msg.set_content(plain_body)
+                msg.add_alternative(html_body, subtype='html')
+                smtp.send_message(msg)
+
     except smtplib.SMTPAuthenticationError as exc:
         raise EmailConfigError('SMTP authentication failed. Check Zoho SMTP credentials.') from exc
     except smtplib.SMTPException as exc:
