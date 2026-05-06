@@ -42,6 +42,7 @@ interface EmailSendSummary {
     sent: number;
     failed: number;
     skipped: number;
+    sendMode?: 'individual' | 'group';
 }
 
 const CATEGORY_STYLES: Record<string, string> = {
@@ -102,6 +103,8 @@ export default function UsersOverview() {
     const [sendingEmail, setSendingEmail] = useState(false);
     const [sendError, setSendError] = useState<string | null>(null);
     const [lastSendSummary, setLastSendSummary] = useState<EmailSendSummary | null>(null);
+    const [sendMode, setSendMode] = useState<'individual' | 'group'>('individual');
+    const [recipientMode, setRecipientMode] = useState<'to' | 'cc' | 'bcc'>('bcc');
     const [manualCc, setManualCc] = useState('');
     const [manualBcc, setManualBcc] = useState('');
     const [ccError, setCcError] = useState<string | null>(null);
@@ -241,6 +244,8 @@ export default function UsersOverview() {
     const openComposeModal = () => {
         setIsComposeOpen(true);
         setSendError(null);
+        setSendMode('individual');
+        setRecipientMode('bcc');
         setManualCc('');
         setManualBcc('');
         setRecipientsOpen(false);
@@ -289,6 +294,8 @@ export default function UsersOverview() {
                     userIds: Array.from(selectedIds),
                     subject,
                     message: emailMessage,
+                    sendMode,
+                    ...(sendMode === 'group' ? { recipientMode } : {}),
                     manualCc: manualCc.trim(),
                     manualBcc: manualBcc.trim(),
                 }),
@@ -383,14 +390,20 @@ export default function UsersOverview() {
             </div>
 
             {lastSendSummary && (
-                <div className="rounded-lg border border-border bg-card px-4 py-3 text-sm">
-                    Last send: {lastSendSummary.requested} user(s) requested, {lastSendSummary.skipped} skipped,{' '}
+                <div className="rounded-lg border border-border bg-card px-4 py-3 text-sm flex items-center gap-2 flex-wrap">
+                    <span className="text-muted-foreground">Last send:</span>
+                    {lastSendSummary.sendMode && (
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${lastSendSummary.sendMode === 'individual' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                            {lastSendSummary.sendMode === 'individual' ? 'Individual' : 'Group'}
+                        </span>
+                    )}
+                    <span>{lastSendSummary.requested} requested, {lastSendSummary.skipped} skipped —{' '}
                     {lastSendSummary.sent > 0 && lastSendSummary.failed === 0
                         ? <span className="text-green-600 font-medium">sent to {lastSendSummary.sent} recipient(s)</span>
                         : lastSendSummary.sent > 0
                         ? <span className="text-amber-600 font-medium">sent to {lastSendSummary.sent}, {lastSendSummary.failed} failed</span>
                         : <span className="text-red-600 font-medium">send failed — check server logs</span>
-                    }.
+                    }</span>
                 </div>
             )}
 
@@ -518,9 +531,10 @@ export default function UsersOverview() {
                                     <span>Recipients</span>
                                     <span className="flex items-center gap-2 text-muted-foreground font-normal">
                                         <span>
-                                            {selectedCount} recipient(s)
-                                            {manualCc.trim() ? ` · +${parseManualEmails(manualCc).valid.length || '…'} extra` : ''}
-                                            {manualBcc.trim() ? ` · +${parseManualEmails(manualBcc).valid.length || '…'} extra` : ''}
+                                            {sendMode === 'individual' ? 'Individual' : `Group (${recipientMode.toUpperCase()})`}
+                                            {' · '}{selectedCount} recipient(s)
+                                            {manualCc.trim() ? ` · +${parseManualEmails(manualCc).valid.length || '…'} CC` : ''}
+                                            {manualBcc.trim() ? ` · +${parseManualEmails(manualBcc).valid.length || '…'} BCC` : ''}
                                             {selectedWithoutEmail > 0 ? ` · ${selectedWithoutEmail} skipped` : ''}
                                         </span>
                                         <span className="text-xs">{recipientsOpen ? '▲' : '▼'}</span>
@@ -529,6 +543,57 @@ export default function UsersOverview() {
 
                                 {recipientsOpen && (
                                     <div className="border-t border-border space-y-3 p-3">
+                                        {/* Delivery mode */}
+                                        <div className="space-y-2">
+                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Delivery</p>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSendMode('individual')}
+                                                    disabled={sendingEmail}
+                                                    className={`text-left rounded-lg border px-3 py-2.5 transition ${sendMode === 'individual' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'}`}
+                                                >
+                                                    <div className="text-sm font-medium">Individual</div>
+                                                    <div className="text-xs text-muted-foreground mt-0.5">Personal email per recipient · Best inbox delivery</div>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSendMode('group')}
+                                                    disabled={sendingEmail}
+                                                    className={`text-left rounded-lg border px-3 py-2.5 transition ${sendMode === 'group' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'}`}
+                                                >
+                                                    <div className="text-sm font-medium">Group</div>
+                                                    <div className="text-xs text-muted-foreground mt-0.5">One email to all · Choose address visibility</div>
+                                                </button>
+                                            </div>
+                                            {sendMode === 'group' && (
+                                                <div className="space-y-1.5 pt-0.5">
+                                                    <div className="flex items-center gap-4">
+                                                        {(['to', 'cc', 'bcc'] as const).map(mode => (
+                                                            <label key={mode} className="flex items-center gap-1.5 text-sm cursor-pointer select-none">
+                                                                <input
+                                                                    type="radio"
+                                                                    name="recipientMode"
+                                                                    value={mode}
+                                                                    checked={recipientMode === mode}
+                                                                    onChange={() => setRecipientMode(mode)}
+                                                                    disabled={sendingEmail}
+                                                                    className="accent-primary"
+                                                                />
+                                                                {mode.toUpperCase()}
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                    {(recipientMode === 'to' || recipientMode === 'cc') && selectedCount > 1 && (
+                                                        <p className="text-xs text-amber-600">All {selectedCount} recipients will see each other&apos;s addresses.</p>
+                                                    )}
+                                                    {recipientMode === 'bcc' && (
+                                                        <p className="text-xs text-muted-foreground">Recipients are hidden from each other. May land in Promotions.</p>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+
                                         {/* Recipients list */}
                                         <div className="rounded-md border border-border bg-muted/30">
                                             <div className="px-3 py-1.5 border-b border-border text-xs font-medium text-muted-foreground uppercase tracking-wide">

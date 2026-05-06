@@ -10,7 +10,7 @@ import re
 from routes.admin import admin_bp
 from authz import require_admin, AuthzError
 from extensions import db
-from utils.email_sender import send_html_emails_individually, _strip_html, EmailConfigError, EmailSendError
+from utils.email_sender import send_html_email, send_html_emails_individually, _strip_html, EmailConfigError, EmailSendError
 
 import logging
 
@@ -134,12 +134,12 @@ def get_users_overview():
 
 @admin_bp.route('/admin/users/send-email', methods=['POST'])
 def send_email_to_selected_users():
-    """Send one individual email per selected user (admin-only).
+    """Send email to admin-selected users (admin-only).
 
-    Each recipient receives their own To: <their-address> message so the email
-    lands in Primary rather than Promotions. manualCc and manualBcc addresses
-    are also sent individually (the CC/BCC distinction is kept for UI labelling
-    only; all addresses receive an identical individual copy).
+    sendMode='individual': one personal To:<addr> email per recipient — better
+    inbox delivery, no visible recipient list.
+    sendMode='group': one email to all recipients; recipientMode controls
+    whether user addresses appear in To, Cc, or Bcc.
     """
     try:
         require_admin(request)
@@ -150,11 +150,17 @@ def send_email_to_selected_users():
     user_ids_raw   = payload.get('userIds')
     subject        = str(payload.get('subject') or '').strip()
     message        = str(payload.get('message') or '')
+    send_mode      = str(payload.get('sendMode') or 'individual').strip().lower()
+    recipient_mode = str(payload.get('recipientMode') or 'bcc').strip().lower()
     manual_cc_raw  = str(payload.get('manualCc') or '')
     manual_bcc_raw = str(payload.get('manualBcc') or '')
 
     if not isinstance(user_ids_raw, list):
         return jsonify({'error': 'userIds must be an array of user document IDs.'}), 400
+    if send_mode not in ('individual', 'group'):
+        return jsonify({'error': "sendMode must be 'individual' or 'group'."}), 400
+    if send_mode == 'group' and recipient_mode not in ('to', 'cc', 'bcc'):
+        return jsonify({'error': "recipientMode must be one of: 'to', 'cc', 'bcc'."}), 400
     if not subject:
         return jsonify({'error': 'subject is required.'}), 400
     if not _strip_html(message).strip():
@@ -222,14 +228,14 @@ def send_email_to_selected_users():
                 'status': 'resolved',
             })
 
-        all_addresses = user_emails + manual_cc_valid + manual_bcc_valid
-
-        if not all_addresses:
+        total_valid = len(user_emails) + len(manual_cc_valid) + len(manual_bcc_valid)
+        if total_valid == 0:
             summary = {
                 'requested': len(unique_user_ids),
                 'skipped': skipped,
                 'sent': 0,
                 'failed': 0,
+                'sendMode': send_mode,
             }
             return jsonify({
                 'summary': summary,
@@ -239,47 +245,81 @@ def send_email_to_selected_users():
 
         sent = 0
         failed = 0
-        try:
-            outcomes = send_html_emails_individually(
-                addresses=all_addresses,
-                subject=subject,
-                html_body=message,
-            )
-            outcome_map = {addr: err for addr, err in outcomes}
 
-            for r in results:
-                if r['status'] == 'resolved':
-                    err = outcome_map.get(r['email'])
-                    if err is None:
-                        r['status'] = 'sent'
+        if send_mode == 'individual':
+            try:
+                outcomes = send_html_emails_individually(
+                    addresses=user_emails + manual_cc_valid + manual_bcc_valid,
+                    subject=subject,
+                    html_body=message,
+                )
+                outcome_map = {addr: err for addr, err in outcomes}
+
+                for r in results:
+                    if r['status'] == 'resolved':
+                        err = outcome_map.get(r['email'])
+                        if err is None:
+                            r['status'] = 'sent'
+                            sent += 1
+                        else:
+                            r['status'] = 'failed'
+                            r['reason'] = err
+                            failed += 1
+
+                for addr in manual_cc_valid + manual_bcc_valid:
+                    if outcome_map.get(addr) is None:
                         sent += 1
                     else:
-                        r['status'] = 'failed'
-                        r['reason'] = err
                         failed += 1
 
-            for addr in manual_cc_valid + manual_bcc_valid:
-                if outcome_map.get(addr) is None:
-                    sent += 1
-                else:
-                    failed += 1
+            except EmailConfigError as exc:
+                logger.error('Email config error: %s', exc)
+                return jsonify({'error': str(exc)}), 503
+            except EmailSendError as exc:
+                failed = total_valid
+                logger.warning('Failed individual email send: %s', exc)
+                for r in results:
+                    if r['status'] == 'resolved':
+                        r['status'] = 'failed'
+                        r['reason'] = str(exc)
 
-        except EmailConfigError as exc:
-            logger.error('Email config error: %s', exc)
-            return jsonify({'error': str(exc)}), 503
-        except EmailSendError as exc:
-            failed = len(all_addresses)
-            logger.warning('Failed individual email send: %s', exc)
-            for r in results:
-                if r['status'] == 'resolved':
-                    r['status'] = 'failed'
-                    r['reason'] = str(exc)
+        else:  # group
+            if recipient_mode == 'to':
+                all_to, all_cc, all_bcc = user_emails, manual_cc_valid, manual_bcc_valid
+            elif recipient_mode == 'cc':
+                all_to, all_cc, all_bcc = [], user_emails + manual_cc_valid, manual_bcc_valid
+            else:  # bcc
+                all_to, all_cc, all_bcc = [], manual_cc_valid, user_emails + manual_bcc_valid
+
+            try:
+                send_html_email(
+                    to_emails=all_to,
+                    cc_emails=all_cc,
+                    bcc_emails=all_bcc,
+                    subject=subject,
+                    html_body=message,
+                )
+                sent = total_valid
+                for r in results:
+                    if r['status'] == 'resolved':
+                        r['status'] = 'sent'
+            except EmailConfigError as exc:
+                logger.error('Email config error: %s', exc)
+                return jsonify({'error': str(exc)}), 503
+            except EmailSendError as exc:
+                failed = total_valid
+                logger.warning('Failed group email send: %s', exc)
+                for r in results:
+                    if r['status'] == 'resolved':
+                        r['status'] = 'failed'
+                        r['reason'] = str(exc)
 
         summary = {
             'requested': len(unique_user_ids),
             'skipped': skipped,
             'sent': sent,
             'failed': failed,
+            'sendMode': send_mode,
         }
         return jsonify({'summary': summary, 'results': results}), 200
 
