@@ -152,8 +152,8 @@ def send_email_to_selected_users():
     message        = str(payload.get('message') or '')
     send_mode      = str(payload.get('sendMode') or 'individual').strip().lower()
     recipient_mode = str(payload.get('recipientMode') or 'bcc').strip().lower()
-    manual_to_raw  = str(payload.get('manualTo')  or '')
-    manual_cc_raw  = str(payload.get('manualCc')  or '')
+    manual_to_raw  = str(payload.get('manualTo') or '')
+    manual_cc_raw  = str(payload.get('manualCc') or '')
     manual_bcc_raw = str(payload.get('manualBcc') or '')
 
     if not isinstance(user_ids_raw, list):
