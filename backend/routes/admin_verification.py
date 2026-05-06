@@ -1374,12 +1374,34 @@ def batch_verify_dual_recording(race_id):
 
         # Collect event start times per rider category from event config
         event_starts: list[str] = []
+        category_event_start: dict[str, str] = {}
         for cfg in (race_data.get('eventConfiguration') or []):
             st = cfg.get('startTime') or race_data.get('date') or ''
+            cat = str(cfg.get('customCategory') or '').strip()
+            if cat and st:
+                category_event_start[cat] = st
             if st:
                 event_starts.append(st)
+        # Grouped mode can carry per-group start times.
+        for grp in (race_data.get('raceGroups') or []):
+            st = grp.get('startTime') or ''
+            if not st:
+                continue
+            for cat_cfg in (grp.get('categories') or []):
+                cat = str((cat_cfg or {}).get('category') or '').strip()
+                if cat and cat not in category_event_start:
+                    category_event_start[cat] = st
         if not event_starts:
             event_starts = [race_data.get('date') or '']
+        default_event_start = race_data.get('startTime') or race_data.get('date') or ''
+
+        # Match activities by eventId when available (best signal), else by time.
+        race_event_ids: set[str] = set()
+        if race_data.get('eventId'):
+            race_event_ids.add(str(race_data.get('eventId')))
+        for linked in (race_data.get('linkedEventIds') or []):
+            if linked:
+                race_event_ids.add(str(linked))
 
         results_map = race_data.get('results') or {}
         summary: list[dict] = []
@@ -1399,29 +1421,70 @@ def batch_verify_dual_recording(race_id):
 
                 # Find activity: use stored activityId or time-based lookup
                 activity_id = rider.get('activityId')
-                event_start = event_starts[0] if event_starts else ''
+                event_start = category_event_start.get(str(category), default_event_start) or (event_starts[0] if event_starts else '')
 
                 if not activity_id:
                     user_data = user_doc.to_dict() or {}
-                    zwift_user_id = str(user_data.get('zwiftUserId') or user_data.get('zwiftId') or zwift_id)
+                    candidate_user_ids: list[str] = []
+                    for candidate in (
+                        user_data.get('zwiftUserId'),
+                        user_data.get('zwiftId'),
+                        zwift_id,
+                    ):
+                        c = str(candidate or '').strip()
+                        if c and c not in candidate_user_ids:
+                            candidate_user_ids.append(c)
+
+                    token_doc = db.collection('access_tokens').document(zwift_id).get()
+                    if token_doc.exists:
+                        td = token_doc.to_dict() or {}
+                        token_uid = str(td.get('zwiftUserId') or '').strip()
+                        if token_uid and token_uid not in candidate_user_ids:
+                            candidate_user_ids.append(token_uid)
+
                     event_dt = _parse_iso_utc(event_start)
-                    if event_dt:
+                    best_event_match: tuple[float, str] | None = None
+                    best_time_delta = float('inf')
+                    best_time_activity_id: str | None = None
+
+                    for user_id in candidate_user_ids:
                         docs = (
                             db.collection('zwift_activities')
-                            .where('userId', '==', zwift_user_id)
-                            .limit(100)
+                            .where('userId', '==', user_id)
+                            .limit(200)
                             .stream()
                         )
-                        best_delta = float('inf')
                         for doc in docs:
                             d = doc.to_dict() or {}
-                            wf = _extract_zwift_activity_fields(d.get('data') or {})
-                            act_dt = _parse_iso_utc(wf['startedAt']) if wf['startedAt'] else None
-                            if act_dt:
-                                delta = abs((act_dt - event_dt).total_seconds())
-                                if delta < best_delta and delta < 7200:
-                                    best_delta = delta
-                                    activity_id = d.get('activityId')
+                            activity_doc_id = str(d.get('activityId') or '').strip()
+                            if not activity_doc_id:
+                                continue
+                            raw = d.get('data') or {}
+
+                            # Highest-confidence path: exact event match
+                            raw_event_id = str(raw.get('eventId') or '').strip()
+                            if race_event_ids and raw_event_id and raw_event_id in race_event_ids:
+                                wf = _extract_zwift_activity_fields(raw)
+                                duration_sec = float(wf.get('durationSec') or 0.0)
+                                if best_event_match is None or duration_sec > best_event_match[0]:
+                                    best_event_match = (duration_sec, activity_doc_id)
+
+                            # Fallback path: nearest activity to category/race start
+                            if event_dt:
+                                wf = _extract_zwift_activity_fields(raw)
+                                act_dt = _parse_iso_utc(wf['startedAt']) if wf['startedAt'] else None
+                                if act_dt:
+                                    delta = abs((act_dt - event_dt).total_seconds())
+                                    if delta < best_time_delta:
+                                        best_time_delta = delta
+                                        best_time_activity_id = activity_doc_id
+
+                    if best_event_match:
+                        activity_id = best_event_match[1]
+                    elif best_time_activity_id and best_time_delta <= 4 * 3600:
+                        # Race start can be stored without timezone; 4h avoids false
+                        # negatives caused by local-vs-UTC ambiguity.
+                        activity_id = best_time_activity_id
 
                 if not activity_id:
                     missing_payload: dict = {
