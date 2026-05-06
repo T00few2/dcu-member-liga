@@ -330,9 +330,22 @@ class ZwiftService:
         response = self._api_get(f"/api/link/events/{event_id}", params=params)
         if response.status_code == 200:
             return self._safe_json(response)
+        if response.status_code == 404 and event_secret:
+            # Some events return 404 when queried with a stale/incorrect secret but
+            # are still visible without eventSecret.
+            fallback_no_secret = self._api_get(f"/api/link/events/{event_id}")
+            if fallback_no_secret.status_code == 200:
+                logger.warning(
+                    "Zwift event info resolved without eventSecret for event %s; "
+                    "configured secret may be stale or unnecessary",
+                    event_id,
+                )
+                return self._safe_json(fallback_no_secret)
 
         if self.allow_legacy_fallback:
             legacy_response = self._api_get(f"/api/events/{event_id}", params=params)
+            if legacy_response.status_code == 404 and event_secret:
+                legacy_response = self._api_get(f"/api/events/{event_id}")
             legacy_response.raise_for_status()
             return self._safe_json(legacy_response)
 

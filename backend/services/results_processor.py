@@ -138,8 +138,10 @@ class ResultsProcessor:
         if not all_results:
             all_results = {}
 
+        processed_sources = 0
+        failed_sources = 0
         for source in event_sources:
-            self._process_event_source(
+            ok = self._process_event_source(
                 source,
                 race_data,
                 registered_riders,
@@ -148,6 +150,16 @@ class ResultsProcessor:
                 fetch_mode,
                 filter_registered,
                 category_filter
+            )
+            if ok:
+                processed_sources += 1
+            else:
+                failed_sources += 1
+
+        if processed_sources == 0 and failed_sources > 0:
+            raise Exception(
+                "Unable to fetch Zwift event data for configured source(s). "
+                "Verify Event IDs, Event Secret, and event availability."
             )
 
         # 6. Save Results to Firestore
@@ -279,7 +291,7 @@ class ResultsProcessor:
         fetch_mode: str,
         filter_registered: bool,
         category_filter: str | None,
-    ) -> None:
+    ) -> bool:
         event_id = source.get('id')
         direct_subgroup_id = source.get('subgroupId')
         event_secret = source['secret']
@@ -289,7 +301,7 @@ class ResultsProcessor:
         configured_categories = list(category_config_map.keys()) if grouped_mode else []
 
         if not event_id and not direct_subgroup_id:
-            return
+            return False
 
         logger.info(f"Processing Event Source: {event_id} (Target Cat: {custom_category or 'Auto'})")
 
@@ -307,7 +319,7 @@ class ResultsProcessor:
                 event_info = self.zwift_fetcher.get_event_info(event_id, event_secret)
             except Exception as e:
                 logger.error(f"Failed to fetch event info for {event_id}: {e}")
-                return
+                return False
             subgroups = self.zwift_fetcher.extract_subgroups(event_info)
 
             # If this source targets one custom category but subgroupId was not
@@ -468,6 +480,7 @@ class ResultsProcessor:
             processed_batch = scorer.calculate_results(custom_cat_finishers, cat_config, custom_cat_segment_efforts)
             all_results[custom_category] = processed_batch
             logger.info(f"    Saved {len(processed_batch)} merged results to {custom_category}")
+        return True
 
     def _get_category_config(self, race_data: dict[str, Any], category: str) -> RaceConfig:
         """Build a RaceConfig for a category, delegating to CategoryConfigResolver."""
