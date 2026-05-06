@@ -152,7 +152,8 @@ def send_email_to_selected_users():
     message        = str(payload.get('message') or '')
     send_mode      = str(payload.get('sendMode') or 'individual').strip().lower()
     recipient_mode = str(payload.get('recipientMode') or 'bcc').strip().lower()
-    manual_cc_raw  = str(payload.get('manualCc') or '')
+    manual_to_raw  = str(payload.get('manualTo')  or '')
+    manual_cc_raw  = str(payload.get('manualCc')  or '')
     manual_bcc_raw = str(payload.get('manualBcc') or '')
 
     if not isinstance(user_ids_raw, list):
@@ -168,11 +169,12 @@ def send_email_to_selected_users():
     if '\r' in subject or '\n' in subject:
         return jsonify({'error': 'subject must be a single line.'}), 400
 
-    manual_cc_valid, manual_cc_invalid   = _parse_manual_emails(manual_cc_raw)
+    manual_to_valid,  manual_to_invalid  = _parse_manual_emails(manual_to_raw)
+    manual_cc_valid,  manual_cc_invalid  = _parse_manual_emails(manual_cc_raw)
     manual_bcc_valid, manual_bcc_invalid = _parse_manual_emails(manual_bcc_raw)
-    invalid_manual = manual_cc_invalid + manual_bcc_invalid
+    invalid_manual = manual_to_invalid + manual_cc_invalid + manual_bcc_invalid
     if invalid_manual:
-        return jsonify({'error': f"Invalid email address(es) in CC/BCC: {', '.join(invalid_manual)}"}), 400
+        return jsonify({'error': f"Invalid email address(es) in To/CC/BCC: {', '.join(invalid_manual)}"}), 400
 
     unique_user_ids = []
     seen_ids = set()
@@ -185,7 +187,7 @@ def send_email_to_selected_users():
         seen_ids.add(cleaned)
         unique_user_ids.append(cleaned)
 
-    total_manual = len(manual_cc_valid) + len(manual_bcc_valid)
+    total_manual = len(manual_to_valid) + len(manual_cc_valid) + len(manual_bcc_valid)
     if not unique_user_ids and total_manual == 0:
         return jsonify({'error': 'No valid recipients provided.'}), 400
     if len(unique_user_ids) + total_manual > MAX_EMAIL_RECIPIENTS:
@@ -228,7 +230,7 @@ def send_email_to_selected_users():
                 'status': 'resolved',
             })
 
-        total_valid = len(user_emails) + len(manual_cc_valid) + len(manual_bcc_valid)
+        total_valid = len(user_emails) + len(manual_to_valid) + len(manual_cc_valid) + len(manual_bcc_valid)
         if total_valid == 0:
             summary = {
                 'requested': len(unique_user_ids),
@@ -250,7 +252,7 @@ def send_email_to_selected_users():
             try:
                 seen: set[str] = set()
                 deduped: list[str] = []
-                for addr in user_emails + manual_cc_valid + manual_bcc_valid:
+                for addr in user_emails + manual_to_valid + manual_cc_valid + manual_bcc_valid:
                     if addr not in seen:
                         seen.add(addr)
                         deduped.append(addr)
@@ -277,7 +279,7 @@ def send_email_to_selected_users():
                                 r.get('userId'), r.get('email'), err,
                             )
 
-                for addr in manual_cc_valid + manual_bcc_valid:
+                for addr in manual_to_valid + manual_cc_valid + manual_bcc_valid:
                     err = outcome_map.get(addr)
                     if err is None:
                         sent += 1
@@ -303,11 +305,11 @@ def send_email_to_selected_users():
 
         else:  # group
             if recipient_mode == 'to':
-                all_to, all_cc, all_bcc = user_emails, manual_cc_valid, manual_bcc_valid
+                all_to, all_cc, all_bcc = user_emails + manual_to_valid, manual_cc_valid, manual_bcc_valid
             elif recipient_mode == 'cc':
-                all_to, all_cc, all_bcc = [], user_emails + manual_cc_valid, manual_bcc_valid
+                all_to, all_cc, all_bcc = manual_to_valid, user_emails + manual_cc_valid, manual_bcc_valid
             else:  # bcc
-                all_to, all_cc, all_bcc = [], manual_cc_valid, user_emails + manual_bcc_valid
+                all_to, all_cc, all_bcc = manual_to_valid, manual_cc_valid, user_emails + manual_bcc_valid
 
             try:
                 send_html_email(

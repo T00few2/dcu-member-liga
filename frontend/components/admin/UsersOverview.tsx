@@ -115,8 +115,10 @@ export default function UsersOverview() {
     const [failedListOpen, setFailedListOpen] = useState(false);
     const [sendMode, setSendMode] = useState<'individual' | 'group'>('individual');
     const [recipientMode, setRecipientMode] = useState<'to' | 'cc' | 'bcc'>('bcc');
+    const [manualTo, setManualTo] = useState('');
     const [manualCc, setManualCc] = useState('');
     const [manualBcc, setManualBcc] = useState('');
+    const [toError, setToError] = useState<string | null>(null);
     const [ccError, setCcError] = useState<string | null>(null);
     const [bccError, setBccError] = useState<string | null>(null);
     const [recipientsOpen, setRecipientsOpen] = useState(false);
@@ -244,8 +246,10 @@ export default function UsersOverview() {
         setSendError(null);
         setEmailSubject('');
         setEmailMessage('');
+        setManualTo('');
         setManualCc('');
         setManualBcc('');
+        setToError(null);
         setCcError(null);
         setBccError(null);
         setRecipientsOpen(false);
@@ -256,9 +260,11 @@ export default function UsersOverview() {
         setSendError(null);
         setSendMode(selectedIds.size > 20 ? 'group' : 'individual');
         setRecipientMode('bcc');
+        setManualTo('');
         setManualCc('');
         setManualBcc('');
         setRecipientsOpen(false);
+        setToError(null);
         setCcError(null);
         setBccError(null);
     };
@@ -281,10 +287,13 @@ export default function UsersOverview() {
             return;
         }
 
+        const { invalid: toInvalid }  = parseManualEmails(manualTo);
         const { invalid: ccInvalid }  = parseManualEmails(manualCc);
         const { invalid: bccInvalid } = parseManualEmails(manualBcc);
         let hasFieldError = false;
-        if (ccInvalid.length > 0) { setCcError(`Invalid: ${ccInvalid.join(', ')}`); hasFieldError = true; }
+        if (toInvalid.length > 0)  { setToError(`Invalid: ${toInvalid.join(', ')}`);   hasFieldError = true; }
+        else setToError(null);
+        if (ccInvalid.length > 0)  { setCcError(`Invalid: ${ccInvalid.join(', ')}`);   hasFieldError = true; }
         else setCcError(null);
         if (bccInvalid.length > 0) { setBccError(`Invalid: ${bccInvalid.join(', ')}`); hasFieldError = true; }
         else setBccError(null);
@@ -306,6 +315,7 @@ export default function UsersOverview() {
                     message: emailMessage,
                     sendMode,
                     ...(sendMode === 'group' ? { recipientMode } : {}),
+                    manualTo: manualTo.trim(),
                     manualCc: manualCc.trim(),
                     manualBcc: manualBcc.trim(),
                 }),
@@ -593,7 +603,8 @@ export default function UsersOverview() {
                                         <span>
                                             {sendMode === 'individual' ? 'Individual' : `Group (${recipientMode.toUpperCase()})`}
                                             {' · '}{selectedCount} recipient(s)
-                                            {manualCc.trim() ? ` · +${parseManualEmails(manualCc).valid.length || '…'} CC` : ''}
+                                            {manualTo.trim()  ? ` · +${parseManualEmails(manualTo).valid.length  || '…'} To`  : ''}
+                                            {manualCc.trim()  ? ` · +${parseManualEmails(manualCc).valid.length  || '…'} CC`  : ''}
                                             {manualBcc.trim() ? ` · +${parseManualEmails(manualBcc).valid.length || '…'} BCC` : ''}
                                             {selectedWithoutEmail > 0 ? ` · ${selectedWithoutEmail} skipped` : ''}
                                         </span>
@@ -669,6 +680,22 @@ export default function UsersOverview() {
                                                     </div>
                                                 ))}
                                             </div>
+                                        </div>
+
+                                        {/* Manual To */}
+                                        <div className="space-y-1">
+                                            <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                                To <span className="normal-case font-normal">(optional, comma-separated)</span>
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={manualTo}
+                                                onChange={e => { setManualTo(e.target.value); setToError(null); }}
+                                                disabled={sendingEmail}
+                                                className="w-full border border-border rounded-md px-3 py-1.5 text-sm bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
+                                                placeholder="to@example.com, another@example.com"
+                                            />
+                                            {toError && <p className="text-xs text-red-600">{toError}</p>}
                                         </div>
 
                                         {/* Manual CC */}
