@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from models import RiderResult
@@ -191,6 +191,10 @@ class ZwiftFetcher:
         if not subgroup_start_time:
             return duration_ms
 
+        start_dt = subgroup_start_time
+        if start_dt.tzinfo is None:
+            start_dt = start_dt.replace(tzinfo=timezone.utc)
+
         end_date_raw = str(raw.get("endDate") or "").strip()
         if end_date_raw:
             try:
@@ -201,7 +205,9 @@ class ZwiftFetcher:
                 except ValueError:
                     end_dt = None
             if end_dt is not None:
-                elapsed = int((end_dt - subgroup_start_time).total_seconds() * 1000)
+                if end_dt.tzinfo is None:
+                    end_dt = end_dt.replace(tzinfo=timezone.utc)
+                elapsed = int((end_dt - start_dt).total_seconds() * 1000)
                 if elapsed > 0:
                     return elapsed
         return duration_ms
