@@ -254,7 +254,7 @@ export default function UsersOverview() {
     const openComposeModal = () => {
         setIsComposeOpen(true);
         setSendError(null);
-        setSendMode('individual');
+        setSendMode(selectedIds.size > 20 ? 'group' : 'individual');
         setRecipientMode('bcc');
         setManualCc('');
         setManualBcc('');
