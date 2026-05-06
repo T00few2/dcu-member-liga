@@ -102,7 +102,6 @@ export default function UsersOverview() {
     const [sendingEmail, setSendingEmail] = useState(false);
     const [sendError, setSendError] = useState<string | null>(null);
     const [lastSendSummary, setLastSendSummary] = useState<EmailSendSummary | null>(null);
-    const [recipientMode, setRecipientMode] = useState<'to' | 'cc' | 'bcc'>('bcc');
     const [manualCc, setManualCc] = useState('');
     const [manualBcc, setManualBcc] = useState('');
     const [ccError, setCcError] = useState<string | null>(null);
@@ -242,7 +241,6 @@ export default function UsersOverview() {
     const openComposeModal = () => {
         setIsComposeOpen(true);
         setSendError(null);
-        setRecipientMode(selectedIds.size === 1 ? 'to' : 'bcc');
         setManualCc('');
         setManualBcc('');
         setRecipientsOpen(false);
@@ -291,7 +289,6 @@ export default function UsersOverview() {
                     userIds: Array.from(selectedIds),
                     subject,
                     message: emailMessage,
-                    recipientMode,
                     manualCc: manualCc.trim(),
                     manualBcc: manualBcc.trim(),
                 }),
@@ -388,8 +385,10 @@ export default function UsersOverview() {
             {lastSendSummary && (
                 <div className="rounded-lg border border-border bg-card px-4 py-3 text-sm">
                     Last send: {lastSendSummary.requested} user(s) requested, {lastSendSummary.skipped} skipped,{' '}
-                    {lastSendSummary.sent === 1
-                        ? <span className="text-green-600 font-medium">email sent successfully</span>
+                    {lastSendSummary.sent > 0 && lastSendSummary.failed === 0
+                        ? <span className="text-green-600 font-medium">sent to {lastSendSummary.sent} recipient(s)</span>
+                        : lastSendSummary.sent > 0
+                        ? <span className="text-amber-600 font-medium">sent to {lastSendSummary.sent}, {lastSendSummary.failed} failed</span>
                         : <span className="text-red-600 font-medium">send failed — check server logs</span>
                     }.
                 </div>
@@ -519,9 +518,9 @@ export default function UsersOverview() {
                                     <span>Recipients</span>
                                     <span className="flex items-center gap-2 text-muted-foreground font-normal">
                                         <span>
-                                            {recipientMode.toUpperCase()}: {selectedCount}
-                                            {manualCc.trim() ? ` · CC: ${parseManualEmails(manualCc).valid.length || '…'}` : ''}
-                                            {manualBcc.trim() ? ` · BCC+: ${parseManualEmails(manualBcc).valid.length || '…'}` : ''}
+                                            {selectedCount} recipient(s)
+                                            {manualCc.trim() ? ` · +${parseManualEmails(manualCc).valid.length || '…'} extra` : ''}
+                                            {manualBcc.trim() ? ` · +${parseManualEmails(manualBcc).valid.length || '…'} extra` : ''}
                                             {selectedWithoutEmail > 0 ? ` · ${selectedWithoutEmail} skipped` : ''}
                                         </span>
                                         <span className="text-xs">{recipientsOpen ? '▲' : '▼'}</span>
@@ -530,36 +529,10 @@ export default function UsersOverview() {
 
                                 {recipientsOpen && (
                                     <div className="border-t border-border space-y-3 p-3">
-                                        {/* Mode selector */}
-                                        <div className="space-y-1.5">
-                                            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Send selected as</p>
-                                            <div className="flex items-center gap-4">
-                                                {(['to', 'cc', 'bcc'] as const).map(mode => (
-                                                    <label key={mode} className="flex items-center gap-1.5 text-sm cursor-pointer select-none">
-                                                        <input
-                                                            type="radio"
-                                                            name="recipientMode"
-                                                            value={mode}
-                                                            checked={recipientMode === mode}
-                                                            onChange={() => setRecipientMode(mode)}
-                                                            disabled={sendingEmail}
-                                                            className="accent-primary"
-                                                        />
-                                                        {mode.toUpperCase()}
-                                                    </label>
-                                                ))}
-                                            </div>
-                                            {(recipientMode === 'to' || recipientMode === 'cc') && selectedCount > 1 && (
-                                                <p className="text-xs text-amber-600">
-                                                    All {selectedCount} recipients will see each other&apos;s addresses. Consider BCC for bulk sends.
-                                                </p>
-                                            )}
-                                        </div>
-
                                         {/* Recipients list */}
                                         <div className="rounded-md border border-border bg-muted/30">
                                             <div className="px-3 py-1.5 border-b border-border text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                                                {recipientMode.toUpperCase()} ({selectedCount})
+                                                Recipients ({selectedCount})
                                             </div>
                                             <div className="max-h-36 overflow-y-auto">
                                                 {selectedRowsSorted.map(row => (
