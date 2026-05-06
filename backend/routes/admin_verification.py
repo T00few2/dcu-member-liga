@@ -1386,6 +1386,24 @@ def batch_verify_dual_recording(race_id):
                                     activity_id = d.get('activityId')
 
                 if not activity_id:
+                    missing_payload: dict = {
+                        'zwiftId': zwift_id,
+                        'raceId': race_id,
+                        'status': 'missing_activity',
+                        'verifiedAt': datetime.now(timezone.utc).isoformat(),
+                        'failingMetrics': [],
+                        'comparison': {
+                            'cpDiff': [],
+                            'avgPower': {},
+                        },
+                    }
+                    (
+                        db.collection('races')
+                        .document(race_id)
+                        .collection('dr_verifications')
+                        .document(zwift_id)
+                        .set(missing_payload)
+                    )
                     summary.append({'zwiftId': zwift_id, 'status': 'missing_activity'})
                     continue
 

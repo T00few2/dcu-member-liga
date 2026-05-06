@@ -327,7 +327,8 @@ function CategoryResultsTable({
                         <th className="px-4 py-2">Rider</th>
                         <th className="px-4 py-2 text-right">Time</th>
                         <th className="px-4 py-2 text-right">Pts</th>
-                        <th className="px-4 py-2 text-center w-20">Flags</th>
+                        <th className="px-4 py-2 text-center w-16">Flags</th>
+                        <th className="px-4 py-2 text-center w-14" title="Dual Recording">DR</th>
                         <th className="px-4 py-2 text-center w-12" title="Disqualify (0 pts)">DQ</th>
                         <th className="px-4 py-2 text-center w-12" title="Declassify (Last place pts)">DC</th>
                         <th className="px-4 py-2 text-center w-12" title="Exclude from results">EX</th>
@@ -387,15 +388,17 @@ function CategoryResultsTable({
                                     )}
                                 </td>
                                 <td className="px-4 py-2 text-center">
-                                    <div className="flex items-center justify-center gap-1">
-                                        {isFlagged && <span className="text-xl" title="Flagged">🚩</span>}
-                                        {drVerifications.has(rider.zwiftId) && (
-                                            <DualRecordingStatusBadge
-                                                verification={drVerifications.get(rider.zwiftId)}
-                                                onClick={() => onOpenDR(rider.name, drVerifications.get(rider.zwiftId)!)}
-                                            />
-                                        )}
-                                    </div>
+                                    {isFlagged ? <span className="text-xl" title="Flagged">🚩</span> : <span className="text-muted-foreground">-</span>}
+                                </td>
+                                <td className="px-4 py-2 text-center">
+                                    {drVerifications.has(rider.zwiftId) ? (
+                                        <DualRecordingStatusBadge
+                                            verification={drVerifications.get(rider.zwiftId)}
+                                            onClick={() => onOpenDR(rider.name, drVerifications.get(rider.zwiftId)!)}
+                                        />
+                                    ) : (
+                                        <span className="text-muted-foreground">-</span>
+                                    )}
                                 </td>
                                 <td className="px-4 py-2 text-center">
                                     <input 

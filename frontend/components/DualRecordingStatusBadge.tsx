@@ -28,6 +28,14 @@ export default function DualRecordingStatusBadge({ verification, onClick }: Prop
         icon = '?';
         colorClass = 'bg-yellow-100 text-yellow-700 border-yellow-300 hover:bg-yellow-200';
         title = 'Dual recording: Afventer Strava-data';
+    } else if (status === 'missing_activity') {
+        icon = '!';
+        colorClass = 'bg-amber-100 text-amber-700 border-amber-300 hover:bg-amber-200';
+        title = 'Dual recording: Mangler Zwift-aktivitet';
+    } else if (status === 'error') {
+        icon = '!';
+        colorClass = 'bg-slate-200 text-slate-700 border-slate-400 hover:bg-slate-300';
+        title = 'Dual recording: Verifikation fejlede';
     } else {
         icon = '–';
         colorClass = 'bg-slate-100 text-slate-500 border-slate-300 hover:bg-slate-200';
