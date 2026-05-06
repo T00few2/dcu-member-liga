@@ -248,8 +248,15 @@ def send_email_to_selected_users():
 
         if send_mode == 'individual':
             try:
+                seen: set[str] = set()
+                deduped: list[str] = []
+                for addr in user_emails + manual_cc_valid + manual_bcc_valid:
+                    if addr not in seen:
+                        seen.add(addr)
+                        deduped.append(addr)
+
                 outcomes = send_html_emails_individually(
-                    addresses=user_emails + manual_cc_valid + manual_bcc_valid,
+                    addresses=deduped,
                     subject=subject,
                     html_body=message,
                 )
