@@ -430,6 +430,12 @@ class ResultsProcessor:
                     subgroup_id=subgroup_id,
                     registered_riders=registered_riders,
                 )
+                logger.info(
+                    "    Segment fetch subgroup=%s requested_ids=%s returned_segments=%s",
+                    subgroup_id,
+                    len(unique_segment_ids),
+                    len(segment_efforts),
+                )
 
             if grouped_mode:
                 for seg_id, efforts in segment_efforts.items():

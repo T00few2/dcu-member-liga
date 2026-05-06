@@ -123,6 +123,19 @@ class TestGetSprints:
         # No per-category sprint → falls back to group-level sprint
         assert CategoryConfigResolver.get_sprints(rd, 'Ruby') == [SPRINT_GROUP]
 
+    def test_grouped_mode_empty_per_category_sprints_inherit_group(self):
+        rd = race_data_grouped_mode(
+            sprints=[SPRINT_GLOBAL],
+            groups=[{
+                'id': 'g1', 'name': 'High end', 'eventId': '1',
+                'sprints': [SPRINT_GROUP],
+                'categories': [
+                    {'category': 'Diamond', 'sprints': []},
+                ],
+            }],
+        )
+        assert CategoryConfigResolver.get_sprints(rd, 'Diamond') == [SPRINT_GROUP]
+
     def test_grouped_mode_falls_back_to_race_when_group_has_no_sprints(self):
         rd = race_data_grouped_mode(
             sprints=[SPRINT_GLOBAL],

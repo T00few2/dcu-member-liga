@@ -52,6 +52,10 @@ class CategoryConfigResolver:
                             if group_val is not None:
                                 merged[key] = group_val
                         for key, val in cat_cfg.items():
+                            # Empty per-category sprint lists mean "inherit group
+                            # defaults" rather than "disable sprints".
+                            if key == 'sprints' and isinstance(val, list) and len(val) == 0:
+                                continue
                             if val is not None:
                                 merged[key] = val
                         return merged

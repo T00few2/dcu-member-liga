@@ -133,6 +133,14 @@ class RaceScorer:
         for s in sprints_config:
             sprints_by_segment_id[s['id']].append(s)
 
+        def _count_value(value: Any) -> int | None:
+            try:
+                if value is None:
+                    return None
+                return int(value)
+            except (TypeError, ValueError):
+                return None
+
         for seg_id_raw, raw_results in segment_efforts_map.items():
             seg_id_str = str(seg_id_raw)
             seg_id_int = int(seg_id_str) if seg_id_str.isdigit() else None
@@ -165,7 +173,14 @@ class RaceScorer:
                     count = i + 1 # 1-based lap count
 
                     # Find matching sprint config for this count
-                    matching_sprint = next((s for s in sprints_for_seg if s['count'] == count), None)
+                    matching_sprint = next(
+                        (
+                            s
+                            for s in sprints_for_seg
+                            if _count_value(s.get('count')) == count
+                        ),
+                        None,
+                    )
                     if matching_sprint:
                         sprint_key = matching_sprint.get('key') or f"{matching_sprint['id']}_{matching_sprint['count']}"
 
