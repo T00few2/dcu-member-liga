@@ -272,12 +272,23 @@ def send_email_to_selected_users():
                             r['status'] = 'failed'
                             r['reason'] = err
                             failed += 1
+                            logger.warning(
+                                'Individual send failed: userId=%s email=%s reason=%s',
+                                r.get('userId'), r.get('email'), err,
+                            )
 
                 for addr in manual_cc_valid + manual_bcc_valid:
-                    if outcome_map.get(addr) is None:
+                    err = outcome_map.get(addr)
+                    if err is None:
                         sent += 1
                     else:
                         failed += 1
+                        logger.warning('Individual send failed: email=%s reason=%s', addr, err)
+
+                logger.info(
+                    'Individual email send complete: sent=%d failed=%d subject=%r',
+                    sent, failed, subject,
+                )
 
             except EmailConfigError as exc:
                 logger.error('Email config error: %s', exc)
