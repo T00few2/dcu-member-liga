@@ -437,6 +437,11 @@ class ResultsProcessor:
                     len(unique_segment_ids),
                     len(segment_efforts),
                 )
+                finishers = self._append_segment_starter_dnfs(
+                    finishers=finishers,
+                    segment_efforts=segment_efforts,
+                    registered_riders=registered_riders,
+                )
 
             if grouped_mode:
                 for seg_id, efforts in segment_efforts.items():
@@ -569,3 +574,54 @@ class ResultsProcessor:
             if current_time > existing_time:
                 by_id[zid] = rider
         return list(by_id.values())
+
+    def _append_segment_starter_dnfs(
+        self,
+        finishers: list[dict[str, Any]],
+        segment_efforts: dict[str | int, Any],
+        registered_riders: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """
+        Ensure riders who started (have segment efforts) but never crossed finish
+        still appear in results as DNF.
+        """
+        if not segment_efforts:
+            return finishers
+
+        out = list(finishers)
+        existing_ids = {str(r.get('zwiftId') or '').strip() for r in out if str(r.get('zwiftId') or '').strip()}
+
+        for efforts in segment_efforts.values():
+            rows = efforts.get('results', []) if isinstance(efforts, dict) else efforts
+            if not isinstance(rows, list):
+                continue
+            for entry in rows:
+                if not isinstance(entry, dict):
+                    continue
+                raw_id = str(
+                    entry.get('athleteId')
+                    or entry.get('userId')
+                    or entry.get('profileId')
+                    or ''
+                ).strip()
+                if not raw_id:
+                    continue
+
+                profile = registered_riders.get(raw_id)
+                if not profile:
+                    continue
+                canonical_id = str(profile.get('zwiftId') or raw_id).strip()
+                if not canonical_id or canonical_id in existing_ids:
+                    continue
+
+                out.append({
+                    'zwiftId': canonical_id,
+                    'name': profile.get('name') or canonical_id,
+                    'finishTime': 0,
+                    'flaggedCheating': False,
+                    'flaggedSandbagging': False,
+                    'criticalP': {},
+                })
+                existing_ids.add(canonical_id)
+
+        return out

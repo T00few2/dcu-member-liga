@@ -1,5 +1,5 @@
 export function formatTime(ms: number): string {
-    if (!ms) return '-';
+    if (!ms || ms <= 0) return 'DNF';
     const roundedMs = Math.round(ms / 10) * 10;
     const totalSeconds = Math.floor(roundedMs / 1000);
     const hours = Math.floor(totalSeconds / 3600);

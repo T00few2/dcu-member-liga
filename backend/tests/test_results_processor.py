@@ -146,6 +146,47 @@ class TestGroupedCategoryResolution:
         assert resolved == 'A'
 
 
+class TestDnfFromSegmentStarters:
+
+    def test_adds_registered_starter_without_finish_as_dnf(self):
+        from services.results_processor import ResultsProcessor
+        rp = ResultsProcessor(MagicMock(), MagicMock(), MagicMock())
+
+        finishers = [{
+            'zwiftId': '1',
+            'name': 'Finisher',
+            'finishTime': 1000,
+        }]
+        segment_efforts = {
+            'seg1': [
+                {'athleteId': '1', 'elapsed': 1000, 'worldTime': 10},
+                {'athleteId': '2', 'elapsed': 1200, 'worldTime': 12},
+            ]
+        }
+        registered = {
+            '1': {'zwiftId': '1', 'name': 'Finisher'},
+            '2': {'zwiftId': '2', 'name': 'Starter DNF'},
+        }
+
+        out = rp._append_segment_starter_dnfs(finishers, segment_efforts, registered)
+        by_id = {str(r['zwiftId']): r for r in out}
+
+        assert set(by_id.keys()) == {'1', '2'}
+        assert by_id['2']['finishTime'] == 0
+        assert by_id['2']['name'] == 'Starter DNF'
+
+    def test_ignores_unregistered_starters(self):
+        from services.results_processor import ResultsProcessor
+        rp = ResultsProcessor(MagicMock(), MagicMock(), MagicMock())
+
+        finishers = []
+        segment_efforts = {'seg1': [{'athleteId': '999'}]}
+        registered = {}
+
+        out = rp._append_segment_starter_dnfs(finishers, segment_efforts, registered)
+        assert out == []
+
+
 # ---------------------------------------------------------------------------
 # calculate_league_standings (pure aggregation, no Firestore writes)
 # ---------------------------------------------------------------------------

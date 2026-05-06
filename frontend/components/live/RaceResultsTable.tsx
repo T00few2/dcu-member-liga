@@ -138,7 +138,7 @@ export function RaceResultsTable({ race, results, category, config, overlay, sta
         : 0;
 
     const formatFinishTimeOrDelta = (finishTime: number, isWinner: boolean) => {
-        if (!finishTime || finishTime <= 0) return '-';
+        if (!finishTime || finishTime <= 0) return 'DNF';
         if (isWinner || finishTime === winnerFinishTime) {
             return formatTimeValue(finishTime);
         }
