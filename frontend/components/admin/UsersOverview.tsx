@@ -45,6 +45,14 @@ interface EmailSendSummary {
     sendMode?: 'individual' | 'group';
 }
 
+interface SendResult {
+    userId?: string;
+    name?: string;
+    email?: string;
+    status: string;
+    reason?: string;
+}
+
 const CATEGORY_STYLES: Record<string, string> = {
     Diamond:  'bg-cyan-100 text-cyan-800',
     Ruby:     'bg-red-100 text-red-800',
@@ -103,6 +111,8 @@ export default function UsersOverview() {
     const [sendingEmail, setSendingEmail] = useState(false);
     const [sendError, setSendError] = useState<string | null>(null);
     const [lastSendSummary, setLastSendSummary] = useState<EmailSendSummary | null>(null);
+    const [lastSendResults, setLastSendResults] = useState<SendResult[]>([]);
+    const [failedListOpen, setFailedListOpen] = useState(false);
     const [sendMode, setSendMode] = useState<'individual' | 'group'>('individual');
     const [recipientMode, setRecipientMode] = useState<'to' | 'cc' | 'bcc'>('bcc');
     const [manualCc, setManualCc] = useState('');
@@ -312,7 +322,10 @@ export default function UsersOverview() {
                 failed: 0,
                 skipped: 0,
             };
+            const results: SendResult[] = data.results ?? [];
             setLastSendSummary(summary);
+            setLastSendResults(results);
+            setFailedListOpen(false);
             setSelectedIds(new Set());
             closeComposeModal();
         } catch (e: unknown) {
@@ -389,23 +402,70 @@ export default function UsersOverview() {
                 </div>
             </div>
 
-            {lastSendSummary && (
-                <div className="rounded-lg border border-border bg-card px-4 py-3 text-sm flex items-center gap-2 flex-wrap">
-                    <span className="text-muted-foreground">Last send:</span>
-                    {lastSendSummary.sendMode && (
-                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${lastSendSummary.sendMode === 'individual' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
-                            {lastSendSummary.sendMode === 'individual' ? 'Individual' : 'Group'}
-                        </span>
-                    )}
-                    <span>{lastSendSummary.requested} requested, {lastSendSummary.skipped} skipped —{' '}
-                    {lastSendSummary.sent > 0 && lastSendSummary.failed === 0
-                        ? <span className="text-green-600 font-medium">sent to {lastSendSummary.sent} recipient(s)</span>
-                        : lastSendSummary.sent > 0
-                        ? <span className="text-amber-600 font-medium">sent to {lastSendSummary.sent}, {lastSendSummary.failed} failed</span>
-                        : <span className="text-red-600 font-medium">send failed — check server logs</span>
-                    }</span>
-                </div>
-            )}
+            {lastSendSummary && (() => {
+                const failedResults = lastSendResults.filter(r => r.status === 'failed' && r.userId);
+                const retryIds = failedResults.map(r => r.userId as string);
+                return (
+                    <div className="rounded-lg border border-border bg-card text-sm overflow-hidden">
+                        <div className="px-4 py-3 flex items-center gap-2 flex-wrap">
+                            <span className="text-muted-foreground">Last send:</span>
+                            {lastSendSummary.sendMode && (
+                                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${lastSendSummary.sendMode === 'individual' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                                    {lastSendSummary.sendMode === 'individual' ? 'Individual' : 'Group'}
+                                </span>
+                            )}
+                            <span className="flex-1">
+                                {lastSendSummary.requested} requested, {lastSendSummary.skipped} skipped —{' '}
+                                {lastSendSummary.sent > 0 && lastSendSummary.failed === 0
+                                    ? <span className="text-green-600 font-medium">sent to {lastSendSummary.sent} recipient(s)</span>
+                                    : lastSendSummary.sent > 0
+                                    ? <span className="text-amber-600 font-medium">sent to {lastSendSummary.sent}, {lastSendSummary.failed} failed</span>
+                                    : <span className="text-red-600 font-medium">send failed — check server logs</span>
+                                }
+                            </span>
+                            {retryIds.length > 0 && (
+                                <div className="flex items-center gap-2 ml-auto shrink-0">
+                                    <button
+                                        onClick={() => setFailedListOpen(o => !o)}
+                                        className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+                                    >
+                                        {failedListOpen ? 'Hide' : 'Show'} {retryIds.length} failed
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setSelectedIds(new Set(retryIds));
+                                            setFailedListOpen(false);
+                                        }}
+                                        className="text-xs bg-amber-500 text-white rounded px-2 py-1 hover:bg-amber-600 transition font-medium"
+                                    >
+                                        Retry {retryIds.length} failed
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                        {failedListOpen && failedResults.length > 0 && (
+                            <div className="border-t border-border">
+                                <div className="px-4 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide bg-muted/30">
+                                    Failed recipients
+                                </div>
+                                <div className="max-h-48 overflow-y-auto divide-y divide-border">
+                                    {failedResults.map(r => (
+                                        <div key={r.userId} className="px-4 py-2 flex items-center gap-3">
+                                            <span className="font-medium text-foreground">{r.name || r.userId}</span>
+                                            <span className="text-muted-foreground text-xs">{r.email}</span>
+                                            {r.reason && (
+                                                <span className="ml-auto text-xs text-red-500 truncate max-w-48" title={r.reason}>
+                                                    {r.reason}
+                                                </span>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            })()}
 
             {/* Table */}
             <div className="rounded-xl border border-border overflow-x-auto shadow-sm">
