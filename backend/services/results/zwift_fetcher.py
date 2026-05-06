@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from collections import Counter, defaultdict
 from typing import Any
 
 from models import RiderResult
@@ -150,6 +151,9 @@ class ZwiftFetcher:
                 "segment-results: all entries are sprint segments; cannot identify finish. "
                 "Using latest segment crossing per rider."
             )
+            inferred_finish = self._infer_finish_entries_from_all_sprints(segmented)
+            if inferred_finish:
+                return inferred_finish
             non_sprint = dict(segmented)
 
         # Select finish result per rider by latest segment crossing among candidate segments.
@@ -178,6 +182,47 @@ class ZwiftFetcher:
                 if seg_id in non_sprint:
                     return non_sprint[seg_id]
         return next(iter(non_sprint.values()))
+
+    def _infer_finish_entries_from_all_sprints(
+        self,
+        segmented: dict[str, list[dict[str, Any]]],
+    ) -> list[dict[str, Any]]:
+        """
+        Fallback for routes where all observed segments are configured as sprints.
+        Infer a finish segment by latest subgroup crossing and require riders to have
+        the modal pass-count on that segment to be considered finishers.
+        """
+        if not segmented:
+            return []
+
+        def _max_end_world(entries: list[dict[str, Any]]) -> int:
+            return max((int((e.get("_officialSegmentResult") or {}).get("endWorldTime", 0) or 0) for e in entries), default=0)
+
+        finish_seg_id = max(segmented.keys(), key=lambda sid: _max_end_world(segmented[sid]))
+        finish_entries = segmented.get(finish_seg_id, [])
+        if not finish_entries:
+            return []
+
+        by_rider: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for e in finish_entries:
+            profile = e.get('profileData', {}) if isinstance(e, dict) else {}
+            rider_id = str(profile.get('id') or e.get('profileId') or "")
+            if rider_id:
+                by_rider[rider_id].append(e)
+
+        if not by_rider:
+            return []
+
+        counts = Counter(len(v) for v in by_rider.values())
+        expected_pass_count = counts.most_common(1)[0][0] if counts else 1
+
+        selected: list[dict[str, Any]] = []
+        for rider_entries in by_rider.values():
+            rider_entries.sort(key=self._entry_sort_key)
+            if len(rider_entries) >= expected_pass_count:
+                selected.append(rider_entries[-1])
+
+        return selected
 
     def _entry_sort_key(self, entry: dict[str, Any]) -> tuple[int, int]:
         raw = entry.get("_officialSegmentResult") or {}
