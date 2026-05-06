@@ -296,8 +296,9 @@ class ZwiftService:
         """
         url = f"{self.api_base_url}/api/public/events/{event_id}"
         try:
-            response = requests.get(
-                url,
+            response = requests.request(
+                method="GET",
+                url=url,
                 headers={"Accept": "application/json"},
                 timeout=20,
             )
