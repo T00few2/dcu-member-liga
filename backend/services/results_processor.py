@@ -416,6 +416,7 @@ class ResultsProcessor:
                 registered_riders,
                 sprint_segment_ids=sprint_ids_set,
                 route_segment_ids_ordered=route_segment_ids_ordered,
+                subgroup_start_time=start_time,
             )
 
             # Fetch Segment Efforts using ZwiftFetcher

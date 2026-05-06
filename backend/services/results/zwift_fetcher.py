@@ -39,6 +39,7 @@ class ZwiftFetcher:
         registered_riders: dict[str, Any],
         sprint_segment_ids: set[str | int] | None = None,
         route_segment_ids_ordered: list[str | int] | None = None,
+        subgroup_start_time: datetime | None = None,
     ) -> list[RiderResult]:
         """
         Fetches participants/finishers for a subgroup and maps them to registered riders.
@@ -64,9 +65,10 @@ class ZwiftFetcher:
                 canonical_zwift_id = str(registered_profile.get('zwiftId')) if registered_profile and registered_profile.get('zwiftId') else zid
 
                 # Helper to build finisher object
+                finish_time_ms = self._resolve_finish_time_ms(entry, subgroup_start_time)
                 finisher: RiderResult = {
                     'zwiftId': canonical_zwift_id,
-                    'finishTime': entry.get('activityData', {}).get('durationInMilliseconds', 0),
+                    'finishTime': finish_time_ms,
                     'flaggedCheating': entry.get('flaggedCheating', False),
                     'flaggedSandbagging': entry.get('flaggedSandbagging', False),
                     'criticalP': entry.get('criticalP', {})
@@ -150,28 +152,59 @@ class ZwiftFetcher:
             )
             return entries
 
+        # Select finish result per rider by latest segment crossing among non-sprint segments.
+        # This is robust for grouped/event routes where finish may not map to a single
+        # stable segmentId across all riders.
+        latest_by_rider: dict[str, dict[str, Any]] = {}
+        for seg_entries in non_sprint.values():
+            for e in seg_entries:
+                profile = e.get('profileData', {}) if isinstance(e, dict) else {}
+                rider_id = str(profile.get('id') or e.get('profileId') or "")
+                if not rider_id:
+                    continue
+                existing = latest_by_rider.get(rider_id)
+                if existing is None:
+                    latest_by_rider[rider_id] = e
+                    continue
+                if self._entry_sort_key(e) > self._entry_sort_key(existing):
+                    latest_by_rider[rider_id] = e
+        if latest_by_rider:
+            return list(latest_by_rider.values())
+
         if len(non_sprint) == 1:
             return next(iter(non_sprint.values()))
-
-        # Multiple non-sprint segments: try route order (last segment = finish arch).
         if route_segment_ids_ordered:
             for seg_id in reversed([str(s) for s in route_segment_ids_ordered]):
                 if seg_id in non_sprint:
                     return non_sprint[seg_id]
+        return next(iter(non_sprint.values()))
 
-        # Final fallback: segment with the highest maximum duration per rider.
-        logger.warning(
-            "segment-results: multiple non-sprint segments and no route order available. "
-            "Using max-duration heuristic to select finish segment."
-        )
-        finish_seg = max(
-            non_sprint,
-            key=lambda sid: max(
-                (e.get("activityData", {}).get("durationInMilliseconds", 0) for e in non_sprint[sid]),
-                default=0,
-            ),
-        )
-        return non_sprint[finish_seg]
+    def _entry_sort_key(self, entry: dict[str, Any]) -> tuple[int, int]:
+        raw = entry.get("_officialSegmentResult") or {}
+        end_world_time = int(raw.get("endWorldTime", 0) or 0)
+        duration_ms = int(entry.get("activityData", {}).get("durationInMilliseconds", 0) or 0)
+        return (end_world_time, duration_ms)
+
+    def _resolve_finish_time_ms(self, entry: dict[str, Any], subgroup_start_time: datetime | None) -> int:
+        raw = entry.get("_officialSegmentResult") or {}
+        duration_ms = int(entry.get("activityData", {}).get("durationInMilliseconds", 0) or 0)
+        if not subgroup_start_time:
+            return duration_ms
+
+        end_date_raw = str(raw.get("endDate") or "").strip()
+        if end_date_raw:
+            try:
+                end_dt = datetime.fromisoformat(end_date_raw.replace("Z", "+00:00"))
+            except ValueError:
+                try:
+                    end_dt = datetime.strptime(end_date_raw, "%Y-%m-%dT%H:%M:%S.%f%z")
+                except ValueError:
+                    end_dt = None
+            if end_dt is not None:
+                elapsed = int((end_dt - subgroup_start_time).total_seconds() * 1000)
+                if elapsed > 0:
+                    return elapsed
+        return duration_ms
 
     def fetch_segment_efforts(
         self,

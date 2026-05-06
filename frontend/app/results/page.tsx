@@ -11,6 +11,18 @@ import RaceResultsTable from './_components/RaceResultsTable';
 
 type ProcessedRider = StandingEntry & { calculatedTotal: number; countingRaceIds: Set<string> };
 
+const DEFAULT_CATEGORY_RANK = [
+    'Diamond', 'Ruby', 'Emerald', 'Sapphire', 'Amethyst', 'Platinum', 'Gold', 'Silver', 'Bronze', 'Copper',
+    'A', 'B', 'C', 'D', 'E',
+];
+
+const pickFirstNonEmpty = (...lists: (Sprint[] | undefined)[]): Sprint[] => {
+    for (const list of lists) {
+        if (Array.isArray(list) && list.length > 0) return list;
+    }
+    return [];
+};
+
 export default function ResultsPage() {
     const { user, loading: authLoading, isRegistered } = useAuth();
 
@@ -116,7 +128,6 @@ export default function ResultsPage() {
 
     // Available race categories
     let availableRaceCategories: string[] = [];
-    const raceOrderReference = [...races].reverse().find(r => r.eventMode === 'multi' && r.eventConfiguration?.length);
     if (selectedRace?.results && Object.keys(selectedRace.results).length > 0) {
         availableRaceCategories = Object.keys(selectedRace.results);
     } else if (selectedRace?.eventMode === 'multi' && selectedRace.eventConfiguration) {
@@ -127,22 +138,10 @@ export default function ResultsPage() {
         availableRaceCategories = configuredCategoryNames.length > 0 ? configuredCategoryNames : ['A', 'B', 'C', 'D', 'E'];
     }
 
-    // Sort race categories by configured order
-    if (selectedRace?.eventMode === 'multi' && selectedRace.eventConfiguration) {
-        const orderMap = new Map(selectedRace.eventConfiguration.map((cfg, idx) => [cfg.customCategory, idx]));
-        availableRaceCategories.sort((a, b) => (orderMap.get(a) ?? 999) - (orderMap.get(b) ?? 999));
-    } else if (selectedRace?.singleModeCategories?.length) {
-        const orderMap = new Map(selectedRace.singleModeCategories.map((cfg, idx) => [cfg.category, idx]));
-        availableRaceCategories.sort((a, b) => (orderMap.get(a) ?? 999) - (orderMap.get(b) ?? 999));
-    } else if (raceOrderReference?.eventConfiguration) {
-        const orderMap = new Map(raceOrderReference.eventConfiguration.map((cfg, idx) => [cfg.customCategory, idx]));
-        availableRaceCategories.sort((a, b) => {
-            const diff = (orderMap.get(a) ?? 999) - (orderMap.get(b) ?? 999);
-            return diff !== 0 ? diff : a.localeCompare(b);
-        });
-    } else {
-        availableRaceCategories.sort();
-    }
+    const raceRankOrder = configuredCategoryNames.length > 0
+        ? [...configuredCategoryNames, ...DEFAULT_CATEGORY_RANK]
+        : DEFAULT_CATEGORY_RANK;
+    availableRaceCategories = sortCategoriesByRank(availableRaceCategories, raceRankOrder);
 
     const displayRaceCategory = (selectedRace?.results && !availableRaceCategories.includes(selectedCategory) && availableRaceCategories.length > 0)
         ? availableRaceCategories[0]
@@ -176,26 +175,10 @@ export default function ResultsPage() {
         availableStandingsCategories = [...availableRaceCategories];
     }
 
-    const standingsOrderReference =
-        selectedRace?.eventMode === 'multi' && selectedRace.eventConfiguration?.length
-            ? selectedRace
-            : [...races].reverse().find(r => r.eventMode === 'multi' && r.eventConfiguration?.length);
-
-    if (standingsOrderReference?.eventConfiguration) {
-        const orderMap = new Map(standingsOrderReference.eventConfiguration.map((cfg, idx) => [cfg.customCategory, idx]));
-        availableStandingsCategories.sort((a, b) => {
-            const diff = (orderMap.get(a) ?? 999) - (orderMap.get(b) ?? 999);
-            return diff !== 0 ? diff : a.localeCompare(b);
-        });
-    } else if (selectedRace?.singleModeCategories?.length) {
-        const orderMap = new Map(selectedRace.singleModeCategories.map((cfg, idx) => [cfg.category, idx]));
-        availableStandingsCategories.sort((a, b) => {
-            const diff = (orderMap.get(a) ?? 999) - (orderMap.get(b) ?? 999);
-            return diff !== 0 ? diff : a.localeCompare(b);
-        });
-    } else {
-        availableStandingsCategories.sort();
-    }
+    const standingsRankOrder = configuredCategoryNames.length > 0
+        ? [...configuredCategoryNames, ...DEFAULT_CATEGORY_RANK]
+        : DEFAULT_CATEGORY_RANK;
+    availableStandingsCategories = sortCategoriesByRank(availableStandingsCategories, standingsRankOrder);
 
     const displayStandingsCategory = (Object.keys(standings).length > 0 && !availableStandingsCategories.includes(standingsCategory))
         ? availableStandingsCategories[0]
@@ -234,16 +217,7 @@ export default function ResultsPage() {
             if (r.sprintDetails) Object.keys(r.sprintDetails).forEach(k => allSprintKeys.add(k));
         });
 
-        let orderedSprints: Sprint[] = [];
-        if (selectedRace) {
-            if (selectedRace.eventMode === 'multi' && selectedRace.eventConfiguration) {
-                const catConfig = selectedRace.eventConfiguration.find(c => c.customCategory === displayRaceCategory);
-                orderedSprints = catConfig?.sprints ?? selectedRace.sprints ?? [];
-            } else {
-                const catConfig = selectedRace.singleModeCategories?.find(c => c.category === displayRaceCategory);
-                orderedSprints = catConfig?.sprints ?? selectedRace.sprintData ?? selectedRace.sprints ?? [];
-            }
-        }
+        const orderedSprints = getConfiguredSprintsForCategory(selectedRace, displayRaceCategory);
 
         const columns: string[] = [];
         orderedSprints.forEach(s => {
@@ -269,16 +243,7 @@ export default function ResultsPage() {
     }
 
     const getSprintHeader = (key: string): string => {
-        let sourceSprints: Sprint[] = [];
-        if (selectedRace?.eventMode === 'multi' && selectedRace.eventConfiguration) {
-            const catConfig = selectedRace.eventConfiguration.find(c => c.customCategory === displayRaceCategory);
-            sourceSprints = catConfig?.sprints ?? selectedRace.sprints ?? [];
-        } else if (selectedRace?.singleModeCategories?.length) {
-            const catConfig = selectedRace.singleModeCategories.find(c => c.category === displayRaceCategory);
-            sourceSprints = catConfig?.sprints ?? selectedRace?.sprints ?? [];
-        } else {
-            sourceSprints = selectedRace?.sprints ?? [];
-        }
+        const sourceSprints = getConfiguredSprintsForCategory(selectedRace, displayRaceCategory);
 
         if (sourceSprints.length === 0) return key.replace(/_/g, ' ');
         const sprint = sourceSprints.find(s => s.key === key || `${s.id}_${s.count}` === key || s.id === key);
@@ -343,4 +308,49 @@ export default function ResultsPage() {
             )}
         </div>
     );
+}
+
+function getConfiguredSprintsForCategory(race: Race | undefined, category: string): Sprint[] {
+    if (!race) return [];
+
+    if (race.eventMode === 'grouped' && race.raceGroups?.length) {
+        const group = race.raceGroups.find(g => (g.categories || []).some(c => c.category === category));
+        const catCfg = group?.categories?.find(c => c.category === category);
+        return pickFirstNonEmpty(
+            catCfg?.sprints,
+            group?.sprints,
+            race.sprints,
+            race.sprintData,
+        );
+    }
+
+    if (race.eventMode === 'multi' && race.eventConfiguration) {
+        const catConfig = race.eventConfiguration.find(c => c.customCategory === category);
+        return pickFirstNonEmpty(catConfig?.sprints, race.sprints, race.sprintData);
+    }
+
+    if (race.singleModeCategories?.length) {
+        const catConfig = race.singleModeCategories.find(c => c.category === category);
+        return pickFirstNonEmpty(catConfig?.sprints, race.sprints, race.sprintData);
+    }
+
+    return pickFirstNonEmpty(race.sprints, race.sprintData);
+}
+
+function sortCategoriesByRank(categories: string[], rankOrder: string[]): string[] {
+    const orderMap = new Map<string, number>();
+    rankOrder.forEach((name, idx) => {
+        const key = String(name || '').trim().toLowerCase();
+        if (key && !orderMap.has(key)) orderMap.set(key, idx);
+    });
+    return [...categories].sort((a, b) => {
+        const aKey = String(a || '').trim().toLowerCase();
+        const bKey = String(b || '').trim().toLowerCase();
+        const aRank = orderMap.get(aKey);
+        const bRank = orderMap.get(bKey);
+        if (aRank !== undefined && bRank !== undefined) return aRank - bRank;
+        if (aRank !== undefined) return -1;
+        if (bRank !== undefined) return 1;
+        return a.localeCompare(b);
+    });
 }
