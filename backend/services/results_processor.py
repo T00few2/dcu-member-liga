@@ -564,6 +564,8 @@ class ResultsProcessor:
                 continue
             current_time = int(rider.get('finishTime') or 0)
             existing_time = int(existing.get('finishTime') or 0)
-            if existing_time == 0 or (current_time > 0 and current_time < existing_time):
+            # Keep the latest elapsed race time when duplicate entries exist
+            # (e.g. multiple segment crossings for the same rider).
+            if current_time > existing_time:
                 by_id[zid] = rider
         return list(by_id.values())

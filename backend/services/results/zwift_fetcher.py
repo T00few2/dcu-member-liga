@@ -148,11 +148,11 @@ class ZwiftFetcher:
         if not non_sprint:
             logger.warning(
                 "segment-results: all entries are sprint segments; cannot identify finish. "
-                "Returning all entries."
+                "Using latest segment crossing per rider."
             )
-            return entries
+            non_sprint = dict(segmented)
 
-        # Select finish result per rider by latest segment crossing among non-sprint segments.
+        # Select finish result per rider by latest segment crossing among candidate segments.
         # This is robust for grouped/event routes where finish may not map to a single
         # stable segmentId across all riders.
         latest_by_rider: dict[str, dict[str, Any]] = {}
