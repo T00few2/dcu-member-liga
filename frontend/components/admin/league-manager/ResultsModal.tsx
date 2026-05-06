@@ -37,7 +37,7 @@ export default function ResultsModal({
             const map = new Map<string, DualRecordingVerification>();
             snap.forEach(d => {
                 const data = d.data() as DualRecordingVerification;
-                map.set(d.id, data);
+                map.set(String(d.id), data);
             });
             setDrVerifications(map);
         }).catch(() => {});
@@ -61,7 +61,7 @@ export default function ResultsModal({
                     const colRef = collection(db, 'races', race.id, 'dr_verifications');
                     getDocs(colRef).then(snap => {
                         const map = new Map<string, DualRecordingVerification>();
-                        snap.forEach(d => map.set(d.id, d.data() as DualRecordingVerification));
+                        snap.forEach(d => map.set(String(d.id), d.data() as DualRecordingVerification));
                         setDrVerifications(map);
                     }).catch(() => {});
                 }, 5000);
@@ -336,10 +336,11 @@ function CategoryResultsTable({
                 </thead>
                 <tbody className="divide-y divide-border">
                     {results.map((rider, idx) => {
+                        const riderZwiftId = String(rider.zwiftId);
                         const isFlagged = rider.flaggedCheating || rider.flaggedSandbagging;
-                        const isManualDQ = manualDQs.includes(rider.zwiftId);
-                        const isManualDeclass = manualDeclassifications.includes(rider.zwiftId);
-                        const isManualExcluded = manualExclusions.includes(rider.zwiftId);
+                        const isManualDQ = manualDQs.includes(riderZwiftId);
+                        const isManualDeclass = manualDeclassifications.includes(riderZwiftId);
+                        const isManualExcluded = manualExclusions.includes(riderZwiftId);
                         
                         let rowClass = 'hover:bg-muted/10';
                         if (isManualExcluded) {
@@ -351,7 +352,7 @@ function CategoryResultsTable({
                         }
 
                         return (
-                            <tr key={rider.zwiftId} className={rowClass}>
+                    <tr key={riderZwiftId} className={rowClass}>
                                 <td className="px-4 py-2 text-muted-foreground">
                                     {isManualExcluded ? '×' : isManualDQ ? '-' : isManualDeclass ? '*' : idx + 1}
                                 </td>
@@ -391,10 +392,10 @@ function CategoryResultsTable({
                                     {isFlagged ? <span className="text-xl" title="Flagged">🚩</span> : <span className="text-muted-foreground">-</span>}
                                 </td>
                                 <td className="px-4 py-2 text-center">
-                                    {drVerifications.has(rider.zwiftId) ? (
+                                    {drVerifications.has(riderZwiftId) ? (
                                         <DualRecordingStatusBadge
-                                            verification={drVerifications.get(rider.zwiftId)}
-                                            onClick={() => onOpenDR(rider.name, drVerifications.get(rider.zwiftId)!)}
+                                            verification={drVerifications.get(riderZwiftId)}
+                                            onClick={() => onOpenDR(rider.name, drVerifications.get(riderZwiftId)!)}
                                         />
                                     ) : (
                                         <span className="text-muted-foreground">-</span>
@@ -404,7 +405,7 @@ function CategoryResultsTable({
                                     <input 
                                         type="checkbox"
                                         checked={isManualDQ}
-                                        onChange={() => onToggleDQ(rider.zwiftId, isManualDQ)}
+                                        onChange={() => onToggleDQ(riderZwiftId, isManualDQ)}
                                         disabled={isManualDeclass || isManualExcluded}
                                         title={isManualExcluded ? "Excluded from results" : isManualDeclass ? "Uncheck Declassify first" : "Disqualify"}
                                         className="w-4 h-4 rounded border-input text-primary focus:ring-primary cursor-pointer disabled:opacity-30"
@@ -414,7 +415,7 @@ function CategoryResultsTable({
                                     <input 
                                         type="checkbox"
                                         checked={isManualDeclass}
-                                        onChange={() => onToggleDeclass(rider.zwiftId, isManualDeclass)}
+                                        onChange={() => onToggleDeclass(riderZwiftId, isManualDeclass)}
                                         disabled={isManualDQ || isManualExcluded}
                                         title={isManualExcluded ? "Excluded from results" : isManualDQ ? "Uncheck DQ first" : "Declassify"}
                                         className="w-4 h-4 rounded border-input text-yellow-500 focus:ring-yellow-500 cursor-pointer disabled:opacity-30"
@@ -424,7 +425,7 @@ function CategoryResultsTable({
                                     <input 
                                         type="checkbox"
                                         checked={isManualExcluded}
-                                        onChange={() => onToggleExclude(rider.zwiftId, isManualExcluded)}
+                                        onChange={() => onToggleExclude(riderZwiftId, isManualExcluded)}
                                         title={isManualExcluded ? "Include in results" : "Exclude from results"}
                                         className="w-4 h-4 rounded border-input text-slate-600 focus:ring-slate-500 cursor-pointer"
                                     />
