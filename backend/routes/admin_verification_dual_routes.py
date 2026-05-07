@@ -223,7 +223,7 @@ def dual_recording(rider_id):
     event_start_iso = request.args.get("eventStartIso")
     race_id = request.args.get("raceId")
 
-    if not zwift_activity_id:
+    if not zwift_activity_id and not race_id:
         return jsonify({"message": "zwiftActivityId is required"}), 400
 
     try:
@@ -244,19 +244,16 @@ def dual_recording(rider_id):
                 )
                 if vdoc.exists:
                     verification = vdoc.to_dict() or {}
-                    cached_activity_id = str(
-                        verification.get("activityId")
-                        or verification.get("zwiftActivityId")
-                        or ""
-                    ).strip()
-                    if not cached_activity_id or cached_activity_id == str(zwift_activity_id).strip():
-                        stream_blob_path = str(verification.get("streamBlobPath") or "").strip()
-                        if stream_blob_path:
-                            cached_result = _load_dr_stream_blob_result(stream_blob_path)
-                            if cached_result:
-                                return jsonify(cached_result), 200
+                    stream_blob_path = str(verification.get("streamBlobPath") or "").strip()
+                    if stream_blob_path:
+                        cached_result = _load_dr_stream_blob_result(stream_blob_path)
+                        if cached_result:
+                            return jsonify(cached_result), 200
             except Exception as exc:
                 logger.warning("dual_recording cache lookup failed: %s", exc)
+
+        if not zwift_activity_id:
+            return jsonify({"message": "No cached DR stream found for rider/race"}), 404
 
         result = _compute_dual_recording_for_rider(
             db, str(user.id), zwift_activity_id, event_start_iso, strava_activity_id
