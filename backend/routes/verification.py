@@ -531,10 +531,12 @@ def get_active_requests():
         active = []
         for user in users:
             current = user.current_verification_request
+            user_dict = user.to_dict() if hasattr(user, "to_dict") else {}
             
             active.append({
                 'id': user.id,
                 'name': user.name,
+                'email': str((user_dict or {}).get('email') or ''),
                 'club': user.club,
                 'deadline': current.get('deadline')
             })

@@ -22,6 +22,7 @@ interface PendingVerification {
 interface ActiveRequest {
     id: string;
     name: string;
+    email?: string;
     club: string;
     deadline: string | any;
 }
@@ -260,12 +261,23 @@ export default function WeightVerificationManager() {
         }
     };
 
-    const openComposeModal = (target: Pick<PendingVerification, 'id' | 'name' | 'email'>) => {
+    const openComposeModal = (
+        target: Pick<PendingVerification, 'id' | 'name' | 'email'>,
+        template: 'default' | 'awaitingSubmission' = 'default'
+    ) => {
         const firstName = getFirstName(target.name);
         const greeting = firstName ? `<p>Hej ${firstName}</p><p><br></p>` : '<p>Hej</p><p><br></p>';
+        const awaitingSalutation = firstName ? `Hej ${firstName}` : 'Hej';
+        const awaitingSubmissionBody = [
+            `<p>${awaitingSalutation}<br><br>`,
+            'Du er blevet tilfældigt udvalgt til vægtverifikation.<br><br>',
+            'Du kan se instruktioner og indsende din verifikation her: https://www.dansk-ecykling.dk/register?tab=verification<br></p>',
+            defaultDcuSignatureHtml(),
+        ].join('');
+        const body = template === 'awaitingSubmission' ? awaitingSubmissionBody : '';
         setComposeTarget(target);
         setEmailSubject('Opfølgning på vægtverifikation');
-        setEmailMessage(`${greeting}${defaultDcuSignatureHtml()}`);
+        setEmailMessage(template === 'awaitingSubmission' ? body : `${greeting}${defaultDcuSignatureHtml()}`);
         setSendError(null);
         setIsComposeOpen(true);
     };
@@ -416,6 +428,12 @@ export default function WeightVerificationManager() {
                                                 Due: {new Date(req.deadline).toLocaleDateString()}
                                             </div>
                                         )}
+                                        <button
+                                            onClick={() => openComposeModal({ id: req.id, name: req.name, email: req.email }, 'awaitingSubmission')}
+                                            className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"
+                                        >
+                                            Email
+                                        </button>
                                         <button
                                             onClick={() => handleRevoke(req.id)}
                                             disabled={revokingId === req.id}
