@@ -90,7 +90,7 @@ def refresh_zr_stats():
         _ZR_BATCH_LIMIT = 1000
         zr_by_id: dict[str, Any] = {}
         for chunk_start in range(0, len(zwift_ids), _ZR_BATCH_LIMIT):
-            chunk = zwift_ids[chunk_start : chunk_start + _ZR_BATCH_LIMIT]
+            chunk = zwift_ids[chunk_start: chunk_start + _ZR_BATCH_LIMIT]
             try:
                 batch_response = zr_service.get_riders_batch(chunk)
             except RateLimitError as exc:

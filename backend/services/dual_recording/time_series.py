@@ -64,8 +64,8 @@ def _mse_sync_offset(
         length = min(nz - z_start, ns - s_start)
         if length < 60:
             return None
-        zw = z_1hz[z_start : z_start + length]
-        sw = s_1hz[s_start : s_start + length]
+        zw = z_1hz[z_start: z_start + length]
+        sw = s_1hz[s_start: s_start + length]
         return sum((a - b) ** 2 for a, b in zip(zw, sw)) / length
 
     mse_zero = _mse(0)
