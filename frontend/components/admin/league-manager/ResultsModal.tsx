@@ -6,6 +6,7 @@ import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
 import type { Race, RaceResult, LoadingStatus, DualRecordingVerification } from '@/types/admin';
+import type { DualRecordingResult } from '@/hooks/useDualRecording';
 import DualRecordingStatusBadge from '@/components/DualRecordingStatusBadge';
 import DualRecordingResultModal from '@/components/DualRecordingResultModal';
 
@@ -43,6 +44,9 @@ export default function ResultsModal({
     const [recalcRunning, setRecalcRunning] = useState(false);
     const [singleDrRunning, setSingleDrRunning] = useState(false);
     const [singleDrStatus, setSingleDrStatus] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
+    const [drDetailLoading, setDrDetailLoading] = useState(false);
+    const [drDetailError, setDrDetailError] = useState<string | null>(null);
+    const [drDetailResult, setDrDetailResult] = useState<DualRecordingResult | null>(null);
     const [actionStatus, setActionStatus] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
 
     const Spinner = () => (
@@ -85,6 +89,56 @@ export default function ResultsModal({
         if (!race || !user) return;
         void loadDrVerifications(race.id);
     }, [race?.id, user]);
+
+    const loadDualRecordingDetail = async (
+        riderZwiftId: string,
+        activityId?: string,
+        stravaActivityId?: number | null,
+    ): Promise<void> => {
+        if (!user) return;
+        if (!activityId) {
+            setDrDetailResult(null);
+            setDrDetailError('No Zwift activityId on rider row - cannot load stream graph.');
+            return;
+        }
+
+        setDrDetailLoading(true);
+        setDrDetailError(null);
+        try {
+            const token = await user.getIdToken();
+            const params = new URLSearchParams({ zwiftActivityId: String(activityId) });
+            if (stravaActivityId != null) {
+                params.set('stravaActivityId', String(stravaActivityId));
+            }
+            const res = await fetch(
+                `${API_URL}/admin/verification/dual-recording/${riderZwiftId}?${params.toString()}`,
+                { headers: { Authorization: `Bearer ${token}` } },
+            );
+            const data = await res.json();
+            if (!res.ok) {
+                setDrDetailResult(null);
+                setDrDetailError(data?.message || 'Failed to load DR stream graph');
+                return;
+            }
+            setDrDetailResult(data as DualRecordingResult);
+        } catch {
+            setDrDetailResult(null);
+            setDrDetailError('Network error while loading DR stream graph');
+        } finally {
+            setDrDetailLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (!drModal) {
+            setDrDetailResult(null);
+            setDrDetailError(null);
+            setDrDetailLoading(false);
+            return;
+        }
+        const stravaId = drModal.verification.stravaActivityId ?? null;
+        void loadDualRecordingDetail(drModal.zwiftId, drModal.activityId, stravaId);
+    }, [drModal?.zwiftId, drModal?.activityId, drModal?.verification?.stravaActivityId, user]);
 
     const handleVerifyDR = async () => {
         if (!race || !user) return;
@@ -174,6 +228,8 @@ export default function ResultsModal({
             if (updated) {
                 setDrModal(prev => prev ? { ...prev, verification: updated } : prev);
             }
+            const nextStravaId = updated?.stravaActivityId ?? drModal.verification.stravaActivityId ?? null;
+            await loadDualRecordingDetail(drModal.zwiftId, drModal.activityId, nextStravaId);
             setSingleDrStatus({
                 type: 'success',
                 text: body.message || 'DR verification completed for rider.',
@@ -431,9 +487,12 @@ export default function ResultsModal({
                     onClose={() => setDrModal(null)}
                     riderName={drModal.name}
                     verification={drModal.verification}
-                onRunForRider={handleRunSingleDR}
-                runForRiderBusy={singleDrRunning}
-                runForRiderStatus={singleDrStatus}
+                    onRunForRider={handleRunSingleDR}
+                    runForRiderBusy={singleDrRunning}
+                    runForRiderStatus={singleDrStatus}
+                    streamResult={drDetailResult}
+                    streamLoading={drDetailLoading}
+                    streamError={drDetailError}
                 />
             )}
         </>

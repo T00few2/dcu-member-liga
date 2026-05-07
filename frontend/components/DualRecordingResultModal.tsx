@@ -1,7 +1,12 @@
 'use client';
 
 import type React from 'react';
+import { useMemo, useState } from 'react';
+import {
+    ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Brush,
+} from 'recharts';
 import type { DualRecordingVerification, CpDiffRow } from '@/types/admin';
+import type { DualRecordingResult } from '@/hooks/useDualRecording';
 
 interface Props {
     open: boolean;
@@ -11,6 +16,9 @@ interface Props {
     onRunForRider?: () => Promise<void>;
     runForRiderBusy?: boolean;
     runForRiderStatus?: { type: 'info' | 'success' | 'error'; text: string } | null;
+    streamResult?: DualRecordingResult | null;
+    streamLoading?: boolean;
+    streamError?: string | null;
 }
 
 const THRESHOLD_LABELS: Record<string, string> = {
@@ -81,6 +89,9 @@ export default function DualRecordingResultModal({
     onRunForRider,
     runForRiderBusy = false,
     runForRiderStatus = null,
+    streamResult = null,
+    streamLoading = false,
+    streamError = null,
 }: Props) {
     if (!open) return null;
 
@@ -240,7 +251,140 @@ export default function DualRecordingResultModal({
                         <p className="font-semibold mb-1">Grænseværdier (Zwift vs Strava):</p>
                         <p>20 min: max 5% · 5 min: max 5,5% · 1 min: max 6% · 15 sek: max 6,5%</p>
                     </div>
+
+                    {/* Streams graph */}
+                    <div className="border-t border-border pt-3">
+                        <h3 className="text-sm font-semibold text-foreground mb-2">Recording Streams</h3>
+                        {streamLoading ? (
+                            <div className="text-xs text-muted-foreground inline-flex items-center gap-2">
+                                <span className="inline-block w-3 h-3 border-2 border-current border-r-transparent rounded-full animate-spin" />
+                                Loading stream comparison...
+                            </div>
+                        ) : streamError ? (
+                            <div className="text-xs text-red-600">{streamError}</div>
+                        ) : streamResult ? (
+                            <RecordingStreamsChart result={streamResult} />
+                        ) : (
+                            <div className="text-xs text-muted-foreground">No stream data available.</div>
+                        )}
+                    </div>
                 </div>
+            </div>
+        </div>
+    );
+}
+
+const CHART_STEP = 5;
+
+function fmtRaceTime(sec: number) {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function RecordingStreamsChart({ result }: { result: DualRecordingResult }) {
+    const { zwift, strava } = result;
+    const [hidden, setHidden] = useState<Set<string>>(
+        () => new Set(['zwiftHR', 'stravaHR', 'zwiftCad', 'stravaCad', 'zwiftAlt', 'stravaAlt'])
+    );
+
+    const hasZwift = (zwift.streams?.time?.length ?? 0) > 0;
+    const hasStrava = (strava?.streams?.time?.length ?? 0) > 0;
+    if (!hasZwift && !hasStrava) return <div className="text-xs text-muted-foreground">No stream samples.</div>;
+
+    type StreamPoint = { w: number | null; hr: number | null; cad: number | null; alt: number | null };
+    type ChartRow = {
+        t: number;
+        zwiftW: number | null; stravaW: number | null;
+        zwiftHR: number | null; stravaHR: number | null;
+        zwiftCad: number | null; stravaCad: number | null;
+        zwiftAlt: number | null; stravaAlt: number | null;
+    };
+
+    const chartData = useMemo<ChartRow[]>(() => {
+        const zwiftByTime = new Map<number, StreamPoint>();
+        if (hasZwift && zwift.streams) {
+            const { time, watts, heartrate, cadence, altitude } = zwift.streams;
+            time.forEach((t, i) => zwiftByTime.set(t, {
+                w: watts[i] ?? null,
+                hr: heartrate[i] ?? null,
+                cad: cadence[i] ?? null,
+                alt: altitude[i] ?? null,
+            }));
+        }
+
+        const stravaByTime = new Map<number, StreamPoint>();
+        if (hasStrava && strava?.streams) {
+            const { time, watts, heartrate, cadence, altitude } = strava.streams;
+            time.forEach((t, i) => stravaByTime.set(t, {
+                w: watts[i] ?? null,
+                hr: heartrate[i] ?? null,
+                cad: cadence[i] ?? null,
+                alt: altitude[i] ?? null,
+            }));
+        }
+
+        const lookup = (m: Map<number, StreamPoint>, t: number) => m.get(t) ?? m.get(t - 1) ?? m.get(t + 1);
+        const allT = [...(zwift.streams?.time || []), ...(strava?.streams?.time || [])];
+        const minT = Math.floor(Math.min(...allT) / CHART_STEP) * CHART_STEP;
+        const maxT = Math.ceil(Math.max(...allT) / CHART_STEP) * CHART_STEP;
+
+        const rows: ChartRow[] = [];
+        for (let t = minT; t <= maxT; t += CHART_STEP) {
+            const zp = lookup(zwiftByTime, t);
+            const sp = lookup(stravaByTime, t);
+            rows.push({
+                t,
+                zwiftW: zp?.w ?? null,
+                stravaW: sp?.w ?? null,
+                zwiftHR: zp?.hr ?? null,
+                stravaHR: sp?.hr ?? null,
+                zwiftCad: zp?.cad ?? null,
+                stravaCad: sp?.cad ?? null,
+                zwiftAlt: zp?.alt ?? null,
+                stravaAlt: sp?.alt ?? null,
+            });
+        }
+        return rows;
+    }, [hasZwift, hasStrava, zwift.streams, strava?.streams]);
+
+    return (
+        <div className="w-full">
+            <div className="text-[11px] text-muted-foreground mb-2">
+                t=0 = Zwift recording start · Strava aligned by power MSE · click legend to toggle
+            </div>
+            <div className="h-[280px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={chartData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.25} />
+                        <XAxis dataKey="t" tickFormatter={fmtRaceTime} tick={{ fontSize: 10 }} />
+                        <YAxis yAxisId="w" tick={{ fontSize: 10 }} width={34} />
+                        <YAxis yAxisId="other" orientation="right" tick={{ fontSize: 10 }} width={30} />
+                        <Tooltip labelFormatter={(v) => fmtRaceTime(Number(v))} />
+                        <Legend
+                            wrapperStyle={{ fontSize: 11, cursor: 'pointer' }}
+                            onClick={(entry: any) => {
+                                const key = String(entry?.dataKey || '');
+                                if (!key) return;
+                                setHidden(prev => {
+                                    const next = new Set(prev);
+                                    if (next.has(key)) next.delete(key); else next.add(key);
+                                    return next;
+                                });
+                            }}
+                        />
+
+                        {!hidden.has('zwiftW') && <Line yAxisId="w" type="monotone" dataKey="zwiftW" stroke="#FC6719" dot={false} strokeWidth={1.8} name="Zwift Power" />}
+                        {!hidden.has('stravaW') && <Line yAxisId="w" type="monotone" dataKey="stravaW" stroke="#e05c00" dot={false} strokeWidth={1.6} name="Strava Power" />}
+                        {!hidden.has('zwiftHR') && <Line yAxisId="other" type="monotone" dataKey="zwiftHR" stroke="#a0a0a0" dot={false} strokeWidth={1} name="Zwift HR" />}
+                        {!hidden.has('stravaHR') && <Line yAxisId="other" type="monotone" dataKey="stravaHR" stroke="#8b8b8b" dot={false} strokeWidth={1} name="Strava HR" />}
+                        {!hidden.has('zwiftCad') && <Line yAxisId="other" type="monotone" dataKey="zwiftCad" stroke="#66b3a6" dot={false} strokeWidth={1} name="Zwift Cad" />}
+                        {!hidden.has('stravaCad') && <Line yAxisId="other" type="monotone" dataKey="stravaCad" stroke="#4fa18f" dot={false} strokeWidth={1} name="Strava Cad" />}
+                        {!hidden.has('zwiftAlt') && <Line yAxisId="other" type="monotone" dataKey="zwiftAlt" stroke="#c9c9c9" dot={false} strokeWidth={1} name="Zwift Elev" />}
+                        {!hidden.has('stravaAlt') && <Line yAxisId="other" type="monotone" dataKey="stravaAlt" stroke="#b5b5b5" dot={false} strokeWidth={1} name="Strava Elev" />}
+                        <Brush dataKey="t" tickFormatter={fmtRaceTime} height={20} />
+                    </LineChart>
+                </ResponsiveContainer>
             </div>
         </div>
     );
