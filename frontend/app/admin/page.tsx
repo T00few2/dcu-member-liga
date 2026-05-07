@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import LeagueManager, { type LeagueManagerTab } from '@/components/admin/LeagueManager';
@@ -26,7 +26,7 @@ function parseLeagueTab(value: string | null): LeagueManagerTab {
   return LEAGUE_TABS.includes(value as LeagueManagerTab) ? (value as LeagueManagerTab) : 'races';
 }
 
-export default function AdminPage() {
+function AdminPageContent() {
   const { user, loading: authLoading, isAdmin, refreshClaims } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
@@ -193,5 +193,13 @@ export default function AdminPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function AdminPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center">Loading...</div>}>
+      <AdminPageContent />
+    </Suspense>
   );
 }
