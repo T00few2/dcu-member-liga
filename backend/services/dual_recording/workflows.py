@@ -85,7 +85,7 @@ def _compute_dual_recording_for_rider(
         except Exception as exc:
             logger.warning("_compute_dual_recording_for_rider: cp curve: %s", exc)
 
-    matched_strava, resolved_strava_id = _match_strava_activity(
+    matched_strava, resolved_strava_id, matching_debug = _match_strava_activity(
         user_doc_id,
         strava_activity_id,
         zwift_started_at,
@@ -107,6 +107,7 @@ def _compute_dual_recording_for_rider(
             "strava": None,
             "sync": None,
             "comparison": None,
+            "matchingDebug": matching_debug,
             "warning": "No matching Strava activity found with meaningful overlap in the race window.",
         }
 
@@ -182,6 +183,7 @@ def _compute_dual_recording_for_rider(
             },
             "similarity": similarity_metrics,
         },
+        "matchingDebug": matching_debug,
     }
 
 

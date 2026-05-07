@@ -26,71 +26,224 @@ def _match_strava_activity(
     zwift_times: list | None,
     zwift_watts: list | None,
     event_start_iso: str | None,
-) -> tuple[dict | None, str | None]:
-    """Return (matched_strava_dict, resolved_strava_id)."""
+) -> tuple[dict | None, str | None, dict]:
+    """Return (matched_strava_dict, resolved_strava_id, matching_debug)."""
     activities = strava_service.get_activities_for_matching(user_id)
+    matching_debug: dict = {
+        "selectionReason": "none",
+        "anchorUsed": None,
+        "anchorFallbackUsed": False,
+        "minOverlapSec": None,
+        "chosenActivityId": None,
+        "meaningfulCandidateCount": 0,
+        "candidates": [],
+    }
 
     if strava_activity_id:
         match = next((a for a in activities if str(a["id"]) == str(strava_activity_id)), None)
-        return match, strava_activity_id if match else None
-
-    # Prefer event start as anchor when available; this avoids matching
-    # short pre-race rides that start close to a warmup-inclusive Zwift activity.
-    anchor_iso = event_start_iso or zwift_started_at
-    anchor_dt = _parse_iso_utc(anchor_iso) if anchor_iso else None
-    if not anchor_dt:
-        return None, None
+        matching_debug.update(
+            {
+                "selectionReason": "manual_strava_id" if match else "manual_strava_id_not_found",
+                "chosenActivityId": str(match.get("id")) if match else None,
+            }
+        )
+        return match, strava_activity_id if match else None, matching_debug
 
     zwift_window_sec = int(zwift_duration_sec or 0)
     if zwift_window_sec <= 0:
         # Strict mode: without a race duration we cannot compute meaningful overlap.
-        return None, None
-
-    zwift_start = anchor_dt
-    zwift_end = zwift_start.timestamp() + zwift_window_sec
-    min_overlap_sec = max(300, min(1200, int(zwift_window_sec * 0.35)))
-
-    best = None
-    best_overlap = -1.0
-    best_end_delta = float("inf")
-    best_start_delta = float("inf")
-    overlap_candidates: list[tuple[dict, float, float, float]] = []
-
-    for act in activities:
-        act_dt = _parse_iso_utc(act.get("startDate", ""))
-        if not act_dt:
-            continue
-
-        duration_sec = int(
-            act.get("durationSec")
-            or act.get("movingTimeSec")
-            or 0
+        matching_debug.update(
+            {
+                "selectionReason": "invalid_zwift_window",
+                "minOverlapSec": 0,
+            }
         )
-        if duration_sec <= 0:
-            continue
+        return None, None, matching_debug
 
-        act_start = act_dt.timestamp()
-        act_end = act_start + duration_sec
-        overlap_sec = max(0.0, min(zwift_end, act_end) - max(zwift_start.timestamp(), act_start))
+    min_overlap_sec = max(300, min(1200, int(zwift_window_sec * 0.35)))
+    matching_debug["minOverlapSec"] = min_overlap_sec
 
-        end_delta = abs(act_end - zwift_end)
-        start_delta = abs(act_start - zwift_start.timestamp())
+    def _find_for_anchor(
+        anchor_iso: str | None,
+    ) -> tuple[dict | None, str | None, list[tuple[dict, float, float, float]], float, str | None, list[dict]]:
+        anchor_dt = _parse_iso_utc(anchor_iso) if anchor_iso else None
+        if not anchor_dt:
+            return None, None, [], -1.0, None, []
 
-        overlap_candidates.append((act, overlap_sec, end_delta, start_delta))
+        zwift_start = anchor_dt.timestamp()
+        zwift_end = zwift_start + zwift_window_sec
 
-        if overlap_sec > best_overlap:
-            best = act
-            best_overlap = overlap_sec
-            best_end_delta = end_delta
-            best_start_delta = start_delta
-            continue
-        if overlap_sec == best_overlap:
-            if end_delta < best_end_delta or (end_delta == best_end_delta and start_delta < best_start_delta):
+        best = None
+        best_overlap = -1.0
+        best_end_delta = float("inf")
+        best_start_delta = float("inf")
+        overlap_candidates: list[tuple[dict, float, float, float]] = []
+
+        for act in activities:
+            act_dt = _parse_iso_utc(act.get("startDate", ""))
+            if not act_dt:
+                continue
+
+            duration_sec = int(
+                act.get("durationSec")
+                or act.get("movingTimeSec")
+                or 0
+            )
+            if duration_sec <= 0:
+                continue
+
+            act_start = act_dt.timestamp()
+            act_end = act_start + duration_sec
+            overlap_sec = max(0.0, min(zwift_end, act_end) - max(zwift_start, act_start))
+
+            end_delta = abs(act_end - zwift_end)
+            start_delta = abs(act_start - zwift_start)
+            overlap_candidates.append((act, overlap_sec, end_delta, start_delta))
+
+            if overlap_sec > best_overlap:
                 best = act
+                best_overlap = overlap_sec
                 best_end_delta = end_delta
                 best_start_delta = start_delta
+                continue
+            if overlap_sec == best_overlap:
+                if end_delta < best_end_delta or (
+                    end_delta == best_end_delta and start_delta < best_start_delta
+                ):
+                    best = act
+                    best_end_delta = end_delta
+                    best_start_delta = start_delta
 
-    meaningful = [c for c in overlap_candidates if c[1] >= min_overlap_sec]
+        overlap_candidates.sort(key=lambda row: (-row[1], row[2], row[3]))
+        candidate_rows: list[dict] = []
+        for act, overlap_sec, end_delta, start_delta in overlap_candidates[:12]:
+            candidate_rows.append(
+                {
+                    "activityId": str(act.get("id") or ""),
+                    "name": str(act.get("name") or ""),
+                    "startDate": act.get("startDate"),
+                    "durationSec": int(act.get("durationSec") or act.get("movingTimeSec") or 0),
+                    "overlapSec": int(round(overlap_sec)),
+                    "endDeltaSec": int(round(end_delta)),
+                    "startDeltaSec": int(round(start_delta)),
+                    "meaningful": overlap_sec >= min_overlap_sec,
+                    "similarityScore": None,
+                    "selected": False,
+                }
+            )
+
+        meaningful = [c for c in overlap_candidates if c[1] >= min_overlap_sec]
+        if not meaningful:
+            return None, None, [], best_overlap, "no_meaningful_overlap", candidate_rows
+
+        # If several candidates overlap sufficiently, choose the lowest similarity score
+        # (least similar power trace to Zwift) to avoid selecting exported Zwift uploads.
+        if (
+            len(meaningful) > 1
+            and zwift_times
+            and zwift_watts
+            and zwift_started_at
+            and zwift_window_sec > 0
+        ):
+            scored: list[tuple[float, dict, float, float, float]] = []
+            for act, overlap_sec, end_delta, start_delta in meaningful:
+                score = _compute_similarity_score_for_activity(
+                    user_id=user_id,
+                    activity=act,
+                    zwift_started_at=zwift_started_at,
+                    zwift_duration_sec=zwift_window_sec,
+                    zwift_times=zwift_times,
+                    zwift_watts=zwift_watts,
+                )
+                if score is None:
+                    continue
+                scored.append((score, act, overlap_sec, end_delta, start_delta))
+
+            if scored:
+                scored.sort(key=lambda x: (x[0], -x[2], x[3], x[4]))
+                chosen_score, chosen_act, chosen_overlap, _, _ = scored[0]
+                score_by_id = {str(act.get("id")): float(score) for score, act, _, _, _ in scored}
+                chosen_id = str(chosen_act.get("id"))
+                for row in candidate_rows:
+                    rid = row.get("activityId")
+                    if rid in score_by_id:
+                        row["similarityScore"] = round(score_by_id[rid], 6)
+                    if rid == chosen_id:
+                        row["selected"] = True
+                logger.info(
+                    "Strava overlap tie-break by similarity: rider=%s candidates=%s chosen=%s score=%.4f overlap=%.0fs",
+                    user_id,
+                    len(scored),
+                    chosen_act.get("id"),
+                    chosen_score,
+                    chosen_overlap,
+                )
+                return (
+                    chosen_act,
+                    str(chosen_act["id"]),
+                    meaningful,
+                    best_overlap,
+                    "lowest_similarity",
+                    candidate_rows,
+                )
+
+        if best and best_overlap >= min_overlap_sec:
+            chosen_id = str(best.get("id"))
+            for row in candidate_rows:
+                if row.get("activityId") == chosen_id:
+                    row["selected"] = True
+            return best, str(best["id"]), meaningful, best_overlap, "best_overlap", candidate_rows
+        return None, None, [], best_overlap, "no_meaningful_overlap", candidate_rows
+
+    # Prefer event start as anchor when available, but gracefully fall back to the
+    # activity start if event start is missing/invalid/too imprecise (e.g. "19:00").
+    initial_anchor = event_start_iso or zwift_started_at
+    matched, resolved, meaningful, best_overlap, selection_reason, candidate_rows = _find_for_anchor(initial_anchor)
+    matching_debug.update(
+        {
+            "anchorUsed": "event_start" if event_start_iso else "zwift_start",
+            "selectionReason": selection_reason or "none",
+            "chosenActivityId": str(resolved) if resolved else None,
+            "meaningfulCandidateCount": len(meaningful),
+            "candidates": candidate_rows,
+        }
+    )
+    if matched:
+        return matched, resolved, matching_debug
+    if event_start_iso and zwift_started_at and str(event_start_iso).strip() != str(zwift_started_at).strip():
+        matched_fallback, resolved_fallback, meaningful_fallback, best_overlap_fallback, selection_reason_fallback, candidate_rows_fallback = _find_for_anchor(
+            zwift_started_at
+        )
+        if matched_fallback:
+            logger.info(
+                "Strava match fallback used activity start anchor for rider=%s (event_start=%s)",
+                user_id,
+                event_start_iso,
+            )
+            matching_debug.update(
+                {
+                    "anchorUsed": "zwift_start",
+                    "anchorFallbackUsed": True,
+                    "selectionReason": selection_reason_fallback or "fallback_match",
+                    "chosenActivityId": str(resolved_fallback) if resolved_fallback else None,
+                    "meaningfulCandidateCount": len(meaningful_fallback),
+                    "candidates": candidate_rows_fallback,
+                }
+            )
+            return matched_fallback, resolved_fallback, matching_debug
+        meaningful = meaningful_fallback
+        best_overlap = best_overlap_fallback
+        matching_debug.update(
+            {
+                "anchorUsed": "zwift_start",
+                "anchorFallbackUsed": True,
+                "selectionReason": selection_reason_fallback or "no_meaningful_overlap",
+                "chosenActivityId": None,
+                "meaningfulCandidateCount": len(meaningful_fallback),
+                "candidates": candidate_rows_fallback,
+            }
+        )
+
     if not meaningful:
         logger.info(
             "No meaningful Strava overlap match for rider=%s (best_overlap=%.0fs, required=%ss)",
@@ -98,47 +251,7 @@ def _match_strava_activity(
             best_overlap if best_overlap >= 0 else 0,
             min_overlap_sec,
         )
-        return None, None
-
-    # If several candidates overlap sufficiently, choose the lowest similarity score
-    # (least similar power trace to Zwift) to avoid selecting exported Zwift uploads.
-    if (
-        len(meaningful) > 1
-        and zwift_times
-        and zwift_watts
-        and zwift_started_at
-        and zwift_window_sec > 0
-    ):
-        scored: list[tuple[float, dict, float, float, float]] = []
-        for act, overlap_sec, end_delta, start_delta in meaningful:
-            score = _compute_similarity_score_for_activity(
-                user_id=user_id,
-                activity=act,
-                zwift_started_at=zwift_started_at,
-                zwift_duration_sec=zwift_window_sec,
-                zwift_times=zwift_times,
-                zwift_watts=zwift_watts,
-            )
-            if score is None:
-                continue
-            scored.append((score, act, overlap_sec, end_delta, start_delta))
-
-        if scored:
-            scored.sort(key=lambda x: (x[0], -x[2], x[3], x[4]))
-            chosen_score, chosen_act, chosen_overlap, _, _ = scored[0]
-            logger.info(
-                "Strava overlap tie-break by similarity: rider=%s candidates=%s chosen=%s score=%.4f overlap=%.0fs",
-                user_id,
-                len(scored),
-                chosen_act.get("id"),
-                chosen_score,
-                chosen_overlap,
-            )
-            return chosen_act, str(chosen_act["id"])
-
-    if best and best_overlap >= min_overlap_sec:
-        return best, str(best["id"])
-    return None, None
+    return None, None, matching_debug
 
 
 def _compute_similarity_score_for_activity(

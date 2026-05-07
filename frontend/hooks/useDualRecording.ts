@@ -85,6 +85,26 @@ export interface DualRecordingResult {
             diffPct: number | null;
         };
     } | null;
+    matchingDebug?: {
+        selectionReason?: string;
+        anchorUsed?: string | null;
+        anchorFallbackUsed?: boolean;
+        minOverlapSec?: number | null;
+        chosenActivityId?: string | null;
+        meaningfulCandidateCount?: number;
+        candidates?: Array<{
+            activityId: string;
+            name?: string;
+            startDate?: string | null;
+            durationSec?: number;
+            overlapSec?: number;
+            endDeltaSec?: number;
+            startDeltaSec?: number;
+            meaningful?: boolean;
+            similarityScore?: number | null;
+            selected?: boolean;
+        }>;
+    };
     warning?: string;
 }
 
