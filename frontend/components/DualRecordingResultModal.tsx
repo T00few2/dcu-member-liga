@@ -170,7 +170,7 @@ export default function DualRecordingResultModal({
                         <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 text-sm text-slate-700">
                             {status === 'missing_activity'
                                 ? 'Ingen Zwift-aktivitet fundet for dette løb.'
-                                : 'Verifikation fejlede. Prøv igen via "Verificer DR"-knappen.'}
+                                : 'Verifikation fejlede. Prøv igen via "Verify Dual Recording"-knappen.'}
                         </div>
                     )}
 

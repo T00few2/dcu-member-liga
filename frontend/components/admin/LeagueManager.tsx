@@ -616,7 +616,7 @@ export default function LeagueManager({
                                     disabled={!viewingResultsId || drBatchRunning}
                                     className="w-full sm:w-auto text-sm bg-blue-600 text-white px-4 py-2 rounded hover:opacity-90 font-semibold disabled:opacity-50"
                                 >
-                                    {drBatchRunning ? 'Verificerer DR...' : 'Verificer DR'}
+                                    {drBatchRunning ? 'Verifying Dual Recording...' : 'Verify Dual Recording'}
                                 </button>
                                 {drBatchProgress && drBatchProgress.total > 0 && (
                                     <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
