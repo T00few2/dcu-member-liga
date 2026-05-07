@@ -26,7 +26,7 @@ interface Props {
     getSprintHeader: (key: string) => string;
     leaguePointsByZwiftId?: Map<string, number>;
     drVerifications?: Map<string, DualRecordingVerification>;
-    user: User | null;
+    user?: User | null;
 }
 
 export default function RaceResultsTable({
@@ -45,7 +45,7 @@ export default function RaceResultsTable({
     getSprintHeader,
     leaguePointsByZwiftId,
     drVerifications,
-    user,
+    user = null,
 }: Props) {
     const [drModal, setDrModal] = useState<{ name: string; verification: DualRecordingVerification; zwiftId: string } | null>(null);
     const [drDetailResult, setDrDetailResult] = useState<DualRecordingResult | null>(null);

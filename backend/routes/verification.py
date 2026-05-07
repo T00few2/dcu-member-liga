@@ -103,6 +103,83 @@ def _resolve_target_race(race_id: str | None) -> tuple[str | None, dict[str, Any
 
     return best_id, best_data, best_finishers
 
+
+def _extract_weight_kg_from_row(row: Any) -> float | None:
+    if not isinstance(row, dict):
+        return None
+    for key in ("weightKg", "weight", "profileWeight", "zwiftWeight"):
+        raw = row.get(key)
+        if raw is None:
+            continue
+        try:
+            val = float(raw)
+        except (TypeError, ValueError):
+            continue
+        # Heuristic: values above ~1000 are likely grams.
+        if val > 1000:
+            val = val / 1000.0
+        if val > 0:
+            return round(val, 1)
+    return None
+
+
+def _extract_weight_kg_from_user(user_dict: dict[str, Any]) -> float | None:
+    profile = user_dict.get("zwiftProfile") if isinstance(user_dict, dict) else {}
+    if not isinstance(profile, dict):
+        return None
+    raw = profile.get("weightInGrams")
+    if raw is None:
+        raw = profile.get("weight")
+    if raw is None:
+        return None
+    try:
+        val = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if val > 1000:
+        val = val / 1000.0
+    return round(val, 1) if val > 0 else None
+
+
+def _resolve_latest_race_weight_for_rider(zwift_id: str, user_dict: dict[str, Any]) -> tuple[float | None, str | None, str | None]:
+    if not db:
+        return _extract_weight_kg_from_user(user_dict), None, None
+
+    best_weight: float | None = None
+    best_name: str | None = None
+    best_date_raw: str | None = None
+    best_ts = float("-inf")
+    target_id = str(zwift_id or "").strip()
+    if not target_id:
+        return _extract_weight_kg_from_user(user_dict), None, None
+
+    for race_doc in db.collection("races").stream():
+        race = race_doc.to_dict() or {}
+        race_date_raw = str(race.get("date") or "")
+        race_dt = _parse_race_datetime(race.get("date")) or _parse_race_datetime(race.get("resultsUpdatedAt"))
+        race_ts = race_dt.timestamp() if race_dt else float("-inf")
+        results = race.get("results") or {}
+        if not isinstance(results, dict):
+            continue
+        for riders in results.values():
+            if not isinstance(riders, list):
+                continue
+            for row in riders:
+                if str((row or {}).get("zwiftId") or "").strip() != target_id:
+                    continue
+                weight = _extract_weight_kg_from_row(row)
+                # Keep latest race match; prefer rows that actually include a weight.
+                if (weight is not None and race_ts >= best_ts) or (best_weight is None and race_ts > best_ts):
+                    best_weight = weight
+                    best_name = str(race.get("name") or "")
+                    best_date_raw = race_date_raw or (race_dt.isoformat() if race_dt else None)
+                    best_ts = race_ts
+                break
+
+    if best_weight is None:
+        best_weight = _extract_weight_kg_from_user(user_dict)
+    return best_weight, best_name, best_date_raw
+
 @verification_bp.route('/admin/verification/trigger', methods=['POST'])
 def trigger_verification():
     """
@@ -405,6 +482,13 @@ def get_pending_verifications():
         
         pending = []
         for user in users:
+            user_dict = user.to_dict() if hasattr(user, "to_dict") else {}
+            rider_zwift_id = str((user_dict or {}).get("zwiftId") or user.id or "").strip()
+            last_weight_kg, last_race_name, last_race_date = _resolve_latest_race_weight_for_rider(
+                rider_zwift_id,
+                user_dict or {},
+            )
+
             # Find the submitted request details
             requests = user.verification_history
             current = user.current_verification_request
@@ -417,7 +501,10 @@ def get_pending_verifications():
                 'name': user.name,
                 'club': user.club,
                 'videoLink': active_req.get('videoLink'),
-                'submittedAt': active_req.get('submittedAt')
+                'submittedAt': active_req.get('submittedAt'),
+                'lastRaceWeightKg': last_weight_kg,
+                'lastRaceName': last_race_name,
+                'lastRaceDate': last_race_date,
             })
             
         return jsonify({'pending': pending}), 200

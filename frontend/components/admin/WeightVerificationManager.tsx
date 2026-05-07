@@ -11,6 +11,9 @@ interface PendingVerification {
     club: string;
     videoLink: string;
     submittedAt: string | any;
+    lastRaceWeightKg?: number | null;
+    lastRaceName?: string | null;
+    lastRaceDate?: string | null;
 }
 
 interface ActiveRequest {
@@ -375,6 +378,12 @@ export default function WeightVerificationManager() {
                                             <div className="text-xs text-muted-foreground mt-1">
                                                 Submitted: {new Date(req.submittedAt).toLocaleDateString()}
                                             </div>
+                                            {req.lastRaceWeightKg != null && (
+                                                <div className="text-xs text-muted-foreground mt-1">
+                                                    Last race weight: <span className="font-semibold text-foreground">{req.lastRaceWeightKg.toFixed(1)} kg</span>
+                                                    {req.lastRaceName ? ` (${req.lastRaceName})` : ''}
+                                                </div>
+                                            )}
                                         </div>
                                         <a
                                             href={req.videoLink}
