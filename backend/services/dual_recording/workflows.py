@@ -7,6 +7,7 @@ import json
 import logging
 import os
 
+import firebase_admin
 from firebase_admin import storage
 from extensions import get_zwift_service, strava_service
 from services.zwift_tokens import get_valid_access_token
@@ -190,7 +191,32 @@ def _resolve_storage_bucket():
     ).strip()
     if bucket_name:
         return storage.bucket(bucket_name)
-    return storage.bucket()
+
+    # Fallback: derive common Firebase bucket names from project id.
+    project_id = ""
+    try:
+        project_id = str(firebase_admin.get_app().project_id or "").strip()
+    except Exception:
+        project_id = ""
+
+    if project_id:
+        candidates = (
+            f"{project_id}.firebasestorage.app",
+            f"{project_id}.appspot.com",
+        )
+        for candidate in candidates:
+            try:
+                bucket = storage.bucket(candidate)
+                # Validate candidate once here; otherwise first upload fails later.
+                bucket.exists()
+                return bucket
+            except Exception:
+                continue
+
+    raise RuntimeError(
+        "Storage bucket name not configured. Set FIREBASE_STORAGE_BUCKET "
+        "(or NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET) in backend runtime."
+    )
 
 
 def _stream_blob_payload(
