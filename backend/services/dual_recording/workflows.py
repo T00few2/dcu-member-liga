@@ -295,7 +295,12 @@ def _load_dr_stream_blob_result(stream_blob_path: str) -> dict | None:
             return None
         raw = blob.download_as_bytes()
         if str(stream_blob_path).lower().endswith(".gz") or blob.content_encoding == "gzip":
-            raw = gzip.decompress(raw)
+            # Some storage client paths can already return decoded bytes for
+            # gzip-encoded objects; tolerate both encoded and decoded payloads.
+            try:
+                raw = gzip.decompress(raw)
+            except Exception:
+                pass
         payload = json.loads(raw.decode("utf-8"))
         if not isinstance(payload, dict):
             return None
