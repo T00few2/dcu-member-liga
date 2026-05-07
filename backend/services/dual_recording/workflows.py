@@ -107,7 +107,7 @@ def _compute_dual_recording_for_rider(
             "strava": None,
             "sync": None,
             "comparison": None,
-            "warning": "No matching Strava activity found within 4 hours of the Zwift activity.",
+            "warning": "No matching Strava activity found with meaningful overlap in the race window.",
         }
 
     raw_streams = strava_service.get_activity_streams(user_doc_id, resolved_strava_id)

@@ -34,7 +34,9 @@ def _match_strava_activity(
         match = next((a for a in activities if str(a["id"]) == str(strava_activity_id)), None)
         return match, strava_activity_id if match else None
 
-    anchor_iso = zwift_started_at or event_start_iso
+    # Prefer event start as anchor when available; this avoids matching
+    # short pre-race rides that start close to a warmup-inclusive Zwift activity.
+    anchor_iso = event_start_iso or zwift_started_at
     anchor_dt = _parse_iso_utc(anchor_iso) if anchor_iso else None
     if not anchor_dt:
         return None, None
