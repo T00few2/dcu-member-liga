@@ -286,6 +286,37 @@ def get_public_dr_verification_detail(race_id: str, rider_id: str):
         logger.error(f"Public DR detail error race={race_id} rider={rider_id}: {e}")
         return jsonify({'message': str(e)}), 500
 
+
+@races_bp.route('/races/<race_id>/dr-verifications', methods=['GET'])
+def get_public_race_dr_verifications(race_id: str):
+    """
+    Return DR verification summary docs for public race results.
+    Requires any valid signed-in user.
+    """
+    try:
+        verify_user_token(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    try:
+        race_doc = db.collection('races').document(str(race_id)).get()
+        if not race_doc.exists:
+            return jsonify({'message': 'Race not found'}), 404
+
+        out: list[dict[str, Any]] = []
+        docs = db.collection('races').document(str(race_id)).collection('dr_verifications').stream()
+        for d in docs:
+            payload = d.to_dict() or {}
+            payload['zwiftId'] = str(payload.get('zwiftId') or d.id)
+            out.append(payload)
+        return jsonify({'verifications': out}), 200
+    except Exception as e:
+        logger.error(f"Public DR list error race={race_id}: {e}")
+        return jsonify({'message': str(e)}), 500
+
 @races_bp.route('/races', methods=['POST'])
 def create_race():
     try:
