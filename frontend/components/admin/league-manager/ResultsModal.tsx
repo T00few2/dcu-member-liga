@@ -96,17 +96,45 @@ export default function ResultsModal({
         stravaActivityId?: number | null,
     ): Promise<void> => {
         if (!user) return;
-        if (!activityId) {
-            setDrDetailResult(null);
-            setDrDetailError('No Zwift activityId on rider row - cannot load stream graph.');
-            return;
-        }
 
         setDrDetailLoading(true);
         setDrDetailError(null);
         try {
             const token = await user.getIdToken();
-            const params = new URLSearchParams({ zwiftActivityId: String(activityId) });
+            let resolvedActivityId = activityId;
+            if (!resolvedActivityId && race) {
+                const resolveRes = await fetch(
+                    `${API_URL}/admin/races/${race.id}/verify-dual-recording/${riderZwiftId}`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ activityId: null }),
+                    },
+                );
+                const resolveBody = await resolveRes.json();
+                if (!resolveRes.ok) {
+                    setDrDetailResult(null);
+                    setDrDetailError(resolveBody?.message || 'Failed to resolve Zwift activity for stream graph');
+                    return;
+                }
+                resolvedActivityId =
+                    String(
+                        resolveBody?.verification?.activityId
+                        || resolveBody?.verification?.zwiftActivityId
+                        || '',
+                    ).trim() || undefined;
+            }
+
+            if (!resolvedActivityId) {
+                setDrDetailResult(null);
+                setDrDetailError('Could not resolve a Zwift activityId for this rider.');
+                return;
+            }
+
+            const params = new URLSearchParams({ zwiftActivityId: String(resolvedActivityId) });
             if (stravaActivityId != null) {
                 params.set('stravaActivityId', String(stravaActivityId));
             }
