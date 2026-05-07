@@ -14,6 +14,7 @@ from routes.admin import admin_bp
 from services.dual_recording_core import (
     _compute_strava_power_curve,
     _extract_zwift_activity_fields,
+    _iter_activities_for_user_ids,
 )
 from services.user_service import UserService
 from services.zwift_tokens import get_token_doc, get_valid_access_token
@@ -258,35 +259,20 @@ def list_zwift_activities(rider_id):
 
         activities = []
         zwift_user_id_str = str(zwift_user_id).strip()
-        query_values: list[object] = [zwift_user_id_str]
-        if zwift_user_id_str.isdigit():
-            query_values.append(int(zwift_user_id_str))
-
-        seen_doc_ids: set[str] = set()
-        for query_value in query_values:
-            docs = (
-                db.collection("zwift_activities")
-                .where("userId", "==", query_value)
-                .limit(100)
-                .stream()
+        for doc in _iter_activities_for_user_ids(db, [zwift_user_id_str], limit=100):
+            d = doc.to_dict() or {}
+            raw = d.get("data") or {}
+            fields = _extract_zwift_activity_fields(raw)
+            activities.append(
+                {
+                    "activityId": d.get("activityId"),
+                    "startedAt": fields["startedAt"],
+                    "name": fields["name"] or f"Activity {d.get('activityId')}",
+                    "durationMs": fields["durationMs"],
+                    "avgWatts": fields["avgWatts"],
+                    "sport": fields["sport"],
+                }
             )
-            for doc in docs:
-                if doc.id in seen_doc_ids:
-                    continue
-                seen_doc_ids.add(doc.id)
-                d = doc.to_dict() or {}
-                raw = d.get("data") or {}
-                fields = _extract_zwift_activity_fields(raw)
-                activities.append(
-                    {
-                        "activityId": d.get("activityId"),
-                        "startedAt": fields["startedAt"],
-                        "name": fields["name"] or f"Activity {d.get('activityId')}",
-                        "durationMs": fields["durationMs"],
-                        "avgWatts": fields["avgWatts"],
-                        "sport": fields["sport"],
-                    }
-                )
 
         activities.sort(key=lambda a: a.get("startedAt") or "", reverse=True)
         activities = activities[:30]

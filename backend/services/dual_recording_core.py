@@ -12,6 +12,11 @@ from services.dual_recording.strava import (  # noqa: F401
     _match_strava_activity,
     _trim_strava_streams,
 )
+from services.dual_recording.activity_resolver import (  # noqa: F401
+    _collect_candidate_user_ids,
+    _iter_activities_for_user_ids,
+    _resolve_activity_id_for_rider,
+)
 from services.dual_recording.time_series import (  # noqa: F401
     _compute_avg_power_diff,
     _compute_best_efforts,
