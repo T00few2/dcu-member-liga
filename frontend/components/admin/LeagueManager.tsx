@@ -23,7 +23,19 @@ import {
     RawDataViewer,
 } from './league-manager';
 
-export default function LeagueManager() {
+export type LeagueManagerTab = 'races' | 'results' | 'settings' | 'testing' | 'rawdata';
+
+interface LeagueManagerProps {
+    initialActiveTab?: LeagueManagerTab;
+    onTabChange?: (tab: LeagueManagerTab) => void;
+}
+
+const LEAGUE_MANAGER_TABS: LeagueManagerTab[] = ['races', 'results', 'settings', 'testing', 'rawdata'];
+
+export default function LeagueManager({
+    initialActiveTab = 'races',
+    onTabChange,
+}: LeagueManagerProps) {
     const { user, loading: authLoading } = useAuth();
     
     // Data from custom hooks
@@ -43,7 +55,9 @@ export default function LeagueManager() {
     const raceForm = useRaceForm();
 
     // Local UI state
-    const [activeTab, setActiveTab] = useState<'races' | 'results' | 'settings' | 'testing' | 'rawdata'>('races');
+    const [activeTab, setActiveTab] = useState<LeagueManagerTab>(() =>
+        LEAGUE_MANAGER_TABS.includes(initialActiveTab) ? initialActiveTab : 'races'
+    );
     const [archiveName, setArchiveName] = useState('');
     const [archiving, setArchiving] = useState(false);
     const [resetting, setResetting] = useState(false);
@@ -54,6 +68,12 @@ export default function LeagueManager() {
     const [resultSource, setResultSource] = useState<ResultSource>('finishers');
     const [filterRegistered, setFilterRegistered] = useState(false);
     const [categoryFilter, setCategoryFilter] = useState('All');
+
+    useEffect(() => {
+        if (LEAGUE_MANAGER_TABS.includes(initialActiveTab) && initialActiveTab !== activeTab) {
+            setActiveTab(initialActiveTab);
+        }
+    }, [initialActiveTab, activeTab]);
 
     const eventConfigurationLapSignature = raceForm.formState.eventConfiguration
         .map(cfg => cfg.laps || 0)
@@ -291,6 +311,11 @@ export default function LeagueManager() {
         setRaces(prev => prev.map(r => r.id === updatedRace.id ? updatedRace : r));
     }, [setRaces]);
 
+    const handleSetActiveTab = useCallback((tab: LeagueManagerTab) => {
+        setActiveTab(tab);
+        onTabChange?.(tab);
+    }, [onTabChange]);
+
     // Loading state
     if (authLoading || status === 'loading') {
         return <div className="p-8 text-center">Loading...</div>;
@@ -303,7 +328,7 @@ export default function LeagueManager() {
             {/* Tab Navigation */}
             <div className="flex gap-4 mb-8 border-b border-border">
                 <button 
-                    onClick={() => setActiveTab('races')}
+                    onClick={() => handleSetActiveTab('races')}
                     className={`pb-2 px-4 font-medium transition ${
                         activeTab === 'races' 
                             ? 'text-primary border-b-2 border-primary' 
@@ -313,7 +338,7 @@ export default function LeagueManager() {
                     Races
                 </button>
                 <button 
-                    onClick={() => setActiveTab('results')}
+                    onClick={() => handleSetActiveTab('results')}
                     className={`pb-2 px-4 font-medium transition ${
                         activeTab === 'results' 
                             ? 'text-primary border-b-2 border-primary' 
@@ -323,7 +348,7 @@ export default function LeagueManager() {
                     Results
                 </button>
                 <button 
-                    onClick={() => setActiveTab('settings')}
+                    onClick={() => handleSetActiveTab('settings')}
                     className={`pb-2 px-4 font-medium transition ${
                         activeTab === 'settings' 
                             ? 'text-primary border-b-2 border-primary' 
@@ -333,7 +358,7 @@ export default function LeagueManager() {
                     Scoring Settings
                 </button>
                 <button 
-                    onClick={() => setActiveTab('testing')}
+                    onClick={() => handleSetActiveTab('testing')}
                     className={`pb-2 px-4 font-medium transition ${
                         activeTab === 'testing' 
                             ? 'text-primary border-b-2 border-primary' 
@@ -343,7 +368,7 @@ export default function LeagueManager() {
                     Testing
                 </button>
                 <button 
-                    onClick={() => setActiveTab('rawdata')}
+                    onClick={() => handleSetActiveTab('rawdata')}
                     className={`pb-2 px-4 font-medium transition ${
                         activeTab === 'rawdata' 
                             ? 'text-primary border-b-2 border-primary' 
