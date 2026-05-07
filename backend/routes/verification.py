@@ -5,6 +5,7 @@ from authz import require_admin, AuthzError
 import uuid
 import random
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from services.user_service import UserService
 
 import logging
@@ -13,11 +14,100 @@ logger = logging.getLogger(__name__)
 
 verification_bp = Blueprint('verification', __name__)
 
+
+def _parse_race_datetime(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    raw = str(value or '').strip()
+    if not raw:
+        return None
+    try:
+        if raw.endswith('Z'):
+            return datetime.fromisoformat(raw.replace('Z', '+00:00'))
+        parsed = datetime.fromisoformat(raw)
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except Exception:
+        pass
+    for fmt in ('%Y-%m-%dT%H:%M', '%Y-%m-%d'):
+        try:
+            parsed = datetime.strptime(raw, fmt)
+            return parsed.replace(tzinfo=timezone.utc)
+        except Exception:
+            continue
+    return None
+
+
+def _collect_finisher_ids_from_results(results: dict[str, Any] | None) -> set[str]:
+    finishers: set[str] = set()
+    if not isinstance(results, dict):
+        return finishers
+
+    for riders in results.values():
+        if not isinstance(riders, list):
+            continue
+        for rider in riders:
+            if not isinstance(rider, dict):
+                continue
+            zid = str(rider.get('zwiftId') or '').strip()
+            finish_time = int(rider.get('finishTime') or 0)
+            if zid and finish_time > 0:
+                finishers.add(zid)
+    return finishers
+
+
+def _resolve_target_race(race_id: str | None) -> tuple[str | None, dict[str, Any], set[str]]:
+    if not db:
+        return None, {}, set()
+
+    if race_id:
+        race_doc = db.collection('races').document(str(race_id)).get()
+        if not race_doc.exists:
+            return None, {}, set()
+        race_data = race_doc.to_dict() or {}
+        finishers = _collect_finisher_ids_from_results(race_data.get('results'))
+        return race_doc.id, race_data, finishers
+
+    now_utc = datetime.now(timezone.utc)
+    best_id = None
+    best_data: dict[str, Any] = {}
+    best_finishers: set[str] = set()
+    best_dt: datetime | None = None
+
+    for race_doc in db.collection('races').stream():
+        race_data = race_doc.to_dict() or {}
+        finishers = _collect_finisher_ids_from_results(race_data.get('results'))
+        if not finishers:
+            continue
+        race_dt = _parse_race_datetime(race_data.get('date')) or _parse_race_datetime(race_data.get('resultsUpdatedAt'))
+        if race_dt and race_dt > now_utc + timedelta(hours=6):
+            continue
+        if not best_id:
+            best_id = race_doc.id
+            best_data = race_data
+            best_finishers = finishers
+            best_dt = race_dt
+            continue
+        if best_dt is None and race_dt is None:
+            continue
+        if best_dt is None and race_dt is not None:
+            best_id = race_doc.id
+            best_data = race_data
+            best_finishers = finishers
+            best_dt = race_dt
+            continue
+        if best_dt is not None and race_dt is not None and race_dt > best_dt:
+            best_id = race_doc.id
+            best_data = race_data
+            best_finishers = finishers
+            best_dt = race_dt
+
+    return best_id, best_data, best_finishers
+
 @verification_bp.route('/admin/verification/trigger', methods=['POST'])
 def trigger_verification():
     """
     Admin endpoint to randomly select a percentage of riders for weight verification.
-    Body: { "percentage": 5, "deadlineDays": 7 }
+    Body: { "percentage": 5, "deadlineDays": 7, "raceId": "optional-race-id" }
     """
     try:
         require_admin(request)
@@ -28,22 +118,53 @@ def trigger_verification():
         return jsonify({'error': 'DB not available'}), 500
 
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         percentage = data.get('percentage', 5)
         deadline_days = data.get('deadlineDays', 2)
+        requested_race_id = data.get('raceId')
 
-        # 1. Get all eligible users (registered, not currently pending/submitted)
+        target_race_id, target_race, finisher_ids = _resolve_target_race(requested_race_id)
+        if not target_race_id:
+            return jsonify({
+                'message': 'No finished race with results found.',
+                'selectedCount': 0,
+                'totalEligible': 0
+            }), 400
+        if not finisher_ids:
+            return jsonify({
+                'message': f'Race {target_race_id} has no finishers in stored results.',
+                'selectedCount': 0,
+                'totalEligible': 0,
+                'raceId': target_race_id
+            }), 400
+
+        # 1. Get all eligible users from selected race finishers (registered, not pending/submitted)
         all_users = UserService.get_all_participants(limit=2000) # Fetch all active
         
         eligible_riders = []
         for user in all_users:
             if not user.is_registered:
                 continue
+            user_id = str(user.id or '').strip()
+            user_zwift_id = str(user.zwift_id or '').strip()
+            if user_id not in finisher_ids and user_zwift_id not in finisher_ids:
+                continue
 
             # Skip if already pending or submitted
             if user.verification_status in ['pending', 'submitted']:
                 continue
             eligible_riders.append(user.id)
+
+        if not eligible_riders:
+            race_name = target_race.get('name') or target_race_id
+            return jsonify({
+                'message': f'No eligible finishers found for race "{race_name}".',
+                'selectedCount': 0,
+                'totalEligible': 0,
+                'raceId': target_race_id,
+                'raceName': target_race.get('name', ''),
+                'totalFinishers': len(finisher_ids),
+            }), 200
 
         # 2. Select Random Sample
         count_to_select = max(1, int(len(eligible_riders) * (percentage / 100)))
@@ -88,7 +209,10 @@ def trigger_verification():
         return jsonify({
             'message': f'Triggered verification for {len(selected_ids)} riders.',
             'selectedCount': len(selected_ids),
-            'totalEligible': len(eligible_riders)
+            'totalEligible': len(eligible_riders),
+            'raceId': target_race_id,
+            'raceName': target_race.get('name', ''),
+            'totalFinishers': len(finisher_ids),
         }), 200
 
     except Exception as e:

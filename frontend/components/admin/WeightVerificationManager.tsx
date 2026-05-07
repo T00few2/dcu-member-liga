@@ -28,6 +28,53 @@ interface ApprovedVerification {
     approvedBy: string;
 }
 
+interface RaceOption {
+    id: string;
+    name: string;
+    dateLabel: string;
+    totalFinishers: number;
+    sortTs: number;
+}
+
+function parseRaceDate(value: unknown): Date | null {
+    if (!value) return null;
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+    const parsed = new Date(String(value));
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function getFinishedRaces(rawRaces: any[]): RaceOption[] {
+    const out: RaceOption[] = [];
+    for (const race of rawRaces || []) {
+        const results = race?.results;
+        if (!results || typeof results !== 'object') continue;
+
+        const finisherIds = new Set<string>();
+        for (const riders of Object.values(results)) {
+            if (!Array.isArray(riders)) continue;
+            for (const rider of riders) {
+                if (!rider || typeof rider !== 'object') continue;
+                const zid = String((rider as any).zwiftId ?? '').trim();
+                const finishTime = Number((rider as any).finishTime ?? 0);
+                if (zid && finishTime > 0) finisherIds.add(zid);
+            }
+        }
+        if (finisherIds.size === 0) continue;
+
+        const dt = parseRaceDate(race?.date) ?? parseRaceDate(race?.resultsUpdatedAt);
+        out.push({
+            id: String(race?.id ?? race?._id ?? ''),
+            name: String(race?.name ?? 'Unnamed race'),
+            dateLabel: dt ? dt.toLocaleString() : 'Unknown date',
+            totalFinishers: finisherIds.size,
+            sortTs: dt ? dt.getTime() : 0,
+        });
+    }
+
+    out.sort((a, b) => b.sortTs - a.sortTs);
+    return out.filter(r => r.id);
+}
+
 export default function WeightVerificationManager() {
     const { user } = useAuth();
     const { showToast } = useToast();
@@ -36,6 +83,8 @@ export default function WeightVerificationManager() {
     const [triggerPercent, setTriggerPercent] = useState(5);
     const [deadlineDays, setDeadlineDays] = useState(2);
     const [triggering, setTriggering] = useState(false);
+    const [raceOptions, setRaceOptions] = useState<RaceOption[]>([]);
+    const [selectedRaceId, setSelectedRaceId] = useState<string>('');
 
     // Lists State
     const [pendingReviews, setPendingReviews] = useState<PendingVerification[]>([]);
@@ -75,6 +124,18 @@ export default function WeightVerificationManager() {
                 const data = await approvedRes.json();
                 setApprovedList(data.approved || []);
             }
+
+            const racesRes = await fetch(`${API_URL}/races`, { headers });
+            if (racesRes.ok) {
+                const racesData = await racesRes.json();
+                const finished = getFinishedRaces(racesData.races || []);
+                setRaceOptions(finished);
+                setSelectedRaceId((prev) => {
+                    if (!finished.length) return '';
+                    if (prev && finished.some(r => r.id === prev)) return prev;
+                    return finished[0].id;
+                });
+            }
         } catch (e) {
             console.error(e);
             showToast('Failed to load verification data', 'error');
@@ -89,15 +150,25 @@ export default function WeightVerificationManager() {
 
     const handleTrigger = async () => {
         if (!user) return;
-        if (!confirm(`Are you sure you want to verify ${triggerPercent}% of registered riders? This will send notifications/requirements to them.`)) return;
+        if (!selectedRaceId) {
+            showToast('No finished race available to sample from', 'error');
+            return;
+        }
+        const raceText = raceOptions.find(r => r.id === selectedRaceId)?.name || selectedRaceId;
+        if (!confirm(`Are you sure you want to verify ${triggerPercent}% of finishers from ${raceText}? This will send notifications/requirements to them.`)) return;
 
         setTriggering(true);
         try {
             const token = await user.getIdToken();
+            const payload: Record<string, unknown> = {
+                percentage: triggerPercent,
+                deadlineDays,
+                raceId: selectedRaceId,
+            };
             const res = await fetch(`${API_URL}/admin/verification/trigger`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ percentage: triggerPercent, deadlineDays })
+                body: JSON.stringify(payload)
             });
             const data = await res.json();
             if (res.ok) {
@@ -203,16 +274,34 @@ export default function WeightVerificationManager() {
                             className="w-24 p-2 bg-background border border-input rounded text-foreground"
                         />
                     </div>
+                    <div className="min-w-[320px]">
+                        <label className="block text-sm font-medium text-muted-foreground mb-1">Source Race</label>
+                        <select
+                            value={selectedRaceId}
+                            onChange={(e) => setSelectedRaceId(e.target.value)}
+                            className="w-full p-2 bg-background border border-input rounded text-foreground"
+                            disabled={raceOptions.length === 0}
+                        >
+                            {raceOptions.length === 0 && (
+                                <option value="">No finished races found</option>
+                            )}
+                            {raceOptions.map((race) => (
+                                <option key={race.id} value={race.id}>
+                                    {race.name} - {race.dateLabel} ({race.totalFinishers} finishers)
+                                </option>
+                            ))}
+                        </select>
+                    </div>
                     <button
                         onClick={handleTrigger}
-                        disabled={triggering}
+                        disabled={triggering || !selectedRaceId}
                         className="bg-primary text-primary-foreground px-4 py-2 rounded font-bold hover:bg-primary-dark disabled:opacity-50"
                     >
                         {triggering ? 'Triggering...' : 'Start Verification Wave'}
                     </button>
                 </div>
                 <p className="text-sm text-muted-foreground mt-2">
-                    Selected riders will be notified and required to submit a weight verification video within 2 days.
+                    Selected riders will be sampled from finishers in the chosen race and must submit a weight verification video within {deadlineDays} day{deadlineDays === 1 ? '' : 's'}.
                 </p>
             </div>
 
