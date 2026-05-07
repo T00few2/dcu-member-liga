@@ -23,6 +23,8 @@ def _match_strava_activity(
     strava_activity_id: str | None,
     zwift_started_at: str | None,
     zwift_duration_sec: int | None,
+    zwift_times: list | None,
+    zwift_watts: list | None,
     event_start_iso: str | None,
 ) -> tuple[dict | None, str | None]:
     """Return (matched_strava_dict, resolved_strava_id)."""
@@ -50,6 +52,7 @@ def _match_strava_activity(
     best_overlap = -1.0
     best_end_delta = float("inf")
     best_start_delta = float("inf")
+    overlap_candidates: list[tuple[dict, float, float, float]] = []
 
     for act in activities:
         act_dt = _parse_iso_utc(act.get("startDate", ""))
@@ -71,6 +74,8 @@ def _match_strava_activity(
         end_delta = abs(act_end - zwift_end)
         start_delta = abs(act_start - zwift_start.timestamp())
 
+        overlap_candidates.append((act, overlap_sec, end_delta, start_delta))
+
         if overlap_sec > best_overlap:
             best = act
             best_overlap = overlap_sec
@@ -83,16 +88,130 @@ def _match_strava_activity(
                 best_end_delta = end_delta
                 best_start_delta = start_delta
 
+    meaningful = [c for c in overlap_candidates if c[1] >= min_overlap_sec]
+    if not meaningful:
+        logger.info(
+            "No meaningful Strava overlap match for rider=%s (best_overlap=%.0fs, required=%ss)",
+            user_id,
+            best_overlap if best_overlap >= 0 else 0,
+            min_overlap_sec,
+        )
+        return None, None
+
+    # If several candidates overlap sufficiently, choose the lowest similarity score
+    # (least similar power trace to Zwift) to avoid selecting exported Zwift uploads.
+    if (
+        len(meaningful) > 1
+        and zwift_times
+        and zwift_watts
+        and zwift_started_at
+        and zwift_window_sec > 0
+    ):
+        scored: list[tuple[float, dict, float, float, float]] = []
+        for act, overlap_sec, end_delta, start_delta in meaningful:
+            score = _compute_similarity_score_for_activity(
+                user_id=user_id,
+                activity=act,
+                zwift_started_at=zwift_started_at,
+                zwift_duration_sec=zwift_window_sec,
+                zwift_times=zwift_times,
+                zwift_watts=zwift_watts,
+            )
+            if score is None:
+                continue
+            scored.append((score, act, overlap_sec, end_delta, start_delta))
+
+        if scored:
+            scored.sort(key=lambda x: (x[0], -x[2], x[3], x[4]))
+            chosen_score, chosen_act, chosen_overlap, _, _ = scored[0]
+            logger.info(
+                "Strava overlap tie-break by similarity: rider=%s candidates=%s chosen=%s score=%.4f overlap=%.0fs",
+                user_id,
+                len(scored),
+                chosen_act.get("id"),
+                chosen_score,
+                chosen_overlap,
+            )
+            return chosen_act, str(chosen_act["id"])
+
     if best and best_overlap >= min_overlap_sec:
         return best, str(best["id"])
-
-    logger.info(
-        "No meaningful Strava overlap match for rider=%s (best_overlap=%.0fs, required=%ss)",
-        user_id,
-        best_overlap if best_overlap >= 0 else 0,
-        min_overlap_sec,
-    )
     return None, None
+
+
+def _compute_similarity_score_for_activity(
+    *,
+    user_id: str,
+    activity: dict,
+    zwift_started_at: str,
+    zwift_duration_sec: int,
+    zwift_times: list,
+    zwift_watts: list,
+) -> float | None:
+    """
+    Return a similarity score in [-1, 1] where lower means less similar.
+    Uses Pearson correlation over aligned power samples.
+    """
+    try:
+        streams = strava_service.get_activity_streams(user_id, activity.get("id"), keys="time,watts")
+        s_times = _extract_stream(streams, "time")
+        s_watts = _extract_stream(streams, "watts")
+        if not s_times or not s_watts:
+            return None
+
+        strava_started_at = activity.get("startDate", "")
+        z_dt = _parse_iso_utc(zwift_started_at) if zwift_started_at else None
+        s_dt = _parse_iso_utc(strava_started_at) if strava_started_at else None
+        ts_offset = int((s_dt - z_dt).total_seconds()) if (z_dt and s_dt) else 0
+        power_offset = _mse_sync_offset(zwift_times, zwift_watts, s_times, s_watts)
+        if power_offset is None:
+            strava_offset = ts_offset
+        elif power_offset == 0:
+            strava_offset = 0
+        else:
+            strava_offset = power_offset
+
+        z_map: dict[int, float] = {}
+        for t, w in zip(zwift_times, zwift_watts):
+            if w is None:
+                continue
+            sec = int(round(float(t)))
+            if sec < 0 or sec > zwift_duration_sec:
+                continue
+            z_map[sec] = float(w)
+
+        z_vals: list[float] = []
+        s_vals: list[float] = []
+        for t, w in zip(s_times, s_watts):
+            if w is None:
+                continue
+            sec = int(round(float(strava_offset + t)))
+            if sec < 0 or sec > zwift_duration_sec:
+                continue
+            zw = z_map.get(sec)
+            if zw is None:
+                continue
+            z_vals.append(zw)
+            s_vals.append(float(w))
+
+        n = len(z_vals)
+        if n < 120:
+            return None
+
+        mz = sum(z_vals) / n
+        ms = sum(s_vals) / n
+        cov = sum((z - mz) * (s - ms) for z, s in zip(z_vals, s_vals)) / n
+        var_z = sum((z - mz) ** 2 for z in z_vals) / n
+        var_s = sum((s - ms) ** 2 for s in s_vals) / n
+        if var_z <= 0 or var_s <= 0:
+            return None
+        corr = cov / ((var_z ** 0.5) * (var_s ** 0.5))
+        if corr != corr:  # NaN guard
+            return None
+        return max(-1.0, min(1.0, float(corr)))
+    except Exception as exc:
+        logger.debug("Similarity score failed for Strava activity %s: %s", activity.get("id"), exc)
+        return None
 
 
 def _trim_strava_streams(

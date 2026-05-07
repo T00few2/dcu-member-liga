@@ -90,6 +90,8 @@ def _compute_dual_recording_for_rider(
         strava_activity_id,
         zwift_started_at,
         zwift_duration_sec,
+        zwift_streams.get("time") or [],
+        zwift_streams.get("watts") or [],
         event_start_iso,
     )
     if not matched_strava:
