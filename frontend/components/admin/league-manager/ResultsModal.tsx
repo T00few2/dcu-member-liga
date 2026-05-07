@@ -104,6 +104,23 @@ export default function ResultsModal({
                 return;
             }
             setDrDetailResult(data as DualRecordingResult);
+
+            // Keep summary status/CP table in sync with detail stream payload.
+            // The detail endpoint may compute/persist fresher DR data than the
+            // currently loaded drVerifications map.
+            if (race?.id) {
+                const latest = await loadDrVerifications(race.id);
+                const updated = latest.get(riderZwiftId);
+                if (updated) {
+                    setDrModal(prev => {
+                        if (!prev || prev.zwiftId !== riderZwiftId) return prev;
+                        const prevKey = `${prev.verification.status}|${prev.verification.verifiedAt}|${prev.verification.stravaActivityId ?? ''}`;
+                        const nextKey = `${updated.status}|${updated.verifiedAt}|${updated.stravaActivityId ?? ''}`;
+                        if (prevKey === nextKey) return prev;
+                        return { ...prev, verification: updated };
+                    });
+                }
+            }
         } catch {
             setDrDetailResult(null);
             setDrDetailError('Network error while loading DR stream graph');
