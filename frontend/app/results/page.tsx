@@ -5,7 +5,7 @@ import { useAuth } from '@/lib/auth-context';
 import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { API_URL } from '@/lib/api';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import type { Race, Sprint, ResultEntry, StandingEntry, DualRecordingVerification } from '@/types/live';
 import StandingsTable from './_components/StandingsTable';
 import RaceResultsTable from './_components/RaceResultsTable';
@@ -28,7 +28,6 @@ export default function ResultsPage() {
     const { user, loading: authLoading, isRegistered } = useAuth();
     const router = useRouter();
     const pathname = usePathname();
-    const searchParams = useSearchParams();
 
     const parseTab = (value: string | null): 'standings' | 'results' => {
         return value === 'results' ? 'results' : 'standings';
@@ -38,9 +37,7 @@ export default function ResultsPage() {
     const [standings, setStandings] = useState<Record<string, StandingEntry[]>>({});
     const [loading, setLoading] = useState(true);
 
-    const [activeTab, setActiveTab] = useState<'standings' | 'results'>(
-        parseTab(searchParams.get('tab')),
-    );
+    const [activeTab, setActiveTab] = useState<'standings' | 'results'>('standings');
     const [selectedRaceId, setSelectedRaceId] = useState<string>('');
     const [selectedCategory, setSelectedCategory] = useState<string>('A');
     const [drVerifications, setDrVerifications] = useState<Map<string, DualRecordingVerification>>(new Map());
@@ -149,8 +146,15 @@ export default function ResultsPage() {
     }, []);
 
     useEffect(() => {
-        setActiveTab(parseTab(searchParams.get('tab')));
-    }, [searchParams]);
+        if (typeof window === 'undefined') return;
+        const syncFromUrl = () => {
+            const params = new URLSearchParams(window.location.search);
+            setActiveTab(parseTab(params.get('tab')));
+        };
+        syncFromUrl();
+        window.addEventListener('popstate', syncFromUrl);
+        return () => window.removeEventListener('popstate', syncFromUrl);
+    }, []);
 
     // --- Derived data ---
     // NOTE: All hooks (useMemo below) must be called before any early return to satisfy Rules of Hooks.
@@ -290,7 +294,9 @@ export default function ResultsPage() {
 
     const setResultsTab = (tab: 'standings' | 'results') => {
         setActiveTab(tab);
-        const params = new URLSearchParams(searchParams.toString());
+        const params = new URLSearchParams(
+            typeof window === 'undefined' ? '' : window.location.search,
+        );
         params.set('tab', tab);
         const query = params.toString();
         router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
