@@ -43,7 +43,7 @@ export default function LeagueManager() {
     const raceForm = useRaceForm();
 
     // Local UI state
-    const [activeTab, setActiveTab] = useState<'races' | 'settings' | 'testing' | 'rawdata'>('races');
+    const [activeTab, setActiveTab] = useState<'races' | 'results' | 'settings' | 'testing' | 'rawdata'>('races');
     const [archiveName, setArchiveName] = useState('');
     const [archiving, setArchiving] = useState(false);
     const [resetting, setResetting] = useState(false);
@@ -250,9 +250,11 @@ export default function LeagueManager() {
         }
     };
 
-    const handleRefreshResults = async (raceId: string) => {
-        if (!user) return;
-        if (!confirm('Calculate results? This may take a few seconds.')) return;
+    const handleRefreshResults = async (raceId: string): Promise<{ ok: boolean; message: string }> => {
+        if (!user) return { ok: false, message: 'Not authenticated' };
+        if (!confirm('Calculate results? This may take a few seconds.')) {
+            return { ok: false, message: 'Calculation cancelled' };
+        }
         
         setStatus('refreshing');
         try {
@@ -273,13 +275,13 @@ export default function LeagueManager() {
             if (res.ok) {
                 // Refresh local state from Firebase
                 await refreshRace(raceId);
-                alert('Results updated successfully!');
+                return { ok: true, message: 'Results recalculated successfully.' };
             } else {
                 const data = await res.json();
-                alert(`Failed: ${data.message}`);
+                return { ok: false, message: `Recalculate failed: ${data.message || 'Unknown error'}` };
             }
         } catch (e) {
-            alert('Error updating results');
+            return { ok: false, message: 'Error updating results' };
         } finally {
             setStatus('idle');
         }
@@ -309,6 +311,16 @@ export default function LeagueManager() {
                     }`}
                 >
                     Races
+                </button>
+                <button 
+                    onClick={() => setActiveTab('results')}
+                    className={`pb-2 px-4 font-medium transition ${
+                        activeTab === 'results' 
+                            ? 'text-primary border-b-2 border-primary' 
+                            : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                >
+                    Results
                 </button>
                 <button 
                     onClick={() => setActiveTab('settings')}
@@ -341,6 +353,89 @@ export default function LeagueManager() {
                     Results Editor
                 </button>
             </div>
+
+            {/* Settings Tab */}
+            {activeTab === 'results' && (
+                <div className="space-y-4">
+                    <div className="bg-card p-4 rounded-lg border border-border">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-muted-foreground mb-2">
+                                    Select race
+                                </label>
+                                <select
+                                    value={viewingResultsId || ''}
+                                    onChange={(e) => setViewingResultsId(e.target.value || null)}
+                                    className="w-full p-2 border border-input rounded bg-background text-foreground"
+                                >
+                                    <option value="">Choose a race...</option>
+                                    {races.map(r => (
+                                        <option key={r.id} value={r.id}>
+                                            {r.date} - {r.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-muted-foreground mb-2">
+                                    Results fetch options
+                                </label>
+                                <div className="flex flex-wrap items-center gap-4 p-2 bg-muted/30 rounded-lg border border-border/50">
+                                    <div className="flex items-center gap-2">
+                                        <label className="text-sm text-muted-foreground font-medium">Category:</label>
+                                        <select
+                                            value={categoryFilter}
+                                            onChange={(e) => setCategoryFilter(e.target.value)}
+                                            className="bg-background border border-input rounded px-2 py-1 text-sm font-medium text-foreground focus:ring-1 focus:ring-primary"
+                                        >
+                                            {['All', 'A', 'B', 'C', 'D', 'E'].map(cat => (
+                                                <option key={cat} value={cat}>{cat}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <label className="text-sm text-muted-foreground font-medium">Source:</label>
+                                        <select
+                                            value={resultSource}
+                                            onChange={(e) => setResultSource(e.target.value as ResultSource)}
+                                            className="bg-background border border-input rounded px-2 py-1 text-sm font-medium text-foreground focus:ring-1 focus:ring-primary"
+                                        >
+                                            <option value="finishers">Finishers</option>
+                                            <option value="joined">Joined</option>
+                                            <option value="signed_up">Signed Up</option>
+                                        </select>
+                                    </div>
+                                    <label className="flex items-center gap-2 cursor-pointer border-l border-border pl-4">
+                                        <input
+                                            type="checkbox"
+                                            checked={filterRegistered}
+                                            onChange={(e) => setFilterRegistered(e.target.checked)}
+                                            className="w-4 h-4 rounded border-input text-primary focus:ring-primary"
+                                        />
+                                        <span className="text-sm text-muted-foreground select-none">Filter Registered</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {viewingRace ? (
+                        <ResultsModal
+                            race={viewingRace}
+                            status={status}
+                            onClose={() => setViewingResultsId(null)}
+                            onRefresh={() => handleRefreshResults(viewingRace.id)}
+                            onRaceUpdate={handleRaceUpdate}
+                            embedded
+                        />
+                    ) : (
+                        <div className="bg-card p-8 rounded-lg border border-border text-center text-muted-foreground">
+                            Choose a race to manage results, DR, DQ/DC/EX.
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Settings Tab */}
             {activeTab === 'settings' && (
@@ -446,32 +541,14 @@ export default function LeagueManager() {
                     />
 
                     {/* Results Modal */}
-                    {viewingRace && (
-                        <ResultsModal
-                            race={viewingRace}
-                            status={status}
-                            onClose={() => setViewingResultsId(null)}
-                            onRefresh={() => handleRefreshResults(viewingRace.id)}
-                            onRaceUpdate={handleRaceUpdate}
-                        />
-                    )}
-
                     {/* Race List */}
                     <RaceList
                         races={races}
                         leagueSettings={leagueSettings}
                         editingRaceId={raceForm.formState.editingRaceId}
                         status={status}
-                        resultSource={resultSource}
-                        filterRegistered={filterRegistered}
-                        categoryFilter={categoryFilter}
-                        onResultSourceChange={setResultSource}
-                        onFilterRegisteredChange={setFilterRegistered}
-                        onCategoryFilterChange={setCategoryFilter}
                         onEdit={handleEdit}
                         onDelete={handleDeleteRace}
-                        onRefreshResults={handleRefreshResults}
-                        onViewResults={setViewingResultsId}
                     />
 
                     {/* Season management */}

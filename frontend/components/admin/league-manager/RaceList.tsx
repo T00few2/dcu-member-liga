@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { Race, LoadingStatus, ResultSource } from '@/types/admin';
+import type { Race, LoadingStatus } from '@/types/admin';
 import type { LeagueSettings } from '@/types/admin';
 
 interface RaceListProps {
@@ -9,16 +9,8 @@ interface RaceListProps {
     leagueSettings: LeagueSettings;
     editingRaceId: string | null;
     status: LoadingStatus;
-    resultSource: ResultSource;
-    filterRegistered: boolean;
-    categoryFilter: string;
-    onResultSourceChange: (source: ResultSource) => void;
-    onFilterRegisteredChange: (value: boolean) => void;
-    onCategoryFilterChange: (value: string) => void;
     onEdit: (race: Race) => void;
     onDelete: (id: string) => void;
-    onRefreshResults: (id: string) => void;
-    onViewResults: (id: string) => void;
 }
 
 export default function RaceList({
@@ -26,16 +18,8 @@ export default function RaceList({
     leagueSettings,
     editingRaceId,
     status,
-    resultSource,
-    filterRegistered,
-    categoryFilter,
-    onResultSourceChange,
-    onFilterRegisteredChange,
-    onCategoryFilterChange,
     onEdit,
     onDelete,
-    onRefreshResults,
-    onViewResults,
 }: RaceListProps) {
     const [pointsPreviewRiders, setPointsPreviewRiders] = useState(30);
 
@@ -144,62 +128,19 @@ export default function RaceList({
     return (
         <div className="bg-card rounded-lg shadow overflow-hidden border border-border">
             <div className="flex flex-col gap-4 p-6 border-b border-border">
-                <div className="flex justify-between items-start gap-4">
-                    <div>
-                        <h2 className="text-xl font-semibold text-card-foreground">Scheduled Races</h2>
-                        <div className="mt-2 flex items-center gap-2">
-                            <label className="text-sm text-muted-foreground font-medium">
-                                Riders per category (points preview):
-                            </label>
-                            <input
-                                type="number"
-                                min="1"
-                                value={pointsPreviewRiders}
-                                onChange={(e) => setPointsPreviewRiders(Math.max(1, parseInt(e.target.value) || 1))}
-                                className="w-24 p-1.5 border border-input rounded bg-background text-foreground text-sm"
-                            />
-                        </div>
-                    </div>
-
-                    <div className="flex flex-col gap-2 items-end">
-                        <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                            Results Fetch Options
-                        </span>
-                        <div className="flex items-center gap-4 p-2 bg-muted/30 rounded-lg border border-border/50">
-                            <div className="flex items-center gap-2">
-                                <label className="text-sm text-muted-foreground font-medium">Category:</label>
-                                <select
-                                    value={categoryFilter}
-                                    onChange={(e) => onCategoryFilterChange(e.target.value)}
-                                    className="bg-background border border-input rounded px-2 py-1 text-sm font-medium text-foreground focus:ring-1 focus:ring-primary"
-                                >
-                                    {['All', 'A', 'B', 'C', 'D', 'E'].map(cat => (
-                                        <option key={cat} value={cat}>{cat}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <label className="text-sm text-muted-foreground font-medium">Source:</label>
-                                <select
-                                    value={resultSource}
-                                    onChange={(e) => onResultSourceChange(e.target.value as ResultSource)}
-                                    className="bg-background border border-input rounded px-2 py-1 text-sm font-medium text-foreground focus:ring-1 focus:ring-primary"
-                                >
-                                    <option value="finishers">Finishers</option>
-                                    <option value="joined">Joined</option>
-                                    <option value="signed_up">Signed Up</option>
-                                </select>
-                            </div>
-                            <label className="flex items-center gap-2 cursor-pointer border-l border-border pl-4">
-                                <input
-                                    type="checkbox"
-                                    checked={filterRegistered}
-                                    onChange={(e) => onFilterRegisteredChange(e.target.checked)}
-                                    className="w-4 h-4 rounded border-input text-primary focus:ring-primary"
-                                />
-                                <span className="text-sm text-muted-foreground select-none">Filter Registered</span>
-                            </label>
-                        </div>
+                <div>
+                    <h2 className="text-xl font-semibold text-card-foreground">Scheduled Races</h2>
+                    <div className="mt-2 flex items-center gap-2">
+                        <label className="text-sm text-muted-foreground font-medium">
+                            Riders per category (points preview):
+                        </label>
+                        <input
+                            type="number"
+                            min="1"
+                            value={pointsPreviewRiders}
+                            onChange={(e) => setPointsPreviewRiders(Math.max(1, parseInt(e.target.value) || 1))}
+                            className="w-24 p-1.5 border border-input rounded bg-background text-foreground text-sm"
+                        />
                     </div>
                 </div>
             </div>
@@ -212,7 +153,6 @@ export default function RaceList({
                             <th className="px-6 py-3">Route</th>
                             <th className="px-6 py-3">Sprints</th>
                             <th className="px-6 py-3">Points Split</th>
-                            <th className="px-6 py-3 text-right">Results</th>
                             <th className="px-6 py-3 text-right">Actions</th>
                         </tr>
                     </thead>
@@ -290,25 +230,6 @@ export default function RaceList({
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
-                                        {(race.eventMode === 'grouped' || race.eventId || (race.eventConfiguration && race.eventConfiguration.length > 0)) && (
-                                            <>
-                                                <button
-                                                    onClick={() => onRefreshResults(race.id)}
-                                                    disabled={status === 'refreshing'}
-                                                    className="text-green-600 hover:text-green-700 dark:text-green-400 font-medium px-2 py-1"
-                                                >
-                                                    Calc
-                                                </button>
-                                                <button
-                                                    onClick={() => onViewResults(race.id)}
-                                                    className="text-primary hover:text-primary/80 font-medium px-2 py-1"
-                                                >
-                                                    View
-                                                </button>
-                                            </>
-                                        )}
-                                    </td>
-                                    <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
                                         <button
                                             onClick={() => onEdit(race)}
                                             className="text-primary hover:text-primary/80 font-medium px-2 py-1"
@@ -327,7 +248,7 @@ export default function RaceList({
                         })}
                         {races.length === 0 && (
                             <tr>
-                                <td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">
+                                <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">
                                     No races scheduled.
                                 </td>
                             </tr>

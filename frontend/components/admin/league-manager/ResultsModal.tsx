@@ -9,12 +9,18 @@ import type { Race, RaceResult, LoadingStatus, DualRecordingVerification } from 
 import DualRecordingStatusBadge from '@/components/DualRecordingStatusBadge';
 import DualRecordingResultModal from '@/components/DualRecordingResultModal';
 
+const CATEGORY_RANK = [
+    'Diamond', 'Ruby', 'Emerald', 'Sapphire', 'Amethyst', 'Platinum', 'Gold', 'Silver', 'Bronze', 'Copper',
+    'A', 'B', 'C', 'D', 'E',
+];
+
 interface ResultsModalProps {
     race: Race | null;
     status: LoadingStatus;
     onClose: () => void;
-    onRefresh: () => void;
+    onRefresh: () => Promise<{ ok: boolean; message: string }>;
     onRaceUpdate: (updatedRace: Race) => void;
+    embedded?: boolean;
 }
 
 export default function ResultsModal({
@@ -23,12 +29,18 @@ export default function ResultsModal({
     onClose,
     onRefresh,
     onRaceUpdate,
+    embedded = false,
 }: ResultsModalProps) {
     const { user } = useAuth();
     const [drVerifications, setDrVerifications] = useState<Map<string, DualRecordingVerification>>(new Map());
     const [drModal, setDrModal] = useState<{ name: string; verification: DualRecordingVerification } | null>(null);
     const [drRunning, setDrRunning] = useState(false);
-    const [drStatus, setDrStatus] = useState<string | null>(null);
+    const [recalcRunning, setRecalcRunning] = useState(false);
+    const [actionStatus, setActionStatus] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
+
+    const Spinner = () => (
+        <span className="inline-block w-3 h-3 border-2 border-current border-r-transparent rounded-full animate-spin" />
+    );
 
     const loadDrVerifications = async (raceId: string) => {
         if (!user) return;
@@ -59,7 +71,7 @@ export default function ResultsModal({
     const handleVerifyDR = async () => {
         if (!race || !user) return;
         setDrRunning(true);
-        setDrStatus(null);
+        setActionStatus({ type: 'info', text: 'Verificerer DR...' });
         try {
             const token = await user.getIdToken();
             const res = await fetch(`${API_URL}/admin/races/${race.id}/verify-dual-recording`, {
@@ -68,18 +80,37 @@ export default function ResultsModal({
             });
             const body = await res.json();
             if (res.ok) {
-                setDrStatus(`Trigget: ${body.triggered ?? 0} ryttere. Mangler aktivitet: ${body.missing_activity ?? 0}.`);
+                setActionStatus({
+                    type: 'success',
+                    text: `DR færdig: ${body.triggered ?? 0} ryttere trigget. Mangler aktivitet: ${body.missing_activity ?? 0}.`,
+                });
                 // Refresh DR verifications after a short delay to let background threads finish
                 setTimeout(() => {
                     void loadDrVerifications(race.id);
                 }, 5000);
             } else {
-                setDrStatus(`Fejl: ${body.message || 'Ukendt fejl'}`);
+                setActionStatus({ type: 'error', text: `DR fejl: ${body.message || 'Ukendt fejl'}` });
             }
         } catch {
-            setDrStatus('Netværksfejl');
+            setActionStatus({ type: 'error', text: 'DR netværksfejl' });
         } finally {
             setDrRunning(false);
+        }
+    };
+
+    const handleRecalculate = async () => {
+        setRecalcRunning(true);
+        setActionStatus({ type: 'info', text: 'Beregner resultater...' });
+        try {
+            const result = await onRefresh();
+            setActionStatus({
+                type: result.ok ? 'success' : 'error',
+                text: result.message,
+            });
+        } catch {
+            setActionStatus({ type: 'error', text: 'Fejl under beregning af resultater' });
+        } finally {
+            setRecalcRunning(false);
         }
     };
 
@@ -87,9 +118,10 @@ export default function ResultsModal({
 
     const results = race.results || {};
 
-    // Sort categories based on event configuration order
+    // Sort categories based on known rank order (with event config as tiebreaker in multi mode).
     let categories = Object.keys(results);
-    
+    const rankIndex = new Map<string, number>(CATEGORY_RANK.map((cat, idx) => [cat.toLowerCase(), idx]));
+
     if (race.eventMode === 'multi' && race.eventConfiguration) {
         const orderMap = new Map();
         race.eventConfiguration.forEach((cfg, idx) => {
@@ -97,12 +129,22 @@ export default function ResultsModal({
         });
         
         categories.sort((a, b) => {
+            const rankA = rankIndex.has(a.toLowerCase()) ? rankIndex.get(a.toLowerCase())! : 999;
+            const rankB = rankIndex.has(b.toLowerCase()) ? rankIndex.get(b.toLowerCase())! : 999;
+            if (rankA !== rankB) return rankA - rankB;
+
             const idxA = orderMap.has(a) ? orderMap.get(a) : 999;
             const idxB = orderMap.has(b) ? orderMap.get(b) : 999;
-            return idxA - idxB;
+            if (idxA !== idxB) return idxA - idxB;
+            return a.localeCompare(b);
         });
     } else {
-        categories.sort();
+        categories.sort((a, b) => {
+            const rankA = rankIndex.has(a.toLowerCase()) ? rankIndex.get(a.toLowerCase())! : 999;
+            const rankB = rankIndex.has(b.toLowerCase()) ? rankIndex.get(b.toLowerCase())! : 999;
+            if (rankA !== rankB) return rankA - rankB;
+            return a.localeCompare(b);
+        });
     }
 
     const handleToggleDQ = async (zwiftId: string, isCurrentlyDQ: boolean) => {
@@ -202,21 +244,22 @@ export default function ResultsModal({
         }
     };
 
-    return (
-        <>
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-            <div className="bg-card w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-lg shadow-2xl border border-border flex flex-col">
+    const content = (
+        <div className={embedded ? "bg-card w-full rounded-lg shadow border border-border flex flex-col" : "bg-card w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-lg shadow-2xl border border-border flex flex-col"}>
                 <div className="p-4 border-b border-border flex justify-between items-center bg-muted/30">
                     <div className="flex items-center gap-3 flex-wrap">
                         <h3 className="text-lg font-bold text-card-foreground">
                             Results: {race.name}
                         </h3>
                         <button
-                            onClick={onRefresh}
-                            disabled={status === 'refreshing'}
+                            onClick={handleRecalculate}
+                            disabled={recalcRunning}
                             className="text-xs bg-primary text-primary-foreground px-3 py-1 rounded hover:opacity-90 font-medium"
                         >
-                            {status === 'refreshing' ? 'Calculating...' : 'Recalculate Results'}
+                            <span className="inline-flex items-center gap-2">
+                                {recalcRunning && <Spinner />}
+                                {recalcRunning ? 'Calculating...' : 'Recalculate Results'}
+                            </span>
                         </button>
                         <button
                             onClick={handleVerifyDR}
@@ -224,21 +267,34 @@ export default function ResultsModal({
                             title="Kør dual recording verifikation for DR-krævede ryttere"
                             className="text-xs bg-blue-600 text-white px-3 py-1 rounded hover:opacity-90 font-medium disabled:opacity-50"
                         >
-                            {drRunning ? 'Verificerer DR...' : 'Verificer DR'}
+                            <span className="inline-flex items-center gap-2">
+                                {drRunning && <Spinner />}
+                                {drRunning ? 'Verificerer DR...' : 'Verificer DR'}
+                            </span>
                         </button>
-                        {drStatus && (
-                            <span className="text-xs text-muted-foreground">{drStatus}</span>
+                        {actionStatus && (
+                            <span className={`text-xs ${
+                                actionStatus.type === 'success'
+                                    ? 'text-green-600 dark:text-green-400'
+                                    : actionStatus.type === 'error'
+                                        ? 'text-red-600 dark:text-red-400'
+                                        : 'text-muted-foreground'
+                            }`}>
+                                {actionStatus.text}
+                            </span>
                         )}
                     </div>
-                    <button 
-                        onClick={onClose}
-                        className="text-muted-foreground hover:text-foreground p-1"
-                    >
-                        ✕
-                    </button>
+                    {!embedded && (
+                        <button 
+                            onClick={onClose}
+                            className="text-muted-foreground hover:text-foreground p-1"
+                        >
+                            ✕
+                        </button>
+                    )}
                 </div>
                 
-                <div className="overflow-y-auto p-4 space-y-6">
+                <div className={`${embedded ? 'p-4' : 'overflow-y-auto p-4'} space-y-6`}>
                     {categories.length === 0 ? (
                         <div className="text-center text-muted-foreground p-8">
                             No results calculated yet.
@@ -283,17 +339,27 @@ export default function ResultsModal({
                         </>
                     )}
                 </div>
-            </div>
         </div>
-        {drModal && (
-            <DualRecordingResultModal
-                open
-                onClose={() => setDrModal(null)}
-                riderName={drModal.name}
-                verification={drModal.verification}
-            />
-        )}
-    </>
+    );
+
+    return (
+        <>
+            {embedded ? (
+                content
+            ) : (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                    {content}
+                </div>
+            )}
+            {drModal && (
+                <DualRecordingResultModal
+                    open
+                    onClose={() => setDrModal(null)}
+                    riderName={drModal.name}
+                    verification={drModal.verification}
+                />
+            )}
+        </>
     );
 }
 
@@ -328,13 +394,13 @@ function CategoryResultsTable({
             <div className="bg-secondary/50 px-4 py-2 font-semibold text-sm border-b border-border">
                 {category}
             </div>
-            <table className="w-full text-left text-sm">
+            <table className="w-full table-fixed text-left text-sm">
                 <thead className="bg-muted/20 text-xs text-muted-foreground">
                     <tr>
                         <th className="px-4 py-2 w-12">Pos</th>
                         <th className="px-4 py-2">Rider</th>
-                        <th className="px-4 py-2 text-center">Status</th>
-                        <th className="px-4 py-2 text-right">Time</th>
+                        <th className="px-4 py-2 text-center w-20">Status</th>
+                        <th className="px-4 py-2 text-center w-24">Time</th>
                         <th className="px-4 py-2 text-right">Pts</th>
                         <th className="px-4 py-2 text-center w-16">Flags</th>
                         <th className="px-4 py-2 text-center w-14" title="Dual Recording">DR</th>
@@ -392,10 +458,10 @@ function CategoryResultsTable({
                                         <div className="text-[10px] text-yellow-600 font-bold mt-0.5">DECLASSIFIED</div>
                                     )}
                                 </td>
-                                <td className="px-4 py-2 text-center font-semibold text-muted-foreground">
+                                <td className="px-4 py-2 text-center font-semibold text-muted-foreground w-20">
                                     {statusLabel}
                                 </td>
-                                <td className="px-4 py-2 text-right font-mono text-muted-foreground">
+                                <td className="px-4 py-2 text-center font-mono text-muted-foreground w-24">
                                     {rider.finishTime > 0
                                         ? new Date(rider.finishTime).toISOString().substr(11, 8)
                                         : 'DNF'}
