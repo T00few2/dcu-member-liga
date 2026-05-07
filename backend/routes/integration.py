@@ -426,7 +426,7 @@ def _try_link_and_verify_activity(
     All errors are swallowed so they never affect the webhook response.
     """
     try:
-        from routes.admin_verification import (  # noqa: PLC0415 — lazy import avoids circular dep
+        from services.dual_recording_core import (  # noqa: PLC0415 — lazy import avoids circular dep
             _extract_zwift_activity_fields,
             _is_dual_recording_required,
             _parse_iso_utc,
