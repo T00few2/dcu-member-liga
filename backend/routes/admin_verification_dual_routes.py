@@ -23,6 +23,103 @@ from services.zwift_tokens import get_token_doc, get_valid_access_token
 logger = logging.getLogger(__name__)
 
 
+def _resolve_category_event_start(race_data: dict, category: str) -> str:
+    category_event_start: dict[str, str] = {}
+    for cfg in (race_data.get("eventConfiguration") or []):
+        st = cfg.get("startTime") or race_data.get("date") or ""
+        cat = str(cfg.get("customCategory") or "").strip()
+        if cat and st:
+            category_event_start[cat] = st
+
+    for grp in (race_data.get("raceGroups") or []):
+        st = grp.get("startTime") or ""
+        if not st:
+            continue
+        for cat_cfg in (grp.get("categories") or []):
+            cat = str((cat_cfg or {}).get("category") or "").strip()
+            if cat and cat not in category_event_start:
+                category_event_start[cat] = st
+
+    default_event_start = race_data.get("startTime") or race_data.get("date") or ""
+    return category_event_start.get(str(category), default_event_start) or default_event_start
+
+
+def _resolve_activity_id_for_rider(
+    race_data: dict,
+    user_doc_data: dict,
+    zwift_id: str,
+    event_start: str,
+    preferred_activity_id: str | None = None,
+) -> str | None:
+    if preferred_activity_id:
+        return str(preferred_activity_id)
+
+    candidate_user_ids: list[str] = []
+    for candidate in (
+        user_doc_data.get("zwiftUserId"),
+        user_doc_data.get("zwiftId"),
+        zwift_id,
+    ):
+        c = str(candidate or "").strip()
+        if c and c not in candidate_user_ids:
+            candidate_user_ids.append(c)
+
+    token_doc = db.collection("access_tokens").document(zwift_id).get()
+    if token_doc.exists:
+        td = token_doc.to_dict() or {}
+        token_uid = str(td.get("zwiftUserId") or "").strip()
+        if token_uid and token_uid not in candidate_user_ids:
+            candidate_user_ids.append(token_uid)
+
+    race_event_ids: set[str] = set()
+    if race_data.get("eventId"):
+        race_event_ids.add(str(race_data.get("eventId")))
+    for linked in (race_data.get("linkedEventIds") or []):
+        if linked:
+            race_event_ids.add(str(linked))
+
+    event_dt = _parse_iso_utc(event_start)
+    best_event_match: tuple[float, str] | None = None
+    best_time_delta = float("inf")
+    best_time_activity_id: str | None = None
+
+    for user_id in candidate_user_ids:
+        docs = (
+            db.collection("zwift_activities")
+            .where("userId", "==", user_id)
+            .limit(200)
+            .stream()
+        )
+        for doc in docs:
+            d = doc.to_dict() or {}
+            activity_doc_id = str(d.get("activityId") or "").strip()
+            if not activity_doc_id:
+                continue
+            raw = d.get("data") or {}
+
+            raw_event_id = str(raw.get("eventId") or "").strip()
+            if race_event_ids and raw_event_id and raw_event_id in race_event_ids:
+                wf = _extract_zwift_activity_fields(raw)
+                duration_sec = float(wf.get("durationSec") or 0.0)
+                if best_event_match is None or duration_sec > best_event_match[0]:
+                    best_event_match = (duration_sec, activity_doc_id)
+
+            if event_dt:
+                wf = _extract_zwift_activity_fields(raw)
+                act_dt = _parse_iso_utc(wf["startedAt"]) if wf["startedAt"] else None
+                if act_dt:
+                    delta = abs((act_dt - event_dt).total_seconds())
+                    if delta < best_time_delta:
+                        best_time_delta = delta
+                        best_time_activity_id = activity_doc_id
+
+    if best_event_match:
+        return best_event_match[1]
+    if best_time_activity_id and best_time_delta <= 4 * 3600:
+        return best_time_activity_id
+    return None
+
+
 @admin_bp.route("/admin/verification/event-activity/<rider_id>", methods=["GET"])
 def event_activity(rider_id):
     """
@@ -379,4 +476,103 @@ def batch_verify_dual_recording(race_id):
         ), 200
     except Exception as exc:
         logger.error("batch_verify_dual_recording error: %s", exc)
+        return jsonify({"message": str(exc)}), 500
+
+
+@admin_bp.route("/admin/races/<race_id>/verify-dual-recording/<zwift_id>", methods=["POST"])
+def verify_dual_recording_for_rider(race_id: str, zwift_id: str):
+    """Run DR verification for one rider in one race and return latest status."""
+    try:
+        require_admin(request)
+    except AuthzError as e:
+        return jsonify({"message": e.message}), e.status_code
+
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+
+    try:
+        race_doc = db.collection("races").document(race_id).get()
+        if not race_doc.exists:
+            return jsonify({"message": "Race not found"}), 404
+        race_data = race_doc.to_dict() or {}
+
+        target_category = None
+        rider_row = None
+        results_map = race_data.get("results") or {}
+        for category, riders in results_map.items():
+            for rider in (riders or []):
+                if str(rider.get("zwiftId") or "").strip() == str(zwift_id):
+                    target_category = str(category)
+                    rider_row = rider
+                    break
+            if rider_row is not None:
+                break
+
+        user_doc = db.collection("users").document(str(zwift_id)).get()
+        if not user_doc.exists:
+            return jsonify({"message": "Rider not found"}), 404
+        if not _is_dual_recording_required(db, str(zwift_id)):
+            return jsonify({"message": "Dual recording not required for this rider"}), 400
+
+        payload = request.get_json(silent=True) or {}
+        preferred_activity_value = payload.get("activityId")
+        if not preferred_activity_value and rider_row:
+            preferred_activity_value = rider_row.get("activityId")
+        preferred_activity_id = str(preferred_activity_value or "").strip() or None
+        event_start = _resolve_category_event_start(race_data, target_category or "")
+        activity_id = _resolve_activity_id_for_rider(
+            race_data=race_data,
+            user_doc_data=user_doc.to_dict() or {},
+            zwift_id=str(zwift_id),
+            event_start=event_start,
+            preferred_activity_id=preferred_activity_id,
+        )
+
+        if not activity_id:
+            missing_payload: dict = {
+                "zwiftId": str(zwift_id),
+                "raceId": race_id,
+                "status": "missing_activity",
+                "verifiedAt": datetime.now(timezone.utc).isoformat(),
+                "failingMetrics": [],
+                "comparison": {"cpDiff": [], "avgPower": {}},
+            }
+            (
+                db.collection("races")
+                .document(race_id)
+                .collection("dr_verifications")
+                .document(str(zwift_id))
+                .set(missing_payload)
+            )
+            return jsonify({
+                "ok": True,
+                "message": "No matching Zwift activity found for this race.",
+                "verification": missing_payload,
+            }), 200
+
+        _run_dr_verification_background(
+            db=db,
+            user_doc_id=str(zwift_id),
+            zwift_id_canonical=str(zwift_id),
+            activity_id=str(activity_id),
+            race_id=race_id,
+            event_start_iso=event_start or None,
+        )
+
+        vdoc = (
+            db.collection("races")
+            .document(race_id)
+            .collection("dr_verifications")
+            .document(str(zwift_id))
+            .get()
+        )
+        verification = vdoc.to_dict() or {}
+        verification["zwiftId"] = str(zwift_id)
+        return jsonify({
+            "ok": True,
+            "message": "DR verification completed for rider.",
+            "verification": verification,
+        }), 200
+    except Exception as exc:
+        logger.error("verify_dual_recording_for_rider error: %s", exc)
         return jsonify({"message": str(exc)}), 500

@@ -33,23 +33,30 @@ export default function ResultsModal({
 }: ResultsModalProps) {
     const { user } = useAuth();
     const [drVerifications, setDrVerifications] = useState<Map<string, DualRecordingVerification>>(new Map());
-    const [drModal, setDrModal] = useState<{ name: string; verification: DualRecordingVerification } | null>(null);
+    const [drModal, setDrModal] = useState<{
+        name: string;
+        zwiftId: string;
+        activityId?: string;
+        verification: DualRecordingVerification;
+    } | null>(null);
     const [drRunning, setDrRunning] = useState(false);
     const [recalcRunning, setRecalcRunning] = useState(false);
+    const [singleDrRunning, setSingleDrRunning] = useState(false);
+    const [singleDrStatus, setSingleDrStatus] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
     const [actionStatus, setActionStatus] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
 
     const Spinner = () => (
         <span className="inline-block w-3 h-3 border-2 border-current border-r-transparent rounded-full animate-spin" />
     );
 
-    const loadDrVerifications = async (raceId: string) => {
-        if (!user) return;
+    const loadDrVerifications = async (raceId: string): Promise<Map<string, DualRecordingVerification>> => {
+        if (!user) return new Map<string, DualRecordingVerification>();
         try {
             const token = await user.getIdToken();
             const res = await fetch(`${API_URL}/admin/races/${raceId}/dr-verifications`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
-            if (!res.ok) return;
+            if (!res.ok) return new Map<string, DualRecordingVerification>();
             const body = await res.json();
             const map = new Map<string, DualRecordingVerification>();
             (body.verifications || []).forEach((v: DualRecordingVerification & { zwiftId?: string | number }) => {
@@ -58,9 +65,20 @@ export default function ResultsModal({
                 map.set(key, v);
             });
             setDrVerifications(map);
+            return map;
         } catch {
             // Keep UI stable on background load errors.
+            return new Map<string, DualRecordingVerification>();
         }
+    };
+
+    const buildDrSummaryText = (map: Map<string, DualRecordingVerification>): string => {
+        const stats = { passed: 0, failed: 0, missing_activity: 0, missing_strava: 0, error: 0 };
+        map.forEach((v) => {
+            const key = String(v.status || '');
+            if (key in stats) stats[key as keyof typeof stats] += 1;
+        });
+        return `Status nu: passed=${stats.passed}, failed=${stats.failed}, missing_activity=${stats.missing_activity}, missing_strava=${stats.missing_strava}, error=${stats.error}`;
     };
 
     useEffect(() => {
@@ -85,14 +103,28 @@ export default function ResultsModal({
                     text: `DR færdig: ${body.triggered ?? 0} ryttere trigget. Mangler aktivitet: ${body.missing_activity ?? 0}.`,
                 });
                 // Refresh DR verifications after a short delay to let background threads finish
-                setTimeout(() => {
-                    void loadDrVerifications(race.id);
+                setTimeout(async () => {
+                    const latest = await loadDrVerifications(race.id);
+                    if (latest.size > 0) {
+                        setActionStatus({
+                            type: 'success',
+                            text: `DR trigger færdig. ${buildDrSummaryText(latest)}`,
+                        });
+                    }
                 }, 5000);
             } else {
                 setActionStatus({ type: 'error', text: `DR fejl: ${body.message || 'Ukendt fejl'}` });
             }
         } catch {
-            setActionStatus({ type: 'error', text: 'DR netværksfejl' });
+            const latest = await loadDrVerifications(race.id);
+            if (latest.size > 0) {
+                setActionStatus({
+                    type: 'error',
+                    text: `DR netværksfejl (trigger-status ukendt). ${buildDrSummaryText(latest)}`,
+                });
+            } else {
+                setActionStatus({ type: 'error', text: 'DR netværksfejl (ingen statusdata hentet)' });
+            }
         } finally {
             setDrRunning(false);
         }
@@ -111,6 +143,45 @@ export default function ResultsModal({
             setActionStatus({ type: 'error', text: 'Fejl under beregning af resultater' });
         } finally {
             setRecalcRunning(false);
+        }
+    };
+
+    const handleRunSingleDR = async () => {
+        if (!race || !user || !drModal) return;
+        setSingleDrRunning(true);
+        setSingleDrStatus({ type: 'info', text: 'Running DR verification for rider...' });
+        try {
+            const token = await user.getIdToken();
+            const res = await fetch(
+                `${API_URL}/admin/races/${race.id}/verify-dual-recording/${drModal.zwiftId}`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ activityId: drModal.activityId || null }),
+                },
+            );
+            const body = await res.json();
+            if (!res.ok) {
+                setSingleDrStatus({ type: 'error', text: body.message || 'Failed to run DR for rider' });
+                return;
+            }
+
+            const latest = await loadDrVerifications(race.id);
+            const updated = latest.get(drModal.zwiftId);
+            if (updated) {
+                setDrModal(prev => prev ? { ...prev, verification: updated } : prev);
+            }
+            setSingleDrStatus({
+                type: 'success',
+                text: body.message || 'DR verification completed for rider.',
+            });
+        } catch {
+            setSingleDrStatus({ type: 'error', text: 'Network error while running rider DR' });
+        } finally {
+            setSingleDrRunning(false);
         }
     };
 
@@ -333,7 +404,10 @@ export default function ResultsModal({
                                     onToggleDQ={handleToggleDQ}
                                     onToggleDeclass={handleToggleDeclass}
                                     onToggleExclude={handleToggleExclude}
-                                    onOpenDR={(name, v) => setDrModal({ name, verification: v })}
+                                    onOpenDR={(name, zwiftId, activityId, v) => {
+                                        setSingleDrStatus(null);
+                                        setDrModal({ name, zwiftId, activityId, verification: v });
+                                    }}
                                 />
                             ))}
                         </>
@@ -357,6 +431,9 @@ export default function ResultsModal({
                     onClose={() => setDrModal(null)}
                     riderName={drModal.name}
                     verification={drModal.verification}
+                onRunForRider={handleRunSingleDR}
+                runForRiderBusy={singleDrRunning}
+                runForRiderStatus={singleDrStatus}
                 />
             )}
         </>
@@ -374,7 +451,7 @@ interface CategoryResultsTableProps {
     onToggleDQ: (zwiftId: string, isCurrentlyDQ: boolean) => void;
     onToggleDeclass: (zwiftId: string, isCurrentlyDeclass: boolean) => void;
     onToggleExclude: (zwiftId: string, isCurrentlyExcluded: boolean) => void;
-    onOpenDR: (riderName: string, v: DualRecordingVerification) => void;
+    onOpenDR: (riderName: string, zwiftId: string, activityId: string | undefined, v: DualRecordingVerification) => void;
 }
 
 function CategoryResultsTable({
@@ -481,7 +558,7 @@ function CategoryResultsTable({
                                     {drVerifications.has(riderZwiftId) ? (
                                         <DualRecordingStatusBadge
                                             verification={drVerifications.get(riderZwiftId)}
-                                            onClick={() => onOpenDR(rider.name, drVerifications.get(riderZwiftId)!)}
+                                            onClick={() => onOpenDR(rider.name, riderZwiftId, rider.activityId, drVerifications.get(riderZwiftId)!)}
                                         />
                                     ) : (
                                         <span className="text-muted-foreground">-</span>

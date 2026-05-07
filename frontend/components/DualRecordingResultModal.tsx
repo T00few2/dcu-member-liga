@@ -8,6 +8,9 @@ interface Props {
     onClose: () => void;
     riderName: string;
     verification: DualRecordingVerification;
+    onRunForRider?: () => Promise<void>;
+    runForRiderBusy?: boolean;
+    runForRiderStatus?: { type: 'info' | 'success' | 'error'; text: string } | null;
 }
 
 const THRESHOLD_LABELS: Record<string, string> = {
@@ -70,7 +73,15 @@ function StatusHeader({ status, passed }: { status: string; passed?: boolean }) 
     );
 }
 
-export default function DualRecordingResultModal({ open, onClose, riderName, verification }: Props) {
+export default function DualRecordingResultModal({
+    open,
+    onClose,
+    riderName,
+    verification,
+    onRunForRider,
+    runForRiderBusy = false,
+    runForRiderStatus = null,
+}: Props) {
     if (!open) return null;
 
     const { status, verifiedAt, comparison, failingMetrics = [], stravaActivityId, zwiftActivityId } = verification;
@@ -97,6 +108,32 @@ export default function DualRecordingResultModal({ open, onClose, riderName, ver
                 </div>
 
                 <div className="px-6 py-4 space-y-4">
+                    {onRunForRider && (
+                        <div className="space-y-2">
+                            <button
+                                onClick={() => void onRunForRider()}
+                                disabled={runForRiderBusy}
+                                className="text-xs bg-blue-600 text-white px-3 py-1 rounded hover:opacity-90 font-medium disabled:opacity-50 inline-flex items-center gap-2"
+                            >
+                                {runForRiderBusy && (
+                                    <span className="inline-block w-3 h-3 border-2 border-current border-r-transparent rounded-full animate-spin" />
+                                )}
+                                {runForRiderBusy ? 'Kører DR...' : 'Perform DR for this rider'}
+                            </button>
+                            {runForRiderStatus && (
+                                <div className={`text-xs ${
+                                    runForRiderStatus.type === 'success'
+                                        ? 'text-green-600'
+                                        : runForRiderStatus.type === 'error'
+                                            ? 'text-red-600'
+                                            : 'text-muted-foreground'
+                                }`}>
+                                    {runForRiderStatus.text}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* Status */}
                     <div className="flex items-center justify-between">
                         <StatusHeader status={status} passed={verification.passed} />
