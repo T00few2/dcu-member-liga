@@ -256,28 +256,37 @@ def list_zwift_activities(rider_id):
         if not zwift_user_id:
             return jsonify({"activities": [], "message": "No Zwift user ID on token"}), 200
 
-        docs = (
-            db.collection("zwift_activities")
-            .where("userId", "==", str(zwift_user_id))
-            .limit(100)
-            .stream()
-        )
-
         activities = []
-        for doc in docs:
-            d = doc.to_dict() or {}
-            raw = d.get("data") or {}
-            fields = _extract_zwift_activity_fields(raw)
-            activities.append(
-                {
-                    "activityId": d.get("activityId"),
-                    "startedAt": fields["startedAt"],
-                    "name": fields["name"] or f"Activity {d.get('activityId')}",
-                    "durationMs": fields["durationMs"],
-                    "avgWatts": fields["avgWatts"],
-                    "sport": fields["sport"],
-                }
+        zwift_user_id_str = str(zwift_user_id).strip()
+        query_values: list[object] = [zwift_user_id_str]
+        if zwift_user_id_str.isdigit():
+            query_values.append(int(zwift_user_id_str))
+
+        seen_doc_ids: set[str] = set()
+        for query_value in query_values:
+            docs = (
+                db.collection("zwift_activities")
+                .where("userId", "==", query_value)
+                .limit(100)
+                .stream()
             )
+            for doc in docs:
+                if doc.id in seen_doc_ids:
+                    continue
+                seen_doc_ids.add(doc.id)
+                d = doc.to_dict() or {}
+                raw = d.get("data") or {}
+                fields = _extract_zwift_activity_fields(raw)
+                activities.append(
+                    {
+                        "activityId": d.get("activityId"),
+                        "startedAt": fields["startedAt"],
+                        "name": fields["name"] or f"Activity {d.get('activityId')}",
+                        "durationMs": fields["durationMs"],
+                        "avgWatts": fields["avgWatts"],
+                        "sport": fields["sport"],
+                    }
+                )
 
         activities.sort(key=lambda a: a.get("startedAt") or "", reverse=True)
         activities = activities[:30]

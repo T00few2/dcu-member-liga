@@ -44,6 +44,54 @@ def _resolve_category_event_start(race_data: dict, category: str) -> str:
     return category_event_start.get(str(category), default_event_start) or default_event_start
 
 
+def _collect_candidate_user_ids(user_doc_data: dict, zwift_id: str) -> list[str]:
+    candidate_user_ids: list[str] = []
+
+    connections = user_doc_data.get("connections") or {}
+    zwift_connection = connections.get("zwift") or {}
+    for candidate in (
+        user_doc_data.get("zwiftUserId"),
+        user_doc_data.get("zwiftId"),
+        user_doc_data.get("zwiftUuid"),
+        user_doc_data.get("zwiftUUID"),
+        zwift_connection.get("userId"),
+        zwift_connection.get("profileId"),
+        zwift_id,
+    ):
+        c = str(candidate or "").strip()
+        if c and c not in candidate_user_ids:
+            candidate_user_ids.append(c)
+
+    token_doc_data = get_token_doc(str(zwift_id))
+    if token_doc_data:
+        token_uid = str(token_doc_data.get("zwiftUserId") or "").strip()
+        if token_uid and token_uid not in candidate_user_ids:
+            candidate_user_ids.append(token_uid)
+
+    return candidate_user_ids
+
+
+def _iter_activities_for_user_ids(candidate_user_ids: list[str]):
+    seen_doc_ids: set[str] = set()
+    for user_id in candidate_user_ids:
+        query_values: list[object] = [user_id]
+        if user_id.isdigit():
+            query_values.append(int(user_id))
+
+        for query_value in query_values:
+            docs = (
+                db.collection("zwift_activities")
+                .where("userId", "==", query_value)
+                .limit(200)
+                .stream()
+            )
+            for doc in docs:
+                if doc.id in seen_doc_ids:
+                    continue
+                seen_doc_ids.add(doc.id)
+                yield doc
+
+
 def _resolve_activity_id_for_rider(
     race_data: dict,
     user_doc_data: dict,
@@ -54,22 +102,7 @@ def _resolve_activity_id_for_rider(
     if preferred_activity_id:
         return str(preferred_activity_id)
 
-    candidate_user_ids: list[str] = []
-    for candidate in (
-        user_doc_data.get("zwiftUserId"),
-        user_doc_data.get("zwiftId"),
-        zwift_id,
-    ):
-        c = str(candidate or "").strip()
-        if c and c not in candidate_user_ids:
-            candidate_user_ids.append(c)
-
-    token_doc = db.collection("access_tokens").document(zwift_id).get()
-    if token_doc.exists:
-        td = token_doc.to_dict() or {}
-        token_uid = str(td.get("zwiftUserId") or "").strip()
-        if token_uid and token_uid not in candidate_user_ids:
-            candidate_user_ids.append(token_uid)
+    candidate_user_ids = _collect_candidate_user_ids(user_doc_data, zwift_id)
 
     race_event_ids: set[str] = set()
     if race_data.get("eventId"):
@@ -83,35 +116,28 @@ def _resolve_activity_id_for_rider(
     best_time_delta = float("inf")
     best_time_activity_id: str | None = None
 
-    for user_id in candidate_user_ids:
-        docs = (
-            db.collection("zwift_activities")
-            .where("userId", "==", user_id)
-            .limit(200)
-            .stream()
-        )
-        for doc in docs:
-            d = doc.to_dict() or {}
-            activity_doc_id = str(d.get("activityId") or "").strip()
-            if not activity_doc_id:
-                continue
-            raw = d.get("data") or {}
+    for doc in _iter_activities_for_user_ids(candidate_user_ids):
+        d = doc.to_dict() or {}
+        activity_doc_id = str(d.get("activityId") or "").strip()
+        if not activity_doc_id:
+            continue
+        raw = d.get("data") or {}
 
-            raw_event_id = str(raw.get("eventId") or "").strip()
-            if race_event_ids and raw_event_id and raw_event_id in race_event_ids:
-                wf = _extract_zwift_activity_fields(raw)
-                duration_sec = float(wf.get("durationSec") or 0.0)
-                if best_event_match is None or duration_sec > best_event_match[0]:
-                    best_event_match = (duration_sec, activity_doc_id)
+        raw_event_id = str(raw.get("eventId") or "").strip()
+        if race_event_ids and raw_event_id and raw_event_id in race_event_ids:
+            wf = _extract_zwift_activity_fields(raw)
+            duration_sec = float(wf.get("durationSec") or 0.0)
+            if best_event_match is None or duration_sec > best_event_match[0]:
+                best_event_match = (duration_sec, activity_doc_id)
 
-            if event_dt:
-                wf = _extract_zwift_activity_fields(raw)
-                act_dt = _parse_iso_utc(wf["startedAt"]) if wf["startedAt"] else None
-                if act_dt:
-                    delta = abs((act_dt - event_dt).total_seconds())
-                    if delta < best_time_delta:
-                        best_time_delta = delta
-                        best_time_activity_id = activity_doc_id
+        if event_dt:
+            wf = _extract_zwift_activity_fields(raw)
+            act_dt = _parse_iso_utc(wf["startedAt"]) if wf["startedAt"] else None
+            if act_dt:
+                delta = abs((act_dt - event_dt).total_seconds())
+                if delta < best_time_delta:
+                    best_time_delta = delta
+                    best_time_activity_id = activity_doc_id
 
     if best_event_match:
         return best_event_match[1]
@@ -217,28 +243,37 @@ def event_activity(rider_id):
 
         event_dt = _parse_iso_utc(event_start_iso) if event_start_iso else None
         if not zwift_activity and event_dt and db:
-            docs = (
-                db.collection("zwift_activities")
-                .where("userId", "==", zwift_user_id_str)
-                .limit(100)
-                .stream()
-            )
             best_delta = float("inf")
-            for doc in docs:
-                d = doc.to_dict() or {}
-                raw = d.get("data") or {}
-                wf = _extract_zwift_activity_fields(raw)
-                act_dt = _parse_iso_utc(wf["startedAt"]) if wf["startedAt"] else None
-                if act_dt:
-                    delta = abs((act_dt - event_dt).total_seconds())
-                    if delta < best_delta and delta < 7200:
-                        best_delta = delta
-                        zwift_activity = {
-                            "activityId": d.get("activityId"),
-                            "startedAt": wf["startedAt"],
-                            "durationSec": wf["durationSec"],
-                            "avgWatts": wf["avgWatts"],
-                        }
+            query_values: list[object] = [zwift_user_id_str]
+            if zwift_user_id_str.isdigit():
+                query_values.append(int(zwift_user_id_str))
+
+            seen_docs: set[str] = set()
+            for query_value in query_values:
+                docs = (
+                    db.collection("zwift_activities")
+                    .where("userId", "==", query_value)
+                    .limit(100)
+                    .stream()
+                )
+                for doc in docs:
+                    if doc.id in seen_docs:
+                        continue
+                    seen_docs.add(doc.id)
+                    d = doc.to_dict() or {}
+                    raw = d.get("data") or {}
+                    wf = _extract_zwift_activity_fields(raw)
+                    act_dt = _parse_iso_utc(wf["startedAt"]) if wf["startedAt"] else None
+                    if act_dt:
+                        delta = abs((act_dt - event_dt).total_seconds())
+                        if delta < best_delta and delta < 7200:
+                            best_delta = delta
+                            zwift_activity = {
+                                "activityId": d.get("activityId"),
+                                "startedAt": wf["startedAt"],
+                                "durationSec": wf["durationSec"],
+                                "avgWatts": wf["avgWatts"],
+                            }
 
         return jsonify(
             {
@@ -385,63 +420,12 @@ def batch_verify_dual_recording(race_id):
                 )
 
                 if not activity_id:
-                    user_data = user_doc.to_dict() or {}
-                    candidate_user_ids: list[str] = []
-                    for candidate in (
-                        user_data.get("zwiftUserId"),
-                        user_data.get("zwiftId"),
-                        zwift_id,
-                    ):
-                        c = str(candidate or "").strip()
-                        if c and c not in candidate_user_ids:
-                            candidate_user_ids.append(c)
-
-                    token_doc = db.collection("access_tokens").document(zwift_id).get()
-                    if token_doc.exists:
-                        td = token_doc.to_dict() or {}
-                        token_uid = str(td.get("zwiftUserId") or "").strip()
-                        if token_uid and token_uid not in candidate_user_ids:
-                            candidate_user_ids.append(token_uid)
-
-                    event_dt = _parse_iso_utc(event_start)
-                    best_event_match: tuple[float, str] | None = None
-                    best_time_delta = float("inf")
-                    best_time_activity_id: str | None = None
-
-                    for user_id in candidate_user_ids:
-                        docs = (
-                            db.collection("zwift_activities")
-                            .where("userId", "==", user_id)
-                            .limit(200)
-                            .stream()
-                        )
-                        for doc in docs:
-                            d = doc.to_dict() or {}
-                            activity_doc_id = str(d.get("activityId") or "").strip()
-                            if not activity_doc_id:
-                                continue
-                            raw = d.get("data") or {}
-
-                            raw_event_id = str(raw.get("eventId") or "").strip()
-                            if race_event_ids and raw_event_id and raw_event_id in race_event_ids:
-                                wf = _extract_zwift_activity_fields(raw)
-                                duration_sec = float(wf.get("durationSec") or 0.0)
-                                if best_event_match is None or duration_sec > best_event_match[0]:
-                                    best_event_match = (duration_sec, activity_doc_id)
-
-                            if event_dt:
-                                wf = _extract_zwift_activity_fields(raw)
-                                act_dt = _parse_iso_utc(wf["startedAt"]) if wf["startedAt"] else None
-                                if act_dt:
-                                    delta = abs((act_dt - event_dt).total_seconds())
-                                    if delta < best_time_delta:
-                                        best_time_delta = delta
-                                        best_time_activity_id = activity_doc_id
-
-                    if best_event_match:
-                        activity_id = best_event_match[1]
-                    elif best_time_activity_id and best_time_delta <= 4 * 3600:
-                        activity_id = best_time_activity_id
+                    activity_id = _resolve_activity_id_for_rider(
+                        race_data=race_data,
+                        user_doc_data=user_doc.to_dict() or {},
+                        zwift_id=str(zwift_id),
+                        event_start=event_start,
+                    )
 
                 if not activity_id:
                     missing_payload: dict = {
