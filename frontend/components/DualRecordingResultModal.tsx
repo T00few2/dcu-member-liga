@@ -3,7 +3,7 @@
 import type React from 'react';
 import { useMemo, useState } from 'react';
 import {
-    ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Brush,
+    ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Brush,
 } from 'recharts';
 import type { DualRecordingVerification, CpDiffRow } from '@/types/admin';
 import type { DualRecordingResult } from '@/hooks/useDualRecording';
@@ -445,6 +445,31 @@ function RecordingStreamsChart({ result }: { result: DualRecordingResult }) {
         };
     }, [chartData]);
 
+    const hasSeries = useMemo(() => {
+        const hasAny = (key: keyof ChartRow) => chartData.some((row) => row[key] != null);
+        return {
+            zwiftW: hasAny('zwiftW'),
+            stravaW: hasAny('stravaW'),
+            zwiftHR: hasAny('zwiftHR'),
+            stravaHR: hasAny('stravaHR'),
+            zwiftCad: hasAny('zwiftCad'),
+            stravaCad: hasAny('stravaCad'),
+            zwiftAlt: hasAny('zwiftAlt'),
+            stravaAlt: hasAny('stravaAlt'),
+        };
+    }, [chartData]);
+
+    const seriesMeta = [
+        { key: 'zwiftW', label: 'Zwift Power', color: '#2563eb', show: hasSeries.zwiftW },
+        { key: 'stravaW', label: 'Strava Power', color: '#FC4C02', show: hasSeries.stravaW },
+        { key: 'zwiftHR', label: 'Zwift HR', color: '#a0a0a0', show: hasSeries.zwiftHR },
+        { key: 'stravaHR', label: 'Strava HR', color: '#8b8b8b', show: hasSeries.stravaHR },
+        { key: 'zwiftCad', label: 'Zwift Cad', color: '#66b3a6', show: hasSeries.zwiftCad },
+        { key: 'stravaCad', label: 'Strava Cad', color: '#4fa18f', show: hasSeries.stravaCad },
+        { key: 'zwiftAlt', label: 'Zwift Elev', color: '#c9c9c9', show: hasSeries.zwiftAlt },
+        { key: 'stravaAlt', label: 'Strava Elev', color: '#b5b5b5', show: hasSeries.stravaAlt },
+    ].filter((s) => s.show);
+
     return (
         <div className="w-full">
             {similarity && (
@@ -475,6 +500,33 @@ function RecordingStreamsChart({ result }: { result: DualRecordingResult }) {
             <div className="text-[11px] text-muted-foreground mb-2">
                 t=0 = Zwift recording start · Strava aligned by power MSE · click legend to toggle
             </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 mb-2 px-1">
+                {seriesMeta.map((s) => (
+                    <button
+                        key={s.key}
+                        onClick={() => {
+                            setHidden((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(s.key)) next.delete(s.key);
+                                else next.add(s.key);
+                                return next;
+                            });
+                        }}
+                        className="flex items-center gap-1.5 text-xs select-none"
+                        style={{
+                            opacity: hidden.has(s.key) ? 0.35 : 1,
+                            textDecoration: hidden.has(s.key) ? 'line-through' : 'none',
+                            color: 'var(--muted-foreground)',
+                        }}
+                    >
+                        <span
+                            className="inline-block w-4 h-[2px] rounded flex-shrink-0"
+                            style={{ backgroundColor: s.color }}
+                        />
+                        {s.label}
+                    </button>
+                ))}
+            </div>
             <div className="h-[280px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={chartData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
@@ -483,21 +535,9 @@ function RecordingStreamsChart({ result }: { result: DualRecordingResult }) {
                         <YAxis yAxisId="w" tick={{ fontSize: 10 }} width={34} />
                         <YAxis yAxisId="other" orientation="right" tick={{ fontSize: 10 }} width={30} />
                         <Tooltip labelFormatter={(v) => fmtRaceTime(Number(v))} />
-                        <Legend
-                            wrapperStyle={{ fontSize: 11, cursor: 'pointer' }}
-                            onClick={(entry: any) => {
-                                const key = String(entry?.dataKey || '');
-                                if (!key) return;
-                                setHidden(prev => {
-                                    const next = new Set(prev);
-                                    if (next.has(key)) next.delete(key); else next.add(key);
-                                    return next;
-                                });
-                            }}
-                        />
 
                         {/* Draw Strava first, then Zwift on top so overlap remains visible */}
-                        {!hidden.has('stravaW') && (
+                        {hasSeries.stravaW && (
                             <Line
                                 yAxisId="w"
                                 type="monotone"
@@ -508,9 +548,10 @@ function RecordingStreamsChart({ result }: { result: DualRecordingResult }) {
                                 strokeDasharray="5 3"
                                 strokeOpacity={0.9}
                                 name="Strava Power"
+                                hide={hidden.has('stravaW')}
                             />
                         )}
-                        {!hidden.has('zwiftW') && (
+                        {hasSeries.zwiftW && (
                             <Line
                                 yAxisId="w"
                                 type="monotone"
@@ -519,14 +560,15 @@ function RecordingStreamsChart({ result }: { result: DualRecordingResult }) {
                                 dot={false}
                                 strokeWidth={2.2}
                                 name="Zwift Power"
+                                hide={hidden.has('zwiftW')}
                             />
                         )}
-                        {!hidden.has('zwiftHR') && <Line yAxisId="other" type="monotone" dataKey="zwiftHR" stroke="#a0a0a0" dot={false} strokeWidth={1} name="Zwift HR" />}
-                        {!hidden.has('stravaHR') && <Line yAxisId="other" type="monotone" dataKey="stravaHR" stroke="#8b8b8b" dot={false} strokeWidth={1} name="Strava HR" />}
-                        {!hidden.has('zwiftCad') && <Line yAxisId="other" type="monotone" dataKey="zwiftCad" stroke="#66b3a6" dot={false} strokeWidth={1} name="Zwift Cad" />}
-                        {!hidden.has('stravaCad') && <Line yAxisId="other" type="monotone" dataKey="stravaCad" stroke="#4fa18f" dot={false} strokeWidth={1} name="Strava Cad" />}
-                        {!hidden.has('zwiftAlt') && <Line yAxisId="other" type="monotone" dataKey="zwiftAlt" stroke="#c9c9c9" dot={false} strokeWidth={1} name="Zwift Elev" />}
-                        {!hidden.has('stravaAlt') && <Line yAxisId="other" type="monotone" dataKey="stravaAlt" stroke="#b5b5b5" dot={false} strokeWidth={1} name="Strava Elev" />}
+                        {hasSeries.zwiftHR && <Line yAxisId="other" type="monotone" dataKey="zwiftHR" stroke="#a0a0a0" dot={false} strokeWidth={1} name="Zwift HR" hide={hidden.has('zwiftHR')} />}
+                        {hasSeries.stravaHR && <Line yAxisId="other" type="monotone" dataKey="stravaHR" stroke="#8b8b8b" dot={false} strokeWidth={1} name="Strava HR" hide={hidden.has('stravaHR')} />}
+                        {hasSeries.zwiftCad && <Line yAxisId="other" type="monotone" dataKey="zwiftCad" stroke="#66b3a6" dot={false} strokeWidth={1} name="Zwift Cad" hide={hidden.has('zwiftCad')} />}
+                        {hasSeries.stravaCad && <Line yAxisId="other" type="monotone" dataKey="stravaCad" stroke="#4fa18f" dot={false} strokeWidth={1} name="Strava Cad" hide={hidden.has('stravaCad')} />}
+                        {hasSeries.zwiftAlt && <Line yAxisId="other" type="monotone" dataKey="zwiftAlt" stroke="#c9c9c9" dot={false} strokeWidth={1} name="Zwift Elev" hide={hidden.has('zwiftAlt')} />}
+                        {hasSeries.stravaAlt && <Line yAxisId="other" type="monotone" dataKey="stravaAlt" stroke="#b5b5b5" dot={false} strokeWidth={1} name="Strava Elev" hide={hidden.has('stravaAlt')} />}
                         <Brush dataKey="t" tickFormatter={fmtRaceTime} height={20} />
                     </LineChart>
                 </ResponsiveContainer>
