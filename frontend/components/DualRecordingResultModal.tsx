@@ -308,10 +308,12 @@ function RecordingStreamsChart({ result }: { result: DualRecordingResult }) {
     };
 
     const chartData = useMemo<ChartRow[]>(() => {
+        const bucket = (t: number) => Math.round(t / CHART_STEP) * CHART_STEP;
+
         const zwiftByTime = new Map<number, StreamPoint>();
         if (hasZwift && zwift.streams) {
             const { time, watts, heartrate, cadence, altitude } = zwift.streams;
-            time.forEach((t, i) => zwiftByTime.set(t, {
+            time.forEach((t, i) => zwiftByTime.set(bucket(t), {
                 w: watts[i] ?? null,
                 hr: heartrate[i] ?? null,
                 cad: cadence[i] ?? null,
@@ -322,7 +324,7 @@ function RecordingStreamsChart({ result }: { result: DualRecordingResult }) {
         const stravaByTime = new Map<number, StreamPoint>();
         if (hasStrava && strava?.streams) {
             const { time, watts, heartrate, cadence, altitude } = strava.streams;
-            time.forEach((t, i) => stravaByTime.set(t, {
+            time.forEach((t, i) => stravaByTime.set(bucket(t), {
                 w: watts[i] ?? null,
                 hr: heartrate[i] ?? null,
                 cad: cadence[i] ?? null,
@@ -330,15 +332,14 @@ function RecordingStreamsChart({ result }: { result: DualRecordingResult }) {
             }));
         }
 
-        const lookup = (m: Map<number, StreamPoint>, t: number) => m.get(t) ?? m.get(t - 1) ?? m.get(t + 1);
-        const allT = [...(zwift.streams?.time || []), ...(strava?.streams?.time || [])];
+        const allT = [...(zwift.streams?.time || []), ...(strava?.streams?.time || [])].map(bucket);
         const minT = Math.floor(Math.min(...allT) / CHART_STEP) * CHART_STEP;
         const maxT = Math.ceil(Math.max(...allT) / CHART_STEP) * CHART_STEP;
 
         const rows: ChartRow[] = [];
         for (let t = minT; t <= maxT; t += CHART_STEP) {
-            const zp = lookup(zwiftByTime, t);
-            const sp = lookup(stravaByTime, t);
+            const zp = zwiftByTime.get(t);
+            const sp = stravaByTime.get(t);
             rows.push({
                 t,
                 zwiftW: zp?.w ?? null,
@@ -448,7 +449,7 @@ function RecordingStreamsChart({ result }: { result: DualRecordingResult }) {
                         <div>Overlap: <span className="font-mono">{Math.round(similarity.overlapSec)}s</span></div>
                         <div>Std(diff): <span className="font-mono">{similarity.stdDiff.toFixed(2)} W</span></div>
                         <div>Std(Δdiff): <span className="font-mono">{similarity.stdDeltaDiff.toFixed(2)} W</span></div>
-                        <div>Near-identical (<= {IDENTICAL_TOLERANCE_W}W): <span className="font-mono">{similarity.nearIdenticalPct.toFixed(1)}%</span></div>
+                        <div>Near-identical (&lt;= {IDENTICAL_TOLERANCE_W}W): <span className="font-mono">{similarity.nearIdenticalPct.toFixed(1)}%</span></div>
                         <div>Longest near-identical run: <span className="font-mono">{Math.round(similarity.longestNearIdenticalRunSec)}s</span></div>
                     </div>
                     <div className="mt-1">
@@ -482,8 +483,31 @@ function RecordingStreamsChart({ result }: { result: DualRecordingResult }) {
                             }}
                         />
 
-                        {!hidden.has('zwiftW') && <Line yAxisId="w" type="monotone" dataKey="zwiftW" stroke="#FC6719" dot={false} strokeWidth={1.8} name="Zwift Power" />}
-                        {!hidden.has('stravaW') && <Line yAxisId="w" type="monotone" dataKey="stravaW" stroke="#e05c00" dot={false} strokeWidth={1.6} name="Strava Power" />}
+                        {/* Draw Strava first, then Zwift on top so overlap remains visible */}
+                        {!hidden.has('stravaW') && (
+                            <Line
+                                yAxisId="w"
+                                type="monotone"
+                                dataKey="stravaW"
+                                stroke="#FC4C02"
+                                dot={false}
+                                strokeWidth={1.8}
+                                strokeDasharray="5 3"
+                                strokeOpacity={0.9}
+                                name="Strava Power"
+                            />
+                        )}
+                        {!hidden.has('zwiftW') && (
+                            <Line
+                                yAxisId="w"
+                                type="monotone"
+                                dataKey="zwiftW"
+                                stroke="#2563eb"
+                                dot={false}
+                                strokeWidth={2.2}
+                                name="Zwift Power"
+                            />
+                        )}
                         {!hidden.has('zwiftHR') && <Line yAxisId="other" type="monotone" dataKey="zwiftHR" stroke="#a0a0a0" dot={false} strokeWidth={1} name="Zwift HR" />}
                         {!hidden.has('stravaHR') && <Line yAxisId="other" type="monotone" dataKey="stravaHR" stroke="#8b8b8b" dot={false} strokeWidth={1} name="Strava HR" />}
                         {!hidden.has('zwiftCad') && <Line yAxisId="other" type="monotone" dataKey="zwiftCad" stroke="#66b3a6" dot={false} strokeWidth={1} name="Zwift Cad" />}

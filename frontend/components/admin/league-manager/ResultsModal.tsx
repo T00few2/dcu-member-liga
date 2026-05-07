@@ -462,7 +462,11 @@ export default function ResultsModal({
                                     onToggleExclude={handleToggleExclude}
                                     onOpenDR={(name, zwiftId, activityId, v) => {
                                         setSingleDrStatus(null);
-                                        setDrModal({ name, zwiftId, activityId, verification: v });
+                                        const fallbackActivityId =
+                                            activityId
+                                            || v.activityId
+                                            || v.zwiftActivityId;
+                                        setDrModal({ name, zwiftId, activityId: fallbackActivityId, verification: v });
                                     }}
                                 />
                             ))}
