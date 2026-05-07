@@ -63,6 +63,19 @@ export default function LeagueManager({
     const [resetting, setResetting] = useState(false);
     const [viewingResultsId, setViewingResultsId] = useState<string | null>(null);
     const [availableSegments, setAvailableSegments] = useState<Segment[]>([]);
+    const [resultsCalcRunning, setResultsCalcRunning] = useState(false);
+    const [resultsCalcStatus, setResultsCalcStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [drBatchRunning, setDrBatchRunning] = useState(false);
+    const [drBatchStatus, setDrBatchStatus] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
+    const [drBatchProgress, setDrBatchProgress] = useState<{
+        total: number;
+        completed: number;
+        triggered: number;
+        missingActivity: number;
+        errors: number;
+        currentLabel?: string;
+        etaSec?: number;
+    } | null>(null);
     
     // Results fetch options
     const [resultSource, setResultSource] = useState<ResultSource>('finishers');
@@ -311,6 +324,127 @@ export default function LeagueManager({
         setRaces(prev => prev.map(r => r.id === updatedRace.id ? updatedRace : r));
     }, [setRaces]);
 
+    const handleCalculateSelectedRace = useCallback(async () => {
+        if (!viewingResultsId || resultsCalcRunning) return;
+        setResultsCalcStatus(null);
+        setResultsCalcRunning(true);
+        try {
+            const result = await handleRefreshResults(viewingResultsId);
+            setResultsCalcStatus({
+                type: result.ok ? 'success' : 'error',
+                text: result.message,
+            });
+        } catch {
+            setResultsCalcStatus({
+                type: 'error',
+                text: 'Failed to calculate results.',
+            });
+        } finally {
+            setResultsCalcRunning(false);
+        }
+    }, [viewingResultsId, resultsCalcRunning, handleRefreshResults]);
+
+    const handleVerifyDRBatch = useCallback(async () => {
+        if (!viewingResultsId || !user || drBatchRunning) return;
+        setDrBatchRunning(true);
+        setDrBatchProgress(null);
+        setDrBatchStatus({ type: 'info', text: 'Henter DR-kandidater...' });
+
+        try {
+            const token = await user.getIdToken();
+            const candidatesRes = await fetch(`${API_URL}/admin/races/${viewingResultsId}/verify-dual-recording/candidates`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const candidatesBody = await candidatesRes.json();
+            if (!candidatesRes.ok) {
+                setDrBatchStatus({ type: 'error', text: candidatesBody.message || 'Could not load DR candidates' });
+                return;
+            }
+
+            const riders = Array.isArray(candidatesBody.riders) ? candidatesBody.riders : [];
+            const total = Number(candidatesBody.total ?? riders.length ?? 0);
+            if (total <= 0) {
+                setDrBatchStatus({ type: 'success', text: 'No DR-required riders in this race.' });
+                setDrBatchProgress({ total: 0, completed: 0, triggered: 0, missingActivity: 0, errors: 0, etaSec: 0 });
+                return;
+            }
+
+            let completed = 0;
+            let triggered = 0;
+            let missingActivity = 0;
+            let errors = 0;
+            const startedAt = Date.now();
+
+            const updateProgress = (currentLabel?: string) => {
+                let etaSec: number | undefined;
+                if (completed > 0 && completed < total) {
+                    const elapsedSec = (Date.now() - startedAt) / 1000;
+                    const avgSecPerRider = elapsedSec / completed;
+                    etaSec = Math.max(0, Math.round(avgSecPerRider * (total - completed)));
+                } else if (completed >= total) {
+                    etaSec = 0;
+                }
+                setDrBatchProgress({ total, completed, triggered, missingActivity, errors, currentLabel, etaSec });
+                setDrBatchStatus({ type: 'info', text: `Verificerer DR: ${completed}/${total}` });
+            };
+
+            updateProgress();
+            for (const rider of riders) {
+                const zwiftId = String(rider?.zwiftId || '').trim();
+                const currentLabel = String(rider?.name || zwiftId || 'Unknown rider');
+                if (!zwiftId) {
+                    completed += 1;
+                    errors += 1;
+                    updateProgress(currentLabel);
+                    continue;
+                }
+
+                updateProgress(currentLabel);
+                try {
+                    const verifyRes = await fetch(
+                        `${API_URL}/admin/races/${viewingResultsId}/verify-dual-recording/${zwiftId}`,
+                        {
+                            method: 'POST',
+                            headers: {
+                                Authorization: `Bearer ${token}`,
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({}),
+                        },
+                    );
+                    const verifyBody = await verifyRes.json();
+                    if (!verifyRes.ok) {
+                        errors += 1;
+                    } else {
+                        const status = String(verifyBody?.verification?.status || '');
+                        if (status === 'missing_activity') {
+                            missingActivity += 1;
+                        } else if (status === 'error') {
+                            errors += 1;
+                        } else {
+                            triggered += 1;
+                        }
+                    }
+                } catch {
+                    errors += 1;
+                } finally {
+                    completed += 1;
+                    updateProgress(currentLabel);
+                }
+            }
+
+            setDrBatchProgress({ total, completed, triggered, missingActivity, errors, etaSec: 0 });
+            setDrBatchStatus({
+                type: errors > 0 ? 'error' : 'success',
+                text: `DR done: ${completed}/${total}. Triggered: ${triggered}, missing_activity: ${missingActivity}, errors: ${errors}.`,
+            });
+        } catch {
+            setDrBatchStatus({ type: 'error', text: 'Network error while running DR batch.' });
+        } finally {
+            setDrBatchRunning(false);
+        }
+    }, [viewingResultsId, user, drBatchRunning]);
+
     const handleSetActiveTab = useCallback((tab: LeagueManagerTab) => {
         setActiveTab(tab);
         onTabChange?.(tab);
@@ -383,15 +517,20 @@ export default function LeagueManager({
             {activeTab === 'results' && (
                 <div className="space-y-4">
                     <div className="bg-card p-4 rounded-lg border border-border">
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <div className="space-y-4">
                             <div>
-                                <label className="block text-sm font-medium text-muted-foreground mb-2">
+                                <label className="block text-sm font-semibold text-foreground mb-2">
                                     Select race
                                 </label>
                                 <select
                                     value={viewingResultsId || ''}
-                                    onChange={(e) => setViewingResultsId(e.target.value || null)}
-                                    className="w-full p-2 border border-input rounded bg-background text-foreground"
+                                    onChange={(e) => {
+                                        setViewingResultsId(e.target.value || null);
+                                        setResultsCalcStatus(null);
+                                        setDrBatchStatus(null);
+                                        setDrBatchProgress(null);
+                                    }}
+                                    className="w-full p-2.5 border border-input rounded bg-background text-foreground"
                                 >
                                     <option value="">Choose a race...</option>
                                     {races.map(r => (
@@ -403,44 +542,114 @@ export default function LeagueManager({
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-muted-foreground mb-2">
+                                <label className="block text-sm font-semibold text-foreground mb-2">
                                     Results fetch options
                                 </label>
-                                <div className="flex flex-wrap items-center gap-4 p-2 bg-muted/30 rounded-lg border border-border/50">
-                                    <div className="flex items-center gap-2">
-                                        <label className="text-sm text-muted-foreground font-medium">Category:</label>
-                                        <select
-                                            value={categoryFilter}
-                                            onChange={(e) => setCategoryFilter(e.target.value)}
-                                            className="bg-background border border-input rounded px-2 py-1 text-sm font-medium text-foreground focus:ring-1 focus:ring-primary"
-                                        >
-                                            {['All', 'A', 'B', 'C', 'D', 'E'].map(cat => (
-                                                <option key={cat} value={cat}>{cat}</option>
-                                            ))}
-                                        </select>
+                                <div className="space-y-3 p-3 bg-muted/30 rounded-lg border border-border/50">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                            <label className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Category</label>
+                                            <select
+                                                value={categoryFilter}
+                                                onChange={(e) => setCategoryFilter(e.target.value)}
+                                                className="w-full bg-background border border-input rounded px-2 py-2 text-sm font-medium text-foreground focus:ring-1 focus:ring-primary"
+                                            >
+                                                {['All', 'A', 'B', 'C', 'D', 'E'].map(cat => (
+                                                    <option key={cat} value={cat}>{cat}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Source</label>
+                                            <select
+                                                value={resultSource}
+                                                onChange={(e) => setResultSource(e.target.value as ResultSource)}
+                                                className="w-full bg-background border border-input rounded px-2 py-2 text-sm font-medium text-foreground focus:ring-1 focus:ring-primary"
+                                            >
+                                                <option value="finishers">Finishers</option>
+                                                <option value="joined">Joined</option>
+                                                <option value="signed_up">Signed Up</option>
+                                            </select>
+                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <label className="text-sm text-muted-foreground font-medium">Source:</label>
-                                        <select
-                                            value={resultSource}
-                                            onChange={(e) => setResultSource(e.target.value as ResultSource)}
-                                            className="bg-background border border-input rounded px-2 py-1 text-sm font-medium text-foreground focus:ring-1 focus:ring-primary"
+
+                                    <div className="space-y-3">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={filterRegistered}
+                                                onChange={(e) => setFilterRegistered(e.target.checked)}
+                                                className="w-4 h-4 rounded border-input text-primary focus:ring-primary"
+                                            />
+                                            <span className="text-sm text-muted-foreground select-none">Filter Registered riders only</span>
+                                        </label>
+
+                                        <button
+                                            onClick={handleCalculateSelectedRace}
+                                            disabled={!viewingResultsId || resultsCalcRunning}
+                                            className="w-full sm:w-auto text-sm bg-primary text-primary-foreground px-4 py-2 rounded hover:opacity-90 font-semibold disabled:opacity-50"
                                         >
-                                            <option value="finishers">Finishers</option>
-                                            <option value="joined">Joined</option>
-                                            <option value="signed_up">Signed Up</option>
-                                        </select>
+                                            {resultsCalcRunning ? 'Calculating...' : 'Calculate Results'}
+                                        </button>
                                     </div>
-                                    <label className="flex items-center gap-2 cursor-pointer border-l border-border pl-4">
-                                        <input
-                                            type="checkbox"
-                                            checked={filterRegistered}
-                                            onChange={(e) => setFilterRegistered(e.target.checked)}
-                                            className="w-4 h-4 rounded border-input text-primary focus:ring-primary"
-                                        />
-                                        <span className="text-sm text-muted-foreground select-none">Filter Registered</span>
-                                    </label>
+                                    {resultsCalcStatus && (
+                                        <p className={`text-xs ${
+                                            resultsCalcStatus.type === 'success'
+                                                ? 'text-green-600 dark:text-green-400'
+                                                : 'text-red-600 dark:text-red-400'
+                                        }`}>
+                                            {resultsCalcStatus.text}
+                                        </p>
+                                    )}
                                 </div>
+                            </div>
+
+                            <label className="block text-sm font-semibold text-foreground mb-2">
+                                Dual Recording verification
+                            </label>
+                            <div className="space-y-3 p-3 bg-muted/30 rounded-lg border border-border/50">
+                                <p className="text-sm text-muted-foreground">
+                                    Run DR checks for all DR-required riders in this race.
+                                </p>
+                                <button
+                                    onClick={handleVerifyDRBatch}
+                                    disabled={!viewingResultsId || drBatchRunning}
+                                    className="w-full sm:w-auto text-sm bg-blue-600 text-white px-4 py-2 rounded hover:opacity-90 font-semibold disabled:opacity-50"
+                                >
+                                    {drBatchRunning ? 'Verificerer DR...' : 'Verificer DR'}
+                                </button>
+                                {drBatchProgress && drBatchProgress.total > 0 && (
+                                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                        <div className="h-2 w-40 rounded-full bg-muted overflow-hidden">
+                                            <div
+                                                className="h-full bg-blue-500 transition-all"
+                                                style={{ width: `${Math.min(100, (drBatchProgress.completed / drBatchProgress.total) * 100)}%` }}
+                                            />
+                                        </div>
+                                        <span className="font-mono">{drBatchProgress.completed}/{drBatchProgress.total}</span>
+                                        {drBatchRunning && drBatchProgress.etaSec != null && (
+                                            <span className="font-mono">
+                                                ETA {Math.floor(drBatchProgress.etaSec / 60)}:{String(drBatchProgress.etaSec % 60).padStart(2, '0')}
+                                            </span>
+                                        )}
+                                        {drBatchRunning && drBatchProgress.currentLabel && (
+                                            <span className="truncate max-w-[180px]" title={drBatchProgress.currentLabel}>
+                                                {drBatchProgress.currentLabel}
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
+                                {drBatchStatus && (
+                                    <p className={`text-xs ${
+                                        drBatchStatus.type === 'success'
+                                            ? 'text-green-600 dark:text-green-400'
+                                            : drBatchStatus.type === 'error'
+                                                ? 'text-red-600 dark:text-red-400'
+                                                : 'text-muted-foreground'
+                                    }`}>
+                                        {drBatchStatus.text}
+                                    </p>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -450,7 +659,6 @@ export default function LeagueManager({
                             race={viewingRace}
                             status={status}
                             onClose={() => setViewingResultsId(null)}
-                            onRefresh={() => handleRefreshResults(viewingRace.id)}
                             onRaceUpdate={handleRaceUpdate}
                             embedded
                         />

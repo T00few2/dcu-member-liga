@@ -46,6 +46,37 @@ def _resolve_category_event_start(race_data: dict, category: str) -> str:
     return category_event_start.get(str(category), default_event_start) or default_event_start
 
 
+def _collect_dr_candidates_for_race(race_data: dict) -> list[dict]:
+    """Collect DR-required rider candidates from race results."""
+    candidates: list[dict] = []
+    seen: set[str] = set()
+    results_map = race_data.get("results") or {}
+
+    for category, riders in results_map.items():
+        for rider in (riders or []):
+            zwift_id = str(rider.get("zwiftId") or "").strip()
+            if not zwift_id or zwift_id in seen:
+                continue
+
+            user_doc = db.collection("users").document(zwift_id).get()
+            if not user_doc.exists:
+                continue
+            if not _is_dual_recording_required(db, zwift_id):
+                continue
+
+            seen.add(zwift_id)
+            candidates.append(
+                {
+                    "zwiftId": zwift_id,
+                    "name": str(rider.get("name") or ""),
+                    "category": str(category),
+                    "activityId": str(rider.get("activityId") or "").strip() or None,
+                }
+            )
+
+    return candidates
+
+
 @admin_bp.route("/admin/verification/event-activity/<rider_id>", methods=["GET"])
 def event_activity(rider_id):
     """
@@ -254,91 +285,52 @@ def batch_verify_dual_recording(race_id):
             return jsonify({"message": "Race not found"}), 404
         race_data = race_doc.to_dict() or {}
 
-        event_starts: list[str] = []
-        category_event_start: dict[str, str] = {}
-        for cfg in (race_data.get("eventConfiguration") or []):
-            st = cfg.get("startTime") or race_data.get("date") or ""
-            cat = str(cfg.get("customCategory") or "").strip()
-            if cat and st:
-                category_event_start[cat] = st
-            if st:
-                event_starts.append(st)
-
-        for grp in (race_data.get("raceGroups") or []):
-            st = grp.get("startTime") or ""
-            if not st:
-                continue
-            for cat_cfg in (grp.get("categories") or []):
-                cat = str((cat_cfg or {}).get("category") or "").strip()
-                if cat and cat not in category_event_start:
-                    category_event_start[cat] = st
-
-        if not event_starts:
-            event_starts = [race_data.get("date") or ""]
-        default_event_start = race_data.get("startTime") or race_data.get("date") or ""
-
-        race_event_ids: set[str] = set()
-        if race_data.get("eventId"):
-            race_event_ids.add(str(race_data.get("eventId")))
-        for linked in (race_data.get("linkedEventIds") or []):
-            if linked:
-                race_event_ids.add(str(linked))
-
-        results_map = race_data.get("results") or {}
+        candidates = _collect_dr_candidates_for_race(race_data)
         summary: list[dict] = []
 
-        for category, riders in results_map.items():
-            for rider in (riders or []):
-                zwift_id = rider.get("zwiftId") or ""
-                if not zwift_id:
-                    continue
+        for candidate in candidates:
+            zwift_id = str(candidate.get("zwiftId") or "")
+            category = str(candidate.get("category") or "")
+            activity_id = candidate.get("activityId")
+            user_doc = db.collection("users").document(zwift_id).get()
+            event_start = _resolve_category_event_start(race_data, category)
 
-                user_doc = db.collection("users").document(zwift_id).get()
-                if not user_doc.exists:
-                    continue
-                if not _is_dual_recording_required(db, zwift_id):
-                    continue
-
-                activity_id = rider.get("activityId")
-                event_start = category_event_start.get(str(category), default_event_start) or (
-                    event_starts[0] if event_starts else ""
+            if not activity_id:
+                activity_id = _resolve_activity_id_for_rider(
+                    db=db,
+                    race_data=race_data,
+                    user_doc_data=user_doc.to_dict() or {},
+                    zwift_id=zwift_id,
+                    event_start=event_start,
                 )
 
-                if not activity_id:
-                    activity_id = _resolve_activity_id_for_rider(
-                        db=db,
-                        race_data=race_data,
-                        user_doc_data=user_doc.to_dict() or {},
-                        zwift_id=str(zwift_id),
-                        event_start=event_start,
-                    )
-
-                if not activity_id:
-                    missing_payload: dict = {
-                        "zwiftId": zwift_id,
-                        "raceId": race_id,
-                        "status": "missing_activity",
-                        "verifiedAt": datetime.now(timezone.utc).isoformat(),
-                        "failingMetrics": [],
-                        "comparison": {"cpDiff": [], "avgPower": {}},
-                    }
-                    (
-                        db.collection("races")
-                        .document(race_id)
-                        .collection("dr_verifications")
-                        .document(zwift_id)
-                        .set(missing_payload)
-                    )
-                    summary.append({"zwiftId": zwift_id, "status": "missing_activity"})
-                    continue
-
-                _run_dr_verification_background(
-                    db, zwift_id, zwift_id, str(activity_id), race_id, event_start or None
+            if not activity_id:
+                missing_payload: dict = {
+                    "zwiftId": zwift_id,
+                    "raceId": race_id,
+                    "status": "missing_activity",
+                    "verifiedAt": datetime.now(timezone.utc).isoformat(),
+                    "failingMetrics": [],
+                    "comparison": {"cpDiff": [], "avgPower": {}},
+                }
+                (
+                    db.collection("races")
+                    .document(race_id)
+                    .collection("dr_verifications")
+                    .document(zwift_id)
+                    .set(missing_payload)
                 )
-                summary.append({"zwiftId": zwift_id, "activityId": str(activity_id), "status": "triggered"})
+                summary.append({"zwiftId": zwift_id, "status": "missing_activity"})
+                continue
+
+            _run_dr_verification_background(
+                db, zwift_id, zwift_id, str(activity_id), race_id, event_start or None
+            )
+            summary.append({"zwiftId": zwift_id, "activityId": str(activity_id), "status": "triggered"})
 
         return jsonify(
             {
+                "candidates": len(candidates),
                 "triggered": len([s for s in summary if s.get("status") == "triggered"]),
                 "missing_activity": len([s for s in summary if s.get("status") == "missing_activity"]),
                 "details": summary,
@@ -346,6 +338,29 @@ def batch_verify_dual_recording(race_id):
         ), 200
     except Exception as exc:
         logger.error("batch_verify_dual_recording error: %s", exc)
+        return jsonify({"message": str(exc)}), 500
+
+
+@admin_bp.route("/admin/races/<race_id>/verify-dual-recording/candidates", methods=["GET"])
+def get_dual_recording_candidates(race_id: str):
+    """Preview DR-required riders for this race."""
+    try:
+        require_admin(request)
+    except AuthzError as e:
+        return jsonify({"message": e.message}), e.status_code
+
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+
+    try:
+        race_doc = db.collection("races").document(race_id).get()
+        if not race_doc.exists:
+            return jsonify({"message": "Race not found"}), 404
+        race_data = race_doc.to_dict() or {}
+        riders = _collect_dr_candidates_for_race(race_data)
+        return jsonify({"total": len(riders), "riders": riders}), 200
+    except Exception as exc:
+        logger.error("get_dual_recording_candidates error: %s", exc)
         return jsonify({"message": str(exc)}), 500
 
 

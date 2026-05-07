@@ -58,7 +58,7 @@ def _check_dr_pass(comparison: dict) -> tuple[bool, list[str]]:
         diff_pct = row.get("diffPct")
         if diff_pct is None:
             continue
-        if diff_pct > threshold:
+        if abs(float(diff_pct)) > threshold:
             failing.append(key)
 
     similarity = (comparison or {}).get("similarity") or {}

@@ -19,7 +19,6 @@ interface ResultsModalProps {
     race: Race | null;
     status: LoadingStatus;
     onClose: () => void;
-    onRefresh: () => Promise<{ ok: boolean; message: string }>;
     onRaceUpdate: (updatedRace: Race) => void;
     embedded?: boolean;
 }
@@ -28,7 +27,6 @@ export default function ResultsModal({
     race,
     status,
     onClose,
-    onRefresh,
     onRaceUpdate,
     embedded = false,
 }: ResultsModalProps) {
@@ -40,18 +38,11 @@ export default function ResultsModal({
         activityId?: string;
         verification: DualRecordingVerification;
     } | null>(null);
-    const [drRunning, setDrRunning] = useState(false);
-    const [recalcRunning, setRecalcRunning] = useState(false);
     const [singleDrRunning, setSingleDrRunning] = useState(false);
     const [singleDrStatus, setSingleDrStatus] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
     const [drDetailLoading, setDrDetailLoading] = useState(false);
     const [drDetailError, setDrDetailError] = useState<string | null>(null);
     const [drDetailResult, setDrDetailResult] = useState<DualRecordingResult | null>(null);
-    const [actionStatus, setActionStatus] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
-
-    const Spinner = () => (
-        <span className="inline-block w-3 h-3 border-2 border-current border-r-transparent rounded-full animate-spin" />
-    );
 
     const loadDrVerifications = async (raceId: string): Promise<Map<string, DualRecordingVerification>> => {
         if (!user) return new Map<string, DualRecordingVerification>();
@@ -74,15 +65,6 @@ export default function ResultsModal({
             // Keep UI stable on background load errors.
             return new Map<string, DualRecordingVerification>();
         }
-    };
-
-    const buildDrSummaryText = (map: Map<string, DualRecordingVerification>): string => {
-        const stats = { passed: 0, failed: 0, missing_activity: 0, missing_strava: 0, error: 0 };
-        map.forEach((v) => {
-            const key = String(v.status || '');
-            if (key in stats) stats[key as keyof typeof stats] += 1;
-        });
-        return `Status nu: passed=${stats.passed}, failed=${stats.failed}, missing_activity=${stats.missing_activity}, missing_strava=${stats.missing_strava}, error=${stats.error}`;
     };
 
     useEffect(() => {
@@ -167,66 +149,6 @@ export default function ResultsModal({
         const stravaId = drModal.verification.stravaActivityId ?? null;
         void loadDualRecordingDetail(drModal.zwiftId, drModal.activityId, stravaId);
     }, [drModal?.zwiftId, drModal?.activityId, drModal?.verification?.stravaActivityId, user]);
-
-    const handleVerifyDR = async () => {
-        if (!race || !user) return;
-        setDrRunning(true);
-        setActionStatus({ type: 'info', text: 'Verificerer DR...' });
-        try {
-            const token = await user.getIdToken();
-            const res = await fetch(`${API_URL}/admin/races/${race.id}/verify-dual-recording`, {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            const body = await res.json();
-            if (res.ok) {
-                setActionStatus({
-                    type: 'success',
-                    text: `DR færdig: ${body.triggered ?? 0} ryttere trigget. Mangler aktivitet: ${body.missing_activity ?? 0}.`,
-                });
-                // Refresh DR verifications after a short delay to let background threads finish
-                setTimeout(async () => {
-                    const latest = await loadDrVerifications(race.id);
-                    if (latest.size > 0) {
-                        setActionStatus({
-                            type: 'success',
-                            text: `DR trigger færdig. ${buildDrSummaryText(latest)}`,
-                        });
-                    }
-                }, 5000);
-            } else {
-                setActionStatus({ type: 'error', text: `DR fejl: ${body.message || 'Ukendt fejl'}` });
-            }
-        } catch {
-            const latest = await loadDrVerifications(race.id);
-            if (latest.size > 0) {
-                setActionStatus({
-                    type: 'error',
-                    text: `DR netværksfejl (trigger-status ukendt). ${buildDrSummaryText(latest)}`,
-                });
-            } else {
-                setActionStatus({ type: 'error', text: 'DR netværksfejl (ingen statusdata hentet)' });
-            }
-        } finally {
-            setDrRunning(false);
-        }
-    };
-
-    const handleRecalculate = async () => {
-        setRecalcRunning(true);
-        setActionStatus({ type: 'info', text: 'Beregner resultater...' });
-        try {
-            const result = await onRefresh();
-            setActionStatus({
-                type: result.ok ? 'success' : 'error',
-                text: result.message,
-            });
-        } catch {
-            setActionStatus({ type: 'error', text: 'Fejl under beregning af resultater' });
-        } finally {
-            setRecalcRunning(false);
-        }
-    };
 
     const handleRunSingleDR = async () => {
         if (!race || !user || !drModal) return;
@@ -401,44 +323,15 @@ export default function ResultsModal({
 
     const content = (
         <div className={embedded ? "bg-card w-full rounded-lg shadow border border-border flex flex-col" : "bg-card w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-lg shadow-2xl border border-border flex flex-col"}>
-                <div className="p-4 border-b border-border flex justify-between items-center bg-muted/30">
-                    <div className="flex items-center gap-3 flex-wrap">
-                        <h3 className="text-lg font-bold text-card-foreground">
-                            Results: {race.name}
-                        </h3>
-                        <button
-                            onClick={handleRecalculate}
-                            disabled={recalcRunning}
-                            className="text-xs bg-primary text-primary-foreground px-3 py-1 rounded hover:opacity-90 font-medium"
-                        >
-                            <span className="inline-flex items-center gap-2">
-                                {recalcRunning && <Spinner />}
-                                {recalcRunning ? 'Calculating...' : 'Recalculate Results'}
-                            </span>
-                        </button>
-                        <button
-                            onClick={handleVerifyDR}
-                            disabled={drRunning}
-                            title="Kør dual recording verifikation for DR-krævede ryttere"
-                            className="text-xs bg-blue-600 text-white px-3 py-1 rounded hover:opacity-90 font-medium disabled:opacity-50"
-                        >
-                            <span className="inline-flex items-center gap-2">
-                                {drRunning && <Spinner />}
-                                {drRunning ? 'Verificerer DR...' : 'Verificer DR'}
-                            </span>
-                        </button>
-                        {actionStatus && (
-                            <span className={`text-xs ${
-                                actionStatus.type === 'success'
-                                    ? 'text-green-600 dark:text-green-400'
-                                    : actionStatus.type === 'error'
-                                        ? 'text-red-600 dark:text-red-400'
-                                        : 'text-muted-foreground'
-                            }`}>
-                                {actionStatus.text}
-                            </span>
-                        )}
-                    </div>
+                <div className="p-4 border-b border-border bg-muted/30 space-y-3">
+                    <div className="flex justify-between items-start gap-3">
+                        <div>
+                            <h3 className="text-lg font-bold text-card-foreground">Results: {race.name}</h3>
+                            {race.date && (
+                                <p className="text-xs text-muted-foreground mt-0.5">{race.date}</p>
+                            )}
+                        </div>
+                        <div className="flex justify-end">
                     {!embedded && (
                         <button 
                             onClick={onClose}
@@ -447,6 +340,8 @@ export default function ResultsModal({
                             ✕
                         </button>
                     )}
+                        </div>
+                    </div>
                 </div>
                 
                 <div className={`${embedded ? 'p-4' : 'overflow-y-auto p-4'} space-y-6`}>

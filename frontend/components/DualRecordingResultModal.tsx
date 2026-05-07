@@ -34,7 +34,7 @@ function diffColour(pct: number | null | undefined, key: string): string {
     const thresholds: Record<string, number> = { w1200: 5, w300: 5.5, w60: 6, w15: 6.5 };
     const limit = thresholds[key];
     if (limit !== undefined) {
-        return pct > limit ? 'text-red-600 font-bold' : 'text-green-600';
+        return Math.abs(pct) > limit ? 'text-red-600 font-bold' : 'text-green-600';
     }
     return Math.abs(pct) <= 3 ? 'text-green-600' : Math.abs(pct) <= 8 ? 'text-yellow-600' : 'text-red-600';
 }
