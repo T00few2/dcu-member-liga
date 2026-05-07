@@ -85,7 +85,11 @@ def _compute_dual_recording_for_rider(
             logger.warning("_compute_dual_recording_for_rider: cp curve: %s", exc)
 
     matched_strava, resolved_strava_id = _match_strava_activity(
-        user_doc_id, strava_activity_id, zwift_started_at, event_start_iso
+        user_doc_id,
+        strava_activity_id,
+        zwift_started_at,
+        zwift_duration_sec,
+        event_start_iso,
     )
     if not matched_strava:
         return {

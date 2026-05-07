@@ -22,6 +22,7 @@ def _match_strava_activity(
     user_id: str,
     strava_activity_id: str | None,
     zwift_started_at: str | None,
+    zwift_duration_sec: int | None,
     event_start_iso: str | None,
 ) -> tuple[dict | None, str | None]:
     """Return (matched_strava_dict, resolved_strava_id)."""
@@ -36,17 +37,61 @@ def _match_strava_activity(
     if not anchor_dt:
         return None, None
 
-    closest, min_delta = None, float("inf")
+    zwift_window_sec = int(zwift_duration_sec or 0)
+    if zwift_window_sec <= 0:
+        # Strict mode: without a race duration we cannot compute meaningful overlap.
+        return None, None
+
+    zwift_start = anchor_dt
+    zwift_end = zwift_start.timestamp() + zwift_window_sec
+    min_overlap_sec = max(300, min(1200, int(zwift_window_sec * 0.35)))
+
+    best = None
+    best_overlap = -1.0
+    best_end_delta = float("inf")
+    best_start_delta = float("inf")
+
     for act in activities:
         act_dt = _parse_iso_utc(act.get("startDate", ""))
-        if act_dt:
-            delta = abs((act_dt - anchor_dt).total_seconds())
-            if delta < min_delta:
-                min_delta = delta
-                closest = act
+        if not act_dt:
+            continue
 
-    if closest and min_delta < 4 * 3600:
-        return closest, str(closest["id"])
+        duration_sec = int(
+            act.get("durationSec")
+            or act.get("movingTimeSec")
+            or 0
+        )
+        if duration_sec <= 0:
+            continue
+
+        act_start = act_dt.timestamp()
+        act_end = act_start + duration_sec
+        overlap_sec = max(0.0, min(zwift_end, act_end) - max(zwift_start.timestamp(), act_start))
+
+        end_delta = abs(act_end - zwift_end)
+        start_delta = abs(act_start - zwift_start.timestamp())
+
+        if overlap_sec > best_overlap:
+            best = act
+            best_overlap = overlap_sec
+            best_end_delta = end_delta
+            best_start_delta = start_delta
+            continue
+        if overlap_sec == best_overlap:
+            if end_delta < best_end_delta or (end_delta == best_end_delta and start_delta < best_start_delta):
+                best = act
+                best_end_delta = end_delta
+                best_start_delta = start_delta
+
+    if best and best_overlap >= min_overlap_sec:
+        return best, str(best["id"])
+
+    logger.info(
+        "No meaningful Strava overlap match for rider=%s (best_overlap=%.0fs, required=%ss)",
+        user_id,
+        best_overlap if best_overlap >= 0 else 0,
+        min_overlap_sec,
+    )
     return None, None
 
 
