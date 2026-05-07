@@ -358,7 +358,7 @@ function CategoryResultsTable({
                                 : isManualDeclass
                                     ? 'DC'
                                     : raceStatus;
-                        const hidePoints = statusLabel === 'DNF' || statusLabel === 'WC' || statusLabel === 'EX';
+                        const hidePoints = statusLabel === 'DNF' || statusLabel === 'EX';
                         
                         let rowClass = 'hover:bg-muted/10';
                         if (isManualExcluded) {
@@ -396,11 +396,9 @@ function CategoryResultsTable({
                                     {statusLabel}
                                 </td>
                                 <td className="px-4 py-2 text-right font-mono text-muted-foreground">
-                                    {statusLabel === 'WC'
-                                        ? 'WC'
-                                        : rider.finishTime > 0
-                                            ? new Date(rider.finishTime).toISOString().substr(11, 8)
-                                            : 'DNF'}
+                                    {rider.finishTime > 0
+                                        ? new Date(rider.finishTime).toISOString().substr(11, 8)
+                                        : 'DNF'}
                                 </td>
                                 <td className="px-4 py-2 text-right font-bold text-primary">
                                     {hidePoints ? '-' : rider.totalPoints}

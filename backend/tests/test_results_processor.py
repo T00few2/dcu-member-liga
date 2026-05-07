@@ -145,12 +145,16 @@ class TestGroupedCategoryResolution:
         )
         assert resolved == 'A'
 
-    def test_matches_configured_category_case_insensitive(self):
+    def test_build_grouped_subgroup_category_map_uses_subgroup_label_order(self):
         from services.results_processor import ResultsProcessor
         rp = ResultsProcessor(MagicMock(), MagicMock(), MagicMock())
 
-        matched = rp._match_configured_category(['Diamond', 'Ruby'], 'ruby')
-        assert matched == 'Ruby'
+        subgroups = [
+            {'id': '2', 'subgroupLabel': 'B'},
+            {'id': '1', 'subgroupLabel': 'A'},
+        ]
+        mapped = rp._build_grouped_subgroup_category_map(subgroups, ['Diamond', 'Ruby'])
+        assert mapped == {'1': 'Diamond', '2': 'Ruby'}
 
 
 class TestDnfFromSegmentStarters:
