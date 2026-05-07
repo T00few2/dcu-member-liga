@@ -117,6 +117,8 @@ class ResultsProcessor:
             data = doc.to_dict()
             zid = data.get('zwiftId')
             zuid = data.get('zwiftUserId')
+            conn_zwift = (data.get('connections') or {}).get('zwift') if isinstance(data.get('connections'), dict) else {}
+            conn_user_id = (conn_zwift or {}).get('userId')
 
             reg = data.get('registration', {})
             is_registered = reg.get('status') == 'complete'
@@ -130,6 +132,8 @@ class ResultsProcessor:
                 registered_riders[str(zid)] = data
             if zuid and is_registered:
                 registered_riders[str(zuid)] = data
+            if conn_user_id and is_registered:
+                registered_riders[str(conn_user_id)] = data
 
         logger.info(f"Found {len(registered_riders)} registered riders in database.")
 
