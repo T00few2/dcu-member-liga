@@ -499,6 +499,7 @@ def get_pending_verifications():
             pending.append({
                 'id': user.id,
                 'name': user.name,
+                'email': str((user_dict or {}).get('email') or ''),
                 'club': user.club,
                 'videoLink': active_req.get('videoLink'),
                 'submittedAt': active_req.get('submittedAt'),

@@ -1,19 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import dynamic from 'next/dynamic';
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
-
-const RichTextEditor = dynamic(
-    () => import('@/components/admin/RichTextEditor'),
-    {
-        ssr: false,
-        loading: () => (
-            <div className="min-h-48 border border-border rounded-lg bg-muted/10 animate-pulse" />
-        ),
-    }
-);
+import ComposeEmailModal from '@/components/admin/ComposeEmailModal';
+import { defaultDcuSignatureHtml, withDcuSignature } from '@/lib/email-signature';
 
 interface UserRow {
     userId: string;
@@ -259,7 +250,8 @@ export default function UsersOverview() {
         setIsComposeOpen(true);
         setSendError(null);
         setSendMode(selectedIds.size > 20 ? 'group' : 'individual');
-        setRecipientMode('bcc');
+        setRecipientMode('to');
+        setEmailMessage(defaultDcuSignatureHtml());
         setManualTo('');
         setManualCc('');
         setManualBcc('');
@@ -312,7 +304,7 @@ export default function UsersOverview() {
                 body: JSON.stringify({
                     userIds: Array.from(selectedIds),
                     subject,
-                    message: emailMessage,
+                    message: withDcuSignature(emailMessage),
                     sendMode,
                     ...(sendMode === 'group' ? { recipientMode } : {}),
                     manualTo: manualTo.trim(),
@@ -576,208 +568,158 @@ export default function UsersOverview() {
                 </table>
             </div>
 
-            {isComposeOpen && (
-                <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50">
-                    <div className="flex min-h-full items-start sm:items-center justify-center p-4">
-                        <div className="w-full max-w-2xl rounded-xl border border-border bg-card p-5 shadow-xl space-y-4 my-4">
-                            <div className="flex items-center justify-between">
-                                <h3 className="text-lg font-semibold">Compose email</h3>
-                                <button
-                                    onClick={closeComposeModal}
-                                    className="text-sm text-muted-foreground hover:text-foreground"
-                                    disabled={sendingEmail}
-                                >
-                                    Close
-                                </button>
-                            </div>
+            <ComposeEmailModal
+                isOpen={isComposeOpen}
+                title="Compose email"
+                subject={emailSubject}
+                onSubjectChange={setEmailSubject}
+                onMessageChange={setEmailMessage}
+                initialMessage={emailMessage}
+                onClose={closeComposeModal}
+                onSend={handleSendEmail}
+                sending={sendingEmail}
+                sendDisabled={selectedCount === 0}
+                sendLabel="Send email"
+                sendingLabel="Sending…"
+                error={sendError}
+                beforeSubject={(
+                    <div className="rounded-lg border border-border">
+                        <button
+                            type="button"
+                            onClick={() => setRecipientsOpen(o => !o)}
+                            className="w-full flex items-center justify-between px-3 py-2.5 text-sm font-medium hover:bg-muted/40 transition rounded-lg"
+                        >
+                            <span>Recipients</span>
+                            <span className="flex items-center gap-2 text-muted-foreground font-normal">
+                                <span>
+                                    {sendMode === 'individual' ? 'Individual' : `Group (${recipientMode.toUpperCase()})`}
+                                    {' · '}{selectedCount} recipient(s)
+                                    {manualTo.trim()  ? ` · +${parseManualEmails(manualTo).valid.length  || '…'} To`  : ''}
+                                    {manualCc.trim()  ? ` · +${parseManualEmails(manualCc).valid.length  || '…'} CC`  : ''}
+                                    {manualBcc.trim() ? ` · +${parseManualEmails(manualBcc).valid.length || '…'} BCC` : ''}
+                                    {selectedWithoutEmail > 0 ? ` · ${selectedWithoutEmail} skipped` : ''}
+                                </span>
+                                <span className="text-xs">{recipientsOpen ? '▲' : '▼'}</span>
+                            </span>
+                        </button>
 
-                            {/* Collapsible recipients + TO/CC/BCC + manual CC/BCC */}
-                            <div className="rounded-lg border border-border">
-                                <button
-                                    type="button"
-                                    onClick={() => setRecipientsOpen(o => !o)}
-                                    className="w-full flex items-center justify-between px-3 py-2.5 text-sm font-medium hover:bg-muted/40 transition rounded-lg"
-                                >
-                                    <span>Recipients</span>
-                                    <span className="flex items-center gap-2 text-muted-foreground font-normal">
-                                        <span>
-                                            {sendMode === 'individual' ? 'Individual' : `Group (${recipientMode.toUpperCase()})`}
-                                            {' · '}{selectedCount} recipient(s)
-                                            {manualTo.trim()  ? ` · +${parseManualEmails(manualTo).valid.length  || '…'} To`  : ''}
-                                            {manualCc.trim()  ? ` · +${parseManualEmails(manualCc).valid.length  || '…'} CC`  : ''}
-                                            {manualBcc.trim() ? ` · +${parseManualEmails(manualBcc).valid.length || '…'} BCC` : ''}
-                                            {selectedWithoutEmail > 0 ? ` · ${selectedWithoutEmail} skipped` : ''}
-                                        </span>
-                                        <span className="text-xs">{recipientsOpen ? '▲' : '▼'}</span>
-                                    </span>
-                                </button>
-
-                                {recipientsOpen && (
-                                    <div className="border-t border-border space-y-3 p-3">
-                                        {/* Delivery mode */}
-                                        <div className="space-y-2">
-                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Delivery</p>
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setSendMode('individual')}
-                                                    disabled={sendingEmail}
-                                                    className={`text-left rounded-lg border px-3 py-2.5 transition ${sendMode === 'individual' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'}`}
-                                                >
-                                                    <div className="text-sm font-medium">Individual</div>
-                                                    <div className="text-xs text-muted-foreground mt-0.5">Personal email per recipient · Best inbox delivery</div>
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setSendMode('group')}
-                                                    disabled={sendingEmail}
-                                                    className={`text-left rounded-lg border px-3 py-2.5 transition ${sendMode === 'group' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'}`}
-                                                >
-                                                    <div className="text-sm font-medium">Group</div>
-                                                    <div className="text-xs text-muted-foreground mt-0.5">One email to all · Choose address visibility</div>
-                                                </button>
-                                            </div>
-                                            {sendMode === 'group' && (
-                                                <div className="space-y-1.5 pt-0.5">
-                                                    <div className="flex items-center gap-4">
-                                                        {(['to', 'cc', 'bcc'] as const).map(mode => (
-                                                            <label key={mode} className="flex items-center gap-1.5 text-sm cursor-pointer select-none">
-                                                                <input
-                                                                    type="radio"
-                                                                    name="recipientMode"
-                                                                    value={mode}
-                                                                    checked={recipientMode === mode}
-                                                                    onChange={() => setRecipientMode(mode)}
-                                                                    disabled={sendingEmail}
-                                                                    className="accent-primary"
-                                                                />
-                                                                {mode.toUpperCase()}
-                                                            </label>
-                                                        ))}
-                                                    </div>
-                                                    {(recipientMode === 'to' || recipientMode === 'cc') && selectedCount > 1 && (
-                                                        <p className="text-xs text-amber-600">All {selectedCount} recipients will see each other&apos;s addresses.</p>
-                                                    )}
-                                                    {recipientMode === 'bcc' && (
-                                                        <p className="text-xs text-muted-foreground">Recipients are hidden from each other. May land in Promotions.</p>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* Recipients list */}
-                                        <div className="rounded-md border border-border bg-muted/30">
-                                            <div className="px-3 py-1.5 border-b border-border text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                                                Recipients ({selectedCount})
-                                            </div>
-                                            <div className="max-h-36 overflow-y-auto">
-                                                {selectedRowsSorted.map(row => (
-                                                    <div key={getRowId(row)} className="px-3 py-1.5 text-sm border-b last:border-b-0 border-border">
-                                                        <span className="font-medium">{row.name || row.zwiftId || 'Unknown rider'}</span>
-                                                        <span className="ml-2 text-xs text-muted-foreground">
-                                                            {row.email?.trim() ? row.email : '— no email (skipped)'}
-                                                        </span>
-                                                    </div>
+                        {recipientsOpen && (
+                            <div className="border-t border-border space-y-3 p-3">
+                                <div className="space-y-2">
+                                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Delivery</p>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setSendMode('individual')}
+                                            disabled={sendingEmail}
+                                            className={`text-left rounded-lg border px-3 py-2.5 transition ${sendMode === 'individual' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'}`}
+                                        >
+                                            <div className="text-sm font-medium">Individual</div>
+                                            <div className="text-xs text-muted-foreground mt-0.5">Personal email per recipient · Best inbox delivery</div>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setSendMode('group')}
+                                            disabled={sendingEmail}
+                                            className={`text-left rounded-lg border px-3 py-2.5 transition ${sendMode === 'group' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'}`}
+                                        >
+                                            <div className="text-sm font-medium">Group</div>
+                                            <div className="text-xs text-muted-foreground mt-0.5">One email to all · Choose address visibility</div>
+                                        </button>
+                                    </div>
+                                    {sendMode === 'group' && (
+                                        <div className="space-y-1.5 pt-0.5">
+                                            <div className="flex items-center gap-4">
+                                                {(['to', 'cc', 'bcc'] as const).map(mode => (
+                                                    <label key={mode} className="flex items-center gap-1.5 text-sm cursor-pointer select-none">
+                                                        <input
+                                                            type="radio"
+                                                            name="recipientMode"
+                                                            value={mode}
+                                                            checked={recipientMode === mode}
+                                                            onChange={() => setRecipientMode(mode)}
+                                                            disabled={sendingEmail}
+                                                            className="accent-primary"
+                                                        />
+                                                        {mode.toUpperCase()}
+                                                    </label>
                                                 ))}
                                             </div>
+                                            {(recipientMode === 'to' || recipientMode === 'cc') && selectedCount > 1 && (
+                                                <p className="text-xs text-amber-600">All {selectedCount} recipients will see each other&apos;s addresses.</p>
+                                            )}
+                                            {recipientMode === 'bcc' && (
+                                                <p className="text-xs text-muted-foreground">Recipients are hidden from each other. May land in Promotions.</p>
+                                            )}
                                         </div>
+                                    )}
+                                </div>
 
-                                        {/* Manual To */}
-                                        <div className="space-y-1">
-                                            <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                                                To <span className="normal-case font-normal">(optional, comma-separated)</span>
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={manualTo}
-                                                onChange={e => { setManualTo(e.target.value); setToError(null); }}
-                                                disabled={sendingEmail}
-                                                className="w-full border border-border rounded-md px-3 py-1.5 text-sm bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
-                                                placeholder="to@example.com, another@example.com"
-                                            />
-                                            {toError && <p className="text-xs text-red-600">{toError}</p>}
-                                        </div>
-
-                                        {/* Manual CC */}
-                                        <div className="space-y-1">
-                                            <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                                                CC <span className="normal-case font-normal">(optional, comma-separated)</span>
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={manualCc}
-                                                onChange={e => { setManualCc(e.target.value); setCcError(null); }}
-                                                disabled={sendingEmail}
-                                                className="w-full border border-border rounded-md px-3 py-1.5 text-sm bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
-                                                placeholder="cc@example.com, another@example.com"
-                                            />
-                                            {ccError && <p className="text-xs text-red-600">{ccError}</p>}
-                                        </div>
-
-                                        {/* Manual BCC */}
-                                        <div className="space-y-1">
-                                            <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                                                BCC <span className="normal-case font-normal">(optional, comma-separated)</span>
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={manualBcc}
-                                                onChange={e => { setManualBcc(e.target.value); setBccError(null); }}
-                                                disabled={sendingEmail}
-                                                className="w-full border border-border rounded-md px-3 py-1.5 text-sm bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
-                                                placeholder="bcc@example.com"
-                                            />
-                                            {bccError && <p className="text-xs text-red-600">{bccError}</p>}
-                                        </div>
+                                <div className="rounded-md border border-border bg-muted/30">
+                                    <div className="px-3 py-1.5 border-b border-border text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                        Recipients ({selectedCount})
                                     </div>
-                                )}
-                            </div>
+                                    <div className="max-h-36 overflow-y-auto">
+                                        {selectedRowsSorted.map(row => (
+                                            <div key={getRowId(row)} className="px-3 py-1.5 text-sm border-b last:border-b-0 border-border">
+                                                <span className="font-medium">{row.name || row.zwiftId || 'Unknown rider'}</span>
+                                                <span className="ml-2 text-xs text-muted-foreground">
+                                                    {row.email?.trim() ? row.email : '— no email (skipped)'}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
 
-                            <div className="space-y-2">
-                                <label className="block text-sm font-medium">Subject</label>
-                                <input
-                                    type="text"
-                                    value={emailSubject}
-                                    onChange={e => setEmailSubject(e.target.value)}
-                                    className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                                    placeholder="Email subject"
-                                    maxLength={200}
-                                />
-                            </div>
+                                <div className="space-y-1">
+                                    <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                        To <span className="normal-case font-normal">(optional, comma-separated)</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={manualTo}
+                                        onChange={e => { setManualTo(e.target.value); setToError(null); }}
+                                        disabled={sendingEmail}
+                                        className="w-full border border-border rounded-md px-3 py-1.5 text-sm bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
+                                        placeholder="to@example.com, another@example.com"
+                                    />
+                                    {toError && <p className="text-xs text-red-600">{toError}</p>}
+                                </div>
 
-                            <div className="space-y-2">
-                                <label className="block text-sm font-medium">Message</label>
-                                <RichTextEditor
-                                    key={isComposeOpen ? 'open' : 'closed'}
-                                    onChange={setEmailMessage}
-                                    disabled={sendingEmail}
-                                />
-                            </div>
+                                <div className="space-y-1">
+                                    <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                        CC <span className="normal-case font-normal">(optional, comma-separated)</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={manualCc}
+                                        onChange={e => { setManualCc(e.target.value); setCcError(null); }}
+                                        disabled={sendingEmail}
+                                        className="w-full border border-border rounded-md px-3 py-1.5 text-sm bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
+                                        placeholder="cc@example.com, another@example.com"
+                                    />
+                                    {ccError && <p className="text-xs text-red-600">{ccError}</p>}
+                                </div>
 
-                            {sendError && (
-                                <p className="text-sm text-red-600">{sendError}</p>
-                            )}
-
-                            <div className="flex items-center justify-end gap-2">
-                                <button
-                                    onClick={closeComposeModal}
-                                    className="text-sm border border-border rounded-lg px-3 py-1.5 hover:bg-muted/50"
-                                    disabled={sendingEmail}
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={handleSendEmail}
-                                    className="text-sm bg-primary text-primary-foreground rounded-lg px-3 py-1.5 hover:opacity-90 disabled:opacity-60"
-                                    disabled={sendingEmail || selectedCount === 0}
-                                >
-                                    {sendingEmail ? 'Sending…' : 'Send email'}
-                                </button>
+                                <div className="space-y-1">
+                                    <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                        BCC <span className="normal-case font-normal">(optional, comma-separated)</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={manualBcc}
+                                        onChange={e => { setManualBcc(e.target.value); setBccError(null); }}
+                                        disabled={sendingEmail}
+                                        className="w-full border border-border rounded-md px-3 py-1.5 text-sm bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
+                                        placeholder="bcc@example.com"
+                                    />
+                                    {bccError && <p className="text-xs text-red-600">{bccError}</p>}
+                                </div>
                             </div>
-                        </div>
+                        )}
                     </div>
-                </div>
-            )}
+                )}
+            />
         </div>
     );
 }

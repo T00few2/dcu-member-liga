@@ -4,10 +4,13 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ToastProvider';
 import { API_URL } from '@/lib/api';
+import ComposeEmailModal from '@/components/admin/ComposeEmailModal';
+import { defaultDcuSignatureHtml, withDcuSignature } from '@/lib/email-signature';
 
 interface PendingVerification {
     id: string;
     name: string;
+    email?: string;
     club: string;
     videoLink: string;
     submittedAt: string | any;
@@ -78,6 +81,11 @@ function getFinishedRaces(rawRaces: any[]): RaceOption[] {
     return out.filter(r => r.id);
 }
 
+function getFirstName(fullName: string): string {
+    const first = (fullName || '').trim().split(/\s+/).filter(Boolean)[0];
+    return first || '';
+}
+
 export default function WeightVerificationManager() {
     const { user } = useAuth();
     const { showToast } = useToast();
@@ -98,6 +106,12 @@ export default function WeightVerificationManager() {
     // Review State
     const [reviewingId, setReviewingId] = useState<string | null>(null);
     const [rejectionReason, setRejectionReason] = useState('');
+    const [isComposeOpen, setIsComposeOpen] = useState(false);
+    const [composeTarget, setComposeTarget] = useState<Pick<PendingVerification, 'id' | 'name' | 'email'> | null>(null);
+    const [emailSubject, setEmailSubject] = useState('');
+    const [emailMessage, setEmailMessage] = useState('');
+    const [sendingEmail, setSendingEmail] = useState(false);
+    const [sendError, setSendError] = useState<string | null>(null);
 
     // Revoke State
     const [revokingId, setRevokingId] = useState<string | null>(null);
@@ -243,6 +257,70 @@ export default function WeightVerificationManager() {
             showToast('Network error submitting review', 'error');
         } finally {
             setReviewingId(null);
+        }
+    };
+
+    const openComposeModal = (target: Pick<PendingVerification, 'id' | 'name' | 'email'>) => {
+        const firstName = getFirstName(target.name);
+        const greeting = firstName ? `<p>Hej ${firstName}</p><p><br></p>` : '<p>Hej</p><p><br></p>';
+        setComposeTarget(target);
+        setEmailSubject('Opfølgning på vægtverifikation');
+        setEmailMessage(`${greeting}${defaultDcuSignatureHtml()}`);
+        setSendError(null);
+        setIsComposeOpen(true);
+    };
+
+    const closeComposeModal = () => {
+        if (sendingEmail) return;
+        setIsComposeOpen(false);
+        setComposeTarget(null);
+        setEmailSubject('');
+        setEmailMessage('');
+        setSendError(null);
+    };
+
+    const isMessageEmpty = (html: string) =>
+        html.replace(/<[^>]*>/g, '').trim().length === 0;
+
+    const handleSendEmail = async () => {
+        if (!user || !composeTarget || sendingEmail) return;
+        const subject = emailSubject.trim();
+        if (!subject || isMessageEmpty(emailMessage)) {
+            setSendError('Subject and message are required.');
+            return;
+        }
+
+        setSendingEmail(true);
+        setSendError(null);
+        try {
+            const token = await user.getIdToken();
+            const res = await fetch(`${API_URL}/admin/users/send-email`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    userIds: [composeTarget.id],
+                    subject,
+                    message: withDcuSignature(emailMessage),
+                    sendMode: 'group',
+                    recipientMode: 'to',
+                }),
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.error ?? `HTTP ${res.status}`);
+            }
+
+            showToast(`Email sent to ${composeTarget.name}`, 'success');
+            closeComposeModal();
+        } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : 'Failed to send email';
+            setSendError(msg);
+        } finally {
+            setSendingEmail(false);
         }
     };
 
@@ -396,6 +474,13 @@ export default function WeightVerificationManager() {
                                         </a>
                                     </div>
 
+                                    <button
+                                        onClick={() => openComposeModal({ id: req.id, name: req.name, email: req.email })}
+                                        className="self-start px-3 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-700 text-sm"
+                                    >
+                                        Email
+                                    </button>
+
                                     <div className="flex flex-col gap-2 pt-2 border-t border-border mt-2">
                                         {reviewingId === req.id ? (
                                             <div className="flex items-center gap-2 text-muted-foreground justify-center py-2">
@@ -466,6 +551,30 @@ export default function WeightVerificationManager() {
                     </div>
                 )}
             </div>
+
+            <ComposeEmailModal
+                isOpen={isComposeOpen && !!composeTarget}
+                title={composeTarget ? `Email ${composeTarget.name}` : 'Compose email'}
+                subject={emailSubject}
+                onSubjectChange={setEmailSubject}
+                onMessageChange={setEmailMessage}
+                initialMessage={emailMessage}
+                onClose={closeComposeModal}
+                onSend={handleSendEmail}
+                sending={sendingEmail}
+                sendLabel="Send email"
+                sendingLabel="Sending…"
+                error={sendError}
+                beforeSubject={composeTarget?.email ? (
+                    <div className="text-sm text-muted-foreground">
+                        Til: <span className="font-medium text-foreground">{composeTarget.email}</span>
+                    </div>
+                ) : (
+                    <div className="text-sm text-amber-600">
+                        Til: Ingen email fundet for denne rytter
+                    </div>
+                )}
+            />
         </div>
     );
 }

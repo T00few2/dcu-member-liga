@@ -51,12 +51,14 @@ const FontSize = Extension.create({
 interface Props {
     onChange: (html: string) => void;
     disabled?: boolean;
+    initialContent?: string;
 }
 
-export default function RichTextEditor({ onChange, disabled }: Props) {
+export default function RichTextEditor({ onChange, disabled, initialContent = '' }: Props) {
     const editor = useEditor({
+        immediatelyRender: false,
         extensions: [StarterKit, Underline, TextStyle, FontSize],
-        content: '',
+        content: initialContent,
         editable: !disabled,
         onUpdate({ editor }) {
             onChange(editor.getHTML());
