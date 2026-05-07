@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { db } from '@/lib/firebase';
-import { doc, onSnapshot, collection, getDocs } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { API_URL } from '@/lib/api';
 import type { Race, Sprint, ResultEntry, StandingEntry, DualRecordingVerification } from '@/types/live';
 import StandingsTable from './_components/StandingsTable';
@@ -102,14 +102,31 @@ export default function ResultsPage() {
     }, [selectedRaceId]);
 
     useEffect(() => {
-        if (!selectedRaceId) return;
-        const colRef = collection(db, 'races', selectedRaceId, 'dr_verifications');
-        getDocs(colRef).then(snap => {
-            const map = new Map<string, DualRecordingVerification>();
-            snap.forEach(d => map.set(d.id, d.data() as DualRecordingVerification));
-            setDrVerifications(map);
-        }).catch(() => {});
-    }, [selectedRaceId]);
+        const loadDrVerifications = async () => {
+            if (!selectedRaceId || !user) return;
+            try {
+                const token = await user.getIdToken();
+                const res = await fetch(`${API_URL}/races/${selectedRaceId}/dr-verifications`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                if (!res.ok) {
+                    setDrVerifications(new Map());
+                    return;
+                }
+                const body = await res.json();
+                const map = new Map<string, DualRecordingVerification>();
+                (body.verifications || []).forEach((v: DualRecordingVerification & { zwiftId?: string | number }) => {
+                    const key = String(v.zwiftId || '');
+                    if (!key) return;
+                    map.set(key, v);
+                });
+                setDrVerifications(map);
+            } catch {
+                setDrVerifications(new Map());
+            }
+        };
+        void loadDrVerifications();
+    }, [selectedRaceId, user]);
 
     useEffect(() => {
         const unsubscribe = onSnapshot(doc(db, 'league', 'standings'), (snap) => {
@@ -304,6 +321,7 @@ export default function ResultsPage() {
                     getSprintHeader={getSprintHeader}
                     leaguePointsByZwiftId={leaguePointsByZwiftId}
                     drVerifications={drVerifications}
+                    user={user}
                 />
             )}
         </div>

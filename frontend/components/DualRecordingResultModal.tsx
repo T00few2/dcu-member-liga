@@ -20,6 +20,8 @@ interface Props {
     streamResult?: DualRecordingResult | null;
     streamLoading?: boolean;
     streamError?: string | null;
+    hideHeartRate?: boolean;
+    showRunActions?: boolean;
 }
 
 const THRESHOLD_LABELS: Record<string, string> = {
@@ -112,6 +114,8 @@ export default function DualRecordingResultModal({
     streamResult = null,
     streamLoading = false,
     streamError = null,
+    hideHeartRate = false,
+    showRunActions = true,
 }: Props) {
     if (!open) return null;
 
@@ -142,7 +146,7 @@ export default function DualRecordingResultModal({
                 </div>
 
                 <div className="px-6 py-4 space-y-4">
-                    {onRunForRider && (
+                    {showRunActions && onRunForRider && (
                         <div className="space-y-2">
                             <button
                                 onClick={() => void onRunForRider()}
@@ -348,7 +352,7 @@ export default function DualRecordingResultModal({
                         ) : streamError ? (
                             <div className="text-xs text-red-600">{streamError}</div>
                         ) : streamResult ? (
-                            <RecordingStreamsChart result={streamResult} />
+                            <RecordingStreamsChart result={streamResult} hideHeartRate={hideHeartRate} />
                         ) : (
                             <div className="text-xs text-muted-foreground">No stream data available.</div>
                         )}
@@ -373,7 +377,13 @@ function fmtRaceTime(sec: number) {
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-function RecordingStreamsChart({ result }: { result: DualRecordingResult }) {
+function RecordingStreamsChart({
+    result,
+    hideHeartRate = false,
+}: {
+    result: DualRecordingResult;
+    hideHeartRate?: boolean;
+}) {
     const { zwift, strava } = result;
     const [hidden, setHidden] = useState<Set<string>>(
         () => new Set(['zwiftHR', 'stravaHR', 'zwiftCad', 'stravaCad', 'zwiftAlt', 'stravaAlt'])
@@ -522,14 +532,14 @@ function RecordingStreamsChart({ result }: { result: DualRecordingResult }) {
         return {
             zwiftW: hasAny('zwiftW'),
             stravaW: hasAny('stravaW'),
-            zwiftHR: hasAny('zwiftHR'),
-            stravaHR: hasAny('stravaHR'),
+            zwiftHR: !hideHeartRate && hasAny('zwiftHR'),
+            stravaHR: !hideHeartRate && hasAny('stravaHR'),
             zwiftCad: hasAny('zwiftCad'),
             stravaCad: hasAny('stravaCad'),
             zwiftAlt: hasAny('zwiftAlt'),
             stravaAlt: hasAny('stravaAlt'),
         };
-    }, [chartData]);
+    }, [chartData, hideHeartRate]);
 
     const seriesMeta = [
         { key: 'zwiftW', label: 'Zwift Power', color: '#2563eb', show: hasSeries.zwiftW },
@@ -630,7 +640,7 @@ function RecordingStreamsChart({ result }: { result: DualRecordingResult }) {
                                 dataKey="zwiftW"
                                 stroke="#2563eb"
                                 dot={false}
-                                strokeWidth={2.2}
+                                strokeWidth={1.8}
                                 name="Zwift Power"
                                 hide={hidden.has('zwiftW')}
                             />

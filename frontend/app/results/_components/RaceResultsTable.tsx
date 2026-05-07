@@ -6,6 +6,9 @@ import { formatDateShort } from '@/lib/formatDate';
 import { formatTime, formatGap } from './formatTime';
 import DualRecordingStatusBadge from '@/components/DualRecordingStatusBadge';
 import DualRecordingResultModal from '@/components/DualRecordingResultModal';
+import type { User } from 'firebase/auth';
+import { API_URL } from '@/lib/api';
+import type { DualRecordingResult } from '@/hooks/useDualRecording';
 
 interface Props {
     races: Race[];
@@ -23,6 +26,7 @@ interface Props {
     getSprintHeader: (key: string) => string;
     leaguePointsByZwiftId?: Map<string, number>;
     drVerifications?: Map<string, DualRecordingVerification>;
+    user: User | null;
 }
 
 export default function RaceResultsTable({
@@ -41,8 +45,36 @@ export default function RaceResultsTable({
     getSprintHeader,
     leaguePointsByZwiftId,
     drVerifications,
+    user,
 }: Props) {
-    const [drModal, setDrModal] = useState<{ name: string; verification: DualRecordingVerification } | null>(null);
+    const [drModal, setDrModal] = useState<{ name: string; verification: DualRecordingVerification; zwiftId: string } | null>(null);
+    const [drDetailResult, setDrDetailResult] = useState<DualRecordingResult | null>(null);
+    const [drDetailLoading, setDrDetailLoading] = useState(false);
+    const [drDetailError, setDrDetailError] = useState<string | null>(null);
+
+    const loadDualRecordingDetail = async (riderZwiftId: string): Promise<void> => {
+        if (!user || !selectedRaceId) return;
+        setDrDetailLoading(true);
+        setDrDetailError(null);
+        setDrDetailResult(null);
+        try {
+            const token = await user.getIdToken();
+            const res = await fetch(
+                `${API_URL}/races/${selectedRaceId}/dr-verifications/${riderZwiftId}`,
+                { headers: { Authorization: `Bearer ${token}` } },
+            );
+            const data = await res.json();
+            if (!res.ok) {
+                setDrDetailError(data?.message || 'Failed to load DR stream graph');
+                return;
+            }
+            setDrDetailResult(data as DualRecordingResult);
+        } catch {
+            setDrDetailError('Network error while loading DR stream graph');
+        } finally {
+            setDrDetailLoading(false);
+        }
+    };
 
     const showFinishPointsColumn = raceResults.some(r => (r.finishPoints ?? 0) > 0);
     const showTotalPointsColumn = raceResults.some(r => (r.totalPoints ?? 0) > 0);
@@ -122,7 +154,7 @@ export default function RaceResultsTable({
                                         <th className="px-4 py-3 text-right font-bold text-primary">Ligapoint</th>
                                     )}
                                     {showDrColumn && (
-                                        <th className="px-4 py-3 text-center w-12" title="Dual Recording">DR</th>
+                                        <th className="px-4 py-3 text-center whitespace-normal leading-tight" title="Dual Recording">Dual Recording</th>
                                     )}
                                 </tr>
                             </thead>
@@ -180,7 +212,14 @@ export default function RaceResultsTable({
                                                 {drVerification && (
                                                     <DualRecordingStatusBadge
                                                         verification={drVerification}
-                                                        onClick={() => setDrModal({ name: rider.name, verification: drVerification })}
+                                                        onClick={() => {
+                                                            setDrModal({
+                                                                name: rider.name,
+                                                                verification: drVerification,
+                                                                zwiftId: rider.zwiftId,
+                                                            });
+                                                            void loadDualRecordingDetail(rider.zwiftId);
+                                                        }}
                                                     />
                                                 )}
                                             </td>
@@ -212,9 +251,19 @@ export default function RaceResultsTable({
         {drModal && (
             <DualRecordingResultModal
                 open
-                onClose={() => setDrModal(null)}
+                onClose={() => {
+                    setDrModal(null);
+                    setDrDetailResult(null);
+                    setDrDetailError(null);
+                    setDrDetailLoading(false);
+                }}
                 riderName={drModal.name}
                 verification={drModal.verification}
+                streamResult={drDetailResult}
+                streamLoading={drDetailLoading}
+                streamError={drDetailError}
+                hideHeartRate
+                showRunActions={false}
             />
         )}
     </>
