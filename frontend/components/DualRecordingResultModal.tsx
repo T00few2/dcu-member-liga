@@ -118,7 +118,7 @@ export default function DualRecordingResultModal({
     const { status, verifiedAt, comparison, failingMetrics = [], stravaActivityId, zwiftActivityId } = verification;
     const failureReasons = explainDrFailureMetrics(failingMetrics);
     const matchingDebug = streamResult?.matchingDebug;
-    const candidates = matchingDebug?.candidates || [];
+    const candidates = (matchingDebug?.candidates || []).filter((c) => (c.overlapSec || 0) > 0);
 
     return (
         <div
@@ -196,50 +196,54 @@ export default function DualRecordingResultModal({
                     )}
 
                     {matchingDebug && (
-                        <div className="rounded-lg border border-border bg-muted/10 px-4 py-3 text-xs space-y-2">
-                            <div className="font-semibold text-foreground">Strava matching debug</div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-muted-foreground">
-                                <div>Reason: <span className="text-foreground">{formatSelectionReason(matchingDebug.selectionReason)}</span></div>
-                                <div>Anchor: <span className="text-foreground">{matchingDebug.anchorUsed || 'n/a'}</span></div>
-                                <div>Fallback used: <span className="text-foreground">{matchingDebug.anchorFallbackUsed ? 'yes' : 'no'}</span></div>
-                                <div>Min overlap: <span className="text-foreground">{matchingDebug.minOverlapSec ?? 'n/a'}s</span></div>
-                                <div>Meaningful candidates: <span className="text-foreground">{matchingDebug.meaningfulCandidateCount ?? 0}</span></div>
-                                <div>Chosen activity: <span className="text-foreground">{matchingDebug.chosenActivityId || 'none'}</span></div>
-                            </div>
-                            {candidates.length > 0 && (
-                                <div className="overflow-x-auto rounded border border-border">
-                                    <table className="w-full text-xs">
-                                        <thead className="bg-muted/20 text-muted-foreground">
-                                            <tr>
-                                                <th className="px-2 py-1 text-left">Activity</th>
-                                                <th className="px-2 py-1 text-right">Overlap</th>
-                                                <th className="px-2 py-1 text-right">End Δ</th>
-                                                <th className="px-2 py-1 text-right">Sim.</th>
-                                                <th className="px-2 py-1 text-center">Flags</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-border">
-                                            {candidates.map((c) => (
-                                                <tr key={`${c.activityId}-${c.startDate || ''}`} className={c.selected ? 'bg-green-50 dark:bg-green-900/20' : ''}>
-                                                    <td className="px-2 py-1 font-mono">
-                                                        {c.activityId}
-                                                    </td>
-                                                    <td className="px-2 py-1 text-right">{c.overlapSec ?? 0}s</td>
-                                                    <td className="px-2 py-1 text-right">{c.endDeltaSec ?? 0}s</td>
-                                                    <td className="px-2 py-1 text-right">
-                                                        {c.similarityScore == null ? '—' : c.similarityScore.toFixed(4)}
-                                                    </td>
-                                                    <td className="px-2 py-1 text-center">
-                                                        {c.selected ? 'picked' : ''}
-                                                        {c.meaningful ? (c.selected ? ' · meaningful' : 'meaningful') : (c.selected ? '' : 'low overlap')}
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
+                        <details className="rounded-lg border border-border bg-muted/10 px-4 py-3 text-xs">
+                            <summary className="font-semibold text-foreground cursor-pointer select-none">
+                                Strava matching debug
+                            </summary>
+                            <div className="mt-2 space-y-2">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-muted-foreground">
+                                    <div>Reason: <span className="text-foreground">{formatSelectionReason(matchingDebug.selectionReason)}</span></div>
+                                    <div>Anchor: <span className="text-foreground">{matchingDebug.anchorUsed || 'n/a'}</span></div>
+                                    <div>Fallback used: <span className="text-foreground">{matchingDebug.anchorFallbackUsed ? 'yes' : 'no'}</span></div>
+                                    <div>Min overlap: <span className="text-foreground">{matchingDebug.minOverlapSec ?? 'n/a'}s</span></div>
+                                    <div>Meaningful candidates: <span className="text-foreground">{matchingDebug.meaningfulCandidateCount ?? 0}</span></div>
+                                    <div>Chosen activity: <span className="text-foreground">{matchingDebug.chosenActivityId || 'none'}</span></div>
                                 </div>
-                            )}
-                        </div>
+                                {candidates.length > 0 && (
+                                    <div className="overflow-x-auto rounded border border-border">
+                                        <table className="w-full text-xs">
+                                            <thead className="bg-muted/20 text-muted-foreground">
+                                                <tr>
+                                                    <th className="px-2 py-1 text-left">Activity</th>
+                                                    <th className="px-2 py-1 text-right">Overlap</th>
+                                                    <th className="px-2 py-1 text-right">End Δ</th>
+                                                    <th className="px-2 py-1 text-right">Sim.</th>
+                                                    <th className="px-2 py-1 text-center">Flags</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-border">
+                                                {candidates.map((c) => (
+                                                    <tr key={`${c.activityId}-${c.startDate || ''}`} className={c.selected ? 'bg-green-50 dark:bg-green-900/20' : ''}>
+                                                        <td className="px-2 py-1 font-mono">
+                                                            {c.activityId}
+                                                        </td>
+                                                        <td className="px-2 py-1 text-right">{c.overlapSec ?? 0}s</td>
+                                                        <td className="px-2 py-1 text-right">{c.endDeltaSec ?? 0}s</td>
+                                                        <td className="px-2 py-1 text-right">
+                                                            {c.similarityScore == null ? '—' : c.similarityScore.toFixed(4)}
+                                                        </td>
+                                                        <td className="px-2 py-1 text-center">
+                                                            {c.selected ? 'picked' : ''}
+                                                            {c.meaningful ? (c.selected ? ' · meaningful' : 'meaningful') : (c.selected ? '' : 'low overlap')}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        </details>
                     )}
 
                     {status === 'failed' && failureReasons.length > 0 && (
