@@ -15,7 +15,9 @@ from services.dual_recording_core import (
     _extract_zwift_activity_fields,
     _iter_activities_for_user_ids,
     _is_dual_recording_required,
+    _load_dr_stream_blob_result,
     _parse_iso_utc,
+    _persist_dr_verification_result,
     _resolve_activity_id_for_rider,
     _run_dr_verification_background,
 )
@@ -219,6 +221,7 @@ def dual_recording(rider_id):
     zwift_activity_id = request.args.get("zwiftActivityId")
     strava_activity_id = request.args.get("stravaActivityId")
     event_start_iso = request.args.get("eventStartIso")
+    race_id = request.args.get("raceId")
 
     if not zwift_activity_id:
         return jsonify({"message": "zwiftActivityId is required"}), 400
@@ -227,10 +230,48 @@ def dual_recording(rider_id):
         user = UserService.get_user_by_id(rider_id)
         if not user:
             return jsonify({"message": "User not found"}), 404
+        canonical_zwift_id = str(user.zwift_id or user.id or rider_id)
+
+        # Fast path: when raceId is supplied, reuse cached stream payload if present.
+        if race_id:
+            try:
+                vdoc = (
+                    db.collection("races")
+                    .document(str(race_id))
+                    .collection("dr_verifications")
+                    .document(canonical_zwift_id)
+                    .get()
+                )
+                if vdoc.exists:
+                    verification = vdoc.to_dict() or {}
+                    cached_activity_id = str(
+                        verification.get("activityId")
+                        or verification.get("zwiftActivityId")
+                        or ""
+                    ).strip()
+                    if not cached_activity_id or cached_activity_id == str(zwift_activity_id).strip():
+                        stream_blob_path = str(verification.get("streamBlobPath") or "").strip()
+                        if stream_blob_path:
+                            cached_result = _load_dr_stream_blob_result(stream_blob_path)
+                            if cached_result:
+                                return jsonify(cached_result), 200
+            except Exception as exc:
+                logger.warning("dual_recording cache lookup failed: %s", exc)
 
         result = _compute_dual_recording_for_rider(
             db, str(user.id), zwift_activity_id, event_start_iso, strava_activity_id
         )
+        if race_id:
+            try:
+                _persist_dr_verification_result(
+                    db=db,
+                    result=result,
+                    zwift_id_canonical=canonical_zwift_id,
+                    activity_id=str(zwift_activity_id),
+                    race_id=str(race_id),
+                )
+            except Exception as exc:
+                logger.warning("dual_recording cache persist failed: %s", exc)
         return jsonify(result), 200
     except ValueError as exc:
         return jsonify({"message": str(exc)}), 404

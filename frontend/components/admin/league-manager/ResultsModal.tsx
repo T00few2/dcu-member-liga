@@ -120,6 +120,9 @@ export default function ResultsModal({
             if (stravaActivityId != null) {
                 params.set('stravaActivityId', String(stravaActivityId));
             }
+            if (race?.id) {
+                params.set('raceId', String(race.id));
+            }
             const res = await fetch(
                 `${API_URL}/admin/verification/dual-recording/${riderZwiftId}?${params.toString()}`,
                 { headers: { Authorization: `Bearer ${token}` } },

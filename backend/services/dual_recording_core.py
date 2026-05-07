@@ -32,6 +32,8 @@ from services.dual_recording.verdict import (  # noqa: F401
 from services.dual_recording.workflows import (  # noqa: F401
     _compute_dual_recording_for_rider,
     _is_dual_recording_required,
+    _load_dr_stream_blob_result,
+    _persist_dr_verification_result,
     _run_dr_verification_background,
 )
 from services.dual_recording.zwift import (  # noqa: F401

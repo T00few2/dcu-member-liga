@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import gzip
+import hashlib
+import json
 import logging
+import os
 
+from firebase_admin import storage
 from extensions import get_zwift_service, strava_service
 from services.zwift_tokens import get_valid_access_token
 
@@ -173,6 +178,159 @@ def _compute_dual_recording_for_rider(
     }
 
 
+def _resolve_storage_bucket():
+    bucket_name = (
+        os.getenv("FIREBASE_STORAGE_BUCKET")
+        or os.getenv("NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET")
+        or ""
+    ).strip()
+    if bucket_name:
+        return storage.bucket(bucket_name)
+    return storage.bucket()
+
+
+def _stream_blob_payload(
+    race_id: str,
+    zwift_id_canonical: str,
+    activity_id: str,
+    result: dict,
+) -> dict:
+    return {
+        "schemaVersion": 1,
+        "capturedAt": datetime.now(timezone.utc).isoformat(),
+        "raceId": race_id,
+        "zwiftId": zwift_id_canonical,
+        "activityId": activity_id,
+        "result": result,
+    }
+
+
+def _store_dr_stream_blob(
+    race_id: str,
+    zwift_id_canonical: str,
+    activity_id: str,
+    result: dict,
+) -> dict | None:
+    try:
+        payload = _stream_blob_payload(race_id, zwift_id_canonical, activity_id, result)
+        payload_json = json.dumps(payload, separators=(",", ":"), ensure_ascii=True)
+        payload_bytes = payload_json.encode("utf-8")
+        gz_bytes = gzip.compress(payload_bytes, compresslevel=6)
+        digest = hashlib.sha256(payload_bytes).hexdigest()
+
+        verified_at = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        blob_path = (
+            f"dr-streams/{race_id}/{zwift_id_canonical}/"
+            f"{activity_id}-{verified_at}.json.gz"
+        )
+        bucket = _resolve_storage_bucket()
+        blob = bucket.blob(blob_path)
+        blob.cache_control = "private, max-age=3600"
+        blob.metadata = {
+            "raceId": race_id,
+            "zwiftId": zwift_id_canonical,
+            "activityId": str(activity_id),
+            "sha256": digest,
+            "schemaVersion": "1",
+        }
+        blob.upload_from_string(gz_bytes, content_type="application/json")
+        blob.content_encoding = "gzip"
+        blob.patch()
+
+        return {
+            "streamBlobPath": blob_path,
+            "streamBytes": len(gz_bytes),
+            "streamHash": digest,
+            "streamStoredAt": datetime.now(timezone.utc).isoformat(),
+            "streamSchemaVersion": 1,
+        }
+    except Exception as exc:
+        logger.warning(
+            "Failed to store DR stream blob (race=%s rider=%s activity=%s): %s",
+            race_id,
+            zwift_id_canonical,
+            activity_id,
+            exc,
+        )
+        return None
+
+
+def _load_dr_stream_blob_result(stream_blob_path: str) -> dict | None:
+    try:
+        bucket = _resolve_storage_bucket()
+        blob = bucket.blob(str(stream_blob_path))
+        if not blob.exists():
+            return None
+        raw = blob.download_as_bytes()
+        if str(stream_blob_path).lower().endswith(".gz") or blob.content_encoding == "gzip":
+            raw = gzip.decompress(raw)
+        payload = json.loads(raw.decode("utf-8"))
+        if not isinstance(payload, dict):
+            return None
+        result = payload.get("result")
+        return result if isinstance(result, dict) else None
+    except Exception as exc:
+        logger.warning("Failed to load DR stream blob %s: %s", stream_blob_path, exc)
+        return None
+
+
+def _persist_dr_verification_result(
+    db: object,
+    *,
+    result: dict,
+    zwift_id_canonical: str,
+    activity_id: str,
+    race_id: str,
+) -> dict:
+    comparison = result.get("comparison")
+    strava_data = result.get("strava")
+
+    if not strava_data:
+        status = "missing_strava"
+        passed = None
+        failing: list[str] = []
+    else:
+        passed, failing = _check_dr_pass(comparison or {})
+        status = "passed" if passed else "failed"
+
+    strava_id = (strava_data or {}).get("activityId")
+    doc_payload: dict = {
+        "zwiftId": zwift_id_canonical,
+        "raceId": race_id,
+        "activityId": activity_id,
+        "status": status,
+        "verifiedAt": datetime.now(timezone.utc).isoformat(),
+        "failingMetrics": failing,
+        "comparison": {
+            "cpDiff": (comparison or {}).get("cpDiff") or [],
+            "avgPower": (comparison or {}).get("avgPower") or {},
+            "similarity": (comparison or {}).get("similarity") or {},
+        },
+    }
+    if passed is not None:
+        doc_payload["passed"] = passed
+    if strava_id is not None:
+        doc_payload["stravaActivityId"] = strava_id
+
+    stream_meta = _store_dr_stream_blob(
+        race_id=race_id,
+        zwift_id_canonical=zwift_id_canonical,
+        activity_id=activity_id,
+        result=result,
+    )
+    if stream_meta:
+        doc_payload.update(stream_meta)
+
+    (
+        db.collection("races")
+        .document(race_id)
+        .collection("dr_verifications")
+        .document(zwift_id_canonical)
+        .set(doc_payload)
+    )
+    return doc_payload
+
+
 def _run_dr_verification_background(
     db: object,
     user_doc_id: str,
@@ -184,43 +342,14 @@ def _run_dr_verification_background(
     """Compute DR and persist result to races/{race_id}/dr_verifications/{zwift_id}."""
     try:
         result = _compute_dual_recording_for_rider(db, user_doc_id, activity_id, event_start_iso)
-        comparison = result.get("comparison")
-        strava_data = result.get("strava")
-
-        if not strava_data:
-            status = "missing_strava"
-            passed = None
-            failing: list[str] = []
-        else:
-            passed, failing = _check_dr_pass(comparison or {})
-            status = "passed" if passed else "failed"
-
-        strava_id = (strava_data or {}).get("activityId")
-        doc_payload: dict = {
-            "zwiftId": zwift_id_canonical,
-            "raceId": race_id,
-            "activityId": activity_id,
-            "status": status,
-            "verifiedAt": datetime.now(timezone.utc).isoformat(),
-            "failingMetrics": failing,
-            "comparison": {
-                "cpDiff": (comparison or {}).get("cpDiff") or [],
-                "avgPower": (comparison or {}).get("avgPower") or {},
-                "similarity": (comparison or {}).get("similarity") or {},
-            },
-        }
-        if passed is not None:
-            doc_payload["passed"] = passed
-        if strava_id is not None:
-            doc_payload["stravaActivityId"] = strava_id
-
-        (
-            db.collection("races")
-            .document(race_id)
-            .collection("dr_verifications")
-            .document(zwift_id_canonical)
-            .set(doc_payload)
+        doc_payload = _persist_dr_verification_result(
+            db=db,
+            result=result,
+            zwift_id_canonical=zwift_id_canonical,
+            activity_id=activity_id,
+            race_id=race_id,
         )
+        status = doc_payload.get("status", "unknown")
         logger.info(
             "DR verification stored: race=%s rider=%s status=%s",
             race_id,
