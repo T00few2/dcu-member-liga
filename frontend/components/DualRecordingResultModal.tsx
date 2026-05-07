@@ -275,6 +275,12 @@ export default function DualRecordingResultModal({
 }
 
 const CHART_STEP = 5;
+const IDENTICAL_TOLERANCE_W = 3;
+const IDENTICAL_MIN_INTERVAL_SEC = 90;
+const MAX_MEAN_ABS_DIFF_W = 5;
+const MAX_STD_DIFF_W = 6;
+const MAX_STD_DELTA_DIFF_W = 3;
+const MIN_OVERLAP_SEC_FOR_SIMILARITY = 180;
 
 function fmtRaceTime(sec: number) {
     const m = Math.floor(sec / 60);
@@ -348,8 +354,110 @@ function RecordingStreamsChart({ result }: { result: DualRecordingResult }) {
         return rows;
     }, [hasZwift, hasStrava, zwift.streams, strava?.streams]);
 
+    const similarity = useMemo(() => {
+        const paired = chartData
+            .map((d) => {
+                if (d.zwiftW == null || d.stravaW == null) return null;
+                const signed = d.zwiftW - d.stravaW;
+                return {
+                    t: d.t,
+                    signed,
+                    abs: Math.abs(signed),
+                };
+            })
+            .filter((v): v is { t: number; signed: number; abs: number } => v != null);
+
+        if (paired.length === 0) {
+            return null;
+        }
+
+        const absDiffs = paired.map((p) => p.abs);
+        const signedDiffs = paired.map((p) => p.signed);
+        const sortedAbs = [...absDiffs].sort((a, b) => a - b);
+        const meanAbs = absDiffs.reduce((acc, n) => acc + n, 0) / absDiffs.length;
+        const p95 = sortedAbs[Math.min(sortedAbs.length - 1, Math.floor(sortedAbs.length * 0.95))];
+        const max = sortedAbs[sortedAbs.length - 1];
+        const nearIdenticalSamples = absDiffs.filter((d) => d <= IDENTICAL_TOLERANCE_W).length;
+        const nearIdenticalPct = (nearIdenticalSamples / absDiffs.length) * 100;
+
+        const std = (values: number[]): number => {
+            if (values.length === 0) return 0;
+            const mean = values.reduce((acc, n) => acc + n, 0) / values.length;
+            const variance = values.reduce((acc, n) => acc + ((n - mean) ** 2), 0) / values.length;
+            return Math.sqrt(variance);
+        };
+        const stdDiff = std(signedDiffs);
+
+        const deltaDiffs: number[] = [];
+        for (let i = 1; i < paired.length; i++) {
+            deltaDiffs.push(paired[i].signed - paired[i - 1].signed);
+        }
+        const stdDeltaDiff = std(deltaDiffs);
+
+        let longestNearIdenticalRunSamples = 0;
+        let currentRun = 0;
+        paired.forEach((p) => {
+            if (p.abs <= IDENTICAL_TOLERANCE_W) {
+                currentRun += 1;
+                if (currentRun > longestNearIdenticalRunSamples) longestNearIdenticalRunSamples = currentRun;
+            } else {
+                currentRun = 0;
+            }
+        });
+        const longestNearIdenticalRunSec = longestNearIdenticalRunSamples * CHART_STEP;
+        const overlapSec = paired.length * CHART_STEP;
+        const suspiciousByVolatility = (
+            overlapSec >= MIN_OVERLAP_SEC_FOR_SIMILARITY &&
+            meanAbs <= MAX_MEAN_ABS_DIFF_W &&
+            stdDiff <= MAX_STD_DIFF_W &&
+            stdDeltaDiff <= MAX_STD_DELTA_DIFF_W
+        );
+        const suspiciousByRun = longestNearIdenticalRunSec >= IDENTICAL_MIN_INTERVAL_SEC || nearIdenticalPct >= 80;
+        const suspicious = suspiciousByVolatility || suspiciousByRun;
+
+        return {
+            samples: absDiffs.length,
+            overlapSec,
+            meanAbsDiff: meanAbs,
+            p95Diff: p95,
+            maxDiff: max,
+            stdDiff,
+            stdDeltaDiff,
+            nearIdenticalPct,
+            longestNearIdenticalRunSec,
+            suspiciousByVolatility,
+            suspiciousByRun,
+            suspicious,
+        };
+    }, [chartData]);
+
     return (
         <div className="w-full">
+            {similarity && (
+                <div className={`mb-2 rounded-md border px-3 py-2 text-xs ${
+                    similarity.suspicious
+                        ? 'border-amber-300 bg-amber-50 text-amber-900'
+                        : 'border-border bg-muted/20 text-muted-foreground'
+                }`}>
+                    <div className="font-semibold mb-1">Power similarity check</div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                        <div>Mean |diff|: <span className="font-mono">{similarity.meanAbsDiff.toFixed(1)} W</span></div>
+                        <div>P95 diff: <span className="font-mono">{similarity.p95Diff.toFixed(1)} W</span></div>
+                        <div>Max diff: <span className="font-mono">{similarity.maxDiff.toFixed(1)} W</span></div>
+                        <div>Samples: <span className="font-mono">{similarity.samples}</span></div>
+                        <div>Overlap: <span className="font-mono">{Math.round(similarity.overlapSec)}s</span></div>
+                        <div>Std(diff): <span className="font-mono">{similarity.stdDiff.toFixed(2)} W</span></div>
+                        <div>Std(Δdiff): <span className="font-mono">{similarity.stdDeltaDiff.toFixed(2)} W</span></div>
+                        <div>Near-identical (<= {IDENTICAL_TOLERANCE_W}W): <span className="font-mono">{similarity.nearIdenticalPct.toFixed(1)}%</span></div>
+                        <div>Longest near-identical run: <span className="font-mono">{Math.round(similarity.longestNearIdenticalRunSec)}s</span></div>
+                    </div>
+                    <div className="mt-1">
+                        {similarity.suspicious
+                            ? `Suspiciously similar power traces (${similarity.suspiciousByVolatility ? 'volatility' : 'run-length'} trigger). This can indicate shared recording source.`
+                            : 'Similarity level looks plausible for independent recordings.'}
+                    </div>
+                </div>
+            )}
             <div className="text-[11px] text-muted-foreground mb-2">
                 t=0 = Zwift recording start · Strava aligned by power MSE · click legend to toggle
             </div>
