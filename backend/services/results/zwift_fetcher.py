@@ -70,6 +70,7 @@ class ZwiftFetcher:
                 finisher: RiderResult = {
                     'zwiftId': canonical_zwift_id,
                     'finishTime': finish_time_ms,
+                    'raceStatus': 'FIN' if finish_time_ms > 0 else 'DNF',
                     'flaggedCheating': entry.get('flaggedCheating', False),
                     'flaggedSandbagging': entry.get('flaggedSandbagging', False),
                     'criticalP': entry.get('criticalP', {})
@@ -95,6 +96,7 @@ class ZwiftFetcher:
                 finisher = {
                     'zwiftId': canonical_zwift_id,
                     'finishTime': 0,
+                    'raceStatus': 'DNF',
                     'flaggedCheating': False,
                     'flaggedSandbagging': False,
                     'criticalP': {}

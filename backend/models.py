@@ -86,6 +86,7 @@ class RiderResult(TypedDict, total=False):
     sprintDetails: dict[str, int | float]   # points (sprint) or worldTime (split)
     isTestData: bool
     activityId: str                          # Zwift activity ID for this race event
+    raceStatus: str                          # FIN | DNF | WC | ...
 
 
 # category label → ordered list of rider results

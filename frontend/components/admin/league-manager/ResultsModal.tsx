@@ -333,6 +333,7 @@ function CategoryResultsTable({
                     <tr>
                         <th className="px-4 py-2 w-12">Pos</th>
                         <th className="px-4 py-2">Rider</th>
+                        <th className="px-4 py-2 text-center">Status</th>
                         <th className="px-4 py-2 text-right">Time</th>
                         <th className="px-4 py-2 text-right">Pts</th>
                         <th className="px-4 py-2 text-center w-16">Flags</th>
@@ -349,6 +350,15 @@ function CategoryResultsTable({
                         const isManualDQ = manualDQs.includes(riderZwiftId);
                         const isManualDeclass = manualDeclassifications.includes(riderZwiftId);
                         const isManualExcluded = manualExclusions.includes(riderZwiftId);
+                        const raceStatus = String(rider.raceStatus || (rider.finishTime > 0 ? 'FIN' : 'DNF')).toUpperCase();
+                        const statusLabel = isManualExcluded
+                            ? 'EX'
+                            : isManualDQ
+                                ? 'DQ'
+                                : isManualDeclass
+                                    ? 'DC'
+                                    : raceStatus;
+                        const hidePoints = statusLabel === 'DNF' || statusLabel === 'WC' || statusLabel === 'EX';
                         
                         let rowClass = 'hover:bg-muted/10';
                         if (isManualExcluded) {
@@ -382,14 +392,18 @@ function CategoryResultsTable({
                                         <div className="text-[10px] text-yellow-600 font-bold mt-0.5">DECLASSIFIED</div>
                                     )}
                                 </td>
+                                <td className="px-4 py-2 text-center font-semibold text-muted-foreground">
+                                    {statusLabel}
+                                </td>
                                 <td className="px-4 py-2 text-right font-mono text-muted-foreground">
-                                    {rider.finishTime > 0 
-                                        ? new Date(rider.finishTime).toISOString().substr(11, 8) 
-                                        : '-'
-                                    }
+                                    {statusLabel === 'WC'
+                                        ? 'WC'
+                                        : rider.finishTime > 0
+                                            ? new Date(rider.finishTime).toISOString().substr(11, 8)
+                                            : 'DNF'}
                                 </td>
                                 <td className="px-4 py-2 text-right font-bold text-primary">
-                                    {rider.totalPoints}
+                                    {hidePoints ? '-' : rider.totalPoints}
                                     {(isManualExcluded || (isManualDQ && rider.totalPoints > 0) || (isManualDeclass && rider.totalPoints === 0)) && (
                                         <span className="text-[10px] text-red-500 block" title="Recalculation needed">
                                             (Recalc)

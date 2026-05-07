@@ -137,7 +137,8 @@ export function RaceResultsTable({ race, results, category, config, overlay, sta
         )
         : 0;
 
-    const formatFinishTimeOrDelta = (finishTime: number, isWinner: boolean) => {
+    const formatFinishTimeOrDelta = (finishTime: number, isWinner: boolean, raceStatus?: string) => {
+        if (String(raceStatus || '').toUpperCase() === 'WC') return 'WC';
         if (!finishTime || finishTime <= 0) return 'DNF';
         if (isWinner || finishTime === winnerFinishTime) {
             return formatTimeValue(finishTime);
@@ -316,7 +317,7 @@ export function RaceResultsTable({ race, results, category, config, overlay, sta
                                         className={`${bodyCellPadding} px-2 text-right font-extrabold text-green-300 align-middle`}
                                         style={{ color: resolveColor(overlay.positive, overlay.rowText || overlay.text || undefined) }}
                                     >
-                                        {formatFinishTimeOrDelta(rider.finishTime, rider.finishTime === winnerFinishTime)}
+                                        {formatFinishTimeOrDelta(rider.finishTime, rider.finishTime === winnerFinishTime, rider.raceStatus)}
                                     </td>
                                 )}
                                 {showLeaguePoints && (
@@ -343,7 +344,7 @@ export function RaceResultsTable({ race, results, category, config, overlay, sta
                                         className={`${bodyCellPadding} px-2 text-right font-extrabold text-green-300 align-middle`}
                                         style={{ color: resolveColor(overlay.positive, overlay.rowText || overlay.text || undefined) }}
                                     >
-                                        {formatFinishTimeOrDelta(rider.finishTime, rider.finishTime === winnerFinishTime)}
+                                        {formatFinishTimeOrDelta(rider.finishTime, rider.finishTime === winnerFinishTime, rider.raceStatus)}
                                     </td>
                                 )}
                                 {showLeaguePoints && (

@@ -197,3 +197,16 @@ class TestEdgeCases:
         assert by_id['3']['sprintPoints'] == 0
         assert by_id['3']['sprintDetails'] == {}
         assert by_id['3']['totalPoints'] == 0
+
+    def test_wc_status_kept_and_scores_zero(self, scorer):
+        riders = [
+            make_rider(1, finish_time=3600000),
+            {**make_rider(2, finish_time=0), 'raceStatus': 'WC'},
+        ]
+        result = scorer.calculate_results(riders, make_config())
+        by_id = {r['zwiftId']: r for r in result}
+
+        assert by_id['2']['raceStatus'] == 'WC'
+        assert by_id['2']['finishPoints'] == 0
+        assert by_id['2']['sprintPoints'] == 0
+        assert by_id['2']['totalPoints'] == 0

@@ -51,6 +51,7 @@ export interface ResultEntry {
     zwiftId: string;
     name: string;
     finishTime: number;
+    raceStatus?: string;
     finishRank?: number;
     finishPoints: number;
     sprintPoints?: number;

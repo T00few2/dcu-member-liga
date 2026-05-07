@@ -1,4 +1,6 @@
-export function formatTime(ms: number): string {
+export function formatTime(ms: number, raceStatus?: string): string {
+    const status = String(raceStatus || '').toUpperCase();
+    if (status === 'WC') return 'WC';
     if (!ms || ms <= 0) return 'DNF';
     const roundedMs = Math.round(ms / 10) * 10;
     const totalSeconds = Math.floor(roundedMs / 1000);

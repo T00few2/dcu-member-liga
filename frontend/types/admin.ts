@@ -125,6 +125,7 @@ export interface RaceResult {
     zwiftId: string;
     name: string;
     finishTime: number;
+    raceStatus?: string;
     finishRank: number;
     finishPoints: number;
     totalPoints: number;

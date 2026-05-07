@@ -102,7 +102,10 @@ class RaceScorer:
         # Also clear segment details so UI shows '-' across sprint/point columns.
         for rider in active_riders:
             if rider.get('finishTime', 0) > 0:
+                rider['raceStatus'] = str(rider.get('raceStatus') or 'FIN')
                 continue
+            if str(rider.get('raceStatus') or '').upper() != 'WC':
+                rider['raceStatus'] = 'DNF'
             rider['finishRank'] = 0
             rider['finishPoints'] = 0
             rider['sprintPoints'] = 0

@@ -145,6 +145,13 @@ class TestGroupedCategoryResolution:
         )
         assert resolved == 'A'
 
+    def test_matches_configured_category_case_insensitive(self):
+        from services.results_processor import ResultsProcessor
+        rp = ResultsProcessor(MagicMock(), MagicMock(), MagicMock())
+
+        matched = rp._match_configured_category(['Diamond', 'Ruby'], 'ruby')
+        assert matched == 'Ruby'
+
 
 class TestDnfFromSegmentStarters:
 
@@ -174,6 +181,7 @@ class TestDnfFromSegmentStarters:
         assert set(by_id.keys()) == {'1', '2'}
         assert by_id['2']['finishTime'] == 0
         assert by_id['2']['name'] == 'Starter DNF'
+        assert by_id['2']['raceStatus'] == 'DNF'
 
     def test_ignores_unregistered_starters(self):
         from services.results_processor import ResultsProcessor

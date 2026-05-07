@@ -453,6 +453,23 @@ class ResultsProcessor:
                     if isinstance(efforts, list):
                         existing.extend(efforts)
                 for finisher in finishers:
+                    subgroup_category = self._match_configured_category(
+                        configured_categories,
+                        category_label,
+                    )
+                    rider_doc = registered_riders.get(str(finisher.get('zwiftId') or '').strip())
+                    registered_category = self._effective_registered_category(rider_doc)
+                    if (
+                        subgroup_category
+                        and registered_category
+                        and subgroup_category != registered_category
+                        and registered_category in configured_categories
+                    ):
+                        wc_finisher = dict(finisher)
+                        wc_finisher['finishTime'] = 0
+                        wc_finisher['raceStatus'] = 'WC'
+                        grouped_finishers_by_category[registered_category].append(wc_finisher)
+                        continue
                     mapped_category = self._resolve_grouped_category(
                         finisher,
                         registered_riders,
@@ -543,6 +560,19 @@ class ResultsProcessor:
             return matched_subgroup
         return None
 
+    def _match_configured_category(
+        self,
+        configured_categories: list[str],
+        category_value: str | None,
+    ) -> str | None:
+        if not configured_categories:
+            return None
+        value = str(category_value or '').strip().lower()
+        if not value:
+            return None
+        lookup = {str(c).strip().lower(): str(c).strip() for c in configured_categories if str(c).strip()}
+        return lookup.get(value)
+
     def _effective_registered_category(self, rider_doc: dict[str, Any] | None) -> str | None:
         if not rider_doc:
             return None
@@ -622,6 +652,7 @@ class ResultsProcessor:
                     'zwiftId': canonical_id,
                     'name': profile.get('name') or canonical_id,
                     'finishTime': 0,
+                    'raceStatus': 'DNF',
                     'flaggedCheating': False,
                     'flaggedSandbagging': False,
                     'criticalP': {},
