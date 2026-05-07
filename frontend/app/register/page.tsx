@@ -1,12 +1,20 @@
 'use client';
 
-import { Suspense } from 'react';
+import { Suspense, useEffect } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { useRegistration } from '@/hooks/useRegistration';
 import RiderInfoForm from '@/components/register/RiderInfoForm';
 import ConnectionsForm from '@/components/register/ConnectionsForm';
 import AgreementsForm from '@/components/register/AgreementsForm';
 import VerificationStatus from '@/components/register/VerificationStatus';
 import CategoryTab from '@/components/register/CategoryTab';
+
+type RegisterTab = 'info' | 'kategori' | 'connections' | 'agreements' | 'verification';
+const REGISTER_TABS: RegisterTab[] = ['info', 'kategori', 'connections', 'agreements', 'verification'];
+
+function parseRegisterTab(value: string | null): RegisterTab {
+    return REGISTER_TABS.includes((value || '') as RegisterTab) ? (value as RegisterTab) : 'info';
+}
 
 const MissingHints = ({ items }: { items: string[] }) => (
     <div className="mt-3 text-sm text-red-600 dark:text-red-400 space-y-1">
@@ -18,6 +26,8 @@ const MissingHints = ({ items }: { items: string[] }) => (
 );
 
 function RegisterContent() {
+    const router = useRouter();
+    const pathname = usePathname();
     const {
         authLoading, fetchingProfile,
         name, setName,
@@ -37,6 +47,26 @@ function RegisterContent() {
         handleConnectStrava, handleDisconnectStrava, handleConnectZwift, handleDisconnectZwift, handleRequestTrainer, saveData,
     } = useRegistration();
 
+    useEffect(() => {
+        if (typeof window === 'undefined' || !isRegistered) return;
+        const syncFromUrl = () => {
+            const params = new URLSearchParams(window.location.search);
+            setActiveTab(parseRegisterTab(params.get('tab')));
+        };
+        syncFromUrl();
+        window.addEventListener('popstate', syncFromUrl);
+        return () => window.removeEventListener('popstate', syncFromUrl);
+    }, [isRegistered, setActiveTab]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined' || !isRegistered) return;
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('tab') === activeTab) return;
+        params.set('tab', activeTab);
+        const query = params.toString();
+        router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    }, [activeTab, isRegistered, pathname, router]);
+
     if (authLoading || fetchingProfile) {
         return <div className="p-8 text-center text-muted-foreground">Indlæser profil...</div>;
     }
@@ -48,9 +78,18 @@ function RegisterContent() {
         onRequestTrainer: handleRequestTrainer,
     };
 
-    const TabButton = ({ id, label, active, warning = false }: { id: string; label: string; active: boolean; warning?: boolean }) => (
+    const setRegisterTab = (nextTab: RegisterTab) => {
+        setActiveTab(nextTab);
+        if (typeof window === 'undefined' || !isRegistered) return;
+        const params = new URLSearchParams(window.location.search);
+        params.set('tab', nextTab);
+        const query = params.toString();
+        router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    };
+
+    const TabButton = ({ id, label, active, warning = false }: { id: RegisterTab; label: string; active: boolean; warning?: boolean }) => (
         <button
-            onClick={() => setActiveTab(id)}
+            onClick={() => setRegisterTab(id)}
             className={`flex-none px-3 py-1.5 text-sm font-medium rounded whitespace-nowrap transition-colors ${
                 active
                     ? 'bg-primary text-white shadow-sm'
