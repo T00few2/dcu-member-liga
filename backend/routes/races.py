@@ -5,7 +5,8 @@ from services.results_processor import ResultsProcessor
 from services.category_engine import _effective_cat_name, build_liga_category, effective_rating
 from services.schema_validation import log_schema_issues, validate_race_doc, with_schema_version
 from datetime import datetime
-from authz import require_admin, AuthzError
+from authz import require_admin, verify_user_token, AuthzError
+from services.dual_recording_admin_core import get_dual_recording_result, DualRecordingError
 import re
 from typing import Any
 
@@ -220,6 +221,69 @@ def get_races():
         return jsonify({'races': races}), 200
     except Exception as e:
         logger.error(f"Get races error: {e}")
+        return jsonify({'message': str(e)}), 500
+
+
+def _strip_hr_from_dr_result(payload: dict[str, Any]) -> dict[str, Any]:
+    """Remove heart-rate arrays before returning DR payload on public results page."""
+    result = dict(payload or {})
+    zwift = result.get("zwift")
+    if isinstance(zwift, dict):
+        streams = zwift.get("streams")
+        if isinstance(streams, dict) and isinstance(streams.get("heartrate"), list):
+            streams = dict(streams)
+            streams["heartrate"] = []
+            zwift = dict(zwift)
+            zwift["streams"] = streams
+            result["zwift"] = zwift
+
+    strava = result.get("strava")
+    if isinstance(strava, dict):
+        streams = strava.get("streams")
+        if isinstance(streams, dict) and isinstance(streams.get("heartrate"), list):
+            streams = dict(streams)
+            streams["heartrate"] = []
+            strava = dict(strava)
+            strava["streams"] = streams
+            result["strava"] = strava
+    return result
+
+
+@races_bp.route('/races/<race_id>/dr-verifications/<rider_id>', methods=['GET'])
+def get_public_dr_verification_detail(race_id: str, rider_id: str):
+    """
+    Return DR detail payload for public race results.
+    Requires any valid signed-in user; returns cache-backed DR payload.
+    """
+    try:
+        verify_user_token(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    try:
+        race_doc = db.collection('races').document(str(race_id)).get()
+        if not race_doc.exists:
+            return jsonify({'message': 'Race not found'}), 404
+
+        result = get_dual_recording_result(
+            db=db,
+            rider_id=str(rider_id),
+            zwift_activity_id=None,
+            strava_activity_id=None,
+            event_start_iso=None,
+            race_id=str(race_id),
+            logger=logger,
+        )
+        return jsonify(_strip_hr_from_dr_result(result)), 200
+    except DualRecordingError as exc:
+        return jsonify({'message': exc.message}), exc.status_code
+    except ValueError as exc:
+        return jsonify({'message': str(exc)}), 404
+    except Exception as e:
+        logger.error(f"Public DR detail error race={race_id} rider={rider_id}: {e}")
         return jsonify({'message': str(e)}), 500
 
 @races_bp.route('/races', methods=['POST'])
