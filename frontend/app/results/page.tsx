@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth-context';
 import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { API_URL } from '@/lib/api';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import type { Race, Sprint, ResultEntry, StandingEntry, DualRecordingVerification } from '@/types/live';
 import StandingsTable from './_components/StandingsTable';
 import RaceResultsTable from './_components/RaceResultsTable';
@@ -25,12 +26,21 @@ const pickFirstNonEmpty = (...lists: (Sprint[] | undefined)[]): Sprint[] => {
 
 export default function ResultsPage() {
     const { user, loading: authLoading, isRegistered } = useAuth();
+    const router = useRouter();
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
+
+    const parseTab = (value: string | null): 'standings' | 'results' => {
+        return value === 'results' ? 'results' : 'standings';
+    };
 
     const [races, setRaces] = useState<Race[]>([]);
     const [standings, setStandings] = useState<Record<string, StandingEntry[]>>({});
     const [loading, setLoading] = useState(true);
 
-    const [activeTab, setActiveTab] = useState<'standings' | 'results'>('standings');
+    const [activeTab, setActiveTab] = useState<'standings' | 'results'>(
+        parseTab(searchParams.get('tab')),
+    );
     const [selectedRaceId, setSelectedRaceId] = useState<string>('');
     const [selectedCategory, setSelectedCategory] = useState<string>('A');
     const [drVerifications, setDrVerifications] = useState<Map<string, DualRecordingVerification>>(new Map());
@@ -137,6 +147,10 @@ export default function ResultsPage() {
         }, (err) => console.error('Error listening to standings updates:', err));
         return () => unsubscribe();
     }, []);
+
+    useEffect(() => {
+        setActiveTab(parseTab(searchParams.get('tab')));
+    }, [searchParams]);
 
     // --- Derived data ---
     // NOTE: All hooks (useMemo below) must be called before any early return to satisfy Rules of Hooks.
@@ -274,19 +288,27 @@ export default function ResultsPage() {
         return key.replace(/_/g, ' ');
     };
 
+    const setResultsTab = (tab: 'standings' | 'results') => {
+        setActiveTab(tab);
+        const params = new URLSearchParams(searchParams.toString());
+        params.set('tab', tab);
+        const query = params.toString();
+        router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    };
+
     return (
         <div className="max-w-6xl mx-auto px-4 py-8">
             <h1 className="text-3xl font-bold mb-8 text-foreground">Resultater & Stilling</h1>
 
             <div className="flex gap-4 mb-8 border-b border-border">
                 <button
-                    onClick={() => setActiveTab('standings')}
+                    onClick={() => setResultsTab('standings')}
                     className={`pb-2 px-4 font-medium transition ${activeTab === 'standings' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
                 >
                     Ligastilling
                 </button>
                 <button
-                    onClick={() => setActiveTab('results')}
+                    onClick={() => setResultsTab('results')}
                     className={`pb-2 px-4 font-medium transition ${activeTab === 'results' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
                 >
                     Løbsresultater
