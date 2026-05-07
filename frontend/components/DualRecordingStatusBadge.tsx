@@ -1,6 +1,7 @@
 'use client';
 
 import type { DualRecordingVerification } from '@/types/admin';
+import { explainDrFailureMetrics } from '@/lib/drFailureLabels';
 
 interface Props {
     verification: DualRecordingVerification | undefined;
@@ -23,7 +24,10 @@ export default function DualRecordingStatusBadge({ verification, onClick }: Prop
     } else if (status === 'failed') {
         icon = '✗';
         colorClass = 'bg-red-100 text-red-700 border-red-300 hover:bg-red-200';
-        title = 'Dual recording: Underkendtes';
+        const reasons = explainDrFailureMetrics(verification.failingMetrics);
+        title = reasons.length > 0
+            ? `Dual recording: Underkendtes\n- ${reasons.join('\n- ')}`
+            : 'Dual recording: Underkendtes';
     } else if (status === 'missing_strava') {
         icon = '?';
         colorClass = 'bg-yellow-100 text-yellow-700 border-yellow-300 hover:bg-yellow-200';

@@ -45,6 +45,12 @@ export interface DualRecordingVerification {
             zwift: number | null; strava: number | null;
             diffW: number | null; diffPct: number | null;
         };
+        similarity?: {
+            overlapSec: number;
+            meanAbsDiffW?: number;
+            stdDiffW?: number;
+            stdDeltaDiffW?: number;
+        };
     };
 }
 

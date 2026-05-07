@@ -119,6 +119,12 @@ export interface DualRecordingVerification {
             diffW: number | null;
             diffPct: number | null;
         };
+        similarity?: {
+            overlapSec: number;
+            meanAbsDiffW?: number;
+            stdDiffW?: number;
+            stdDeltaDiffW?: number;
+        };
     };
 }
 

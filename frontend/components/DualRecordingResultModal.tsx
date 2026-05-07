@@ -7,6 +7,7 @@ import {
 } from 'recharts';
 import type { DualRecordingVerification, CpDiffRow } from '@/types/admin';
 import type { DualRecordingResult } from '@/hooks/useDualRecording';
+import { explainDrFailureMetrics } from '@/lib/drFailureLabels';
 
 interface Props {
     open: boolean;
@@ -96,6 +97,7 @@ export default function DualRecordingResultModal({
     if (!open) return null;
 
     const { status, verifiedAt, comparison, failingMetrics = [], stravaActivityId, zwiftActivityId } = verification;
+    const failureReasons = explainDrFailureMetrics(failingMetrics);
 
     return (
         <div
@@ -169,6 +171,17 @@ export default function DualRecordingResultModal({
                             {status === 'missing_activity'
                                 ? 'Ingen Zwift-aktivitet fundet for dette løb.'
                                 : 'Verifikation fejlede. Prøv igen via "Verificer DR"-knappen.'}
+                        </div>
+                    )}
+
+                    {status === 'failed' && failureReasons.length > 0 && (
+                        <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
+                            <div className="font-semibold mb-1">Failure reasons</div>
+                            <ul className="list-disc ml-5 space-y-0.5">
+                                {failureReasons.map((reason) => (
+                                    <li key={reason}>{reason}</li>
+                                ))}
+                            </ul>
                         </div>
                     )}
 

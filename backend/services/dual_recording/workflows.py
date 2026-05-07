@@ -8,7 +8,7 @@ from services.zwift_tokens import get_valid_access_token
 
 from .strava import _extract_stream, _match_strava_activity, _trim_strava_streams
 from .time_series import _compute_avg_power_diff, _compute_best_efforts, _resample_to_1hz
-from .verdict import _build_cp_comparison, _check_dr_pass
+from .verdict import _build_cp_comparison, _check_dr_pass, _compute_similarity_metrics
 from .zwift import _extract_zwift_activity_fields, _fetch_zwift_streams
 
 logger = logging.getLogger(__name__)
@@ -126,6 +126,11 @@ def _compute_dual_recording_for_rider(
     )
     synced_1hz = _resample_to_1hz(trimmed["time"], trimmed["watts"])
     strava_avg_synced = round(sum(synced_1hz) / len(synced_1hz), 1) if synced_1hz else None
+    zwift_synced_1hz = _resample_to_1hz(
+        zwift_streams.get("time") or [],
+        zwift_streams.get("watts") or [],
+    )
+    similarity_metrics = _compute_similarity_metrics(zwift_synced_1hz, synced_1hz)
 
     avg_diff_w, avg_diff_pct = _compute_avg_power_diff(zwift_avg_watts, strava_avg_synced)
 
@@ -163,6 +168,7 @@ def _compute_dual_recording_for_rider(
                 "diffW": avg_diff_w,
                 "diffPct": avg_diff_pct,
             },
+            "similarity": similarity_metrics,
         },
     }
 
@@ -200,6 +206,7 @@ def _run_dr_verification_background(
             "comparison": {
                 "cpDiff": (comparison or {}).get("cpDiff") or [],
                 "avgPower": (comparison or {}).get("avgPower") or {},
+                "similarity": (comparison or {}).get("similarity") or {},
             },
         }
         if passed is not None:
