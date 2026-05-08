@@ -33,6 +33,10 @@ def _parse_manual_emails(raw: str) -> tuple[list[str], list[str]]:
     )
 
 
+def _chunks(values: list[str], size: int) -> list[list[str]]:
+    return [values[i:i + size] for i in range(0, len(values), size)]
+
+
 @admin_bp.route('/admin/users', methods=['GET'])
 def get_users_overview():
     """Return all registered users with key fields for the admin table."""
@@ -148,6 +152,7 @@ def send_email_to_selected_users():
 
     payload = request.get_json(silent=True) or {}
     user_ids_raw   = payload.get('userIds')
+    zwift_ids_raw  = payload.get('zwiftIds') or []
     subject        = str(payload.get('subject') or '').strip()
     message        = str(payload.get('message') or '')
     send_mode      = str(payload.get('sendMode') or 'individual').strip().lower()
@@ -158,6 +163,8 @@ def send_email_to_selected_users():
 
     if not isinstance(user_ids_raw, list):
         return jsonify({'error': 'userIds must be an array of user document IDs.'}), 400
+    if not isinstance(zwift_ids_raw, list):
+        return jsonify({'error': 'zwiftIds must be an array of Zwift IDs.'}), 400
     if send_mode not in ('individual', 'group'):
         return jsonify({'error': "sendMode must be 'individual' or 'group'."}), 400
     if send_mode == 'group' and recipient_mode not in ('to', 'cc', 'bcc'):
@@ -187,10 +194,20 @@ def send_email_to_selected_users():
         seen_ids.add(cleaned)
         unique_user_ids.append(cleaned)
 
+    unique_zwift_ids = []
+    seen_zwift_ids = set()
+    for raw_zwift_id in zwift_ids_raw:
+        cleaned = str(raw_zwift_id or '').strip()
+        if not cleaned or cleaned in seen_zwift_ids:
+            continue
+        seen_zwift_ids.add(cleaned)
+        unique_zwift_ids.append(cleaned)
+
     total_manual = len(manual_to_valid) + len(manual_cc_valid) + len(manual_bcc_valid)
-    if not unique_user_ids and total_manual == 0:
+    requested_count = len(unique_user_ids) + len(unique_zwift_ids)
+    if requested_count == 0 and total_manual == 0:
         return jsonify({'error': 'No valid recipients provided.'}), 400
-    if len(unique_user_ids) + total_manual > MAX_EMAIL_RECIPIENTS:
+    if requested_count + total_manual > MAX_EMAIL_RECIPIENTS:
         return jsonify({'error': f'Maximum recipients per request is {MAX_EMAIL_RECIPIENTS}.'}), 400
 
     user_emails: list[str] = []
@@ -198,7 +215,33 @@ def send_email_to_selected_users():
     results = []
 
     try:
-        for user_id in unique_user_ids:
+        resolved_user_ids = list(unique_user_ids)
+        if unique_zwift_ids:
+            seen_resolved = set(resolved_user_ids)
+            matched_zwift_ids = set()
+            for chunk in _chunks(unique_zwift_ids, 10):
+                docs = db.collection('users').where('zwiftId', 'in', chunk).stream()
+                for user_doc in docs:
+                    user_data = user_doc.to_dict() or {}
+                    zwift_id = str(user_data.get('zwiftId') or '').strip()
+                    if zwift_id:
+                        matched_zwift_ids.add(zwift_id)
+                    if user_doc.id in seen_resolved:
+                        continue
+                    seen_resolved.add(user_doc.id)
+                    resolved_user_ids.append(user_doc.id)
+
+            for zwift_id in unique_zwift_ids:
+                if zwift_id in matched_zwift_ids:
+                    continue
+                skipped += 1
+                results.append({
+                    'zwiftId': zwift_id,
+                    'status': 'skipped',
+                    'reason': 'user_not_found',
+                })
+
+        for user_id in resolved_user_ids:
             user_doc = db.collection('users').document(user_id).get()
             if not user_doc.exists:
                 skipped += 1
@@ -233,7 +276,7 @@ def send_email_to_selected_users():
         total_valid = len(user_emails) + len(manual_to_valid) + len(manual_cc_valid) + len(manual_bcc_valid)
         if total_valid == 0:
             summary = {
-                'requested': len(unique_user_ids),
+                'requested': requested_count,
                 'skipped': skipped,
                 'sent': 0,
                 'failed': 0,
@@ -335,7 +378,7 @@ def send_email_to_selected_users():
                         r['reason'] = str(exc)
 
         summary = {
-            'requested': len(unique_user_ids),
+            'requested': requested_count,
             'skipped': skipped,
             'sent': sent,
             'failed': failed,

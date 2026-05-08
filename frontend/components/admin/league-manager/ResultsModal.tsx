@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { db } from '@/lib/firebase';
 import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { useAuth } from '@/lib/auth-context';
@@ -9,6 +9,9 @@ import type { Race, RaceResult, LoadingStatus, DualRecordingVerification } from 
 import type { DualRecordingResult } from '@/hooks/useDualRecording';
 import DualRecordingStatusBadge from '@/components/DualRecordingStatusBadge';
 import DualRecordingResultModal from '@/components/DualRecordingResultModal';
+import ComposeEmailModal from '@/components/admin/ComposeEmailModal';
+import EmailRecipientControls, { EmailRecipientControlItem } from '@/components/admin/EmailRecipientControls';
+import { defaultDcuSignatureHtml, withDcuSignature } from '@/lib/email-signature';
 
 const CATEGORY_RANK = [
     'Diamond', 'Ruby', 'Emerald', 'Sapphire', 'Amethyst', 'Platinum', 'Gold', 'Silver', 'Bronze', 'Copper',
@@ -21,6 +24,20 @@ interface ResultsModalProps {
     onClose: () => void;
     onRaceUpdate: (updatedRace: Race) => void;
     embedded?: boolean;
+}
+
+interface UserDirectoryRow {
+    userId: string;
+    zwiftId: string;
+    name: string;
+    email: string;
+}
+
+interface ComposeRecipient {
+    userId?: string;
+    zwiftId: string;
+    name: string;
+    email: string;
 }
 
 export default function ResultsModal({
@@ -43,6 +60,24 @@ export default function ResultsModal({
     const [drDetailLoading, setDrDetailLoading] = useState(false);
     const [drDetailError, setDrDetailError] = useState<string | null>(null);
     const [drDetailResult, setDrDetailResult] = useState<DualRecordingResult | null>(null);
+    const [usersByZwiftId, setUsersByZwiftId] = useState<Map<string, UserDirectoryRow>>(new Map());
+    const [isComposeOpen, setIsComposeOpen] = useState(false);
+    const [composeTitle, setComposeTitle] = useState('Send email');
+    const [composeRecipients, setComposeRecipients] = useState<ComposeRecipient[]>([]);
+    const [emailSubject, setEmailSubject] = useState('');
+    const [emailMessage, setEmailMessage] = useState('');
+    const [sendingEmail, setSendingEmail] = useState(false);
+    const [sendError, setSendError] = useState<string | null>(null);
+    const [sendStatus, setSendStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [sendMode, setSendMode] = useState<'individual' | 'group'>('individual');
+    const [recipientMode, setRecipientMode] = useState<'to' | 'cc' | 'bcc'>('to');
+    const [manualTo, setManualTo] = useState('');
+    const [manualCc, setManualCc] = useState('');
+    const [manualBcc, setManualBcc] = useState('');
+    const [toError, setToError] = useState<string | null>(null);
+    const [ccError, setCcError] = useState<string | null>(null);
+    const [bccError, setBccError] = useState<string | null>(null);
+    const [recipientsOpen, setRecipientsOpen] = useState(false);
 
     const loadDrVerifications = async (raceId: string): Promise<Map<string, DualRecordingVerification>> => {
         if (!user) return new Map<string, DualRecordingVerification>();
@@ -71,6 +106,118 @@ export default function ResultsModal({
         if (!race || !user) return;
         void loadDrVerifications(race.id);
     }, [race?.id, user]);
+
+    useEffect(() => {
+        if (!user) return;
+        const loadUsers = async () => {
+            try {
+                const token = await user.getIdToken();
+                const res = await fetch(`${API_URL}/admin/users`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                if (!res.ok) return;
+                const body = await res.json();
+                const map = new Map<string, UserDirectoryRow>();
+                (body.users || []).forEach((row: UserDirectoryRow) => {
+                    const key = String(row.zwiftId || '').trim();
+                    if (!key) return;
+                    map.set(key, row);
+                });
+                setUsersByZwiftId(map);
+            } catch {
+                // Keep modal functionality even if user directory lookup fails.
+            }
+        };
+        void loadUsers();
+    }, [user]);
+
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const parseManualEmails = useCallback((raw: string) => {
+        if (!raw.trim()) return { valid: [] as string[], invalid: [] as string[] };
+        const candidates = raw.split(',').map((part) => part.trim()).filter(Boolean);
+        return {
+            valid: candidates.filter((email) => EMAIL_RE.test(email)),
+            invalid: candidates.filter((email) => !EMAIL_RE.test(email)),
+        };
+    }, []);
+
+    const isMessageEmpty = useCallback(
+        (html: string) => html.replace(/<[^>]*>/g, '').trim().length === 0,
+        [],
+    );
+
+    const composeRecipientItems = useMemo<EmailRecipientControlItem[]>(
+        () => composeRecipients
+            .map((recipient) => ({
+                id: recipient.userId || recipient.zwiftId,
+                name: recipient.name || recipient.zwiftId,
+                email: recipient.email || '',
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name)),
+        [composeRecipients],
+    );
+    const selectedWithoutEmail = composeRecipients.filter((recipient) => !recipient.email?.trim()).length;
+
+    const closeComposeModal = useCallback(() => {
+        if (sendingEmail) return;
+        setIsComposeOpen(false);
+        setComposeRecipients([]);
+        setEmailSubject('');
+        setEmailMessage('');
+        setSendError(null);
+        setManualTo('');
+        setManualCc('');
+        setManualBcc('');
+        setToError(null);
+        setCcError(null);
+        setBccError(null);
+        setRecipientsOpen(false);
+    }, [sendingEmail]);
+
+    const firstNameFrom = useCallback((name: string) => {
+        const trimmed = (name || '').trim();
+        if (!trimmed) return '';
+        return trimmed.split(/\s+/)[0] || '';
+    }, []);
+
+    const toComposeRecipient = useCallback((rider: Pick<RaceResult, 'zwiftId' | 'name'>): ComposeRecipient => {
+        const zwiftId = String(rider.zwiftId || '').trim();
+        const mapped = usersByZwiftId.get(zwiftId);
+        return {
+            userId: mapped?.userId,
+            zwiftId,
+            name: mapped?.name || rider.name || zwiftId,
+            email: mapped?.email || '',
+        };
+    }, [usersByZwiftId]);
+
+    const openComposeForIndividual = useCallback((rider: RaceResult) => {
+        const recipient = toComposeRecipient(rider);
+        const firstName = firstNameFrom(recipient.name);
+        const greeting = firstName ? `Hej ${firstName}` : 'Hej';
+        const body = [
+            `<p>${greeting}</p>`,
+            '<p><br></p>',
+            '<p>Venlig hilsen<br>DCU Udvalg for e-cykling</p>',
+        ].join('');
+
+        setComposeTitle(`Email til ${recipient.name || recipient.zwiftId}`);
+        setComposeRecipients([recipient]);
+        setSendMode('individual');
+        setRecipientMode('to');
+        setEmailSubject('Resultat af dual recording');
+        setEmailMessage(body);
+        setSendError(null);
+        setSendStatus(null);
+        setManualTo('');
+        setManualCc('');
+        setManualBcc('');
+        setToError(null);
+        setCcError(null);
+        setBccError(null);
+        setRecipientsOpen(false);
+        setIsComposeOpen(true);
+    }, [firstNameFrom, toComposeRecipient]);
 
     const loadDualRecordingDetail = async (
         riderZwiftId: string,
@@ -180,6 +327,134 @@ export default function ResultsModal({
             setSingleDrRunning(false);
         }
     };
+
+    const drBulkRecipients = useMemo<ComposeRecipient[]>(() => {
+        if (!race) return [];
+        const seen = new Set<string>();
+        const recipients: ComposeRecipient[] = [];
+        Object.values(race.results || {}).forEach((categoryResults) => {
+            (categoryResults || []).forEach((rider) => {
+                const riderZwiftId = String(rider.zwiftId || '').trim();
+                if (!riderZwiftId || seen.has(riderZwiftId) || !drVerifications.has(riderZwiftId)) return;
+                seen.add(riderZwiftId);
+                recipients.push(toComposeRecipient(rider));
+            });
+        });
+        return recipients.sort((a, b) => a.name.localeCompare(b.name));
+    }, [race, drVerifications, toComposeRecipient]);
+
+    const openComposeForBulkDR = useCallback(() => {
+        if (drBulkRecipients.length === 0) {
+            setSendStatus({ type: 'error', text: 'Ingen DR-ryttere fundet til email.' });
+            return;
+        }
+
+        const body = [
+            '<p>Hej</p>',
+            '<p>Resultatet af din dual recording er nu klar til gennemsyn på resultatsiden.</p>',
+            '<p>Venlig hilsen<br>DCU Udvalg for e-cykling</p>',
+        ].join('');
+
+        setComposeTitle('Email til alle DR-ryttere');
+        setComposeRecipients(drBulkRecipients);
+        setSendMode('group');
+        setRecipientMode('to');
+        setEmailSubject('Dual recording resultat er klar');
+        setEmailMessage(body);
+        setSendError(null);
+        setSendStatus(null);
+        setManualTo('');
+        setManualCc('');
+        setManualBcc('');
+        setToError(null);
+        setCcError(null);
+        setBccError(null);
+        setRecipientsOpen(false);
+        setIsComposeOpen(true);
+    }, [drBulkRecipients]);
+
+    const handleSendEmail = useCallback(async () => {
+        if (!user || sendingEmail) return;
+        if (composeRecipients.length === 0) {
+            setSendError('Ingen modtagere valgt.');
+            return;
+        }
+        const subject = emailSubject.trim();
+        if (!subject || isMessageEmpty(emailMessage)) {
+            setSendError('Subject and message are required.');
+            return;
+        }
+
+        const { invalid: toInvalid } = parseManualEmails(manualTo);
+        const { invalid: ccInvalid } = parseManualEmails(manualCc);
+        const { invalid: bccInvalid } = parseManualEmails(manualBcc);
+        let hasFieldError = false;
+        if (toInvalid.length > 0) { setToError(`Invalid: ${toInvalid.join(', ')}`); hasFieldError = true; } else setToError(null);
+        if (ccInvalid.length > 0) { setCcError(`Invalid: ${ccInvalid.join(', ')}`); hasFieldError = true; } else setCcError(null);
+        if (bccInvalid.length > 0) { setBccError(`Invalid: ${bccInvalid.join(', ')}`); hasFieldError = true; } else setBccError(null);
+        if (hasFieldError) return;
+
+        const userIds = Array.from(new Set(composeRecipients.map((recipient) => recipient.userId).filter(Boolean)));
+        const zwiftIds = Array.from(new Set(composeRecipients.map((recipient) => recipient.zwiftId).filter(Boolean)));
+        if (userIds.length === 0 && zwiftIds.length === 0) {
+            setSendError('Ingen gyldige modtagere fundet.');
+            return;
+        }
+
+        setSendingEmail(true);
+        setSendError(null);
+        try {
+            const token = await user.getIdToken();
+            const res = await fetch(`${API_URL}/admin/users/send-email`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    userIds,
+                    zwiftIds,
+                    subject,
+                    message: withDcuSignature(emailMessage),
+                    sendMode,
+                    ...(sendMode === 'group' ? { recipientMode } : {}),
+                    manualTo: manualTo.trim(),
+                    manualCc: manualCc.trim(),
+                    manualBcc: manualBcc.trim(),
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.error ?? `HTTP ${res.status}`);
+            }
+
+            const summary = data.summary ?? {};
+            setSendStatus({
+                type: 'success',
+                text: `Email sendt. ${summary.sent ?? 0} sendt, ${summary.skipped ?? 0} sprunget over, ${summary.failed ?? 0} fejlede.`,
+            });
+            closeComposeModal();
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to send email';
+            setSendError(message);
+        } finally {
+            setSendingEmail(false);
+        }
+    }, [
+        user,
+        sendingEmail,
+        composeRecipients,
+        emailSubject,
+        emailMessage,
+        isMessageEmpty,
+        parseManualEmails,
+        manualTo,
+        manualCc,
+        manualBcc,
+        sendMode,
+        recipientMode,
+        closeComposeModal,
+    ]);
 
     if (!race) return null;
 
@@ -332,6 +607,23 @@ export default function ResultsModal({
                     )}
                         </div>
                     </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <button
+                            onClick={openComposeForBulkDR}
+                            className="text-sm bg-primary text-primary-foreground px-3 py-1.5 rounded hover:opacity-90 disabled:opacity-60"
+                            disabled={drBulkRecipients.length === 0}
+                        >
+                            Email alle DR-ryttere
+                        </button>
+                        <span className="text-xs text-muted-foreground">
+                            {drBulkRecipients.length} DR-ryttere i dette løb
+                        </span>
+                    </div>
+                    {sendStatus && (
+                        <p className={`text-xs ${sendStatus.type === 'success' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                            {sendStatus.text}
+                        </p>
+                    )}
                 </div>
                 
                 <div className={`${embedded ? 'p-4' : 'overflow-y-auto p-4'} space-y-6`}>
@@ -381,6 +673,7 @@ export default function ResultsModal({
                                             || v.zwiftActivityId;
                                         setDrModal({ name, zwiftId, activityId: fallbackActivityId, verification: v });
                                     }}
+                                    onOpenEmail={openComposeForIndividual}
                                 />
                             ))}
                         </>
@@ -412,6 +705,47 @@ export default function ResultsModal({
                     streamError={drDetailError}
                 />
             )}
+            <ComposeEmailModal
+                isOpen={isComposeOpen}
+                title={composeTitle}
+                subject={emailSubject}
+                onSubjectChange={setEmailSubject}
+                onMessageChange={setEmailMessage}
+                initialMessage={emailMessage}
+                onClose={closeComposeModal}
+                onSend={handleSendEmail}
+                sending={sendingEmail}
+                sendDisabled={composeRecipients.length === 0}
+                sendLabel="Send email"
+                sendingLabel="Sender..."
+                error={sendError}
+                beforeSubject={(
+                    <EmailRecipientControls
+                        recipientsOpen={recipientsOpen}
+                        onToggleOpen={() => setRecipientsOpen((open) => !open)}
+                        recipients={composeRecipientItems}
+                        selectedCount={composeRecipients.length}
+                        selectedWithoutEmail={selectedWithoutEmail}
+                        sendMode={sendMode}
+                        onSendModeChange={setSendMode}
+                        recipientMode={recipientMode}
+                        onRecipientModeChange={setRecipientMode}
+                        manualTo={manualTo}
+                        manualCc={manualCc}
+                        manualBcc={manualBcc}
+                        manualToCount={parseManualEmails(manualTo).valid.length || '...'}
+                        manualCcCount={parseManualEmails(manualCc).valid.length || '...'}
+                        manualBccCount={parseManualEmails(manualBcc).valid.length || '...'}
+                        toError={toError}
+                        ccError={ccError}
+                        bccError={bccError}
+                        onManualToChange={(value) => { setManualTo(value); setToError(null); }}
+                        onManualCcChange={(value) => { setManualCc(value); setCcError(null); }}
+                        onManualBccChange={(value) => { setManualBcc(value); setBccError(null); }}
+                        sending={sendingEmail}
+                    />
+                )}
+            />
         </>
     );
 }
@@ -428,6 +762,7 @@ interface CategoryResultsTableProps {
     onToggleDeclass: (zwiftId: string, isCurrentlyDeclass: boolean) => void;
     onToggleExclude: (zwiftId: string, isCurrentlyExcluded: boolean) => void;
     onOpenDR: (riderName: string, zwiftId: string, activityId: string | undefined, v: DualRecordingVerification) => void;
+    onOpenEmail: (rider: RaceResult) => void;
 }
 
 function CategoryResultsTable({
@@ -441,6 +776,7 @@ function CategoryResultsTable({
     onToggleDeclass,
     onToggleExclude,
     onOpenDR,
+    onOpenEmail,
 }: CategoryResultsTableProps) {
     return (
         <div className="border border-border rounded-lg overflow-hidden">
@@ -510,6 +846,13 @@ function CategoryResultsTable({
                                     {isManualDeclass && (
                                         <div className="text-[10px] text-yellow-600 font-bold mt-0.5">DECLASSIFIED</div>
                                     )}
+                                    <button
+                                        type="button"
+                                        onClick={() => onOpenEmail(rider)}
+                                        className="mt-1 inline-flex text-[11px] px-2 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                                    >
+                                        Email
+                                    </button>
                                 </td>
                                 <td className="px-4 py-2 text-center font-semibold text-muted-foreground w-20">
                                     {statusLabel}

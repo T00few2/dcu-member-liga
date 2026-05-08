@@ -1,5 +1,5 @@
 const SIGNATURE_MARKER = 'dcu udvalg for e-cykling';
-const SIGNATURE_HTML = '<p>Venlig hilsen</p><p>DCU Udvalg for e-cykling</p>';
+const SIGNATURE_HTML = '<p>Venlig hilsen</p><p><br></p><p>DCU Udvalg for e-cykling</p>';
 
 export function defaultDcuSignatureHtml(): string {
     return SIGNATURE_HTML;
