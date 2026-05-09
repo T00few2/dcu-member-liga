@@ -34,13 +34,18 @@ def _lock_categories_for_race(race_id):
             return
         results = (race_doc.to_dict() or {}).get('results', {})
 
-        # Collect all zwiftIds that have a result
+        # Collect all zwiftIds that have a result and remember which category they
+        # raced in for this event. A rider's first lock should reflect the category
+        # they actually raced, not a freshly recomputed auto-assignment.
         zwift_ids = set()
-        for riders in results.values():
+        raced_category_by_zwift_id: dict[str, str] = {}
+        for category_name, riders in results.items():
             for r in (riders or []):
                 zid = str(r.get('zwiftId', '')).strip()
                 if zid:
                     zwift_ids.add(zid)
+                    if zid not in raced_category_by_zwift_id and category_name:
+                        raced_category_by_zwift_id[zid] = str(category_name)
 
         if not zwift_ids:
             return
@@ -76,7 +81,8 @@ def _lock_categories_for_race(race_id):
                         auto_cat = recomputed['category']
                     else:
                         auto_cat = auto.get('category')
-                    effective = _effective_cat_name(auto_cat, sel.get('category'))
+                    raced_category = raced_category_by_zwift_id.get(str(data.get('zwiftId', '')).strip())
+                    effective = raced_category or _effective_cat_name(auto_cat, sel.get('category'))
                     batch.update(doc.reference, {
                         'ligaCategory.locked': True,
                         'ligaCategory.lockedAt': firestore.SERVER_TIMESTAMP,
