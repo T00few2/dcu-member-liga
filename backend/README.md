@@ -312,7 +312,7 @@ All incoming payloads are logged to the `zwift_webhooks` Firestore collection re
 | `notificationType` | Action |
 |---|---|
 | `ActivitySaved` | Fetches and stores full activity via `/api/thirdparty/activity/{activityId}` |
-| `RacingScoreUpdated` | Re-fetches `competitionMetrics` → `zwiftProfile` **and** `power-profile` → `zwiftPowerCurve`. Both racing-score and power-curve subscriptions fire this type (confirmed from official docs) |
+| `RacingScoreUpdated` / `PowerCurveMetricsUpdated` | Re-fetches `competitionMetrics` → `zwiftProfile` **and** `power-profile` → `zwiftPowerCurve` |
 | `UserDisconnected` | Deletes the user's `zwift_tokens` doc and clears `connections.zwift` |
 | `WorkoutProgressChanged` | Logged only, not handled |
 

@@ -568,7 +568,7 @@ def zwift_webhook():
         except Exception as exc:
             logger.error(f"Failed to process ActivitySaved webhook {notification_id}: {exc}")
 
-    elif notif_type == 'RacingScoreUpdated' and user_id:
+    elif notif_type in ('RacingScoreUpdated', 'PowerCurveMetricsUpdated') and user_id:
         try:
             token_docs = (
                 db.collection('zwift_tokens')
@@ -583,8 +583,7 @@ def zwift_webhook():
                 zwift_service = get_zwift_service()
                 access_token = get_valid_access_token(token_owner_id, zwift_service)
                 if access_token:
-                    # Both racing-score and power-curve subscriptions fire RacingScoreUpdated.
-                    # Fetch and store both in one pass.
+                    # Refresh both profile + power curve for either score or power-curve updates.
                     profile = zwift_service.get_profile(user_access_token=access_token, include_competition_metrics=True)
                     power_profile = zwift_service.get_power_profile(access_token)
                     update: dict = {'updatedAt': firestore.SERVER_TIMESTAMP}
