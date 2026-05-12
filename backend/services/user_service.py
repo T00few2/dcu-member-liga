@@ -165,6 +165,11 @@ class UserService:
         return [User(doc_snapshot=doc) for doc in docs]
 
     @staticmethod
+    def get_rejected_verifications(limit: int = 50) -> list[User]:
+        docs = db.collection('users').where('verification.status', '==', 'rejected').limit(limit).stream()
+        return [User(doc_snapshot=doc) for doc in docs]
+
+    @staticmethod
     def get_all_participants(limit: int = 100) -> list[User]:
         docs = (
             db.collection('users')

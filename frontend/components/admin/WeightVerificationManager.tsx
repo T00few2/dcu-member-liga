@@ -17,6 +17,7 @@ interface PendingVerification {
     lastRaceWeightKg?: number | null;
     lastRaceName?: string | null;
     lastRaceDate?: string | null;
+    latestProfileUpdatedAt?: string | null;
 }
 
 interface ActiveRequest {
@@ -33,6 +34,34 @@ interface ApprovedVerification {
     club: string;
     approvedAt: string | any;
     approvedBy: string;
+    videoLink?: string;
+    lastRaceWeightKg?: number | null;
+    lastRaceName?: string | null;
+    lastRaceDate?: string | null;
+    latestProfileUpdatedAt?: string | null;
+}
+
+interface RejectedVerification {
+    id: string;
+    name: string;
+    club: string;
+    rejectedAt: string | any;
+    rejectedBy: string;
+    rejectionReason?: string;
+    videoLink?: string;
+    lastRaceWeightKg?: number | null;
+    lastRaceName?: string | null;
+    lastRaceDate?: string | null;
+    latestProfileUpdatedAt?: string | null;
+}
+
+type RevisitDecision = 'approve' | 'reject';
+
+interface RevisitState {
+    id: string;
+    name: string;
+    currentDecision: RevisitDecision;
+    currentReason: string;
 }
 
 interface RaceOption {
@@ -87,6 +116,21 @@ function getFirstName(fullName: string): string {
     return first || '';
 }
 
+function formatCopenhagenDateTime(value: unknown): string | null {
+    if (!value) return null;
+    const d = value instanceof Date ? value : new Date(String(value));
+    if (Number.isNaN(d.getTime())) return null;
+    return new Intl.DateTimeFormat('da-DK', {
+        timeZone: 'Europe/Copenhagen',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZoneName: 'short',
+    }).format(d);
+}
+
 export default function WeightVerificationManager() {
     const { user } = useAuth();
     const { showToast } = useToast();
@@ -102,6 +146,7 @@ export default function WeightVerificationManager() {
     const [pendingReviews, setPendingReviews] = useState<PendingVerification[]>([]);
     const [activeRequests, setActiveRequests] = useState<ActiveRequest[]>([]);
     const [approvedList, setApprovedList] = useState<ApprovedVerification[]>([]);
+    const [rejectedList, setRejectedList] = useState<RejectedVerification[]>([]);
     const [loading, setLoading] = useState(true);
 
     // Review State
@@ -113,6 +158,9 @@ export default function WeightVerificationManager() {
     const [emailMessage, setEmailMessage] = useState('');
     const [sendingEmail, setSendingEmail] = useState(false);
     const [sendError, setSendError] = useState<string | null>(null);
+    const [revisitState, setRevisitState] = useState<RevisitState | null>(null);
+    const [revisitDecision, setRevisitDecision] = useState<RevisitDecision>('approve');
+    const [revisitReason, setRevisitReason] = useState('');
 
     // Revoke State
     const [revokingId, setRevokingId] = useState<string | null>(null);
@@ -124,10 +172,11 @@ export default function WeightVerificationManager() {
             const token = await user.getIdToken();
             const headers = { 'Authorization': `Bearer ${token}` };
 
-            const [pendingRes, requestsRes, approvedRes] = await Promise.all([
+            const [pendingRes, requestsRes, approvedRes, rejectedRes] = await Promise.all([
                 fetch(`${API_URL}/admin/verification/pending`, { headers }),
                 fetch(`${API_URL}/admin/verification/requests`, { headers }),
-                fetch(`${API_URL}/admin/verification/approved`, { headers })
+                fetch(`${API_URL}/admin/verification/approved`, { headers }),
+                fetch(`${API_URL}/admin/verification/rejected`, { headers }),
             ]);
 
             if (pendingRes.ok) {
@@ -141,6 +190,10 @@ export default function WeightVerificationManager() {
             if (approvedRes.ok) {
                 const data = await approvedRes.json();
                 setApprovedList(data.approved || []);
+            }
+            if (rejectedRes.ok) {
+                const data = await rejectedRes.json();
+                setRejectedList(data.rejected || []);
             }
 
             const racesRes = await fetch(`${API_URL}/races`, { headers });
@@ -228,9 +281,10 @@ export default function WeightVerificationManager() {
         }
     };
 
-    const handleReview = async (id: string, action: 'approve' | 'reject') => {
-        if (!user) return;
-        if (action === 'reject' && !rejectionReason && !confirm('Reject without a reason?')) return;
+    const handleReview = async (id: string, action: 'approve' | 'reject', reasonOverride?: string): Promise<boolean> => {
+        if (!user) return false;
+        const reviewReason = reasonOverride ?? rejectionReason;
+        if (action === 'reject' && !reviewReason && !confirm('Reject without a reason?')) return false;
 
         setReviewingId(id);
         try {
@@ -241,23 +295,56 @@ export default function WeightVerificationManager() {
                 body: JSON.stringify({
                     userId: id,
                     action,
-                    reason: rejectionReason
+                    reason: reviewReason
                 })
             });
 
             if (res.ok) {
                 showToast(`Rider ${action}d successfully`, 'success');
-                // Remove from local list
-                setPendingReviews(prev => prev.filter(p => p.id !== id));
                 setRejectionReason('');
+                fetchData();
+                return true;
             } else {
                 const data = await res.json();
                 showToast(data.message || 'Review failed', 'error');
+                return false;
             }
         } catch (e) {
             showToast('Network error submitting review', 'error');
+            return false;
         } finally {
             setReviewingId(null);
+        }
+    };
+
+    const openRevisitModal = (
+        id: string,
+        name: string,
+        currentDecision: RevisitDecision,
+        currentReason?: string,
+    ) => {
+        setRevisitState({
+            id,
+            name,
+            currentDecision,
+            currentReason: currentReason || '',
+        });
+        setRevisitDecision(currentDecision);
+        setRevisitReason(currentReason || '');
+    };
+
+    const closeRevisitModal = () => {
+        if (reviewingId) return;
+        setRevisitState(null);
+        setRevisitDecision('approve');
+        setRevisitReason('');
+    };
+
+    const submitRevisit = async () => {
+        if (!revisitState || reviewingId) return;
+        const ok = await handleReview(revisitState.id, revisitDecision, revisitReason);
+        if (ok) {
+            closeRevisitModal();
         }
     };
 
@@ -477,7 +564,9 @@ export default function WeightVerificationManager() {
                                             {req.lastRaceWeightKg != null && (
                                                 <div className="text-xs text-muted-foreground mt-1">
                                                     Last race weight: <span className="font-semibold text-foreground">{req.lastRaceWeightKg.toFixed(1)} kg</span>
-                                                    {req.lastRaceName ? ` (${req.lastRaceName})` : ''}
+                                                    {formatCopenhagenDateTime(req.latestProfileUpdatedAt)
+                                                        ? ` (updated ${formatCopenhagenDateTime(req.latestProfileUpdatedAt)})`
+                                                        : ''}
                                                 </div>
                                             )}
                                         </div>
@@ -563,12 +652,156 @@ export default function WeightVerificationManager() {
                                     <div className="text-xs text-green-600 dark:text-green-400 font-medium">
                                         Approved: {new Date(req.approvedAt).toLocaleDateString()} by {req.approvedBy}
                                     </div>
+                                    {req.lastRaceWeightKg != null && (
+                                        <div className="text-xs text-muted-foreground mt-1">
+                                            Registered weight: <span className="font-semibold text-foreground">{req.lastRaceWeightKg.toFixed(1)} kg</span>
+                                            {formatCopenhagenDateTime(req.latestProfileUpdatedAt)
+                                                ? ` (updated ${formatCopenhagenDateTime(req.latestProfileUpdatedAt)})`
+                                                : ''}
+                                        </div>
+                                    )}
+                                    {req.videoLink && (
+                                        <a
+                                            href={req.videoLink}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-xs text-blue-600 hover:underline mt-1 inline-block"
+                                        >
+                                            View submitted video
+                                        </a>
+                                    )}
                                 </div>
+                                <button
+                                    onClick={() => openRevisitModal(req.id, req.name, 'approved')}
+                                    disabled={reviewingId === req.id}
+                                    className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 font-medium"
+                                >
+                                    {reviewingId === req.id ? 'Updating...' : 'Revisit'}
+                                </button>
                             </div>
                         ))}
                     </div>
                 )}
             </div>
+
+            {/* REJECTED LIST */}
+            <div className="bg-card p-6 rounded-lg shadow border border-border">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl font-bold text-card-foreground">Rejected Verifications ({rejectedList.length})</h2>
+                </div>
+
+                {loading ? (
+                    <div className="text-center p-8 text-muted-foreground">Loading...</div>
+                ) : rejectedList.length === 0 ? (
+                    <div className="text-center p-8 text-muted-foreground italic bg-muted/20 rounded">
+                        No rejected verifications found.
+                    </div>
+                ) : (
+                    <div className="space-y-3 max-h-[500px] overflow-y-auto">
+                        {rejectedList.map(req => (
+                            <div key={req.id} className="border border-border rounded p-3 bg-secondary/10 flex justify-between items-center gap-4">
+                                <div>
+                                    <div className="font-bold text-foreground">{req.name}</div>
+                                    <div className="text-xs text-muted-foreground">
+                                        {req.club || 'No Club'}
+                                    </div>
+                                    <div className="text-xs text-red-600 dark:text-red-400 font-medium">
+                                        Rejected: {req.rejectedAt ? new Date(req.rejectedAt).toLocaleDateString() : 'Unknown'} by {req.rejectedBy}
+                                    </div>
+                                    {req.rejectionReason && (
+                                        <div className="text-xs text-muted-foreground mt-1">
+                                            Reason: {req.rejectionReason}
+                                        </div>
+                                    )}
+                                    {req.lastRaceWeightKg != null && (
+                                        <div className="text-xs text-muted-foreground mt-1">
+                                            Registered weight: <span className="font-semibold text-foreground">{req.lastRaceWeightKg.toFixed(1)} kg</span>
+                                            {formatCopenhagenDateTime(req.latestProfileUpdatedAt)
+                                                ? ` (updated ${formatCopenhagenDateTime(req.latestProfileUpdatedAt)})`
+                                                : ''}
+                                        </div>
+                                    )}
+                                    {req.videoLink && (
+                                        <a
+                                            href={req.videoLink}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-xs text-blue-600 hover:underline mt-1 inline-block"
+                                        >
+                                            View submitted video
+                                        </a>
+                                    )}
+                                </div>
+                                <button
+                                    onClick={() => openRevisitModal(req.id, req.name, 'rejected', req.rejectionReason)}
+                                    disabled={reviewingId === req.id}
+                                    className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 font-medium"
+                                >
+                                    {reviewingId === req.id ? 'Updating...' : 'Revisit'}
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {revisitState && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+                    <div className="w-full max-w-lg rounded-lg border border-border bg-card p-5 shadow-xl">
+                        <h3 className="text-lg font-bold text-card-foreground">Revisit verification</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            Rider: <span className="font-semibold text-foreground">{revisitState.name}</span>
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                            Current decision: {revisitState.currentDecision}
+                        </p>
+
+                        <div className="mt-4 space-y-3">
+                            <div>
+                                <label className="block text-sm font-medium text-muted-foreground mb-1">New decision</label>
+                                <select
+                                    value={revisitDecision}
+                                    onChange={(e) => setRevisitDecision(e.target.value as RevisitDecision)}
+                                    className="w-full p-2 bg-background border border-input rounded text-foreground"
+                                >
+                                    <option value="approve">Approve</option>
+                                    <option value="reject">Reject</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-muted-foreground mb-1">
+                                    Text / reason ({revisitDecision === 'reject' ? 'optional but recommended' : 'optional'})
+                                </label>
+                                <textarea
+                                    value={revisitReason}
+                                    onChange={(e) => setRevisitReason(e.target.value)}
+                                    rows={4}
+                                    className="w-full p-2 bg-background border border-input rounded text-foreground"
+                                    placeholder="Write reason or note..."
+                                />
+                            </div>
+                        </div>
+
+                        <div className="mt-5 flex justify-end gap-2">
+                            <button
+                                onClick={closeRevisitModal}
+                                disabled={!!reviewingId}
+                                className="px-3 py-2 text-sm rounded border border-input hover:bg-secondary disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={submitRevisit}
+                                disabled={!!reviewingId}
+                                className="px-3 py-2 text-sm rounded bg-primary text-primary-foreground hover:bg-primary-dark disabled:opacity-50 font-semibold"
+                            >
+                                {reviewingId ? 'Saving...' : 'Save decision'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <ComposeEmailModal
                 isOpen={isComposeOpen && !!composeTarget}

@@ -369,6 +369,7 @@ def submit_verification():
 def review_verification():
     """
     Admin endpoint to approve/reject a submission.
+    Also supports amending a previous approved/rejected decision.
     Body: { "userId": "...", "action": "approve" | "reject", "reason": "..." }
     """
     try:
@@ -395,7 +396,7 @@ def review_verification():
             
         requests = user.verification_history
         
-        # Find the submitted request
+        # Find the reviewable request (submitted, approved, or rejected)
         updated_requests = []
         found = False
         reviewer_id = "Admin"
@@ -419,45 +420,70 @@ def review_verification():
         new_status = 'approved' if action == 'approve' else 'rejected'
 
         now_iso = datetime.now(timezone.utc).isoformat()
-        current_req = user.current_verification_request
-        if current_req.get('status') == 'submitted':
-             current_req['status'] = new_status
-             current_req['reviewedAt'] = now_iso
-             current_req['reviewerId'] = reviewer_id
-             if action == 'reject': current_req['rejectionReason'] = reason
-             found = True
+        current_req = user.current_verification_request if isinstance(user.current_verification_request, dict) else {}
+        reviewable_statuses = {'submitted', 'approved', 'rejected'}
+
+        target_request_id = str(current_req.get('requestId') or '').strip()
+        if target_request_id:
+            for req in reversed(requests):
+                if req.get('type') != 'weight':
+                    continue
+                if str(req.get('requestId') or '').strip() == target_request_id:
+                    found = True
+                    break
+
+        if not found:
+            for req in reversed(requests):
+                if req.get('type') == 'weight' and req.get('status') in reviewable_statuses:
+                    target_request_id = str(req.get('requestId') or '').strip()
+                    found = True
+                    break
+
+        if not found and current_req.get('type') == 'weight' and current_req.get('status') in reviewable_statuses:
+            found = True
+            target_request_id = str(current_req.get('requestId') or '').strip()
+
+        if not found:
+            return jsonify({'message': 'No reviewable verification found to update.'}), 400
+
+        if current_req.get('type') == 'weight' and (
+            (target_request_id and str(current_req.get('requestId') or '').strip() == target_request_id)
+            or (not target_request_id and current_req.get('status') in reviewable_statuses)
+        ):
+            current_req['status'] = new_status
+            current_req['reviewedAt'] = now_iso
+            current_req['reviewerId'] = reviewer_id
+            if action == 'reject':
+                current_req['rejectionReason'] = reason
+            else:
+                current_req.pop('rejectionReason', None)
 
         for req in requests:
-            if req.get('status') == 'submitted' and req.get('type') == 'weight':
+            matches_target = False
+            if req.get('type') == 'weight':
+                if target_request_id and str(req.get('requestId') or '').strip() == target_request_id:
+                    matches_target = True
+                elif not target_request_id and req.get('status') in reviewable_statuses:
+                    matches_target = True
+
+            if matches_target:
                 req['status'] = new_status
                 req['reviewedAt'] = now_iso
                 req['reviewerId'] = reviewer_id
                 if action == 'reject':
                     req['rejectionReason'] = reason
-                found = True
+                else:
+                    req.pop('rejectionReason', None)
+                # Only update the first matching history item when requestId is absent.
+                if not target_request_id:
+                    target_request_id = str(req.get('requestId') or '__updated_once__')
             updated_requests.append(req)
-            
-        if not found:
-            return jsonify({'message': 'No submitted verification found to review.'}), 400
             
         user.update({
             'verification.status': new_status,
             'verification.history': updated_requests,
             'verification.currentRequest': current_req
         })
-        
-        if action == 'reject':
-             # If rejected, they might need to resubmit? 
-             # Or does it go back to 'none'?
-             # Usually 'rejected' implies they failed. 
-             # If we want them to retry, we might set status back to 'pending'?
-             # For now, let's leave it as 'rejected' and Admin can trigger a new one if they want, 
-             # OR we could have a 'retry' action.
-             # Let's keep it simple: Rejected is rejected.
-             pass
-             
-             pass
-             # Updates applied via user.update() above
 
         
         return jsonify({'message': f'Verification {new_status}.'}), 200
@@ -489,6 +515,7 @@ def get_pending_verifications():
                 rider_zwift_id,
                 user_dict or {},
             )
+            latest_profile_updated_at = ((user_dict or {}).get('zwiftProfile') or {}).get('updatedAt')
 
             # Find the submitted request details
             requests = user.verification_history
@@ -507,6 +534,7 @@ def get_pending_verifications():
                 'lastRaceWeightKg': last_weight_kg,
                 'lastRaceName': last_race_name,
                 'lastRaceDate': last_race_date,
+                'latestProfileUpdatedAt': latest_profile_updated_at,
             })
             
         return jsonify({'pending': pending}), 200
@@ -610,6 +638,13 @@ def get_approved_verifications():
         for user in users:
             requests = user.verification_history
             current = user.current_verification_request
+            user_dict = user.to_dict() if hasattr(user, "to_dict") else {}
+            rider_zwift_id = str((user_dict or {}).get("zwiftId") or user.id or "").strip()
+            last_weight_kg, last_race_name, last_race_date = _resolve_latest_race_weight_for_rider(
+                rider_zwift_id,
+                user_dict or {},
+            )
+            latest_profile_updated_at = ((user_dict or {}).get('zwiftProfile') or {}).get('updatedAt')
             
             # Find the approved request (most recent one preferably)
             approved_req = current if current.get('status') == 'approved' else next((r for r in reversed(requests) if r.get('status') == 'approved'), {})
@@ -619,9 +654,63 @@ def get_approved_verifications():
                 'name': user.name,
                 'club': user.club,
                 'approvedAt': approved_req.get('reviewedAt'),
-                'approvedBy': approved_req.get('reviewerId', 'Admin')
+                'approvedBy': approved_req.get('reviewerId', 'Admin'),
+                'videoLink': approved_req.get('videoLink'),
+                'lastRaceWeightKg': last_weight_kg,
+                'lastRaceName': last_race_name,
+                'lastRaceDate': last_race_date,
+                'latestProfileUpdatedAt': latest_profile_updated_at,
             })
             
         return jsonify({'approved': approved}), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+
+
+@verification_bp.route('/admin/verification/rejected', methods=['GET'])
+def get_rejected_verifications():
+    """
+    Get list of users with 'rejected' status.
+    """
+    try:
+        require_admin(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    try:
+        users = UserService.get_rejected_verifications(limit=50)
+
+        rejected = []
+        for user in users:
+            requests = user.verification_history
+            current = user.current_verification_request
+            user_dict = user.to_dict() if hasattr(user, "to_dict") else {}
+            rider_zwift_id = str((user_dict or {}).get("zwiftId") or user.id or "").strip()
+            last_weight_kg, last_race_name, last_race_date = _resolve_latest_race_weight_for_rider(
+                rider_zwift_id,
+                user_dict or {},
+            )
+            latest_profile_updated_at = ((user_dict or {}).get('zwiftProfile') or {}).get('updatedAt')
+
+            rejected_req = current if current.get('status') == 'rejected' else next((r for r in reversed(requests) if r.get('status') == 'rejected'), {})
+
+            rejected.append({
+                'id': user.id,
+                'name': user.name,
+                'club': user.club,
+                'rejectedAt': rejected_req.get('reviewedAt'),
+                'rejectedBy': rejected_req.get('reviewerId', 'Admin'),
+                'rejectionReason': rejected_req.get('rejectionReason', ''),
+                'videoLink': rejected_req.get('videoLink'),
+                'lastRaceWeightKg': last_weight_kg,
+                'lastRaceName': last_race_name,
+                'lastRaceDate': last_race_date,
+                'latestProfileUpdatedAt': latest_profile_updated_at,
+            })
+
+        return jsonify({'rejected': rejected}), 200
     except Exception as e:
         return jsonify({'message': str(e)}), 500
