@@ -106,8 +106,15 @@ def verify_rider(rider_id):
             profile = f_profile.result(timeout=30)
             if profile:
                 competition = profile.get("competitionMetrics") or {}
+                weight_raw = profile.get("weight")
+                if weight_raw is None:
+                    weight_raw = competition.get("weightInGrams")
+                try:
+                    weight_kg = round(float(weight_raw) / 1000, 1) if weight_raw is not None else None
+                except (TypeError, ValueError):
+                    weight_kg = None
                 response_data["profile"] = {
-                    "weight": round(profile.get("weight", 0) / 1000, 1) if profile.get("weight") else None,
+                    "weight": weight_kg,
                     "height": (
                         round(profile.get("heightInMillimeters", 0) / 10, 0)
                         if profile.get("heightInMillimeters")

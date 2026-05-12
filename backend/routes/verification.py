@@ -127,9 +127,10 @@ def _extract_weight_kg_from_user(user_dict: dict[str, Any]) -> float | None:
     profile = user_dict.get("zwiftProfile") if isinstance(user_dict, dict) else {}
     if not isinstance(profile, dict):
         return None
-    raw = profile.get("weightInGrams")
+    # Prefer top-level profile weight from Zwift; fall back to competition snapshot.
+    raw = profile.get("weight")
     if raw is None:
-        raw = profile.get("weight")
+        raw = profile.get("weightInGrams")
     if raw is None:
         return None
     try:

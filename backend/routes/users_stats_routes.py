@@ -64,7 +64,7 @@ def get_participants():
                         "zftp": zpro.get("zftp", "N/A"),
                         "zmap": zpro.get("zmap", "N/A"),
                         "zwiftCategory": zpro.get("category", "N/A"),
-                        "weightInGrams": zpro.get("weightInGrams") or zpro.get("weight"),
+                        "weightInGrams": zpro.get("weight") or zpro.get("weightInGrams"),
                         "cp5s": cp(5),
                         "cp1min": cp(60),
                         "cp5min": cp(300),
@@ -147,10 +147,17 @@ def get_stats():
                     profile = zwift_service.get_profile(user_access_token=access_token) if access_token else None
                     if profile:
                         competition = profile.get("competitionMetrics") or {}
+                        weight_raw = profile.get("weight")
+                        if weight_raw is None:
+                            weight_raw = competition.get("weightInGrams")
+                        try:
+                            weight_kg = round(float(weight_raw) / 1000, 1) if weight_raw is not None else None
+                        except (TypeError, ValueError):
+                            weight_kg = None
                         zwift_data = {
                             "ftp": competition.get("ftp", "N/A"),
-                            "weight": f"{round(profile.get('weight', 0) / 1000, 1)} kg"
-                            if profile.get("weight")
+                            "weight": f"{weight_kg} kg"
+                            if weight_kg is not None
                             else "N/A",
                             "height": f"{round(profile.get('heightInMillimeters', 0) / 10, 0)} cm"
                             if profile.get("heightInMillimeters")
