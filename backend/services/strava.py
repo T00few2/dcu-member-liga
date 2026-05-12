@@ -179,14 +179,30 @@ class StravaService:
             'activities': recent_activities
         }
 
-    def get_activity_streams(self, rider_id, activity_id, keys='time,watts,cadence,heartrate,altitude'):
+    def get_activity_streams(
+        self,
+        rider_id,
+        activity_id,
+        keys='time,watts,cadence,heartrate,altitude',
+        resolution='high',
+        series_type='time',
+    ):
         access_token = self._get_valid_token(rider_id)
         if not access_token:
             return None
 
         try:
-            url = f"https://www.strava.com/api/v3/activities/{activity_id}/streams?keys={keys}"
-            res = requests.get(url, headers={'Authorization': f"Bearer {access_token}"})
+            url = f"https://www.strava.com/api/v3/activities/{activity_id}/streams"
+            params = {
+                'keys': keys,
+                'resolution': resolution,
+                'series_type': series_type,
+            }
+            res = requests.get(
+                url,
+                params=params,
+                headers={'Authorization': f"Bearer {access_token}"},
+            )
 
             if res.status_code == 200:
                 return res.json()
