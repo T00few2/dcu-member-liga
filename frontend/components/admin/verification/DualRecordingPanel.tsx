@@ -307,9 +307,12 @@ function ExtendedPeakCurveChart({ result }: { result: DualRecordingResult }) {
                         />
                         <Tooltip
                             labelFormatter={(sec: number) => `Duration: ${formatDurationTick(Number(sec))}`}
-                            formatter={(v: number | null, name: string) =>
-                                v != null ? [`${v} W`, name] : ['—', name]
-                            }
+                            formatter={(v: unknown, name: string) => {
+                                const numeric = typeof v === 'number'
+                                    ? v
+                                    : (typeof v === 'string' ? Number(v) : NaN);
+                                return Number.isFinite(numeric) ? [`${numeric} W`, name] : ['—', name];
+                            }}
                         />
                         <Legend verticalAlign="top" height={28} />
                         <Line
