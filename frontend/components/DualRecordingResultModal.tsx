@@ -263,8 +263,9 @@ export default function DualRecordingResultModal({
                         </div>
                     )}
 
-                    {/* On large screens: CP table + avg power + thresholds left, peak profile right */}
-                    <div className="lg:grid lg:grid-cols-[1fr_1.4fr] lg:gap-6 lg:items-start space-y-4 lg:space-y-0">
+                    {/* On large screens: CP table + avg power + thresholds left,
+                        peak profile + recording streams right (stacked so hover is adjacent) */}
+                    <div className="lg:grid lg:grid-cols-[1fr_1.6fr] lg:gap-6 lg:items-start space-y-4 lg:space-y-0">
 
                         {/* Left column: table + avg power + thresholds */}
                         <div className="space-y-4">
@@ -346,38 +347,39 @@ export default function DualRecordingResultModal({
                             </div>
                         </div>
 
-                        {/* Right column: peak profile chart */}
-                        {streamResult && cpDiffRows.length > 0 && (
-                            <div>
-                                <h3 className="text-sm font-semibold text-foreground mb-2">Peak Profile by Duration (Extended)</h3>
-                                <ExtendedPeakProfileChart result={streamResult} cpDiff={cpDiffRows} onDurationHover={setHoveredDurationSec} />
-                            </div>
-                        )}
+                        {/* Right column: peak profile directly above recording streams */}
+                        <div className="space-y-3">
+                            {streamResult && cpDiffRows.length > 0 && (
+                                <div>
+                                    <h3 className="text-sm font-semibold text-foreground mb-2">Peak Profile by Duration (Extended)</h3>
+                                    <ExtendedPeakProfileChart result={streamResult} cpDiff={cpDiffRows} onDurationHover={setHoveredDurationSec} />
+                                </div>
+                            )}
 
-                    </div>
-
-                    {/* Streams graph */}
-                    <div className="border-t border-border pt-3">
-                        <h3 className="text-sm font-semibold text-foreground mb-2">Recording Streams</h3>
-                        {streamLoading ? (
-                            <div className="text-xs text-muted-foreground inline-flex items-center gap-2">
-                                <span className="inline-block w-3 h-3 border-2 border-current border-r-transparent rounded-full animate-spin" />
-                                Loading stream comparison...
+                            <div className="border-t border-border pt-3">
+                                <h3 className="text-sm font-semibold text-foreground mb-2">Recording Streams</h3>
+                                {streamLoading ? (
+                                    <div className="text-xs text-muted-foreground inline-flex items-center gap-2">
+                                        <span className="inline-block w-3 h-3 border-2 border-current border-r-transparent rounded-full animate-spin" />
+                                        Loading stream comparison...
+                                    </div>
+                                ) : streamError ? (
+                                    <div className="text-xs text-red-600">{streamError}</div>
+                                ) : streamResult ? (
+                                    <RecordingStreamsSection
+                                        result={streamResult}
+                                        hideHeartRate={hideHeartRate}
+                                        zwiftColor="#2563eb"
+                                        stravaColor="#FC4C02"
+                                        height={280}
+                                        highlightDurationSec={hoveredDurationSec}
+                                    />
+                                ) : (
+                                    <div className="text-xs text-muted-foreground">No stream data available.</div>
+                                )}
                             </div>
-                        ) : streamError ? (
-                            <div className="text-xs text-red-600">{streamError}</div>
-                        ) : streamResult ? (
-                            <RecordingStreamsSection
-                                result={streamResult}
-                                hideHeartRate={hideHeartRate}
-                                zwiftColor="#2563eb"
-                                stravaColor="#FC4C02"
-                                height={280}
-                                highlightDurationSec={hoveredDurationSec}
-                            />
-                        ) : (
-                            <div className="text-xs text-muted-foreground">No stream data available.</div>
-                        )}
+                        </div>
+
                     </div>
                 </div>
             </div>
