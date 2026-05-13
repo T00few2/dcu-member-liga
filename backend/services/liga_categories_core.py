@@ -5,7 +5,8 @@ from firebase_admin import firestore
 from services.category_engine import (
     build_liga_category,
     cats_from_defs,
-    _effective_cat_name,
+    compute_category_status,
+    ZR_CATEGORIES,
 )
 
 
@@ -40,19 +41,39 @@ def _compute_liga_update(
     categories,
 ) -> dict:
     """Return Firestore update dict for ligaCategory fields."""
+    cats = categories or ZR_CATEGORIES
+
+    def _bounds_for(cat_name: str | None) -> tuple[int | None, int | None]:
+        if not cat_name:
+            return None, None
+        for name, _lower, upper in cats:
+            if name == cat_name:
+                grace_limit = (upper + grace_period) if upper is not None else None
+                return upper, grace_limit
+        return None, None
+
     if existing_lc:
         auto = existing_lc.get("autoAssigned") or {}
         if existing_lc.get("locked"):
-            new_auto = build_liga_category(eff_rating, grace_period, categories)
-            new_auto["assignedRating"] = auto.get("assignedRating", eff_rating)
-            new_auto["assignedAt"] = auto.get("assignedAt")
-            new_auto["lastCheckedAt"] = firestore.SERVER_TIMESTAMP
+            # Locked riders must remain in their locked category; only refresh
+            # status/check metadata against that category's boundaries.
+            locked_effective = existing_lc.get("category") or auto.get("category")
+            upper_boundary, grace_limit = _bounds_for(locked_effective)
+            if upper_boundary is None and grace_limit is None:
+                upper_boundary = auto.get("upperBoundary")
+                grace_limit = auto.get("graceLimit")
 
-            locked_effective = _effective_cat_name(
-                new_auto.get("category"),
-                existing_lc.get("category") or auto.get("category"),
-                categories,
-            )
+            rating_int = int(eff_rating)
+            status = compute_category_status(rating_int, upper_boundary, grace_limit)
+            new_auto = dict(auto)
+            new_auto["category"] = locked_effective
+            new_auto["upperBoundary"] = upper_boundary
+            new_auto["graceLimit"] = grace_limit
+            new_auto["assignedRating"] = auto.get("assignedRating", rating_int)
+            new_auto["assignedAt"] = auto.get("assignedAt")
+            new_auto["status"] = status
+            new_auto["lastCheckedRating"] = rating_int
+            new_auto["lastCheckedAt"] = firestore.SERVER_TIMESTAMP
             return {
                 "ligaCategory.autoAssigned": new_auto,
                 "ligaCategory.category": locked_effective,
