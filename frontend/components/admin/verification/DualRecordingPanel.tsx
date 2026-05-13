@@ -500,6 +500,11 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
                     distorted; the grey region shows the unrecorded portion.
                 </p>
             )}
+            {sync && !showGapOverlay && !gapExceedsLimit && (
+                <p className="text-xs text-green-700 mb-2 px-1">
+                    No Strava recording gap detected — both streams start at the same point.
+                </p>
+            )}
             {/* Custom wrapping legend — avoids Recharts overflow on narrow screens */}
             <div className="flex flex-wrap gap-x-4 gap-y-1 mb-2 px-1">
                 {seriesMeta.map(s => (
