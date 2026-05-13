@@ -81,6 +81,10 @@ export interface DualRecordingResult {
         stravaGapFraction?: number;
         zwiftCroppedSec?: number;
         zwiftGapExceedsLimit?: boolean;
+        stravaEndGapSec?: number;
+        stravaEndGapFraction?: number;
+        zwiftEndCroppedSec?: number;
+        zwiftEndGapExceedsLimit?: boolean;
     } | null;
     comparison: {
         cpDiff: CpDiffRow[];

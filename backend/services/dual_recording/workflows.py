@@ -148,13 +148,13 @@ def _compute_dual_recording_for_rider(
     z_watts_raw = zwift_streams.get("watts") or []
     z_1hz_full = _resample_to_1hz(z_times_raw, z_watts_raw)
     zwift_stream_start_sec = int(z_times_raw[0]) if z_times_raw else 0
+    zwift_stream_end_sec   = int(z_times_raw[-1]) if z_times_raw else 0
 
-    # --- Gap detection ---
-    # The gap is how far into the Zwift stream Strava's coverage begins.
-    # Both times are in Zwift-activity coordinates, so subtract the Zwift
-    # stream's own start to avoid treating a common non-zero offset as a gap.
+    # --- Start-gap detection ---
+    # How far into the Zwift stream does Strava coverage begin?
     trimmed_times = trimmed.get("time") or []
     strava_cover_start_sec = int(trimmed_times[0]) if trimmed_times else (zwift_duration_sec or 0)
+    strava_cover_end_sec   = int(trimmed_times[-1]) if trimmed_times else 0
     strava_gap_sec = max(0, strava_cover_start_sec - zwift_stream_start_sec)
     zwift_stream_duration_sec = (
         int(z_times_raw[-1]) - zwift_stream_start_sec
@@ -162,14 +162,23 @@ def _compute_dual_recording_for_rider(
     strava_gap_frac = strava_gap_sec / zwift_stream_duration_sec if zwift_stream_duration_sec else 0.0
     zwift_gap_exceeds_limit = strava_gap_sec > 0 and strava_gap_frac > _STRAVA_CROP_MAX_FRACTION
 
-    # --- Zwift: compute peak watts from stream, not Zwift API ---
+    # --- End-gap detection ---
+    # How much does Zwift extend beyond Strava's last recorded sample?
+    strava_end_gap_sec = max(0, zwift_stream_end_sec - strava_cover_end_sec)
+    strava_end_gap_frac = strava_end_gap_sec / zwift_stream_duration_sec if zwift_stream_duration_sec else 0.0
+    zwift_end_gap_exceeds_limit = strava_end_gap_sec > 0 and strava_end_gap_frac > _STRAVA_CROP_MAX_FRACTION
+
+    # --- Zwift: compute peak watts from stream, cropped to Strava window ---
     zwift_cropped_sec = 0
+    zwift_end_cropped_sec = 0
     if z_1hz_full:
+        z_slice_start = strava_cover_start_sec if (strava_gap_sec > 0 and not zwift_gap_exceeds_limit) else 0
+        z_slice_end = (strava_cover_end_sec + 1) if (strava_end_gap_sec > 0 and not zwift_end_gap_exceeds_limit) else len(z_1hz_full)
+        z_1hz_for_comparison = z_1hz_full[z_slice_start:z_slice_end]
         if strava_gap_sec > 0 and not zwift_gap_exceeds_limit:
-            z_1hz_for_comparison = z_1hz_full[strava_cover_start_sec:]
             zwift_cropped_sec = strava_gap_sec
-        else:
-            z_1hz_for_comparison = z_1hz_full
+        if strava_end_gap_sec > 0 and not zwift_end_gap_exceeds_limit:
+            zwift_end_cropped_sec = strava_end_gap_sec
         zwift_cp_synced = _compute_best_efforts(z_1hz_for_comparison, durations)
     else:
         # No stream available: fall back to Zwift API curve values
@@ -223,6 +232,10 @@ def _compute_dual_recording_for_rider(
             "stravaGapFraction": round(strava_gap_frac, 3),
             "zwiftCroppedSec": zwift_cropped_sec,
             "zwiftGapExceedsLimit": zwift_gap_exceeds_limit,
+            "stravaEndGapSec": strava_end_gap_sec,
+            "stravaEndGapFraction": round(strava_end_gap_frac, 3),
+            "zwiftEndCroppedSec": zwift_end_cropped_sec,
+            "zwiftEndGapExceedsLimit": zwift_end_gap_exceeds_limit,
         },
         "comparison": {
             "cpDiff": _build_cp_comparison(zwift_cp_synced, strava_cp_synced),
