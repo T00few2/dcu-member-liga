@@ -652,6 +652,11 @@ export default function DualRecordingPanel({ riderId, hook, children }: Props) {
                                 Peak Profile by Duration (Extended)
                             </h4>
                             <ExtendedPeakCurveChart result={result} onDurationHover={setHoveredDurationSec} />
+                            {hoveredDurationSec != null && (
+                                <p className="text-xs text-green-700 font-mono mt-1 px-1">
+                                    ▶ Hover: {hoveredDurationSec}s
+                                </p>
+                            )}
                         </div>
 
                         {/* Stats table */}
