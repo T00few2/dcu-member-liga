@@ -262,11 +262,6 @@ export function ExtendedPeakProfileChart({
                     </LineChart>
                 </ResponsiveContainer>
             </div>
-            <p className="text-xs text-muted-foreground px-1">
-                Calculated from recorded stream samples only (no interpolation). A duration is included only where
-                the recorded stream can support the full window. Where stream samples are unavailable, the standard
-                CP comparison points are used as fallback.
-            </p>
         </div>
     );
 }
