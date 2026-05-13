@@ -444,10 +444,22 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
     if (!hasZwift && !hasStrava) return null;
 
     const sync = result.sync;
-    const gapSec = sync?.stravaStartGapSec ?? 0;
     const croppedSec = sync?.zwiftCroppedSec ?? 0;
-    const gapExceedsLimit = sync?.zwiftGapExceedsLimit ?? false;
-    const zwiftStreamStartSec = sync?.zwiftStreamStartSec ?? 0;
+
+    // Derive gap directly from stream data so it works for all cached results,
+    // regardless of whether the backend has populated the sync gap fields.
+    const zwiftStreamStartSec = hasZwift ? (zwift.streams!.time[0] ?? 0) : 0;
+    const stravaStreamStartSec = hasStrava ? (strava!.streams.time[0] ?? null) : null;
+    const gapSec = (hasZwift && stravaStreamStartSec != null)
+        ? Math.max(0, stravaStreamStartSec - zwiftStreamStartSec)
+        : 0;
+    const zwiftStreamDurationSec = hasZwift
+        ? (zwift.streams!.time[zwift.streams!.time.length - 1] - zwiftStreamStartSec)
+        : 0;
+    const gapFraction = gapSec > 0 && zwiftStreamDurationSec > 0
+        ? gapSec / zwiftStreamDurationSec
+        : 0;
+    const gapExceedsLimit = gapFraction > 0.15;
     const showGapOverlay = gapSec > 0;
 
     const hasZwiftHR   = chartData.some(d => d.zwiftHR   !== null);
@@ -493,11 +505,22 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
                     Zwift stream data is unavailable for this comparison; showing Strava stream only.
                 </p>
             )}
-            {gapExceedsLimit && (
+            {showGapOverlay && gapExceedsLimit && (
                 <p className="text-xs text-amber-700 mb-2 px-1">
-                    Strava recording gap ({fmtGapLabel(gapSec, sync?.stravaGapFraction ?? 0)}) exceeds
-                    the 15% threshold — Zwift stream was not cropped. Peak watt comparison may be
-                    distorted; the grey region shows the unrecorded portion.
+                    Strava recording gap ({fmtGapLabel(gapSec, gapFraction)}) exceeds the 15%
+                    threshold — Zwift stream was not cropped. Peak watt comparison may be distorted;
+                    the shaded region shows the unrecorded portion.
+                </p>
+            )}
+            {showGapOverlay && !gapExceedsLimit && (
+                <p className="text-xs text-blue-700 mb-2 px-1">
+                    Strava recording gap: {fmtGapLabel(gapSec, gapFraction)} — Zwift stream cropped
+                    to match.
+                </p>
+            )}
+            {hasZwift && hasStrava && !showGapOverlay && (
+                <p className="text-xs text-green-700 mb-2 px-1">
+                    No Strava recording gap detected — both streams start at the same point.
                 </p>
             )}
             {/* Custom wrapping legend — avoids Recharts overflow on narrow screens */}
@@ -609,8 +632,8 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
                                 strokeOpacity={0}
                                 label={{
                                     value: croppedSec > 0
-                                        ? fmtGapLabel(gapSec, sync?.stravaGapFraction ?? 0) + ' (cropped)'
-                                        : fmtGapLabel(gapSec, sync?.stravaGapFraction ?? 0),
+                                        ? fmtGapLabel(gapSec, gapFraction) + ' (cropped)'
+                                        : fmtGapLabel(gapSec, gapFraction),
                                     position: 'insideTopRight',
                                     fontSize: 9,
                                     fill: gapExceedsLimit ? '#b45309' : '#374151',
