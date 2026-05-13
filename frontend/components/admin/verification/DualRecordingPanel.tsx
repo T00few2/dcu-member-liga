@@ -447,6 +447,7 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
     const gapSec = sync?.stravaStartGapSec ?? 0;
     const croppedSec = sync?.zwiftCroppedSec ?? 0;
     const gapExceedsLimit = sync?.zwiftGapExceedsLimit ?? false;
+    const zwiftStreamStartSec = sync?.zwiftStreamStartSec ?? 0;
     const showGapOverlay = gapSec > 0;
 
     const hasZwiftHR   = chartData.some(d => d.zwiftHR   !== null);
@@ -601,8 +602,8 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
                         {showGapOverlay && (
                             <ReferenceArea
                                 yAxisId="w"
-                                x1={0}
-                                x2={gapSec}
+                                x1={zwiftStreamStartSec}
+                                x2={zwiftStreamStartSec + gapSec}
                                 fill={gapExceedsLimit ? '#f59e0b' : '#6b7280'}
                                 fillOpacity={0.12}
                                 strokeOpacity={0}
