@@ -19,56 +19,39 @@ def _entry(rider_id: str, segment_id: str, end_world_time: int, duration_ms: int
     }
 
 
-def test_filter_finish_entries_all_sprints_requires_modal_pass_count():
+def test_filter_finish_entries_all_sprints_uses_last_route_crossing_instance():
     fetcher = ZwiftFetcher(zwift_service=None)
-    finish_seg = "finish-seg"
     sprint_seg = "sprint-seg"
+    climb_seg = "climb-seg"
 
     entries = [
-        _entry("r1", finish_seg, 100, 1000),
-        _entry("r1", finish_seg, 200, 1000),
-        _entry("r1", sprint_seg, 150, 1000),
-        _entry("r2", finish_seg, 110, 1000),
-        _entry("r2", finish_seg, 210, 1000),
-        _entry("r2", sprint_seg, 160, 1000),
-        # Incomplete rider: only first lap crossing on inferred finish segment
-        _entry("kenneth", finish_seg, 120, 1000),
-        _entry("kenneth", sprint_seg, 170, 1000),
+        _entry("r1", sprint_seg, 100, 1000),
+        _entry("r1", sprint_seg, 200, 2000),
+        _entry("r1", climb_seg, 250, 2000),
+        _entry("r2", sprint_seg, 110, 1100),
+        _entry("r2", sprint_seg, 210, 2100),
+        _entry("r2", climb_seg, 260, 2100),
     ]
 
     filtered = fetcher._filter_finish_entries(
-        entries,
-        sprint_segment_ids={finish_seg, sprint_seg},
+        entries=entries,
+        sprint_segment_ids={sprint_seg, climb_seg},
         route_segment_ids_ordered=[],
+        route_segments=[
+            {"id": sprint_seg, "count": 1, "lap": 1, "direction": "forward"},
+            {"id": sprint_seg, "count": 2, "lap": 1, "direction": "forward"},
+            {"id": climb_seg, "count": 1, "lap": 1, "direction": "forward"},
+        ],
+        configured_sprints=[
+            {"id": sprint_seg, "count": 1, "lap": 1, "direction": "forward"},
+            {"id": sprint_seg, "count": 2, "lap": 1, "direction": "forward"},
+            {"id": climb_seg, "count": 1, "lap": 1, "direction": "forward"},
+        ],
     )
     selected_ids = {str((e.get("profileData") or {}).get("id")) for e in filtered}
 
     assert selected_ids == {"r1", "r2"}
-    assert {e["_officialSegmentResult"]["endWorldTime"] for e in filtered} == {200, 210}
-
-
-def test_filter_finish_entries_all_sprints_tie_prefers_single_pass():
-    fetcher = ZwiftFetcher(zwift_service=None)
-    finish_seg = "finish-seg"
-    sprint_seg = "sprint-seg"
-
-    entries = [
-        _entry("r1", finish_seg, 100, 1000),
-        _entry("r1", finish_seg, 200, 2000),
-        _entry("r1", sprint_seg, 150, 1000),
-        _entry("r2", finish_seg, 110, 1100),
-        _entry("r2", sprint_seg, 160, 1100),
-    ]
-
-    filtered = fetcher._filter_finish_entries(
-        entries,
-        sprint_segment_ids={finish_seg, sprint_seg},
-        route_segment_ids_ordered=[],
-    )
-    selected_ids = {str((e.get("profileData") or {}).get("id")) for e in filtered}
-
-    assert selected_ids == {"r1", "r2"}
-    assert {e["_officialSegmentResult"]["endWorldTime"] for e in filtered} == {100, 110}
+    assert {e["_officialSegmentResult"]["endWorldTime"] for e in filtered} == {250, 260}
 
 
 def test_resolve_finish_time_prefers_end_date_delta_over_segment_duration():
@@ -109,3 +92,21 @@ def test_filter_finish_entries_uses_route_instances_over_id_guessing():
         for e in filtered
     }
     assert selected == {"simon": 200, "nikolaj": 210}
+
+
+def test_filter_finish_entries_raises_when_route_instances_missing():
+    fetcher = ZwiftFetcher(zwift_service=None)
+    entries = [_entry("r1", "seg-a", 100, 1000)]
+
+    try:
+        fetcher._filter_finish_entries(
+            entries=entries,
+            sprint_segment_ids={"seg-a"},
+            route_segment_ids_ordered=[],
+            route_segments=[],
+            configured_sprints=[{"id": "seg-a", "count": 1, "lap": 1, "direction": "forward"}],
+        )
+    except RuntimeError as exc:
+        assert "deterministically resolve finish segment" in str(exc)
+    else:
+        assert False, "Expected RuntimeError when deterministic route mapping is unavailable"

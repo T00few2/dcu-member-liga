@@ -130,9 +130,8 @@ class ZwiftFetcher:
         """
         Filter segment entries to finish-line entries only.
 
-        Groups entries by segmentId (from _officialSegmentResult), excludes sprint
-        segments, and uses route order or max-duration heuristic as tiebreaker.
-        Entries without a segmentId (legacy path) are returned as-is.
+        Deterministically select finish-line entries from route segment instances.
+        No heuristic fallback is applied.
         """
         by_segment: dict[str, list[dict[str, Any]]] = {}
         for e in entries:
@@ -157,49 +156,10 @@ class ZwiftFetcher:
         )
         if selected_from_route:
             return selected_from_route
-
-        if sprint_segment_ids:
-            sprint_ids_str = {str(s) for s in sprint_segment_ids}
-            non_sprint = {sid: ents for sid, ents in segmented.items() if sid not in sprint_ids_str}
-        else:
-            non_sprint = dict(segmented)
-
-        if not non_sprint:
-            logger.warning(
-                "segment-results: all entries are sprint segments; cannot identify finish. "
-                "Using latest segment crossing per rider."
-            )
-            inferred_finish = self._infer_finish_entries_from_all_sprints(segmented)
-            if inferred_finish:
-                return inferred_finish
-            non_sprint = dict(segmented)
-
-        # Select finish result per rider by latest segment crossing among candidate segments.
-        # This is robust for grouped/event routes where finish may not map to a single
-        # stable segmentId across all riders.
-        latest_by_rider: dict[str, dict[str, Any]] = {}
-        for seg_entries in non_sprint.values():
-            for e in seg_entries:
-                profile = e.get('profileData', {}) if isinstance(e, dict) else {}
-                rider_id = str(profile.get('id') or e.get('profileId') or "")
-                if not rider_id:
-                    continue
-                existing = latest_by_rider.get(rider_id)
-                if existing is None:
-                    latest_by_rider[rider_id] = e
-                    continue
-                if self._entry_sort_key(e) > self._entry_sort_key(existing):
-                    latest_by_rider[rider_id] = e
-        if latest_by_rider:
-            return list(latest_by_rider.values())
-
-        if len(non_sprint) == 1:
-            return next(iter(non_sprint.values()))
-        if route_segment_ids_ordered:
-            for seg_id in reversed([str(s) for s in route_segment_ids_ordered]):
-                if seg_id in non_sprint:
-                    return non_sprint[seg_id]
-        return next(iter(non_sprint.values()))
+        raise RuntimeError(
+            "Could not deterministically resolve finish segment from route instances. "
+            "Check route segments and configured sprint instances."
+        )
 
     def _select_finish_entries_from_route_instances(
         self,
@@ -213,11 +173,12 @@ class ZwiftFetcher:
         Reuses the same id+count(+direction) concept used by the race-card logic:
         - route_segments is the full ordered route manifest occurrences
         - configured_sprints lists explicit sprint instances
-        - finish instance is the last race-lap route segment not configured as sprint
+        - finish instance is:
+          1) last race-lap route segment not configured as sprint, OR
+          2) if all race-lap segments are configured sprints, the last race-lap
+             route segment instance.
         """
         if not segmented or not route_segments:
-            return []
-        if not configured_sprints:
             return []
 
         def _norm_direction(value: Any) -> str:
@@ -256,19 +217,8 @@ class ZwiftFetcher:
                 else:
                     sprint_instances_by_lap.add((sid, lap, _norm_direction(direction_raw)))
 
-        # Prefer candidates that keep the most riders (coverage), then latest in route.
-        # This avoids selecting rare post-finish or connector segments.
-        all_riders: set[str] = set()
-        for seg_entries in segmented.values():
-            for e in seg_entries:
-                profile = e.get('profileData', {}) if isinstance(e, dict) else {}
-                rider_id = str(profile.get('id') or e.get('profileId') or "")
-                if rider_id:
-                    all_riders.add(rider_id)
-
-        best_score = -1
-        finish_seg_id: str | None = None
-        finish_seg_count: int | None = None
+        finish_candidate: tuple[str, int] | None = None
+        all_sprints_candidate: tuple[str, int] | None = None
         for seg in reversed(route_segments):
             sid = str(seg.get("id") or "").strip()
             if not sid or sid not in segmented:
@@ -283,32 +233,28 @@ class ZwiftFetcher:
             if seg_count < 1:
                 seg_count = 1
             seg_direction = _norm_direction(seg.get("direction"))
+            is_configured_sprint = False
             if (sid, seg_count) in sprint_instances_wild_dir:
-                continue
-            if (sid, seg_count, seg_direction) in sprint_instances:
-                continue
-            if lap > 0 and (sid, lap) in sprint_instances_by_lap_wild_dir:
-                continue
-            if lap > 0 and (sid, lap, seg_direction) in sprint_instances_by_lap:
+                is_configured_sprint = True
+            elif (sid, seg_count, seg_direction) in sprint_instances:
+                is_configured_sprint = True
+            elif lap > 0 and (sid, lap) in sprint_instances_by_lap_wild_dir:
+                is_configured_sprint = True
+            elif lap > 0 and (sid, lap, seg_direction) in sprint_instances_by_lap:
+                is_configured_sprint = True
+
+            if is_configured_sprint:
+                if all_sprints_candidate is None:
+                    all_sprints_candidate = (sid, seg_count)
                 continue
 
-            by_rider_counts: dict[str, int] = defaultdict(int)
-            for e in segmented.get(sid, []):
-                profile = e.get('profileData', {}) if isinstance(e, dict) else {}
-                rider_id = str(profile.get('id') or e.get('profileId') or "")
-                if rider_id:
-                    by_rider_counts[rider_id] += 1
-            coverage = sum(1 for cnt in by_rider_counts.values() if cnt >= seg_count)
+            finish_candidate = (sid, seg_count)
+            break
 
-            if coverage > best_score:
-                best_score = coverage
-                finish_seg_id = sid
-                finish_seg_count = seg_count
-
-        if not finish_seg_id or not finish_seg_count:
+        chosen = finish_candidate or all_sprints_candidate
+        if not chosen:
             return []
-        if all_riders and best_score <= 0:
-            return []
+        finish_seg_id, finish_seg_count = chosen
 
         by_rider: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for e in segmented.get(finish_seg_id, []):
@@ -322,60 +268,13 @@ class ZwiftFetcher:
             rider_entries.sort(key=self._entry_sort_key)
             if len(rider_entries) >= finish_seg_count:
                 selected.append(rider_entries[finish_seg_count - 1])
-
-        return selected
-
-    def _infer_finish_entries_from_all_sprints(
-        self,
-        segmented: dict[str, list[dict[str, Any]]],
-    ) -> list[dict[str, Any]]:
-        """
-        Fallback for routes where all observed segments are configured as sprints.
-        Infer a finish segment by latest subgroup crossing and require riders to have
-        the modal pass-count on that segment to be considered finishers.
-        """
-        if not segmented:
-            return []
-
-        def _max_end_world(entries: list[dict[str, Any]]) -> int:
-            return max((int((e.get("_officialSegmentResult") or {}).get("endWorldTime", 0) or 0) for e in entries), default=0)
-
-        finish_seg_id = max(segmented.keys(), key=lambda sid: _max_end_world(segmented[sid]))
-        finish_entries = segmented.get(finish_seg_id, [])
-        if not finish_entries:
-            return []
-
-        by_rider: dict[str, list[dict[str, Any]]] = defaultdict(list)
-        for e in finish_entries:
-            profile = e.get('profileData', {}) if isinstance(e, dict) else {}
-            rider_id = str(profile.get('id') or e.get('profileId') or "")
-            if rider_id:
-                by_rider[rider_id].append(e)
-
-        if not by_rider:
-            return []
-
-        # Determine the target pass count per rider. In ties, prefer the lower pass
-        # count to avoid turning valid single-pass finishers into DNF.
-        pass_count_freq: dict[int, int] = defaultdict(int)
-        for rider_entries in by_rider.values():
-            pass_count_freq[len(rider_entries)] += 1
-        expected_pass_count = 1
-        if pass_count_freq:
-            max_freq = max(pass_count_freq.values())
-            expected_pass_count = min(
-                pass_count
-                for pass_count, freq in pass_count_freq.items()
-                if freq == max_freq
-            )
-
-        selected: list[dict[str, Any]] = []
-        for rider_entries in by_rider.values():
-            rider_entries.sort(key=self._entry_sort_key)
-            if len(rider_entries) >= expected_pass_count:
-                # Select the inferred lap crossing instead of always taking the last
-                # crossing, which can inflate finish times when duplicate passes exist.
-                selected.append(rider_entries[expected_pass_count - 1])
+        logger.info(
+            "route-instance finish selection: segment=%s count=%s selected=%s riders_with_segment=%s",
+            finish_seg_id,
+            finish_seg_count,
+            len(selected),
+            len(by_rider),
+        )
 
         return selected
 
