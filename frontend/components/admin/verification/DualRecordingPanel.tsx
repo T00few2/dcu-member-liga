@@ -281,6 +281,12 @@ function ExtendedPeakCurveChart({ result }: { result: DualRecordingResult }) {
     }, [result]);
 
     if (!chartData.length) return null;
+    const yValues = chartData.flatMap((row) => [row.zwift, row.strava]).filter((v): v is number => v != null);
+    const minPeak = yValues.length ? Math.min(...yValues) : 0;
+    const maxPeak = yValues.length ? Math.max(...yValues) : 100;
+    const yPadding = Math.max(8, (maxPeak - minPeak) * 0.08);
+    const yMin = Math.max(0, Math.floor(minPeak - yPadding));
+    const yMax = Math.ceil(maxPeak + yPadding);
 
     return (
         <div className="space-y-2">
@@ -302,6 +308,7 @@ function ExtendedPeakCurveChart({ result }: { result: DualRecordingResult }) {
                             }}
                         />
                         <YAxis
+                            domain={[yMin, yMax]}
                             tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }}
                             label={{ value: 'Peak watts', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fontSize: 11 } }}
                         />
