@@ -263,11 +263,44 @@ export default function DualRecordingResultModal({
                         </div>
                     )}
 
-                    {/* On large screens: CP table + avg power + thresholds left,
-                        peak profile + recording streams right (stacked so hover is adjacent) */}
-                    <div className="lg:grid lg:grid-cols-[1fr_1.6fr] lg:gap-6 lg:items-start space-y-4 lg:space-y-0">
+                    {/* On large screens: graphs left (peak profile + recording streams),
+                        CP table + avg power + thresholds right */}
+                    <div className="lg:grid lg:grid-cols-[1.6fr_1fr] lg:gap-6 lg:items-start space-y-4 lg:space-y-0">
 
-                        {/* Left column: table + avg power + thresholds */}
+                        {/* Left column: peak profile directly above recording streams */}
+                        <div className="space-y-3">
+                            {streamResult && cpDiffRows.length > 0 && (
+                                <div>
+                                    <h3 className="text-sm font-semibold text-foreground mb-2">Peak Profile by Duration (Extended)</h3>
+                                    <ExtendedPeakProfileChart result={streamResult} cpDiff={cpDiffRows} onDurationHover={setHoveredDurationSec} />
+                                </div>
+                            )}
+
+                            <div className="border-t border-border pt-3">
+                                <h3 className="text-sm font-semibold text-foreground mb-2">Recording Streams</h3>
+                                {streamLoading ? (
+                                    <div className="text-xs text-muted-foreground inline-flex items-center gap-2">
+                                        <span className="inline-block w-3 h-3 border-2 border-current border-r-transparent rounded-full animate-spin" />
+                                        Loading stream comparison...
+                                    </div>
+                                ) : streamError ? (
+                                    <div className="text-xs text-red-600">{streamError}</div>
+                                ) : streamResult ? (
+                                    <RecordingStreamsSection
+                                        result={streamResult}
+                                        hideHeartRate={hideHeartRate}
+                                        zwiftColor="#2563eb"
+                                        stravaColor="#FC4C02"
+                                        height={280}
+                                        highlightDurationSec={hoveredDurationSec}
+                                    />
+                                ) : (
+                                    <div className="text-xs text-muted-foreground">No stream data available.</div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Right column: table + avg power + thresholds */}
                         <div className="space-y-4">
                             {comparison && comparison.cpDiff && comparison.cpDiff.length > 0 && (
                                 <div>
@@ -344,39 +377,6 @@ export default function DualRecordingResultModal({
                             <div className="text-xs text-muted-foreground border-t border-border pt-3">
                                 <p className="font-semibold mb-1">Grænseværdier (Zwift vs Strava):</p>
                                 <p>20 min: max 5% · 5 min: max 5,5% · 1 min: max 6% · 15 sek: max 6,5%</p>
-                            </div>
-                        </div>
-
-                        {/* Right column: peak profile directly above recording streams */}
-                        <div className="space-y-3">
-                            {streamResult && cpDiffRows.length > 0 && (
-                                <div>
-                                    <h3 className="text-sm font-semibold text-foreground mb-2">Peak Profile by Duration (Extended)</h3>
-                                    <ExtendedPeakProfileChart result={streamResult} cpDiff={cpDiffRows} onDurationHover={setHoveredDurationSec} />
-                                </div>
-                            )}
-
-                            <div className="border-t border-border pt-3">
-                                <h3 className="text-sm font-semibold text-foreground mb-2">Recording Streams</h3>
-                                {streamLoading ? (
-                                    <div className="text-xs text-muted-foreground inline-flex items-center gap-2">
-                                        <span className="inline-block w-3 h-3 border-2 border-current border-r-transparent rounded-full animate-spin" />
-                                        Loading stream comparison...
-                                    </div>
-                                ) : streamError ? (
-                                    <div className="text-xs text-red-600">{streamError}</div>
-                                ) : streamResult ? (
-                                    <RecordingStreamsSection
-                                        result={streamResult}
-                                        hideHeartRate={hideHeartRate}
-                                        zwiftColor="#2563eb"
-                                        stravaColor="#FC4C02"
-                                        height={280}
-                                        highlightDurationSec={hoveredDurationSec}
-                                    />
-                                ) : (
-                                    <div className="text-xs text-muted-foreground">No stream data available.</div>
-                                )}
                             </div>
                         </div>
 
