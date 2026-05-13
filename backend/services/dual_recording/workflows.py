@@ -19,6 +19,12 @@ from .zwift import _extract_zwift_activity_fields, _fetch_zwift_streams
 
 logger = logging.getLogger(__name__)
 
+# Maximum fraction of the Zwift stream that may be cropped to align with a
+# late-starting Strava recording.  Gaps within this limit are compensated by
+# cropping the Zwift stream so both sides cover the same window before peak
+# watts are computed.  Gaps exceeding the limit are flagged but still compared.
+_STRAVA_CROP_MAX_FRACTION: float = 0.15
+
 
 def _is_dual_recording_required(db: object, user_doc_id: str) -> bool:
     """Return True if rider's registered trainer requires dual recording."""
@@ -133,17 +139,48 @@ def _compute_dual_recording_for_rider(
     )
 
     durations = (5, 15, 30, 60, 120, 300, 1200)
+
+    # Raw Strava curve from full unaligned stream (unchanged behaviour)
     strava_cp_raw = _compute_best_efforts(_resample_to_1hz(s_times, s_watts), durations)
-    strava_cp_synced = _compute_best_efforts(
-        _resample_to_1hz(trimmed["time"], trimmed["watts"]), durations
+
+    # --- Gap detection ---
+    trimmed_times = trimmed.get("time") or []
+    strava_cover_start_sec = int(trimmed_times[0]) if trimmed_times else (zwift_duration_sec or 0)
+    strava_gap_sec = max(0, strava_cover_start_sec)
+    strava_gap_frac = strava_gap_sec / zwift_duration_sec if zwift_duration_sec else 0.0
+    zwift_gap_exceeds_limit = strava_gap_sec > 0 and strava_gap_frac > _STRAVA_CROP_MAX_FRACTION
+
+    # --- Zwift: compute peak watts from stream, not Zwift API ---
+    z_times_raw = zwift_streams.get("time") or []
+    z_watts_raw = zwift_streams.get("watts") or []
+    z_1hz_full = _resample_to_1hz(z_times_raw, z_watts_raw)
+
+    zwift_cropped_sec = 0
+    if z_1hz_full:
+        if strava_gap_sec > 0 and not zwift_gap_exceeds_limit:
+            z_1hz_for_comparison = z_1hz_full[strava_cover_start_sec:]
+            zwift_cropped_sec = strava_gap_sec
+        else:
+            z_1hz_for_comparison = z_1hz_full
+        zwift_cp_synced = _compute_best_efforts(z_1hz_for_comparison, durations)
+    else:
+        # No stream available: fall back to Zwift API curve values
+        zwift_cp_synced = zwift_cp_curve
+        z_1hz_for_comparison = []
+
+    # --- Strava: slice to actual coverage to avoid backward extrapolation ---
+    strava_1hz_raw = _resample_to_1hz(trimmed_times, trimmed.get("watts") or [])
+    strava_1hz_for_comparison = (
+        strava_1hz_raw[strava_cover_start_sec:] if strava_cover_start_sec > 0 else strava_1hz_raw
     )
-    synced_1hz = _resample_to_1hz(trimmed["time"], trimmed["watts"])
-    strava_avg_synced = round(sum(synced_1hz) / len(synced_1hz), 1) if synced_1hz else None
-    zwift_synced_1hz = _resample_to_1hz(
-        zwift_streams.get("time") or [],
-        zwift_streams.get("watts") or [],
+    strava_cp_synced = _compute_best_efforts(strava_1hz_for_comparison, durations)
+    strava_avg_synced = (
+        round(sum(strava_1hz_for_comparison) / len(strava_1hz_for_comparison), 1)
+        if strava_1hz_for_comparison else None
     )
-    similarity_metrics = _compute_similarity_metrics(zwift_synced_1hz, synced_1hz)
+
+    # Similarity over the common (cropped) window
+    similarity_metrics = _compute_similarity_metrics(z_1hz_for_comparison, strava_1hz_for_comparison)
 
     avg_diff_w, avg_diff_pct = _compute_avg_power_diff(zwift_avg_watts, strava_avg_synced)
 
@@ -154,6 +191,7 @@ def _compute_dual_recording_for_rider(
             "durationSec": zwift_duration_sec,
             "avgWatts": zwift_avg_watts,
             "cpCurve": zwift_cp_curve,
+            "cpCurveSynced": zwift_cp_synced,
             "streams": zwift_streams or None,
         },
         "strava": {
@@ -172,9 +210,13 @@ def _compute_dual_recording_for_rider(
             "zwiftDurationSec": zwift_duration_sec,
             "syncMethod": sync_method,
             "timestampOffsetSec": ts_offset,
+            "stravaStartGapSec": strava_gap_sec,
+            "stravaGapFraction": round(strava_gap_frac, 3),
+            "zwiftCroppedSec": zwift_cropped_sec,
+            "zwiftGapExceedsLimit": zwift_gap_exceeds_limit,
         },
         "comparison": {
-            "cpDiff": _build_cp_comparison(zwift_cp_curve, strava_cp_synced),
+            "cpDiff": _build_cp_comparison(zwift_cp_synced, strava_cp_synced),
             "avgPower": {
                 "zwift": zwift_avg_watts,
                 "strava": strava_avg_synced,
