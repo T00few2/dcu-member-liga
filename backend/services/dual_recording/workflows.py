@@ -143,18 +143,26 @@ def _compute_dual_recording_for_rider(
     # Raw Strava curve from full unaligned stream (unchanged behaviour)
     strava_cp_raw = _compute_best_efforts(_resample_to_1hz(s_times, s_watts), durations)
 
-    # --- Gap detection ---
-    trimmed_times = trimmed.get("time") or []
-    strava_cover_start_sec = int(trimmed_times[0]) if trimmed_times else (zwift_duration_sec or 0)
-    strava_gap_sec = max(0, strava_cover_start_sec)
-    strava_gap_frac = strava_gap_sec / zwift_duration_sec if zwift_duration_sec else 0.0
-    zwift_gap_exceeds_limit = strava_gap_sec > 0 and strava_gap_frac > _STRAVA_CROP_MAX_FRACTION
-
-    # --- Zwift: compute peak watts from stream, not Zwift API ---
+    # --- Zwift stream data ---
     z_times_raw = zwift_streams.get("time") or []
     z_watts_raw = zwift_streams.get("watts") or []
     z_1hz_full = _resample_to_1hz(z_times_raw, z_watts_raw)
+    zwift_stream_start_sec = int(z_times_raw[0]) if z_times_raw else 0
 
+    # --- Gap detection ---
+    # The gap is how far into the Zwift stream Strava's coverage begins.
+    # Both times are in Zwift-activity coordinates, so subtract the Zwift
+    # stream's own start to avoid treating a common non-zero offset as a gap.
+    trimmed_times = trimmed.get("time") or []
+    strava_cover_start_sec = int(trimmed_times[0]) if trimmed_times else (zwift_duration_sec or 0)
+    strava_gap_sec = max(0, strava_cover_start_sec - zwift_stream_start_sec)
+    zwift_stream_duration_sec = (
+        int(z_times_raw[-1]) - zwift_stream_start_sec
+    ) if z_times_raw else (zwift_duration_sec or 0)
+    strava_gap_frac = strava_gap_sec / zwift_stream_duration_sec if zwift_stream_duration_sec else 0.0
+    zwift_gap_exceeds_limit = strava_gap_sec > 0 and strava_gap_frac > _STRAVA_CROP_MAX_FRACTION
+
+    # --- Zwift: compute peak watts from stream, not Zwift API ---
     zwift_cropped_sec = 0
     if z_1hz_full:
         if strava_gap_sec > 0 and not zwift_gap_exceeds_limit:
@@ -210,6 +218,7 @@ def _compute_dual_recording_for_rider(
             "zwiftDurationSec": zwift_duration_sec,
             "syncMethod": sync_method,
             "timestampOffsetSec": ts_offset,
+            "zwiftStreamStartSec": zwift_stream_start_sec,
             "stravaStartGapSec": strava_gap_sec,
             "stravaGapFraction": round(strava_gap_frac, 3),
             "zwiftCroppedSec": zwift_cropped_sec,

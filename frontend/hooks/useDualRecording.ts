@@ -76,6 +76,7 @@ export interface DualRecordingResult {
         zwiftDurationSec: number | null;
         syncMethod: string;
         timestampOffsetSec: number;
+        zwiftStreamStartSec?: number;
         stravaStartGapSec?: number;
         stravaGapFraction?: number;
         zwiftCroppedSec?: number;
