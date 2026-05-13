@@ -27,11 +27,11 @@ function fmtRaceTime(sec: number) {
     return `${neg ? '-' : ''}${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-function fmtGapLabel(sec: number, frac: number): string {
+function fmtGap(sec: number, frac: number): string {
     const m = Math.floor(sec / 60);
     const s = sec % 60;
     const time = m > 0 ? (s > 0 ? `${m}m ${s}s` : `${m}m`) : `${s}s`;
-    return `Strava gap: ${time} (${(frac * 100).toFixed(1)}%)`;
+    return `${time} (${(frac * 100).toFixed(1)}%)`;
 }
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -220,19 +220,19 @@ export function RecordingStreamsSection({
     const gapSec = (hasZwift && hasStrava && firstStravaDataT != null)
         ? Math.max(0, firstStravaDataT - zwiftStreamStartSec)
         : 0;
-    const gapFraction     = gapSec > 0 && zwiftStreamDurationSec > 0 ? gapSec / zwiftStreamDurationSec : 0;
-    const gapExceedsLimit = gapFraction > 0.15;
-    const showGapOverlay  = gapSec > 0;
-    const croppedSec      = result.sync?.zwiftCroppedSec ?? 0;
+    const gapFraction = gapSec > 0 && zwiftStreamDurationSec > 0 ? gapSec / zwiftStreamDurationSec : 0;
+    const showGapOverlay = gapSec > 0;
 
     // End gap: Zwift continues after Strava stops
     const endGapSec = (hasZwift && hasStrava && lastStravaDataT != null)
         ? Math.max(0, zwiftStreamEndSec - lastStravaDataT)
         : 0;
-    const endGapFraction     = endGapSec > 0 && zwiftStreamDurationSec > 0 ? endGapSec / zwiftStreamDurationSec : 0;
-    const endGapExceedsLimit = endGapFraction > 0.15;
-    const showEndGapOverlay  = endGapSec > 0;
-    const endCroppedSec      = result.sync?.zwiftEndCroppedSec ?? 0;
+    const endGapFraction = endGapSec > 0 && zwiftStreamDurationSec > 0 ? endGapSec / zwiftStreamDurationSec : 0;
+    const showEndGapOverlay = endGapSec > 0;
+
+    // The 15% limit applies to the TOTAL combined cropping, not each gap independently
+    const totalCropFraction  = gapFraction + endGapFraction;
+    const cropExceedsLimit   = totalCropFraction > 0.15;
 
     // ── Series visibility ─────────────────────────────────────────────────────
 
@@ -313,28 +313,25 @@ export function RecordingStreamsSection({
                     Zwift stream data is unavailable for this comparison; showing Strava stream only.
                 </p>
             )}
-            {showGapOverlay && gapExceedsLimit && (
+            {/* Gap notices — limit is on the combined total, so both gaps share one exceeds/ok verdict */}
+            {(showGapOverlay || showEndGapOverlay) && cropExceedsLimit && (
                 <p className="text-xs text-amber-700 mb-2 px-1">
-                    Strava recording gap ({fmtGapLabel(gapSec, gapFraction)}) exceeds the 15%
-                    threshold — Zwift stream was not cropped. Peak watt comparison may be
-                    distorted; the shaded region shows the unrecorded portion.
+                    {showGapOverlay && <>Strava starts late: {fmtGap(gapSec, gapFraction)}. </>}
+                    {showEndGapOverlay && <>Strava stops early: {fmtGap(endGapSec, endGapFraction)}. </>}
+                    Total crop {fmtGap(gapSec + endGapSec, totalCropFraction)} exceeds the 15% limit —
+                    Zwift stream was not cropped. Peak watt comparison may be distorted.
                 </p>
             )}
-            {showGapOverlay && !gapExceedsLimit && (
+            {showGapOverlay && !cropExceedsLimit && (
                 <p className="text-xs text-blue-700 mb-2 px-1">
-                    Strava recording gap: {fmtGapLabel(gapSec, gapFraction)} — Zwift stream cropped to match.
+                    Strava starts late: {fmtGap(gapSec, gapFraction)} — Zwift start cropped to match
+                    {showEndGapOverlay ? ` (total crop: ${fmtGap(gapSec + endGapSec, totalCropFraction)})` : ''}.
                 </p>
             )}
-            {/* End-gap notices */}
-            {showEndGapOverlay && endGapExceedsLimit && (
-                <p className="text-xs text-amber-700 mb-2 px-1">
-                    Strava stops early ({fmtGapLabel(endGapSec, endGapFraction)}) — gap exceeds 15%,
-                    Zwift end was not cropped. Comparison may be distorted.
-                </p>
-            )}
-            {showEndGapOverlay && !endGapExceedsLimit && (
+            {showEndGapOverlay && !cropExceedsLimit && (
                 <p className="text-xs text-blue-700 mb-2 px-1">
-                    Strava stops early: {fmtGapLabel(endGapSec, endGapFraction)} — Zwift stream end-cropped to match.
+                    Strava stops early: {fmtGap(endGapSec, endGapFraction)} — Zwift end cropped to match
+                    {showGapOverlay ? ` (total crop: ${fmtGap(gapSec + endGapSec, totalCropFraction)})` : ''}.
                 </p>
             )}
             {hasZwift && hasStrava && !showGapOverlay && !showEndGapOverlay && (
@@ -460,42 +457,26 @@ export function RecordingStreamsSection({
                                 hide={hidden.has('stravaAlt')} />
                         )}
 
-                        {/* Grey overlay for Strava start gap */}
+                        {/* Shaded overlay for Strava start gap */}
                         {showGapOverlay && (
                             <ReferenceArea
                                 yAxisId="w"
                                 x1={zwiftStreamStartSec}
                                 x2={zwiftStreamStartSec + gapSec}
-                                fill={gapExceedsLimit ? '#f59e0b' : '#6b7280'}
+                                fill={cropExceedsLimit ? '#f59e0b' : '#6b7280'}
                                 fillOpacity={0.12}
                                 strokeOpacity={0}
-                                label={{
-                                    value: croppedSec > 0
-                                        ? fmtGapLabel(gapSec, gapFraction) + ' (cropped)'
-                                        : fmtGapLabel(gapSec, gapFraction),
-                                    position: 'insideTopRight',
-                                    fontSize: 9,
-                                    fill: gapExceedsLimit ? '#b45309' : '#374151',
-                                }}
                             />
                         )}
-                        {/* Grey overlay for Strava end gap */}
+                        {/* Shaded overlay for Strava end gap */}
                         {showEndGapOverlay && lastStravaDataT != null && (
                             <ReferenceArea
                                 yAxisId="w"
                                 x1={lastStravaDataT}
                                 x2={zwiftStreamEndSec}
-                                fill={endGapExceedsLimit ? '#f59e0b' : '#6b7280'}
+                                fill={cropExceedsLimit ? '#f59e0b' : '#6b7280'}
                                 fillOpacity={0.12}
                                 strokeOpacity={0}
-                                label={{
-                                    value: endCroppedSec > 0
-                                        ? fmtGapLabel(endGapSec, endGapFraction) + ' end (cropped)'
-                                        : fmtGapLabel(endGapSec, endGapFraction) + ' end',
-                                    position: 'insideTopLeft',
-                                    fontSize: 9,
-                                    fill: endGapExceedsLimit ? '#b45309' : '#374151',
-                                }}
                             />
                         )}
                     </LineChart>
