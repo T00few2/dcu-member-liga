@@ -446,12 +446,14 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
     const sync = result.sync;
     const croppedSec = sync?.zwiftCroppedSec ?? 0;
 
-    // Derive gap directly from stream data so it works for all cached results,
-    // regardless of whether the backend has populated the sync gap fields.
-    const zwiftStreamStartSec = hasZwift ? (zwift.streams!.time[0] ?? 0) : 0;
-    const stravaStreamStartSec = hasStrava ? (strava!.streams.time[0] ?? null) : null;
-    const gapSec = (hasZwift && stravaStreamStartSec != null)
-        ? Math.max(0, stravaStreamStartSec - zwiftStreamStartSec)
+    // Derive the gap from where each stream's watt data *actually* appears in
+    // the chart. Using time[0] from the raw arrays is unreliable because the
+    // alignment may shift the Strava time array to match the Zwift start while
+    // the actual recorded watts only begin later.
+    const zwiftStreamStartSec  = chartData.find(row => row.zwiftW  !== null)?.t ?? 0;
+    const firstStravaDataT     = chartData.find(row => row.stravaW !== null)?.t ?? null;
+    const gapSec = (hasZwift && hasStrava && firstStravaDataT != null)
+        ? Math.max(0, firstStravaDataT - zwiftStreamStartSec)
         : 0;
     const zwiftStreamDurationSec = hasZwift
         ? (zwift.streams!.time[zwift.streams!.time.length - 1] - zwiftStreamStartSec)

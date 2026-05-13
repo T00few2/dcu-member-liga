@@ -3,7 +3,7 @@
 import type React from 'react';
 import { useMemo, useState } from 'react';
 import {
-    ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Brush,
+    ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Brush, ReferenceArea,
 } from 'recharts';
 import type { DualRecordingVerification, CpDiffRow } from '@/types/admin';
 import type { DualRecordingResult } from '@/hooks/useDualRecording';
@@ -722,6 +722,26 @@ function RecordingStreamsChart({
         };
     }, [chartData, hideHeartRate]);
 
+    const zwiftStreamStartSec  = chartData.find(row => row.zwiftW  !== null)?.t ?? 0;
+    const firstStravaDataT     = chartData.find(row => row.stravaW !== null)?.t ?? null;
+    const gapSec = (hasZwift && hasStrava && firstStravaDataT != null)
+        ? Math.max(0, firstStravaDataT - zwiftStreamStartSec)
+        : 0;
+    const zwiftStreamDurationSec = hasZwift && zwift.streams
+        ? (zwift.streams.time[zwift.streams.time.length - 1] - zwiftStreamStartSec)
+        : 0;
+    const gapFraction = gapSec > 0 && zwiftStreamDurationSec > 0
+        ? gapSec / zwiftStreamDurationSec : 0;
+    const gapExceedsLimit = gapFraction > 0.15;
+    const showGapOverlay = gapSec > 0;
+
+    function fmtGapLabel(sec: number, frac: number): string {
+        const m = Math.floor(sec / 60);
+        const s = sec % 60;
+        const time = m > 0 ? (s > 0 ? `${m}m ${s}s` : `${m}m`) : `${s}s`;
+        return `Strava gap: ${time} (${(frac * 100).toFixed(1)}%)`;
+    }
+
     const seriesMeta = [
         { key: 'zwiftW', label: 'Zwift Power', color: '#2563eb', show: hasSeries.zwiftW },
         { key: 'stravaW', label: 'Strava Power', color: '#FC4C02', show: hasSeries.stravaW },
@@ -760,9 +780,24 @@ function RecordingStreamsChart({
                     </div>
                 </div>
             )}
-            <div className="text-[11px] text-muted-foreground mb-2">
+            <div className="text-[11px] text-muted-foreground mb-1">
                 t=0 = Zwift recording start · Strava aligned by power MSE · click legend to toggle
             </div>
+            {showGapOverlay && gapExceedsLimit && (
+                <p className="text-xs text-amber-700 mb-2">
+                    {fmtGapLabel(gapSec, gapFraction)} — gap exceeds 15%, Zwift stream not cropped. Comparison may be distorted.
+                </p>
+            )}
+            {showGapOverlay && !gapExceedsLimit && (
+                <p className="text-xs text-blue-700 mb-2">
+                    Strava recording gap: {fmtGapLabel(gapSec, gapFraction)} — Zwift stream cropped to match.
+                </p>
+            )}
+            {hasZwift && hasStrava && !showGapOverlay && (
+                <p className="text-xs text-green-700 mb-2">
+                    No Strava recording gap detected — both streams start at the same point.
+                </p>
+            )}
             <div className="flex flex-wrap gap-x-4 gap-y-1 mb-2 px-1">
                 {seriesMeta.map((s) => (
                     <button
@@ -833,6 +868,22 @@ function RecordingStreamsChart({
                         {hasSeries.zwiftAlt && <Line yAxisId="other" type="monotone" dataKey="zwiftAlt" stroke="#c9c9c9" dot={false} strokeWidth={1} name="Zwift Elev" hide={hidden.has('zwiftAlt')} />}
                         {hasSeries.stravaAlt && <Line yAxisId="other" type="monotone" dataKey="stravaAlt" stroke="#b5b5b5" dot={false} strokeWidth={1} name="Strava Elev" hide={hidden.has('stravaAlt')} />}
                         <Brush dataKey="t" tickFormatter={fmtRaceTime} height={20} />
+                        {showGapOverlay && (
+                            <ReferenceArea
+                                yAxisId="w"
+                                x1={zwiftStreamStartSec}
+                                x2={zwiftStreamStartSec + gapSec}
+                                fill={gapExceedsLimit ? '#f59e0b' : '#6b7280'}
+                                fillOpacity={0.12}
+                                strokeOpacity={0}
+                                label={{
+                                    value: fmtGapLabel(gapSec, gapFraction) + (gapExceedsLimit ? '' : ' (cropped)'),
+                                    position: 'insideTopRight',
+                                    fontSize: 9,
+                                    fill: gapExceedsLimit ? '#b45309' : '#374151',
+                                }}
+                            />
+                        )}
                     </LineChart>
                 </ResponsiveContainer>
             </div>
