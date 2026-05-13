@@ -323,15 +323,18 @@ export function RecordingStreamsSection({
                 </p>
             )}
             {showGapOverlay && !cropExceedsLimit && (
-                <p className="text-xs text-blue-700 mb-2 px-1">
-                    Strava starts late: {fmtGap(gapSec, gapFraction)} — Zwift start cropped to match
-                    {showEndGapOverlay ? ` (total crop: ${fmtGap(gapSec + endGapSec, totalCropFraction)})` : ''}.
+                <p className="text-xs text-blue-700 mb-1 px-1">
+                    Strava starts late: {fmtGap(gapSec, gapFraction)} — Zwift start cropped to match.
                 </p>
             )}
             {showEndGapOverlay && !cropExceedsLimit && (
+                <p className="text-xs text-blue-700 mb-1 px-1">
+                    Strava stops early: {fmtGap(endGapSec, endGapFraction)} — Zwift end cropped to match.
+                </p>
+            )}
+            {showGapOverlay && showEndGapOverlay && !cropExceedsLimit && (
                 <p className="text-xs text-blue-700 mb-2 px-1">
-                    Strava stops early: {fmtGap(endGapSec, endGapFraction)} — Zwift end cropped to match
-                    {showGapOverlay ? ` (total crop: ${fmtGap(gapSec + endGapSec, totalCropFraction)})` : ''}.
+                    Total crop: {fmtGap(gapSec + endGapSec, totalCropFraction)}.
                 </p>
             )}
             {hasZwift && hasStrava && !showGapOverlay && !showEndGapOverlay && (
