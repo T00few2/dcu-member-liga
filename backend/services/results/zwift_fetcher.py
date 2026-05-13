@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from collections import defaultdict
+from datetime import datetime
 from typing import Any
 
 from models import RiderResult
+from services.results.finish_selector import select_finish_entries_from_route_instances
+from services.results.finish_time import resolve_finish_time_ms
 
 logger = logging.getLogger('ZwiftFetcher')
 
@@ -31,6 +32,16 @@ class ZwiftFetcher:
             })
         return result
 
+    def fetch_subgroup_crossings(
+        self,
+        subgroup_id: str,
+        event_secret: str = "",
+    ) -> list[dict[str, Any]]:
+        """
+        Fetch all official subgroup segment-result crossings in legacy entry shape.
+        """
+        return self.zwift.get_event_results(subgroup_id, event_secret=event_secret)
+
     def fetch_finishers(
         self,
         subgroup_id: str,
@@ -38,29 +49,21 @@ class ZwiftFetcher:
         fetch_mode: str,
         filter_registered: bool,
         registered_riders: dict[str, Any],
-        sprint_segment_ids: set[str | int] | None = None,
-        route_segment_ids_ordered: list[str | int] | None = None,
         route_segments: list[dict[str, Any]] | None = None,
         configured_sprints: list[dict[str, Any]] | None = None,
         subgroup_start_time: datetime | None = None,
+        all_results_raw: list[dict[str, Any]] | None = None,
     ) -> list[RiderResult]:
         """
         Fetches participants/finishers for a subgroup and maps them to registered riders.
-
-        sprint_segment_ids and route_segment_ids_ordered are used to identify
-        the finish-line segment by exclusion from sprint segments.
-        This is required for correct live/partial results.
         """
         finishers: list[RiderResult] = []
         if fetch_mode == 'finishers':
-            all_results_raw = self.zwift.get_event_results(
-                subgroup_id,
-                event_secret=event_secret,
+            crossings = all_results_raw or self.fetch_subgroup_crossings(
+                subgroup_id, event_secret
             )
             finish_results_raw = self._filter_finish_entries(
-                all_results_raw,
-                sprint_segment_ids,
-                route_segment_ids_ordered,
+                crossings,
                 route_segments,
                 configured_sprints,
             )
@@ -72,7 +75,7 @@ class ZwiftFetcher:
                 canonical_zwift_id = str(registered_profile.get('zwiftId')) if registered_profile and registered_profile.get('zwiftId') else zid
 
                 # Helper to build finisher object
-                finish_time_ms = self._resolve_finish_time_ms(entry, subgroup_start_time)
+                finish_time_ms = resolve_finish_time_ms(entry, subgroup_start_time)
                 finisher: RiderResult = {
                     'zwiftId': canonical_zwift_id,
                     'finishTime': finish_time_ms,
@@ -122,8 +125,6 @@ class ZwiftFetcher:
     def _filter_finish_entries(
         self,
         entries: list[dict[str, Any]],
-        sprint_segment_ids: set[str | int] | None,
-        route_segment_ids_ordered: list[str | int] | None,
         route_segments: list[dict[str, Any]] | None = None,
         configured_sprints: list[dict[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
@@ -149,10 +150,11 @@ class ZwiftFetcher:
         if not segmented:
             return entries
 
-        selected_from_route = self._select_finish_entries_from_route_instances(
+        selected_from_route = select_finish_entries_from_route_instances(
             segmented=segmented,
             route_segments=route_segments,
             configured_sprints=configured_sprints,
+            entry_sort_key=self._entry_sort_key,
         )
         if selected_from_route:
             return selected_from_route
@@ -161,158 +163,11 @@ class ZwiftFetcher:
             "Check route segments and configured sprint instances."
         )
 
-    def _select_finish_entries_from_route_instances(
-        self,
-        segmented: dict[str, list[dict[str, Any]]],
-        route_segments: list[dict[str, Any]] | None,
-        configured_sprints: list[dict[str, Any]] | None,
-    ) -> list[dict[str, Any]]:
-        """
-        Deterministically pick finish entries from route segment instances.
-
-        Reuses the same id+count(+direction) concept used by the race-card logic:
-        - route_segments is the full ordered route manifest occurrences
-        - configured_sprints lists explicit sprint instances
-        - finish instance is:
-          1) last race-lap route segment not configured as sprint, OR
-          2) if all race-lap segments are configured sprints, the last race-lap
-             route segment instance.
-        """
-        if not segmented or not route_segments:
-            return []
-
-        def _norm_direction(value: Any) -> str:
-            raw = str(value or "").strip().lower()
-            if raw in {"reverse", "rev", "r"}:
-                return "reverse"
-            return "forward"
-
-        sprint_instances: set[tuple[str, int, str]] = set()
-        sprint_instances_wild_dir: set[tuple[str, int]] = set()
-        sprint_instances_by_lap: set[tuple[str, int, str]] = set()
-        sprint_instances_by_lap_wild_dir: set[tuple[str, int]] = set()
-        for sprint in configured_sprints or []:
-            sid = str(sprint.get("id") or "").strip()
-            if not sid:
-                continue
-            try:
-                count = int(sprint.get("count") or 1)
-            except (TypeError, ValueError):
-                count = 1
-            if count < 1:
-                count = 1
-            direction_raw = sprint.get("direction")
-            if direction_raw is None or str(direction_raw).strip() == "":
-                sprint_instances_wild_dir.add((sid, count))
-            else:
-                sprint_instances.add((sid, count, _norm_direction(direction_raw)))
-            lap_raw = sprint.get("lap")
-            try:
-                lap = int(lap_raw) if lap_raw is not None else 0
-            except (TypeError, ValueError):
-                lap = 0
-            if lap > 0:
-                if direction_raw is None or str(direction_raw).strip() == "":
-                    sprint_instances_by_lap_wild_dir.add((sid, lap))
-                else:
-                    sprint_instances_by_lap.add((sid, lap, _norm_direction(direction_raw)))
-
-        finish_candidate: tuple[str, int] | None = None
-        all_sprints_candidate: tuple[str, int] | None = None
-        for seg in reversed(route_segments):
-            sid = str(seg.get("id") or "").strip()
-            if not sid or sid not in segmented:
-                continue
-            lap = int(seg.get("lap") or 0)
-            if lap < 1:
-                continue
-            try:
-                seg_count = int(seg.get("count") or 1)
-            except (TypeError, ValueError):
-                seg_count = 1
-            if seg_count < 1:
-                seg_count = 1
-            seg_direction = _norm_direction(seg.get("direction"))
-            is_configured_sprint = False
-            if (sid, seg_count) in sprint_instances_wild_dir:
-                is_configured_sprint = True
-            elif (sid, seg_count, seg_direction) in sprint_instances:
-                is_configured_sprint = True
-            elif lap > 0 and (sid, lap) in sprint_instances_by_lap_wild_dir:
-                is_configured_sprint = True
-            elif lap > 0 and (sid, lap, seg_direction) in sprint_instances_by_lap:
-                is_configured_sprint = True
-
-            if is_configured_sprint:
-                if all_sprints_candidate is None:
-                    all_sprints_candidate = (sid, seg_count)
-                continue
-
-            finish_candidate = (sid, seg_count)
-            break
-
-        chosen = finish_candidate or all_sprints_candidate
-        if not chosen:
-            return []
-        finish_seg_id, finish_seg_count = chosen
-
-        by_rider: dict[str, list[dict[str, Any]]] = defaultdict(list)
-        for e in segmented.get(finish_seg_id, []):
-            profile = e.get('profileData', {}) if isinstance(e, dict) else {}
-            rider_id = str(profile.get('id') or e.get('profileId') or "")
-            if rider_id:
-                by_rider[rider_id].append(e)
-
-        selected: list[dict[str, Any]] = []
-        for rider_entries in by_rider.values():
-            rider_entries.sort(key=self._entry_sort_key)
-            if len(rider_entries) >= finish_seg_count:
-                selected.append(rider_entries[finish_seg_count - 1])
-        logger.info(
-            "route-instance finish selection: segment=%s count=%s selected=%s riders_with_segment=%s",
-            finish_seg_id,
-            finish_seg_count,
-            len(selected),
-            len(by_rider),
-        )
-
-        return selected
-
     def _entry_sort_key(self, entry: dict[str, Any]) -> tuple[int, int]:
         raw = entry.get("_officialSegmentResult") or {}
         end_world_time = int(raw.get("endWorldTime", 0) or 0)
         duration_ms = int(entry.get("activityData", {}).get("durationInMilliseconds", 0) or 0)
         return (end_world_time, duration_ms)
-
-    def _resolve_finish_time_ms(self, entry: dict[str, Any], subgroup_start_time: datetime | None) -> int:
-        raw = entry.get("_officialSegmentResult") or {}
-        # IMPORTANT: durationInMilliseconds in official segment-results is segment effort
-        # duration, not total race elapsed time. Never treat it as race finish time
-        # when subgroup start/end timestamps are available.
-        duration_ms = int(entry.get("activityData", {}).get("durationInMilliseconds", 0) or 0)
-        if not subgroup_start_time:
-            return duration_ms
-
-        start_dt = subgroup_start_time
-        if start_dt.tzinfo is None:
-            start_dt = start_dt.replace(tzinfo=timezone.utc)
-
-        end_date_raw = str(raw.get("endDate") or "").strip()
-        if end_date_raw:
-            try:
-                end_dt = datetime.fromisoformat(end_date_raw.replace("Z", "+00:00"))
-            except ValueError:
-                try:
-                    end_dt = datetime.strptime(end_date_raw, "%Y-%m-%dT%H:%M:%S.%f%z")
-                except ValueError:
-                    end_dt = None
-            if end_dt is not None:
-                if end_dt.tzinfo is None:
-                    end_dt = end_dt.replace(tzinfo=timezone.utc)
-                elapsed = int((end_dt - start_dt).total_seconds() * 1000)
-                if elapsed > 0:
-                    return elapsed
-        return duration_ms
 
     def fetch_segment_efforts(
         self,
@@ -321,14 +176,14 @@ class ZwiftFetcher:
         end_time: datetime,
         subgroup_id: str | None = None,
         registered_riders: dict[str, Any] | None = None,
+        all_results_raw: list[dict[str, Any]] | None = None,
     ) -> dict[str | int, Any]:
         """
         Fetches sprint/KOM segment results for the given segment IDs.
 
-        When subgroup_id is provided (official API path) the method calls
-        ZwiftService.get_subgroup_segment_efforts which retrieves all
-        segment-results for the subgroup in one paginated sweep and filters
-        down to the configured sprint IDs.
+        When subgroup_id is provided (official API path), segment efforts are
+        derived from the subgroup segment-results crossings payload (either
+        pre-fetched via all_results_raw or fetched here).
 
         Each entry is normalised into the legacy shape expected by
         RaceScorer._map_segment_efforts:
@@ -341,63 +196,71 @@ class ZwiftFetcher:
         per-segment global lookup (get_segment_results), which currently
         returns an empty payload for official-only mode.
         """
+        del start_time, end_time
         if subgroup_id:
-            return self._fetch_segment_efforts_official(
-                segment_ids, subgroup_id, registered_riders or {}
+            crossings = all_results_raw
+            if crossings is None:
+                crossings = self.fetch_subgroup_crossings(subgroup_id)
+            return self._normalise_segment_efforts_from_crossings(
+                segment_ids, crossings, registered_riders or {}
             )
 
         # Legacy fallback path (returns empty in official_only mode)
         results: dict[str | int, Any] = {}
         for seg_id in segment_ids:
             try:
-                raw = self.zwift.get_segment_results(seg_id, from_date=start_time, to_date=end_time)
+                raw = self.zwift.get_segment_results(seg_id)
                 results[seg_id] = raw
             except Exception as e:
                 logger.error(f"Failed to fetch segment {seg_id}: {e}")
         return results
 
-    def _fetch_segment_efforts_official(
+    def _normalise_segment_efforts_from_crossings(
         self,
         segment_ids: set[str | int],
-        subgroup_id: str,
+        all_results_raw: list[dict[str, Any]],
         registered_riders: dict[str, Any],
     ) -> dict[str | int, Any]:
         """
-        Official-API sprint data fetch via subgroup segment-results endpoint.
-        Normalises raw entries to the legacy athleteId/elapsed/worldTime/avgPower
-        schema so RaceScorer._map_segment_efforts requires no changes.
+        Build sprint-effort payload from already-fetched subgroup crossings.
         """
-        try:
-            raw_by_seg = self.zwift.get_subgroup_segment_efforts(subgroup_id, segment_ids)
-        except Exception as e:
-            logger.error(f"Failed to fetch subgroup segment efforts for {subgroup_id}: {e}")
-            return {}
+        wanted_ids = {str(sid) for sid in segment_ids}
+        by_seg_str: dict[str, list[dict[str, Any]]] = {}
+
+        for entry in all_results_raw:
+            raw = entry.get("_officialSegmentResult") or {}
+            seg_id_str = str(raw.get("segmentId", "")).strip()
+            if not seg_id_str or seg_id_str not in wanted_ids:
+                continue
+
+            user_id = str(
+                raw.get("userId")
+                or (entry.get("profileData") or {}).get("id")
+                or entry.get("profileId")
+                or ""
+            ).strip()
+            profile = registered_riders.get(user_id)
+            canonical_id = (
+                str(profile.get("zwiftId"))
+                if profile and profile.get("zwiftId")
+                else user_id
+            )
+
+            by_seg_str.setdefault(seg_id_str, []).append({
+                "athleteId": canonical_id,
+                "elapsed": int(
+                    raw.get("durationInMilliseconds")
+                    or (entry.get("activityData") or {}).get("durationInMilliseconds")
+                    or 0
+                ),
+                "worldTime": int(raw.get("endWorldTime", 0) or 0),
+                "avgPower": int(raw.get("avgWatts", 0) or 0),
+            })
 
         results: dict[str | int, Any] = {}
-        for seg_id_str, entries in raw_by_seg.items():
-            normalised: list[dict[str, Any]] = []
-            for e in entries:
-                user_id = str(e.get("userId", ""))
-                # Resolve UUID -> canonical numeric zwiftId via registered_riders
-                profile = registered_riders.get(user_id)
-                canonical_id = (
-                    str(profile.get("zwiftId"))
-                    if profile and profile.get("zwiftId")
-                    else user_id
-                )
-                normalised.append({
-                    "athleteId": canonical_id,
-                    "elapsed": int(e.get("durationInMilliseconds", 0)),
-                    "worldTime": int(e.get("endWorldTime", 0)),
-                    "avgPower": int(e.get("avgWatts", 0)),
-                })
-            # Preserve the original seg_id type (str or int) from the input set
-            # so RaceScorer can match against sprint configs stored as either type.
-            original_key: str | int = seg_id_str
-            for sid in segment_ids:
-                if str(sid) == seg_id_str:
-                    original_key = sid
-                    break
-            results[original_key] = normalised
-
+        for sid in segment_ids:
+            sid_str = str(sid)
+            if sid_str in by_seg_str:
+                results[sid] = by_seg_str[sid_str]
         return results
+

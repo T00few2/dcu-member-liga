@@ -401,7 +401,6 @@ class ResultsProcessor:
 
             # Build ordered route segment list for finish-line identification.
             # The finish segment = last non-sprint segment in route chronology.
-            route_segment_ids_ordered: list[Any] = []
             route_segments: list[dict[str, Any]] = []
             route_id = race_data.get('routeId') or subgroup.get('routeId')
             route_laps = subgroup.get('laps') or race_data.get('laps') or 1
@@ -409,11 +408,17 @@ class ResultsProcessor:
                 try:
                     route_segs = self.game.get_event_segments(str(route_id), int(route_laps))
                     route_segments = [s for s in route_segs if isinstance(s, dict)]
-                    route_segment_ids_ordered = [s['id'] for s in route_segments if s.get('id')]
                 except Exception as e:
                     logger.warning(f"Could not resolve route segments for {route_id}: {e}")
-
-            sprint_ids_set: set[str | int] = {s['id'] for s in category_sprints}
+            all_crossings_raw: list[dict[str, Any]] | None = None
+            should_prefetch_crossings = (
+                fetch_mode == 'finishers'
+                or (fetch_mode == 'joined' and bool(category_sprints))
+            )
+            if should_prefetch_crossings:
+                all_crossings_raw = self.zwift_fetcher.fetch_subgroup_crossings(
+                    subgroup_id, event_secret
+                )
 
             # Fetch Finishers using ZwiftFetcher
             finishers = self.zwift_fetcher.fetch_finishers(
@@ -422,11 +427,10 @@ class ResultsProcessor:
                 fetch_mode,
                 filter_registered,
                 registered_riders,
-                sprint_segment_ids=sprint_ids_set,
-                route_segment_ids_ordered=route_segment_ids_ordered,
                 route_segments=route_segments,
                 configured_sprints=category_sprints,
                 subgroup_start_time=start_time,
+                all_results_raw=all_crossings_raw,
             )
 
             # Fetch Segment Efforts using ZwiftFetcher
@@ -440,6 +444,7 @@ class ResultsProcessor:
                     end_time,
                     subgroup_id=subgroup_id,
                     registered_riders=registered_riders,
+                    all_results_raw=all_crossings_raw,
                 )
                 logger.info(
                     "    Segment fetch subgroup=%s requested_ids=%s returned_segments=%s",

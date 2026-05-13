@@ -339,12 +339,25 @@ class TestScorerFieldEquivalence:
         svc_mock = MagicMock()
         svc_mock.get_event_results.return_value = entries
         fetcher = ZwiftFetcher(svc_mock)
+        segment_ids_in_order: list[str] = []
+        seen: set[str] = set()
+        for e in entries:
+            seg_id = str((e.get("_officialSegmentResult") or {}).get("segmentId") or "").strip()
+            if seg_id and seg_id not in seen:
+                seen.add(seg_id)
+                segment_ids_in_order.append(seg_id)
+        route_segments = [
+            {"id": seg_id, "count": 1, "lap": 1, "direction": "forward"}
+            for seg_id in segment_ids_in_order
+        ]
         return fetcher.fetch_finishers(
             subgroup_id="sub-42",
             event_secret="secret",
             fetch_mode="finishers",
             filter_registered=True,
             registered_riders=REGISTERED_RIDERS,
+            route_segments=route_segments,
+            configured_sprints=[],
         )
 
     def test_finish_times_are_identical(self):

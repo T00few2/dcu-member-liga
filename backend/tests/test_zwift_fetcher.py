@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from services.results.zwift_fetcher import ZwiftFetcher
+from services.results.finish_time import resolve_finish_time_ms
 
 
 def _entry(rider_id: str, segment_id: str, end_world_time: int, duration_ms: int) -> dict:
@@ -35,8 +36,6 @@ def test_filter_finish_entries_all_sprints_uses_last_route_crossing_instance():
 
     filtered = fetcher._filter_finish_entries(
         entries=entries,
-        sprint_segment_ids={sprint_seg, climb_seg},
-        route_segment_ids_ordered=[],
         route_segments=[
             {"id": sprint_seg, "count": 1, "lap": 1, "direction": "forward"},
             {"id": sprint_seg, "count": 2, "lap": 1, "direction": "forward"},
@@ -55,14 +54,13 @@ def test_filter_finish_entries_all_sprints_uses_last_route_crossing_instance():
 
 
 def test_resolve_finish_time_prefers_end_date_delta_over_segment_duration():
-    fetcher = ZwiftFetcher(zwift_service=None)
     subgroup_start = datetime(2026, 5, 13, 17, 0, 0, tzinfo=timezone.utc)
     entry = {
         "activityData": {"durationInMilliseconds": 2668000},  # 44:28
         "_officialSegmentResult": {"endDate": "2026-05-13T17:49:01Z"},
     }
 
-    assert fetcher._resolve_finish_time_ms(entry, subgroup_start) == 2941000
+    assert resolve_finish_time_ms(entry, subgroup_start) == 2941000
 
 
 def test_filter_finish_entries_uses_route_instances_over_id_guessing():
@@ -76,8 +74,6 @@ def test_filter_finish_entries_uses_route_instances_over_id_guessing():
 
     filtered = fetcher._filter_finish_entries(
         entries=entries,
-        sprint_segment_ids={"seg-a"},
-        route_segment_ids_ordered=["seg-a", "seg-a"],
         route_segments=[
             {"id": "seg-a", "count": 1, "lap": 1, "direction": "forward"},
             {"id": "seg-a", "count": 2, "lap": 1, "direction": "forward"},
@@ -101,8 +97,6 @@ def test_filter_finish_entries_raises_when_route_instances_missing():
     try:
         fetcher._filter_finish_entries(
             entries=entries,
-            sprint_segment_ids={"seg-a"},
-            route_segment_ids_ordered=[],
             route_segments=[],
             configured_sprints=[{"id": "seg-a", "count": 1, "lap": 1, "direction": "forward"}],
         )
@@ -110,3 +104,48 @@ def test_filter_finish_entries_raises_when_route_instances_missing():
         assert "deterministically resolve finish segment" in str(exc)
     else:
         assert False, "Expected RuntimeError when deterministic route mapping is unavailable"
+
+
+def test_fetch_segment_efforts_uses_prefetched_crossings():
+    fetcher = ZwiftFetcher(zwift_service=None)
+    entries = [
+        {
+            "profileData": {"id": "uuid-r1"},
+            "activityData": {"durationInMilliseconds": 9999},
+            "_officialSegmentResult": {
+                "segmentId": "seg-a",
+                "userId": "uuid-r1",
+                "durationInMilliseconds": 12345,
+                "endWorldTime": 444,
+                "avgWatts": 321,
+            },
+        },
+        {
+            "profileData": {"id": "uuid-r1"},
+            "activityData": {"durationInMilliseconds": 8888},
+            "_officialSegmentResult": {
+                "segmentId": "seg-b",
+                "userId": "uuid-r1",
+                "durationInMilliseconds": 54321,
+                "endWorldTime": 555,
+                "avgWatts": 222,
+            },
+        },
+    ]
+
+    efforts = fetcher.fetch_segment_efforts(
+        segment_ids={"seg-a"},
+        start_time=datetime(2026, 5, 13, 17, 0, 0, tzinfo=timezone.utc),
+        end_time=datetime(2026, 5, 13, 20, 0, 0, tzinfo=timezone.utc),
+        subgroup_id="sub-1",
+        registered_riders={"uuid-r1": {"zwiftId": "182972"}},
+        all_results_raw=entries,
+    )
+
+    assert set(efforts.keys()) == {"seg-a"}
+    assert efforts["seg-a"] == [{
+        "athleteId": "182972",
+        "elapsed": 12345,
+        "worldTime": 444,
+        "avgPower": 321,
+    }]
