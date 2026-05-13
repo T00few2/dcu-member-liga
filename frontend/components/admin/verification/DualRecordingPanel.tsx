@@ -302,9 +302,10 @@ function ExtendedPeakCurveChart({
                     <LineChart
                         data={chartData}
                         margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
-                        onMouseMove={(e) => {
-                            const dur = e?.activePayload?.[0]?.payload?.durationSec;
-                            if (dur != null) onDurationHover?.(Number(dur));
+                        onMouseMove={(e: unknown) => {
+                            const payload = (e as { activePayload?: { payload?: { durationSec?: unknown } }[] })
+                                ?.activePayload?.[0]?.payload?.durationSec;
+                            if (payload != null) onDurationHover?.(Number(payload));
                         }}
                         onMouseLeave={() => onDurationHover?.(null)}
                     >
