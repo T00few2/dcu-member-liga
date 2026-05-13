@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import {
     ResponsiveContainer, LineChart, Line, XAxis, YAxis,
-    CartesianGrid, Tooltip, Brush, ReferenceArea,
+    CartesianGrid, Tooltip, Brush, ReferenceArea, ReferenceLine,
 } from 'recharts';
 import type { DualRecordingResult } from '@/hooks/useDualRecording';
 
@@ -393,6 +393,15 @@ export function RecordingStreamsSection({
                 </p>
             )}
 
+            {/* Peak highlight debug info */}
+            {highlightDurationSec != null && (
+                <p className="text-xs text-green-700 font-mono mb-1 px-1">
+                    ▶ Peak {highlightDurationSec}s —{' '}
+                    Zwift: {zwiftPeakWindow ? `${zwiftPeakWindow.startSec}–${zwiftPeakWindow.endSec}s` : 'no window'}{' '}
+                    · Strava: {stravaPeakWindow ? `${stravaPeakWindow.startSec}–${stravaPeakWindow.endSec}s` : 'no window'}
+                </p>
+            )}
+
             {/* Clickable legend */}
             <div className="flex flex-wrap gap-x-4 gap-y-1 mb-2 px-1">
                 {seriesMeta.map(s => (
@@ -463,10 +472,10 @@ export function RecordingStreamsSection({
                                 x1={zwiftPeakWindow.startSec}
                                 x2={zwiftPeakWindow.endSec}
                                 fill="#16a34a"
-                                fillOpacity={0.25}
+                                fillOpacity={0.35}
                                 stroke="#16a34a"
-                                strokeOpacity={0.5}
-                                strokeWidth={1}
+                                strokeOpacity={0.8}
+                                strokeWidth={2}
                             />
                         )}
                         {stravaPeakWindow && (
@@ -475,10 +484,31 @@ export function RecordingStreamsSection({
                                 x1={stravaPeakWindow.startSec}
                                 x2={stravaPeakWindow.endSec}
                                 fill="#4ade80"
-                                fillOpacity={0.2}
+                                fillOpacity={0.28}
                                 stroke="#4ade80"
-                                strokeOpacity={0.5}
-                                strokeWidth={1}
+                                strokeOpacity={0.8}
+                                strokeWidth={2}
+                            />
+                        )}
+                        {/* Vertical marker lines at peak window boundaries */}
+                        {zwiftPeakWindow && (
+                            <ReferenceLine
+                                yAxisId="w"
+                                x={zwiftPeakWindow.startSec}
+                                stroke="#16a34a"
+                                strokeWidth={2}
+                                strokeDasharray="4 2"
+                                strokeOpacity={0.9}
+                            />
+                        )}
+                        {zwiftPeakWindow && (
+                            <ReferenceLine
+                                yAxisId="w"
+                                x={zwiftPeakWindow.endSec}
+                                stroke="#16a34a"
+                                strokeWidth={2}
+                                strokeDasharray="4 2"
+                                strokeOpacity={0.9}
                             />
                         )}
 
