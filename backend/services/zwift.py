@@ -391,9 +391,12 @@ class ZwiftService:
         Returns all segment-results entries for a subgroup in legacy format.
 
         All segments (finish line + sprints/KOMs) are included — callers are
-        responsible for filtering to the desired segmentId(s).  Each entry
+        responsible for filtering to the desired segmentId(s). Each entry
         preserves the raw official payload in _officialSegmentResult so the
         segmentId is always accessible downstream.
+
+        Note: durationInMilliseconds from official segment-results is the
+        segment effort duration, not full race elapsed time.
         """
         del event_secret  # Official endpoint does not use eventSecret.
 

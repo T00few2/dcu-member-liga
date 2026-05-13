@@ -387,6 +387,9 @@ class ZwiftFetcher:
 
     def _resolve_finish_time_ms(self, entry: dict[str, Any], subgroup_start_time: datetime | None) -> int:
         raw = entry.get("_officialSegmentResult") or {}
+        # IMPORTANT: durationInMilliseconds in official segment-results is segment effort
+        # duration, not total race elapsed time. Never treat it as race finish time
+        # when subgroup start/end timestamps are available.
         duration_ms = int(entry.get("activityData", {}).get("durationInMilliseconds", 0) or 0)
         if not subgroup_start_time:
             return duration_ms
