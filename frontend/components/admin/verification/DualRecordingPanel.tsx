@@ -245,7 +245,13 @@ function CpCurveChart({ result }: { result: DualRecordingResult }) {
     );
 }
 
-function ExtendedPeakCurveChart({ result }: { result: DualRecordingResult }) {
+function ExtendedPeakCurveChart({
+    result,
+    onDurationHover,
+}: {
+    result: DualRecordingResult;
+    onDurationHover?: (durationSec: number | null) => void;
+}) {
     const chartData = useMemo(() => {
         const zwiftPeaks = computePeaksWithoutInterpolation(
             result.zwift.streams?.time,
@@ -293,7 +299,16 @@ function ExtendedPeakCurveChart({ result }: { result: DualRecordingResult }) {
         <div className="space-y-2">
             <div className="h-[280px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                    <LineChart
+                        data={chartData}
+                        margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
+                        onMouseMove={(e: unknown) => {
+                            const payload = (e as { activePayload?: { payload?: { durationSec?: unknown } }[] })
+                                ?.activePayload?.[0]?.payload?.durationSec;
+                            if (payload != null) onDurationHover?.(Number(payload));
+                        }}
+                        onMouseLeave={() => onDurationHover?.(null)}
+                    >
                         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.3} />
                         <XAxis
                             type="number"
@@ -401,6 +416,8 @@ interface Props {
 }
 
 export default function DualRecordingPanel({ riderId, hook, children }: Props) {
+    const [hoveredDurationSec, setHoveredDurationSec] = useState<number | null>(null);
+
     const {
         zwiftActivities, stravaActivities, loadingActivities,
         selectedZwiftId, setSelectedZwiftId,
@@ -634,7 +651,7 @@ export default function DualRecordingPanel({ riderId, hook, children }: Props) {
                             <h4 className="text-sm font-semibold mb-2 text-card-foreground">
                                 Peak Profile by Duration (Extended)
                             </h4>
-                            <ExtendedPeakCurveChart result={result} />
+                            <ExtendedPeakCurveChart result={result} onDurationHover={setHoveredDurationSec} />
                         </div>
 
                         {/* Stats table */}
@@ -656,7 +673,7 @@ export default function DualRecordingPanel({ riderId, hook, children }: Props) {
                                 <h4 className="text-sm font-semibold mb-2 text-card-foreground">
                                     Recording Streams
                                 </h4>
-                                <RecordingStreamsSection result={result} />
+                                <RecordingStreamsSection result={result} highlightDurationSec={hoveredDurationSec} />
                             </div>
                         ) : null}
                     </div>

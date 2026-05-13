@@ -34,6 +34,39 @@ function fmtGap(sec: number, frac: number): string {
     return `${time} (${(frac * 100).toFixed(1)}%)`;
 }
 
+function findPeakWindow(
+    time: number[] | null | undefined,
+    watts: (number | null)[] | null | undefined,
+    durationSec: number,
+): { startSec: number; endSec: number } | null {
+    if (!time?.length || !watts?.length || durationSec <= 0) return null;
+    const points: { t: number; w: number }[] = [];
+    for (let i = 0; i < Math.min(time.length, watts.length); i++) {
+        const w = watts[i];
+        if (w == null || !Number.isFinite(w)) continue;
+        points.push({ t: Number(time[i]), w: Number(w) });
+    }
+    points.sort((a, b) => a.t - b.t);
+    if (!points.length) return null;
+
+    const prefix = [0];
+    for (const p of points) prefix.push(prefix[prefix.length - 1] + p.w);
+
+    let bestAvg = -Infinity;
+    let bestStart = -1;
+    let bestEnd = -1;
+    let j = 0;
+    for (let i = 0; i < points.length; i++) {
+        if (j < i) j = i;
+        while (j < points.length && points[j].t - points[i].t < durationSec) j++;
+        if (j >= points.length) break;
+        const avg = (prefix[j + 1] - prefix[i]) / (j - i + 1);
+        if (avg > bestAvg) { bestAvg = avg; bestStart = i; bestEnd = j; }
+    }
+    if (bestStart < 0) return null;
+    return { startSec: points[bestStart].t, endSec: points[bestEnd].t };
+}
+
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface RecordingStreamsSectionProps {
@@ -42,6 +75,7 @@ interface RecordingStreamsSectionProps {
     zwiftColor?: string;
     stravaColor?: string;
     height?: number;
+    highlightDurationSec?: number | null;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -52,6 +86,7 @@ export function RecordingStreamsSection({
     zwiftColor = '#FC6719',
     stravaColor = '#e05c00',
     height = 360,
+    highlightDurationSec = null,
 }: RecordingStreamsSectionProps) {
     const { zwift, strava } = result;
 
@@ -249,6 +284,21 @@ export function RecordingStreamsSection({
             stravaAlt: hasAny('stravaAlt'),
         };
     }, [chartData, hideHeartRate]);
+
+    // ── Peak window highlight (driven by hover on the peak profile chart) ────────
+
+    const zwiftPeakWindow = useMemo(
+        () => highlightDurationSec
+            ? findPeakWindow(zwift.streams?.time, zwift.streams?.watts as (number | null)[], highlightDurationSec)
+            : null,
+        [highlightDurationSec, zwift.streams],
+    );
+    const stravaPeakWindow = useMemo(
+        () => highlightDurationSec
+            ? findPeakWindow(strava?.streams?.time, strava?.streams?.watts as (number | null)[], highlightDurationSec)
+            : null,
+        [highlightDurationSec, strava?.streams],
+    );
 
     // The secondary (right) axis collapses when all secondary series are toggled off
     const hrAxisOn = (hasSeries.zwiftHR   && !hidden.has('zwiftHR'))   ||
@@ -471,6 +521,28 @@ export function RecordingStreamsSection({
                                 strokeOpacity={0}
                             />
                         )}
+                        {/* Peak window highlights — shown when hovering the peak profile chart */}
+                        {zwiftPeakWindow && (
+                            <ReferenceArea
+                                yAxisId="w"
+                                x1={zwiftPeakWindow.startSec}
+                                x2={zwiftPeakWindow.endSec}
+                                fill={zwiftColor}
+                                fillOpacity={0.18}
+                                strokeOpacity={0}
+                            />
+                        )}
+                        {stravaPeakWindow && (
+                            <ReferenceArea
+                                yAxisId="w"
+                                x1={stravaPeakWindow.startSec}
+                                x2={stravaPeakWindow.endSec}
+                                fill={stravaColor}
+                                fillOpacity={0.18}
+                                strokeOpacity={0}
+                            />
+                        )}
+
                         {/* Shaded overlay for Strava end gap */}
                         {showEndGapOverlay && lastStravaDataT != null && (
                             <ReferenceArea
