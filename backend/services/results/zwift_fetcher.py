@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from collections import Counter, defaultdict
+from collections import defaultdict
 from typing import Any
 
 from models import RiderResult
@@ -215,14 +215,27 @@ class ZwiftFetcher:
         if not by_rider:
             return []
 
-        counts = Counter(len(v) for v in by_rider.values())
-        expected_pass_count = counts.most_common(1)[0][0] if counts else 1
+        # Determine the target pass count per rider. In ties, prefer the lower pass
+        # count to avoid turning valid single-pass finishers into DNF.
+        pass_count_freq: dict[int, int] = defaultdict(int)
+        for rider_entries in by_rider.values():
+            pass_count_freq[len(rider_entries)] += 1
+        expected_pass_count = 1
+        if pass_count_freq:
+            max_freq = max(pass_count_freq.values())
+            expected_pass_count = min(
+                pass_count
+                for pass_count, freq in pass_count_freq.items()
+                if freq == max_freq
+            )
 
         selected: list[dict[str, Any]] = []
         for rider_entries in by_rider.values():
             rider_entries.sort(key=self._entry_sort_key)
             if len(rider_entries) >= expected_pass_count:
-                selected.append(rider_entries[-1])
+                # Select the inferred lap crossing instead of always taking the last
+                # crossing, which can inflate finish times when duplicate passes exist.
+                selected.append(rider_entries[expected_pass_count - 1])
 
         return selected
 
@@ -235,6 +248,8 @@ class ZwiftFetcher:
     def _resolve_finish_time_ms(self, entry: dict[str, Any], subgroup_start_time: datetime | None) -> int:
         raw = entry.get("_officialSegmentResult") or {}
         duration_ms = int(entry.get("activityData", {}).get("durationInMilliseconds", 0) or 0)
+        if duration_ms > 0:
+            return duration_ms
         if not subgroup_start_time:
             return duration_ms
 
