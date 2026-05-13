@@ -1,11 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
     BarChart, Bar,
     XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-    ResponsiveContainer, LineChart, Line, Brush,
+    ResponsiveContainer,
 } from 'recharts';
+import { RecordingStreamsSection } from '@/components/shared/RecordingStreamsSection';
+import { ExtendedPeakProfileChart } from '@/components/shared/ExtendedPeakProfileChart';
 import type { useDualRecording } from '@/hooks/useDualRecording';
 import type {
     DualRecordingResult, CpDiffRow,
@@ -15,9 +17,6 @@ import type {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const CHART_STEP = 5; // seconds between chart data points
-const EXTENDED_PEAK_DURATIONS_SEC = [
-    5, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 300, 420, 600, 900, 1200, 1500, 1800,
-];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -43,90 +42,6 @@ function fmtOffset(sec: number) {
     return sec > 0
         ? `Strava started ${label} after Zwift`
         : `Strava started ${label} before Zwift`;
-}
-
-function formatDurationTick(sec: number): string {
-    if (!Number.isFinite(sec)) return '—';
-    if (sec < 60) return `${sec}s`;
-    if (sec % 60 === 0) return `${sec / 60}m`;
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return `${m}m${s}s`;
-}
-
-function durationFromCpRow(row: CpDiffRow): number | null {
-    const keyMatch = row.key.match(/^w(\d+)$/);
-    if (keyMatch) {
-        const sec = Number(keyMatch[1]);
-        return Number.isFinite(sec) ? sec : null;
-    }
-    const label = String(row.label || '').trim().toLowerCase();
-    if (label.endsWith('s')) {
-        const sec = Number(label.slice(0, -1));
-        return Number.isFinite(sec) ? sec : null;
-    }
-    if (label.endsWith('m')) {
-        const min = Number(label.slice(0, -1));
-        return Number.isFinite(min) ? min * 60 : null;
-    }
-    return null;
-}
-
-function computePeaksWithoutInterpolation(
-    time: number[] | null | undefined,
-    watts: Array<number | null> | null | undefined,
-    durationsSec: number[],
-): Record<number, number | null> {
-    const result: Record<number, number | null> = {};
-    if (!time?.length || !watts?.length) {
-        durationsSec.forEach(d => { result[d] = null; });
-        return result;
-    }
-
-    const points: Array<{ t: number; w: number }> = [];
-    for (let i = 0; i < Math.min(time.length, watts.length); i += 1) {
-        const t = Number(time[i]);
-        const w = watts[i];
-        if (!Number.isFinite(t) || w == null || !Number.isFinite(Number(w))) continue;
-        points.push({ t, w: Number(w) });
-    }
-    points.sort((a, b) => a.t - b.t);
-
-    if (!points.length) {
-        durationsSec.forEach(d => { result[d] = null; });
-        return result;
-    }
-
-    const prefix: number[] = [0];
-    for (const p of points) prefix.push(prefix[prefix.length - 1] + p.w);
-
-    for (const duration of durationsSec) {
-        if (duration <= 0) {
-            result[duration] = null;
-            continue;
-        }
-
-        let bestAvg: number | null = null;
-        let j = 0;
-
-        for (let i = 0; i < points.length; i += 1) {
-            if (j < i) j = i;
-            while (j < points.length && (points[j].t - points[i].t) < duration) {
-                j += 1;
-            }
-            if (j >= points.length) break;
-
-            const count = j - i + 1;
-            if (count <= 0) continue;
-            const sum = prefix[j + 1] - prefix[i];
-            const avg = sum / count;
-            if (bestAvg == null || avg > bestAvg) bestAvg = avg;
-        }
-
-        result[duration] = bestAvg != null ? Math.round(bestAvg * 10) / 10 : null;
-    }
-
-    return result;
 }
 
 function diffColour(pct: number | null | undefined): string {
@@ -244,345 +159,8 @@ function CpCurveChart({ result }: { result: DualRecordingResult }) {
     );
 }
 
-function ExtendedPeakCurveChart({ result }: { result: DualRecordingResult }) {
-    const chartData = useMemo(() => {
-        const zwiftPeaks = computePeaksWithoutInterpolation(
-            result.zwift.streams?.time,
-            result.zwift.streams?.watts as Array<number | null> | undefined,
-            EXTENDED_PEAK_DURATIONS_SEC,
-        );
-        const stravaPeaks = computePeaksWithoutInterpolation(
-            result.strava?.streams?.time,
-            (result.strava?.streams?.watts as Array<number | null> | undefined),
-            EXTENDED_PEAK_DURATIONS_SEC,
-        );
-        const cpDiff = result.comparison?.cpDiff ?? [];
-        const zwiftCpByDuration = new Map<number, number>();
-        const stravaCpByDuration = new Map<number, number>();
-        for (const row of cpDiff) {
-            const d = durationFromCpRow(row);
-            if (d == null) continue;
-            if (row.zwift != null) zwiftCpByDuration.set(d, row.zwift);
-            if (row.strava != null) stravaCpByDuration.set(d, row.strava);
-        }
 
-        return EXTENDED_PEAK_DURATIONS_SEC
-            .map((durationSec) => {
-                const zwift = zwiftPeaks[durationSec] ?? zwiftCpByDuration.get(durationSec) ?? null;
-                const strava = stravaPeaks[durationSec] ?? stravaCpByDuration.get(durationSec) ?? null;
-                return {
-                durationSec,
-                durationLabel: formatDurationTick(durationSec),
-                zwift,
-                strava,
-            };
-            })
-            .filter(row => row.zwift != null || row.strava != null);
-    }, [result]);
 
-    if (!chartData.length) return null;
-    const yValues = chartData.flatMap((row) => [row.zwift, row.strava]).filter((v): v is number => v != null);
-    const minPeak = yValues.length ? Math.min(...yValues) : 0;
-    const maxPeak = yValues.length ? Math.max(...yValues) : 100;
-    const yPadding = Math.max(8, (maxPeak - minPeak) * 0.08);
-    const yMin = Math.max(0, Math.floor(minPeak - yPadding));
-    const yMax = Math.ceil(maxPeak + yPadding);
-
-    return (
-        <div className="space-y-2">
-            <div className="h-[280px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.3} />
-                        <XAxis
-                            type="number"
-                            dataKey="durationSec"
-                            domain={['dataMin', 'dataMax']}
-                            tickFormatter={formatDurationTick}
-                            tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }}
-                            label={{
-                                value: 'Duration',
-                                position: 'insideBottom',
-                                offset: -2,
-                                style: { textAnchor: 'middle', fontSize: 11 },
-                            }}
-                        />
-                        <YAxis
-                            domain={[yMin, yMax]}
-                            tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }}
-                            label={{ value: 'Peak watts', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fontSize: 11 } }}
-                        />
-                        <Tooltip
-                            labelFormatter={(sec: number) => `Duration: ${formatDurationTick(Number(sec))}`}
-                            formatter={(v: unknown, name: string) => {
-                                const numeric = typeof v === 'number'
-                                    ? v
-                                    : (typeof v === 'string' ? Number(v) : NaN);
-                                return Number.isFinite(numeric) ? [`${numeric} W`, name] : ['—', name];
-                            }}
-                        />
-                        <Legend verticalAlign="top" height={28} />
-                        <Line
-                            type="monotone"
-                            dataKey="zwift"
-                            name="Zwift"
-                            stroke="#2563eb"
-                            strokeWidth={2}
-                            dot={{ r: 2.5 }}
-                            connectNulls={false}
-                            isAnimationActive={false}
-                        />
-                        <Line
-                            type="monotone"
-                            dataKey="strava"
-                            name="Strava"
-                            stroke="#FC4C02"
-                            strokeWidth={2}
-                            strokeDasharray="5 3"
-                            dot={{ r: 2.5 }}
-                            connectNulls={false}
-                            isAnimationActive={false}
-                        />
-                    </LineChart>
-                </ResponsiveContainer>
-            </div>
-            <p className="text-xs text-muted-foreground px-1">
-                Calculated from recorded stream samples only (no interpolation). A duration is included only where
-                the recorded stream can support the full window. Where stream samples are unavailable, the standard
-                CP comparison points are used as fallback.
-            </p>
-        </div>
-    );
-}
-
-function fmtRaceTime(sec: number) {
-    const neg = sec < 0;
-    const abs = Math.abs(sec);
-    const m = Math.floor(abs / 60);
-    const s = abs % 60;
-    return `${neg ? '-' : ''}${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
-
-function DualStreamChart({ result }: { result: DualRecordingResult }) {
-    const { zwift, strava } = result;
-    const [hidden, setHidden] = useState<Set<string>>(
-        () => new Set(['zwiftHR', 'stravaHR', 'zwiftCad', 'stravaCad', 'zwiftAlt', 'stravaAlt'])
-    );
-
-    const toggleSeries = (dataKey: string) =>
-        setHidden((prev: Set<string>) => {
-            const next = new Set(prev);
-            if (next.has(dataKey)) next.delete(dataKey); else next.add(dataKey);
-            return next;
-        });
-
-    const hasZwift  = (zwift.streams?.time?.length ?? 0) > 0;
-    const hasStrava = (strava?.streams?.time?.length ?? 0) > 0;
-
-    type StreamPoint = { w: number | null; hr: number | null; cad: number | null; alt: number | null };
-    type ChartRow = {
-        t: number;
-        zwiftW: number | null; stravaW: number | null;
-        zwiftHR: number | null; stravaHR: number | null;
-        zwiftCad: number | null; stravaCad: number | null;
-        zwiftAlt: number | null; stravaAlt: number | null;
-    };
-
-    const chartData = useMemo<ChartRow[]>(() => {
-        if (!hasZwift && !hasStrava) return [];
-
-        const zwiftByTime = new Map<number, StreamPoint>();
-        if (hasZwift) {
-            const { time, watts, heartrate, cadence, altitude } = zwift.streams!;
-            time.forEach((t, i) => zwiftByTime.set(t, {
-                w:   watts[i]     ?? null,
-                hr:  heartrate[i] ?? null,
-                cad: cadence[i]   ?? null,
-                alt: altitude[i]  ?? null,
-            }));
-        }
-
-        const stravaByTime = new Map<number, StreamPoint>();
-        if (hasStrava) {
-            const { time, watts, heartrate, cadence, altitude } = strava!.streams;
-            time.forEach((t, i) => stravaByTime.set(t, {
-                w:   watts[i]     ?? null,
-                hr:  heartrate[i] ?? null,
-                cad: cadence[i]   ?? null,
-                alt: altitude[i]  ?? null,
-            }));
-        }
-
-        const lookup = (m: Map<number, StreamPoint>, t: number) =>
-            m.get(t) ?? m.get(t - 1) ?? m.get(t + 1);
-
-        const zwiftTimes  = hasZwift  ? zwift.streams!.time : [];
-        const stravaTimes = hasStrava ? strava!.streams.time : [];
-        const allT = [...zwiftTimes, ...stravaTimes];
-        const minT = Math.floor(Math.min(...allT) / CHART_STEP) * CHART_STEP;
-        const maxT = Math.ceil(Math.max(...allT)  / CHART_STEP) * CHART_STEP;
-
-        const rows: ChartRow[] = [];
-        for (let t = minT; t <= maxT; t += CHART_STEP) {
-            const zp = lookup(zwiftByTime, t);
-            const sp = lookup(stravaByTime, t);
-            rows.push({
-                t,
-                zwiftW:    zp?.w   ?? null,
-                stravaW:   sp?.w   ?? null,
-                zwiftHR:   zp?.hr  ?? null,
-                stravaHR:  sp?.hr  ?? null,
-                zwiftCad:  zp?.cad ?? null,
-                stravaCad: sp?.cad ?? null,
-                zwiftAlt:  zp?.alt ?? null,
-                stravaAlt: sp?.alt ?? null,
-            });
-        }
-        return rows;
-    }, [hasZwift, hasStrava, zwift.streams, strava?.streams]);
-
-    if (!hasZwift && !hasStrava) return null;
-
-    const hasZwiftHR   = chartData.some(d => d.zwiftHR   !== null);
-    const hasStravaHR  = chartData.some(d => d.stravaHR  !== null);
-    const hasZwiftCad  = chartData.some(d => d.zwiftCad  !== null);
-    const hasStravaCad = chartData.some(d => d.stravaCad !== null);
-    const hasZwiftAlt  = chartData.some(d => d.zwiftAlt  !== null);
-    const hasStravaAlt = chartData.some(d => d.stravaAlt !== null);
-
-    // Single right axis for all secondary data (HR, cadence, elevation).
-    // Elevation shares the right axis — avoids a second right axis that would
-    // squeeze the chart to half-width on mobile.
-    // The axis collapses to width=0 when every secondary series is toggled off.
-    const hrAxisOn = (hasZwiftHR   && !hidden.has('zwiftHR'))   ||
-                     (hasStravaHR  && !hidden.has('stravaHR'))  ||
-                     (hasZwiftCad  && !hidden.has('zwiftCad'))  ||
-                     (hasStravaCad && !hidden.has('stravaCad')) ||
-                     (hasZwiftAlt  && !hidden.has('zwiftAlt'))  ||
-                     (hasStravaAlt && !hidden.has('stravaAlt'));
-
-    const seriesMeta = [
-        { key: 'zwiftW',    label: 'Zwift Power',   color: '#FC6719', show: hasZwift },
-        { key: 'stravaW',   label: 'Strava Power',  color: '#e05c00', show: hasStrava },
-        { key: 'zwiftHR',   label: 'Zwift HR',      color: '#ef4444', show: hasZwiftHR },
-        { key: 'stravaHR',  label: 'Strava HR',     color: '#f87171', show: hasStravaHR },
-        { key: 'zwiftCad',  label: 'Zwift Cad',     color: '#22c55e', show: hasZwiftCad },
-        { key: 'stravaCad', label: 'Strava Cad',    color: '#86efac', show: hasStravaCad },
-        { key: 'zwiftAlt',  label: 'Zwift Elev',    color: '#6366f1', show: hasZwiftAlt },
-        { key: 'stravaAlt', label: 'Strava Elev',   color: '#a5b4fc', show: hasStravaAlt },
-    ].filter(s => s.show);
-
-    return (
-        <div className="w-full">
-            {!hasZwift && hasStrava && (
-                <p className="text-xs text-amber-700 mb-2 px-1">
-                    Zwift stream data is unavailable for this comparison; showing Strava stream only.
-                </p>
-            )}
-            {/* Custom wrapping legend — avoids Recharts overflow on narrow screens */}
-            <div className="flex flex-wrap gap-x-4 gap-y-1 mb-2 px-1">
-                {seriesMeta.map(s => (
-                    <button
-                        key={s.key}
-                        onClick={() => toggleSeries(s.key)}
-                        className="flex items-center gap-1.5 text-xs select-none"
-                        style={{
-                            opacity: hidden.has(s.key) ? 0.35 : 1,
-                            textDecoration: hidden.has(s.key) ? 'line-through' : 'none',
-                            color: 'var(--muted-foreground)',
-                        }}
-                    >
-                        <span className="inline-block w-4 h-[2px] rounded flex-shrink-0"
-                            style={{ backgroundColor: s.color }} />
-                        {s.label}
-                    </button>
-                ))}
-            </div>
-
-            <div className="h-[360px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.3} />
-                        <XAxis dataKey="t" type="number" domain={['dataMin', 'dataMax']}
-                            tickFormatter={fmtRaceTime}
-                            tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }} />
-                        <YAxis yAxisId="w" orientation="left"
-                            label={{ value: 'W', angle: -90, position: 'insideLeft', style: { fontSize: 11 } }}
-                            tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }} />
-                        {/* Single right axis — HR, cadence AND elevation all share it.
-                            Collapses to 0 width when every secondary series is toggled off. */}
-                        <YAxis yAxisId="hr" orientation="right"
-                            hide={!hrAxisOn} width={hrAxisOn ? 40 : 0}
-                            label={hrAxisOn ? { value: 'bpm/rpm/m', angle: 90, position: 'insideRight', style: { fontSize: 9 } } : undefined}
-                            tick={hrAxisOn ? { fontSize: 9, fill: 'var(--muted-foreground)' } : false} />
-                        <Tooltip
-                            labelFormatter={(t: number) => fmtRaceTime(Number(t))}
-                            formatter={(v: unknown, name: string) =>
-                                v != null ? [`${Math.round(v as number)}`, name] : ['—', name]}
-                        />
-                        <Brush
-                            dataKey="t" height={20}
-                            stroke="var(--border)" fill="var(--background)"
-                            tickFormatter={fmtRaceTime}
-                        />
-                        {/* Power */}
-                        {hasZwift && (
-                            <Line yAxisId="w" type="monotone" dataKey="zwiftW"
-                                stroke="#FC6719" dot={false} strokeWidth={2}
-                                name="Zwift Power (W)" isAnimationActive={false} connectNulls={false}
-                                hide={hidden.has('zwiftW')} />
-                        )}
-                        {hasStrava && (
-                            <Line yAxisId="w" type="monotone" dataKey="stravaW"
-                                stroke="#e05c00" dot={false} strokeWidth={1.5} strokeDasharray="5 3"
-                                name="Strava Power (W)" isAnimationActive={false} connectNulls={false}
-                                hide={hidden.has('stravaW')} />
-                        )}
-                        {/* Heart rate */}
-                        {hasZwiftHR && (
-                            <Line yAxisId="hr" type="monotone" dataKey="zwiftHR"
-                                stroke="#ef4444" dot={false} strokeWidth={1.5}
-                                name="Zwift HR (bpm)" isAnimationActive={false}
-                                hide={hidden.has('zwiftHR')} />
-                        )}
-                        {hasStravaHR && (
-                            <Line yAxisId="hr" type="monotone" dataKey="stravaHR"
-                                stroke="#f87171" dot={false} strokeWidth={1} strokeDasharray="4 2"
-                                name="Strava HR (bpm)" isAnimationActive={false}
-                                hide={hidden.has('stravaHR')} />
-                        )}
-                        {/* Cadence */}
-                        {hasZwiftCad && (
-                            <Line yAxisId="hr" type="monotone" dataKey="zwiftCad"
-                                stroke="#22c55e" dot={false} strokeWidth={1.5}
-                                name="Zwift Cadence (rpm)" isAnimationActive={false}
-                                hide={hidden.has('zwiftCad')} />
-                        )}
-                        {hasStravaCad && (
-                            <Line yAxisId="hr" type="monotone" dataKey="stravaCad"
-                                stroke="#86efac" dot={false} strokeWidth={1} strokeDasharray="4 2"
-                                name="Strava Cadence (rpm)" isAnimationActive={false}
-                                hide={hidden.has('stravaCad')} />
-                        )}
-                        {/* Elevation — shares the right axis with HR/cadence */}
-                        {hasZwiftAlt && (
-                            <Line yAxisId="hr" type="monotone" dataKey="zwiftAlt"
-                                stroke="#6366f1" dot={false} strokeWidth={1.5}
-                                name="Zwift Elevation (m)" isAnimationActive={false}
-                                hide={hidden.has('zwiftAlt')} />
-                        )}
-                        {hasStravaAlt && (
-                            <Line yAxisId="hr" type="monotone" dataKey="stravaAlt"
-                                stroke="#a5b4fc" dot={false} strokeWidth={1} strokeDasharray="4 2"
-                                name="Strava Elevation (m)" isAnimationActive={false}
-                                hide={hidden.has('stravaAlt')} />
-                        )}
-                    </LineChart>
-                </ResponsiveContainer>
-            </div>
-        </div>
-    );
-}
 
 // ─── Event lookup status badge ─────────────────────────────────────────────────
 
@@ -627,6 +205,8 @@ interface Props {
 }
 
 export default function DualRecordingPanel({ riderId, hook, children }: Props) {
+    const [hoveredDurationSec, setHoveredDurationSec] = useState<number | null>(null);
+
     const {
         zwiftActivities, stravaActivities, loadingActivities,
         selectedZwiftId, setSelectedZwiftId,
@@ -860,7 +440,12 @@ export default function DualRecordingPanel({ riderId, hook, children }: Props) {
                             <h4 className="text-sm font-semibold mb-2 text-card-foreground">
                                 Peak Profile by Duration (Extended)
                             </h4>
-                            <ExtendedPeakCurveChart result={result} />
+                            <ExtendedPeakProfileChart result={result} onDurationHover={setHoveredDurationSec} />
+                            {hoveredDurationSec != null && (
+                                <p className="text-xs text-green-700 font-mono mt-1 px-1">
+                                    ▶ Hover: {hoveredDurationSec}s
+                                </p>
+                            )}
                         </div>
 
                         {/* Stats table */}
@@ -881,11 +466,8 @@ export default function DualRecordingPanel({ riderId, hook, children }: Props) {
                             <div>
                                 <h4 className="text-sm font-semibold mb-2 text-card-foreground">
                                     Recording Streams
-                                    <span className="ml-2 text-xs font-normal text-muted-foreground">
-                                        t=0 = Zwift recording start · Strava aligned by power MSE · click legend to toggle
-                                    </span>
                                 </h4>
-                                <DualStreamChart result={result} />
+                                <RecordingStreamsSection result={result} highlightDurationSec={hoveredDurationSec} />
                             </div>
                         ) : null}
                     </div>

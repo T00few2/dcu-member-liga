@@ -1,10 +1,9 @@
 'use client';
 
 import type React from 'react';
-import { useMemo, useState } from 'react';
-import {
-    ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Brush,
-} from 'recharts';
+import { useState } from 'react';
+import { RecordingStreamsSection } from '@/components/shared/RecordingStreamsSection';
+import { ExtendedPeakProfileChart } from '@/components/shared/ExtendedPeakProfileChart';
 import type { DualRecordingVerification, CpDiffRow } from '@/types/admin';
 import type { DualRecordingResult } from '@/hooks/useDualRecording';
 import { explainDrFailureMetrics } from '@/lib/drFailureLabels';
@@ -30,10 +29,6 @@ const THRESHOLD_LABELS: Record<string, string> = {
     w60: '1 min (max 6%)',
     w15: '15 sek (max 6,5%)',
 };
-const EXTENDED_PEAK_DURATIONS_SEC = [
-    5, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 300, 420, 600, 900, 1200, 1500, 1800,
-];
-
 function diffColour(pct: number | null | undefined, key: string): string {
     if (pct == null) return 'text-muted-foreground';
     const thresholds: Record<string, number> = { w1200: 5, w300: 5.5, w60: 6, w15: 6.5 };
@@ -106,174 +101,6 @@ function formatSelectionReason(reason: string | undefined): string {
     }
 }
 
-function formatDurationTick(sec: number): string {
-    if (!Number.isFinite(sec)) return '—';
-    if (sec < 60) return `${sec}s`;
-    if (sec % 60 === 0) return `${sec / 60}m`;
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return `${m}m${s}s`;
-}
-
-function durationFromCpRow(row: CpDiffRow): number | null {
-    const keyMatch = row.key.match(/^w(\d+)$/);
-    if (keyMatch) {
-        const sec = Number(keyMatch[1]);
-        return Number.isFinite(sec) ? sec : null;
-    }
-    const label = String(row.label || '').trim().toLowerCase();
-    if (label.endsWith('s')) {
-        const sec = Number(label.slice(0, -1));
-        return Number.isFinite(sec) ? sec : null;
-    }
-    if (label.endsWith('m')) {
-        const min = Number(label.slice(0, -1));
-        return Number.isFinite(min) ? min * 60 : null;
-    }
-    return null;
-}
-
-function computePeaksWithoutInterpolation(
-    time: number[] | null | undefined,
-    watts: Array<number | null> | null | undefined,
-    durationsSec: number[],
-): Record<number, number | null> {
-    const result: Record<number, number | null> = {};
-    if (!time?.length || !watts?.length) {
-        durationsSec.forEach((d) => { result[d] = null; });
-        return result;
-    }
-
-    const points: Array<{ t: number; w: number }> = [];
-    for (let i = 0; i < Math.min(time.length, watts.length); i += 1) {
-        const t = Number(time[i]);
-        const w = watts[i];
-        if (!Number.isFinite(t) || w == null || !Number.isFinite(Number(w))) continue;
-        points.push({ t, w: Number(w) });
-    }
-    points.sort((a, b) => a.t - b.t);
-    if (!points.length) {
-        durationsSec.forEach((d) => { result[d] = null; });
-        return result;
-    }
-
-    const prefix: number[] = [0];
-    for (const p of points) prefix.push(prefix[prefix.length - 1] + p.w);
-
-    for (const duration of durationsSec) {
-        if (duration <= 0) {
-            result[duration] = null;
-            continue;
-        }
-        let bestAvg: number | null = null;
-        let j = 0;
-        for (let i = 0; i < points.length; i += 1) {
-            if (j < i) j = i;
-            while (j < points.length && (points[j].t - points[i].t) < duration) j += 1;
-            if (j >= points.length) break;
-            const count = j - i + 1;
-            if (count <= 0) continue;
-            const sum = prefix[j + 1] - prefix[i];
-            const avg = sum / count;
-            if (bestAvg == null || avg > bestAvg) bestAvg = avg;
-        }
-        result[duration] = bestAvg != null ? Math.round(bestAvg * 10) / 10 : null;
-    }
-    return result;
-}
-
-function ExtendedPeakProfileChart({
-    result,
-    cpDiff,
-}: {
-    result: DualRecordingResult;
-    cpDiff: CpDiffRow[];
-}) {
-    const chartData = useMemo(() => {
-        const zwiftPeaks = computePeaksWithoutInterpolation(
-            result.zwift.streams?.time,
-            result.zwift.streams?.watts as Array<number | null> | undefined,
-            EXTENDED_PEAK_DURATIONS_SEC,
-        );
-        const stravaPeaks = computePeaksWithoutInterpolation(
-            result.strava?.streams?.time,
-            result.strava?.streams?.watts as Array<number | null> | undefined,
-            EXTENDED_PEAK_DURATIONS_SEC,
-        );
-        const zwiftCpByDuration = new Map<number, number>();
-        const stravaCpByDuration = new Map<number, number>();
-        for (const row of cpDiff) {
-            const d = durationFromCpRow(row);
-            if (d == null) continue;
-            if (row.zwift != null) zwiftCpByDuration.set(d, row.zwift);
-            if (row.strava != null) stravaCpByDuration.set(d, row.strava);
-        }
-        return EXTENDED_PEAK_DURATIONS_SEC.map((durationSec) => ({
-            durationSec,
-            zwift: zwiftPeaks[durationSec] ?? zwiftCpByDuration.get(durationSec) ?? null,
-            strava: stravaPeaks[durationSec] ?? stravaCpByDuration.get(durationSec) ?? null,
-        })).filter((r) => r.zwift != null || r.strava != null);
-    }, [result, cpDiff]);
-
-    if (!chartData.length) return null;
-    const yValues = chartData.flatMap((row) => [row.zwift, row.strava]).filter((v): v is number => v != null);
-    const minPeak = yValues.length ? Math.min(...yValues) : 0;
-    const maxPeak = yValues.length ? Math.max(...yValues) : 100;
-    const yPadding = Math.max(8, (maxPeak - minPeak) * 0.08);
-    const yMin = Math.max(0, Math.floor(minPeak - yPadding));
-    const yMax = Math.ceil(maxPeak + yPadding);
-
-    return (
-        <div className="space-y-2">
-            <div className="h-[260px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.25} />
-                        <XAxis
-                            type="number"
-                            dataKey="durationSec"
-                            domain={['dataMin', 'dataMax']}
-                            tickFormatter={formatDurationTick}
-                            tick={{ fontSize: 10 }}
-                        />
-                        <YAxis domain={[yMin, yMax]} tick={{ fontSize: 10 }} width={38} />
-                        <Tooltip
-                            labelFormatter={(sec: number) => `Duration: ${formatDurationTick(Number(sec))}`}
-                            formatter={(v: unknown, name: string) => {
-                                const numeric = typeof v === 'number' ? v : (typeof v === 'string' ? Number(v) : NaN);
-                                return Number.isFinite(numeric) ? [`${numeric} W`, name] : ['—', name];
-                            }}
-                        />
-                        <Line
-                            type="monotone"
-                            dataKey="zwift"
-                            name="Zwift"
-                            stroke="#2563eb"
-                            strokeWidth={2}
-                            dot={{ r: 2.5 }}
-                            connectNulls={false}
-                            isAnimationActive={false}
-                        />
-                        <Line
-                            type="monotone"
-                            dataKey="strava"
-                            name="Strava"
-                            stroke="#FC4C02"
-                            strokeWidth={2}
-                            strokeDasharray="5 3"
-                            dot={{ r: 2.5 }}
-                            connectNulls={false}
-                            isAnimationActive={false}
-                        />
-                    </LineChart>
-                </ResponsiveContainer>
-            </div>
-            <p className="text-xs text-muted-foreground">
-                Peak profile over more durations. Stream-based (no interpolation) with CP fallback when stream points are unavailable.
-            </p>
-        </div>
-    );
-}
 
 export default function DualRecordingResultModal({
     open,
@@ -289,6 +116,8 @@ export default function DualRecordingResultModal({
     hideHeartRate = false,
     showRunActions = true,
 }: Props) {
+    const [hoveredDurationSec, setHoveredDurationSec] = useState<number | null>(null);
+
     if (!open) return null;
 
     const { status, verifiedAt, comparison, failingMetrics = [], stravaActivityId, zwiftActivityId } = verification;
@@ -493,7 +322,7 @@ export default function DualRecordingResultModal({
                     {streamResult && cpDiffRows.length > 0 && (
                         <div>
                             <h3 className="text-sm font-semibold text-foreground mb-2">Peak Profile by Duration (Extended)</h3>
-                            <ExtendedPeakProfileChart result={streamResult} cpDiff={cpDiffRows} />
+                            <ExtendedPeakProfileChart result={streamResult} cpDiff={cpDiffRows} onDurationHover={setHoveredDurationSec} />
                         </div>
                     )}
 
@@ -533,7 +362,14 @@ export default function DualRecordingResultModal({
                         ) : streamError ? (
                             <div className="text-xs text-red-600">{streamError}</div>
                         ) : streamResult ? (
-                            <RecordingStreamsChart result={streamResult} hideHeartRate={hideHeartRate} />
+                            <RecordingStreamsSection
+                                result={streamResult}
+                                hideHeartRate={hideHeartRate}
+                                zwiftColor="#2563eb"
+                                stravaColor="#FC4C02"
+                                height={280}
+                                highlightDurationSec={hoveredDurationSec}
+                            />
                         ) : (
                             <div className="text-xs text-muted-foreground">No stream data available.</div>
                         )}
@@ -544,298 +380,3 @@ export default function DualRecordingResultModal({
     );
 }
 
-const CHART_STEP = 5;
-const IDENTICAL_TOLERANCE_W = 3;
-const IDENTICAL_MIN_INTERVAL_SEC = 90;
-const MAX_MEAN_ABS_DIFF_W = 5;
-const MAX_STD_DIFF_W = 6;
-const MAX_STD_DELTA_DIFF_W = 3;
-const MIN_OVERLAP_SEC_FOR_SIMILARITY = 180;
-
-function fmtRaceTime(sec: number) {
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
-
-function RecordingStreamsChart({
-    result,
-    hideHeartRate = false,
-}: {
-    result: DualRecordingResult;
-    hideHeartRate?: boolean;
-}) {
-    const { zwift, strava } = result;
-    const [hidden, setHidden] = useState<Set<string>>(
-        () => new Set(['zwiftHR', 'stravaHR', 'zwiftCad', 'stravaCad', 'zwiftAlt', 'stravaAlt'])
-    );
-
-    const hasZwift = (zwift.streams?.time?.length ?? 0) > 0;
-    const hasStrava = (strava?.streams?.time?.length ?? 0) > 0;
-    if (!hasZwift && !hasStrava) return <div className="text-xs text-muted-foreground">No stream samples.</div>;
-
-    type StreamPoint = { w: number | null; hr: number | null; cad: number | null; alt: number | null };
-    type ChartRow = {
-        t: number;
-        zwiftW: number | null; stravaW: number | null;
-        zwiftHR: number | null; stravaHR: number | null;
-        zwiftCad: number | null; stravaCad: number | null;
-        zwiftAlt: number | null; stravaAlt: number | null;
-    };
-
-    const chartData = useMemo<ChartRow[]>(() => {
-        const bucket = (t: number) => Math.round(t / CHART_STEP) * CHART_STEP;
-
-        const zwiftByTime = new Map<number, StreamPoint>();
-        if (hasZwift && zwift.streams) {
-            const { time, watts, heartrate, cadence, altitude } = zwift.streams;
-            time.forEach((t, i) => zwiftByTime.set(bucket(t), {
-                w: watts[i] ?? null,
-                hr: heartrate[i] ?? null,
-                cad: cadence[i] ?? null,
-                alt: altitude[i] ?? null,
-            }));
-        }
-
-        const stravaByTime = new Map<number, StreamPoint>();
-        if (hasStrava && strava?.streams) {
-            const { time, watts, heartrate, cadence, altitude } = strava.streams;
-            time.forEach((t, i) => stravaByTime.set(bucket(t), {
-                w: watts[i] ?? null,
-                hr: heartrate[i] ?? null,
-                cad: cadence[i] ?? null,
-                alt: altitude[i] ?? null,
-            }));
-        }
-
-        const allT = [...(zwift.streams?.time || []), ...(strava?.streams?.time || [])].map(bucket);
-        const minT = Math.floor(Math.min(...allT) / CHART_STEP) * CHART_STEP;
-        const maxT = Math.ceil(Math.max(...allT) / CHART_STEP) * CHART_STEP;
-
-        const rows: ChartRow[] = [];
-        for (let t = minT; t <= maxT; t += CHART_STEP) {
-            const zp = zwiftByTime.get(t);
-            const sp = stravaByTime.get(t);
-            rows.push({
-                t,
-                zwiftW: zp?.w ?? null,
-                stravaW: sp?.w ?? null,
-                zwiftHR: zp?.hr ?? null,
-                stravaHR: sp?.hr ?? null,
-                zwiftCad: zp?.cad ?? null,
-                stravaCad: sp?.cad ?? null,
-                zwiftAlt: zp?.alt ?? null,
-                stravaAlt: sp?.alt ?? null,
-            });
-        }
-        return rows;
-    }, [hasZwift, hasStrava, zwift.streams, strava?.streams]);
-
-    const similarity = useMemo(() => {
-        const paired = chartData
-            .map((d) => {
-                if (d.zwiftW == null || d.stravaW == null) return null;
-                const signed = d.zwiftW - d.stravaW;
-                return {
-                    t: d.t,
-                    signed,
-                    abs: Math.abs(signed),
-                };
-            })
-            .filter((v): v is { t: number; signed: number; abs: number } => v != null);
-
-        if (paired.length === 0) {
-            return null;
-        }
-
-        const absDiffs = paired.map((p) => p.abs);
-        const signedDiffs = paired.map((p) => p.signed);
-        const sortedAbs = [...absDiffs].sort((a, b) => a - b);
-        const meanAbs = absDiffs.reduce((acc, n) => acc + n, 0) / absDiffs.length;
-        const p95 = sortedAbs[Math.min(sortedAbs.length - 1, Math.floor(sortedAbs.length * 0.95))];
-        const max = sortedAbs[sortedAbs.length - 1];
-        const nearIdenticalSamples = absDiffs.filter((d) => d <= IDENTICAL_TOLERANCE_W).length;
-        const nearIdenticalPct = (nearIdenticalSamples / absDiffs.length) * 100;
-
-        const std = (values: number[]): number => {
-            if (values.length === 0) return 0;
-            const mean = values.reduce((acc, n) => acc + n, 0) / values.length;
-            const variance = values.reduce((acc, n) => acc + ((n - mean) ** 2), 0) / values.length;
-            return Math.sqrt(variance);
-        };
-        const stdDiff = std(signedDiffs);
-
-        const deltaDiffs: number[] = [];
-        for (let i = 1; i < paired.length; i++) {
-            deltaDiffs.push(paired[i].signed - paired[i - 1].signed);
-        }
-        const stdDeltaDiff = std(deltaDiffs);
-
-        let longestNearIdenticalRunSamples = 0;
-        let currentRun = 0;
-        paired.forEach((p) => {
-            if (p.abs <= IDENTICAL_TOLERANCE_W) {
-                currentRun += 1;
-                if (currentRun > longestNearIdenticalRunSamples) longestNearIdenticalRunSamples = currentRun;
-            } else {
-                currentRun = 0;
-            }
-        });
-        const longestNearIdenticalRunSec = longestNearIdenticalRunSamples * CHART_STEP;
-        const overlapSec = paired.length * CHART_STEP;
-        const suspiciousByVolatility = (
-            overlapSec >= MIN_OVERLAP_SEC_FOR_SIMILARITY &&
-            meanAbs <= MAX_MEAN_ABS_DIFF_W &&
-            stdDiff <= MAX_STD_DIFF_W &&
-            stdDeltaDiff <= MAX_STD_DELTA_DIFF_W
-        );
-        const suspiciousByRun = longestNearIdenticalRunSec >= IDENTICAL_MIN_INTERVAL_SEC || nearIdenticalPct >= 80;
-        const suspicious = suspiciousByVolatility || suspiciousByRun;
-
-        return {
-            samples: absDiffs.length,
-            overlapSec,
-            meanAbsDiff: meanAbs,
-            p95Diff: p95,
-            maxDiff: max,
-            stdDiff,
-            stdDeltaDiff,
-            nearIdenticalPct,
-            longestNearIdenticalRunSec,
-            suspiciousByVolatility,
-            suspiciousByRun,
-            suspicious,
-        };
-    }, [chartData]);
-
-    const hasSeries = useMemo(() => {
-        const hasAny = (key: keyof ChartRow) => chartData.some((row) => row[key] != null);
-        return {
-            zwiftW: hasAny('zwiftW'),
-            stravaW: hasAny('stravaW'),
-            zwiftHR: !hideHeartRate && hasAny('zwiftHR'),
-            stravaHR: !hideHeartRate && hasAny('stravaHR'),
-            zwiftCad: hasAny('zwiftCad'),
-            stravaCad: hasAny('stravaCad'),
-            zwiftAlt: hasAny('zwiftAlt'),
-            stravaAlt: hasAny('stravaAlt'),
-        };
-    }, [chartData, hideHeartRate]);
-
-    const seriesMeta = [
-        { key: 'zwiftW', label: 'Zwift Power', color: '#2563eb', show: hasSeries.zwiftW },
-        { key: 'stravaW', label: 'Strava Power', color: '#FC4C02', show: hasSeries.stravaW },
-        { key: 'zwiftHR', label: 'Zwift HR', color: '#a0a0a0', show: hasSeries.zwiftHR },
-        { key: 'stravaHR', label: 'Strava HR', color: '#8b8b8b', show: hasSeries.stravaHR },
-        { key: 'zwiftCad', label: 'Zwift Cad', color: '#66b3a6', show: hasSeries.zwiftCad },
-        { key: 'stravaCad', label: 'Strava Cad', color: '#4fa18f', show: hasSeries.stravaCad },
-        { key: 'zwiftAlt', label: 'Zwift Elev', color: '#c9c9c9', show: hasSeries.zwiftAlt },
-        { key: 'stravaAlt', label: 'Strava Elev', color: '#b5b5b5', show: hasSeries.stravaAlt },
-    ].filter((s) => s.show);
-
-    return (
-        <div className="w-full">
-            {similarity && (
-                <div className={`mb-2 rounded-md border px-3 py-2 text-xs ${
-                    similarity.suspicious
-                        ? 'border-amber-300 bg-amber-50 text-amber-900'
-                        : 'border-border bg-muted/20 text-muted-foreground'
-                }`}>
-                    <div className="font-semibold mb-1">Power similarity check</div>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                        <div>Mean |diff|: <span className="font-mono">{similarity.meanAbsDiff.toFixed(1)} W</span></div>
-                        <div>P95 diff: <span className="font-mono">{similarity.p95Diff.toFixed(1)} W</span></div>
-                        <div>Max diff: <span className="font-mono">{similarity.maxDiff.toFixed(1)} W</span></div>
-                        <div>Samples: <span className="font-mono">{similarity.samples}</span></div>
-                        <div>Overlap: <span className="font-mono">{Math.round(similarity.overlapSec)}s</span></div>
-                        <div>Std(diff): <span className="font-mono">{similarity.stdDiff.toFixed(2)} W</span></div>
-                        <div>Std(Δdiff): <span className="font-mono">{similarity.stdDeltaDiff.toFixed(2)} W</span></div>
-                        <div>Near-identical (&lt;= {IDENTICAL_TOLERANCE_W}W): <span className="font-mono">{similarity.nearIdenticalPct.toFixed(1)}%</span></div>
-                        <div>Longest near-identical run: <span className="font-mono">{Math.round(similarity.longestNearIdenticalRunSec)}s</span></div>
-                    </div>
-                    <div className="mt-1">
-                        {similarity.suspicious
-                            ? `Suspiciously similar power traces (${similarity.suspiciousByVolatility ? 'volatility' : 'run-length'} trigger). This can indicate shared recording source.`
-                            : 'Similarity level looks plausible for independent recordings.'}
-                    </div>
-                </div>
-            )}
-            <div className="text-[11px] text-muted-foreground mb-2">
-                t=0 = Zwift recording start · Strava aligned by power MSE · click legend to toggle
-            </div>
-            <div className="flex flex-wrap gap-x-4 gap-y-1 mb-2 px-1">
-                {seriesMeta.map((s) => (
-                    <button
-                        key={s.key}
-                        onClick={() => {
-                            setHidden((prev) => {
-                                const next = new Set(prev);
-                                if (next.has(s.key)) next.delete(s.key);
-                                else next.add(s.key);
-                                return next;
-                            });
-                        }}
-                        className="flex items-center gap-1.5 text-xs select-none"
-                        style={{
-                            opacity: hidden.has(s.key) ? 0.35 : 1,
-                            textDecoration: hidden.has(s.key) ? 'line-through' : 'none',
-                            color: 'var(--muted-foreground)',
-                        }}
-                    >
-                        <span
-                            className="inline-block w-4 h-[2px] rounded flex-shrink-0"
-                            style={{ backgroundColor: s.color }}
-                        />
-                        {s.label}
-                    </button>
-                ))}
-            </div>
-            <div className="h-[280px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.25} />
-                        <XAxis dataKey="t" tickFormatter={fmtRaceTime} tick={{ fontSize: 10 }} />
-                        <YAxis yAxisId="w" tick={{ fontSize: 10 }} width={34} />
-                        <YAxis yAxisId="other" orientation="right" tick={{ fontSize: 10 }} width={30} />
-                        <Tooltip labelFormatter={(v) => fmtRaceTime(Number(v))} />
-
-                        {/* Draw Strava first, then Zwift on top so overlap remains visible */}
-                        {hasSeries.stravaW && (
-                            <Line
-                                yAxisId="w"
-                                type="monotone"
-                                dataKey="stravaW"
-                                stroke="#FC4C02"
-                                dot={false}
-                                strokeWidth={1.8}
-                                strokeDasharray="5 3"
-                                strokeOpacity={0.9}
-                                name="Strava Power"
-                                hide={hidden.has('stravaW')}
-                            />
-                        )}
-                        {hasSeries.zwiftW && (
-                            <Line
-                                yAxisId="w"
-                                type="monotone"
-                                dataKey="zwiftW"
-                                stroke="#2563eb"
-                                dot={false}
-                                strokeWidth={1.8}
-                                name="Zwift Power"
-                                hide={hidden.has('zwiftW')}
-                            />
-                        )}
-                        {hasSeries.zwiftHR && <Line yAxisId="other" type="monotone" dataKey="zwiftHR" stroke="#a0a0a0" dot={false} strokeWidth={1} name="Zwift HR" hide={hidden.has('zwiftHR')} />}
-                        {hasSeries.stravaHR && <Line yAxisId="other" type="monotone" dataKey="stravaHR" stroke="#8b8b8b" dot={false} strokeWidth={1} name="Strava HR" hide={hidden.has('stravaHR')} />}
-                        {hasSeries.zwiftCad && <Line yAxisId="other" type="monotone" dataKey="zwiftCad" stroke="#66b3a6" dot={false} strokeWidth={1} name="Zwift Cad" hide={hidden.has('zwiftCad')} />}
-                        {hasSeries.stravaCad && <Line yAxisId="other" type="monotone" dataKey="stravaCad" stroke="#4fa18f" dot={false} strokeWidth={1} name="Strava Cad" hide={hidden.has('stravaCad')} />}
-                        {hasSeries.zwiftAlt && <Line yAxisId="other" type="monotone" dataKey="zwiftAlt" stroke="#c9c9c9" dot={false} strokeWidth={1} name="Zwift Elev" hide={hidden.has('zwiftAlt')} />}
-                        {hasSeries.stravaAlt && <Line yAxisId="other" type="monotone" dataKey="stravaAlt" stroke="#b5b5b5" dot={false} strokeWidth={1} name="Strava Elev" hide={hidden.has('stravaAlt')} />}
-                        <Brush dataKey="t" tickFormatter={fmtRaceTime} height={20} />
-                    </LineChart>
-                </ResponsiveContainer>
-            </div>
-        </div>
-    );
-}
