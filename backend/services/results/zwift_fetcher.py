@@ -40,6 +40,8 @@ class ZwiftFetcher:
         registered_riders: dict[str, Any],
         sprint_segment_ids: set[str | int] | None = None,
         route_segment_ids_ordered: list[str | int] | None = None,
+        route_segments: list[dict[str, Any]] | None = None,
+        configured_sprints: list[dict[str, Any]] | None = None,
         subgroup_start_time: datetime | None = None,
     ) -> list[RiderResult]:
         """
@@ -57,6 +59,7 @@ class ZwiftFetcher:
             )
             finish_results_raw = self._filter_finish_entries(
                 all_results_raw, sprint_segment_ids, route_segment_ids_ordered
+                , route_segments, configured_sprints
             )
 
             for entry in finish_results_raw:
@@ -118,6 +121,8 @@ class ZwiftFetcher:
         entries: list[dict[str, Any]],
         sprint_segment_ids: set[str | int] | None,
         route_segment_ids_ordered: list[str | int] | None,
+        route_segments: list[dict[str, Any]] | None = None,
+        configured_sprints: list[dict[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
         """
         Filter segment entries to finish-line entries only.
@@ -141,6 +146,14 @@ class ZwiftFetcher:
 
         if not segmented:
             return entries
+
+        selected_from_route = self._select_finish_entries_from_route_instances(
+            segmented=segmented,
+            route_segments=route_segments,
+            configured_sprints=configured_sprints,
+        )
+        if selected_from_route:
+            return selected_from_route
 
         if sprint_segment_ids:
             sprint_ids_str = {str(s) for s in sprint_segment_ids}
@@ -184,6 +197,89 @@ class ZwiftFetcher:
                 if seg_id in non_sprint:
                     return non_sprint[seg_id]
         return next(iter(non_sprint.values()))
+
+    def _select_finish_entries_from_route_instances(
+        self,
+        segmented: dict[str, list[dict[str, Any]]],
+        route_segments: list[dict[str, Any]] | None,
+        configured_sprints: list[dict[str, Any]] | None,
+    ) -> list[dict[str, Any]]:
+        """
+        Deterministically pick finish entries from route segment instances.
+
+        Reuses the same id+count(+direction) concept used by the race-card logic:
+        - route_segments is the full ordered route manifest occurrences
+        - configured_sprints lists explicit sprint instances
+        - finish instance is the last race-lap route segment not configured as sprint
+        """
+        if not segmented or not route_segments:
+            return []
+
+        def _norm_direction(value: Any) -> str:
+            raw = str(value or "").strip().lower()
+            if raw in {"reverse", "rev", "r"}:
+                return "reverse"
+            return "forward"
+
+        sprint_instances: set[tuple[str, int, str]] = set()
+        sprint_instances_wild_dir: set[tuple[str, int]] = set()
+        for sprint in configured_sprints or []:
+            sid = str(sprint.get("id") or "").strip()
+            if not sid:
+                continue
+            try:
+                count = int(sprint.get("count") or 1)
+            except (TypeError, ValueError):
+                count = 1
+            if count < 1:
+                count = 1
+            direction_raw = sprint.get("direction")
+            if direction_raw is None or str(direction_raw).strip() == "":
+                sprint_instances_wild_dir.add((sid, count))
+            else:
+                sprint_instances.add((sid, count, _norm_direction(direction_raw)))
+
+        finish_seg_id: str | None = None
+        finish_seg_count: int | None = None
+        for seg in reversed(route_segments):
+            sid = str(seg.get("id") or "").strip()
+            if not sid or sid not in segmented:
+                continue
+            lap = int(seg.get("lap") or 0)
+            if lap < 1:
+                continue
+            try:
+                seg_count = int(seg.get("count") or 1)
+            except (TypeError, ValueError):
+                seg_count = 1
+            if seg_count < 1:
+                seg_count = 1
+            seg_direction = _norm_direction(seg.get("direction"))
+            if (sid, seg_count) in sprint_instances_wild_dir:
+                continue
+            if (sid, seg_count, seg_direction) in sprint_instances:
+                continue
+            finish_seg_id = sid
+            finish_seg_count = seg_count
+            break
+
+        if not finish_seg_id or not finish_seg_count:
+            return []
+
+        by_rider: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for e in segmented.get(finish_seg_id, []):
+            profile = e.get('profileData', {}) if isinstance(e, dict) else {}
+            rider_id = str(profile.get('id') or e.get('profileId') or "")
+            if rider_id:
+                by_rider[rider_id].append(e)
+
+        selected: list[dict[str, Any]] = []
+        for rider_entries in by_rider.values():
+            rider_entries.sort(key=self._entry_sort_key)
+            if len(rider_entries) >= finish_seg_count:
+                selected.append(rider_entries[finish_seg_count - 1])
+
+        return selected
 
     def _infer_finish_entries_from_all_sprints(
         self,

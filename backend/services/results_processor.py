@@ -402,12 +402,14 @@ class ResultsProcessor:
             # Build ordered route segment list for finish-line identification.
             # The finish segment = last non-sprint segment in route chronology.
             route_segment_ids_ordered: list[Any] = []
+            route_segments: list[dict[str, Any]] = []
             route_id = race_data.get('routeId') or subgroup.get('routeId')
             route_laps = subgroup.get('laps') or race_data.get('laps') or 1
             if route_id:
                 try:
                     route_segs = self.game.get_event_segments(str(route_id), int(route_laps))
-                    route_segment_ids_ordered = [s['id'] for s in route_segs if s.get('id')]
+                    route_segments = [s for s in route_segs if isinstance(s, dict)]
+                    route_segment_ids_ordered = [s['id'] for s in route_segments if s.get('id')]
                 except Exception as e:
                     logger.warning(f"Could not resolve route segments for {route_id}: {e}")
 
@@ -422,6 +424,8 @@ class ResultsProcessor:
                 registered_riders,
                 sprint_segment_ids=sprint_ids_set,
                 route_segment_ids_ordered=route_segment_ids_ordered,
+                route_segments=route_segments,
+                configured_sprints=category_sprints,
                 subgroup_start_time=start_time,
             )
 

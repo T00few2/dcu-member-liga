@@ -80,3 +80,32 @@ def test_resolve_finish_time_prefers_duration_ms_over_end_date_delta():
     }
 
     assert fetcher._resolve_finish_time_ms(entry, subgroup_start) == 2668000
+
+
+def test_filter_finish_entries_uses_route_instances_over_id_guessing():
+    fetcher = ZwiftFetcher(zwift_service=None)
+    entries = [
+        _entry("simon", "seg-a", 100, 1000),
+        _entry("simon", "seg-a", 200, 2000),
+        _entry("nikolaj", "seg-a", 110, 1100),
+        _entry("nikolaj", "seg-a", 210, 2100),
+    ]
+
+    filtered = fetcher._filter_finish_entries(
+        entries=entries,
+        sprint_segment_ids={"seg-a"},
+        route_segment_ids_ordered=["seg-a", "seg-a"],
+        route_segments=[
+            {"id": "seg-a", "count": 1, "lap": 1, "direction": "forward"},
+            {"id": "seg-a", "count": 2, "lap": 1, "direction": "forward"},
+        ],
+        configured_sprints=[{"id": "seg-a", "count": 1, "direction": "forward"}],
+    )
+
+    selected = {
+        str((e.get("profileData") or {}).get("id")): int(
+            (e.get("_officialSegmentResult") or {}).get("endWorldTime", 0)
+        )
+        for e in filtered
+    }
+    assert selected == {"simon": 200, "nikolaj": 210}
