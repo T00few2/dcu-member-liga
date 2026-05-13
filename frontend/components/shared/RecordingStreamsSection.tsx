@@ -454,6 +454,59 @@ export function RecordingStreamsSection({
                             tickFormatter={fmtRaceTime}
                         />
 
+                        {/* ── Background overlays (rendered first so lines paint on top) ── */}
+
+                        {/* Peak window highlights — shown when hovering the peak profile chart */}
+                        {zwiftPeakWindow && (
+                            <ReferenceArea
+                                yAxisId="w"
+                                x1={zwiftPeakWindow.startSec}
+                                x2={zwiftPeakWindow.endSec}
+                                fill="#16a34a"
+                                fillOpacity={0.25}
+                                stroke="#16a34a"
+                                strokeOpacity={0.5}
+                                strokeWidth={1}
+                            />
+                        )}
+                        {stravaPeakWindow && (
+                            <ReferenceArea
+                                yAxisId="w"
+                                x1={stravaPeakWindow.startSec}
+                                x2={stravaPeakWindow.endSec}
+                                fill="#4ade80"
+                                fillOpacity={0.2}
+                                stroke="#4ade80"
+                                strokeOpacity={0.5}
+                                strokeWidth={1}
+                            />
+                        )}
+
+                        {/* Shaded overlay for Strava start gap */}
+                        {showGapOverlay && (
+                            <ReferenceArea
+                                yAxisId="w"
+                                x1={zwiftStreamStartSec}
+                                x2={zwiftStreamStartSec + gapSec}
+                                fill={cropExceedsLimit ? '#f59e0b' : '#6b7280'}
+                                fillOpacity={0.12}
+                                strokeOpacity={0}
+                            />
+                        )}
+                        {/* Shaded overlay for Strava end gap */}
+                        {showEndGapOverlay && lastStravaDataT != null && (
+                            <ReferenceArea
+                                yAxisId="w"
+                                x1={lastStravaDataT}
+                                x2={zwiftStreamEndSec}
+                                fill={cropExceedsLimit ? '#f59e0b' : '#6b7280'}
+                                fillOpacity={0.12}
+                                strokeOpacity={0}
+                            />
+                        )}
+
+                        {/* ── Data lines (rendered after overlays so they appear on top) ── */}
+
                         {/* Power — draw Strava first so Zwift renders on top */}
                         {hasSeries.stravaW && (
                             <Line yAxisId="w" type="monotone" dataKey="stravaW"
@@ -510,50 +563,6 @@ export function RecordingStreamsSection({
                                 hide={hidden.has('stravaAlt')} />
                         )}
 
-                        {/* Shaded overlay for Strava start gap */}
-                        {showGapOverlay && (
-                            <ReferenceArea
-                                yAxisId="w"
-                                x1={zwiftStreamStartSec}
-                                x2={zwiftStreamStartSec + gapSec}
-                                fill={cropExceedsLimit ? '#f59e0b' : '#6b7280'}
-                                fillOpacity={0.12}
-                                strokeOpacity={0}
-                            />
-                        )}
-                        {/* Peak window highlights — shown when hovering the peak profile chart */}
-                        {zwiftPeakWindow && (
-                            <ReferenceArea
-                                yAxisId="w"
-                                x1={zwiftPeakWindow.startSec}
-                                x2={zwiftPeakWindow.endSec}
-                                fill={zwiftColor}
-                                fillOpacity={0.18}
-                                strokeOpacity={0}
-                            />
-                        )}
-                        {stravaPeakWindow && (
-                            <ReferenceArea
-                                yAxisId="w"
-                                x1={stravaPeakWindow.startSec}
-                                x2={stravaPeakWindow.endSec}
-                                fill={stravaColor}
-                                fillOpacity={0.18}
-                                strokeOpacity={0}
-                            />
-                        )}
-
-                        {/* Shaded overlay for Strava end gap */}
-                        {showEndGapOverlay && lastStravaDataT != null && (
-                            <ReferenceArea
-                                yAxisId="w"
-                                x1={lastStravaDataT}
-                                x2={zwiftStreamEndSec}
-                                fill={cropExceedsLimit ? '#f59e0b' : '#6b7280'}
-                                fillOpacity={0.12}
-                                strokeOpacity={0}
-                            />
-                        )}
                     </LineChart>
                 </ResponsiveContainer>
             </div>
