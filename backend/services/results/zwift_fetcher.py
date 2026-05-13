@@ -217,6 +217,8 @@ class ZwiftFetcher:
         """
         if not segmented or not route_segments:
             return []
+        if not configured_sprints:
+            return []
 
         def _norm_direction(value: Any) -> str:
             raw = str(value or "").strip().lower()
@@ -226,6 +228,8 @@ class ZwiftFetcher:
 
         sprint_instances: set[tuple[str, int, str]] = set()
         sprint_instances_wild_dir: set[tuple[str, int]] = set()
+        sprint_instances_by_lap: set[tuple[str, int, str]] = set()
+        sprint_instances_by_lap_wild_dir: set[tuple[str, int]] = set()
         for sprint in configured_sprints or []:
             sid = str(sprint.get("id") or "").strip()
             if not sid:
@@ -241,7 +245,28 @@ class ZwiftFetcher:
                 sprint_instances_wild_dir.add((sid, count))
             else:
                 sprint_instances.add((sid, count, _norm_direction(direction_raw)))
+            lap_raw = sprint.get("lap")
+            try:
+                lap = int(lap_raw) if lap_raw is not None else 0
+            except (TypeError, ValueError):
+                lap = 0
+            if lap > 0:
+                if direction_raw is None or str(direction_raw).strip() == "":
+                    sprint_instances_by_lap_wild_dir.add((sid, lap))
+                else:
+                    sprint_instances_by_lap.add((sid, lap, _norm_direction(direction_raw)))
 
+        # Prefer candidates that keep the most riders (coverage), then latest in route.
+        # This avoids selecting rare post-finish or connector segments.
+        all_riders: set[str] = set()
+        for seg_entries in segmented.values():
+            for e in seg_entries:
+                profile = e.get('profileData', {}) if isinstance(e, dict) else {}
+                rider_id = str(profile.get('id') or e.get('profileId') or "")
+                if rider_id:
+                    all_riders.add(rider_id)
+
+        best_score = -1
         finish_seg_id: str | None = None
         finish_seg_count: int | None = None
         for seg in reversed(route_segments):
@@ -262,11 +287,27 @@ class ZwiftFetcher:
                 continue
             if (sid, seg_count, seg_direction) in sprint_instances:
                 continue
-            finish_seg_id = sid
-            finish_seg_count = seg_count
-            break
+            if lap > 0 and (sid, lap) in sprint_instances_by_lap_wild_dir:
+                continue
+            if lap > 0 and (sid, lap, seg_direction) in sprint_instances_by_lap:
+                continue
+
+            by_rider_counts: dict[str, int] = defaultdict(int)
+            for e in segmented.get(sid, []):
+                profile = e.get('profileData', {}) if isinstance(e, dict) else {}
+                rider_id = str(profile.get('id') or e.get('profileId') or "")
+                if rider_id:
+                    by_rider_counts[rider_id] += 1
+            coverage = sum(1 for cnt in by_rider_counts.values() if cnt >= seg_count)
+
+            if coverage > best_score:
+                best_score = coverage
+                finish_seg_id = sid
+                finish_seg_count = seg_count
 
         if not finish_seg_id or not finish_seg_count:
+            return []
+        if all_riders and best_score <= 0:
             return []
 
         by_rider: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -347,8 +388,6 @@ class ZwiftFetcher:
     def _resolve_finish_time_ms(self, entry: dict[str, Any], subgroup_start_time: datetime | None) -> int:
         raw = entry.get("_officialSegmentResult") or {}
         duration_ms = int(entry.get("activityData", {}).get("durationInMilliseconds", 0) or 0)
-        if duration_ms > 0:
-            return duration_ms
         if not subgroup_start_time:
             return duration_ms
 

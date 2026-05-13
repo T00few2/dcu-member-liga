@@ -71,7 +71,7 @@ def test_filter_finish_entries_all_sprints_tie_prefers_single_pass():
     assert {e["_officialSegmentResult"]["endWorldTime"] for e in filtered} == {100, 110}
 
 
-def test_resolve_finish_time_prefers_duration_ms_over_end_date_delta():
+def test_resolve_finish_time_prefers_end_date_delta_over_segment_duration():
     fetcher = ZwiftFetcher(zwift_service=None)
     subgroup_start = datetime(2026, 5, 13, 17, 0, 0, tzinfo=timezone.utc)
     entry = {
@@ -79,7 +79,7 @@ def test_resolve_finish_time_prefers_duration_ms_over_end_date_delta():
         "_officialSegmentResult": {"endDate": "2026-05-13T17:49:01Z"},
     }
 
-    assert fetcher._resolve_finish_time_ms(entry, subgroup_start) == 2668000
+    assert fetcher._resolve_finish_time_ms(entry, subgroup_start) == 2941000
 
 
 def test_filter_finish_entries_uses_route_instances_over_id_guessing():
