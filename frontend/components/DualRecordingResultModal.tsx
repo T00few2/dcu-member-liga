@@ -1,7 +1,7 @@
 'use client';
 
 import type React from 'react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
     ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
 } from 'recharts';
@@ -186,9 +186,11 @@ function computePeaksWithoutInterpolation(
 function ExtendedPeakProfileChart({
     result,
     cpDiff,
+    onDurationHover,
 }: {
     result: DualRecordingResult;
     cpDiff: CpDiffRow[];
+    onDurationHover?: (durationSec: number | null) => void;
 }) {
     const chartData = useMemo(() => {
         const zwiftPeaks = computePeaksWithoutInterpolation(
@@ -228,7 +230,16 @@ function ExtendedPeakProfileChart({
         <div className="space-y-2">
             <div className="h-[260px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <LineChart
+                        data={chartData}
+                        margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                        onMouseMove={(e: unknown) => {
+                            const payload = (e as { activePayload?: { payload?: { durationSec?: unknown } }[] })
+                                ?.activePayload?.[0]?.payload?.durationSec;
+                            if (payload != null) onDurationHover?.(Number(payload));
+                        }}
+                        onMouseLeave={() => onDurationHover?.(null)}
+                    >
                         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.25} />
                         <XAxis
                             type="number"
@@ -290,6 +301,8 @@ export default function DualRecordingResultModal({
     hideHeartRate = false,
     showRunActions = true,
 }: Props) {
+    const [hoveredDurationSec, setHoveredDurationSec] = useState<number | null>(null);
+
     if (!open) return null;
 
     const { status, verifiedAt, comparison, failingMetrics = [], stravaActivityId, zwiftActivityId } = verification;
@@ -494,7 +507,7 @@ export default function DualRecordingResultModal({
                     {streamResult && cpDiffRows.length > 0 && (
                         <div>
                             <h3 className="text-sm font-semibold text-foreground mb-2">Peak Profile by Duration (Extended)</h3>
-                            <ExtendedPeakProfileChart result={streamResult} cpDiff={cpDiffRows} />
+                            <ExtendedPeakProfileChart result={streamResult} cpDiff={cpDiffRows} onDurationHover={setHoveredDurationSec} />
                         </div>
                     )}
 
@@ -540,6 +553,7 @@ export default function DualRecordingResultModal({
                                 zwiftColor="#2563eb"
                                 stravaColor="#FC4C02"
                                 height={280}
+                                highlightDurationSec={hoveredDurationSec}
                             />
                         ) : (
                             <div className="text-xs text-muted-foreground">No stream data available.</div>
