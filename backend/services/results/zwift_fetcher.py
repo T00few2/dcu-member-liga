@@ -58,8 +58,11 @@ class ZwiftFetcher:
                 event_secret=event_secret,
             )
             finish_results_raw = self._filter_finish_entries(
-                all_results_raw, sprint_segment_ids, route_segment_ids_ordered
-                , route_segments, configured_sprints
+                all_results_raw,
+                sprint_segment_ids,
+                route_segment_ids_ordered,
+                route_segments,
+                configured_sprints,
             )
 
             for entry in finish_results_raw:
