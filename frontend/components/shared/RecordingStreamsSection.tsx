@@ -38,13 +38,18 @@ function findPeakWindow(
     time: number[] | null | undefined,
     watts: (number | null)[] | null | undefined,
     durationSec: number,
+    minT?: number,
+    maxT?: number,
 ): { startSec: number; endSec: number } | null {
     if (!time?.length || !watts?.length || durationSec <= 0) return null;
     const points: { t: number; w: number }[] = [];
     for (let i = 0; i < Math.min(time.length, watts.length); i++) {
         const w = watts[i];
         if (w == null || !Number.isFinite(w)) continue;
-        points.push({ t: Number(time[i]), w: Number(w) });
+        const t = Number(time[i]);
+        if (minT != null && t < minT) continue;
+        if (maxT != null && t > maxT) continue;
+        points.push({ t, w: Number(w) });
     }
     points.sort((a, b) => a.t - b.t);
     if (!points.length) return null;
@@ -287,11 +292,18 @@ export function RecordingStreamsSection({
 
     // ── Peak window highlight (driven by hover on the peak profile chart) ────────
 
+    // Bound the Zwift peak search to the same window that was compared:
+    // if cropping was applied (gap > 0 and within the 15% limit), restrict
+    // to [firstStravaDataT, lastStravaDataT] so the highlight never falls in
+    // the grey cropped zone.
+    const zwiftPeakMinT = (gapSec > 0 && !cropExceedsLimit) ? (firstStravaDataT ?? undefined) : undefined;
+    const zwiftPeakMaxT = (endGapSec > 0 && !cropExceedsLimit) ? (lastStravaDataT ?? undefined) : undefined;
+
     const zwiftPeakWindow = useMemo(
         () => highlightDurationSec
-            ? findPeakWindow(zwift.streams?.time, zwift.streams?.watts as (number | null)[], highlightDurationSec)
+            ? findPeakWindow(zwift.streams?.time, zwift.streams?.watts as (number | null)[], highlightDurationSec, zwiftPeakMinT, zwiftPeakMaxT)
             : null,
-        [highlightDurationSec, zwift.streams],
+        [highlightDurationSec, zwift.streams, zwiftPeakMinT, zwiftPeakMaxT],
     );
     const stravaPeakWindow = useMemo(
         () => highlightDurationSec
