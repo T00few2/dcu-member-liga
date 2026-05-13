@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     ResponsiveContainer, LineChart, Line, XAxis, YAxis,
     CartesianGrid, Tooltip, Legend,
@@ -86,6 +86,46 @@ export function computePeaksWithoutInterpolation(
     return result;
 }
 
+// ─── Tooltip ─────────────────────────────────────────────────────────────────
+
+type TooltipPayload = {
+    payload?: { durationSec?: number };
+    value?: unknown;
+    name?: string;
+    color?: string;
+};
+
+function PeakTooltipContent({
+    active,
+    payload,
+    onActiveDuration,
+}: {
+    active?: boolean;
+    payload?: TooltipPayload[];
+    onActiveDuration: (d: number | null) => void;
+}) {
+    const dur = active && payload?.length ? (payload[0].payload?.durationSec ?? null) : null;
+
+    useEffect(() => {
+        onActiveDuration(dur ?? null);
+    }, [dur, onActiveDuration]);
+
+    if (!active || !payload?.length) return null;
+    return (
+        <div className="bg-background border border-border rounded p-2 text-xs shadow-md">
+            <p className="text-muted-foreground mb-1">
+                Duration: {formatDurationTick(payload[0].payload?.durationSec ?? 0)}
+            </p>
+            {payload.map((entry, i) => (
+                <p key={i} style={{ color: entry.color }}>
+                    {entry.name}:{' '}
+                    {typeof entry.value === 'number' ? Math.round(entry.value) : '—'} W
+                </p>
+            ))}
+        </div>
+    );
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 interface ExtendedPeakProfileChartProps {
@@ -101,6 +141,34 @@ export function ExtendedPeakProfileChart({
     onDurationHover,
 }: ExtendedPeakProfileChartProps) {
     const cpDiff = cpDiffProp ?? result.comparison?.cpDiff ?? [];
+
+    // Internal hover state — updated by the Tooltip content component
+    const [activeDuration, setActiveDuration] = useState<number | null>(null);
+
+    // Propagate to parent
+    useEffect(() => {
+        onDurationHover?.(activeDuration);
+    }, [activeDuration, onDurationHover]);
+
+    // Stable callback passed to PeakTooltipContent
+    const handleActiveDuration = useCallback((d: number | null) => {
+        setActiveDuration(d);
+    }, []);
+
+    // Stable Tooltip content renderer (must not re-create on every render)
+    const tooltipContent = useCallback(
+        (props: unknown) => {
+            const p = props as { active?: boolean; payload?: TooltipPayload[] };
+            return (
+                <PeakTooltipContent
+                    active={p.active}
+                    payload={p.payload}
+                    onActiveDuration={handleActiveDuration}
+                />
+            );
+        },
+        [handleActiveDuration],
+    );
 
     const chartData = useMemo(() => {
         const zwiftPeaks = computePeaksWithoutInterpolation(
@@ -147,12 +215,7 @@ export function ExtendedPeakProfileChart({
                     <LineChart
                         data={chartData}
                         margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
-                        onMouseMove={(e: unknown) => {
-                            const payload = (e as { activePayload?: { payload?: { durationSec?: unknown } }[] })
-                                ?.activePayload?.[0]?.payload?.durationSec;
-                            if (payload != null) onDurationHover?.(Number(payload));
-                        }}
-                        onMouseLeave={() => onDurationHover?.(null)}
+                        onMouseLeave={() => setActiveDuration(null)}
                     >
                         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.3} />
                         <XAxis
@@ -173,13 +236,7 @@ export function ExtendedPeakProfileChart({
                             tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }}
                             label={{ value: 'Peak watts', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fontSize: 11 } }}
                         />
-                        <Tooltip
-                            labelFormatter={(sec: number) => `Duration: ${formatDurationTick(Number(sec))}`}
-                            formatter={(v: unknown, name: string) => {
-                                const numeric = typeof v === 'number' ? v : (typeof v === 'string' ? Number(v) : NaN);
-                                return Number.isFinite(numeric) ? [`${numeric} W`, name] : ['—', name];
-                            }}
-                        />
+                        <Tooltip content={tooltipContent} />
                         <Legend verticalAlign="top" height={28} />
                         <Line
                             type="monotone"
