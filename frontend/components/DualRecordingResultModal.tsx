@@ -263,92 +263,97 @@ export default function DualRecordingResultModal({
                         </div>
                     )}
 
-                    {/* Comparison table */}
-                    {comparison && comparison.cpDiff && comparison.cpDiff.length > 0 && (
-                        <div>
-                            <h3 className="text-sm font-semibold text-foreground mb-2">CP-sammenligning (Zwift vs Strava)</h3>
-                            <div className="overflow-x-auto rounded-lg border border-border">
-                                <table className="w-full text-sm text-left">
-                                    <thead className="bg-muted/20 text-xs text-muted-foreground">
-                                        <tr>
-                                            <th className="px-3 py-2">Varighed</th>
-                                            <th className="px-3 py-2 text-right">Zwift (W)</th>
-                                            <th className="px-3 py-2 text-right">Strava (W)</th>
-                                            <th className="px-3 py-2 text-right">Afvigelse</th>
-                                            <th className="px-3 py-2 text-center w-16">Grænse</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-border">
-                                        {comparison.cpDiff.map((row: CpDiffRow) => {
-                                            const isFailing = failingMetrics.includes(row.key);
-                                            return (
-                                                <tr key={row.key} className={isFailing ? 'bg-red-50 dark:bg-red-950/20' : ''}>
-                                                    <td className="px-3 py-2 font-medium">
-                                                        {row.label}
-                                                        {THRESHOLD_LABELS[row.key] && (
-                                                            <span className="ml-1 text-xs text-muted-foreground">
-                                                                ({THRESHOLD_LABELS[row.key].split('(')[1]?.replace(')', '')})
-                                                            </span>
-                                                        )}
-                                                    </td>
-                                                    <td className="px-3 py-2 text-right font-mono">
-                                                        {row.zwift != null ? Math.round(row.zwift) : '—'}
-                                                    </td>
-                                                    <td className="px-3 py-2 text-right font-mono">
-                                                        {row.strava != null ? Math.round(row.strava) : '—'}
-                                                    </td>
-                                                    <td className={`px-3 py-2 text-right font-mono ${diffColour(row.diffPct, row.key)}`}>
-                                                        {row.diffPct != null
-                                                            ? `${row.diffPct >= 0 ? '+' : ''}${row.diffPct.toFixed(1)}%`
-                                                            : '—'}
-                                                    </td>
-                                                    <td className="px-3 py-2 text-center">
-                                                        {isFailing
-                                                            ? <span className="text-red-600 font-bold">✗</span>
-                                                            : row.diffPct != null
-                                                                ? <span className="text-green-600">✓</span>
-                                                                : '—'}
-                                                    </td>
+                    {/* On large screens: CP table + avg power + thresholds left, peak profile right */}
+                    <div className="lg:grid lg:grid-cols-[1fr_1.4fr] lg:gap-6 lg:items-start space-y-4 lg:space-y-0">
+
+                        {/* Left column: table + avg power + thresholds */}
+                        <div className="space-y-4">
+                            {comparison && comparison.cpDiff && comparison.cpDiff.length > 0 && (
+                                <div>
+                                    <h3 className="text-sm font-semibold text-foreground mb-2">CP-sammenligning (Zwift vs Strava)</h3>
+                                    <div className="overflow-x-auto rounded-lg border border-border">
+                                        <table className="w-full text-sm text-left">
+                                            <thead className="bg-muted/20 text-xs text-muted-foreground">
+                                                <tr>
+                                                    <th className="px-3 py-2">Varighed</th>
+                                                    <th className="px-3 py-2 text-right">Zwift (W)</th>
+                                                    <th className="px-3 py-2 text-right">Strava (W)</th>
+                                                    <th className="px-3 py-2 text-right">Afvigelse</th>
+                                                    <th className="px-3 py-2 text-center w-16">Grænse</th>
                                                 </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    )}
+                                            </thead>
+                                            <tbody className="divide-y divide-border">
+                                                {comparison.cpDiff.map((row: CpDiffRow) => {
+                                                    const isFailing = failingMetrics.includes(row.key);
+                                                    return (
+                                                        <tr key={row.key} className={isFailing ? 'bg-red-50 dark:bg-red-950/20' : ''}>
+                                                            <td className="px-3 py-2 font-medium">
+                                                                {row.label}
+                                                                {THRESHOLD_LABELS[row.key] && (
+                                                                    <span className="ml-1 text-xs text-muted-foreground">
+                                                                        ({THRESHOLD_LABELS[row.key].split('(')[1]?.replace(')', '')})
+                                                                    </span>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-3 py-2 text-right font-mono">
+                                                                {row.zwift != null ? Math.round(row.zwift) : '—'}
+                                                            </td>
+                                                            <td className="px-3 py-2 text-right font-mono">
+                                                                {row.strava != null ? Math.round(row.strava) : '—'}
+                                                            </td>
+                                                            <td className={`px-3 py-2 text-right font-mono ${diffColour(row.diffPct, row.key)}`}>
+                                                                {row.diffPct != null
+                                                                    ? `${row.diffPct >= 0 ? '+' : ''}${row.diffPct.toFixed(1)}%`
+                                                                    : '—'}
+                                                            </td>
+                                                            <td className="px-3 py-2 text-center">
+                                                                {isFailing
+                                                                    ? <span className="text-red-600 font-bold">✗</span>
+                                                                    : row.diffPct != null
+                                                                        ? <span className="text-green-600">✓</span>
+                                                                        : '—'}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
 
-                    {/* Extended peak profile */}
-                    {streamResult && cpDiffRows.length > 0 && (
-                        <div>
-                            <h3 className="text-sm font-semibold text-foreground mb-2">Peak Profile by Duration (Extended)</h3>
-                            <ExtendedPeakProfileChart result={streamResult} cpDiff={cpDiffRows} onDurationHover={setHoveredDurationSec} />
-                        </div>
-                    )}
-
-                    {/* Average power */}
-                    {comparison?.avgPower && (
-                        <div className="rounded-lg bg-muted/10 border border-border px-4 py-3 text-sm">
-                            <div className="flex justify-between">
-                                <span className="text-muted-foreground">Gennemsnit (synkroniseret)</span>
-                                <span className="font-mono">
-                                    {comparison.avgPower.zwift != null ? `${Math.round(comparison.avgPower.zwift)}W` : '—'}
-                                    {' / '}
-                                    {comparison.avgPower.strava != null ? `${Math.round(comparison.avgPower.strava)}W` : '—'}
-                                    {comparison.avgPower.diffPct != null && (
-                                        <span className={`ml-2 ${diffColour(comparison.avgPower.diffPct, '')}`}>
-                                            ({comparison.avgPower.diffPct >= 0 ? '+' : ''}{comparison.avgPower.diffPct.toFixed(1)}%)
+                            {comparison?.avgPower && (
+                                <div className="rounded-lg bg-muted/10 border border-border px-4 py-3 text-sm">
+                                    <div className="flex justify-between">
+                                        <span className="text-muted-foreground">Gennemsnit (synkroniseret)</span>
+                                        <span className="font-mono">
+                                            {comparison.avgPower.zwift != null ? `${Math.round(comparison.avgPower.zwift)}W` : '—'}
+                                            {' / '}
+                                            {comparison.avgPower.strava != null ? `${Math.round(comparison.avgPower.strava)}W` : '—'}
+                                            {comparison.avgPower.diffPct != null && (
+                                                <span className={`ml-2 ${diffColour(comparison.avgPower.diffPct, '')}`}>
+                                                    ({comparison.avgPower.diffPct >= 0 ? '+' : ''}{comparison.avgPower.diffPct.toFixed(1)}%)
+                                                </span>
+                                            )}
                                         </span>
-                                    )}
-                                </span>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="text-xs text-muted-foreground border-t border-border pt-3">
+                                <p className="font-semibold mb-1">Grænseværdier (Zwift vs Strava):</p>
+                                <p>20 min: max 5% · 5 min: max 5,5% · 1 min: max 6% · 15 sek: max 6,5%</p>
                             </div>
                         </div>
-                    )}
 
-                    {/* Thresholds reference */}
-                    <div className="text-xs text-muted-foreground border-t border-border pt-3">
-                        <p className="font-semibold mb-1">Grænseværdier (Zwift vs Strava):</p>
-                        <p>20 min: max 5% · 5 min: max 5,5% · 1 min: max 6% · 15 sek: max 6,5%</p>
+                        {/* Right column: peak profile chart */}
+                        {streamResult && cpDiffRows.length > 0 && (
+                            <div>
+                                <h3 className="text-sm font-semibold text-foreground mb-2">Peak Profile by Duration (Extended)</h3>
+                                <ExtendedPeakProfileChart result={streamResult} cpDiff={cpDiffRows} onDurationHover={setHoveredDurationSec} />
+                            </div>
+                        )}
+
                     </div>
 
                     {/* Streams graph */}
