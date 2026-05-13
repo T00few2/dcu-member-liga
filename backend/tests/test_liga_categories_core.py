@@ -1,8 +1,6 @@
 import os
 import sys
 
-import pytest
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from services.liga_categories_core import _compute_liga_update
