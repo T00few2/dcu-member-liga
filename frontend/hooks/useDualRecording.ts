@@ -45,6 +45,7 @@ export interface DualRecordingResult {
         durationSec: number | null;
         avgWatts: number | null;
         cpCurve: Record<string, number>;
+        cpCurveSynced?: Record<string, number>;
         streams: {
             time: number[];
             watts: (number | null)[];
@@ -75,6 +76,10 @@ export interface DualRecordingResult {
         zwiftDurationSec: number | null;
         syncMethod: string;
         timestampOffsetSec: number;
+        stravaStartGapSec?: number;
+        stravaGapFraction?: number;
+        zwiftCroppedSec?: number;
+        zwiftGapExceedsLimit?: boolean;
     } | null;
     comparison: {
         cpDiff: CpDiffRow[];

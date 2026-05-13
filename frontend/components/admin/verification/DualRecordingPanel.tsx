@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     BarChart, Bar,
     XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-    ResponsiveContainer, LineChart, Line, Brush,
+    ResponsiveContainer, LineChart, Line, Brush, ReferenceArea,
 } from 'recharts';
 import type { useDualRecording } from '@/hooks/useDualRecording';
 import type {
@@ -443,6 +443,12 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
 
     if (!hasZwift && !hasStrava) return null;
 
+    const sync = result.sync;
+    const gapSec = sync?.stravaStartGapSec ?? 0;
+    const croppedSec = sync?.zwiftCroppedSec ?? 0;
+    const gapExceedsLimit = sync?.zwiftGapExceedsLimit ?? false;
+    const showGapOverlay = gapSec > 0;
+
     const hasZwiftHR   = chartData.some(d => d.zwiftHR   !== null);
     const hasStravaHR  = chartData.some(d => d.stravaHR  !== null);
     const hasZwiftCad  = chartData.some(d => d.zwiftCad  !== null);
@@ -472,11 +478,25 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
         { key: 'stravaAlt', label: 'Strava Elev',   color: '#a5b4fc', show: hasStravaAlt },
     ].filter(s => s.show);
 
+    function fmtGapLabel(sec: number, frac: number): string {
+        const m = Math.floor(sec / 60);
+        const s = sec % 60;
+        const time = m > 0 ? (s > 0 ? `${m}m ${s}s` : `${m}m`) : `${s}s`;
+        return `Strava gap: ${time} (${(frac * 100).toFixed(1)}%)`;
+    }
+
     return (
         <div className="w-full">
             {!hasZwift && hasStrava && (
                 <p className="text-xs text-amber-700 mb-2 px-1">
                     Zwift stream data is unavailable for this comparison; showing Strava stream only.
+                </p>
+            )}
+            {gapExceedsLimit && (
+                <p className="text-xs text-amber-700 mb-2 px-1">
+                    Strava recording gap ({fmtGapLabel(gapSec, sync?.stravaGapFraction ?? 0)}) exceeds
+                    the 15% threshold — Zwift stream was not cropped. Peak watt comparison may be
+                    distorted; the grey region shows the unrecorded portion.
                 </p>
             )}
             {/* Custom wrapping legend — avoids Recharts overflow on narrow screens */}
@@ -576,6 +596,25 @@ function DualStreamChart({ result }: { result: DualRecordingResult }) {
                                 stroke="#a5b4fc" dot={false} strokeWidth={1} strokeDasharray="4 2"
                                 name="Strava Elevation (m)" isAnimationActive={false}
                                 hide={hidden.has('stravaAlt')} />
+                        )}
+                        {/* Grey overlay for the portion of the Zwift stream not covered by Strava */}
+                        {showGapOverlay && (
+                            <ReferenceArea
+                                yAxisId="w"
+                                x1={0}
+                                x2={gapSec}
+                                fill={gapExceedsLimit ? '#f59e0b' : '#6b7280'}
+                                fillOpacity={0.12}
+                                strokeOpacity={0}
+                                label={{
+                                    value: croppedSec > 0
+                                        ? fmtGapLabel(gapSec, sync?.stravaGapFraction ?? 0) + ' (cropped)'
+                                        : fmtGapLabel(gapSec, sync?.stravaGapFraction ?? 0),
+                                    position: 'insideTopRight',
+                                    fontSize: 9,
+                                    fill: gapExceedsLimit ? '#b45309' : '#374151',
+                                }}
+                            />
                         )}
                     </LineChart>
                 </ResponsiveContainer>
