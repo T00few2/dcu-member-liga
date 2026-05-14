@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import {
-    ResponsiveContainer, LineChart, Line, XAxis, YAxis,
+    ResponsiveContainer, LineChart, Line, Area, XAxis, YAxis,
     CartesianGrid, Tooltip, Brush, ReferenceArea, ReferenceLine,
 } from 'recharts';
 import type { DualRecordingResult } from '@/hooks/useDualRecording';
@@ -96,7 +96,7 @@ export function RecordingStreamsSection({
     const { zwift, strava } = result;
 
     const [hidden, setHidden] = useState<Set<string>>(
-        () => new Set(['zwiftHR', 'stravaHR', 'zwiftCad', 'stravaCad', 'zwiftAlt', 'stravaAlt']),
+        () => new Set(['zwiftHR', 'stravaHR', 'zwiftCad', 'stravaCad']),
     );
 
     const toggleSeries = (dataKey: string) =>
@@ -116,7 +116,7 @@ export function RecordingStreamsSection({
         zwiftW: number | null; stravaW: number | null;
         zwiftHR: number | null; stravaHR: number | null;
         zwiftCad: number | null; stravaCad: number | null;
-        zwiftAlt: number | null; stravaAlt: number | null;
+        zwiftAlt: number | null;
     };
 
     const chartData = useMemo<ChartRow[]>(() => {
@@ -168,7 +168,6 @@ export function RecordingStreamsSection({
                 zwiftCad:  zp?.cad ?? null,
                 stravaCad: sp?.cad ?? null,
                 zwiftAlt:  zp?.alt ?? null,
-                stravaAlt: sp?.alt ?? null,
             });
         }
         return rows;
@@ -286,7 +285,6 @@ export function RecordingStreamsSection({
             zwiftCad:  hasAny('zwiftCad'),
             stravaCad: hasAny('stravaCad'),
             zwiftAlt:  hasAny('zwiftAlt'),
-            stravaAlt: hasAny('stravaAlt'),
         };
     }, [chartData, hideHeartRate]);
 
@@ -316,9 +314,7 @@ export function RecordingStreamsSection({
     const hrAxisOn = (hasSeries.zwiftHR   && !hidden.has('zwiftHR'))   ||
                      (hasSeries.stravaHR  && !hidden.has('stravaHR'))  ||
                      (hasSeries.zwiftCad  && !hidden.has('zwiftCad'))  ||
-                     (hasSeries.stravaCad && !hidden.has('stravaCad')) ||
-                     (hasSeries.zwiftAlt  && !hidden.has('zwiftAlt'))  ||
-                     (hasSeries.stravaAlt && !hidden.has('stravaAlt'));
+                     (hasSeries.stravaCad && !hidden.has('stravaCad'));
 
     const seriesMeta = [
         { key: 'zwiftW',    label: 'Zwift Power',  color: zwiftColor,  show: hasSeries.zwiftW },
@@ -327,8 +323,6 @@ export function RecordingStreamsSection({
         { key: 'stravaHR',  label: 'Strava HR',    color: '#f87171',   show: hasSeries.stravaHR },
         { key: 'zwiftCad',  label: 'Zwift Cad',    color: '#22c55e',   show: hasSeries.zwiftCad },
         { key: 'stravaCad', label: 'Strava Cad',   color: '#86efac',   show: hasSeries.stravaCad },
-        { key: 'zwiftAlt',  label: 'Zwift Elev',   color: '#6366f1',   show: hasSeries.zwiftAlt },
-        { key: 'stravaAlt', label: 'Strava Elev',  color: '#a5b4fc',   show: hasSeries.stravaAlt },
     ].filter(s => s.show);
 
     if (!hasZwift && !hasStrava) {
@@ -417,17 +411,18 @@ export function RecordingStreamsSection({
                             label={{ value: 'W', angle: -90, position: 'insideLeft', style: { fontSize: 11 } }}
                             tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }}
                         />
-                        {/* Single right axis for HR, cadence, and elevation — collapses when all toggled off */}
+                        {/* Single right axis for HR and cadence — collapses when all toggled off */}
                         <YAxis
                             yAxisId="hr"
                             orientation="right"
                             hide={!hrAxisOn}
                             width={hrAxisOn ? 40 : 0}
                             label={hrAxisOn
-                                ? { value: 'bpm/rpm/m', angle: 90, position: 'insideRight', style: { fontSize: 9 } }
+                                ? { value: 'bpm/rpm', angle: 90, position: 'insideRight', style: { fontSize: 9 } }
                                 : undefined}
                             tick={hrAxisOn ? { fontSize: 9, fill: 'var(--muted-foreground)' } : false}
                         />
+                        <YAxis yAxisId="elevBg" hide width={0} />
                         <Tooltip
                             labelFormatter={(t: number) => fmtRaceTime(Number(t))}
                             formatter={(v: unknown, name: string) =>
@@ -442,6 +437,19 @@ export function RecordingStreamsSection({
                         />
 
                         {/* ── Background overlays (rendered first so lines paint on top) ── */}
+                        {/* Zwift elevation profile as subtle shaded background */}
+                        {hasSeries.zwiftAlt && (
+                            <Area
+                                yAxisId="elevBg"
+                                type="monotone"
+                                dataKey="zwiftAlt"
+                                stroke="none"
+                                fill="#64748b"
+                                fillOpacity={0.16}
+                                isAnimationActive={false}
+                                connectNulls
+                            />
+                        )}
 
                         {/* Peak window highlights — shown when hovering the peak profile chart */}
                         {zwiftPeakWindow && (
@@ -555,20 +563,6 @@ export function RecordingStreamsSection({
                                 stroke="#86efac" dot={false} strokeWidth={1} strokeDasharray="4 2"
                                 name="Strava Cadence (rpm)" isAnimationActive={false}
                                 hide={hidden.has('stravaCad')} />
-                        )}
-
-                        {/* Elevation — shares right axis with HR / cadence */}
-                        {hasSeries.zwiftAlt && (
-                            <Line yAxisId="hr" type="monotone" dataKey="zwiftAlt"
-                                stroke="#6366f1" dot={false} strokeWidth={1.5}
-                                name="Zwift Elevation (m)" isAnimationActive={false}
-                                hide={hidden.has('zwiftAlt')} />
-                        )}
-                        {hasSeries.stravaAlt && (
-                            <Line yAxisId="hr" type="monotone" dataKey="stravaAlt"
-                                stroke="#a5b4fc" dot={false} strokeWidth={1} strokeDasharray="4 2"
-                                name="Strava Elevation (m)" isAnimationActive={false}
-                                hide={hidden.has('stravaAlt')} />
                         )}
 
                     </LineChart>

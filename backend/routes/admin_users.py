@@ -311,8 +311,61 @@ def get_user_races(user_id):
         zwift_id = str(user.zwift_id or '').strip()
 
         user_races = []
+        race_index: dict[str, dict] = {}
+        event_to_race_ids: dict[str, list[str]] = {}
+
+        def _register_race(race_doc, race_data, archive_name=None):
+            race_id = race_doc.id
+            race_entry = race_index.get(race_id)
+            if not race_entry:
+                race_entry = {
+                    'raceId': race_id,
+                    'name': race_data.get('name', ''),
+                    'date': race_data.get('date', ''),
+                    'map': race_data.get('map', ''),
+                    'archive': archive_name,
+                    'eventCategories': {},  # eventId -> [category names]
+                }
+                race_index[race_id] = race_entry
+
+            def _add_event(event_id, categories=None):
+                eid = str(event_id or '').strip()
+                if not eid:
+                    return
+                if race_id not in event_to_race_ids.get(eid, []):
+                    event_to_race_ids.setdefault(eid, []).append(race_id)
+                if categories:
+                    current = race_entry['eventCategories'].setdefault(eid, [])
+                    for cat in categories:
+                        c = str(cat or '').strip()
+                        if c and c not in current:
+                            current.append(c)
+
+            _add_event(race_data.get('eventId'))
+            for linked in race_data.get('linkedEventIds') or []:
+                _add_event(linked)
+
+            for cfg in race_data.get('eventConfiguration') or []:
+                if not isinstance(cfg, dict):
+                    continue
+                category_name = str(cfg.get('customCategory') or cfg.get('category') or '').strip()
+                cats = [category_name] if category_name else []
+                _add_event(cfg.get('eventId'), cats)
+
+            for group in race_data.get('raceGroups') or []:
+                if not isinstance(group, dict):
+                    continue
+                cats = []
+                for cat_cfg in group.get('categories') or []:
+                    if not isinstance(cat_cfg, dict):
+                        continue
+                    cat_name = str(cat_cfg.get('category') or '').strip()
+                    if cat_name:
+                        cats.append(cat_name)
+                _add_event(group.get('eventId'), cats)
 
         def _collect_from_race(race_doc, race_data, archive_name=None):
+            _register_race(race_doc, race_data, archive_name=archive_name)
             results = race_data.get('results') or {}
             for category, category_results in results.items():
                 if not isinstance(category_results, list):
@@ -355,6 +408,110 @@ def get_user_races(user_id):
             archive_name = archive_data.get('name') or archive_doc.id
             for race_doc in archive_doc.reference.collection('races').stream():
                 _collect_from_race(race_doc, race_doc.to_dict() or {}, archive_name=archive_name)
+
+        # Fallback: include race participations inferred from stored Zwift activities.
+        # This catches riders who have webhook activities linked by event ID but were not
+        # written into race.results (for example category mismatch or missing ingest).
+        existing_race_ids = {str(r.get('raceId') or '') for r in user_races}
+        existing_activity_ids = {str(r.get('activityId') or '') for r in user_races if r.get('activityId')}
+
+        user_data = user.to_dict() if hasattr(user, 'to_dict') else {}
+        connections = (user_data or {}).get('connections') or {}
+        zwift_conn = connections.get('zwift') or {}
+
+        candidate_activity_user_ids: list[str] = []
+        for candidate in (
+            zwift_conn.get('userId'),
+            user_data.get('zwiftUserId'),
+            zwift_conn.get('profileId'),
+            user_data.get('zwiftId'),
+            zwift_id,
+        ):
+            candidate_id = str(candidate or '').strip()
+            if candidate_id and candidate_id not in candidate_activity_user_ids:
+                candidate_activity_user_ids.append(candidate_id)
+
+        candidate_activity_docs = []
+        seen_activity_doc_ids = set()
+        for candidate in candidate_activity_user_ids:
+            query_values = [candidate]
+            if candidate.isdigit():
+                query_values.append(int(candidate))
+            for qv in query_values:
+                for act_doc in db.collection('zwift_activities').where('userId', '==', qv).limit(250).stream():
+                    if act_doc.id in seen_activity_doc_ids:
+                        continue
+                    seen_activity_doc_ids.add(act_doc.id)
+                    candidate_activity_docs.append(act_doc)
+
+        for act_doc in candidate_activity_docs:
+            act = act_doc.to_dict() or {}
+            raw = act.get('data') or {}
+
+            activity_id = str(act.get('activityId') or act_doc.id or '').strip()
+            if not activity_id or activity_id in existing_activity_ids:
+                continue
+
+            event_id = str(raw.get('eventId') or '').strip()
+            if not event_id:
+                continue
+
+            matched_race_ids = event_to_race_ids.get(event_id) or []
+            if not matched_race_ids:
+                continue
+
+            # Prefer current season race if both current and archive contain matching event IDs.
+            matched_race_id = sorted(
+                matched_race_ids,
+                key=lambda rid: 1 if race_index.get(rid, {}).get('archive') else 0,
+            )[0]
+            if matched_race_id in existing_race_ids:
+                continue
+
+            race_meta = race_index.get(matched_race_id) or {}
+            categories = (race_meta.get('eventCategories') or {}).get(event_id) or []
+            activity_name = str(raw.get('activityName') or '').strip()
+            activity_name_l = activity_name.lower()
+            category = ''
+            if len(categories) == 1:
+                category = categories[0]
+            elif len(categories) > 1:
+                for cat in categories:
+                    if str(cat).lower() in activity_name_l:
+                        category = cat
+                        break
+
+            if not category and activity_name:
+                m = re.search(r'race:\s*([A-Za-z]+)', activity_name, re.IGNORECASE)
+                if m:
+                    parsed_cat = m.group(1).strip().title()
+                    if not categories or parsed_cat in categories:
+                        category = parsed_cat
+
+            user_races.append({
+                'raceId': matched_race_id,
+                'name': race_meta.get('name', ''),
+                'date': race_meta.get('date', ''),
+                'map': race_meta.get('map', ''),
+                'category': category,
+                'archive': race_meta.get('archive'),
+                'finishTime': raw.get('totalDurationInMilliSec') or raw.get('movingTimeInMs'),
+                'finishRank': None,
+                'finishPoints': None,
+                'sprintPoints': None,
+                'totalPoints': None,
+                'raceStatus': 'ACT',
+                'disqualified': False,
+                'declassified': False,
+                'flaggedSandbagging': False,
+                'flaggedCheating': False,
+                'activityId': activity_id,
+                'sprintData': {},
+                'sprintDetails': {},
+                'criticalP': {},
+            })
+            existing_race_ids.add(matched_race_id)
+            existing_activity_ids.add(activity_id)
 
         user_races.sort(key=lambda r: r.get('date') or '', reverse=True)
         return jsonify({'races': user_races}), 200
