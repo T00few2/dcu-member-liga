@@ -308,7 +308,7 @@ def get_user_races(user_id):
 
         # Race results are keyed by zwiftId field, not the Firestore document ID
         # (document ID may be a Firebase auth UID for older accounts)
-        zwift_id = str(user.zwift_id or user_id)
+        zwift_id = str(user.zwift_id or '').strip()
 
         user_races = []
 
@@ -320,7 +320,7 @@ def get_user_races(user_id):
                 for rider in category_results:
                     if not isinstance(rider, dict):
                         continue
-                    if str(rider.get('zwiftId', '')) == zwift_id:
+                    if str(rider.get('zwiftId') or '').strip() == zwift_id:
                         user_races.append({
                             'raceId': race_doc.id,
                             'name': race_data.get('name', ''),
