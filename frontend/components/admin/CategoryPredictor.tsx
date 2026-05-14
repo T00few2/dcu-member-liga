@@ -763,7 +763,7 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
       <div className="bg-card border border-border rounded-lg p-6">
         <h2 className="text-xl font-semibold text-foreground mb-1">Predict &amp; Assign</h2>
         <p className="text-sm text-muted-foreground mb-4">
-          Locked riders are excluded from the dropdown. Selecting a rider pre-fills their Zwift power data.
+          All riders are shown in the dropdown, including locked riders. Selecting a rider pre-fills their Zwift power data.
           Switch to <em>Strava</em> and click <strong>Load</strong> to use Strava 90-day power instead — useful
           for riders who train outdoors but race on Zwift. All fields are editable; the prediction updates live.
           <br />
@@ -794,7 +794,6 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
             <option value="">— select a rider —</option>
             {participants
               .filter(p => {
-                if (p.ligaCategory?.locked) return false;
                 if (showUnassignedOnly && p.ligaCategory?.category) return false;
                 return true;
               })

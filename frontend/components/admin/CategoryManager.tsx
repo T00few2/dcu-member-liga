@@ -105,6 +105,7 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
   const [assigning, setAssigning] = useState(false);
   const [gracePeriod, setGracePeriod] = useState(35);
   const [filter, setFilter] = useState<FilterMode>('all');
+  const [search, setSearch] = useState('');
   const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   // Category configuration state
@@ -271,7 +272,15 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
   const overCount = assigned.filter(r => r.ligaCategory?.status === 'over').length;
   const graceCount = assigned.filter(r => r.ligaCategory?.status === 'grace').length;
   const okCount = assigned.filter(r => r.ligaCategory?.status === 'ok').length;
-  const filtered = filter === 'all' ? riders : riders.filter(r => r.ligaCategory?.status === filter);
+  const searchTerm = search.trim().toLowerCase();
+  const statusFiltered = filter === 'all' ? riders : riders.filter(r => r.ligaCategory?.status === filter);
+  const filtered = searchTerm
+    ? statusFiltered.filter(r =>
+        r.name.toLowerCase().includes(searchTerm) ||
+        r.club.toLowerCase().includes(searchTerm) ||
+        r.zwiftId.toLowerCase().includes(searchTerm)
+      )
+    : statusFiltered;
 
   const ridersWithRating = riders.filter(r => !isNaN(parseFloat(String(r.effectiveRating))));
   const maxInAnyBucket = Math.max(
@@ -473,6 +482,13 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
               />
               <span className="text-xs">pts</span>
             </label>
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search rider, club, or Zwift ID"
+              className="w-64 max-w-full px-3 py-1 border border-input rounded bg-background text-foreground text-sm"
+            />
             <div className="flex gap-2 flex-wrap">
               {(['all', 'grace', 'over'] as FilterMode[]).map(f => (
                 <button
@@ -520,7 +536,7 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
                     <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                       {riders.length === 0
                         ? 'No categories assigned yet. Run assignment first.'
-                        : 'No riders match this filter.'}
+                        : 'No riders match the current filter/search.'}
                     </td>
                   </tr>
                 ) : (
