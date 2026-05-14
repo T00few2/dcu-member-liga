@@ -435,19 +435,6 @@ export default function DualRecordingPanel({ riderId, hook, children }: Props) {
                             <CpCurveChart result={result} />
                         </div>
 
-                        {/* Extended peak profile chart */}
-                        <div>
-                            <h4 className="text-sm font-semibold mb-2 text-card-foreground">
-                                Peak Profile by Duration (Extended)
-                            </h4>
-                            <ExtendedPeakProfileChart result={result} onDurationHover={setHoveredDurationSec} />
-                            {hoveredDurationSec != null && (
-                                <p className="text-xs text-green-700 font-mono mt-1 px-1">
-                                    ▶ Hover: {hoveredDurationSec}s
-                                </p>
-                            )}
-                        </div>
-
                         {/* Stats table */}
                         <div>
                             <h4 className="text-sm font-semibold mb-2 text-card-foreground">
@@ -459,6 +446,14 @@ export default function DualRecordingPanel({ riderId, hook, children }: Props) {
                                 </span>
                             </h4>
                             <StatsTable result={result} />
+                        </div>
+
+                        {/* Extended peak profile chart */}
+                        <div>
+                            <h4 className="text-sm font-semibold mb-2 text-card-foreground">
+                                Peak Profile by Duration (Extended)
+                            </h4>
+                            <ExtendedPeakProfileChart result={result} onDurationHover={setHoveredDurationSec} />
                         </div>
 
                         {/* Dual stream chart */}

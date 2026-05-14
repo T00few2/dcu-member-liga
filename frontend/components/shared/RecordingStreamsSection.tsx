@@ -337,33 +337,6 @@ export function RecordingStreamsSection({
 
     return (
         <div className="w-full">
-            {/* Similarity check panel */}
-            {similarity && (
-                <div className={`mb-2 rounded-md border px-3 py-2 text-xs ${
-                    similarity.suspicious
-                        ? 'border-amber-300 bg-amber-50 text-amber-900'
-                        : 'border-border bg-muted/20 text-muted-foreground'
-                }`}>
-                    <div className="font-semibold mb-1">Power similarity check</div>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                        <div>Mean |diff|: <span className="font-mono">{similarity.meanAbsDiff.toFixed(1)} W</span></div>
-                        <div>P95 diff: <span className="font-mono">{similarity.p95Diff.toFixed(1)} W</span></div>
-                        <div>Max diff: <span className="font-mono">{similarity.maxDiff.toFixed(1)} W</span></div>
-                        <div>Samples: <span className="font-mono">{similarity.samples}</span></div>
-                        <div>Overlap: <span className="font-mono">{Math.round(similarity.overlapSec)}s</span></div>
-                        <div>Std(diff): <span className="font-mono">{similarity.stdDiff.toFixed(2)} W</span></div>
-                        <div>Std(Δdiff): <span className="font-mono">{similarity.stdDeltaDiff.toFixed(2)} W</span></div>
-                        <div>Near-identical (&lt;={IDENTICAL_TOLERANCE_W}W): <span className="font-mono">{similarity.nearIdenticalPct.toFixed(1)}%</span></div>
-                        <div>Longest near-identical run: <span className="font-mono">{Math.round(similarity.longestNearIdenticalRunSec)}s</span></div>
-                    </div>
-                    <div className="mt-1">
-                        {similarity.suspicious
-                            ? `Suspiciously similar power traces (${similarity.suspiciousByVolatility ? 'volatility' : 'run-length'} trigger). This can indicate shared recording source.`
-                            : 'Similarity level looks plausible for independent recordings.'}
-                    </div>
-                </div>
-            )}
-
             {/* Axis subtitle */}
             <div className="text-[11px] text-muted-foreground mb-1 px-1">
                 t=0 = Zwift recording start · Strava aligned by power MSE · click legend to toggle
@@ -405,14 +378,7 @@ export function RecordingStreamsSection({
                 </p>
             )}
 
-            {/* Peak highlight debug info */}
-            {highlightDurationSec != null && (
-                <p className="text-xs text-green-700 font-mono mb-1 px-1">
-                    ▶ Peak {highlightDurationSec}s —{' '}
-                    Zwift: {zwiftPeakWindow ? `${zwiftPeakWindow.startSec}–${zwiftPeakWindow.endSec}s` : 'no window'}{' '}
-                    · Strava: {stravaPeakWindow ? `${stravaPeakWindow.startSec}–${stravaPeakWindow.endSec}s` : 'no window'}
-                </p>
-            )}
+
 
             {/* Clickable legend */}
             <div className="flex flex-wrap gap-x-4 gap-y-1 mb-2 px-1">
@@ -608,6 +574,33 @@ export function RecordingStreamsSection({
                     </LineChart>
                 </ResponsiveContainer>
             </div>
+
+            {/* Similarity check panel — shown below the chart */}
+            {similarity && (
+                <div className={`mt-3 rounded-md border px-3 py-2 text-xs ${
+                    similarity.suspicious
+                        ? 'border-amber-300 bg-amber-50 text-amber-900'
+                        : 'border-border bg-muted/20 text-muted-foreground'
+                }`}>
+                    <div className="font-semibold mb-1">Power similarity check</div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                        <div>Mean |diff|: <span className="font-mono">{similarity.meanAbsDiff.toFixed(1)} W</span></div>
+                        <div>P95 diff: <span className="font-mono">{similarity.p95Diff.toFixed(1)} W</span></div>
+                        <div>Max diff: <span className="font-mono">{similarity.maxDiff.toFixed(1)} W</span></div>
+                        <div>Samples: <span className="font-mono">{similarity.samples}</span></div>
+                        <div>Overlap: <span className="font-mono">{Math.round(similarity.overlapSec)}s</span></div>
+                        <div>Std(diff): <span className="font-mono">{similarity.stdDiff.toFixed(2)} W</span></div>
+                        <div>Std(Δdiff): <span className="font-mono">{similarity.stdDeltaDiff.toFixed(2)} W</span></div>
+                        <div>Near-identical (&lt;={IDENTICAL_TOLERANCE_W}W): <span className="font-mono">{similarity.nearIdenticalPct.toFixed(1)}%</span></div>
+                        <div>Longest near-identical run: <span className="font-mono">{Math.round(similarity.longestNearIdenticalRunSec)}s</span></div>
+                    </div>
+                    <div className="mt-1">
+                        {similarity.suspicious
+                            ? `Suspiciously similar power traces (${similarity.suspiciousByVolatility ? 'volatility' : 'run-length'} trigger). This can indicate shared recording source.`
+                            : 'Similarity level looks plausible for independent recordings.'}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
