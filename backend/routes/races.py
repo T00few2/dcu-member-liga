@@ -2,6 +2,8 @@ from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
 from extensions import db, get_zwift_service, get_zwift_game_service, strava_service
 from services.results_processor import ResultsProcessor
+from services.results.constants import CATEGORY_FILTER_ALL, FETCH_MODE_FINISHERS
+from services.results.errors import ResultsProcessingError
 from services.category_engine import _effective_cat_name, build_liga_category, effective_rating
 from services.schema_validation import log_schema_issues, validate_race_doc, with_schema_version
 from datetime import datetime
@@ -500,19 +502,20 @@ def refresh_results(race_id):
         processor = ResultsProcessor(db, zwift_service, game_service)
         
         req_data = request.get_json(silent=True) or {}
-        fetch_mode = req_data.get('source', 'finishers')
-        filter_registered = req_data.get('filterRegistered', False)
-        category_filter = req_data.get('categoryFilter', 'All')
+        fetch_mode = str(req_data.get('source', FETCH_MODE_FINISHERS) or FETCH_MODE_FINISHERS).strip().lower()
+        category_filter = req_data.get('categoryFilter', CATEGORY_FILTER_ALL)
         
         results = processor.process_race_results(
             race_id, 
             fetch_mode=fetch_mode, 
-            filter_registered=filter_registered,
             category_filter=category_filter
         )
         
         _lock_categories_for_race(race_id)
         return jsonify({'message': f'Results calculated (Mode: {fetch_mode}, Cat: {category_filter})', 'results': results}), 200
+    except ResultsProcessingError as e:
+        logger.error(f"Results Processing Domain Error: {e}")
+        return jsonify({'message': str(e)}), 500
     except Exception as e:
         logger.error(f"Results Processing Error: {e}")
         return jsonify({'message': str(e)}), 500

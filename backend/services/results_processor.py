@@ -8,6 +8,14 @@ from typing import Any
 from services.zwift import ZwiftService
 from services.zwift_game import ZwiftGameService
 from services.results.race_scorer import RaceScorer
+from services.results.constants import (
+    CATEGORY_FILTER_ALL,
+    FETCH_MODE_FINISHERS,
+    FETCH_MODE_LIVE,
+    RACE_STATUS_DNF,
+    RACE_STATUS_WC,
+)
+from services.results.errors import EventInfoFetchError, ResultsProcessingError, StartTimeParseError
 from services.results.league_engine import LeagueEngine
 from services.results.zwift_fetcher import ZwiftFetcher
 from services.category_config import CategoryConfigResolver
@@ -37,20 +45,18 @@ class ResultsProcessor:
     def process_race_results(
         self,
         race_id: str,
-        fetch_mode: str = 'finishers',
-        filter_registered: bool = True,
+        fetch_mode: str = FETCH_MODE_FINISHERS,
         category_filter: str | None = None,
     ) -> RaceResults:
         """
         Main entry point to process results for a given race ID (Firestore ID).
-        fetch_mode: 'finishers' (default), 'joined', 'signed_up'
-        filter_registered: boolean, if True only include users in DB
+        fetch_mode: 'finishers' (default) or 'live'
         category_filter: string, e.g. 'A', 'B' or None/'All'
         """
         if not self.db:
             raise Exception("Database not available")
 
-        logger.info(f"Processing results for race: {race_id} (Mode: {fetch_mode}, Filter: {filter_registered}, Cat: {category_filter})")
+        logger.info(f"Processing results for race: {race_id} (Mode: {fetch_mode}, Cat: {category_filter})")
 
         # 1. Fetch Race Config
         race_doc = self.db.collection('races').document(race_id).get()
@@ -152,7 +158,6 @@ class ResultsProcessor:
                 scorer,
                 all_results,
                 fetch_mode,
-                filter_registered,
                 category_filter
             )
             if ok:
@@ -293,7 +298,6 @@ class ResultsProcessor:
         scorer: RaceScorer,
         all_results: RaceResults,
         fetch_mode: str,
-        filter_registered: bool,
         category_filter: str | None,
     ) -> bool:
         event_id = source.get('id')
@@ -308,34 +312,19 @@ class ResultsProcessor:
             return False
 
         logger.info(f"Processing Event Source: {event_id} (Target Cat: {custom_category or 'Auto'})")
+        try:
+            subgroups = self._resolve_subgroups_for_source(
+                source=source,
+                race_data=race_data,
+                event_id=event_id,
+                event_secret=event_secret,
+                direct_subgroup_id=direct_subgroup_id,
+                custom_category=custom_category,
+            )
+        except ResultsProcessingError as e:
+            logger.error("Failed to resolve subgroups for event source %s: %s", event_id, e)
+            return False
 
-        if direct_subgroup_id:
-            subgroups = [{
-                "id": direct_subgroup_id,
-                "eventName": race_data.get("name", ""),
-                "subgroupLabel": custom_category or "All",
-                "routeId": race_data.get("routeId"),
-                "laps": race_data.get("laps"),
-                "eventSubgroupStart": source.get("startTime") or race_data.get("date"),
-            }]
-        else:
-            try:
-                event_info = self.zwift_fetcher.get_event_info(event_id, event_secret)
-            except Exception as e:
-                logger.error(f"Failed to fetch event info for {event_id}: {e}")
-                return False
-            subgroups = self.zwift_fetcher.extract_subgroups(event_info)
-
-            # If this source targets one custom category but subgroupId was not
-            # persisted yet, restrict to the matching subgroup label when present.
-            if custom_category:
-                wanted = str(custom_category).strip().upper()
-                matched = [
-                    sg for sg in subgroups
-                    if str(sg.get("subgroupLabel") or "").strip().upper() == wanted
-                ]
-                if matched:
-                    subgroups = matched
         logger.info(f"  Found {len(subgroups)} subgroups.")
         grouped_subgroup_category_map = self._build_grouped_subgroup_category_map(subgroups, configured_categories)
 
@@ -349,83 +338,51 @@ class ResultsProcessor:
             category_label = subgroup['subgroupLabel']
             effective_category = custom_category if custom_category else category_label
 
-            if category_filter and category_filter != 'All':
-                if grouped_mode:
-                    if category_filter not in configured_categories:
-                        continue
-                elif custom_category:
-                    if category_filter != custom_category:
-                        continue
-                else:
-                    if category_label != category_filter:
-                        continue
+            if not self._matches_category_filter(
+                category_filter=category_filter,
+                grouped_mode=grouped_mode,
+                configured_categories=configured_categories,
+                custom_category=custom_category,
+                category_label=category_label,
+            ):
+                continue
 
             subgroup_id = subgroup['id']
             start_time_str = subgroup['eventSubgroupStart']
             subgroup_expected_category = grouped_subgroup_category_map.get(str(subgroup_id))
 
             try:
-                if isinstance(start_time_str, datetime):
-                    start_time = start_time_str
-                else:
-                    raw = str(start_time_str or "")
-                    if raw.endswith("Z"):
-                        try:
-                            start_time = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-                        except ValueError:
-                            clean_time = raw.replace('Z', '+0000')
-                            start_time = datetime.strptime(clean_time, '%Y-%m-%dT%H:%M:%S.%f%z')
-                    elif "T" in raw:
-                        dt_format = '%Y-%m-%dT%H:%M:%S' if len(raw) >= 19 else '%Y-%m-%dT%H:%M'
-                        start_time = datetime.strptime(raw[:19], dt_format)
-                    else:
-                        start_time = datetime.strptime(race_data.get('date', ''), '%Y-%m-%d')
-            except Exception as e:
+                start_time = self._parse_subgroup_start_time(start_time_str, race_data.get('date', ''))
+            except StartTimeParseError as e:
                 logger.error(f"Time parse error: {e}")
                 continue
 
             # Determine Configs (must happen before fetch_finishers so sprint IDs
             # can be forwarded for accurate finish-segment identification)
-            category_sprints = source.get('sprints', [])
-            category_segment_type = source.get('segmentType')
-            if grouped_mode:
-                category_sprints = grouped_sprints_union
-
-            if not custom_category and category_label in category_config_map:
-                cat_cfg = category_config_map[category_label]
-                if cat_cfg.get('sprints'):
-                    category_sprints = cat_cfg['sprints']
-                    logger.info(f"    Using per-category sprints for {category_label}: {len(category_sprints)} sprints")
-                if cat_cfg.get('segmentType'):
-                    category_segment_type = cat_cfg['segmentType']
+            category_sprints, category_segment_type = self._resolve_subgroup_category_config(
+                source=source,
+                grouped_mode=grouped_mode,
+                grouped_sprints_union=grouped_sprints_union,
+                custom_category=custom_category,
+                category_label=category_label,
+                category_config_map=category_config_map,
+            )
 
             # Build ordered route segment list for finish-line identification.
             # The finish segment = last non-sprint segment in route chronology.
-            route_segments: list[dict[str, Any]] = []
-            route_id = race_data.get('routeId') or subgroup.get('routeId')
-            route_laps = subgroup.get('laps') or race_data.get('laps') or 1
-            if route_id:
-                try:
-                    route_segs = self.game.get_event_segments(str(route_id), int(route_laps))
-                    route_segments = [s for s in route_segs if isinstance(s, dict)]
-                except Exception as e:
-                    logger.warning(f"Could not resolve route segments for {route_id}: {e}")
-            all_crossings_raw: list[dict[str, Any]] | None = None
-            should_prefetch_crossings = (
-                fetch_mode == 'finishers'
-                or (fetch_mode == 'joined' and bool(category_sprints))
+            route_segments = self._resolve_route_segments(race_data, subgroup)
+            all_crossings_raw = self._prefetch_subgroup_crossings_if_needed(
+                subgroup_id=subgroup_id,
+                event_secret=event_secret,
+                fetch_mode=fetch_mode,
+                category_sprints=category_sprints,
             )
-            if should_prefetch_crossings:
-                all_crossings_raw = self.zwift_fetcher.fetch_subgroup_crossings(
-                    subgroup_id, event_secret
-                )
 
             # Fetch Finishers using ZwiftFetcher
             finishers = self.zwift_fetcher.fetch_finishers(
                 subgroup_id,
                 event_secret,
                 fetch_mode,
-                filter_registered,
                 registered_riders,
                 route_segments=route_segments,
                 configured_sprints=category_sprints,
@@ -435,7 +392,7 @@ class ResultsProcessor:
 
             # Fetch Segment Efforts using ZwiftFetcher
             segment_efforts: dict[str | int, Any] = {}
-            if fetch_mode in ['finishers', 'joined'] and category_sprints:
+            if fetch_mode in [FETCH_MODE_FINISHERS, FETCH_MODE_LIVE] and category_sprints:
                 end_time = start_time + timedelta(hours=3)
                 unique_segment_ids = set(s['id'] for s in category_sprints)
                 segment_efforts = self.zwift_fetcher.fetch_segment_efforts(
@@ -473,7 +430,7 @@ class ResultsProcessor:
                         and registered_category in configured_categories
                     ):
                         wc_finisher = dict(finisher)
-                        wc_finisher['raceStatus'] = 'WC'
+                        wc_finisher['raceStatus'] = RACE_STATUS_WC
                         grouped_finishers_by_category[registered_category].append(wc_finisher)
                         continue
                     mapped_category = self._resolve_grouped_category(
@@ -502,7 +459,7 @@ class ResultsProcessor:
 
         if grouped_mode:
             for category_name in configured_categories:
-                if category_filter and category_filter != 'All' and category_name != category_filter:
+                if category_filter and category_filter != CATEGORY_FILTER_ALL and category_name != category_filter:
                     continue
                 riders = self._dedupe_finishers(grouped_finishers_by_category.get(category_name, []))
                 if not riders:
@@ -520,6 +477,149 @@ class ResultsProcessor:
             all_results[custom_category] = processed_batch
             logger.info(f"    Saved {len(processed_batch)} merged results to {custom_category}")
         return True
+
+    def _resolve_subgroups_for_source(
+        self,
+        source: dict[str, Any],
+        race_data: dict[str, Any],
+        event_id: str | None,
+        event_secret: str | None,
+        direct_subgroup_id: str | None,
+        custom_category: str | None,
+    ) -> list[dict[str, Any]]:
+        if direct_subgroup_id:
+            return [{
+                "id": direct_subgroup_id,
+                "eventName": race_data.get("name", ""),
+                "subgroupLabel": custom_category or "All",
+                "routeId": race_data.get("routeId"),
+                "laps": race_data.get("laps"),
+                "eventSubgroupStart": source.get("startTime") or race_data.get("date"),
+            }]
+
+        try:
+            event_info = self.zwift_fetcher.get_event_info(event_id, event_secret)
+        except Exception as e:
+            raise EventInfoFetchError(
+                f"Failed to fetch event info for {event_id}: {e}",
+                context={
+                    "event_id": event_id,
+                    "has_event_secret": bool(event_secret),
+                    "custom_category": custom_category,
+                },
+            ) from e
+
+        subgroups = self.zwift_fetcher.extract_subgroups(event_info)
+        # If this source targets one custom category but subgroupId was not
+        # persisted yet, restrict to the matching subgroup label when present.
+        if custom_category:
+            wanted = str(custom_category).strip().upper()
+            matched = [
+                sg for sg in subgroups
+                if str(sg.get("subgroupLabel") or "").strip().upper() == wanted
+            ]
+            if matched:
+                subgroups = matched
+        return subgroups
+
+    def _matches_category_filter(
+        self,
+        category_filter: str | None,
+        grouped_mode: bool,
+        configured_categories: list[str],
+        custom_category: str | None,
+        category_label: str,
+    ) -> bool:
+        if not category_filter or category_filter == CATEGORY_FILTER_ALL:
+            return True
+        if grouped_mode:
+            return category_filter in configured_categories
+        if custom_category:
+            return category_filter == custom_category
+        return category_label == category_filter
+
+    def _parse_subgroup_start_time(
+        self,
+        start_time_value: datetime | str | None,
+        fallback_race_date: str,
+    ) -> datetime:
+        try:
+            if isinstance(start_time_value, datetime):
+                return start_time_value
+
+            raw = str(start_time_value or "")
+            if raw.endswith("Z"):
+                try:
+                    return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                except ValueError:
+                    clean_time = raw.replace('Z', '+0000')
+                    return datetime.strptime(clean_time, '%Y-%m-%dT%H:%M:%S.%f%z')
+            if "T" in raw:
+                dt_format = '%Y-%m-%dT%H:%M:%S' if len(raw) >= 19 else '%Y-%m-%dT%H:%M'
+                return datetime.strptime(raw[:19], dt_format)
+            return datetime.strptime(fallback_race_date, '%Y-%m-%d')
+        except Exception as e:
+            raise StartTimeParseError(
+                f"Could not parse subgroup start time '{start_time_value}'",
+                context={
+                    "start_time_value": start_time_value,
+                    "fallback_race_date": fallback_race_date,
+                },
+            ) from e
+
+    def _resolve_subgroup_category_config(
+        self,
+        source: dict[str, Any],
+        grouped_mode: bool,
+        grouped_sprints_union: list[dict[str, Any]],
+        custom_category: str | None,
+        category_label: str,
+        category_config_map: dict[str, Any],
+    ) -> tuple[list[dict[str, Any]], Any]:
+        category_sprints = source.get('sprints', [])
+        category_segment_type = source.get('segmentType')
+        if grouped_mode:
+            category_sprints = grouped_sprints_union
+
+        if not custom_category and category_label in category_config_map:
+            cat_cfg = category_config_map[category_label]
+            if cat_cfg.get('sprints'):
+                category_sprints = cat_cfg['sprints']
+                logger.info(f"    Using per-category sprints for {category_label}: {len(category_sprints)} sprints")
+            if cat_cfg.get('segmentType'):
+                category_segment_type = cat_cfg['segmentType']
+        return category_sprints, category_segment_type
+
+    def _resolve_route_segments(
+        self,
+        race_data: dict[str, Any],
+        subgroup: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        route_segments: list[dict[str, Any]] = []
+        route_id = race_data.get('routeId') or subgroup.get('routeId')
+        route_laps = subgroup.get('laps') or race_data.get('laps') or 1
+        if route_id:
+            try:
+                route_segs = self.game.get_event_segments(str(route_id), int(route_laps))
+                route_segments = [s for s in route_segs if isinstance(s, dict)]
+            except Exception as e:
+                logger.warning(f"Could not resolve route segments for {route_id}: {e}")
+        return route_segments
+
+    def _prefetch_subgroup_crossings_if_needed(
+        self,
+        subgroup_id: str,
+        event_secret: str,
+        fetch_mode: str,
+        category_sprints: list[dict[str, Any]],
+    ) -> list[dict[str, Any]] | None:
+        should_prefetch_crossings = (
+            fetch_mode == FETCH_MODE_FINISHERS
+            or (fetch_mode == FETCH_MODE_LIVE and bool(category_sprints))
+        )
+        if not should_prefetch_crossings:
+            return None
+        return self.zwift_fetcher.fetch_subgroup_crossings(subgroup_id, event_secret)
 
     def _get_category_config(self, race_data: dict[str, Any], category: str) -> RaceConfig:
         """Build a RaceConfig for a category, delegating to CategoryConfigResolver."""
@@ -673,7 +773,7 @@ class ResultsProcessor:
                     'zwiftId': canonical_id,
                     'name': profile.get('name') or canonical_id,
                     'finishTime': 0,
-                    'raceStatus': 'DNF',
+                    'raceStatus': RACE_STATUS_DNF,
                     'flaggedCheating': False,
                     'flaggedSandbagging': False,
                     'criticalP': {},

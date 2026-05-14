@@ -4,6 +4,7 @@ from collections import defaultdict
 from typing import Any
 
 from models import RaceConfig, RiderResult, SprintConfig
+from services.results.constants import RACE_STATUS_DNF, RACE_STATUS_FIN, RACE_STATUS_WC
 
 
 class RaceScorer:
@@ -102,10 +103,10 @@ class RaceScorer:
         # Also clear segment details so UI shows '-' across sprint/point columns.
         for rider in active_riders:
             if rider.get('finishTime', 0) > 0:
-                rider['raceStatus'] = str(rider.get('raceStatus') or 'FIN')
+                rider['raceStatus'] = str(rider.get('raceStatus') or RACE_STATUS_FIN)
                 continue
-            if str(rider.get('raceStatus') or '').upper() != 'WC':
-                rider['raceStatus'] = 'DNF'
+            if str(rider.get('raceStatus') or '').upper() != RACE_STATUS_WC:
+                rider['raceStatus'] = RACE_STATUS_DNF
             rider['finishRank'] = 0
             rider['finishPoints'] = 0
             rider['sprintPoints'] = 0

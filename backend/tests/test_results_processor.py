@@ -1,7 +1,7 @@
 """
 Unit tests for ResultsProcessor using mocked Firestore and Zwift services.
 
-Run with:  pytest backend/tests/test_results_processor.py -v
+Run with:  conda run -n py311 python -m pytest backend/tests/test_results_processor.py -v
 """
 
 import sys
@@ -24,6 +24,13 @@ for _s in _STUBS:
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import pytest
+
+from services.results.constants import (
+    CATEGORY_FILTER_ALL,
+    FETCH_MODE_FINISHERS,
+    FETCH_MODE_LIVE,
+)
+from services.results.errors import EventInfoFetchError
 
 
 # ---------------------------------------------------------------------------
@@ -69,6 +76,45 @@ def make_rider_data(zwift_id, finish_time=3600000):
         'totalPoints': 0,
         'sprintData': {},
     }
+
+
+def build_process_results_db(race_data, users=None, settings=None):
+    db = MagicMock()
+
+    race_doc = mock_doc(race_data.get('id', 'race1'), race_data)
+    race_doc_ref = MagicMock()
+    race_doc_ref.get.return_value = race_doc
+    race_doc_ref.update = MagicMock()
+
+    races_collection = MagicMock()
+    races_collection.document.return_value = race_doc_ref
+
+    league_settings = settings if settings is not None else {
+        'finishPoints': [10, 8, 6],
+        'sprintPoints': [3, 2, 1],
+    }
+    settings_doc = mock_doc('settings', league_settings)
+    league_doc_ref = MagicMock()
+    league_doc_ref.get.return_value = settings_doc
+    league_collection = MagicMock()
+    league_collection.document.return_value = league_doc_ref
+
+    users_collection = MagicMock()
+    users_collection.stream.return_value = iter(users or [])
+
+    def collection_side_effect(name):
+        if name == 'races':
+            return races_collection
+        if name == 'league':
+            return league_collection
+        if name == 'users':
+            return users_collection
+        other = MagicMock()
+        other.stream.return_value = iter([])
+        return other
+
+    db.collection.side_effect = collection_side_effect
+    return db
 
 
 # ---------------------------------------------------------------------------
@@ -245,3 +291,117 @@ class TestCalculateLeagueStandings:
         standings = rp.calculate_league_standings()
         # Basic structure check — the engine assigns league points.
         assert isinstance(standings, dict)
+
+
+class TestProcessRaceResultsBranching:
+    @pytest.mark.parametrize(
+        "event_mode,race_patch,expected_sources",
+        [
+            (
+                "grouped",
+                {
+                    'raceGroups': [
+                        {'eventId': 'g-1', 'eventSecret': 's1', 'categories': []},
+                        {'eventId': 'g-2', 'eventSecret': 's2', 'categories': []},
+                    ],
+                },
+                2,
+            ),
+            (
+                "multi",
+                {
+                    'eventConfiguration': [
+                        {'eventId': 'm-1', 'subgroupId': 'sg-1', 'customCategory': 'A', 'eventSecret': 's1'},
+                        {'eventId': 'm-2', 'subgroupId': 'sg-2', 'customCategory': 'B', 'eventSecret': 's2'},
+                    ],
+                },
+                2,
+            ),
+        ],
+    )
+    def test_builds_expected_event_sources_per_mode(self, event_mode, race_patch, expected_sources):
+        from services.results_processor import ResultsProcessor
+
+        race_data = make_race_data()
+        race_data.update({'eventMode': event_mode, **race_patch})
+        db = build_process_results_db(race_data)
+
+        rp = ResultsProcessor(db, MagicMock(), MagicMock())
+        rp._process_event_source = MagicMock(return_value=True)
+        rp.save_league_standings = MagicMock(return_value={})
+
+        rp.process_race_results(
+            race_data['id'],
+            fetch_mode=FETCH_MODE_FINISHERS,
+            category_filter=CATEGORY_FILTER_ALL,
+        )
+
+        assert rp._process_event_source.call_count == expected_sources
+
+    @pytest.mark.parametrize(
+        "fetch_mode,category_filter",
+        [
+            (FETCH_MODE_FINISHERS, CATEGORY_FILTER_ALL),
+            (FETCH_MODE_LIVE, "A"),
+        ],
+    )
+    def test_forwards_fetch_mode_and_category_filter_to_source_processor(
+        self,
+        fetch_mode,
+        category_filter,
+    ):
+        from services.results_processor import ResultsProcessor
+
+        race_data = make_race_data()
+        race_data.update({
+            'eventMode': 'multi',
+            'eventConfiguration': [
+                {'eventId': 'm-1', 'subgroupId': 'sg-1', 'customCategory': 'A', 'eventSecret': 's1'},
+            ],
+        })
+        db = build_process_results_db(race_data)
+
+        rp = ResultsProcessor(db, MagicMock(), MagicMock())
+        rp._process_event_source = MagicMock(return_value=True)
+        rp.save_league_standings = MagicMock(return_value={})
+
+        rp.process_race_results(
+            race_data['id'],
+            fetch_mode=fetch_mode,
+            category_filter=category_filter,
+        )
+
+        assert rp._process_event_source.call_count == 1
+        call = rp._process_event_source.call_args
+        # Positional args: source, race_data, registered_riders, scorer, all_results,
+        # fetch_mode, category_filter
+        assert call.args[5] == fetch_mode
+        assert call.args[6] == category_filter
+
+    def test_process_event_source_returns_false_on_event_info_fetch_error(self):
+        from services.results_processor import ResultsProcessor
+
+        rp = ResultsProcessor(MagicMock(), MagicMock(), MagicMock())
+        rp.zwift_fetcher.get_event_info = MagicMock(
+            side_effect=EventInfoFetchError("bad event lookup")
+        )
+
+        source = {
+            'id': 'evt-1',
+            'secret': 's1',
+            'customCategory': None,
+            'categoryConfigMap': {},
+            'groupedMode': False,
+            'sprints': [],
+            'segmentType': None,
+        }
+        ok = rp._process_event_source(
+            source=source,
+            race_data={'name': 'Race', 'date': '2026-05-01'},
+            registered_riders={},
+            scorer=MagicMock(),
+            all_results={},
+            fetch_mode=FETCH_MODE_FINISHERS,
+            category_filter=CATEGORY_FILTER_ALL,
+        )
+        assert ok is False

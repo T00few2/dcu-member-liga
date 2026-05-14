@@ -5,6 +5,13 @@ from datetime import datetime
 from typing import Any
 
 from models import RiderResult
+from services.results.constants import (
+    FETCH_MODE_FINISHERS,
+    FETCH_MODE_LIVE,
+    RACE_STATUS_DNF,
+    RACE_STATUS_FIN,
+)
+from services.results.errors import FinishSegmentResolutionError
 from services.results.finish_selector import select_finish_entries_from_route_instances
 from services.results.finish_time import resolve_finish_time_ms
 
@@ -38,7 +45,7 @@ class ZwiftFetcher:
         event_secret: str = "",
     ) -> list[dict[str, Any]]:
         """
-        Fetch all official subgroup segment-result crossings in legacy entry shape.
+        Fetch all official subgroup segment-result crossings in internal entry shape.
         """
         return self.zwift.get_event_results(subgroup_id, event_secret=event_secret)
 
@@ -47,7 +54,6 @@ class ZwiftFetcher:
         subgroup_id: str,
         event_secret: str,
         fetch_mode: str,
-        filter_registered: bool,
         registered_riders: dict[str, Any],
         route_segments: list[dict[str, Any]] | None = None,
         configured_sprints: list[dict[str, Any]] | None = None,
@@ -58,7 +64,7 @@ class ZwiftFetcher:
         Fetches participants/finishers for a subgroup and maps them to registered riders.
         """
         finishers: list[RiderResult] = []
-        if fetch_mode == 'finishers':
+        if fetch_mode == FETCH_MODE_FINISHERS:
             crossings = all_results_raw or self.fetch_subgroup_crossings(
                 subgroup_id, event_secret
             )
@@ -79,7 +85,7 @@ class ZwiftFetcher:
                 finisher: RiderResult = {
                     'zwiftId': canonical_zwift_id,
                     'finishTime': finish_time_ms,
-                    'raceStatus': 'FIN' if finish_time_ms > 0 else 'DNF',
+                    'raceStatus': RACE_STATUS_FIN if finish_time_ms > 0 else RACE_STATUS_DNF,
                     'flaggedCheating': entry.get('flaggedCheating', False),
                     'flaggedSandbagging': entry.get('flaggedSandbagging', False),
                     'criticalP': entry.get('criticalP', {})
@@ -88,15 +94,11 @@ class ZwiftFetcher:
                 if registered_profile:
                     finisher['name'] = registered_profile.get('name')
                     finishers.append(finisher)
-                elif not filter_registered:
-                    finisher['name'] = f"{profile.get('firstName', '')} {profile.get('lastName', '')}".strip()
-                    finishers.append(finisher)
 
             finishers.sort(key=lambda x: x['finishTime'])
 
         else:
-            is_joined = (fetch_mode == 'joined')
-            participants_raw = self.zwift.get_event_participants(subgroup_id, joined=is_joined)
+            participants_raw = self.zwift.get_event_participants(subgroup_id)
 
             for p in participants_raw:
                 zid = str(p.get('id'))
@@ -105,7 +107,7 @@ class ZwiftFetcher:
                 finisher = {
                     'zwiftId': canonical_zwift_id,
                     'finishTime': 0,
-                    'raceStatus': 'DNF',
+                    'raceStatus': RACE_STATUS_DNF,
                     'flaggedCheating': False,
                     'flaggedSandbagging': False,
                     'criticalP': {}
@@ -113,9 +115,6 @@ class ZwiftFetcher:
 
                 if registered_profile:
                     finisher['name'] = registered_profile.get('name')
-                    finishers.append(finisher)
-                elif not filter_registered:
-                    finisher['name'] = f"{p.get('firstName', '')} {p.get('lastName', '')}".strip()
                     finishers.append(finisher)
 
             finishers.sort(key=lambda x: x['name'])
@@ -140,7 +139,7 @@ class ZwiftFetcher:
             seg_id = str(raw.get("segmentId", ""))
             by_segment.setdefault(seg_id, []).append(e)
 
-        # All entries have no segmentId → legacy path or single-segment; return as-is.
+        # All entries have no segmentId -> unsegmented/single-segment payload; return as-is.
         if set(by_segment.keys()) == {""}:
             return entries
 
@@ -158,9 +157,14 @@ class ZwiftFetcher:
         )
         if selected_from_route:
             return selected_from_route
-        raise RuntimeError(
+        raise FinishSegmentResolutionError(
             "Could not deterministically resolve finish segment from route instances. "
-            "Check route segments and configured sprint instances."
+            "Check route segments and configured sprint instances.",
+            context={
+                "segment_ids_in_payload": sorted(segmented.keys()),
+                "route_segment_count": len(route_segments or []),
+                "configured_sprint_count": len(configured_sprints or []),
+            },
         )
 
     def _entry_sort_key(self, entry: dict[str, Any]) -> tuple[int, int]:
@@ -185,7 +189,7 @@ class ZwiftFetcher:
         derived from the subgroup segment-results crossings payload (either
         pre-fetched via all_results_raw or fetched here).
 
-        Each entry is normalised into the legacy shape expected by
+        Each entry is normalised into the internal shape expected by
         RaceScorer._map_segment_efforts:
           athleteId  – canonical numeric zwiftId (UUID resolved via registered_riders)
           elapsed    – durationInMilliseconds

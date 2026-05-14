@@ -177,4 +177,4 @@ export interface RaceFormState {
 export type LoadingStatus = 'idle' | 'loading' | 'saving' | 'seeding' | 'refreshing';
 
 // Result source type
-export type ResultSource = 'finishers' | 'joined' | 'signed_up';
+export type ResultSource = 'finishers' | 'live';

@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from services.results.zwift_fetcher import ZwiftFetcher
+from services.results.errors import FinishSegmentResolutionError
 from services.results.finish_time import resolve_finish_time_ms
 
 
@@ -100,10 +101,10 @@ def test_filter_finish_entries_raises_when_route_instances_missing():
             route_segments=[],
             configured_sprints=[{"id": "seg-a", "count": 1, "lap": 1, "direction": "forward"}],
         )
-    except RuntimeError as exc:
+    except FinishSegmentResolutionError as exc:
         assert "deterministically resolve finish segment" in str(exc)
     else:
-        assert False, "Expected RuntimeError when deterministic route mapping is unavailable"
+        assert False, "Expected FinishSegmentResolutionError when deterministic route mapping is unavailable"
 
 
 def test_fetch_segment_efforts_uses_prefetched_crossings():

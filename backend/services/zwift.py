@@ -388,7 +388,7 @@ class ZwiftService:
         event_secret: str | None = None,
     ) -> list[dict[str, Any]]:
         """
-        Returns all segment-results entries for a subgroup in legacy format.
+        Returns all segment-results entries for a subgroup in internal entry format.
 
         All segments (finish line + sprints/KOMs) are included — callers are
         responsible for filtering to the desired segmentId(s). Each entry
@@ -399,13 +399,7 @@ class ZwiftService:
         segment effort duration, not full race elapsed time.
         """
         del event_secret  # Official endpoint does not use eventSecret.
-
-        try:
-            by_segment = self.get_subgroup_all_segment_results(event_sub_id, limit=limit)
-        except Exception:
-            if self.allow_legacy_fallback:
-                return self._get_event_results_legacy(event_sub_id, limit=limit)
-            raise
+        by_segment = self.get_subgroup_all_segment_results(event_sub_id, limit=limit)
 
         all_entries: list[dict[str, Any]] = []
         for raw_list in by_segment.values():
@@ -431,27 +425,9 @@ class ZwiftService:
                 )
         return all_entries
 
-    def _get_event_results_legacy(self, event_sub_id: str, limit: int = 100) -> list[dict[str, Any]]:
-        start = 0
-        all_entries: list[dict[str, Any]] = []
-        while True:
-            response = self._api_get(
-                "/api/race-results/entries",
-                params={"event_subgroup_id": event_sub_id, "start": start, "limit": limit},
-            )
-            response.raise_for_status()
-            payload = self._safe_json(response)
-            entries = payload.get("entries", [])
-            all_entries.extend(entries)
-            if len(entries) < limit:
-                break
-            start += len(entries)
-        return all_entries
-
     def get_event_participants(
         self,
         event_sub_id: str,
-        joined: bool = False,
         limit: int = 100,
         page: int | None = None,
         participant_type: str = "all",
@@ -462,7 +438,7 @@ class ZwiftService:
         Official replacement uses /api/link/events/subgroups/{subgroupId}/live-data.
         This only returns active participants.
         """
-        del joined, participant_type, overlap_delay
+        del participant_type, overlap_delay
         current_page = page or 0
         participants: list[dict[str, Any]] = []
 
@@ -513,7 +489,7 @@ class ZwiftService:
         returns entries grouped by segmentId, filtered to only the segment IDs
         listed in sprint_segment_ids.  Each entry uses the raw official fields
         (userId, durationInMilliseconds, endWorldTime, avgWatts) so that
-        ZwiftFetcher can normalise them into the legacy format expected by
+        ZwiftFetcher can normalise them into the internal format expected by
         RaceScorer._map_segment_efforts.
 
         Returns: {segmentId_str: [raw_entry, ...]}

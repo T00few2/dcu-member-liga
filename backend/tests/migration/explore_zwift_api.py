@@ -388,17 +388,6 @@ def explore_legacy_event_info(token: str, event_id: str, event_secret: str | Non
     return status
 
 
-def explore_legacy_race_results(token: str, subgroup_id: str) -> int:
-    section(f"LEGACY — GET /api/race-results/entries  (subgroup_id={subgroup_id})")
-    status, body = zwift_get(
-        "/api/race-results/entries",
-        token,
-        params={"event_subgroup_id": subgroup_id, "start": 0, "limit": 5},
-    )
-    show("Legacy race results (first 5 entries)", status, body, max_entries=5)
-    return status
-
-
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -531,15 +520,9 @@ def main() -> None:
         if legacy_token:
             legacy_event_status = explore_legacy_event_info(legacy_token, args.event_id, event_secret=args.event_secret)
             checks["legacy_event_info_200"] = legacy_event_status == 200
-            if subgroup_ids:
-                legacy_rr_status = explore_legacy_race_results(legacy_token, subgroup_ids[0])
-                checks["legacy_race_results_200"] = legacy_rr_status == 200
-            else:
-                section("LEGACY — race-results (SKIPPED — no subgroup ID available)")
-                print("  Skipped: /api/race-results/entries")
         else:
             section("LEGACY — endpoints (SKIPPED — no legacy token)")
-            print("  Skipped: /api/events, /api/race-results/entries")
+            print("  Skipped: /api/events")
 
     section("CHECK SUMMARY")
     passed = 0

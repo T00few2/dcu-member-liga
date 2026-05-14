@@ -79,7 +79,6 @@ export default function LeagueManager({
     
     // Results fetch options
     const [resultSource, setResultSource] = useState<ResultSource>('finishers');
-    const [filterRegistered, setFilterRegistered] = useState(false);
     const [categoryFilter, setCategoryFilter] = useState('All');
 
     useEffect(() => {
@@ -300,7 +299,6 @@ export default function LeagueManager({
                 },
                 body: JSON.stringify({ 
                     source: resultSource,
-                    filterRegistered,
                     categoryFilter,
                 }),
             });
@@ -567,23 +565,12 @@ export default function LeagueManager({
                                                 className="w-full bg-background border border-input rounded px-2 py-2 text-sm font-medium text-foreground focus:ring-1 focus:ring-primary"
                                             >
                                                 <option value="finishers">Finishers</option>
-                                                <option value="joined">Joined</option>
-                                                <option value="signed_up">Signed Up</option>
+                                                <option value="live">Live</option>
                                             </select>
                                         </div>
                                     </div>
 
                                     <div className="space-y-3">
-                                        <label className="flex items-center gap-2 cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                checked={filterRegistered}
-                                                onChange={(e) => setFilterRegistered(e.target.checked)}
-                                                className="w-4 h-4 rounded border-input text-primary focus:ring-primary"
-                                            />
-                                            <span className="text-sm text-muted-foreground select-none">Filter Registered riders only</span>
-                                        </label>
-
                                         <button
                                             onClick={handleCalculateSelectedRace}
                                             disabled={!viewingResultsId || resultsCalcRunning}

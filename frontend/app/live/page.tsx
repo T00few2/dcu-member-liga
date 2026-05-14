@@ -72,7 +72,6 @@ export default function LiveLinksPage() {
                 },
                 body: JSON.stringify({
                     source: config.source,
-                    filterRegistered: config.filterRegistered,
                     categoryFilter: category,
                 }),
             });
@@ -90,7 +89,7 @@ export default function LiveLinksPage() {
         } finally {
             setProcessingKey(null);
         }
-    }, [user, config.source, config.filterRegistered, refreshRace, showToast]);
+    }, [user, config.source, refreshRace, showToast]);
 
     // Refresh all races for a specific category
     const handleRefreshCategory = useCallback(async (category: string) => {

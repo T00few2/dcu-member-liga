@@ -126,20 +126,8 @@ export default function ConfigPanel({ config, user, updateConfig }: ConfigPanelP
                                 className="w-full bg-live-bg border border-live-border rounded px-3 py-2 text-live-fg focus:ring-2 focus:ring-primary outline-none"
                             >
                                 <option value="finishers">Finishers (Final Results)</option>
-                                <option value="joined">Joined (Currently in Pen/Race)</option>
-                                <option value="signed_up">Signed Up (Registration List)</option>
+                                <option value="live">Live (Currently in Pen/Race)</option>
                             </select>
-                        </div>
-                        <div className="flex items-end pb-2">
-                            <label className="flex items-center space-x-3 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={config.filterRegistered}
-                                    onChange={(e) => updateConfig('filterRegistered', e.target.checked)}
-                                    className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500"
-                                />
-                                <span className="text-slate-300">Filter Registered (Show Only Registered)</span>
-                            </label>
                         </div>
                     </div>
                 </div>

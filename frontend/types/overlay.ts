@@ -40,8 +40,7 @@ export interface LiveConfig {
     overlayBorder: string;
     overlayBackground: string;
     // Calculation settings
-    source: 'finishers' | 'joined' | 'signed_up';
-    filterRegistered: boolean;
+    source: 'finishers' | 'live';
     nameMax: string;
 }
 
@@ -68,8 +67,7 @@ export const DEFAULT_LIVE_CONFIG: LiveConfig = {
     overlayRowAltBg: '',
     overlayBorder: '',
     overlayBackground: '',
-    source: 'joined',
-    filterRegistered: false,
+    source: 'live',
     nameMax: '',
 };
 
