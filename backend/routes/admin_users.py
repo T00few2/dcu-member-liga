@@ -136,6 +136,216 @@ def get_users_overview():
         return jsonify({'error': str(e)}), 500
 
 
+@admin_bp.route('/admin/users/<user_id>', methods=['GET'])
+def get_user_details(user_id):
+    """Return full profile data for a single user (admin-only)."""
+    try:
+        require_admin(request)
+    except AuthzError as e:
+        return jsonify({'error': e.message}), e.status_code
+
+    try:
+        from services.user_service import UserService
+        user = UserService.get_user_by_id(user_id)
+        if user is None:
+            return jsonify({'error': 'User not found'}), 404
+
+        data = user.to_dict()
+
+        def _ts_ms(val):
+            if val is None:
+                return None
+            try:
+                if hasattr(val, 'timestamp'):
+                    return int(val.timestamp() * 1000)
+                return int(val) * 1000
+            except Exception:
+                return None
+
+        connections = data.get('connections') or {}
+        zwift_conn = connections.get('zwift') or {}
+        strava_conn = connections.get('strava') or {}
+        equipment = data.get('equipment') or {}
+        zp = data.get('zwiftProfile') or {}
+        zpc = data.get('zwiftPowerCurve') or {}
+        zr = data.get('zwiftRacing') or {}
+        liga = data.get('ligaCategory') or {}
+        verification = data.get('verification') or {}
+        registration = data.get('registration') or {}
+        auto_assigned = liga.get('autoAssigned') or {}
+        self_selected = liga.get('selfSelected') or {}
+
+        def _serialize_verification_request(req):
+            if not req:
+                return None
+            return {
+                'requestId': req.get('requestId'),
+                'type': req.get('type'),
+                'status': req.get('status'),
+                'requestedAt': _ts_ms(req.get('requestedAt')),
+                'deadline': _ts_ms(req.get('deadline')),
+                'videoLink': req.get('videoLink'),
+                'submittedAt': _ts_ms(req.get('submittedAt')),
+                'reviewedAt': _ts_ms(req.get('reviewedAt')),
+                'reviewerId': req.get('reviewerId'),
+                'rejectionReason': req.get('rejectionReason'),
+            }
+
+        result = {
+            'userId': user.id,
+            'basic': {
+                'name': data.get('name', ''),
+                'email': data.get('email', ''),
+                'zwiftId': data.get('zwiftId', ''),
+                'club': data.get('club', ''),
+                'trainer': equipment.get('trainer', ''),
+                'createdAt': _ts_ms(data.get('createdAt')),
+                'updatedAt': _ts_ms(data.get('updatedAt')),
+            },
+            'zwiftProfile': {
+                'ftp': zp.get('ftp'),
+                'zftp': zp.get('zftp'),
+                'zmap': zp.get('zmap'),
+                'weight': zp.get('weight'),
+                'weightInGrams': zp.get('weightInGrams'),
+                'height': zp.get('height'),
+                'racingScore': zp.get('racingScore'),
+                'powerCompoundScore': zp.get('powerCompoundScore'),
+                'vo2max': zp.get('vo2max'),
+                'category': zp.get('category'),
+                'updatedAt': _ts_ms(zp.get('updatedAt')),
+            } if zp else None,
+            'zwiftPowerCurve': {
+                'zftp': zpc.get('zftp'),
+                'zmap': zpc.get('zmap'),
+                'vo2max': zpc.get('vo2max'),
+                'validPowerProfile': zpc.get('validPowerProfile'),
+                'cpBestEfforts': zpc.get('cpBestEfforts') or [],
+                'relevantCpEfforts': zpc.get('relevantCpEfforts') or [],
+                'updatedAt': _ts_ms(zpc.get('updatedAt')),
+            } if zpc else None,
+            'zwiftRacing': {
+                'currentRating': zr.get('currentRating'),
+                'max30Rating': zr.get('max30Rating'),
+                'max90Rating': zr.get('max90Rating'),
+                'phenotype': zr.get('phenotype'),
+                'updatedAt': _ts_ms(zr.get('updatedAt')),
+            } if zr else None,
+            'connections': {
+                'zwift': {
+                    'connected': bool(zwift_conn.get('profileId') or data.get('zwiftId')),
+                    'connectedAt': _ts_ms(zwift_conn.get('connectedAt')),
+                    'profileId': zwift_conn.get('profileId'),
+                    'userId': zwift_conn.get('userId'),
+                },
+                'strava': {
+                    'connected': bool(strava_conn.get('athlete_id') or strava_conn.get('athleteId')),
+                    'athleteId': strava_conn.get('athlete_id') or strava_conn.get('athleteId'),
+                },
+            },
+            'ligaCategory': {
+                'category': liga.get('category'),
+                'locked': bool(liga.get('locked')),
+                'lockedAt': _ts_ms(liga.get('lockedAt')),
+                'autoAssigned': {
+                    'season': auto_assigned.get('season'),
+                    'category': auto_assigned.get('category'),
+                    'upperBoundary': auto_assigned.get('upperBoundary'),
+                    'graceLimit': auto_assigned.get('graceLimit'),
+                    'status': auto_assigned.get('status'),
+                    'assignedRating': auto_assigned.get('assignedRating'),
+                    'assignedAt': _ts_ms(auto_assigned.get('assignedAt')),
+                    'lastCheckedRating': auto_assigned.get('lastCheckedRating'),
+                    'lastCheckedAt': _ts_ms(auto_assigned.get('lastCheckedAt')),
+                } if auto_assigned else None,
+                'selfSelected': {
+                    'category': self_selected.get('category'),
+                    'selfSelectedAt': _ts_ms(self_selected.get('selfSelectedAt')),
+                } if self_selected else None,
+            },
+            'verification': {
+                'status': verification.get('status', 'none'),
+                'currentRequest': _serialize_verification_request(verification.get('currentRequest')),
+                'history': [
+                    _serialize_verification_request(r)
+                    for r in (verification.get('history') or [])
+                ],
+            },
+            'registration': {
+                'status': registration.get('status'),
+                'cocAccepted': bool(registration.get('cocAccepted')),
+                'dataPolicy': {
+                    'version': (registration.get('dataPolicy') or {}).get('version'),
+                    'acceptedAt': _ts_ms((registration.get('dataPolicy') or {}).get('acceptedAt')),
+                } if registration.get('dataPolicy') else None,
+                'publicResultsConsent': {
+                    'version': (registration.get('publicResultsConsent') or {}).get('version'),
+                    'acceptedAt': _ts_ms((registration.get('publicResultsConsent') or {}).get('acceptedAt')),
+                } if registration.get('publicResultsConsent') else None,
+            },
+        }
+
+        return jsonify({'user': result}), 200
+
+    except Exception as e:
+        logger.exception('Error fetching user details for %s', user_id)
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/admin/users/<user_id>/races', methods=['GET'])
+def get_user_races(user_id):
+    """Return all races where the user participated (admin-only)."""
+    try:
+        require_admin(request)
+    except AuthzError as e:
+        return jsonify({'error': e.message}), e.status_code
+
+    try:
+        race_docs = db.collection('races').stream()
+        user_races = []
+
+        for race_doc in race_docs:
+            race_data = race_doc.to_dict() or {}
+            results = race_data.get('results') or {}
+
+            for category, category_results in results.items():
+                if not isinstance(category_results, list):
+                    continue
+                for rider in category_results:
+                    if not isinstance(rider, dict):
+                        continue
+                    if str(rider.get('zwiftId', '')) == str(user_id):
+                        user_races.append({
+                            'raceId': race_doc.id,
+                            'name': race_data.get('name', ''),
+                            'date': race_data.get('date', ''),
+                            'map': race_data.get('map', ''),
+                            'category': category,
+                            'finishTime': rider.get('finishTime'),
+                            'finishRank': rider.get('finishRank'),
+                            'finishPoints': rider.get('finishPoints'),
+                            'sprintPoints': rider.get('sprintPoints'),
+                            'totalPoints': rider.get('totalPoints'),
+                            'raceStatus': rider.get('raceStatus', ''),
+                            'disqualified': bool(rider.get('disqualified')),
+                            'declassified': bool(rider.get('declassified')),
+                            'flaggedSandbagging': bool(rider.get('flaggedSandbagging')),
+                            'flaggedCheating': bool(rider.get('flaggedCheating')),
+                            'activityId': rider.get('activityId'),
+                            'sprintData': rider.get('sprintData') or {},
+                            'sprintDetails': rider.get('sprintDetails') or {},
+                            'criticalP': rider.get('criticalP') or {},
+                        })
+                        break
+
+        user_races.sort(key=lambda r: r.get('date') or '', reverse=True)
+        return jsonify({'races': user_races}), 200
+
+    except Exception as e:
+        logger.exception('Error fetching races for user %s', user_id)
+        return jsonify({'error': str(e)}), 500
+
+
 @admin_bp.route('/admin/users/send-email', methods=['POST'])
 def send_email_to_selected_users():
     """Send email to admin-selected users (admin-only).
