@@ -301,6 +301,15 @@ def get_user_races(user_id):
         return jsonify({'error': e.message}), e.status_code
 
     try:
+        from services.user_service import UserService
+        user = UserService.get_user_by_id(user_id)
+        if user is None:
+            return jsonify({'error': 'User not found'}), 404
+
+        # Race results are keyed by zwiftId field, not the Firestore document ID
+        # (document ID may be a Firebase auth UID for older accounts)
+        zwift_id = str(user.zwift_id or user_id)
+
         race_docs = db.collection('races').stream()
         user_races = []
 
@@ -314,7 +323,7 @@ def get_user_races(user_id):
                 for rider in category_results:
                     if not isinstance(rider, dict):
                         continue
-                    if str(rider.get('zwiftId', '')) == str(user_id):
+                    if str(rider.get('zwiftId', '')) == zwift_id:
                         user_races.append({
                             'raceId': race_doc.id,
                             'name': race_data.get('name', ''),
