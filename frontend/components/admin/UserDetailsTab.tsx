@@ -116,6 +116,7 @@ interface RaceEntry {
     sprintPoints?: number | null;
     totalPoints?: number | null;
     raceStatus?: string;
+    archive?: string | null;
     disqualified: boolean;
     declassified: boolean;
     flaggedSandbagging: boolean;
@@ -261,7 +262,9 @@ function RaceRow({ race }: { race: RaceEntry }) {
                 <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">{race.date || '—'}</td>
                 <td className="px-3 py-2 text-sm font-medium">
                     <div>{race.name || '—'}</div>
-                    {race.map && <div className="text-xs text-muted-foreground">{race.map}</div>}
+                    <div className="text-xs text-muted-foreground">
+                        {[race.map, race.archive].filter(Boolean).join(' · ')}
+                    </div>
                 </td>
                 <td className="px-3 py-2 text-center">
                     {race.category ? (

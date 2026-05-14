@@ -310,13 +310,10 @@ def get_user_races(user_id):
         # (document ID may be a Firebase auth UID for older accounts)
         zwift_id = str(user.zwift_id or user_id)
 
-        race_docs = db.collection('races').stream()
         user_races = []
 
-        for race_doc in race_docs:
-            race_data = race_doc.to_dict() or {}
+        def _collect_from_race(race_doc, race_data, archive_name=None):
             results = race_data.get('results') or {}
-
             for category, category_results in results.items():
                 if not isinstance(category_results, list):
                     continue
@@ -330,6 +327,7 @@ def get_user_races(user_id):
                             'date': race_data.get('date', ''),
                             'map': race_data.get('map', ''),
                             'category': category,
+                            'archive': archive_name,
                             'finishTime': rider.get('finishTime'),
                             'finishRank': rider.get('finishRank'),
                             'finishPoints': rider.get('finishPoints'),
@@ -346,6 +344,17 @@ def get_user_races(user_id):
                             'criticalP': rider.get('criticalP') or {},
                         })
                         break
+
+        # Current season races
+        for race_doc in db.collection('races').stream():
+            _collect_from_race(race_doc, race_doc.to_dict() or {})
+
+        # Archived season races
+        for archive_doc in db.collection('archives').stream():
+            archive_data = archive_doc.to_dict() or {}
+            archive_name = archive_data.get('name') or archive_doc.id
+            for race_doc in archive_doc.reference.collection('races').stream():
+                _collect_from_race(race_doc, race_doc.to_dict() or {}, archive_name=archive_name)
 
         user_races.sort(key=lambda r: r.get('date') or '', reverse=True)
         return jsonify({'races': user_races}), 200
