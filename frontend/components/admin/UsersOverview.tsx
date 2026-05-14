@@ -88,7 +88,7 @@ function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
     return <span className="ml-1">{dir === 'asc' ? '↑' : '↓'}</span>;
 }
 
-export default function UsersOverview() {
+export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId: string) => void }) {
     const { user } = useAuth();
     const [rows, setRows] = useState<UserRow[]>([]);
     const [loading, setLoading] = useState(true);
@@ -507,8 +507,12 @@ export default function UsersOverview() {
                             </tr>
                         )}
                         {filtered.map(row => (
-                            <tr key={getRowId(row)} className="bg-card hover:bg-muted/50 transition">
-                                <td className="px-3 py-2">
+                            <tr
+                                key={getRowId(row)}
+                                className={`bg-card hover:bg-muted/50 transition${onUserSelect ? ' cursor-pointer' : ''}`}
+                                onClick={onUserSelect ? () => onUserSelect(getRowId(row)) : undefined}
+                            >
+                                <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
                                     <input
                                         type="checkbox"
                                         checked={selectedIds.has(getRowId(row))}

@@ -12,11 +12,14 @@ import CategoryManager from '@/components/admin/CategoryManager';
 import CategoryPredictor from '@/components/admin/CategoryPredictor';
 import StatsDashboard from '@/components/admin/StatsDashboard';
 import UsersOverview from '@/components/admin/UsersOverview';
+import UserDetailsTab from '@/components/admin/UserDetailsTab';
 import PostsManager from '@/components/admin/PostsManager';
 
 type AdminSection = 'league' | 'categories' | 'predictor' | 'verification' | 'weight' | 'trainers' | 'users' | 'stats' | 'policies' | 'nyheder';
 const ADMIN_SECTIONS: AdminSection[] = ['league', 'categories', 'predictor', 'verification', 'weight', 'trainers', 'users', 'stats', 'policies', 'nyheder'];
 const LEAGUE_TABS: LeagueManagerTab[] = ['races', 'results', 'settings', 'testing', 'rawdata'];
+type UsersTab = 'overview' | 'details';
+const USERS_TABS: UsersTab[] = ['overview', 'details'];
 
 function parseSection(value: string | null): AdminSection {
   return ADMIN_SECTIONS.includes(value as AdminSection) ? (value as AdminSection) : 'league';
@@ -24,6 +27,10 @@ function parseSection(value: string | null): AdminSection {
 
 function parseLeagueTab(value: string | null): LeagueManagerTab {
   return LEAGUE_TABS.includes(value as LeagueManagerTab) ? (value as LeagueManagerTab) : 'races';
+}
+
+function parseUsersTab(value: string | null): UsersTab {
+  return USERS_TABS.includes(value as UsersTab) ? (value as UsersTab) : 'overview';
 }
 
 function AdminPageContent() {
@@ -34,6 +41,8 @@ function AdminPageContent() {
 
   const sectionFromUrl = parseSection(searchParams.get('section'));
   const leagueTabFromUrl = parseLeagueTab(searchParams.get('tab'));
+  const usersTabFromUrl = parseUsersTab(sectionFromUrl === 'users' ? searchParams.get('tab') : null);
+  const selectedUserIdFromUrl = searchParams.get('userId') ?? null;
 
   // Top Level Tab State
   const [activeSection, setActiveSection] = useState<AdminSection>(sectionFromUrl);
@@ -44,7 +53,12 @@ function AdminPageContent() {
     }
   }, [sectionFromUrl, activeSection]);
 
-  const updateAdminUrl = useCallback((nextSection: AdminSection, nextLeagueTab?: LeagueManagerTab) => {
+  const updateAdminUrl = useCallback((
+    nextSection: AdminSection,
+    nextLeagueTab?: LeagueManagerTab,
+    nextUsersTab?: UsersTab,
+    nextUserId?: string | null,
+  ) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set('section', nextSection);
 
@@ -54,8 +68,18 @@ function AdminPageContent() {
       } else if (!params.get('tab')) {
         params.set('tab', 'races');
       }
+      params.delete('userId');
+    } else if (nextSection === 'users') {
+      const tab = nextUsersTab ?? 'overview';
+      params.set('tab', tab);
+      if (tab === 'details' && nextUserId) {
+        params.set('userId', nextUserId);
+      } else {
+        params.delete('userId');
+      }
     } else {
       params.delete('tab');
+      params.delete('userId');
     }
 
     const query = params.toString();
@@ -73,6 +97,14 @@ function AdminPageContent() {
     }
     updateAdminUrl('league', tab);
   }, [updateAdminUrl, activeSection]);
+
+  const handleUsersTabChange = useCallback((tab: UsersTab, userId?: string | null) => {
+    updateAdminUrl('users', undefined, tab, userId);
+  }, [updateAdminUrl]);
+
+  const handleUserSelect = useCallback((userId: string) => {
+    updateAdminUrl('users', undefined, 'details', userId);
+  }, [updateAdminUrl]);
 
   if (authLoading) return <div className="p-8 text-center">Loading...</div>;
   if (!user) return null;
@@ -171,7 +203,30 @@ function AdminPageContent() {
       {/* Section Content */}
       <div className="min-h-[500px]">
         {activeSection === 'users' ? (
-          <UsersOverview />
+          <div>
+            <div className="flex border-b border-border mb-6">
+              <button
+                onClick={() => handleUsersTabChange('overview')}
+                className={`pb-3 px-5 text-sm font-medium transition whitespace-nowrap ${usersTabFromUrl === 'overview' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                Overview
+              </button>
+              <button
+                onClick={() => handleUsersTabChange('details', selectedUserIdFromUrl)}
+                className={`pb-3 px-5 text-sm font-medium transition whitespace-nowrap ${usersTabFromUrl === 'details' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                User Details
+              </button>
+            </div>
+            {usersTabFromUrl === 'overview' ? (
+              <UsersOverview onUserSelect={handleUserSelect} />
+            ) : (
+              <UserDetailsTab
+                initialUserId={selectedUserIdFromUrl}
+                onUserSelect={handleUserSelect}
+              />
+            )}
+          </div>
         ) : activeSection === 'stats' ? (
           <StatsDashboard />
         ) : activeSection === 'league' ? (
