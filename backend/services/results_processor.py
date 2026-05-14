@@ -12,6 +12,8 @@ from services.results.constants import (
     CATEGORY_FILTER_ALL,
     FETCH_MODE_FINISHERS,
     FETCH_MODE_LIVE,
+    RESULTS_PHASE_FINALIZED,
+    RESULTS_PHASE_PROVISIONAL,
     RACE_STATUS_DNF,
     RACE_STATUS_WC,
 )
@@ -47,6 +49,8 @@ class ResultsProcessor:
         race_id: str,
         fetch_mode: str = FETCH_MODE_FINISHERS,
         category_filter: str | None = None,
+        results_phase: str = RESULTS_PHASE_FINALIZED,
+        finalize_run_id: str | None = None,
     ) -> RaceResults:
         """
         Main entry point to process results for a given race ID (Firestore ID).
@@ -56,7 +60,14 @@ class ResultsProcessor:
         if not self.db:
             raise Exception("Database not available")
 
-        logger.info(f"Processing results for race: {race_id} (Mode: {fetch_mode}, Cat: {category_filter})")
+        normalized_phase = self._normalize_results_phase(results_phase)
+        logger.info(
+            "Processing results for race: %s (Mode: %s, Cat: %s, Phase: %s)",
+            race_id,
+            fetch_mode,
+            category_filter,
+            normalized_phase,
+        )
 
         # 1. Fetch Race Config
         race_doc = self.db.collection('races').document(race_id).get()
@@ -158,7 +169,8 @@ class ResultsProcessor:
                 scorer,
                 all_results,
                 fetch_mode,
-                category_filter
+                category_filter,
+                normalized_phase,
             )
             if ok:
                 processed_sources += 1
@@ -172,10 +184,18 @@ class ResultsProcessor:
             )
 
         # 6. Save Results to Firestore
+        now = datetime.now(timezone.utc)
         race_update = with_schema_version({
             'results': all_results,
-            'resultsUpdatedAt': datetime.now()
+            'resultsUpdatedAt': now,
+            'resultsPhase': normalized_phase,
         })
+        if normalized_phase == RESULTS_PHASE_PROVISIONAL:
+            race_update['provisionalUpdatedAt'] = now
+        if normalized_phase == RESULTS_PHASE_FINALIZED:
+            race_update['finalizedAt'] = now
+            if finalize_run_id:
+                race_update['finalizeRunId'] = str(finalize_run_id)
         log_schema_issues(logger, f"races/{race_id} (results processing)", validate_race_doc(race_update, partial=True))
         self.db.collection('races').document(race_id).update(race_update)
 
@@ -299,6 +319,7 @@ class ResultsProcessor:
         all_results: RaceResults,
         fetch_mode: str,
         category_filter: str | None,
+        results_phase: str,
     ) -> bool:
         event_id = source.get('id')
         direct_subgroup_id = source.get('subgroupId')
@@ -409,11 +430,18 @@ class ResultsProcessor:
                     len(unique_segment_ids),
                     len(segment_efforts),
                 )
-                finishers = self._append_segment_starter_dnfs(
-                    finishers=finishers,
-                    segment_efforts=segment_efforts,
-                    registered_riders=registered_riders,
-                )
+                if results_phase == RESULTS_PHASE_FINALIZED:
+                    finishers = self._append_segment_starter_dnfs(
+                        finishers=finishers,
+                        segment_efforts=segment_efforts,
+                        registered_riders=registered_riders,
+                    )
+                elif results_phase == RESULTS_PHASE_PROVISIONAL:
+                    finishers = self._append_provisional_segment_starters(
+                        finishers=finishers,
+                        segment_efforts=segment_efforts,
+                        registered_riders=registered_riders,
+                    )
 
             if grouped_mode:
                 for seg_id, efforts in segment_efforts.items():
@@ -453,7 +481,12 @@ class ResultsProcessor:
                     logger.info(f"    Skipping category {category_label} (not in configured categories)")
                     continue
 
-                processed_batch = scorer.calculate_results(finishers, category_config, segment_efforts)
+                processed_batch = scorer.calculate_results(
+                    finishers,
+                    category_config,
+                    segment_efforts,
+                    allow_dnf_sprint_points=(results_phase == RESULTS_PHASE_PROVISIONAL),
+                )
                 all_results[category_label] = processed_batch
                 logger.info(f"    Saved {len(processed_batch)} results to {category_label}")
 
@@ -465,7 +498,12 @@ class ResultsProcessor:
                 if not riders:
                     continue
                 cat_config = self._get_category_config(race_data, category_name)
-                processed_batch = scorer.calculate_results(riders, cat_config, grouped_segment_efforts)
+                processed_batch = scorer.calculate_results(
+                    riders,
+                    cat_config,
+                    grouped_segment_efforts,
+                    allow_dnf_sprint_points=(results_phase == RESULTS_PHASE_PROVISIONAL),
+                )
                 all_results[category_name] = processed_batch
                 logger.info(f"    Saved {len(processed_batch)} grouped results to {category_name}")
         elif custom_category and custom_cat_finishers:
@@ -473,10 +511,24 @@ class ResultsProcessor:
             cat_config['sprints'] = source.get('sprints', [])
             cat_config['segmentType'] = source.get('segmentType')
 
-            processed_batch = scorer.calculate_results(custom_cat_finishers, cat_config, custom_cat_segment_efforts)
+            processed_batch = scorer.calculate_results(
+                custom_cat_finishers,
+                cat_config,
+                custom_cat_segment_efforts,
+                allow_dnf_sprint_points=(results_phase == RESULTS_PHASE_PROVISIONAL),
+            )
             all_results[custom_category] = processed_batch
             logger.info(f"    Saved {len(processed_batch)} merged results to {custom_category}")
         return True
+
+    def _normalize_results_phase(self, results_phase: str | None) -> str:
+        raw = str(results_phase or RESULTS_PHASE_FINALIZED).strip().lower()
+        if raw in {RESULTS_PHASE_PROVISIONAL, RESULTS_PHASE_FINALIZED}:
+            return raw
+        raise ResultsProcessingError(
+            "Invalid results phase",
+            context={"results_phase": results_phase},
+        )
 
     def _resolve_subgroups_for_source(
         self,
@@ -769,6 +821,51 @@ class ResultsProcessor:
                 if not canonical_id or canonical_id in existing_ids:
                     continue
 
+                out.append({
+                    'zwiftId': canonical_id,
+                    'name': profile.get('name') or canonical_id,
+                    'finishTime': 0,
+                    'raceStatus': RACE_STATUS_DNF,
+                    'flaggedCheating': False,
+                    'flaggedSandbagging': False,
+                    'criticalP': {},
+                })
+                existing_ids.add(canonical_id)
+
+        return out
+
+    def _append_provisional_segment_starters(
+        self,
+        finishers: list[dict[str, Any]],
+        segment_efforts: dict[str | int, Any],
+        registered_riders: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """
+        Include segment starters in provisional runs so sprint points can be
+        calculated before any finish-line crossing exists.
+        """
+        if not segment_efforts:
+            return finishers
+
+        out = list(finishers)
+        existing_ids = {str(r.get('zwiftId') or '').strip() for r in out if str(r.get('zwiftId') or '').strip()}
+
+        for efforts in segment_efforts.values():
+            rows = efforts.get('results', []) if isinstance(efforts, dict) else efforts
+            if not isinstance(rows, list):
+                continue
+            for entry in rows:
+                if not isinstance(entry, dict):
+                    continue
+                raw_id = str(entry.get('athleteId') or '').strip()
+                if not raw_id:
+                    continue
+                profile = registered_riders.get(raw_id)
+                if not profile:
+                    continue
+                canonical_id = str(profile.get('zwiftId') or raw_id).strip()
+                if not canonical_id or canonical_id in existing_ids:
+                    continue
                 out.append({
                     'zwiftId': canonical_id,
                     'name': profile.get('name') or canonical_id,

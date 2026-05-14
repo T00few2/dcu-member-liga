@@ -123,6 +123,18 @@
       "selectedSegments": [],
       "singleModeCategories": [],
       "linkedEventIds": [],
+      "resultsPhase": "provisional",
+      "provisionalUpdatedAt": "2026-05-20T19:35:00+00:00",
+      "finalizedAt": null,
+      "finalizeRunId": null,
+      "resultsAutomation": {
+        "automationEnabled": false,
+        "pollingIntervalMinutes": 5,
+        "windowStart": "18:45",
+        "windowEnd": "21:00",
+        "windowDurationMinutes": 135,
+        "finalizeDelayMinutes": 30
+      },
       "sprints": [],
       "eventConfiguration": [
         {

@@ -1,0 +1,31 @@
+name: Race Results Auto Finalize
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger pending race finalization
+        env:
+          API_BASE_URL: ${{ secrets.SCHEDULER_API_BASE_URL }}
+          SCHEDULER_SECRET: ${{ secrets.SCHEDULER_SECRET }}
+        run: |
+          if [ -z "$API_BASE_URL" ] || [ -z "$SCHEDULER_SECRET" ]; then
+            echo "Missing SCHEDULER_API_BASE_URL or SCHEDULER_SECRET. Skipping."
+            exit 0
+          fi
+
+          response=$(curl -s -o /tmp/finalize-body.txt -w "%{http_code}" \
+            -X POST \
+            -H "X-Scheduler-Token: $SCHEDULER_SECRET" \
+            -H "Content-Type: application/json" \
+            "$API_BASE_URL/admin/races/results/finalize-pending")
+
+          echo "HTTP status: $response"
+          echo "Response body:"
+          cat /tmp/finalize-body.txt
+          [ "$response" = "200" ] || exit 1

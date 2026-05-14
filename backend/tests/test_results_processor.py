@@ -29,6 +29,8 @@ from services.results.constants import (
     CATEGORY_FILTER_ALL,
     FETCH_MODE_FINISHERS,
     FETCH_MODE_LIVE,
+    RESULTS_PHASE_FINALIZED,
+    RESULTS_PHASE_PROVISIONAL,
 )
 from services.results.errors import EventInfoFetchError
 
@@ -244,6 +246,32 @@ class TestDnfFromSegmentStarters:
         out = rp._append_segment_starter_dnfs(finishers, segment_efforts, registered)
         assert out == []
 
+    def test_adds_provisional_starters_without_overwriting_existing_finishers(self):
+        from services.results_processor import ResultsProcessor
+        rp = ResultsProcessor(MagicMock(), MagicMock(), MagicMock())
+
+        finishers = [{
+            'zwiftId': '1',
+            'name': 'Finisher',
+            'finishTime': 1000,
+        }]
+        segment_efforts = {
+            'seg1': [
+                {'athleteId': '1', 'elapsed': 1000, 'worldTime': 10},
+                {'athleteId': '2', 'elapsed': 1200, 'worldTime': 12},
+            ]
+        }
+        registered = {
+            '1': {'zwiftId': '1', 'name': 'Finisher'},
+            '2': {'zwiftId': '2', 'name': 'Starter Only'},
+        }
+
+        out = rp._append_provisional_segment_starters(finishers, segment_efforts, registered)
+        by_id = {str(r['zwiftId']): r for r in out}
+        assert set(by_id.keys()) == {'1', '2'}
+        assert by_id['2']['finishTime'] == 0
+        assert by_id['2']['name'] == 'Starter Only'
+
 
 # ---------------------------------------------------------------------------
 # calculate_league_standings (pure aggregation, no Firestore writes)
@@ -374,9 +402,10 @@ class TestProcessRaceResultsBranching:
         assert rp._process_event_source.call_count == 1
         call = rp._process_event_source.call_args
         # Positional args: source, race_data, registered_riders, scorer, all_results,
-        # fetch_mode, category_filter
+        # fetch_mode, category_filter, results_phase
         assert call.args[5] == fetch_mode
         assert call.args[6] == category_filter
+        assert call.args[7] == RESULTS_PHASE_FINALIZED
 
     def test_process_event_source_returns_false_on_event_info_fetch_error(self):
         from services.results_processor import ResultsProcessor
@@ -403,5 +432,65 @@ class TestProcessRaceResultsBranching:
             all_results={},
             fetch_mode=FETCH_MODE_FINISHERS,
             category_filter=CATEGORY_FILTER_ALL,
+            results_phase=RESULTS_PHASE_FINALIZED,
         )
         assert ok is False
+
+    def test_persists_provisional_metadata(self):
+        from services.results_processor import ResultsProcessor
+
+        race_data = make_race_data()
+        race_data.update({
+            'eventMode': 'multi',
+            'eventConfiguration': [
+                {'eventId': 'm-1', 'subgroupId': 'sg-1', 'customCategory': 'A', 'eventSecret': 's1'},
+            ],
+        })
+        db = build_process_results_db(race_data)
+
+        rp = ResultsProcessor(db, MagicMock(), MagicMock())
+        rp._process_event_source = MagicMock(side_effect=lambda *args, **kwargs: args[4].update({'A': []}) or True)
+        rp.save_league_standings = MagicMock(return_value={})
+
+        rp.process_race_results(
+            race_data['id'],
+            fetch_mode=FETCH_MODE_FINISHERS,
+            category_filter=CATEGORY_FILTER_ALL,
+            results_phase=RESULTS_PHASE_PROVISIONAL,
+        )
+
+        race_ref = db.collection('races').document.return_value
+        assert race_ref.update.called
+        payload = race_ref.update.call_args.args[0]
+        assert payload.get('resultsPhase') == RESULTS_PHASE_PROVISIONAL
+        assert payload.get('provisionalUpdatedAt') is not None
+
+    def test_persists_finalized_metadata_and_finalize_run_id(self):
+        from services.results_processor import ResultsProcessor
+
+        race_data = make_race_data()
+        race_data.update({
+            'eventMode': 'multi',
+            'eventConfiguration': [
+                {'eventId': 'm-1', 'subgroupId': 'sg-1', 'customCategory': 'A', 'eventSecret': 's1'},
+            ],
+        })
+        db = build_process_results_db(race_data)
+
+        rp = ResultsProcessor(db, MagicMock(), MagicMock())
+        rp._process_event_source = MagicMock(side_effect=lambda *args, **kwargs: args[4].update({'A': []}) or True)
+        rp.save_league_standings = MagicMock(return_value={})
+
+        rp.process_race_results(
+            race_data['id'],
+            fetch_mode=FETCH_MODE_FINISHERS,
+            category_filter=CATEGORY_FILTER_ALL,
+            results_phase=RESULTS_PHASE_FINALIZED,
+            finalize_run_id='run-123',
+        )
+
+        race_ref = db.collection('races').document.return_value
+        payload = race_ref.update.call_args.args[0]
+        assert payload.get('resultsPhase') == RESULTS_PHASE_FINALIZED
+        assert payload.get('finalizedAt') is not None
+        assert payload.get('finalizeRunId') == 'run-123'

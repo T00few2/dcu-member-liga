@@ -209,3 +209,28 @@ class TestEdgeCases:
         assert by_id['2']['raceStatus'] == 'WC'
         assert by_id['2']['finishPoints'] > 0
         assert by_id['2']['totalPoints'] > 0
+
+    def test_provisional_mode_allows_sprint_points_for_non_finishers(self, scorer):
+        riders = [
+            make_rider(1, finish_time=0),
+            make_rider(2, finish_time=0),
+        ]
+        sprints = [{'id': 'seg1', 'count': 1, 'key': 'seg1_1', 'name': 'Sprint 1'}]
+        segment_efforts = {
+            'seg1': [
+                {'athleteId': '1', 'elapsed': 1200, 'worldTime': 200, 'avgPower': 350},
+                {'athleteId': '2', 'elapsed': 1300, 'worldTime': 300, 'avgPower': 340},
+            ]
+        }
+        result = scorer.calculate_results(
+            riders,
+            make_config(sprints=sprints, segment_type='sprint'),
+            segment_efforts_map=segment_efforts,
+            allow_dnf_sprint_points=True,
+        )
+        by_id = {r['zwiftId']: r for r in result}
+
+        assert by_id['1']['finishPoints'] == 0
+        assert by_id['2']['finishPoints'] == 0
+        assert by_id['1']['sprintPoints'] == SPRINT_POINTS[0]
+        assert by_id['2']['sprintPoints'] == SPRINT_POINTS[1]

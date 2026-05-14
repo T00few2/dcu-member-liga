@@ -58,6 +58,15 @@ export interface RaceGroup {
     segmentType?: 'sprint' | 'split';
 }
 
+export interface ResultsAutomationConfig {
+    automationEnabled?: boolean;
+    pollingIntervalMinutes?: number;
+    windowStart?: string;
+    windowEnd?: string;
+    windowDurationMinutes?: number;
+    finalizeDelayMinutes?: number;
+}
+
 export interface Race {
     id: string;
     name: string;
@@ -83,6 +92,11 @@ export interface Race {
     manualDQs?: string[];
     manualDeclassifications?: string[];
     manualExclusions?: string[];
+    resultsPhase?: 'provisional' | 'finalized';
+    provisionalUpdatedAt?: string;
+    finalizedAt?: string;
+    finalizeRunId?: string;
+    resultsAutomation?: ResultsAutomationConfig;
 }
 
 export interface SprintDataEntry {

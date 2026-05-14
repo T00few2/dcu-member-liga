@@ -73,6 +73,7 @@ export default function LiveLinksPage() {
                 body: JSON.stringify({
                     source: config.source,
                     categoryFilter: category,
+                    phase: 'provisional',
                 }),
             });
 

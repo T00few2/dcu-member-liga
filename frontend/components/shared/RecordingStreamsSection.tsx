@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import {
-    ResponsiveContainer, LineChart, Line, Area, XAxis, YAxis,
+    ResponsiveContainer, ComposedChart, Line, Area, XAxis, YAxis,
     CartesianGrid, Tooltip, Brush, ReferenceArea, ReferenceLine,
 } from 'recharts';
 import type { DualRecordingResult } from '@/hooks/useDualRecording';
@@ -396,7 +396,7 @@ export function RecordingStreamsSection({
 
             <div style={{ height }} className="w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+                    <ComposedChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.3} />
                         <XAxis
                             dataKey="t"
@@ -422,7 +422,12 @@ export function RecordingStreamsSection({
                                 : undefined}
                             tick={hrAxisOn ? { fontSize: 9, fill: 'var(--muted-foreground)' } : false}
                         />
-                        <YAxis yAxisId="elevBg" hide width={0} />
+                        <YAxis
+                            yAxisId="elevBg"
+                            hide
+                            width={0}
+                            domain={[0, (dataMax: number) => (Number.isFinite(dataMax) ? Math.ceil(dataMax + 10) : 100)]}
+                        />
                         <Tooltip
                             labelFormatter={(t: number) => fmtRaceTime(Number(t))}
                             formatter={(v: unknown, name: string) =>
@@ -444,8 +449,8 @@ export function RecordingStreamsSection({
                                 type="monotone"
                                 dataKey="zwiftAlt"
                                 stroke="none"
-                                fill="#64748b"
-                                fillOpacity={0.16}
+                                fill="#94a3b8"
+                                fillOpacity={0.28}
                                 isAnimationActive={false}
                                 connectNulls
                             />
@@ -565,7 +570,7 @@ export function RecordingStreamsSection({
                                 hide={hidden.has('stravaCad')} />
                         )}
 
-                    </LineChart>
+                    </ComposedChart>
                 </ResponsiveContainer>
             </div>
 

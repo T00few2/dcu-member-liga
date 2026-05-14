@@ -2,15 +2,21 @@ from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
 from extensions import db, get_zwift_service, get_zwift_game_service, strava_service
 from services.results_processor import ResultsProcessor
-from services.results.constants import CATEGORY_FILTER_ALL, FETCH_MODE_FINISHERS
+from services.results.constants import (
+    CATEGORY_FILTER_ALL,
+    FETCH_MODE_FINISHERS,
+    RESULTS_PHASE_FINALIZED,
+    RESULTS_PHASE_PROVISIONAL,
+)
 from services.results.errors import ResultsProcessingError
 from services.category_engine import _effective_cat_name, build_liga_category, effective_rating
 from services.schema_validation import log_schema_issues, validate_race_doc, with_schema_version
-from datetime import datetime
-from authz import require_admin, verify_user_token, AuthzError
+from datetime import datetime, timedelta, timezone
+from authz import require_admin, require_scheduler, verify_user_token, AuthzError
 from services.dual_recording_admin_core import get_dual_recording_result, DualRecordingError
 import re
 from typing import Any
+import uuid
 
 import logging
 
@@ -125,6 +131,48 @@ def _validate_race_fields(data):
 def verify_admin_auth():
     # Backwards-compatible wrapper used throughout this file.
     return require_admin(request)
+
+
+def _parse_race_datetime(value: Any) -> datetime | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        if _DATE_ONLY_RE.match(raw):
+            return datetime.strptime(raw, '%Y-%m-%d')
+        if raw.endswith('Z'):
+            return datetime.fromisoformat(raw.replace('Z', '+00:00'))
+        if _DATETIME_LOCAL_RE.match(raw):
+            fmt = '%Y-%m-%dT%H:%M:%S' if len(raw) == 19 else '%Y-%m-%dT%H:%M'
+            return datetime.strptime(raw, fmt)
+        return datetime.fromisoformat(raw)
+    except Exception:
+        return None
+
+
+def _should_auto_finalize_race(race_data: dict[str, Any], now_utc: datetime) -> bool:
+    automation = race_data.get('resultsAutomation', {}) if isinstance(race_data.get('resultsAutomation'), dict) else {}
+    if not bool(automation.get('automationEnabled', False)):
+        return False
+    if str(race_data.get('resultsPhase') or '').strip().lower() == RESULTS_PHASE_FINALIZED:
+        return False
+
+    race_start = _parse_race_datetime(race_data.get('date'))
+    if race_start is None:
+        return False
+    if race_start.tzinfo is None:
+        race_start = race_start.replace(tzinfo=now_utc.tzinfo)
+    else:
+        race_start = race_start.astimezone(now_utc.tzinfo)
+
+    try:
+        finalize_delay_minutes = int(automation.get('finalizeDelayMinutes', 30))
+    except (TypeError, ValueError):
+        finalize_delay_minutes = 30
+    if finalize_delay_minutes < 0:
+        finalize_delay_minutes = 0
+
+    return now_utc >= race_start + timedelta(minutes=finalize_delay_minutes)
 
 
 def _normalize_category(value: Any) -> str:
@@ -504,21 +552,151 @@ def refresh_results(race_id):
         req_data = request.get_json(silent=True) or {}
         fetch_mode = str(req_data.get('source', FETCH_MODE_FINISHERS) or FETCH_MODE_FINISHERS).strip().lower()
         category_filter = req_data.get('categoryFilter', CATEGORY_FILTER_ALL)
+        results_phase = str(req_data.get('phase', RESULTS_PHASE_FINALIZED) or RESULTS_PHASE_FINALIZED).strip().lower()
+        finalize_run_id = req_data.get('finalizeRunId')
         
         results = processor.process_race_results(
             race_id, 
             fetch_mode=fetch_mode, 
-            category_filter=category_filter
+            category_filter=category_filter,
+            results_phase=results_phase,
+            finalize_run_id=str(finalize_run_id) if finalize_run_id else None,
         )
         
         _lock_categories_for_race(race_id)
-        return jsonify({'message': f'Results calculated (Mode: {fetch_mode}, Cat: {category_filter})', 'results': results}), 200
+        race_doc = db.collection('races').document(race_id).get()
+        race_data = race_doc.to_dict() if race_doc.exists else {}
+        return jsonify({
+            'message': f'Results calculated (Mode: {fetch_mode}, Cat: {category_filter}, Phase: {results_phase})',
+            'results': results,
+            'resultsPhase': race_data.get('resultsPhase'),
+            'provisionalUpdatedAt': race_data.get('provisionalUpdatedAt'),
+            'finalizedAt': race_data.get('finalizedAt'),
+            'finalizeRunId': race_data.get('finalizeRunId'),
+        }), 200
     except ResultsProcessingError as e:
         logger.error(f"Results Processing Domain Error: {e}")
         return jsonify({'message': str(e)}), 500
     except Exception as e:
         logger.error(f"Results Processing Error: {e}")
         return jsonify({'message': str(e)}), 500
+
+
+@races_bp.route('/races/<race_id>/results/finalize', methods=['POST'])
+def finalize_results(race_id):
+    try:
+        verify_admin_auth()
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    try:
+        zwift_service = get_zwift_service()
+        game_service = get_zwift_game_service()
+        processor = ResultsProcessor(db, zwift_service, game_service)
+
+        req_data = request.get_json(silent=True) or {}
+        category_filter = req_data.get('categoryFilter', CATEGORY_FILTER_ALL)
+        finalize_run_id = str(req_data.get('finalizeRunId') or f"manual-{uuid.uuid4()}")
+
+        results = processor.process_race_results(
+            race_id,
+            fetch_mode=FETCH_MODE_FINISHERS,
+            category_filter=category_filter,
+            results_phase=RESULTS_PHASE_FINALIZED,
+            finalize_run_id=finalize_run_id,
+        )
+        _lock_categories_for_race(race_id)
+        race_doc = db.collection('races').document(race_id).get()
+        race_data = race_doc.to_dict() if race_doc.exists else {}
+        return jsonify({
+            'message': 'Race finalized',
+            'results': results,
+            'resultsPhase': race_data.get('resultsPhase'),
+            'provisionalUpdatedAt': race_data.get('provisionalUpdatedAt'),
+            'finalizedAt': race_data.get('finalizedAt'),
+            'finalizeRunId': race_data.get('finalizeRunId'),
+        }), 200
+    except ResultsProcessingError as e:
+        logger.error(f"Finalize Results Domain Error: {e}")
+        return jsonify({'message': str(e)}), 500
+    except Exception as e:
+        logger.error(f"Finalize Results Error: {e}")
+        return jsonify({'message': str(e)}), 500
+
+
+@races_bp.route('/admin/races/results/finalize-pending', methods=['POST'])
+def finalize_pending_races():
+    scheduler_ok = False
+    try:
+        require_scheduler(request)
+        scheduler_ok = True
+    except AuthzError:
+        pass
+    if not scheduler_ok:
+        try:
+            verify_admin_auth()
+        except AuthzError as e:
+            return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    now = datetime.utcnow().replace(tzinfo=timezone.utc)
+    run_id = str(uuid.uuid4())
+    candidates = 0
+    finalized = 0
+    skipped = 0
+    errors = 0
+    finalized_ids: list[str] = []
+    skipped_ids: list[str] = []
+    error_items: list[dict[str, str]] = []
+
+    try:
+        zwift_service = get_zwift_service()
+        game_service = get_zwift_game_service()
+        processor = ResultsProcessor(db, zwift_service, game_service)
+
+        for race_doc in db.collection('races').stream():
+            race_id = race_doc.id
+            race_data = race_doc.to_dict() or {}
+            if not _should_auto_finalize_race(race_data, now):
+                skipped += 1
+                skipped_ids.append(race_id)
+                continue
+
+            candidates += 1
+            try:
+                processor.process_race_results(
+                    race_id,
+                    fetch_mode=FETCH_MODE_FINISHERS,
+                    category_filter=CATEGORY_FILTER_ALL,
+                    results_phase=RESULTS_PHASE_FINALIZED,
+                    finalize_run_id=run_id,
+                )
+                _lock_categories_for_race(race_id)
+                finalized += 1
+                finalized_ids.append(race_id)
+            except Exception as exc:
+                errors += 1
+                error_items.append({'raceId': race_id, 'error': str(exc)})
+
+        return jsonify({
+            'message': 'Pending race finalization processed',
+            'runId': run_id,
+            'candidates': candidates,
+            'finalized': finalized,
+            'skipped': skipped,
+            'errors': errors,
+            'finalizedRaceIds': finalized_ids,
+            'skippedRaceIds': skipped_ids,
+            'errorItems': error_items,
+        }), 200
+    except Exception as exc:
+        logger.error(f"Pending finalization error: {exc}")
+        return jsonify({'message': str(exc)}), 500
 
 
 @races_bp.route('/route-elevation/<int:segment_id>', methods=['GET'])

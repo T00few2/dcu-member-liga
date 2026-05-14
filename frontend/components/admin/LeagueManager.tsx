@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { db } from '@/lib/firebase';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
 
@@ -11,7 +11,7 @@ import { useRaceForm } from '@/hooks/useRaceForm';
 import { useLeagueData } from '@/hooks/useLeagueData';
 
 // Types
-import type { Race, Segment, Route, LeagueSettings, LoadingStatus, ResultSource } from '@/types/admin';
+import type { Race, Segment, Route, LeagueSettings, LoadingStatus, ResultsAutomationConfig } from '@/types/admin';
 
 // Sub-components
 import {
@@ -63,7 +63,8 @@ export default function LeagueManager({
     const [resetting, setResetting] = useState(false);
     const [viewingResultsId, setViewingResultsId] = useState<string | null>(null);
     const [availableSegments, setAvailableSegments] = useState<Segment[]>([]);
-    const [resultsCalcRunning, setResultsCalcRunning] = useState(false);
+    const [liveResultsRunning, setLiveResultsRunning] = useState(false);
+    const [finalizeResultsRunning, setFinalizeResultsRunning] = useState(false);
     const [resultsCalcStatus, setResultsCalcStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
     const [drBatchRunning, setDrBatchRunning] = useState(false);
     const [drBatchStatus, setDrBatchStatus] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
@@ -77,9 +78,15 @@ export default function LeagueManager({
         etaSec?: number;
     } | null>(null);
     
-    // Results fetch options
-    const [resultSource, setResultSource] = useState<ResultSource>('finishers');
     const [categoryFilter, setCategoryFilter] = useState('All');
+    const [automationConfig, setAutomationConfig] = useState<ResultsAutomationConfig>({
+        automationEnabled: false,
+        pollingIntervalMinutes: 5,
+        windowStart: '',
+        windowEnd: '',
+        windowDurationMinutes: 180,
+        finalizeDelayMinutes: 30,
+    });
 
     useEffect(() => {
         if (LEAGUE_MANAGER_TABS.includes(initialActiveTab) && initialActiveTab !== activeTab) {
@@ -159,6 +166,21 @@ export default function LeagueManager({
 
         return () => unsubscribe();
     }, [viewingResultsId, setRaces]);
+
+    const viewingRace = viewingResultsId ? races.find(r => r.id === viewingResultsId) || null : null;
+
+    useEffect(() => {
+        if (!viewingRace) return;
+        const incoming = viewingRace.resultsAutomation || {};
+        setAutomationConfig({
+            automationEnabled: Boolean(incoming.automationEnabled),
+            pollingIntervalMinutes: Number(incoming.pollingIntervalMinutes ?? 5),
+            windowStart: String(incoming.windowStart ?? ''),
+            windowEnd: String(incoming.windowEnd ?? ''),
+            windowDurationMinutes: Number(incoming.windowDurationMinutes ?? 180),
+            finalizeDelayMinutes: Number(incoming.finalizeDelayMinutes ?? 30),
+        });
+    }, [viewingRace]);
 
     // Handlers
     const handleEdit = useCallback((race: Race) => {
@@ -282,37 +304,59 @@ export default function LeagueManager({
         }
     };
 
-    const handleRefreshResults = async (raceId: string): Promise<{ ok: boolean; message: string }> => {
+    const handleRefreshResults = async (
+        raceId: string,
+        phase: 'provisional' | 'finalized',
+    ): Promise<{ ok: boolean; message: string }> => {
         if (!user) return { ok: false, message: 'Not authenticated' };
-        if (!confirm('Calculate results? This may take a few seconds.')) {
-            return { ok: false, message: 'Calculation cancelled' };
+        const isFinalize = phase === 'finalized';
+        const confirmationText = isFinalize
+            ? 'Finalize Results now? This marks current race results as finalized.'
+            : 'Run Live Results now? This updates provisional sprint standings during the race.';
+        if (!confirm(confirmationText)) {
+            return { ok: false, message: `${isFinalize ? 'Finalize' : 'Live'} action cancelled` };
         }
         
         setStatus('refreshing');
         try {
             const token = await user.getIdToken();
-            const res = await fetch(`${API_URL}/races/${raceId}/results/refresh`, {
+            const endpoint = isFinalize
+                ? `${API_URL}/races/${raceId}/results/finalize`
+                : `${API_URL}/races/${raceId}/results/refresh`;
+            const bodyPayload = isFinalize
+                ? { categoryFilter }
+                : {
+                    source: 'finishers',
+                    categoryFilter,
+                    phase: 'provisional',
+                };
+            const res = await fetch(endpoint, {
                 method: 'POST',
                 headers: { 
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ 
-                    source: resultSource,
-                    categoryFilter,
-                }),
+                body: JSON.stringify(bodyPayload),
             });
             
             if (res.ok) {
                 // Refresh local state from Firebase
                 await refreshRace(raceId);
-                return { ok: true, message: 'Results recalculated successfully.' };
+                return {
+                    ok: true,
+                    message: isFinalize
+                        ? 'Race finalized successfully.'
+                        : 'Live results updated successfully.',
+                };
             } else {
                 const data = await res.json();
-                return { ok: false, message: `Recalculate failed: ${data.message || 'Unknown error'}` };
+                return {
+                    ok: false,
+                    message: `${isFinalize ? 'Finalize' : 'Live'} failed: ${data.message || 'Unknown error'}`,
+                };
             }
         } catch (e) {
-            return { ok: false, message: 'Error updating results' };
+            return { ok: false, message: `Error running ${phase} results` };
         } finally {
             setStatus('idle');
         }
@@ -322,12 +366,12 @@ export default function LeagueManager({
         setRaces(prev => prev.map(r => r.id === updatedRace.id ? updatedRace : r));
     }, [setRaces]);
 
-    const handleCalculateSelectedRace = useCallback(async () => {
-        if (!viewingResultsId || resultsCalcRunning) return;
+    const handleRunLiveResults = useCallback(async () => {
+        if (!viewingResultsId || liveResultsRunning || finalizeResultsRunning) return;
         setResultsCalcStatus(null);
-        setResultsCalcRunning(true);
+        setLiveResultsRunning(true);
         try {
-            const result = await handleRefreshResults(viewingResultsId);
+            const result = await handleRefreshResults(viewingResultsId, 'provisional');
             setResultsCalcStatus({
                 type: result.ok ? 'success' : 'error',
                 text: result.message,
@@ -335,12 +379,47 @@ export default function LeagueManager({
         } catch {
             setResultsCalcStatus({
                 type: 'error',
-                text: 'Failed to calculate results.',
+                text: 'Failed to run live results.',
             });
         } finally {
-            setResultsCalcRunning(false);
+            setLiveResultsRunning(false);
         }
-    }, [viewingResultsId, resultsCalcRunning, handleRefreshResults]);
+    }, [viewingResultsId, liveResultsRunning, finalizeResultsRunning]);
+
+    const handleFinalizeSelectedRace = useCallback(async () => {
+        if (!viewingResultsId || liveResultsRunning || finalizeResultsRunning) return;
+        setResultsCalcStatus(null);
+        setFinalizeResultsRunning(true);
+        try {
+            const result = await handleRefreshResults(viewingResultsId, 'finalized');
+            setResultsCalcStatus({
+                type: result.ok ? 'success' : 'error',
+                text: result.message,
+            });
+        } catch {
+            setResultsCalcStatus({
+                type: 'error',
+                text: 'Failed to finalize results.',
+            });
+        } finally {
+            setFinalizeResultsRunning(false);
+        }
+    }, [viewingResultsId, liveResultsRunning, finalizeResultsRunning]);
+
+    const handleSaveAutomation = useCallback(async () => {
+        if (!viewingResultsId || !user) return;
+        setStatus('saving');
+        try {
+            const raceRef = doc(db, 'races', viewingResultsId);
+            await updateDoc(raceRef, { resultsAutomation: automationConfig });
+            await refreshRace(viewingResultsId);
+            setResultsCalcStatus({ type: 'success', text: 'Automation settings saved.' });
+        } catch {
+            setResultsCalcStatus({ type: 'error', text: 'Failed to save automation settings.' });
+        } finally {
+            setStatus('idle');
+        }
+    }, [viewingResultsId, user, automationConfig, refreshRace, setStatus]);
 
     const handleVerifyDRBatch = useCallback(async () => {
         if (!viewingResultsId || !user || drBatchRunning) return;
@@ -453,7 +532,12 @@ export default function LeagueManager({
         return <div className="p-8 text-center">Loading...</div>;
     }
 
-    const viewingRace = viewingResultsId ? races.find(r => r.id === viewingResultsId) || null : null;
+    const formatTimestamp = (value?: string) => {
+        if (!value) return 'N/A';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return value;
+        return date.toLocaleString();
+    };
 
     return (
         <div>
@@ -541,7 +625,7 @@ export default function LeagueManager({
 
                             <div>
                                 <label className="block text-sm font-semibold text-foreground mb-2">
-                                    Results fetch options
+                                    Results controls
                                 </label>
                                 <div className="space-y-3 p-3 bg-muted/30 rounded-lg border border-border/50">
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -558,26 +642,105 @@ export default function LeagueManager({
                                             </select>
                                         </div>
                                         <div className="space-y-1">
-                                            <label className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Source</label>
-                                            <select
-                                                value={resultSource}
-                                                onChange={(e) => setResultSource(e.target.value as ResultSource)}
-                                                className="w-full bg-background border border-input rounded px-2 py-2 text-sm font-medium text-foreground focus:ring-1 focus:ring-primary"
-                                            >
-                                                <option value="finishers">Finishers</option>
-                                                <option value="live">Live</option>
-                                            </select>
+                                            <label className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Current phase</label>
+                                            <div className="w-full bg-background border border-input rounded px-2 py-2 text-sm font-medium text-foreground">
+                                                {(viewingRace?.resultsPhase || 'N/A').toUpperCase()}
+                                            </div>
                                         </div>
                                     </div>
 
-                                    <div className="space-y-3">
+                                    <div className="flex flex-wrap gap-2">
                                         <button
-                                            onClick={handleCalculateSelectedRace}
-                                            disabled={!viewingResultsId || resultsCalcRunning}
-                                            className="w-full sm:w-auto text-sm bg-primary text-primary-foreground px-4 py-2 rounded hover:opacity-90 font-semibold disabled:opacity-50"
+                                            onClick={handleRunLiveResults}
+                                            disabled={!viewingResultsId || liveResultsRunning || finalizeResultsRunning}
+                                            className="w-full sm:w-auto text-sm bg-blue-600 text-white px-4 py-2 rounded hover:opacity-90 font-semibold disabled:opacity-50"
                                         >
-                                            {resultsCalcRunning ? 'Calculating...' : 'Calculate Results'}
+                                            {liveResultsRunning ? 'Running Live Results...' : 'Live Results'}
                                         </button>
+                                        <button
+                                            onClick={handleFinalizeSelectedRace}
+                                            disabled={!viewingResultsId || liveResultsRunning || finalizeResultsRunning}
+                                            className="w-full sm:w-auto text-sm bg-emerald-600 text-white px-4 py-2 rounded hover:opacity-90 font-semibold disabled:opacity-50"
+                                        >
+                                            {finalizeResultsRunning ? 'Finalizing...' : 'Finalize Results'}
+                                        </button>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                                        <div>Last provisional update: <span className="font-medium">{formatTimestamp(viewingRace?.provisionalUpdatedAt)}</span></div>
+                                        <div>Finalized at: <span className="font-medium">{formatTimestamp(viewingRace?.finalizedAt)}</span></div>
+                                    </div>
+
+                                    <div className="space-y-2 pt-2 border-t border-border/40">
+                                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Automation</p>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                            <label className="flex items-center gap-2 text-xs">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={Boolean(automationConfig.automationEnabled)}
+                                                    onChange={(e) => setAutomationConfig(prev => ({ ...prev, automationEnabled: e.target.checked }))}
+                                                />
+                                                Enable automation
+                                            </label>
+                                            <label className="text-xs">
+                                                Poll interval (minutes)
+                                                <input
+                                                    type="number"
+                                                    min={1}
+                                                    value={automationConfig.pollingIntervalMinutes ?? 5}
+                                                    onChange={(e) => setAutomationConfig(prev => ({ ...prev, pollingIntervalMinutes: Number(e.target.value) }))}
+                                                    className="w-full mt-1 bg-background border border-input rounded px-2 py-1.5"
+                                                />
+                                            </label>
+                                            <label className="text-xs">
+                                                Window start (HH:mm)
+                                                <input
+                                                    type="time"
+                                                    value={automationConfig.windowStart ?? ''}
+                                                    onChange={(e) => setAutomationConfig(prev => ({ ...prev, windowStart: e.target.value }))}
+                                                    className="w-full mt-1 bg-background border border-input rounded px-2 py-1.5"
+                                                />
+                                            </label>
+                                            <label className="text-xs">
+                                                Window end (HH:mm)
+                                                <input
+                                                    type="time"
+                                                    value={automationConfig.windowEnd ?? ''}
+                                                    onChange={(e) => setAutomationConfig(prev => ({ ...prev, windowEnd: e.target.value }))}
+                                                    className="w-full mt-1 bg-background border border-input rounded px-2 py-1.5"
+                                                />
+                                            </label>
+                                            <label className="text-xs">
+                                                Window duration (minutes)
+                                                <input
+                                                    type="number"
+                                                    min={1}
+                                                    value={automationConfig.windowDurationMinutes ?? 180}
+                                                    onChange={(e) => setAutomationConfig(prev => ({ ...prev, windowDurationMinutes: Number(e.target.value) }))}
+                                                    className="w-full mt-1 bg-background border border-input rounded px-2 py-1.5"
+                                                />
+                                            </label>
+                                            <label className="text-xs">
+                                                Finalize delay (minutes)
+                                                <input
+                                                    type="number"
+                                                    min={0}
+                                                    value={automationConfig.finalizeDelayMinutes ?? 30}
+                                                    onChange={(e) => setAutomationConfig(prev => ({ ...prev, finalizeDelayMinutes: Number(e.target.value) }))}
+                                                    className="w-full mt-1 bg-background border border-input rounded px-2 py-1.5"
+                                                />
+                                            </label>
+                                        </div>
+                                        <button
+                                            onClick={handleSaveAutomation}
+                                            disabled={!viewingResultsId || status === 'saving'}
+                                            className="w-full sm:w-auto text-sm bg-slate-700 text-white px-4 py-2 rounded hover:opacity-90 font-semibold disabled:opacity-50"
+                                        >
+                                            {status === 'saving' ? 'Saving Automation...' : 'Save Automation'}
+                                        </button>
+                                        <p className="text-xs text-muted-foreground">
+                                            Automation status: {automationConfig.automationEnabled ? 'Enabled' : 'Disabled'} (manual actions always available)
+                                        </p>
                                     </div>
                                     {resultsCalcStatus && (
                                         <p className={`text-xs ${

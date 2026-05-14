@@ -12,7 +12,10 @@ from services.results.constants import (
     RACE_STATUS_FIN,
 )
 from services.results.errors import FinishSegmentResolutionError
-from services.results.finish_selector import select_finish_entries_from_route_instances
+from services.results.finish_selector import (
+    resolve_finish_segment_candidate,
+    select_finish_entries_from_route_instances,
+)
 from services.results.finish_time import resolve_finish_time_ms
 
 logger = logging.getLogger('ZwiftFetcher')
@@ -157,6 +160,16 @@ class ZwiftFetcher:
         )
         if selected_from_route:
             return selected_from_route
+        finish_candidate = resolve_finish_segment_candidate(
+            segmented=segmented,
+            route_segments=route_segments,
+            configured_sprints=configured_sprints,
+        )
+        # Provisional in-race runs can legitimately have zero finish crossings so far.
+        # If finish mapping is deterministic but no rider reached that crossing yet,
+        # return an empty finisher list rather than failing the whole processing pass.
+        if finish_candidate:
+            return []
         raise FinishSegmentResolutionError(
             "Could not deterministically resolve finish segment from route instances. "
             "Check route segments and configured sprint instances.",

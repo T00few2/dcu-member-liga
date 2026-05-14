@@ -63,6 +63,11 @@ export function normalizeRace(raw: unknown, id: string): Race {
         manualDQs,
         manualDeclassifications,
         manualExclusions,
+        resultsPhase: (asString(data.resultsPhase) as Race['resultsPhase']) || undefined,
+        provisionalUpdatedAt: asDateString(data.provisionalUpdatedAt) || undefined,
+        finalizedAt: asDateString(data.finalizedAt) || undefined,
+        finalizeRunId: asString(data.finalizeRunId) || undefined,
+        resultsAutomation: asObject(data.resultsAutomation) as Race['resultsAutomation'],
     };
 }
 

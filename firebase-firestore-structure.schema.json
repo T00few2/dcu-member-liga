@@ -393,6 +393,43 @@
               }
             }
           }
+        },
+        "resultsPhase": {
+          "type": "string",
+          "enum": ["provisional", "finalized"]
+        },
+        "provisionalUpdatedAt": {
+          "$ref": "#/$defs/timestampString"
+        },
+        "finalizedAt": {
+          "$ref": "#/$defs/timestampString"
+        },
+        "finalizeRunId": {
+          "type": "string"
+        },
+        "resultsAutomation": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "automationEnabled": {
+              "type": "boolean"
+            },
+            "pollingIntervalMinutes": {
+              "type": "integer"
+            },
+            "windowStart": {
+              "type": "string"
+            },
+            "windowEnd": {
+              "type": "string"
+            },
+            "windowDurationMinutes": {
+              "type": "integer"
+            },
+            "finalizeDelayMinutes": {
+              "type": "integer"
+            }
+          }
         }
       }
     },

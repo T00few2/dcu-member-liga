@@ -118,6 +118,11 @@ export default function LiveResultsPage() {
     const category = displayCategory || 'A';
 
     let headerTitle = titleParam || leagueName || 'League';
+    const isProvisional = race.resultsPhase === 'provisional';
+    const phaseLabel = isProvisional ? 'Provisional Results' : 'Finalized Results';
+    const phaseBadgeClass = isProvisional
+        ? 'bg-amber-500/90 text-black'
+        : 'bg-emerald-500/90 text-black';
 
     const renderContent = () => {
         // Get league points from standings for the current race
@@ -195,6 +200,11 @@ export default function LiveResultsPage() {
                                     ? `Standings • ${category}`
                                     : `${race.name} • ${category}`}
                             </p>
+                            {viewMode !== 'standings' && (
+                                <span className={`mt-3 inline-flex items-center rounded-full px-3 py-1 text-xs md:text-sm font-bold uppercase tracking-wide ${phaseBadgeClass}`}>
+                                    {phaseLabel}
+                                </span>
+                            )}
                         </div>
 
                         {logoSrc && (
@@ -286,6 +296,13 @@ export default function LiveResultsPage() {
                                 ? `${headerTitle} • ${category}`
                                 : `${race.name} • ${category}`}
                         </h2>
+                        {viewMode !== 'standings' && (
+                            <div className="mt-1">
+                                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${phaseBadgeClass}`}>
+                                    {phaseLabel}
+                                </span>
+                            </div>
+                        )}
                     </div>
 
                     {renderContent()}

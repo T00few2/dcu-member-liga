@@ -107,6 +107,22 @@ def test_filter_finish_entries_raises_when_route_instances_missing():
         assert False, "Expected FinishSegmentResolutionError when deterministic route mapping is unavailable"
 
 
+def test_filter_finish_entries_returns_empty_when_finish_is_resolved_but_no_crossings_yet():
+    fetcher = ZwiftFetcher(zwift_service=None)
+    entries = [_entry("r1", "seg-a", 100, 1000)]
+
+    filtered = fetcher._filter_finish_entries(
+        entries=entries,
+        route_segments=[
+            {"id": "seg-a", "count": 1, "lap": 1, "direction": "forward"},
+            {"id": "seg-a", "count": 2, "lap": 1, "direction": "forward"},
+        ],
+        configured_sprints=[{"id": "seg-a", "count": 1, "lap": 1, "direction": "forward"}],
+    )
+
+    assert filtered == []
+
+
 def test_fetch_segment_efforts_uses_prefetched_crossings():
     fetcher = ZwiftFetcher(zwift_service=None)
     entries = [

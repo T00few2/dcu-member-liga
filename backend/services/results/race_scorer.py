@@ -17,6 +17,7 @@ class RaceScorer:
         riders: list[RiderResult],
         race_config: RaceConfig,
         segment_efforts_map: dict[str | int, Any] | None = None,
+        allow_dnf_sprint_points: bool = False,
     ) -> list[RiderResult]:
         """
         Unified method to calculate points for a list of riders.
@@ -97,7 +98,13 @@ class RaceScorer:
             self._map_segment_efforts(active_riders, segment_efforts_map, race_config.get('sprints', []))
 
         # 5. Calculate Sprint Points (using data on rider objects)
-        self._calculate_sprint_points(active_riders, race_config, manual_dqs, manual_declass)
+        self._calculate_sprint_points(
+            active_riders,
+            race_config,
+            manual_dqs,
+            manual_declass,
+            allow_dnf_sprint_points=allow_dnf_sprint_points,
+        )
 
         # DNF riders should be visible in results, but never earn points.
         # Also clear segment details so UI shows '-' across sprint/point columns.
@@ -109,9 +116,10 @@ class RaceScorer:
                 rider['raceStatus'] = RACE_STATUS_DNF
             rider['finishRank'] = 0
             rider['finishPoints'] = 0
-            rider['sprintPoints'] = 0
-            rider['sprintData'] = {}
-            rider['sprintDetails'] = {}
+            if not allow_dnf_sprint_points:
+                rider['sprintPoints'] = 0
+                rider['sprintData'] = {}
+                rider['sprintDetails'] = {}
 
         # 6. Sum Total & Final Sort
         for rider in active_riders:
@@ -215,6 +223,7 @@ class RaceScorer:
         race_config: RaceConfig,
         manual_dqs: set[str],
         manual_declass: set[str],
+        allow_dnf_sprint_points: bool = False,
     ) -> None:
         """
         Iterates over rider['sprintData'] and awards points based on scheme.
@@ -229,7 +238,9 @@ class RaceScorer:
         # Collect all sprint keys present in data
         all_keys: set[str] = set()
         for r in riders:
-            if r.get('finishTime', 0) > 0 and r.get('sprintData'):
+            if not r.get('sprintData'):
+                continue
+            if r.get('finishTime', 0) > 0 or allow_dnf_sprint_points:
                 all_keys.update(r['sprintData'].keys())
 
         for key in all_keys:
@@ -239,7 +250,7 @@ class RaceScorer:
             # 1. Collect Valid Efforts
             efforts: list[dict[str, Any]] = []
             for r in riders:
-                if r.get('finishTime', 0) <= 0:
+                if r.get('finishTime', 0) <= 0 and not allow_dnf_sprint_points:
                     continue
                 data = r.get('sprintData', {}).get(key)
                 if data:

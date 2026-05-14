@@ -107,6 +107,9 @@ export interface Race {
     manualDQs?: string[];
     manualDeclassifications?: string[];
     manualExclusions?: string[];
+    resultsPhase?: 'provisional' | 'finalized';
+    provisionalUpdatedAt?: string;
+    finalizedAt?: string;
 }
 
 export interface StandingEntry {
