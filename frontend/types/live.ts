@@ -110,6 +110,15 @@ export interface Race {
     resultsPhase?: 'provisional' | 'finalized';
     provisionalUpdatedAt?: string;
     finalizedAt?: string;
+    finalizeRunId?: string;
+    resultsAutomation?: {
+        automationEnabled?: boolean;
+        pollingIntervalMinutes?: number;
+        windowStart?: string;
+        windowEnd?: string;
+        windowDurationMinutes?: number;
+        finalizeDelayMinutes?: number;
+    };
 }
 
 export interface StandingEntry {
