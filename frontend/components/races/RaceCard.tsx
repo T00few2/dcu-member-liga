@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { API_URL, getZwiftInsiderUrl } from '@/lib/api';
 import { formatDateLong, formatTimeWithTz, fromTimestamp } from '@/lib/formatDate';
-import { useAuth } from '@/lib/auth-context';
 import PointsSplitBadge from '@/components/races/PointsSplitBadge';
 import RouteElevationChart from '@/components/races/RouteElevationChart';
 import type { Race, Sprint, EventCategoryConfig, CategoryConfig } from '@/types/live';
@@ -257,14 +256,10 @@ export default function RaceCard({
     showPointsSplit = true,
     variant = 'full',
 }: RaceCardProps) {
-    const { user } = useAuth();
     const raceDate = fromTimestamp(race.date) || new Date(NaN);
     const isPublicVariant = variant === 'public';
     const [profileData, setProfileData] = useState<ProfileData | null>(null);
     const [eventSegments, setEventSegments] = useState<EventSegmentInstance[]>([]);
-    const [signupBusy, setSignupBusy] = useState(false);
-    const [signupMessage, setSignupMessage] = useState<string | null>(null);
-    const [signupError, setSignupError] = useState<string | null>(null);
     const userConfig = race.eventMode === 'multi' ? getUserEventConfig(race, userCategory) : null;
     const userSingleConfig = (race.eventMode !== 'multi' && race.eventMode !== 'grouped') ? getUserSingleConfig(race, userCategory) : null;
     const userGroupConfig = race.eventMode === 'grouped' ? getUserGroupConfig(race, userCategory) : null;
@@ -376,42 +371,6 @@ export default function RaceCard({
         return null;
     })();
 
-    const handleTestSignup = async () => {
-        if (!user) {
-            setSignupError('Du skal være logget ind for at teste tilmelding.');
-            setSignupMessage(null);
-            return;
-        }
-        if (!race.id) {
-            setSignupError('Mangler race-id.');
-            setSignupMessage(null);
-            return;
-        }
-
-        setSignupBusy(true);
-        setSignupError(null);
-        setSignupMessage(null);
-        try {
-            const token = await user.getIdToken();
-            const res = await fetch(`${API_URL}/races/${race.id}/signup`, {
-                method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                },
-            });
-            const json = await res.json().catch(() => ({}));
-            if (!res.ok) {
-                setSignupError(typeof json?.message === 'string' ? json.message : 'Signup fejlede.');
-                return;
-            }
-            setSignupMessage(typeof json?.message === 'string' ? json.message : 'Signup sendt.');
-        } catch {
-            setSignupError('Kunne ikke kontakte serveren.');
-        } finally {
-            setSignupBusy(false);
-        }
-    };
-
     return (
         <div className={`bg-card border border-border rounded-lg shadow-sm overflow-hidden mb-6 ${isPast ? 'opacity-75' : ''}`}>
             <div className={isPublicVariant ? 'p-4 md:p-5' : 'p-6'}>
@@ -514,24 +473,6 @@ export default function RaceCard({
                             <span>Løbspas</span>
                             <ExternalLinkIcon size={16} />
                         </a>
-                        <button
-                            type="button"
-                            onClick={handleTestSignup}
-                            disabled={signupBusy}
-                            className="block w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-bold py-3 px-4 rounded-lg text-center transition shadow-md"
-                        >
-                            {signupBusy ? 'Tilmelder...' : 'Test signup (API)'}
-                        </button>
-                        {signupMessage && (
-                            <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">
-                                {signupMessage}
-                            </p>
-                        )}
-                        {signupError && (
-                            <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
-                                {signupError}
-                            </p>
-                        )}
                     </div>
                 ) : !isPublicVariant ? (
                     <div

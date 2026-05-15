@@ -419,6 +419,14 @@ def signup_race(race_id: str):
                 'unknownPublicIds': unknown_ids,
             }), 200
 
+        zwift_message = None
+        if isinstance(payload, dict):
+            for key in ("message", "error", "detail", "description"):
+                value = payload.get(key)
+                if isinstance(value, str) and value.strip():
+                    zwift_message = value.strip()
+                    break
+
         logger.warning(
             "Zwift signup failed race=%s user=%s subgroup=%s status=%s payload=%s",
             race_id,
@@ -428,11 +436,11 @@ def signup_race(race_id: str):
             payload,
         )
         return jsonify({
-            'message': f'Zwift signup failed ({status_code})',
+            'message': zwift_message or f'Zwift signup failed ({status_code})',
             'subgroupId': subgroup_id,
             'zwiftStatus': status_code,
             'zwiftError': payload,
-        }), 502
+        }), status_code if status_code in {400, 401, 403, 404, 409, 422, 500} else 502
     except Exception as e:
         logger.error(f"Race signup error race={race_id}: {e}")
         return jsonify({'message': str(e)}), 500
