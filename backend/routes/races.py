@@ -14,6 +14,7 @@ from services.schema_validation import log_schema_issues, validate_race_doc, wit
 from datetime import datetime, timedelta, timezone
 from authz import require_admin, require_scheduler, verify_user_token, AuthzError
 from services.dual_recording_admin_core import get_dual_recording_result, DualRecordingError
+from services.zwift_tokens import resolve_user_doc_id_from_auth_uid
 import re
 from typing import Any
 import uuid
@@ -262,6 +263,80 @@ def _hydrate_event_config_subgroup_ids(data: dict[str, Any]) -> tuple[dict[str, 
     data["eventConfiguration"] = event_config
     return data, warnings
 
+
+def _pick_mode_config_for_user(race_data: dict[str, Any], user_category: str) -> tuple[str | None, str | None, str | None]:
+    event_mode = str(race_data.get("eventMode") or "single").strip().lower()
+    wanted = _normalize_category(user_category)
+
+    if event_mode == "multi":
+        cfgs = race_data.get("eventConfiguration") if isinstance(race_data.get("eventConfiguration"), list) else []
+        if not cfgs:
+            return None, None, None
+        chosen = None
+        for cfg in cfgs:
+            if not isinstance(cfg, dict):
+                continue
+            if _normalize_category(cfg.get("customCategory")) == wanted:
+                chosen = cfg
+                break
+        if chosen is None:
+            chosen = cfgs[0] if isinstance(cfgs[0], dict) else None
+        if not chosen:
+            return None, None, None
+        subgroup_id = str(chosen.get("subgroupId") or "").strip() or None
+        event_id = str(chosen.get("eventId") or "").strip() or None
+        event_secret = str(chosen.get("eventSecret") or "").strip() or None
+        return subgroup_id, event_id, event_secret
+
+    if event_mode == "grouped":
+        groups = race_data.get("raceGroups") if isinstance(race_data.get("raceGroups"), list) else []
+        if not groups:
+            return None, None, None
+        chosen = None
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            categories = group.get("categories") if isinstance(group.get("categories"), list) else []
+            if any(_normalize_category((c or {}).get("category")) == wanted for c in categories if isinstance(c, dict)):
+                chosen = group
+                break
+        if chosen is None:
+            chosen = groups[0] if isinstance(groups[0], dict) else None
+        if not chosen:
+            return None, None, None
+        subgroup_id = str(chosen.get("subgroupId") or "").strip() or None
+        event_id = str(chosen.get("eventId") or "").strip() or None
+        event_secret = str(chosen.get("eventSecret") or "").strip() or None
+        return subgroup_id, event_id, event_secret
+
+    subgroup_id = str(race_data.get("subgroupId") or "").strip() or None
+    event_id = str(race_data.get("eventId") or "").strip() or None
+    event_secret = str(race_data.get("eventSecret") or "").strip() or None
+    return subgroup_id, event_id, event_secret
+
+
+def _resolve_signup_subgroup_id(
+    race_data: dict[str, Any],
+    user_category: str,
+    zwift_service,
+) -> tuple[str | None, str | None]:
+    subgroup_id, event_id, event_secret = _pick_mode_config_for_user(race_data, user_category)
+    if subgroup_id:
+        return subgroup_id, None
+    if not event_id:
+        return None, "No event/subgroup configuration found for rider category"
+
+    event_payload = zwift_service.get_public_event_info(event_id, event_secret=event_secret)
+    if not event_payload:
+        return None, f"Unable to resolve subgroup from eventId {event_id}"
+
+    resolved = _select_subgroup_id(event_payload, user_category)
+    if not resolved:
+        resolved = _select_subgroup_id(event_payload, None)
+    if not resolved:
+        return None, f"Could not resolve subgroup for eventId {event_id}"
+    return resolved, None
+
 @races_bp.route('/races', methods=['GET'])
 def get_races():
     if not db:
@@ -277,6 +352,89 @@ def get_races():
         return jsonify({'races': races}), 200
     except Exception as e:
         logger.error(f"Get races error: {e}")
+        return jsonify({'message': str(e)}), 500
+
+
+@races_bp.route('/races/<race_id>/signup', methods=['POST'])
+def signup_race(race_id: str):
+    try:
+        decoded = verify_user_token(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    uid = str(decoded.get("uid") or "").strip()
+    if not uid:
+        return jsonify({'message': 'Invalid auth token (missing uid)'}), 401
+
+    try:
+        user_doc_id = resolve_user_doc_id_from_auth_uid(uid) or uid
+        user_doc = db.collection('users').document(str(user_doc_id)).get()
+        if not user_doc.exists:
+            return jsonify({'message': 'User profile not found'}), 404
+        user_data = user_doc.to_dict() or {}
+        if str(((user_data.get('registration') or {}).get('status') or '')).strip().lower() != 'complete':
+            return jsonify({'message': 'User is not fully registered'}), 403
+
+        zwift_user_id = str(
+            user_data.get('zwiftUserId')
+            or ((user_data.get('connections') or {}).get('zwift') or {}).get('userId')
+            or ''
+        ).strip()
+        if not zwift_user_id:
+            return jsonify({'message': 'Missing zwiftUserId. Reconnect Zwift first.'}), 400
+
+        race_doc = db.collection('races').document(str(race_id)).get()
+        if not race_doc.exists:
+            return jsonify({'message': 'Race not found'}), 404
+        race_data = race_doc.to_dict() or {}
+
+        user_category = str(((user_data.get('ligaCategory') or {}).get('category') or '')).strip()
+        zwift_service = get_zwift_service()
+        subgroup_id, subgroup_error = _resolve_signup_subgroup_id(race_data, user_category, zwift_service)
+        if subgroup_error:
+            return jsonify({'message': subgroup_error}), 400
+        if not subgroup_id:
+            return jsonify({'message': 'Could not determine event subgroup for signup'}), 400
+
+        status_code, payload = zwift_service.batch_register_participants(
+            event_subgroup_id=subgroup_id,
+            public_ids=[zwift_user_id],
+        )
+
+        if status_code == 200:
+            unknown_ids = payload.get("unknownPublicIds") if isinstance(payload, dict) else None
+            unknown_ids = unknown_ids if isinstance(unknown_ids, list) else []
+            if zwift_user_id in unknown_ids:
+                return jsonify({
+                    'message': 'Signup request accepted, but your Zwift public ID was not recognized by Zwift.',
+                    'subgroupId': subgroup_id,
+                    'unknownPublicIds': unknown_ids,
+                }), 200
+            return jsonify({
+                'message': 'Signup completed in Zwift.',
+                'subgroupId': subgroup_id,
+                'unknownPublicIds': unknown_ids,
+            }), 200
+
+        logger.warning(
+            "Zwift signup failed race=%s user=%s subgroup=%s status=%s payload=%s",
+            race_id,
+            user_doc_id,
+            subgroup_id,
+            status_code,
+            payload,
+        )
+        return jsonify({
+            'message': f'Zwift signup failed ({status_code})',
+            'subgroupId': subgroup_id,
+            'zwiftStatus': status_code,
+            'zwiftError': payload,
+        }), 502
+    except Exception as e:
+        logger.error(f"Race signup error race={race_id}: {e}")
         return jsonify({'message': str(e)}), 500
 
 

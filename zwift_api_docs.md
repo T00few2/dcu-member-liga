@@ -21,6 +21,8 @@ Use this first. Pick endpoint by task.
 | Rider profile/category | `GET /api/link/racing-profile` | User token (`profile:read`, `fitness_metrics:read`) | `competitionMetrics` (ftp, zftp, zmap, racingScore, powerCompoundScore, vo2max, category, categoryWomen, weightInGrams), rider identity |
 | Live race telemetry | `GET /api/link/events/subgroups/{subgroupId}/live-data` | App/User token | active riders + power/cadence/position |
 | Race segment/finish data | `GET /api/link/events/subgroups/{subgroupId}/segment-results` | App/User token | `durationInMilliseconds`, `segmentId` |
+| Register event participants | `POST /api/link/events/subgroups/{eventSubgroupId}/participants/batch-register` | App token (partner-owned event) | registers valid `publicIds[]`, returns `unknownPublicIds[]` |
+| Unregister event participants | `POST /api/link/events/subgroups/{eventSubgroupId}/participants/batch-unregister` | App token (partner-owned event) | removes valid `publicIds[]` (non-registered IDs ignored) |
 | Activity details | `GET /api/thirdparty/activity/{activityId}` | User token (`activity`) | summary stats + `fitFileURL` |
 | Power profile snapshot | `GET /api/link/power-curve/power-profile` | User token (`fitness_metrics:read`) | `zftp`, `zmap`, `category`, CP profile |
 | Power curve recent window | `GET /api/link/power-curve/best/last?days=N` | User token | best efforts in last N days |
@@ -186,6 +188,85 @@ curl --request GET \
 **Common pitfalls**
 - Cursor pagination required for full dataset.
 - Must group by `segmentId`; one subgroup can contain many segments.
+
+---
+
+## 3a) POST `/api/link/events/subgroups/{eventSubgroupId}/participants/batch-register`
+
+**Purpose**
+- Batch-register up to 250 riders to a restricted, partner-owned event subgroup.
+
+**Auth + Ownership**
+- App token
+- `azp` claim must match event partner client ID (mismatch returns `403`)
+
+**Request body**
+- `publicIds` (required): list of rider public UUIDs, min 1 max 250
+- `rowId` (conditional): required for Team Time Trial (TTT), must be omitted for non-TTT
+
+**Request**
+```bash
+curl --request POST \
+  --url https://us-or-rly101.zwift.com/api/link/events/subgroups/:eventSubgroupId/participants/batch-register \
+  --header 'Content-Type: application/json' \
+  --data '
+{
+  "publicIds": [
+    "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "b2c3d4e5-f6a7-8901-bcde-f01234567891"
+  ],
+  "rowId": 1
+}
+'
+```
+
+**Response essentials**
+- `unknownPublicIds[]`: IDs not recognized by Zwift and skipped
+- Valid IDs still register even when `unknownPublicIds` is non-empty (non-transactional behavior)
+
+**Common pitfalls**
+- Sending `rowId` on non-TTT events returns `400`.
+- Omitting `rowId` on TTT events returns `400`.
+- Endpoint is intended for restricted/partner-owned events.
+
+---
+
+## 3b) POST `/api/link/events/subgroups/{eventSubgroupId}/participants/batch-unregister`
+
+**Purpose**
+- Batch-unregister up to 250 riders from a restricted, partner-owned event subgroup.
+
+**Auth + Ownership**
+- App token
+- `azp` claim must match event partner client ID (mismatch returns `403`)
+
+**Request body**
+- `publicIds` (required): list of rider public UUIDs, min 1 max 250
+- `rowId` (conditional): required for Team Time Trial (TTT), must be omitted for non-TTT
+
+**Request**
+```bash
+curl --request POST \
+  --url https://us-or-rly101.zwift.com/api/link/events/subgroups/:eventSubgroupId/participants/batch-unregister \
+  --header 'Content-Type: application/json' \
+  --data '
+{
+  "publicIds": [
+    "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "b2c3d4e5-f6a7-8901-bcde-f01234567891"
+  ],
+  "rowId": 1
+}
+'
+```
+
+**Response essentials**
+- `200` with no response body when request is accepted.
+- Public IDs not currently registered are ignored.
+
+**Common pitfalls**
+- Same TTT `rowId` rule as batch-register.
+- Endpoint is intended for restricted/partner-owned events.
 
 ---
 
@@ -497,6 +578,14 @@ Representative response shape:
   - **Method:** `GET`
   - **Endpoint:** `/api/link/events/subgroups/{subgroupId}/segment-results`
   - **Description:** Cumulative results for race segments within an event.
+- **Batch Register Participants**
+  - **Method:** `POST`
+  - **Endpoint:** `/api/link/events/subgroups/{eventSubgroupId}/participants/batch-register`
+  - **Description:** Registers up to 250 participants in restricted, partner-owned subgroups.
+- **Batch Unregister Participants**
+  - **Method:** `POST`
+  - **Endpoint:** `/api/link/events/subgroups/{eventSubgroupId}/participants/batch-unregister`
+  - **Description:** Unregisters up to 250 participants from restricted, partner-owned subgroups.
 
 #### Live Data Example (Official API)
 
@@ -633,6 +722,68 @@ Representative response shape:
 - This endpoint is cursor-paginated; keep requesting while `cursor` is present.
 - A subgroup can contain multiple segment IDs; you often need to group rows by `segmentId`.
 - For live-in-race position, combine with `live-data`; for final result logic, this is typically the canonical source.
+
+#### Batch Register Participants Example (Official API)
+
+Request:
+
+```bash
+curl --request POST \
+  --url https://us-or-rly101.zwift.com/api/link/events/subgroups/:eventSubgroupId/participants/batch-register \
+  --header 'Content-Type: application/json' \
+  --data '
+{
+  "publicIds": [
+    "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "b2c3d4e5-f6a7-8901-bcde-f01234567891"
+  ],
+  "rowId": 1
+}
+'
+```
+
+Representative response shape:
+
+```json
+{
+  "unknownPublicIds": [
+    "ffffffff-ffff-ffff-ffff-ffffffffffff"
+  ]
+}
+```
+
+#### Batch Register Field Notes (Integration-Focused)
+
+- **Event type rules:** `rowId` is required for TTT events and must not be sent for non-TTT events.
+- **Ownership enforcement:** Token `azp` must match the event partner client ID; otherwise Zwift returns `403`.
+- **Batch size:** `publicIds` accepts 1..250 IDs.
+- **Partial success semantics:** Unknown IDs are returned in `unknownPublicIds`; valid IDs are still registered.
+
+#### Batch Unregister Participants Example (Official API)
+
+Request:
+
+```bash
+curl --request POST \
+  --url https://us-or-rly101.zwift.com/api/link/events/subgroups/:eventSubgroupId/participants/batch-unregister \
+  --header 'Content-Type: application/json' \
+  --data '
+{
+  "publicIds": [
+    "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "b2c3d4e5-f6a7-8901-bcde-f01234567891"
+  ],
+  "rowId": 1
+}
+'
+```
+
+#### Batch Unregister Field Notes (Integration-Focused)
+
+- **Event type rules:** same `rowId` constraints as batch-register (required for TTT only).
+- **Ownership enforcement:** Token `azp` must match partner client ID for the event.
+- **Silent ignores:** IDs not currently registered in the subgroup are ignored.
+- **Response shape:** Successful calls return `200` with no body.
 
 ---
 

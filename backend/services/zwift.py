@@ -285,6 +285,36 @@ class ZwiftService:
         response = self._api_delete(f"/api/thirdparty/power-curve/subscribe/{user_id}")
         return response.status_code, self._safe_json(response)
 
+    def batch_register_participants(
+        self,
+        event_subgroup_id: str | int,
+        public_ids: list[str],
+        row_id: int | None = None,
+    ) -> tuple[int, dict[str, Any]]:
+        body: dict[str, Any] = {"publicIds": public_ids}
+        if row_id is not None:
+            body["rowId"] = int(row_id)
+        response = self._api_post(
+            f"/api/link/events/subgroups/{event_subgroup_id}/participants/batch-register",
+            body=body,
+        )
+        return response.status_code, self._safe_json(response)
+
+    def batch_unregister_participants(
+        self,
+        event_subgroup_id: str | int,
+        public_ids: list[str],
+        row_id: int | None = None,
+    ) -> tuple[int, dict[str, Any]]:
+        body: dict[str, Any] = {"publicIds": public_ids}
+        if row_id is not None:
+            body["rowId"] = int(row_id)
+        response = self._api_post(
+            f"/api/link/events/subgroups/{event_subgroup_id}/participants/batch-unregister",
+            body=body,
+        )
+        return response.status_code, self._safe_json(response)
+
     # ------------------------------------------------------------------
     # Event and race helpers (official path variants)
     # ------------------------------------------------------------------
