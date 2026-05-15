@@ -30,6 +30,7 @@ from services.zwift_tokens import (
     resolve_canonical_user_doc_id,
 )
 from services.zwiftracing import RateLimitError
+from services.weight_history import append_weight_history_entry
 
 logger = logging.getLogger(__name__)
 
@@ -465,4 +466,170 @@ def debug_power_profile(zwift_id):
         ),
         200,
     )
+
+
+@admin_bp.route("/admin/weight-history/backfill", methods=["POST"])
+def backfill_weight_history():
+    """Seed weight_history from current stored users.zwiftProfile snapshots."""
+    scheduler_ok = False
+    try:
+        require_scheduler(request)
+        scheduler_ok = True
+    except AuthzError:
+        pass
+
+    if not scheduler_ok:
+        try:
+            require_admin(request)
+        except AuthzError as e:
+            return jsonify({"message": e.message}), e.status_code
+
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+
+    try:
+        body = request.get_json(silent=True) or {}
+        raw_chunk_size = body.get("chunkSize", request.args.get("chunkSize", 50))
+        raw_cursor = body.get("cursor", request.args.get("cursor"))
+        raw_max_seconds = body.get("maxSeconds", request.args.get("maxSeconds", 45))
+        raw_dedupe_minutes = body.get("dedupeMinutes", request.args.get("dedupeMinutes", 1440))
+        raw_retention_days = body.get("retentionDays", request.args.get("retentionDays", 30))
+
+        try:
+            chunk_size = int(raw_chunk_size)
+        except (TypeError, ValueError):
+            chunk_size = 50
+        chunk_size = max(1, min(chunk_size, 200))
+
+        cursor = str(raw_cursor).strip() if raw_cursor is not None else ""
+
+        try:
+            max_seconds = int(raw_max_seconds)
+        except (TypeError, ValueError):
+            max_seconds = 45
+        max_seconds = max(10, min(max_seconds, 240))
+
+        try:
+            dedupe_minutes = int(raw_dedupe_minutes)
+        except (TypeError, ValueError):
+            dedupe_minutes = 1440
+        dedupe_minutes = max(1, dedupe_minutes)
+
+        try:
+            retention_days = int(raw_retention_days)
+        except (TypeError, ValueError):
+            retention_days = 30
+        retention_days = max(retention_days, 30)
+
+        users_query = db.collection("users").order_by("__name__")
+        if cursor:
+            cursor_ref = db.collection("users").document(cursor)
+            users_query = users_query.where("__name__", ">", cursor_ref)
+        user_docs = list(users_query.limit(chunk_size + 1).stream())
+
+        if not user_docs:
+            return (
+                jsonify(
+                    {
+                        "message": "No users found for backfill",
+                        "processed": 0,
+                        "written": 0,
+                        "skipped": 0,
+                        "errors": 0,
+                        "chunkSize": chunk_size,
+                        "nextCursor": None,
+                        "done": True,
+                    }
+                ),
+                200,
+            )
+
+        chunk_docs = user_docs[:chunk_size]
+        has_more_docs = len(user_docs) > chunk_size
+
+        processed = 0
+        written = 0
+        skipped = 0
+        errors = 0
+        timed_out = False
+        last_processed_id = None
+        started_at = time.monotonic()
+
+        for doc in chunk_docs:
+            elapsed = time.monotonic() - started_at
+            if elapsed >= max_seconds:
+                timed_out = True
+                break
+
+            data = doc.to_dict() or {}
+            if (data.get("registration") or {}).get("status") != "complete":
+                skipped += 1
+                processed += 1
+                last_processed_id = doc.id
+                continue
+
+            profile = data.get("zwiftProfile") or {}
+            weight_raw = profile.get("weightInGrams")
+            if weight_raw is None:
+                weight_raw = profile.get("weight")
+            if weight_raw is None:
+                skipped += 1
+                processed += 1
+                last_processed_id = doc.id
+                continue
+
+            try:
+                write_result = append_weight_history_entry(
+                    db=db,
+                    user_doc_id=doc.id,
+                    weight_grams=weight_raw,
+                    source="zwift_profile_snapshot",
+                    trigger="manual_backfill",
+                    dedupe_minutes=dedupe_minutes,
+                    retention_days=retention_days,
+                    profile_updated_at=profile.get("updatedAt"),
+                )
+                if write_result.get("written"):
+                    written += 1
+                else:
+                    skipped += 1
+            except Exception as exc:
+                logger.error("weight-history backfill failed for %s: %s", doc.id, exc)
+                errors += 1
+            finally:
+                processed += 1
+                last_processed_id = doc.id
+
+        if processed == 0:
+            next_cursor = cursor or None
+            done = False
+        else:
+            next_cursor = last_processed_id
+            done = (not has_more_docs) and (not timed_out)
+            if done:
+                next_cursor = None
+
+        return (
+            jsonify(
+                {
+                    "message": "Weight history backfill chunk complete",
+                    "processed": processed,
+                    "written": written,
+                    "skipped": skipped,
+                    "errors": errors,
+                    "chunkSize": chunk_size,
+                    "maxSeconds": max_seconds,
+                    "dedupeMinutes": dedupe_minutes,
+                    "retentionDays": retention_days,
+                    "timedOut": timed_out,
+                    "cursor": cursor or None,
+                    "nextCursor": next_cursor,
+                    "done": done,
+                }
+            ),
+            200,
+        )
+    except Exception as e:
+        logger.error("weight-history backfill error: %s", e)
+        return jsonify({"message": str(e)}), 500
 

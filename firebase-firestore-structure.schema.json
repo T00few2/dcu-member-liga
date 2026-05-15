@@ -101,6 +101,13 @@
       "items": {
         "$ref": "#/$defs/userDoc"
       }
+    },
+    "weight_history": {
+      "type": "array",
+      "description": "Collection-group view of users/{userId}/weight_history documents.",
+      "items": {
+        "$ref": "#/$defs/weightHistoryDoc"
+      }
     }
   },
   "$defs": {
@@ -473,6 +480,47 @@
         "comparison": {
           "type": "object",
           "additionalProperties": true
+        }
+      }
+    },
+    "weightHistoryDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Stored at users/{userId}/weight_history/{entryId}",
+      "properties": {
+        "_id": {
+          "type": "string",
+          "description": "Auto-generated history entry document ID"
+        },
+        "capturedAt": {
+          "$ref": "#/$defs/timestampString"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/timestampString"
+        },
+        "retentionDays": {
+          "type": "integer"
+        },
+        "weightInGrams": {
+          "type": "integer"
+        },
+        "weightKg": {
+          "type": "number"
+        },
+        "source": {
+          "type": "string"
+        },
+        "trigger": {
+          "type": "string"
+        },
+        "raceId": {
+          "type": "string"
+        },
+        "activityId": {
+          "type": "string"
+        },
+        "profileUpdatedAt": {
+          "$ref": "#/$defs/timestampString"
         }
       }
     },

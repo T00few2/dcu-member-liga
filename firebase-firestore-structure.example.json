@@ -367,5 +367,20 @@
         }
       }
     }
+  ],
+  "weight_history": [
+    {
+      "_id": "wh_20260515T001500Z_100001",
+      "capturedAt": "2026-05-15T00:15:00+00:00",
+      "expiresAt": "2026-06-14T00:15:00+00:00",
+      "retentionDays": 30,
+      "weightInGrams": 75000,
+      "weightKg": 75.0,
+      "source": "racing_profile",
+      "trigger": "manual_backfill",
+      "profileUpdatedAt": "2026-05-15T00:14:40+00:00",
+      "raceId": "race_doc_example_001",
+      "activityId": "16889999"
+    }
   ]
 }

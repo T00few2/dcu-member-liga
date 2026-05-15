@@ -17,6 +17,7 @@ from services.dual_recording_core import (
     _iter_activities_for_user_ids,
 )
 from services.user_service import UserService
+from services.weight_history import list_weight_history_entries
 from services.zwift_tokens import get_token_doc, get_valid_access_token
 
 logger = logging.getLogger(__name__)
@@ -306,4 +307,55 @@ def list_strava_activities(rider_id):
         return jsonify({"activities": activities}), 200
     except Exception as exc:
         logger.error("list_strava_activities error: %s", exc)
+        return jsonify({"message": str(exc)}), 500
+
+
+@admin_bp.route("/admin/verification/weight-history/<rider_id>", methods=["GET"])
+def get_weight_history(rider_id):
+    try:
+        require_admin(request)
+    except AuthzError as e:
+        return jsonify({"message": e.message}), e.status_code
+
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+
+    try:
+        user = UserService.get_user_by_id(rider_id)
+        if not user:
+            return jsonify({"message": "User not found"}), 404
+
+        raw_limit = request.args.get("limit", 30)
+        try:
+            limit = int(raw_limit)
+        except (TypeError, ValueError):
+            limit = 30
+        limit = max(1, min(limit, 200))
+
+        def _to_iso(value):
+            if hasattr(value, "isoformat"):
+                return value.isoformat()
+            return value
+
+        rows = list_weight_history_entries(db, user_doc_id=str(user.id), limit=limit)
+        entries = []
+        for row in rows:
+            entries.append(
+                {
+                    "id": row.get("id"),
+                    "capturedAt": _to_iso(row.get("capturedAt")),
+                    "expiresAt": _to_iso(row.get("expiresAt")),
+                    "weightInGrams": row.get("weightInGrams"),
+                    "weightKg": row.get("weightKg"),
+                    "source": row.get("source"),
+                    "trigger": row.get("trigger"),
+                    "raceId": row.get("raceId"),
+                    "activityId": row.get("activityId"),
+                    "profileUpdatedAt": _to_iso(row.get("profileUpdatedAt")),
+                }
+            )
+
+        return jsonify({"entries": entries, "limit": limit}), 200
+    except Exception as exc:
+        logger.error("get_weight_history error: %s", exc)
         return jsonify({"message": str(exc)}), 500

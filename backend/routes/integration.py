@@ -17,6 +17,7 @@ from services.zwift_tokens import (
     save_token_doc,
     upsert_from_token_response,
 )
+from services.weight_history import append_weight_history_entry
 import secrets
 import requests
 from bs4 import BeautifulSoup
@@ -314,6 +315,16 @@ def zwift_callback():
             callback_update['zwiftPowerCurve'] = _power_profile_to_firestore(power_profile)
 
         user_doc_ref.set(with_schema_version(callback_update), merge=True)
+        try:
+            append_weight_history_entry(
+                db=db,
+                user_doc_id=user_doc_ref.id,
+                profile_payload=profile,
+                source="racing_profile",
+                trigger="oauth_callback",
+            )
+        except Exception as exc:
+            logger.warning("Failed to append weight history after OAuth callback for %s: %s", user_doc_ref.id, exc)
 
         try:
             zwift_service.subscribe_activity(access_token)
@@ -594,6 +605,21 @@ def zwift_webhook():
                         update['zwiftPowerCurve'] = _power_profile_to_firestore(power_profile)
                     if len(update) > 1:
                         db.collection('users').document(user_doc_id).set(with_schema_version(update), merge=True)
+                    if profile:
+                        try:
+                            append_weight_history_entry(
+                                db=db,
+                                user_doc_id=user_doc_id,
+                                profile_payload=profile,
+                                source="racing_profile",
+                                trigger=str(notif_type or "profile_refresh"),
+                            )
+                        except Exception as history_exc:
+                            logger.warning(
+                                "Failed to append weight history for webhook user %s: %s",
+                                user_doc_id,
+                                history_exc,
+                            )
                     if token_owner_id != user_doc_id:
                         token_payload = get_token_doc(token_owner_id)
                         if token_payload:

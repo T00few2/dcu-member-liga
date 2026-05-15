@@ -375,3 +375,40 @@ curl -X POST https://<backend-url>/admin/refresh-zwift-profile \
   --data '{"chunkSize":25,"maxSeconds":40,"subscribe":false}'
 ```
 
+### Weight History Retention
+
+To preserve verification evidence without growing user docs indefinitely, historical
+weight snapshots are stored in a subcollection:
+
+- `users/{userId}/weight_history/{entryId}`
+- Current snapshot remains at `users/{userId}.zwiftProfile`
+
+Each history entry includes:
+
+- `capturedAt`
+- `expiresAt` (for Firestore TTL)
+- `weightInGrams`, `weightKg`
+- `source`, `trigger`
+- optional `raceId`, `activityId`, `profileUpdatedAt`
+
+Enable Firestore TTL on `expiresAt` for the `weight_history` collection group.
+Default retention is 30 days (`WEIGHT_HISTORY_RETENTION_DAYS`, minimum enforced 30).
+
+### Weight History Backfill (`POST /admin/weight-history/backfill`)
+
+Use this endpoint to seed history from currently stored `zwiftProfile` values.
+Supports chunked execution to avoid timeouts:
+
+- `chunkSize` (default `50`, max `200`)
+- `cursor` (last processed user document ID)
+- `maxSeconds` (default `45`, max `240`)
+- `dedupeMinutes` (default `1440`)
+- `retentionDays` (default `30`, minimum `30`)
+
+Response fields:
+
+- `processed`, `written`, `skipped`, `errors`
+- `timedOut`
+- `nextCursor`
+- `done`
+
