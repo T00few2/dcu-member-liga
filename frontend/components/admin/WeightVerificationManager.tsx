@@ -151,7 +151,7 @@ export default function WeightVerificationManager() {
 
     // Review State
     const [reviewingId, setReviewingId] = useState<string | null>(null);
-    const [rejectionReason, setRejectionReason] = useState('');
+    const [rejectionReasons, setRejectionReasons] = useState<Record<string, string>>({});
     const [isComposeOpen, setIsComposeOpen] = useState(false);
     const [composeTarget, setComposeTarget] = useState<Pick<PendingVerification, 'id' | 'name' | 'email'> | null>(null);
     const [emailSubject, setEmailSubject] = useState('');
@@ -283,7 +283,7 @@ export default function WeightVerificationManager() {
 
     const handleReview = async (id: string, action: 'approve' | 'reject', reasonOverride?: string): Promise<boolean> => {
         if (!user) return false;
-        const reviewReason = reasonOverride ?? rejectionReason;
+        const reviewReason = reasonOverride ?? rejectionReasons[id] ?? '';
         if (action === 'reject' && !reviewReason && !confirm('Reject without a reason?')) return false;
 
         setReviewingId(id);
@@ -301,7 +301,7 @@ export default function WeightVerificationManager() {
 
             if (res.ok) {
                 showToast(`Rider ${action}d successfully`, 'success');
-                setRejectionReason('');
+                setRejectionReasons(prev => { const next = { ...prev }; delete next[id]; return next; });
                 fetchData();
                 return true;
             } else {
@@ -614,8 +614,8 @@ export default function WeightVerificationManager() {
                                                     type="text"
                                                     placeholder="Rejection reason (optional)"
                                                     className="text-sm bg-background border border-input rounded px-2 py-1 w-full"
-                                                    value={rejectionReason}
-                                                    onChange={(e) => setRejectionReason(e.target.value)}
+                                                    value={rejectionReasons[req.id] ?? ''}
+                                                    onChange={(e) => setRejectionReasons(prev => ({ ...prev, [req.id]: e.target.value }))}
                                                 />
                                             </>
                                         )}
