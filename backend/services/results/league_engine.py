@@ -207,6 +207,7 @@ class LeagueEngine:
         """
         result: dict[str, int] = {}
         ranking_data: list[dict[str, Any]] = []
+        declass_ids: list[str] = []
 
         for rider in riders:
             zid = str(rider.get('zwiftId'))
@@ -224,21 +225,27 @@ class LeagueEngine:
             if not has_finished:
                 continue
 
+            if zid in manual_declassifications:
+                declass_ids.append(zid)
+                continue
+
             ranking_data.append({
                 'zid': zid,
                 'finishTime': rider.get('finishTime', 0),
-                'isDeclassified': zid in manual_declassifications
             })
 
-        # Sort: non-declassified first, then by finishTime asc (fastest first)
-        ranking_data.sort(key=lambda x: (
-            1 if x['isDeclassified'] else 0,
-            x['finishTime']
-        ))
+        # Sort valid riders by finishTime asc (fastest first)
+        ranking_data.sort(key=lambda x: x['finishTime'])
 
         for rank, entry in enumerate(ranking_data):
             points = self.league_rank_points[rank] if rank < len(self.league_rank_points) else 0
             result[entry['zid']] = points
+
+        # All DC riders get one fixed league-point bucket (position after valid riders).
+        declass_rank_index = len(ranking_data)
+        declass_points = self.league_rank_points[declass_rank_index] if declass_rank_index < len(self.league_rank_points) else 0
+        for zid in declass_ids:
+            result[zid] = declass_points
 
         return result
 
@@ -255,6 +262,7 @@ class LeagueEngine:
         """
         result: dict[str, int] = {}
         ranking_data: list[dict[str, Any]] = []
+        declass_ids: list[str] = []
 
         for rider in riders:
             zid = str(rider.get('zwiftId'))
@@ -273,16 +281,18 @@ class LeagueEngine:
             if not (has_finished or has_points or has_activity):
                 continue
 
+            if zid in manual_declassifications:
+                declass_ids.append(zid)
+                continue
+
             ranking_data.append({
                 'zid': zid,
                 'totalPoints': rider.get('totalPoints', 0),
                 'finishRank': rider.get('finishRank', 0) if rider.get('finishRank', 0) > 0 else 9999999,
-                'isDeclassified': zid in manual_declassifications
             })
 
-        # Sort: non-declassified first, then by totalPoints desc, finishRank asc
+        # Sort by totalPoints desc, finishRank asc
         ranking_data.sort(key=lambda x: (
-            0 if x['isDeclassified'] else 1,
             x['totalPoints'],
             -x['finishRank']
         ), reverse=True)
@@ -290,6 +300,12 @@ class LeagueEngine:
         for rank, entry in enumerate(ranking_data):
             points = self.league_rank_points[rank] if rank < len(self.league_rank_points) else 0
             result[entry['zid']] = points
+
+        # All DC riders get one fixed league-point bucket (position after valid riders).
+        declass_rank_index = len(ranking_data)
+        declass_points = self.league_rank_points[declass_rank_index] if declass_rank_index < len(self.league_rank_points) else 0
+        for zid in declass_ids:
+            result[zid] = declass_points
 
         return result
 
@@ -337,6 +353,7 @@ class LeagueEngine:
             return None
 
         ranking_data: list[dict[str, Any]] = []
+        declass_ids: list[str] = []
 
         for rider in riders:
             zid = str(rider.get('zwiftId'))
@@ -355,28 +372,36 @@ class LeagueEngine:
             if not can_rank:
                 continue
 
+            if zid in manual_declassifications:
+                declass_ids.append(zid)
+                continue
+
             ranking_data.append({
                 'zid': zid,
                 'hasFinished': has_finished,
                 'finishTime': rider.get('finishTime', 0),
                 'segmentIndex': furthest[0] if furthest else -1,
                 'segmentWorldTime': furthest[1] if furthest else float('inf'),
-                'isDeclassified': zid in manual_declassifications
             })
 
-        # Sort: non-declassified first, finishers by time, non-finishers by segment progress
+        # Sort finishers by time, non-finishers by segment progress
         def sort_key(x: dict[str, Any]) -> tuple[int, int, int, int, float]:
-            declass_key = 1 if x['isDeclassified'] else 0
             if x['hasFinished']:
-                return (declass_key, 0, x['finishTime'], 0, 0)
+                return (0, x['finishTime'], 0, 0, 0)
             else:
-                return (declass_key, 1, 0, -x['segmentIndex'], x['segmentWorldTime'])
+                return (1, 0, -x['segmentIndex'], x['segmentWorldTime'], 0)
 
         ranking_data.sort(key=sort_key)
 
         for rank, entry in enumerate(ranking_data):
             points = self.league_rank_points[rank] if rank < len(self.league_rank_points) else 0
             result[entry['zid']] = points
+
+        # All DC riders get one fixed league-point bucket (position after valid riders).
+        declass_rank_index = len(ranking_data)
+        declass_points = self.league_rank_points[declass_rank_index] if declass_rank_index < len(self.league_rank_points) else 0
+        for zid in declass_ids:
+            result[zid] = declass_points
 
         return result
 

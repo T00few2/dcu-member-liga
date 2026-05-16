@@ -150,6 +150,22 @@ class TestPointsRace:
         assert '1' in ids
         assert '2' not in ids
 
+    def test_multiple_declassified_riders_get_same_fixed_league_points(self):
+        engine = LeagueEngine(SETTINGS)
+        riders = [
+            make_rider(1, total_points=150, finish_time=3600000, finish_rank=1),  # valid winner
+            make_rider(2, total_points=120, finish_time=3700000, finish_rank=2),  # DC
+            make_rider(3, total_points=120, finish_time=3800000, finish_rank=3),  # DC
+            make_rider(4, total_points=120, finish_time=3900000, finish_rank=4),  # DC
+        ]
+        race = make_race('r1', 'points', {'A': riders}, manual_declassifications=['2', '3', '4'])
+        standings = engine.calculate_standings([race])
+        cat = {r['zwiftId']: r['totalPoints'] for r in standings['A']}
+
+        # All DC riders should share the same fixed bucket (the slot after valid riders).
+        assert cat['2'] == cat['3'] == cat['4']
+        assert cat['2'] == RANK_POINTS[1]
+
 
 # ---------------------------------------------------------------------------
 # Time trial
