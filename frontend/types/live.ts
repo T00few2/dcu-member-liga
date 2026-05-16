@@ -26,6 +26,7 @@ export interface EventCategoryConfig {
 }
 
 export type DualRecordingStatus = 'passed' | 'failed' | 'missing_strava' | 'missing_activity' | 'error';
+export type PublicWeightVerificationStatus = 'pending' | 'submitted' | 'approved' | 'rejected' | 'revoked' | 'none';
 
 export interface DualRecordingVerification {
     status: DualRecordingStatus;
@@ -52,6 +53,11 @@ export interface DualRecordingVerification {
             stdDeltaDiffW?: number;
         };
     };
+}
+
+export interface PublicWeightVerificationRecord {
+    zwiftId: string;
+    status: PublicWeightVerificationStatus | string;
 }
 
 export interface ResultEntry {

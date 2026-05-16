@@ -6,7 +6,14 @@ import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { API_URL } from '@/lib/api';
 import { usePathname, useRouter } from 'next/navigation';
-import type { Race, Sprint, ResultEntry, StandingEntry, DualRecordingVerification } from '@/types/live';
+import type {
+    Race,
+    Sprint,
+    ResultEntry,
+    StandingEntry,
+    DualRecordingVerification,
+    PublicWeightVerificationRecord,
+} from '@/types/live';
 import StandingsTable from './_components/StandingsTable';
 import RaceResultsTable from './_components/RaceResultsTable';
 
@@ -41,6 +48,7 @@ export default function ResultsPage() {
     const [selectedRaceId, setSelectedRaceId] = useState<string>('');
     const [selectedCategory, setSelectedCategory] = useState<string>('A');
     const [drVerifications, setDrVerifications] = useState<Map<string, DualRecordingVerification>>(new Map());
+    const [weightVerifications, setWeightVerifications] = useState<Map<string, PublicWeightVerificationRecord>>(new Map());
     const [standingsCategory, setStandingsCategory] = useState<string>('');
     const [autoSelectStandingsCategory, setAutoSelectStandingsCategory] = useState(true);
     const [bestRacesCount, setBestRacesCount] = useState<number>(5);
@@ -133,6 +141,33 @@ export default function ResultsPage() {
             }
         };
         void loadDrVerifications();
+    }, [selectedRaceId, user]);
+
+    useEffect(() => {
+        const loadWeightVerifications = async () => {
+            if (!selectedRaceId || !user) return;
+            try {
+                const token = await user.getIdToken();
+                const res = await fetch(`${API_URL}/races/${selectedRaceId}/weight-verifications`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                if (!res.ok) {
+                    setWeightVerifications(new Map());
+                    return;
+                }
+                const body = await res.json();
+                const map = new Map<string, PublicWeightVerificationRecord>();
+                (body.verifications || []).forEach((v: PublicWeightVerificationRecord & { zwiftId?: string | number }) => {
+                    const key = String(v.zwiftId || '');
+                    if (!key) return;
+                    map.set(key, v);
+                });
+                setWeightVerifications(map);
+            } catch {
+                setWeightVerifications(new Map());
+            }
+        };
+        void loadWeightVerifications();
     }, [selectedRaceId, user]);
 
     useEffect(() => {
@@ -349,6 +384,7 @@ export default function ResultsPage() {
                     getSprintHeader={getSprintHeader}
                     leaguePointsByZwiftId={leaguePointsByZwiftId}
                     drVerifications={drVerifications}
+                    weightVerifications={weightVerifications}
                     user={user}
                 />
             )}

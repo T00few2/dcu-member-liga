@@ -1,10 +1,17 @@
 'use client';
 
 import { useState } from 'react';
-import type { Race, Sprint, ResultEntry, DualRecordingVerification } from '@/types/live';
+import type {
+    Race,
+    Sprint,
+    ResultEntry,
+    DualRecordingVerification,
+    PublicWeightVerificationRecord,
+} from '@/types/live';
 import { formatDateShort } from '@/lib/formatDate';
 import { formatTime, formatGap } from './formatTime';
 import DualRecordingStatusBadge from '@/components/DualRecordingStatusBadge';
+import PublicWeightVerificationStatusBadge from '@/components/PublicWeightVerificationStatusBadge';
 import DualRecordingResultModal from '@/components/DualRecordingResultModal';
 import type { User } from 'firebase/auth';
 import { API_URL } from '@/lib/api';
@@ -26,6 +33,7 @@ interface Props {
     getSprintHeader: (key: string) => string;
     leaguePointsByZwiftId?: Map<string, number>;
     drVerifications?: Map<string, DualRecordingVerification>;
+    weightVerifications?: Map<string, PublicWeightVerificationRecord>;
     user?: User | null;
 }
 
@@ -45,6 +53,7 @@ export default function RaceResultsTable({
     getSprintHeader,
     leaguePointsByZwiftId,
     drVerifications,
+    weightVerifications,
     user = null,
 }: Props) {
     const [drModal, setDrModal] = useState<{ name: string; verification: DualRecordingVerification; zwiftId: string } | null>(null);
@@ -79,7 +88,15 @@ export default function RaceResultsTable({
     const showFinishPointsColumn = raceResults.some(r => (r.finishPoints ?? 0) > 0);
     const showTotalPointsColumn = raceResults.some(r => (r.totalPoints ?? 0) > 0);
     const showLeaguePointsColumn = !!leaguePointsByZwiftId && raceResults.some(r => leaguePointsByZwiftId.has(r.zwiftId));
-    const showDrColumn = !!drVerifications && drVerifications.size > 0;
+    const showDrColumn = true;
+    const normalizeWeightStatus = (status?: string): 'pending' | 'approved' | 'rejected' | '' => {
+        const normalized = String(status || '').trim().toLowerCase();
+        if (normalized === 'pending' || normalized === 'submitted') return 'pending';
+        if (normalized === 'approved') return 'approved';
+        if (normalized === 'rejected') return 'rejected';
+        return '';
+    };
+    const showWeightVerificationColumn = true;
 
     return (
         <>
@@ -156,6 +173,9 @@ export default function RaceResultsTable({
                                     {showDrColumn && (
                                         <th className="px-4 py-3 text-center whitespace-normal leading-tight" title="Dual Recording">Dual Recording</th>
                                     )}
+                                    {showWeightVerificationColumn && (
+                                        <th className="px-4 py-3 text-center whitespace-normal leading-tight" title="Weight Verification">Weight</th>
+                                    )}
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border">
@@ -222,6 +242,13 @@ export default function RaceResultsTable({
                                                         }}
                                                     />
                                                 )}
+                                            </td>
+                                        )}
+                                        {showWeightVerificationColumn && (
+                                            <td className="px-4 py-3 text-center">
+                                                <PublicWeightVerificationStatusBadge
+                                                    status={normalizeWeightStatus(weightVerifications?.get(rider.zwiftId)?.status)}
+                                                />
                                             </td>
                                         )}
                                     </tr>

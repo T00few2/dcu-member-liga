@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from firebase_admin import firestore, auth
 from extensions import db
-from authz import require_admin, AuthzError
+from authz import require_admin, verify_user_token, AuthzError
 import uuid
 import random
 from datetime import datetime, timedelta, timezone
@@ -122,6 +122,59 @@ def _request_sort_key(req: dict[str, Any]) -> datetime:
         if dt:
             return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
     return datetime.min.replace(tzinfo=timezone.utc)
+
+
+def _build_race_weight_verifications(race_id: str) -> list[dict[str, Any]]:
+    rider_races = _collect_finish_race_map()
+    by_zwift_id: dict[str, dict[str, Any]] = {}
+
+    for user_doc in db.collection('users').stream():
+        user_data = user_doc.to_dict() or {}
+        zwift_id = str(user_data.get('zwiftId') or user_doc.id or '').strip()
+        if not zwift_id:
+            continue
+        verification = user_data.get('verification')
+        verification = verification if isinstance(verification, dict) else {}
+
+        requests = _pick_weight_requests(user_data)
+        if not requests:
+            continue
+
+        for req in requests:
+            explicit_race_id = str(req.get('raceId') or '').strip() or None
+            matched_race_id = explicit_race_id or _infer_request_race_id(
+                zwift_id=zwift_id,
+                requested_at=req.get('requestedAt'),
+                rider_races=rider_races,
+            )
+            if matched_race_id != str(race_id):
+                continue
+
+            candidate = {
+                'userId': str(user_doc.id or ''),
+                'zwiftId': zwift_id,
+                'name': str(user_data.get('name') or ''),
+                'status': str(req.get('status') or verification.get('status') or 'none'),
+                'requestId': str(req.get('requestId') or ''),
+                'requestedAt': req.get('requestedAt'),
+                'submittedAt': req.get('submittedAt'),
+                'reviewedAt': req.get('reviewedAt'),
+                'deadline': req.get('deadline'),
+                'rejectionReason': req.get('rejectionReason'),
+                'raceId': matched_race_id,
+                'raceName': str(req.get('raceName') or ''),
+                'matchSource': 'explicit' if explicit_race_id else 'inferred',
+            }
+
+            existing = by_zwift_id.get(zwift_id)
+            if not existing or _request_sort_key(candidate) >= _request_sort_key(existing):
+                by_zwift_id[zwift_id] = candidate
+
+    return sorted(
+        by_zwift_id.values(),
+        key=lambda item: _request_sort_key(item),
+        reverse=True,
+    )
 
 
 def _collect_finisher_ids_from_results(results: dict[str, Any] | None) -> set[str]:
@@ -684,58 +737,35 @@ def get_race_weight_verifications(race_id: str):
         race_doc = db.collection('races').document(str(race_id)).get()
         if not race_doc.exists:
             return jsonify({'message': 'Race not found'}), 404
-
-        rider_races = _collect_finish_race_map()
-        by_zwift_id: dict[str, dict[str, Any]] = {}
-
-        for user_doc in db.collection('users').stream():
-            user_data = user_doc.to_dict() or {}
-            zwift_id = str(user_data.get('zwiftId') or user_doc.id or '').strip()
-            if not zwift_id:
-                continue
-            verification = user_data.get('verification')
-            verification = verification if isinstance(verification, dict) else {}
-
-            requests = _pick_weight_requests(user_data)
-            if not requests:
-                continue
-
-            for req in requests:
-                explicit_race_id = str(req.get('raceId') or '').strip() or None
-                matched_race_id = explicit_race_id or _infer_request_race_id(
-                    zwift_id=zwift_id,
-                    requested_at=req.get('requestedAt'),
-                    rider_races=rider_races,
-                )
-                if matched_race_id != str(race_id):
-                    continue
-
-                candidate = {
-                    'userId': str(user_doc.id or ''),
-                    'zwiftId': zwift_id,
-                    'name': str(user_data.get('name') or ''),
-                    'status': str(req.get('status') or verification.get('status') or 'none'),
-                    'requestId': str(req.get('requestId') or ''),
-                    'requestedAt': req.get('requestedAt'),
-                    'submittedAt': req.get('submittedAt'),
-                    'reviewedAt': req.get('reviewedAt'),
-                    'deadline': req.get('deadline'),
-                    'rejectionReason': req.get('rejectionReason'),
-                    'raceId': matched_race_id,
-                    'raceName': str(req.get('raceName') or ''),
-                    'matchSource': 'explicit' if explicit_race_id else 'inferred',
-                }
-
-                existing = by_zwift_id.get(zwift_id)
-                if not existing or _request_sort_key(candidate) >= _request_sort_key(existing):
-                    by_zwift_id[zwift_id] = candidate
-
-        verifications = sorted(
-            by_zwift_id.values(),
-            key=lambda item: _request_sort_key(item),
-            reverse=True,
-        )
+        verifications = _build_race_weight_verifications(str(race_id))
         return jsonify({'verifications': verifications}), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+
+
+@verification_bp.route('/races/<race_id>/weight-verifications', methods=['GET'])
+def get_public_race_weight_verifications(race_id: str):
+    """Return race-scoped weight verification statuses for signed-in users."""
+    try:
+        verify_user_token(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    try:
+        race_doc = db.collection('races').document(str(race_id)).get()
+        if not race_doc.exists:
+            return jsonify({'message': 'Race not found'}), 404
+
+        verifications = _build_race_weight_verifications(str(race_id))
+        # Public view only needs status output, no admin metadata.
+        public_rows = [{
+            'zwiftId': str(v.get('zwiftId') or ''),
+            'status': str(v.get('status') or ''),
+        } for v in verifications if str(v.get('zwiftId') or '').strip()]
+        return jsonify({'verifications': public_rows}), 200
     except Exception as e:
         return jsonify({'message': str(e)}), 500
 
