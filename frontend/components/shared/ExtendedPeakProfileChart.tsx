@@ -6,6 +6,7 @@ import {
     CartesianGrid, Tooltip, Legend,
 } from 'recharts';
 import type { DualRecordingResult, CpDiffRow } from '@/hooks/useDualRecording';
+import { computeSyncedPeakWindows } from '@/lib/dualRecordingSyncedPeaks';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -40,50 +41,6 @@ export function durationFromCpRow(row: CpDiffRow): number | null {
         return Number.isFinite(min) ? min * 60 : null;
     }
     return null;
-}
-
-export function computePeaksWithoutInterpolation(
-    time: number[] | null | undefined,
-    watts: Array<number | null> | null | undefined,
-    durationsSec: number[],
-): Record<number, number | null> {
-    const result: Record<number, number | null> = {};
-    if (!time?.length || !watts?.length) {
-        durationsSec.forEach((d) => { result[d] = null; });
-        return result;
-    }
-
-    const points: Array<{ t: number; w: number }> = [];
-    for (let i = 0; i < Math.min(time.length, watts.length); i += 1) {
-        const t = Number(time[i]);
-        const w = watts[i];
-        if (!Number.isFinite(t) || w == null || !Number.isFinite(Number(w))) continue;
-        points.push({ t, w: Number(w) });
-    }
-    points.sort((a, b) => a.t - b.t);
-
-    if (!points.length) {
-        durationsSec.forEach((d) => { result[d] = null; });
-        return result;
-    }
-
-    const prefix: number[] = [0];
-    for (const p of points) prefix.push(prefix[prefix.length - 1] + p.w);
-
-    for (const duration of durationsSec) {
-        if (duration <= 0) { result[duration] = null; continue; }
-        let bestAvg: number | null = null;
-        let j = 0;
-        for (let i = 0; i < points.length; i += 1) {
-            if (j < i) j = i;
-            while (j < points.length && (points[j].t - points[i].t) < duration) j += 1;
-            if (j >= points.length) break;
-            const avg = (prefix[j + 1] - prefix[i]) / (j - i + 1);
-            if (bestAvg == null || avg > bestAvg) bestAvg = avg;
-        }
-        result[duration] = bestAvg != null ? Math.round(bestAvg * 10) / 10 : null;
-    }
-    return result;
 }
 
 // ─── Tooltip ─────────────────────────────────────────────────────────────────
@@ -171,14 +128,8 @@ export function ExtendedPeakProfileChart({
     );
 
     const chartData = useMemo(() => {
-        const zwiftPeaks = computePeaksWithoutInterpolation(
-            result.zwift.streams?.time,
-            result.zwift.streams?.watts as Array<number | null> | undefined,
-            EXTENDED_PEAK_DURATIONS_SEC,
-        );
-        const stravaPeaks = computePeaksWithoutInterpolation(
-            result.strava?.streams?.time,
-            result.strava?.streams?.watts as Array<number | null> | undefined,
+        const synced = computeSyncedPeakWindows(
+            result,
             EXTENDED_PEAK_DURATIONS_SEC,
         );
         const zwiftCpByDuration = new Map<number, number>();
@@ -193,8 +144,8 @@ export function ExtendedPeakProfileChart({
             .map((durationSec) => ({
                 durationSec,
                 durationLabel: formatDurationTick(durationSec),
-                zwift:  zwiftPeaks[durationSec]  ?? zwiftCpByDuration.get(durationSec)  ?? null,
-                strava: stravaPeaks[durationSec] ?? stravaCpByDuration.get(durationSec) ?? null,
+                zwift:  synced?.byDuration[durationSec]?.zwift ?? zwiftCpByDuration.get(durationSec)  ?? null,
+                strava: synced?.byDuration[durationSec]?.strava ?? stravaCpByDuration.get(durationSec) ?? null,
             }))
             .filter((row) => row.zwift != null || row.strava != null);
     }, [result, cpDiff]);

@@ -6,6 +6,7 @@ import {
     CartesianGrid, Tooltip, Brush, ReferenceArea, ReferenceLine,
 } from 'recharts';
 import type { DualRecordingResult } from '@/hooks/useDualRecording';
+import { computeSyncedPeakWindows } from '@/lib/dualRecordingSyncedPeaks';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -32,44 +33,6 @@ function fmtGap(sec: number, frac: number): string {
     const s = sec % 60;
     const time = m > 0 ? (s > 0 ? `${m}m ${s}s` : `${m}m`) : `${s}s`;
     return `${time} (${(frac * 100).toFixed(1)}%)`;
-}
-
-function findPeakWindow(
-    time: number[] | null | undefined,
-    watts: (number | null)[] | null | undefined,
-    durationSec: number,
-    minT?: number,
-    maxT?: number,
-): { startSec: number; endSec: number } | null {
-    if (!time?.length || !watts?.length || durationSec <= 0) return null;
-    const points: { t: number; w: number }[] = [];
-    for (let i = 0; i < Math.min(time.length, watts.length); i++) {
-        const w = watts[i];
-        if (w == null || !Number.isFinite(w)) continue;
-        const t = Number(time[i]);
-        if (minT != null && t < minT) continue;
-        if (maxT != null && t > maxT) continue;
-        points.push({ t, w: Number(w) });
-    }
-    points.sort((a, b) => a.t - b.t);
-    if (!points.length) return null;
-
-    const prefix = [0];
-    for (const p of points) prefix.push(prefix[prefix.length - 1] + p.w);
-
-    let bestAvg = -Infinity;
-    let bestStart = -1;
-    let bestEnd = -1;
-    let j = 0;
-    for (let i = 0; i < points.length; i++) {
-        if (j < i) j = i;
-        while (j < points.length && points[j].t - points[i].t < durationSec) j++;
-        if (j >= points.length) break;
-        const avg = (prefix[j + 1] - prefix[i]) / (j - i + 1);
-        if (avg > bestAvg) { bestAvg = avg; bestStart = i; bestEnd = j; }
-    }
-    if (bestStart < 0) return null;
-    return { startSec: points[bestStart].t, endSec: points[bestEnd].t };
 }
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -289,26 +252,11 @@ export function RecordingStreamsSection({
     }, [chartData, hideHeartRate]);
 
     // ── Peak window highlight (driven by hover on the peak profile chart) ────────
-
-    // Bound the Zwift peak search to the same window that was compared:
-    // if cropping was applied (gap > 0 and within the 15% limit), restrict
-    // to [firstStravaDataT, lastStravaDataT] so the highlight never falls in
-    // the grey cropped zone.
-    const zwiftPeakMinT = (gapSec > 0 && !cropExceedsLimit) ? (firstStravaDataT ?? undefined) : undefined;
-    const zwiftPeakMaxT = (endGapSec > 0 && !cropExceedsLimit) ? (lastStravaDataT ?? undefined) : undefined;
-
-    const zwiftPeakWindow = useMemo(
-        () => highlightDurationSec
-            ? findPeakWindow(zwift.streams?.time, zwift.streams?.watts as (number | null)[], highlightDurationSec, zwiftPeakMinT, zwiftPeakMaxT)
-            : null,
-        [highlightDurationSec, zwift.streams, zwiftPeakMinT, zwiftPeakMaxT],
-    );
-    const stravaPeakWindow = useMemo(
-        () => highlightDurationSec
-            ? findPeakWindow(strava?.streams?.time, strava?.streams?.watts as (number | null)[], highlightDurationSec)
-            : null,
-        [highlightDurationSec, strava?.streams],
-    );
+    const syncedWindowForDuration = useMemo(() => {
+        if (!highlightDurationSec) return null;
+        const synced = computeSyncedPeakWindows(result, [highlightDurationSec]);
+        return synced?.byDuration[highlightDurationSec] ?? null;
+    }, [highlightDurationSec, result]);
 
     // The secondary (right) axis collapses when all secondary series are toggled off
     const hrAxisOn = (hasSeries.zwiftHR   && !hidden.has('zwiftHR'))   ||
@@ -457,11 +405,11 @@ export function RecordingStreamsSection({
                         )}
 
                         {/* Peak window highlights — shown when hovering the peak profile chart */}
-                        {zwiftPeakWindow && (
+                        {syncedWindowForDuration && (
                             <ReferenceArea
                                 yAxisId="w"
-                                x1={zwiftPeakWindow.startSec}
-                                x2={zwiftPeakWindow.endSec}
+                                x1={syncedWindowForDuration.startSec}
+                                x2={syncedWindowForDuration.endSec}
                                 fill="#16a34a"
                                 fillOpacity={0.35}
                                 stroke="#16a34a"
@@ -469,11 +417,11 @@ export function RecordingStreamsSection({
                                 strokeWidth={2}
                             />
                         )}
-                        {stravaPeakWindow && (
+                        {syncedWindowForDuration && (
                             <ReferenceArea
                                 yAxisId="w"
-                                x1={stravaPeakWindow.startSec}
-                                x2={stravaPeakWindow.endSec}
+                                x1={syncedWindowForDuration.startSec}
+                                x2={syncedWindowForDuration.endSec}
                                 fill="#4ade80"
                                 fillOpacity={0.28}
                                 stroke="#4ade80"
@@ -482,20 +430,20 @@ export function RecordingStreamsSection({
                             />
                         )}
                         {/* Vertical marker lines at peak window boundaries */}
-                        {zwiftPeakWindow && (
+                        {syncedWindowForDuration && (
                             <ReferenceLine
                                 yAxisId="w"
-                                x={zwiftPeakWindow.startSec}
+                                x={syncedWindowForDuration.startSec}
                                 stroke="#16a34a"
                                 strokeWidth={2}
                                 strokeDasharray="4 2"
                                 strokeOpacity={0.9}
                             />
                         )}
-                        {zwiftPeakWindow && (
+                        {syncedWindowForDuration && (
                             <ReferenceLine
                                 yAxisId="w"
-                                x={zwiftPeakWindow.endSec}
+                                x={syncedWindowForDuration.endSec}
                                 stroke="#16a34a"
                                 strokeWidth={2}
                                 strokeDasharray="4 2"
