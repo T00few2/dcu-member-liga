@@ -208,7 +208,7 @@ export default function DualRecordingPanel({ riderId, hook, children }: Props) {
     const [hoveredDurationSec, setHoveredDurationSec] = useState<number | null>(null);
 
     const {
-        zwiftActivities, stravaActivities, loadingActivities,
+        zwiftActivities, stravaActivities, stravaConnected, loadingActivities,
         selectedZwiftId, setSelectedZwiftId,
         selectedStravaId, setSelectedStravaId,
         eventId, setEventId,
@@ -265,9 +265,17 @@ export default function DualRecordingPanel({ riderId, hook, children }: Props) {
                     <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-800 p-3 rounded-lg text-sm">
                         <span className="mt-0.5 text-base leading-none">⚠</span>
                         <div>
-                            <span className="font-medium">Strava not linked.</span>
-                            {' '}This rider has no connected Strava account or no recent activities.
-                            Dual recording comparison requires a Strava power stream.
+                            {stravaConnected ? (
+                                <>
+                                    <span className="font-medium">Strava connected, but no activities found.</span>
+                                    {' '}Dual recording comparison requires a Strava activity with power data.
+                                </>
+                            ) : (
+                                <>
+                                    <span className="font-medium">Strava not linked.</span>
+                                    {' '}Connect Strava to run dual recording comparison.
+                                </>
+                            )}
                         </div>
                     </div>
                 )}
@@ -349,7 +357,9 @@ export default function DualRecordingPanel({ riderId, hook, children }: Props) {
                             <div className="h-9 bg-muted/40 rounded animate-pulse" />
                         ) : stravaActivities.length === 0 ? (
                             <p className="text-xs text-muted-foreground italic">
-                                No Strava activities found or Strava not connected.
+                                {stravaConnected
+                                    ? 'Strava is connected, but no activities are available.'
+                                    : 'No Strava connection found for this rider.'}
                             </p>
                         ) : (
                             <select

@@ -31,7 +31,7 @@ export default function DualRecordingStatusBadge({ verification, onClick }: Prop
     } else if (status === 'missing_strava') {
         icon = '?';
         colorClass = 'bg-yellow-100 text-yellow-700 border-yellow-300 hover:bg-yellow-200';
-        title = 'Dual recording: Afventer Strava-data';
+        title = 'Dual recording: No matching Strava activities found';
     } else if (status === 'missing_activity') {
         icon = '!';
         colorClass = 'bg-amber-100 text-amber-700 border-amber-300 hover:bg-amber-200';

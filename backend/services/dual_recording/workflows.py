@@ -142,6 +142,12 @@ def _compute_dual_recording_for_rider(
         event_start_iso,
     )
     if not matched_strava:
+        candidate_count = len((matching_debug or {}).get("candidates") or [])
+        warning = (
+            "No matching Strava activities found."
+            if candidate_count > 0
+            else "No Strava activities found."
+        )
         return {
             "zwift": {
                 "activityId": zwift_activity_id,
@@ -155,7 +161,7 @@ def _compute_dual_recording_for_rider(
             "sync": None,
             "comparison": None,
             "matchingDebug": matching_debug,
-            "warning": "No matching Strava activity found with meaningful overlap in the race window.",
+            "warning": warning,
         }
 
     raw_streams = strava_service.get_activity_streams(user_doc_id, resolved_strava_id)

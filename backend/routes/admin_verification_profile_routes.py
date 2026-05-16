@@ -303,8 +303,17 @@ def list_strava_activities(rider_id):
         if not user:
             return jsonify({"message": "User not found"}), 404
 
+        strava_auth = user.strava_auth or {}
+        strava_connected = bool(strava_auth.get("athlete_id") or strava_auth.get("athleteId"))
+        athlete_id = strava_auth.get("athlete_id") or strava_auth.get("athleteId")
         activities = strava_service.get_activities_for_matching(str(user.id))
-        return jsonify({"activities": activities}), 200
+        return jsonify(
+            {
+                "connected": strava_connected,
+                "athleteId": athlete_id,
+                "activities": activities,
+            }
+        ), 200
     except Exception as exc:
         logger.error("list_strava_activities error: %s", exc)
         return jsonify({"message": str(exc)}), 500

@@ -137,6 +137,7 @@ export interface EventActivityResult {
 export function useDualRecording(user: User | null, riderId: string | null) {
     const [zwiftActivities, setZwiftActivities] = useState<ZwiftActivity[]>([]);
     const [stravaActivities, setStravaActivities] = useState<StravaMatchActivity[]>([]);
+    const [stravaConnected, setStravaConnected] = useState(false);
     const [loadingActivities, setLoadingActivities] = useState(false);
 
     const [selectedZwiftId, setSelectedZwiftId] = useState<string | null>(null);
@@ -175,9 +176,13 @@ export function useDualRecording(user: User | null, riderId: string | null) {
             if (sRes.ok) {
                 const d = await sRes.json();
                 setStravaActivities(d.activities || []);
+                setStravaConnected(Boolean(d.connected));
+            } else {
+                setStravaConnected(false);
             }
         } catch (e) {
             console.error('Error loading activities for dual recording', e);
+            setStravaConnected(false);
         } finally {
             setLoadingActivities(false);
         }
@@ -257,6 +262,7 @@ export function useDualRecording(user: User | null, riderId: string | null) {
     return {
         zwiftActivities,
         stravaActivities,
+        stravaConnected,
         loadingActivities,
         selectedZwiftId,
         setSelectedZwiftId,

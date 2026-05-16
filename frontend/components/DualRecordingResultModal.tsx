@@ -125,6 +125,7 @@ export default function DualRecordingResultModal({
     const failureReasons = explainDrFailureMetrics(failingMetrics);
     const matchingDebug = streamResult?.matchingDebug;
     const candidates = (matchingDebug?.candidates || []).filter((c) => (c.overlapSec || 0) > 0);
+    const hasStravaCandidates = (matchingDebug?.candidates?.length || 0) > 0;
 
     return (
         <div
@@ -187,8 +188,9 @@ export default function DualRecordingResultModal({
                     {/* Missing Strava message */}
                     {status === 'missing_strava' && (
                         <div className="rounded-lg bg-yellow-50 border border-yellow-200 px-4 py-3 text-sm text-yellow-800">
-                            Ingen Strava-aktivitet fundet inden for 4 timer af Zwift-aktiviteten.
-                            Rytteren har muligvis ikke forbundet Strava, eller aktiviteten er endnu ikke synkroniseret.
+                            {hasStravaCandidates
+                                ? 'No matching Strava activities found.'
+                                : 'No Strava activities found.'}
                         </div>
                     )}
 
