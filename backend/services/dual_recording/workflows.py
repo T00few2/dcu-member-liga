@@ -26,6 +26,47 @@ logger = logging.getLogger(__name__)
 _STRAVA_CROP_MAX_FRACTION: float = 0.15
 
 
+def _compute_best_efforts_with_windows(
+    w_1hz: list[float],
+    durations: tuple[int, ...],
+) -> tuple[dict[str, float], dict[str, tuple[int, int]]]:
+    """Return best-effort watts and winning window (start_sec, duration_sec)."""
+    n = len(w_1hz)
+    efforts: dict[str, float] = {}
+    windows: dict[str, tuple[int, int]] = {}
+    for d in durations:
+        if d > n:
+            continue
+        win = sum(w_1hz[:d])
+        best = win
+        best_start = 0
+        for i in range(d, n):
+            win += w_1hz[i] - w_1hz[i - d]
+            start = i - d + 1
+            if win > best:
+                best = win
+                best_start = start
+        key = f"w{d}"
+        efforts[key] = round(best / d, 1)
+        windows[key] = (best_start, d)
+    return efforts, windows
+
+
+def _compute_efforts_on_reference_windows(
+    w_1hz: list[float],
+    ref_windows: dict[str, tuple[int, int]],
+) -> dict[str, float]:
+    """Compute average watts on externally provided (start, duration) windows."""
+    n = len(w_1hz)
+    efforts: dict[str, float] = {}
+    for key, (start, dur) in ref_windows.items():
+        end = start + dur
+        if start < 0 or dur <= 0 or end > n:
+            continue
+        efforts[key] = round(sum(w_1hz[start:end]) / dur, 1)
+    return efforts
+
+
 def _is_dual_recording_required(db: object, user_doc_id: str) -> bool:
     """Return True if rider's registered trainer requires dual recording."""
     try:
@@ -173,15 +214,21 @@ def _compute_dual_recording_for_rider(
     # --- Zwift: compute peak watts from stream, cropped to Strava window ---
     zwift_cropped_sec = 0
     zwift_end_cropped_sec = 0
+    zwift_peak_windows: dict[str, tuple[int, int]] = {}
     if z_1hz_full:
-        z_slice_start = strava_cover_start_sec if (strava_gap_sec > 0 and not crop_exceeds_limit) else 0
-        z_slice_end = (strava_cover_end_sec + 1) if (strava_end_gap_sec > 0 and not crop_exceeds_limit) else len(z_1hz_full)
+        # Always compare over the same covered time range; large gaps are flagged
+        # via sync metadata but should not alter window anchoring.
+        z_slice_start = strava_cover_start_sec if strava_gap_sec > 0 else 0
+        z_slice_end = (strava_cover_end_sec + 1) if strava_end_gap_sec > 0 else len(z_1hz_full)
         z_1hz_for_comparison = z_1hz_full[z_slice_start:z_slice_end]
-        if strava_gap_sec > 0 and not crop_exceeds_limit:
+        if strava_gap_sec > 0:
             zwift_cropped_sec = strava_gap_sec
-        if strava_end_gap_sec > 0 and not crop_exceeds_limit:
+        if strava_end_gap_sec > 0:
             zwift_end_cropped_sec = strava_end_gap_sec
-        zwift_cp_synced = _compute_best_efforts(z_1hz_for_comparison, durations)
+        zwift_cp_synced, zwift_peak_windows = _compute_best_efforts_with_windows(
+            z_1hz_for_comparison,
+            durations,
+        )
     else:
         # No stream available: fall back to Zwift API curve values
         zwift_cp_synced = zwift_cp_curve
@@ -192,7 +239,15 @@ def _compute_dual_recording_for_rider(
     strava_1hz_for_comparison = (
         strava_1hz_raw[strava_cover_start_sec:] if strava_cover_start_sec > 0 else strava_1hz_raw
     )
-    strava_cp_synced = _compute_best_efforts(strava_1hz_for_comparison, durations)
+    # Strava synced efforts must use Zwift's winning windows (same segment),
+    # not Strava's independent best segment.
+    if zwift_peak_windows:
+        strava_cp_synced = _compute_efforts_on_reference_windows(
+            strava_1hz_for_comparison,
+            zwift_peak_windows,
+        )
+    else:
+        strava_cp_synced = _compute_best_efforts(strava_1hz_for_comparison, durations)
     strava_avg_synced = (
         round(sum(strava_1hz_for_comparison) / len(strava_1hz_for_comparison), 1)
         if strava_1hz_for_comparison else None
