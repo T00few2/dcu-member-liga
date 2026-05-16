@@ -54,6 +54,20 @@ export default function ResultsModal({
     onRaceUpdate,
     embedded = false,
 }: ResultsModalProps) {
+    const formatDisplayDate = useCallback((value: unknown) => {
+        if (!value) return '';
+        const maybeTs = value as { seconds?: unknown; nanoseconds?: unknown };
+        if (typeof maybeTs?.seconds === 'number') {
+            const millis = maybeTs.seconds * 1000
+                + (typeof maybeTs?.nanoseconds === 'number' ? Math.floor(maybeTs.nanoseconds / 1_000_000) : 0);
+            const date = new Date(millis);
+            if (!Number.isNaN(date.getTime())) return date.toLocaleString();
+        }
+        const date = new Date(String(value));
+        if (!Number.isNaN(date.getTime())) return date.toLocaleString();
+        return String(value);
+    }, []);
+
     const { user } = useAuth();
     const [drVerifications, setDrVerifications] = useState<Map<string, DualRecordingVerification>>(new Map());
     const [weightVerifications, setWeightVerifications] = useState<Map<string, WeightVerificationRecord>>(new Map());
@@ -624,7 +638,7 @@ export default function ResultsModal({
                         <div>
                             <h3 className="text-lg font-bold text-card-foreground">Results: {race.name}</h3>
                             {race.date && (
-                                <p className="text-xs text-muted-foreground mt-0.5">{race.date}</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">{formatDisplayDate(race.date)}</p>
                             )}
                         </div>
                         <div className="flex justify-end">

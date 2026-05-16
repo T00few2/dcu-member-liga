@@ -532,10 +532,18 @@ export default function LeagueManager({
         return <div className="p-8 text-center">Loading...</div>;
     }
 
-    const formatTimestamp = (value?: string) => {
+    const formatTimestamp = (value?: unknown) => {
         if (!value) return 'N/A';
-        const date = new Date(value);
-        if (Number.isNaN(date.getTime())) return value;
+        const maybeTs = value as { seconds?: unknown; nanoseconds?: unknown };
+        if (typeof maybeTs?.seconds === 'number') {
+            const millis = maybeTs.seconds * 1000
+                + (typeof maybeTs?.nanoseconds === 'number' ? Math.floor(maybeTs.nanoseconds / 1_000_000) : 0);
+            const tsDate = new Date(millis);
+            if (!Number.isNaN(tsDate.getTime())) return tsDate.toLocaleString();
+        }
+
+        const date = new Date(String(value));
+        if (Number.isNaN(date.getTime())) return String(value);
         return date.toLocaleString();
     };
 
