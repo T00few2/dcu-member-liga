@@ -354,6 +354,39 @@
           "lastCheckedAt": "2026-03-14T04:26:58+00:00"
         }
       },
+      "verification": {
+        "status": "approved",
+        "currentRequest": {
+          "requestId": "req_weight_001",
+          "requestedAt": "2026-05-21T20:30:00+00:00",
+          "type": "weight",
+          "status": "approved",
+          "deadline": "2026-05-23T20:30:00+00:00",
+          "raceId": "race_doc_example_001",
+          "raceName": "The Climb",
+          "videoLink": "https://youtube.com/watch?v=example",
+          "submittedAt": "2026-05-22T07:45:00+00:00",
+          "reviewedAt": "2026-05-22T16:20:00+00:00",
+          "reviewerId": "Admin",
+          "rejectionReason": ""
+        },
+        "history": [
+          {
+            "requestId": "req_weight_001",
+            "requestedAt": "2026-05-21T20:30:00+00:00",
+            "type": "weight",
+            "status": "approved",
+            "deadline": "2026-05-23T20:30:00+00:00",
+            "raceId": "race_doc_example_001",
+            "raceName": "The Climb",
+            "videoLink": "https://youtube.com/watch?v=example",
+            "submittedAt": "2026-05-22T07:45:00+00:00",
+            "reviewedAt": "2026-05-22T16:20:00+00:00",
+            "reviewerId": "Admin",
+            "rejectionReason": ""
+          }
+        ]
+      },
       "registration": {
         "status": "complete",
         "cocAccepted": true,

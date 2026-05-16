@@ -37,6 +37,93 @@ def _parse_race_datetime(value: Any) -> datetime | None:
     return None
 
 
+def _pick_weight_requests(user_dict: dict[str, Any]) -> list[dict[str, Any]]:
+    verification = user_dict.get("verification") if isinstance(user_dict, dict) else {}
+    if not isinstance(verification, dict):
+        return []
+
+    history = verification.get("history")
+    current = verification.get("currentRequest")
+    candidates: list[dict[str, Any]] = []
+    if isinstance(history, list):
+        for req in history:
+            if isinstance(req, dict) and str(req.get("type") or "").strip().lower() == "weight":
+                candidates.append(dict(req))
+    if isinstance(current, dict) and str(current.get("type") or "").strip().lower() == "weight":
+        candidates.append(dict(current))
+    return candidates
+
+
+def _collect_finish_race_map() -> dict[str, list[tuple[str, datetime | None]]]:
+    rider_races: dict[str, list[tuple[str, datetime | None]]] = {}
+    if not db:
+        return rider_races
+
+    for race_doc in db.collection("races").stream():
+        race = race_doc.to_dict() or {}
+        race_id = str(race_doc.id or "").strip()
+        if not race_id:
+            continue
+        race_dt = _parse_race_datetime(race.get("date")) or _parse_race_datetime(race.get("resultsUpdatedAt"))
+        results = race.get("results")
+        if not isinstance(results, dict):
+            continue
+        for riders in results.values():
+            if not isinstance(riders, list):
+                continue
+            for rider in riders:
+                if not isinstance(rider, dict):
+                    continue
+                zid = str(rider.get("zwiftId") or "").strip()
+                finish_time = int(rider.get("finishTime") or 0)
+                if not zid or finish_time <= 0:
+                    continue
+                rider_races.setdefault(zid, []).append((race_id, race_dt))
+
+    for zid, entries in rider_races.items():
+        entries.sort(key=lambda item: item[1] or datetime.min.replace(tzinfo=timezone.utc))
+        rider_races[zid] = entries
+    return rider_races
+
+
+def _infer_request_race_id(
+    *,
+    zwift_id: str,
+    requested_at: Any,
+    rider_races: dict[str, list[tuple[str, datetime | None]]],
+) -> str | None:
+    requested_dt = _parse_race_datetime(requested_at)
+    if not requested_dt:
+        return None
+    if requested_dt.tzinfo is None:
+        requested_dt = requested_dt.replace(tzinfo=timezone.utc)
+
+    candidates = rider_races.get(zwift_id) or []
+    if not candidates:
+        return None
+
+    # Allow small positive tolerance for timestamp skew between race docs and request writes.
+    tolerance = timedelta(hours=6)
+    best_race_id: str | None = None
+    best_dt: datetime | None = None
+    for race_id, race_dt in candidates:
+        if not race_dt:
+            continue
+        normalized_race_dt = race_dt if race_dt.tzinfo else race_dt.replace(tzinfo=timezone.utc)
+        if normalized_race_dt <= requested_dt + tolerance and (best_dt is None or normalized_race_dt > best_dt):
+            best_dt = normalized_race_dt
+            best_race_id = race_id
+    return best_race_id
+
+
+def _request_sort_key(req: dict[str, Any]) -> datetime:
+    for key in ("reviewedAt", "submittedAt", "requestedAt"):
+        dt = _parse_race_datetime(req.get(key))
+        if dt:
+            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    return datetime.min.replace(tzinfo=timezone.utc)
+
+
 def _collect_finisher_ids_from_results(results: dict[str, Any] | None) -> set[str]:
     finishers: set[str] = set()
     if not isinstance(results, dict):
@@ -265,7 +352,9 @@ def trigger_verification():
                 'requestedAt': now,
                 'type': 'weight',
                 'status': 'pending',
-                'deadline': deadline
+                'deadline': deadline,
+                'raceId': target_race_id,
+                'raceName': str(target_race.get('name') or ''),
             }
             
             updates = {
@@ -571,6 +660,82 @@ def get_active_requests():
             })
             
         return jsonify({'requests': active}), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+
+
+@verification_bp.route('/admin/races/<race_id>/weight-verifications', methods=['GET'])
+def get_race_weight_verifications(race_id: str):
+    """
+    Return race-scoped weight verification status for riders selected in/for this race.
+    Matching order:
+      1) verification request explicit raceId
+      2) legacy fallback by latest finished race at requestedAt
+    """
+    try:
+        require_admin(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    try:
+        race_doc = db.collection('races').document(str(race_id)).get()
+        if not race_doc.exists:
+            return jsonify({'message': 'Race not found'}), 404
+
+        rider_races = _collect_finish_race_map()
+        by_zwift_id: dict[str, dict[str, Any]] = {}
+
+        for user_doc in db.collection('users').stream():
+            user_data = user_doc.to_dict() or {}
+            zwift_id = str(user_data.get('zwiftId') or user_doc.id or '').strip()
+            if not zwift_id:
+                continue
+            verification = user_data.get('verification')
+            verification = verification if isinstance(verification, dict) else {}
+
+            requests = _pick_weight_requests(user_data)
+            if not requests:
+                continue
+
+            for req in requests:
+                explicit_race_id = str(req.get('raceId') or '').strip() or None
+                matched_race_id = explicit_race_id or _infer_request_race_id(
+                    zwift_id=zwift_id,
+                    requested_at=req.get('requestedAt'),
+                    rider_races=rider_races,
+                )
+                if matched_race_id != str(race_id):
+                    continue
+
+                candidate = {
+                    'userId': str(user_doc.id or ''),
+                    'zwiftId': zwift_id,
+                    'name': str(user_data.get('name') or ''),
+                    'status': str(req.get('status') or verification.get('status') or 'none'),
+                    'requestId': str(req.get('requestId') or ''),
+                    'requestedAt': req.get('requestedAt'),
+                    'submittedAt': req.get('submittedAt'),
+                    'reviewedAt': req.get('reviewedAt'),
+                    'deadline': req.get('deadline'),
+                    'rejectionReason': req.get('rejectionReason'),
+                    'raceId': matched_race_id,
+                    'raceName': str(req.get('raceName') or ''),
+                    'matchSource': 'explicit' if explicit_race_id else 'inferred',
+                }
+
+                existing = by_zwift_id.get(zwift_id)
+                if not existing or _request_sort_key(candidate) >= _request_sort_key(existing):
+                    by_zwift_id[zwift_id] = candidate
+
+        verifications = sorted(
+            by_zwift_id.values(),
+            key=lambda item: _request_sort_key(item),
+            reverse=True,
+        )
+        return jsonify({'verifications': verifications}), 200
     except Exception as e:
         return jsonify({'message': str(e)}), 500
 

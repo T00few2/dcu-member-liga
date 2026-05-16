@@ -1041,6 +1041,102 @@
             }
           }
         },
+        "verification": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "status": {
+              "type": "string"
+            },
+            "currentRequest": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "requestId": {
+                  "type": "string"
+                },
+                "requestedAt": {
+                  "$ref": "#/$defs/timestampString"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "deadline": {
+                  "$ref": "#/$defs/timestampString"
+                },
+                "raceId": {
+                  "type": "string"
+                },
+                "raceName": {
+                  "type": "string"
+                },
+                "videoLink": {
+                  "type": "string"
+                },
+                "submittedAt": {
+                  "$ref": "#/$defs/timestampString"
+                },
+                "reviewedAt": {
+                  "$ref": "#/$defs/timestampString"
+                },
+                "reviewerId": {
+                  "type": "string"
+                },
+                "rejectionReason": {
+                  "type": "string"
+                }
+              }
+            },
+            "history": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "requestId": {
+                    "type": "string"
+                  },
+                  "requestedAt": {
+                    "$ref": "#/$defs/timestampString"
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "deadline": {
+                    "$ref": "#/$defs/timestampString"
+                  },
+                  "raceId": {
+                    "type": "string"
+                  },
+                  "raceName": {
+                    "type": "string"
+                  },
+                  "videoLink": {
+                    "type": "string"
+                  },
+                  "submittedAt": {
+                    "$ref": "#/$defs/timestampString"
+                  },
+                  "reviewedAt": {
+                    "$ref": "#/$defs/timestampString"
+                  },
+                  "reviewerId": {
+                    "type": "string"
+                  },
+                  "rejectionReason": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
         "registration": {
           "type": "object",
           "additionalProperties": true,

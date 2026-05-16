@@ -5,9 +5,16 @@ import { db } from '@/lib/firebase';
 import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
-import type { Race, RaceResult, LoadingStatus, DualRecordingVerification } from '@/types/admin';
+import type {
+    Race,
+    RaceResult,
+    LoadingStatus,
+    DualRecordingVerification,
+    WeightVerificationRecord,
+} from '@/types/admin';
 import type { DualRecordingResult } from '@/hooks/useDualRecording';
 import DualRecordingStatusBadge from '@/components/DualRecordingStatusBadge';
+import WeightVerificationStatusBadge from '@/components/WeightVerificationStatusBadge';
 import DualRecordingResultModal from '@/components/DualRecordingResultModal';
 import ComposeEmailModal from '@/components/admin/ComposeEmailModal';
 import EmailRecipientControls, { EmailRecipientControlItem } from '@/components/admin/EmailRecipientControls';
@@ -49,6 +56,7 @@ export default function ResultsModal({
 }: ResultsModalProps) {
     const { user } = useAuth();
     const [drVerifications, setDrVerifications] = useState<Map<string, DualRecordingVerification>>(new Map());
+    const [weightVerifications, setWeightVerifications] = useState<Map<string, WeightVerificationRecord>>(new Map());
     const [drModal, setDrModal] = useState<{
         name: string;
         zwiftId: string;
@@ -102,9 +110,32 @@ export default function ResultsModal({
         }
     };
 
+    const loadWeightVerifications = async (raceId: string): Promise<Map<string, WeightVerificationRecord>> => {
+        if (!user) return new Map<string, WeightVerificationRecord>();
+        try {
+            const token = await user.getIdToken();
+            const res = await fetch(`${API_URL}/admin/races/${raceId}/weight-verifications`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!res.ok) return new Map<string, WeightVerificationRecord>();
+            const body = await res.json();
+            const map = new Map<string, WeightVerificationRecord>();
+            (body.verifications || []).forEach((v: WeightVerificationRecord & { zwiftId?: string | number }) => {
+                const key = String(v.zwiftId || '');
+                if (!key) return;
+                map.set(key, v);
+            });
+            setWeightVerifications(map);
+            return map;
+        } catch {
+            return new Map<string, WeightVerificationRecord>();
+        }
+    };
+
     useEffect(() => {
         if (!race || !user) return;
         void loadDrVerifications(race.id);
+        void loadWeightVerifications(race.id);
     }, [race?.id, user]);
 
     useEffect(() => {
@@ -662,6 +693,7 @@ export default function ResultsModal({
                                     manualDeclassifications={race.manualDeclassifications || []}
                                     manualExclusions={race.manualExclusions || []}
                                     drVerifications={drVerifications}
+                                    weightVerifications={weightVerifications}
                                     onToggleDQ={handleToggleDQ}
                                     onToggleDeclass={handleToggleDeclass}
                                     onToggleExclude={handleToggleExclude}
@@ -758,6 +790,7 @@ interface CategoryResultsTableProps {
     manualDeclassifications: string[];
     manualExclusions: string[];
     drVerifications: Map<string, DualRecordingVerification>;
+    weightVerifications: Map<string, WeightVerificationRecord>;
     onToggleDQ: (zwiftId: string, isCurrentlyDQ: boolean) => void;
     onToggleDeclass: (zwiftId: string, isCurrentlyDeclass: boolean) => void;
     onToggleExclude: (zwiftId: string, isCurrentlyExcluded: boolean) => void;
@@ -772,6 +805,7 @@ function CategoryResultsTable({
     manualDeclassifications,
     manualExclusions,
     drVerifications,
+    weightVerifications,
     onToggleDQ,
     onToggleDeclass,
     onToggleExclude,
@@ -793,6 +827,7 @@ function CategoryResultsTable({
                         <th className="px-4 py-2 text-right">Pts</th>
                         <th className="px-4 py-2 text-center w-16">Flags</th>
                         <th className="px-4 py-2 text-center w-14" title="Dual Recording">DR</th>
+                        <th className="px-4 py-2 text-center w-14" title="Weight Verification">WV</th>
                         <th className="px-4 py-2 text-center w-12" title="Disqualify (0 pts)">DQ</th>
                         <th className="px-4 py-2 text-center w-12" title="Declassify (Last place pts)">DC</th>
                         <th className="px-4 py-2 text-center w-12" title="Exclude from results">EX</th>
@@ -878,6 +913,15 @@ function CategoryResultsTable({
                                         <DualRecordingStatusBadge
                                             verification={drVerifications.get(riderZwiftId)}
                                             onClick={() => onOpenDR(rider.name, riderZwiftId, rider.activityId, drVerifications.get(riderZwiftId)!)}
+                                        />
+                                    ) : (
+                                        <span className="text-muted-foreground">-</span>
+                                    )}
+                                </td>
+                                <td className="px-4 py-2 text-center">
+                                    {weightVerifications.has(riderZwiftId) ? (
+                                        <WeightVerificationStatusBadge
+                                            verification={weightVerifications.get(riderZwiftId)}
                                         />
                                     ) : (
                                         <span className="text-muted-foreground">-</span>

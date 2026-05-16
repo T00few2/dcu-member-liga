@@ -116,6 +116,7 @@ export interface CpDiffRow {
 }
 
 export type DualRecordingStatus = 'passed' | 'failed' | 'missing_strava' | 'missing_activity' | 'error';
+export type WeightVerificationStatus = 'pending' | 'submitted' | 'approved' | 'rejected' | 'revoked' | 'none';
 
 export interface DualRecordingVerification {
     status: DualRecordingStatus;
@@ -140,6 +141,22 @@ export interface DualRecordingVerification {
             stdDeltaDiffW?: number;
         };
     };
+}
+
+export interface WeightVerificationRecord {
+    userId?: string;
+    zwiftId: string;
+    name?: string;
+    status: WeightVerificationStatus | string;
+    requestId?: string;
+    requestedAt?: string;
+    submittedAt?: string;
+    reviewedAt?: string;
+    deadline?: string;
+    rejectionReason?: string;
+    raceId?: string;
+    raceName?: string;
+    matchSource?: 'explicit' | 'inferred' | string;
 }
 
 export interface RaceResult {
