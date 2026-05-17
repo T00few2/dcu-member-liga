@@ -143,6 +143,7 @@ export interface DualRecordingVerification {
         };
     };
     stickyWatts?: StickyWattsResult | null;
+    trainerName?: string | null;
 }
 
 export interface WeightVerificationRecord {
