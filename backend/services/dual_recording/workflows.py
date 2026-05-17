@@ -1,93 +1,28 @@
+"""Core dual-recording computation: fetch streams and compare Zwift vs Strava."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
-import gzip
-import hashlib
-import json
 import logging
-import os
 
-import firebase_admin
-from firebase_admin import storage
 from extensions import get_zwift_service, strava_service
 from services.zwift_tokens import get_valid_access_token
 
 from .strava import _extract_stream, _match_strava_activity, _trim_strava_streams
-from .time_series import _compute_avg_power_diff, _compute_best_efforts, _resample_to_1hz, analyze_sticky_watts
-from .verdict import _build_cp_comparison, _check_dr_pass, _compute_similarity_metrics
+from .time_series import (
+    _compute_avg_power_diff,
+    _compute_best_efforts,
+    _compute_best_efforts_with_windows,
+    _compute_efforts_on_reference_windows,
+    _resample_to_1hz,
+    analyze_sticky_watts,
+)
+from .verdict import _build_cp_comparison, _compute_similarity_metrics
 from .zwift import _extract_zwift_activity_fields, _fetch_zwift_streams
 
 logger = logging.getLogger(__name__)
 
 # Maximum fraction of the Zwift stream that may be cropped to align with a
-# late-starting Strava recording.  Gaps within this limit are compensated by
-# cropping the Zwift stream so both sides cover the same window before peak
-# watts are computed.  Gaps exceeding the limit are flagged but still compared.
+# late-starting Strava recording before the gap is flagged in sync metadata.
 _STRAVA_CROP_MAX_FRACTION: float = 0.15
-
-
-def _compute_best_efforts_with_windows(
-    w_1hz: list[float],
-    durations: tuple[int, ...],
-) -> tuple[dict[str, float], dict[str, tuple[int, int]]]:
-    """Return best-effort watts and winning window (start_sec, duration_sec)."""
-    n = len(w_1hz)
-    efforts: dict[str, float] = {}
-    windows: dict[str, tuple[int, int]] = {}
-    for d in durations:
-        if d > n:
-            continue
-        win = sum(w_1hz[:d])
-        best = win
-        best_start = 0
-        for i in range(d, n):
-            win += w_1hz[i] - w_1hz[i - d]
-            start = i - d + 1
-            if win > best:
-                best = win
-                best_start = start
-        key = f"w{d}"
-        efforts[key] = round(best / d, 1)
-        windows[key] = (best_start, d)
-    return efforts, windows
-
-
-def _compute_efforts_on_reference_windows(
-    w_1hz: list[float],
-    ref_windows: dict[str, tuple[int, int]],
-) -> dict[str, float]:
-    """Compute average watts on externally provided (start, duration) windows."""
-    n = len(w_1hz)
-    efforts: dict[str, float] = {}
-    for key, (start, dur) in ref_windows.items():
-        end = start + dur
-        if start < 0 or dur <= 0 or end > n:
-            continue
-        efforts[key] = round(sum(w_1hz[start:end]) / dur, 1)
-    return efforts
-
-
-def _is_dual_recording_required(db: object, user_doc_id: str) -> bool:
-    """Return True if rider's registered trainer requires dual recording."""
-    try:
-        user_doc = db.collection("users").document(user_doc_id).get()
-        if not user_doc.exists:
-            return False
-        user_data = user_doc.to_dict() or {}
-        trainer_name = (user_data.get("equipment") or {}).get("trainer")
-        if not trainer_name:
-            return False
-        trainer_name_lower = " ".join(trainer_name.strip().lower().split())
-        for doc in db.collection("trainers").stream():
-            td = doc.to_dict() or {}
-            norm = td.get("normalizedName") or " ".join(
-                (td.get("name") or "").strip().lower().split()
-            )
-            if norm == trainer_name_lower:
-                return bool(td.get("dualRecordingRequired"))
-    except Exception as exc:
-        logger.warning("_is_dual_recording_required(%s): %s", user_doc_id, exc)
-    return False
 
 
 def _compute_dual_recording_for_rider(
@@ -98,7 +33,7 @@ def _compute_dual_recording_for_rider(
     strava_activity_id: str | None = None,
     sw_thresholds: dict | None = None,
 ) -> dict:
-    """Run the dual-recording comparison for one rider/activity."""
+    """Run the full dual-recording comparison for one rider/activity."""
     access_token = get_valid_access_token(user_doc_id, get_zwift_service())
 
     zwift_doc = db.collection("zwift_activities").document(str(zwift_activity_id)).get()
@@ -188,11 +123,7 @@ def _compute_dual_recording_for_rider(
 
     strava_started_at = matched_strava.get("startDate", "")
     trimmed, strava_offset, sync_method, ts_offset = _trim_strava_streams(
-        s_times,
-        s_watts,
-        s_cadence,
-        s_hr,
-        s_alt,
+        s_times, s_watts, s_cadence, s_hr, s_alt,
         zwift_streams.get("time") or [],
         zwift_streams.get("watts") or [],
         zwift_started_at,
@@ -202,18 +133,14 @@ def _compute_dual_recording_for_rider(
 
     durations = (5, 15, 30, 60, 120, 300, 1200)
 
-    # Raw Strava curve from full unaligned stream (unchanged behaviour)
     strava_cp_raw = _compute_best_efforts(_resample_to_1hz(s_times, s_watts), durations)
 
-    # --- Zwift stream data ---
     z_times_raw = zwift_streams.get("time") or []
     z_watts_raw = zwift_streams.get("watts") or []
     z_1hz_full = _resample_to_1hz(z_times_raw, z_watts_raw)
     zwift_stream_start_sec = int(z_times_raw[0]) if z_times_raw else 0
     zwift_stream_end_sec   = int(z_times_raw[-1]) if z_times_raw else 0
 
-    # --- Start-gap detection ---
-    # How far into the Zwift stream does Strava coverage begin?
     trimmed_times = trimmed.get("time") or []
     strava_cover_start_sec = int(trimmed_times[0]) if trimmed_times else (zwift_duration_sec or 0)
     strava_cover_end_sec   = int(trimmed_times[-1]) if trimmed_times else 0
@@ -223,22 +150,16 @@ def _compute_dual_recording_for_rider(
     ) if z_times_raw else (zwift_duration_sec or 0)
     strava_gap_frac = strava_gap_sec / zwift_stream_duration_sec if zwift_stream_duration_sec else 0.0
 
-    # --- End-gap detection ---
-    # How much does Zwift extend beyond Strava's last recorded sample?
     strava_end_gap_sec = max(0, zwift_stream_end_sec - strava_cover_end_sec)
     strava_end_gap_frac = strava_end_gap_sec / zwift_stream_duration_sec if zwift_stream_duration_sec else 0.0
 
-    # The 15% limit applies to total combined cropping, not each gap independently.
     total_crop_frac = strava_gap_frac + strava_end_gap_frac
     crop_exceeds_limit = total_crop_frac > _STRAVA_CROP_MAX_FRACTION
 
-    # --- Zwift: compute peak watts from stream, cropped to Strava window ---
     zwift_cropped_sec = 0
     zwift_end_cropped_sec = 0
     zwift_peak_windows: dict[str, tuple[int, int]] = {}
     if z_1hz_full:
-        # Always compare over the same covered time range; large gaps are flagged
-        # via sync metadata but should not alter window anchoring.
         z_slice_start = strava_cover_start_sec if strava_gap_sec > 0 else 0
         z_slice_end = (strava_cover_end_sec + 1) if strava_end_gap_sec > 0 else len(z_1hz_full)
         z_1hz_for_comparison = z_1hz_full[z_slice_start:z_slice_end]
@@ -247,25 +168,19 @@ def _compute_dual_recording_for_rider(
         if strava_end_gap_sec > 0:
             zwift_end_cropped_sec = strava_end_gap_sec
         zwift_cp_synced, zwift_peak_windows = _compute_best_efforts_with_windows(
-            z_1hz_for_comparison,
-            durations,
+            z_1hz_for_comparison, durations,
         )
     else:
-        # No stream available: fall back to Zwift API curve values
         zwift_cp_synced = zwift_cp_curve
         z_1hz_for_comparison = []
 
-    # --- Strava: slice to actual coverage to avoid backward extrapolation ---
     strava_1hz_raw = _resample_to_1hz(trimmed_times, trimmed.get("watts") or [])
     strava_1hz_for_comparison = (
         strava_1hz_raw[strava_cover_start_sec:] if strava_cover_start_sec > 0 else strava_1hz_raw
     )
-    # Strava synced efforts must use Zwift's winning windows (same segment),
-    # not Strava's independent best segment.
     if zwift_peak_windows:
         strava_cp_synced = _compute_efforts_on_reference_windows(
-            strava_1hz_for_comparison,
-            zwift_peak_windows,
+            strava_1hz_for_comparison, zwift_peak_windows,
         )
     else:
         strava_cp_synced = _compute_best_efforts(strava_1hz_for_comparison, durations)
@@ -274,9 +189,7 @@ def _compute_dual_recording_for_rider(
         if strava_1hz_for_comparison else None
     )
 
-    # Similarity over the common (cropped) window
     similarity_metrics = _compute_similarity_metrics(z_1hz_for_comparison, strava_1hz_for_comparison)
-
     avg_diff_w, avg_diff_pct = _compute_avg_power_diff(zwift_avg_watts, strava_avg_synced)
 
     return {
@@ -328,312 +241,3 @@ def _compute_dual_recording_for_rider(
         },
         "matchingDebug": matching_debug,
     }
-
-
-def _resolve_storage_bucket():
-    bucket_name = (
-        os.getenv("FIREBASE_STORAGE_BUCKET")
-        or os.getenv("NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET")
-        or ""
-    ).strip()
-    if bucket_name:
-        return storage.bucket(bucket_name)
-
-    # Fallback: derive common Firebase bucket names from project id.
-    project_id = ""
-    try:
-        project_id = str(firebase_admin.get_app().project_id or "").strip()
-    except Exception:
-        project_id = ""
-
-    if project_id:
-        candidates = (
-            f"{project_id}.firebasestorage.app",
-            f"{project_id}.appspot.com",
-        )
-        for candidate in candidates:
-            try:
-                bucket = storage.bucket(candidate)
-                # Validate candidate once here; otherwise first upload fails later.
-                bucket.exists()
-                return bucket
-            except Exception:
-                continue
-
-    raise RuntimeError(
-        "Storage bucket name not configured. Set FIREBASE_STORAGE_BUCKET "
-        "(or NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET) in backend runtime."
-    )
-
-
-def _stream_blob_payload(
-    race_id: str,
-    zwift_id_canonical: str,
-    activity_id: str,
-    result: dict,
-) -> dict:
-    return {
-        "schemaVersion": 1,
-        "capturedAt": datetime.now(timezone.utc).isoformat(),
-        "raceId": race_id,
-        "zwiftId": zwift_id_canonical,
-        "activityId": activity_id,
-        "result": result,
-    }
-
-
-def _store_dr_stream_blob(
-    race_id: str,
-    zwift_id_canonical: str,
-    activity_id: str,
-    result: dict,
-) -> dict | None:
-    try:
-        payload = _stream_blob_payload(race_id, zwift_id_canonical, activity_id, result)
-        payload_json = json.dumps(payload, separators=(",", ":"), ensure_ascii=True)
-        payload_bytes = payload_json.encode("utf-8")
-        gz_bytes = gzip.compress(payload_bytes, compresslevel=6)
-        digest = hashlib.sha256(payload_bytes).hexdigest()
-
-        verified_at = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        blob_path = (
-            f"dr-streams/{race_id}/{zwift_id_canonical}/"
-            f"{activity_id}-{verified_at}.json.gz"
-        )
-        bucket = _resolve_storage_bucket()
-        blob = bucket.blob(blob_path)
-        blob.cache_control = "private, max-age=3600"
-        blob.metadata = {
-            "raceId": race_id,
-            "zwiftId": zwift_id_canonical,
-            "activityId": str(activity_id),
-            "sha256": digest,
-            "schemaVersion": "1",
-        }
-        blob.upload_from_string(gz_bytes, content_type="application/json")
-        blob.content_encoding = "gzip"
-        blob.patch()
-
-        return {
-            "streamBlobPath": blob_path,
-            "streamBytes": len(gz_bytes),
-            "streamHash": digest,
-            "streamStoredAt": datetime.now(timezone.utc).isoformat(),
-            "streamSchemaVersion": 1,
-        }
-    except Exception as exc:
-        logger.warning(
-            "Failed to store DR stream blob (race=%s rider=%s activity=%s): %s",
-            race_id,
-            zwift_id_canonical,
-            activity_id,
-            exc,
-        )
-        return None
-
-
-def _load_dr_stream_blob_result(stream_blob_path: str) -> dict | None:
-    try:
-        bucket = _resolve_storage_bucket()
-        blob = bucket.blob(str(stream_blob_path))
-        if not blob.exists():
-            return None
-        raw = blob.download_as_bytes()
-        if str(stream_blob_path).lower().endswith(".gz") or blob.content_encoding == "gzip":
-            # Some storage client paths can already return decoded bytes for
-            # gzip-encoded objects; tolerate both encoded and decoded payloads.
-            try:
-                raw = gzip.decompress(raw)
-            except Exception:
-                pass
-        payload = json.loads(raw.decode("utf-8"))
-        if not isinstance(payload, dict):
-            return None
-        result = payload.get("result")
-        return result if isinstance(result, dict) else None
-    except Exception as exc:
-        logger.warning("Failed to load DR stream blob %s: %s", stream_blob_path, exc)
-        return None
-
-
-def _persist_dr_verification_result(
-    db: object,
-    *,
-    result: dict,
-    zwift_id_canonical: str,
-    activity_id: str,
-    race_id: str,
-) -> dict:
-    comparison = result.get("comparison")
-    strava_data = result.get("strava")
-
-    if not strava_data:
-        status = "missing_strava"
-        passed = None
-        failing: list[str] = []
-    else:
-        passed, failing = _check_dr_pass(comparison or {})
-        status = "passed" if passed else "failed"
-
-    strava_id = (strava_data or {}).get("activityId")
-    doc_payload: dict = {
-        "zwiftId": zwift_id_canonical,
-        "raceId": race_id,
-        "activityId": activity_id,
-        "status": status,
-        "verifiedAt": datetime.now(timezone.utc).isoformat(),
-        "failingMetrics": failing,
-        "comparison": {
-            "cpDiff": (comparison or {}).get("cpDiff") or [],
-            "avgPower": (comparison or {}).get("avgPower") or {},
-            "similarity": (comparison or {}).get("similarity") or {},
-        },
-    }
-    if passed is not None:
-        doc_payload["passed"] = passed
-    if strava_id is not None:
-        doc_payload["stravaActivityId"] = strava_id
-
-    sticky_watts = (result.get("zwift") or {}).get("stickyWatts")
-    if sticky_watts:
-        doc_payload["stickyWatts"] = sticky_watts
-
-    stream_meta = _store_dr_stream_blob(
-        race_id=race_id,
-        zwift_id_canonical=zwift_id_canonical,
-        activity_id=activity_id,
-        result=result,
-    )
-    if stream_meta:
-        doc_payload.update(stream_meta)
-
-    (
-        db.collection("races")
-        .document(race_id)
-        .collection("dr_verifications")
-        .document(zwift_id_canonical)
-        .set(doc_payload)
-    )
-    return doc_payload
-
-
-def _load_sw_thresholds(db: object) -> dict | None:
-    """Read saved sticky-watts thresholds from Firestore admin settings."""
-    try:
-        snap = db.collection("league").document("adminSettings").get()
-        if snap.exists:
-            return (snap.to_dict() or {}).get("stickyWattsThresholds") or None
-    except Exception as exc:
-        logger.warning("_load_sw_thresholds: %s", exc)
-    return None
-
-
-def _run_dr_verification_background(
-    db: object,
-    user_doc_id: str,
-    zwift_id_canonical: str,
-    activity_id: str,
-    race_id: str,
-    event_start_iso: str | None,
-    sw_thresholds: dict | None = None,
-) -> None:
-    """Compute DR and persist result to races/{race_id}/dr_verifications/{zwift_id}."""
-    try:
-        result = _compute_dual_recording_for_rider(
-            db, user_doc_id, activity_id, event_start_iso,
-            sw_thresholds=sw_thresholds,
-        )
-        doc_payload = _persist_dr_verification_result(
-            db=db,
-            result=result,
-            zwift_id_canonical=zwift_id_canonical,
-            activity_id=activity_id,
-            race_id=race_id,
-        )
-        status = doc_payload.get("status", "unknown")
-        logger.info(
-            "DR verification stored: race=%s rider=%s status=%s",
-            race_id,
-            zwift_id_canonical,
-            status,
-        )
-    except Exception as exc:
-        logger.error(
-            "DR verification failed: race=%s rider=%s activity=%s: %s",
-            race_id,
-            zwift_id_canonical,
-            activity_id,
-            exc,
-        )
-
-
-def _run_sw_only_background(
-    db: object,
-    user_doc_id: str,
-    zwift_id_canonical: str,
-    activity_id: str,
-    race_id: str,
-    sw_thresholds: dict | None = None,
-) -> None:
-    """Fetch Zwift stream, compute sticky watts, persist to dr_verifications/{zwift_id}."""
-    try:
-        access_token = get_valid_access_token(user_doc_id, get_zwift_service())
-
-        zwift_doc = db.collection("zwift_activities").document(str(activity_id)).get()
-        zwift_raw: dict = {}
-        fresh_activity: dict = {}
-        if zwift_doc.exists:
-            zwift_raw = (zwift_doc.to_dict() or {}).get("data") or {}
-        elif access_token:
-            fresh_activity = get_zwift_service().get_user_activity(str(activity_id), access_token) or {}
-            zwift_raw = fresh_activity
-
-        zwift_streams: dict = {}
-        if access_token and zwift_raw:
-            try:
-                zwift_streams, _ = _fetch_zwift_streams(
-                    zwift_raw, activity_id, access_token,
-                    fresh_activity=fresh_activity or None,
-                )
-            except Exception as exc:
-                logger.warning("_run_sw_only_background: streams: %s", exc)
-
-        sticky_watts = analyze_sticky_watts(
-            zwift_streams.get("time") or [],
-            zwift_streams.get("watts") or [],
-            sw_thresholds,
-        )
-
-        vref = (
-            db.collection("races")
-            .document(race_id)
-            .collection("dr_verifications")
-            .document(zwift_id_canonical)
-        )
-        existing = vref.get()
-        existing_status = ((existing.to_dict() or {}).get("status") or "") if existing.exists else ""
-
-        if existing_status and existing_status != "sw_only":
-            # Preserve the existing DR (or missing_activity) document — only patch SW fields.
-            vref.update({
-                "stickyWatts": sticky_watts,
-                "swVerifiedAt": datetime.now(timezone.utc).isoformat(),
-            })
-        else:
-            vref.set({
-                "zwiftId": zwift_id_canonical,
-                "raceId": race_id,
-                "activityId": activity_id,
-                "status": "sw_only",
-                "verifiedAt": datetime.now(timezone.utc).isoformat(),
-                "stickyWatts": sticky_watts,
-            })
-        logger.info(
-            "SW stored: race=%s rider=%s suspicious=%s (prior_status=%r)",
-            race_id, zwift_id_canonical, sticky_watts.get("suspicious"), existing_status or "none",
-        )
-    except Exception as exc:
-        logger.error(
-            "SW-only failed: race=%s rider=%s activity=%s: %s",
-            race_id, zwift_id_canonical, activity_id, exc,
-        )
