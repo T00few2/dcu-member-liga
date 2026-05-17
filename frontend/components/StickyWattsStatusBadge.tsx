@@ -5,6 +5,7 @@ import type { StickyWattsResult } from '@/lib/stickyWatts';
 
 interface Props {
     stickyWatts: StickyWattsResult | null | undefined;
+    trainerName?: string | null;
 }
 
 function MetricsGrid({ sw }: { sw: StickyWattsResult }) {
@@ -35,7 +36,7 @@ function MetricsGrid({ sw }: { sw: StickyWattsResult }) {
     );
 }
 
-export default function StickyWattsStatusBadge({ stickyWatts }: Props) {
+export default function StickyWattsStatusBadge({ stickyWatts, trainerName }: Props) {
     const [open, setOpen] = useState(false);
 
     if (!stickyWatts) return null;
@@ -74,6 +75,11 @@ export default function StickyWattsStatusBadge({ stickyWatts }: Props) {
                             <div>
                                 <h2 className="text-base font-bold text-foreground">Sticky Watts</h2>
                                 <p className="text-xs text-muted-foreground">Automatisk analyse (eksperimentel)</p>
+                                {trainerName && (
+                                    <p className="text-xs text-muted-foreground mt-0.5">
+                                        Trainer: <span className="font-medium text-foreground">{trainerName}</span>
+                                    </p>
+                                )}
                             </div>
                             <button
                                 onClick={() => setOpen(false)}

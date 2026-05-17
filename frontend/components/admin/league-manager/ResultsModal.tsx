@@ -946,6 +946,7 @@ function CategoryResultsTable({
                                 <td className="px-4 py-2 text-center">
                                     <StickyWattsStatusBadge
                                         stickyWatts={drVerifications.get(riderZwiftId)?.stickyWatts}
+                                        trainerName={drVerifications.get(riderZwiftId)?.trainerName}
                                     />
                                 </td>
                                 <td className="px-4 py-2 text-center">

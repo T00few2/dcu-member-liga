@@ -64,6 +64,13 @@ def _persist_dr_verification_result(
         status = "passed" if passed else "failed"
 
     strava_id = (strava_data or {}).get("activityId")
+    trainer_name: str | None = None
+    try:
+        user_doc = db.collection("users").document(zwift_id_canonical).get()
+        if user_doc.exists:
+            trainer_name = ((user_doc.to_dict() or {}).get("equipment") or {}).get("trainer") or None
+    except Exception as exc:
+        logger.warning("_persist_dr_verification_result: trainer lookup: %s", exc)
     doc_payload: dict = {
         "zwiftId": zwift_id_canonical,
         "raceId": race_id,
@@ -81,6 +88,9 @@ def _persist_dr_verification_result(
         doc_payload["passed"] = passed
     if strava_id is not None:
         doc_payload["stravaActivityId"] = strava_id
+
+    if trainer_name:
+        doc_payload["trainerName"] = trainer_name
 
     sticky_watts = (result.get("zwift") or {}).get("stickyWatts")
     if sticky_watts:

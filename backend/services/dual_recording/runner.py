@@ -85,6 +85,14 @@ def _run_sw_only_background(
             sw_thresholds,
         )
 
+        trainer_name: str | None = None
+        try:
+            user_doc = db.collection("users").document(user_doc_id).get()
+            if user_doc.exists:
+                trainer_name = ((user_doc.to_dict() or {}).get("equipment") or {}).get("trainer") or None
+        except Exception as exc:
+            logger.warning("_run_sw_only_background: trainer lookup: %s", exc)
+
         vref = (
             db.collection("races")
             .document(race_id)
@@ -94,12 +102,13 @@ def _run_sw_only_background(
         existing = vref.get()
         existing_status = ((existing.to_dict() or {}).get("status") or "") if existing.exists else ""
 
+        sw_patch: dict = {"stickyWatts": sticky_watts, "swVerifiedAt": datetime.now(timezone.utc).isoformat()}
+        if trainer_name:
+            sw_patch["trainerName"] = trainer_name
+
         if existing_status and existing_status != "sw_only":
             # Preserve the existing DR document — only patch SW fields.
-            vref.update({
-                "stickyWatts": sticky_watts,
-                "swVerifiedAt": datetime.now(timezone.utc).isoformat(),
-            })
+            vref.update(sw_patch)
         else:
             vref.set({
                 "zwiftId": zwift_id_canonical,
@@ -107,7 +116,7 @@ def _run_sw_only_background(
                 "activityId": activity_id,
                 "status": "sw_only",
                 "verifiedAt": datetime.now(timezone.utc).isoformat(),
-                "stickyWatts": sticky_watts,
+                **sw_patch,
             })
         logger.info(
             "SW stored: race=%s rider=%s suspicious=%s (prior_status=%r)",
