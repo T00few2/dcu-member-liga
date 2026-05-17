@@ -40,26 +40,31 @@ export default function StickyWattsStatusBadge({ stickyWatts }: Props) {
 
     if (!stickyWatts) return null;
 
-    const { suspicious } = stickyWatts;
+    const { suspicious, totalSamples } = stickyWatts;
 
-    const colorClass = suspicious
-        ? 'bg-amber-100 text-amber-700 border-amber-300 hover:bg-amber-200'
-        : 'bg-green-100 text-green-700 border-green-300 hover:bg-green-200';
-    const icon = suspicious ? '⚠' : '✓';
-    const title = suspicious ? 'Sticky Watts: Mistænkelig' : 'Sticky Watts: OK';
+    const noData = totalSamples === 0;
+    const colorClass = noData
+        ? 'bg-slate-100 text-slate-400 border-slate-300 cursor-default'
+        : suspicious
+            ? 'bg-amber-100 text-amber-700 border-amber-300 hover:bg-amber-200'
+            : 'bg-green-100 text-green-700 border-green-300 hover:bg-green-200';
+    const icon = noData ? '–' : suspicious ? '⚠' : '✓';
+    const title = noData
+        ? 'Sticky Watts: Ingen streamdata tilgængelig'
+        : suspicious ? 'Sticky Watts: Mistænkelig' : 'Sticky Watts: OK';
 
     return (
         <>
             <button
-                onClick={() => setOpen(true)}
+                onClick={() => { if (!noData) setOpen(true); }}
                 title={title}
-                className={`inline-flex items-center justify-center w-6 h-6 rounded-full border text-xs font-bold cursor-pointer transition-colors ${colorClass}`}
+                className={`inline-flex items-center justify-center w-6 h-6 rounded-full border text-xs font-bold transition-colors ${noData ? '' : 'cursor-pointer'} ${colorClass}`}
                 aria-label={title}
             >
                 {icon}
             </button>
 
-            {open && (
+            {open && !noData && (
                 <div
                     className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
                     onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}

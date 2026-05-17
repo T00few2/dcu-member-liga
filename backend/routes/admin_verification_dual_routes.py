@@ -315,15 +315,14 @@ def get_sw_only_candidates(race_id: str):
         for category, riders in (race_data.get("results") or {}).items():
             for rider in (riders or []):
                 zwift_id = str(rider.get("zwiftId") or "").strip()
-                activity_id = str(rider.get("activityId") or "").strip()
-                if not zwift_id or not activity_id or zwift_id in seen or zwift_id in dr_set:
+                if not zwift_id or zwift_id in seen or zwift_id in dr_set:
                     continue
                 seen.add(zwift_id)
                 candidates.append({
                     "zwiftId": zwift_id,
                     "name": str(rider.get("name") or ""),
                     "category": str(category),
-                    "activityId": activity_id,
+                    "activityId": str(rider.get("activityId") or "").strip() or None,
                 })
 
         return jsonify({"total": len(candidates), "riders": candidates}), 200
@@ -346,6 +345,7 @@ def verify_sticky_watts_for_rider(race_id: str, zwift_id: str):
     try:
         payload = request.get_json(silent=True) or {}
         activity_id = str(payload.get("activityId") or "").strip()
+        race_data: dict = {}
 
         if not activity_id:
             race_doc = db.collection("races").document(race_id).get()
@@ -360,8 +360,24 @@ def verify_sticky_watts_for_rider(race_id: str, zwift_id: str):
                 if activity_id:
                     break
 
+        if not activity_id and race_data:
+            # Try resolving via stored Zwift activities (works for riders who
+            # connected their Zwift account even without DR requirement).
+            target_category, _ = resolve_rider_category_row(race_data, str(zwift_id))
+            activity_id, _ = resolve_rider_activity_id(
+                db,
+                race_data=race_data,
+                zwift_id=str(zwift_id),
+                target_category=target_category,
+            )
+
         if not activity_id:
-            return jsonify({"message": "No Zwift activity found for this rider"}), 404
+            missing_payload = save_missing_activity_payload(db, race_id, str(zwift_id))
+            return jsonify({
+                "ok": True,
+                "message": "No Zwift activity found for this rider.",
+                "verification": missing_payload,
+            }), 200
 
         sw_thresholds = _load_sw_thresholds(db)
         _run_sw_only_background(
