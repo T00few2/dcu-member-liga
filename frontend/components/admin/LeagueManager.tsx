@@ -421,6 +421,89 @@ export default function LeagueManager({
         }
     }, [viewingResultsId, user, automationConfig, refreshRace, setStatus]);
 
+    // Shared inner loop: runs DR and/or SW verification per-rider and updates shared batch state.
+    const runVerificationBatch = async (
+        token: string,
+        drRiders: { zwiftId: string; name: string }[],
+        swRiders: { zwiftId: string; name: string }[],
+    ) => {
+        const total = drRiders.length + swRiders.length;
+        if (total <= 0) {
+            setDrBatchStatus({ type: 'success', text: 'No riders to verify in this race.' });
+            setDrBatchProgress({ total: 0, completed: 0, triggered: 0, missingActivity: 0, errors: 0, etaSec: 0 });
+            return;
+        }
+
+        let completed = 0;
+        let triggered = 0;
+        let missingActivity = 0;
+        let errors = 0;
+        const startedAt = Date.now();
+
+        const updateProgress = (currentLabel?: string) => {
+            let etaSec: number | undefined;
+            if (completed > 0 && completed < total) {
+                const elapsedSec = (Date.now() - startedAt) / 1000;
+                etaSec = Math.max(0, Math.round((elapsedSec / completed) * (total - completed)));
+            } else if (completed >= total) {
+                etaSec = 0;
+            }
+            setDrBatchProgress({ total, completed, triggered, missingActivity, errors, currentLabel, etaSec });
+            setDrBatchStatus({ type: 'info', text: `Verificerer: ${completed}/${total}` });
+        };
+
+        updateProgress();
+
+        for (const rider of drRiders) {
+            const zwiftId = String(rider?.zwiftId || '').trim();
+            const currentLabel = String(rider?.name || zwiftId || 'Unknown rider');
+            if (!zwiftId) { completed += 1; errors += 1; updateProgress(currentLabel); continue; }
+            updateProgress(currentLabel);
+            try {
+                const res = await fetch(
+                    `${API_URL}/admin/races/${viewingResultsId}/verify-dual-recording/${zwiftId}`,
+                    { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({}) },
+                );
+                const body = await res.json().catch(() => ({}));
+                if (!res.ok) { errors += 1; }
+                else {
+                    const st = String(body?.verification?.status || '');
+                    if (st === 'missing_activity') missingActivity += 1;
+                    else if (st === 'error') errors += 1;
+                    else triggered += 1;
+                }
+            } catch { errors += 1; }
+            finally { completed += 1; updateProgress(currentLabel); }
+        }
+
+        for (const rider of swRiders) {
+            const zwiftId = String(rider?.zwiftId || '').trim();
+            const currentLabel = String(rider?.name || zwiftId || 'Unknown rider');
+            if (!zwiftId) { completed += 1; errors += 1; updateProgress(currentLabel); continue; }
+            updateProgress(currentLabel);
+            try {
+                const res = await fetch(
+                    `${API_URL}/admin/races/${viewingResultsId}/verify-sticky-watts/${zwiftId}`,
+                    { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({}) },
+                );
+                const body = await res.json().catch(() => ({}));
+                if (!res.ok) { errors += 1; }
+                else {
+                    const st = String(body?.verification?.status || '');
+                    if (st === 'missing_activity') missingActivity += 1;
+                    else triggered += 1;
+                }
+            } catch { errors += 1; }
+            finally { completed += 1; updateProgress(currentLabel); }
+        }
+
+        setDrBatchProgress({ total, completed, triggered, missingActivity, errors, etaSec: 0 });
+        setDrBatchStatus({
+            type: errors > 0 ? 'error' : 'success',
+            text: `Done: ${completed}/${total}. Triggered: ${triggered}, missing: ${missingActivity}, errors: ${errors}.`,
+        });
+    };
+
     const handleVerifyDRBatch = useCallback(async () => {
         if (!viewingResultsId || !user || drBatchRunning) return;
         setDrBatchRunning(true);
@@ -455,91 +538,64 @@ export default function LeagueManager({
             const swBody = await swRes.json();
             const drRiders: { zwiftId: string; name: string }[] = Array.isArray(drBody.riders) ? drBody.riders : [];
             const swRiders: { zwiftId: string; name: string }[] = Array.isArray(swBody.riders) ? swBody.riders : [];
-            const total = drRiders.length + swRiders.length;
-
-            if (total <= 0) {
-                setDrBatchStatus({ type: 'success', text: 'No riders to verify in this race.' });
-                setDrBatchProgress({ total: 0, completed: 0, triggered: 0, missingActivity: 0, errors: 0, etaSec: 0 });
-                return;
-            }
-
-            let completed = 0;
-            let triggered = 0;
-            let missingActivity = 0;
-            let errors = 0;
-            const startedAt = Date.now();
-
-            const updateProgress = (currentLabel?: string) => {
-                let etaSec: number | undefined;
-                if (completed > 0 && completed < total) {
-                    const elapsedSec = (Date.now() - startedAt) / 1000;
-                    const avgSecPerRider = elapsedSec / completed;
-                    etaSec = Math.max(0, Math.round(avgSecPerRider * (total - completed)));
-                } else if (completed >= total) {
-                    etaSec = 0;
-                }
-                setDrBatchProgress({ total, completed, triggered, missingActivity, errors, currentLabel, etaSec });
-                setDrBatchStatus({ type: 'info', text: `Verificerer: ${completed}/${total}` });
-            };
-
-            updateProgress();
-
-            // Process DR riders first (full DR + SW).
-            for (const rider of drRiders) {
-                const zwiftId = String(rider?.zwiftId || '').trim();
-                const currentLabel = String(rider?.name || zwiftId || 'Unknown rider');
-                if (!zwiftId) { completed += 1; errors += 1; updateProgress(currentLabel); continue; }
-                updateProgress(currentLabel);
-                try {
-                    const res = await fetch(
-                        `${API_URL}/admin/races/${viewingResultsId}/verify-dual-recording/${zwiftId}`,
-                        { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({}) },
-                    );
-                    const body = await res.json();
-                    if (!res.ok) { errors += 1; }
-                    else {
-                        const status = String(body?.verification?.status || '');
-                        if (status === 'missing_activity') missingActivity += 1;
-                        else if (status === 'error') errors += 1;
-                        else triggered += 1;
-                    }
-                } catch { errors += 1; }
-                finally { completed += 1; updateProgress(currentLabel); }
-            }
-
-            // Process SW-only riders.
-            for (const rider of swRiders) {
-                const zwiftId = String(rider?.zwiftId || '').trim();
-                const currentLabel = String(rider?.name || zwiftId || 'Unknown rider');
-                if (!zwiftId) { completed += 1; errors += 1; updateProgress(currentLabel); continue; }
-                updateProgress(currentLabel);
-                try {
-                    const res = await fetch(
-                        `${API_URL}/admin/races/${viewingResultsId}/verify-sticky-watts/${zwiftId}`,
-                        { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({}) },
-                    );
-                    if (!res.ok) { errors += 1; }
-                    else {
-                        const body = await res.json().catch(() => ({}));
-                        const status = String(body?.verification?.status || '');
-                        if (status === 'missing_activity') missingActivity += 1;
-                        else triggered += 1;
-                    }
-                } catch { errors += 1; }
-                finally { completed += 1; updateProgress(currentLabel); }
-            }
-
-            setDrBatchProgress({ total, completed, triggered, missingActivity, errors, etaSec: 0 });
-            setDrBatchStatus({
-                type: errors > 0 ? 'error' : 'success',
-                text: `Done: ${completed}/${total}. Triggered: ${triggered}, missing_activity: ${missingActivity}, errors: ${errors}.`,
-            });
+            await runVerificationBatch(token, drRiders, swRiders);
         } catch {
             setDrBatchStatus({ type: 'error', text: 'Network error while running verification batch.' });
         } finally {
             setDrBatchRunning(false);
         }
-    }, [viewingResultsId, user, drBatchRunning]);
+    }, [viewingResultsId, user, drBatchRunning]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const handleRunDROnly = useCallback(async () => {
+        if (!viewingResultsId || !user || drBatchRunning) return;
+        setDrBatchRunning(true);
+        setDrBatchProgress(null);
+        setDrBatchStatus({ type: 'info', text: 'Henter DR-kandidater...' });
+        try {
+            const token = await user.getIdToken();
+            const res = await fetch(`${API_URL}/admin/races/${viewingResultsId}/verify-dual-recording/candidates`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                setDrBatchStatus({ type: 'error', text: body.message || 'Could not load DR candidates' });
+                return;
+            }
+            const drRiders: { zwiftId: string; name: string }[] = (await res.json()).riders ?? [];
+            await runVerificationBatch(token, drRiders, []);
+        } catch {
+            setDrBatchStatus({ type: 'error', text: 'Network error while running DR batch.' });
+        } finally {
+            setDrBatchRunning(false);
+        }
+    }, [viewingResultsId, user, drBatchRunning]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const handleRunSWOnly = useCallback(async () => {
+        if (!viewingResultsId || !user || drBatchRunning) return;
+        setDrBatchRunning(true);
+        setDrBatchProgress(null);
+        setDrBatchStatus({ type: 'info', text: 'Henter SW-kandidater...' });
+        try {
+            const token = await user.getIdToken();
+            const headers = { Authorization: `Bearer ${token}` };
+            const [drRes, swRes] = await Promise.all([
+                fetch(`${API_URL}/admin/races/${viewingResultsId}/verify-dual-recording/candidates`, { headers }),
+                fetch(`${API_URL}/admin/races/${viewingResultsId}/verify-sticky-watts/candidates`, { headers }),
+            ]);
+            if (!drRes.ok || !swRes.ok) {
+                setDrBatchStatus({ type: 'error', text: 'Could not load SW candidates' });
+                return;
+            }
+            const drRiders: { zwiftId: string; name: string }[] = (await drRes.json()).riders ?? [];
+            const swRiders: { zwiftId: string; name: string }[] = (await swRes.json()).riders ?? [];
+            // Run SW for every rider — DR riders included — all via the SW endpoint.
+            await runVerificationBatch(token, [], [...drRiders, ...swRiders]);
+        } catch {
+            setDrBatchStatus({ type: 'error', text: 'Network error while running SW batch.' });
+        } finally {
+            setDrBatchRunning(false);
+        }
+    }, [viewingResultsId, user, drBatchRunning]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const handleSetActiveTab = useCallback((tab: LeagueManagerTab) => {
         setActiveTab(tab);
@@ -788,13 +844,29 @@ export default function LeagueManager({
                                 <p className="text-sm text-muted-foreground">
                                     Run verification for all required riders in this race.
                                 </p>
-                                <button
-                                    onClick={handleVerifyDRBatch}
-                                    disabled={!viewingResultsId || drBatchRunning}
-                                    className="w-full sm:w-auto text-sm bg-blue-600 text-white px-4 py-2 rounded hover:opacity-90 font-semibold disabled:opacity-50"
-                                >
-                                    {drBatchRunning ? 'Running Verification...' : 'Run Verification'}
-                                </button>
+                                <div className="flex flex-wrap gap-2">
+                                    <button
+                                        onClick={handleVerifyDRBatch}
+                                        disabled={!viewingResultsId || drBatchRunning}
+                                        className="text-sm bg-blue-600 text-white px-4 py-2 rounded hover:opacity-90 font-semibold disabled:opacity-50"
+                                    >
+                                        {drBatchRunning ? 'Running...' : 'Run Verification'}
+                                    </button>
+                                    <button
+                                        onClick={handleRunDROnly}
+                                        disabled={!viewingResultsId || drBatchRunning}
+                                        className="text-sm bg-slate-600 text-white px-4 py-2 rounded hover:opacity-90 font-semibold disabled:opacity-50"
+                                    >
+                                        Run DR
+                                    </button>
+                                    <button
+                                        onClick={handleRunSWOnly}
+                                        disabled={!viewingResultsId || drBatchRunning}
+                                        className="text-sm bg-slate-600 text-white px-4 py-2 rounded hover:opacity-90 font-semibold disabled:opacity-50"
+                                    >
+                                        Run SW
+                                    </button>
+                                </div>
                                 {drBatchProgress && drBatchProgress.total > 0 && (
                                     <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                                         <div className="h-2 w-40 rounded-full bg-muted overflow-hidden">
