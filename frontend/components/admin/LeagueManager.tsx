@@ -422,8 +422,11 @@ export default function LeagueManager({
     }, [viewingResultsId, user, automationConfig, refreshRace, setStatus]);
 
     // Shared inner loop: runs DR and/or SW verification per-rider and updates shared batch state.
+    // getToken is called fresh per request so an expired Firebase ID token never silently breaks
+    // a long batch. Each request is also capped at 90 s via AbortController so a single hanging
+    // backend call cannot freeze the whole queue.
     const runVerificationBatch = async (
-        token: string,
+        getToken: () => Promise<string>,
         drRiders: { zwiftId: string; name: string }[],
         swRiders: { zwiftId: string; name: string }[],
     ) => {
@@ -452,6 +455,22 @@ export default function LeagueManager({
             setDrBatchStatus({ type: 'info', text: `Verificerer: ${completed}/${total}` });
         };
 
+        const fetchRider = async (url: string) => {
+            const token = await getToken();
+            const ctrl = new AbortController();
+            const timeoutId = setTimeout(() => ctrl.abort(), 90_000);
+            try {
+                return await fetch(url, {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({}),
+                    signal: ctrl.signal,
+                });
+            } finally {
+                clearTimeout(timeoutId);
+            }
+        };
+
         updateProgress();
 
         for (const rider of drRiders) {
@@ -460,9 +479,8 @@ export default function LeagueManager({
             if (!zwiftId) { completed += 1; errors += 1; updateProgress(currentLabel); continue; }
             updateProgress(currentLabel);
             try {
-                const res = await fetch(
+                const res = await fetchRider(
                     `${API_URL}/admin/races/${viewingResultsId}/verify-dual-recording/${zwiftId}`,
-                    { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({}) },
                 );
                 const body = await res.json().catch(() => ({}));
                 if (!res.ok) { errors += 1; }
@@ -482,9 +500,8 @@ export default function LeagueManager({
             if (!zwiftId) { completed += 1; errors += 1; updateProgress(currentLabel); continue; }
             updateProgress(currentLabel);
             try {
-                const res = await fetch(
+                const res = await fetchRider(
                     `${API_URL}/admin/races/${viewingResultsId}/verify-sticky-watts/${zwiftId}`,
-                    { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({}) },
                 );
                 const body = await res.json().catch(() => ({}));
                 if (!res.ok) { errors += 1; }
@@ -538,7 +555,7 @@ export default function LeagueManager({
             const swBody = await swRes.json();
             const drRiders: { zwiftId: string; name: string }[] = Array.isArray(drBody.riders) ? drBody.riders : [];
             const swRiders: { zwiftId: string; name: string }[] = Array.isArray(swBody.riders) ? swBody.riders : [];
-            await runVerificationBatch(token, drRiders, swRiders);
+            await runVerificationBatch(() => user.getIdToken(), drRiders, swRiders);
         } catch {
             setDrBatchStatus({ type: 'error', text: 'Network error while running verification batch.' });
         } finally {
@@ -562,7 +579,7 @@ export default function LeagueManager({
                 return;
             }
             const drRiders: { zwiftId: string; name: string }[] = (await res.json()).riders ?? [];
-            await runVerificationBatch(token, drRiders, []);
+            await runVerificationBatch(() => user.getIdToken(), drRiders, []);
         } catch {
             setDrBatchStatus({ type: 'error', text: 'Network error while running DR batch.' });
         } finally {
@@ -589,7 +606,7 @@ export default function LeagueManager({
             const drRiders: { zwiftId: string; name: string }[] = (await drRes.json()).riders ?? [];
             const swRiders: { zwiftId: string; name: string }[] = (await swRes.json()).riders ?? [];
             // Run SW for every rider — DR riders included — all via the SW endpoint.
-            await runVerificationBatch(token, [], [...drRiders, ...swRiders]);
+            await runVerificationBatch(() => user.getIdToken(), [], [...drRiders, ...swRiders]);
         } catch {
             setDrBatchStatus({ type: 'error', text: 'Network error while running SW batch.' });
         } finally {
