@@ -24,6 +24,7 @@ from services.dual_recording_admin_core import (
     save_missing_activity_payload,
     trigger_rider_dr_verification,
 )
+from services.dual_recording_core import _load_sw_thresholds
 
 logger = logging.getLogger(__name__)
 
@@ -146,6 +147,7 @@ def batch_verify_dual_recording(race_id):
         race_data = race_doc.to_dict() or {}
 
         candidates = collect_dr_candidates_for_race(db, race_data)
+        sw_thresholds = _load_sw_thresholds(db)
         summary: list[dict] = []
 
         for candidate in candidates:
@@ -173,6 +175,7 @@ def batch_verify_dual_recording(race_id):
                 zwift_id=zwift_id,
                 activity_id=str(activity_id),
                 event_start_iso=event_start or None,
+                sw_thresholds=sw_thresholds,
             )
             summary.append({"zwiftId": zwift_id, "activityId": str(activity_id), "status": "triggered"})
 
@@ -264,6 +267,7 @@ def verify_dual_recording_for_rider(race_id: str, zwift_id: str):
             zwift_id=str(zwift_id),
             activity_id=str(activity_id),
             event_start_iso=event_start or None,
+            sw_thresholds=_load_sw_thresholds(db),
         )
 
         vdoc = (

@@ -103,10 +103,12 @@ def _compute_dual_recording_for_rider(
 
     zwift_doc = db.collection("zwift_activities").document(str(zwift_activity_id)).get()
     zwift_raw: dict = {}
+    fresh_activity: dict = {}
     if zwift_doc.exists:
         zwift_raw = (zwift_doc.to_dict() or {}).get("data") or {}
     elif access_token:
-        zwift_raw = get_zwift_service().get_user_activity(str(zwift_activity_id), access_token) or {}
+        fresh_activity = get_zwift_service().get_user_activity(str(zwift_activity_id), access_token) or {}
+        zwift_raw = fresh_activity
     if not zwift_raw:
         raise ValueError(f"Zwift activity {zwift_activity_id} not found")
 
@@ -118,7 +120,12 @@ def _compute_dual_recording_for_rider(
     zwift_streams: dict = {}
     if access_token:
         try:
-            zwift_streams, _ = _fetch_zwift_streams(zwift_raw, zwift_activity_id, access_token)
+            # Pass fresh_activity to avoid a second get_user_activity call when
+            # we already fetched it above (non-cached path).
+            zwift_streams, _ = _fetch_zwift_streams(
+                zwift_raw, zwift_activity_id, access_token,
+                fresh_activity=fresh_activity or None,
+            )
         except Exception as exc:
             logger.warning("_compute_dual_recording_for_rider: zwift streams: %s", exc)
 
@@ -528,10 +535,10 @@ def _run_dr_verification_background(
     activity_id: str,
     race_id: str,
     event_start_iso: str | None,
+    sw_thresholds: dict | None = None,
 ) -> None:
     """Compute DR and persist result to races/{race_id}/dr_verifications/{zwift_id}."""
     try:
-        sw_thresholds = _load_sw_thresholds(db)
         result = _compute_dual_recording_for_rider(
             db, user_doc_id, activity_id, event_start_iso,
             sw_thresholds=sw_thresholds,
