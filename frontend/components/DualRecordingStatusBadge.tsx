@@ -10,6 +10,7 @@ interface Props {
 
 export default function DualRecordingStatusBadge({ verification, onClick }: Props) {
     if (!verification) return null;
+    if (verification.status === 'sw_only') return null;
 
     const { status } = verification;
 

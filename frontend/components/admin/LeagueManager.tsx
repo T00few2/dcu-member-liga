@@ -425,23 +425,40 @@ export default function LeagueManager({
         if (!viewingResultsId || !user || drBatchRunning) return;
         setDrBatchRunning(true);
         setDrBatchProgress(null);
-        setDrBatchStatus({ type: 'info', text: 'Henter DR-kandidater...' });
+        setDrBatchStatus({ type: 'info', text: 'Henter kandidater...' });
 
         try {
             const token = await user.getIdToken();
-            const candidatesRes = await fetch(`${API_URL}/admin/races/${viewingResultsId}/verify-dual-recording/candidates`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            const candidatesBody = await candidatesRes.json();
-            if (!candidatesRes.ok) {
-                setDrBatchStatus({ type: 'error', text: candidatesBody.message || 'Could not load DR candidates' });
+
+            // Fetch DR candidates and SW-only candidates in parallel.
+            const [drRes, swRes] = await Promise.all([
+                fetch(`${API_URL}/admin/races/${viewingResultsId}/verify-dual-recording/candidates`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                }),
+                fetch(`${API_URL}/admin/races/${viewingResultsId}/verify-sticky-watts/candidates`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                }),
+            ]);
+
+            if (!drRes.ok) {
+                const body = await drRes.json().catch(() => ({}));
+                setDrBatchStatus({ type: 'error', text: body.message || 'Could not load DR candidates' });
+                return;
+            }
+            if (!swRes.ok) {
+                const body = await swRes.json().catch(() => ({}));
+                setDrBatchStatus({ type: 'error', text: body.message || 'Could not load SW candidates' });
                 return;
             }
 
-            const riders = Array.isArray(candidatesBody.riders) ? candidatesBody.riders : [];
-            const total = Number(candidatesBody.total ?? riders.length ?? 0);
+            const drBody = await drRes.json();
+            const swBody = await swRes.json();
+            const drRiders: { zwiftId: string; name: string }[] = Array.isArray(drBody.riders) ? drBody.riders : [];
+            const swRiders: { zwiftId: string; name: string }[] = Array.isArray(swBody.riders) ? swBody.riders : [];
+            const total = drRiders.length + swRiders.length;
+
             if (total <= 0) {
-                setDrBatchStatus({ type: 'success', text: 'No DR-required riders in this race.' });
+                setDrBatchStatus({ type: 'success', text: 'No riders to verify in this race.' });
                 setDrBatchProgress({ total: 0, completed: 0, triggered: 0, missingActivity: 0, errors: 0, etaSec: 0 });
                 return;
             }
@@ -462,61 +479,58 @@ export default function LeagueManager({
                     etaSec = 0;
                 }
                 setDrBatchProgress({ total, completed, triggered, missingActivity, errors, currentLabel, etaSec });
-                setDrBatchStatus({ type: 'info', text: `Verificerer DR: ${completed}/${total}` });
+                setDrBatchStatus({ type: 'info', text: `Verificerer: ${completed}/${total}` });
             };
 
             updateProgress();
-            for (const rider of riders) {
+
+            // Process DR riders first (full DR + SW).
+            for (const rider of drRiders) {
                 const zwiftId = String(rider?.zwiftId || '').trim();
                 const currentLabel = String(rider?.name || zwiftId || 'Unknown rider');
-                if (!zwiftId) {
-                    completed += 1;
-                    errors += 1;
-                    updateProgress(currentLabel);
-                    continue;
-                }
-
+                if (!zwiftId) { completed += 1; errors += 1; updateProgress(currentLabel); continue; }
                 updateProgress(currentLabel);
                 try {
-                    const verifyRes = await fetch(
+                    const res = await fetch(
                         `${API_URL}/admin/races/${viewingResultsId}/verify-dual-recording/${zwiftId}`,
-                        {
-                            method: 'POST',
-                            headers: {
-                                Authorization: `Bearer ${token}`,
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({}),
-                        },
+                        { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({}) },
                     );
-                    const verifyBody = await verifyRes.json();
-                    if (!verifyRes.ok) {
-                        errors += 1;
-                    } else {
-                        const status = String(verifyBody?.verification?.status || '');
-                        if (status === 'missing_activity') {
-                            missingActivity += 1;
-                        } else if (status === 'error') {
-                            errors += 1;
-                        } else {
-                            triggered += 1;
-                        }
+                    const body = await res.json();
+                    if (!res.ok) { errors += 1; }
+                    else {
+                        const status = String(body?.verification?.status || '');
+                        if (status === 'missing_activity') missingActivity += 1;
+                        else if (status === 'error') errors += 1;
+                        else triggered += 1;
                     }
-                } catch {
-                    errors += 1;
-                } finally {
-                    completed += 1;
-                    updateProgress(currentLabel);
-                }
+                } catch { errors += 1; }
+                finally { completed += 1; updateProgress(currentLabel); }
+            }
+
+            // Process SW-only riders.
+            for (const rider of swRiders) {
+                const zwiftId = String(rider?.zwiftId || '').trim();
+                const currentLabel = String(rider?.name || zwiftId || 'Unknown rider');
+                if (!zwiftId) { completed += 1; errors += 1; updateProgress(currentLabel); continue; }
+                updateProgress(currentLabel);
+                try {
+                    const res = await fetch(
+                        `${API_URL}/admin/races/${viewingResultsId}/verify-sticky-watts/${zwiftId}`,
+                        { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({}) },
+                    );
+                    if (!res.ok) errors += 1;
+                    else triggered += 1;
+                } catch { errors += 1; }
+                finally { completed += 1; updateProgress(currentLabel); }
             }
 
             setDrBatchProgress({ total, completed, triggered, missingActivity, errors, etaSec: 0 });
             setDrBatchStatus({
                 type: errors > 0 ? 'error' : 'success',
-                text: `DR done: ${completed}/${total}. Triggered: ${triggered}, missing_activity: ${missingActivity}, errors: ${errors}.`,
+                text: `Done: ${completed}/${total}. Triggered: ${triggered}, missing_activity: ${missingActivity}, errors: ${errors}.`,
             });
         } catch {
-            setDrBatchStatus({ type: 'error', text: 'Network error while running DR batch.' });
+            setDrBatchStatus({ type: 'error', text: 'Network error while running verification batch.' });
         } finally {
             setDrBatchRunning(false);
         }

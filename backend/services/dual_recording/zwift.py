@@ -186,9 +186,14 @@ def _extract_zwift_activity_fields(raw: dict) -> dict:
 
 
 def _fetch_zwift_streams(
-    zwift_raw: dict, zwift_activity_id: str, access_token: str
+    zwift_raw: dict, zwift_activity_id: str, access_token: str,
+    fresh_activity: dict | None = None,
 ) -> tuple[dict, dict]:
-    """Fetch Zwift FIT streams for *zwift_activity_id*."""
+    """Fetch Zwift FIT streams for *zwift_activity_id*.
+
+    Pass *fresh_activity* if the caller already has an up-to-date activity dict
+    (e.g. just fetched from the Zwift API) to avoid a redundant second API call.
+    """
     streams = None
     debug = {
         "fitFileURL": None,
@@ -199,7 +204,8 @@ def _fetch_zwift_streams(
     }
 
     json_fit_url = zwift_raw.get("jsonFitFileUrl") or zwift_raw.get("jsonFitFileURL")
-    fresh = get_zwift_service().get_user_activity(str(zwift_activity_id), access_token) or {}
+    # Reuse caller-supplied fresh data if available; otherwise fetch from API.
+    fresh = fresh_activity or get_zwift_service().get_user_activity(str(zwift_activity_id), access_token) or {}
     fit_file_url = fresh.get("fitFileURL")
     if not json_fit_url:
         json_fit_url = fresh.get("jsonFitFileURL") or fresh.get("jsonFitFileUrl")
