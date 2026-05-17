@@ -15,10 +15,6 @@ import type {
     EventActivityResult,
 } from '@/hooks/useDualRecording';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const CHART_STEP = 5; // seconds between chart data points
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmtDate(iso: string | null | undefined) {

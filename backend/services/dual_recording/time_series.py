@@ -12,7 +12,7 @@ def _compute_avg_power_diff(
     zwift_avg: float | None, strava_avg: float | None
 ) -> tuple[float | None, float | None]:
     """Return (diff_watts, diff_pct) or (None, None) if missing."""
-    if not zwift_avg or not strava_avg:
+    if zwift_avg is None or strava_avg is None:
         return None, None
     diff_w = round(zwift_avg - strava_avg, 1)
     diff_pct = round(diff_w / strava_avg * 100, 1)
@@ -115,6 +115,47 @@ def _parse_iso_utc(iso_str: str) -> datetime | None:
         return datetime.fromisoformat(clean).replace(tzinfo=timezone.utc)
     except Exception:
         return None
+
+
+def _compute_best_efforts_with_windows(
+    w_1hz: list[float],
+    durations: tuple[int, ...],
+) -> tuple[dict[str, float], dict[str, tuple[int, int]]]:
+    """Return best-effort watts and winning window (start_sec, duration_sec)."""
+    n = len(w_1hz)
+    efforts: dict[str, float] = {}
+    windows: dict[str, tuple[int, int]] = {}
+    for d in durations:
+        if d > n:
+            continue
+        win = sum(w_1hz[:d])
+        best = win
+        best_start = 0
+        for i in range(d, n):
+            win += w_1hz[i] - w_1hz[i - d]
+            start = i - d + 1
+            if win > best:
+                best = win
+                best_start = start
+        key = f"w{d}"
+        efforts[key] = round(best / d, 1)
+        windows[key] = (best_start, d)
+    return efforts, windows
+
+
+def _compute_efforts_on_reference_windows(
+    w_1hz: list[float],
+    ref_windows: dict[str, tuple[int, int]],
+) -> dict[str, float]:
+    """Compute average watts on externally provided (start, duration) windows."""
+    n = len(w_1hz)
+    efforts: dict[str, float] = {}
+    for key, (start, dur) in ref_windows.items():
+        end = start + dur
+        if start < 0 or dur <= 0 or end > n:
+            continue
+        efforts[key] = round(sum(w_1hz[start:end]) / dur, 1)
+    return efforts
 
 
 _SW_DEFAULTS: dict = {

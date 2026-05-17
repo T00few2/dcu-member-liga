@@ -1,9 +1,9 @@
 """
 Compatibility facade for dual recording internals.
 
-Phase 2 refactor moved implementation into focused modules under
-`services/dual_recording/*`; this file re-exports the same helper symbols so
-existing imports remain stable.
+Phase 2 refactor split implementation into focused modules under
+`services/dual_recording/*`; this file re-exports the same helper
+symbols so existing imports remain stable.
 """
 
 from services.dual_recording.strava import (  # noqa: F401
@@ -29,12 +29,18 @@ from services.dual_recording.verdict import (  # noqa: F401
     _build_cp_comparison,
     _check_dr_pass,
 )
-from services.dual_recording.workflows import (  # noqa: F401
-    _compute_dual_recording_for_rider,
-    _is_dual_recording_required,
+from services.dual_recording.storage import (  # noqa: F401
     _load_dr_stream_blob_result,
+)
+from services.dual_recording.persistence import (  # noqa: F401
+    _is_dual_recording_required,
     _load_sw_thresholds,
     _persist_dr_verification_result,
+)
+from services.dual_recording.workflows import (  # noqa: F401
+    _compute_dual_recording_for_rider,
+)
+from services.dual_recording.runner import (  # noqa: F401
     _run_dr_verification_background,
     _run_sw_only_background,
 )

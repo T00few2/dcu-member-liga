@@ -67,11 +67,11 @@ def _check_dr_pass(comparison: dict) -> tuple[bool, list[str]]:
         mean_abs = similarity.get("meanAbsDiffW")
         std_diff = similarity.get("stdDiffW")
         std_delta = similarity.get("stdDeltaDiffW")
-        if mean_abs is not None and float(mean_abs) <= _SIM_THRESHOLDS["maxMeanAbsDiffW"]:
+        if mean_abs is not None and float(mean_abs) > _SIM_THRESHOLDS["maxMeanAbsDiffW"]:
             failing.append("similarity_mean_abs")
-        if std_diff is not None and float(std_diff) <= _SIM_THRESHOLDS["maxStdDiffW"]:
+        if std_diff is not None and float(std_diff) > _SIM_THRESHOLDS["maxStdDiffW"]:
             failing.append("similarity_std_diff")
-        if std_delta is not None and float(std_delta) <= _SIM_THRESHOLDS["maxStdDeltaDiffW"]:
+        if std_delta is not None and float(std_delta) > _SIM_THRESHOLDS["maxStdDeltaDiffW"]:
             failing.append("similarity_std_delta")
     return len(failing) == 0, failing
 
