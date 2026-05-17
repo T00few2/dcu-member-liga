@@ -9,7 +9,6 @@ from services.dual_recording_core import (
     _iter_activities_for_user_ids,
     _is_dual_recording_required,
     _load_dr_stream_blob_result,
-    _load_sw_thresholds,
     _parse_iso_utc,
     _persist_dr_verification_result,
     _resolve_activity_id_for_rider,
