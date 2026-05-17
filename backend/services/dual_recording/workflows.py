@@ -604,25 +604,33 @@ def _run_sw_only_background(
             sw_thresholds,
         )
 
-        doc_payload: dict = {
-            "zwiftId": zwift_id_canonical,
-            "raceId": race_id,
-            "activityId": activity_id,
-            "status": "sw_only",
-            "verifiedAt": datetime.now(timezone.utc).isoformat(),
-            "stickyWatts": sticky_watts,
-        }
-
-        (
+        vref = (
             db.collection("races")
             .document(race_id)
             .collection("dr_verifications")
             .document(zwift_id_canonical)
-            .set(doc_payload)
         )
+        existing = vref.get()
+        existing_status = ((existing.to_dict() or {}).get("status") or "") if existing.exists else ""
+
+        if existing_status and existing_status != "sw_only":
+            # Preserve the existing DR (or missing_activity) document — only patch SW fields.
+            vref.update({
+                "stickyWatts": sticky_watts,
+                "swVerifiedAt": datetime.now(timezone.utc).isoformat(),
+            })
+        else:
+            vref.set({
+                "zwiftId": zwift_id_canonical,
+                "raceId": race_id,
+                "activityId": activity_id,
+                "status": "sw_only",
+                "verifiedAt": datetime.now(timezone.utc).isoformat(),
+                "stickyWatts": sticky_watts,
+            })
         logger.info(
-            "SW-only stored: race=%s rider=%s suspicious=%s",
-            race_id, zwift_id_canonical, sticky_watts.get("suspicious"),
+            "SW stored: race=%s rider=%s suspicious=%s (prior_status=%r)",
+            race_id, zwift_id_canonical, sticky_watts.get("suspicious"), existing_status or "none",
         )
     except Exception as exc:
         logger.error(
