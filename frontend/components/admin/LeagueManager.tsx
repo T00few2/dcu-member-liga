@@ -518,8 +518,13 @@ export default function LeagueManager({
                         `${API_URL}/admin/races/${viewingResultsId}/verify-sticky-watts/${zwiftId}`,
                         { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({}) },
                     );
-                    if (!res.ok) errors += 1;
-                    else triggered += 1;
+                    if (!res.ok) { errors += 1; }
+                    else {
+                        const body = await res.json().catch(() => ({}));
+                        const status = String(body?.verification?.status || '');
+                        if (status === 'missing_activity') missingActivity += 1;
+                        else triggered += 1;
+                    }
                 } catch { errors += 1; }
                 finally { completed += 1; updateProgress(currentLabel); }
             }

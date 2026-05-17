@@ -93,6 +93,10 @@ class ZwiftFetcher:
                     'flaggedSandbagging': entry.get('flaggedSandbagging', False),
                     'criticalP': entry.get('criticalP', {})
                 }
+                official_sr = entry.get('_officialSegmentResult') or {}
+                seg_activity_id = str(official_sr.get('activityId') or '').strip()
+                if seg_activity_id:
+                    finisher['activityId'] = seg_activity_id
 
                 if registered_profile:
                     finisher['name'] = registered_profile.get('name')
