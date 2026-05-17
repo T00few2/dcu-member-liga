@@ -12,7 +12,7 @@ def _compute_avg_power_diff(
     zwift_avg: float | None, strava_avg: float | None
 ) -> tuple[float | None, float | None]:
     """Return (diff_watts, diff_pct) or (None, None) if missing."""
-    if not zwift_avg or not strava_avg:
+    if zwift_avg is None or strava_avg is None:
         return None, None
     diff_w = round(zwift_avg - strava_avg, 1)
     diff_pct = round(diff_w / strava_avg * 100, 1)
