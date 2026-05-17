@@ -577,16 +577,19 @@ export default function LeagueManager({
         setDrBatchStatus({ type: 'info', text: 'Henter SW-kandidater...' });
         try {
             const token = await user.getIdToken();
-            const res = await fetch(`${API_URL}/admin/races/${viewingResultsId}/verify-sticky-watts/candidates`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                setDrBatchStatus({ type: 'error', text: body.message || 'Could not load SW candidates' });
+            const headers = { Authorization: `Bearer ${token}` };
+            const [drRes, swRes] = await Promise.all([
+                fetch(`${API_URL}/admin/races/${viewingResultsId}/verify-dual-recording/candidates`, { headers }),
+                fetch(`${API_URL}/admin/races/${viewingResultsId}/verify-sticky-watts/candidates`, { headers }),
+            ]);
+            if (!drRes.ok || !swRes.ok) {
+                setDrBatchStatus({ type: 'error', text: 'Could not load SW candidates' });
                 return;
             }
-            const swRiders: { zwiftId: string; name: string }[] = (await res.json()).riders ?? [];
-            await runVerificationBatch(token, [], swRiders);
+            const drRiders: { zwiftId: string; name: string }[] = (await drRes.json()).riders ?? [];
+            const swRiders: { zwiftId: string; name: string }[] = (await swRes.json()).riders ?? [];
+            // Run SW for every rider — DR riders included — all via the SW endpoint.
+            await runVerificationBatch(token, [], [...drRiders, ...swRiders]);
         } catch {
             setDrBatchStatus({ type: 'error', text: 'Network error while running SW batch.' });
         } finally {
