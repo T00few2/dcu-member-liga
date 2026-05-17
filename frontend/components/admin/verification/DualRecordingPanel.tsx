@@ -8,6 +8,7 @@ import {
 } from 'recharts';
 import { RecordingStreamsSection } from '@/components/shared/RecordingStreamsSection';
 import { ExtendedPeakProfileChart } from '@/components/shared/ExtendedPeakProfileChart';
+import StickyWattsPanel from '@/components/admin/verification/StickyWattsPanel';
 import type { useDualRecording } from '@/hooks/useDualRecording';
 import type {
     DualRecordingResult, CpDiffRow,
@@ -473,6 +474,17 @@ export default function DualRecordingPanel({ riderId, hook, children }: Props) {
                                     Recording Streams
                                 </h4>
                                 <RecordingStreamsSection result={result} highlightDurationSec={hoveredDurationSec} />
+                            </div>
+                        ) : null}
+
+                        {/* Sticky watts analysis */}
+                        {result.zwift.streams?.time?.length ? (
+                            <div>
+                                <h4 className="text-sm font-semibold mb-2 text-card-foreground">
+                                    Sticky Watts{' '}
+                                    <span className="ml-1 text-xs font-normal text-muted-foreground">(Eksperimentel)</span>
+                                </h4>
+                                <StickyWattsPanel stream={result.zwift.streams as { time: number[]; watts: (number | null)[] }} />
                             </div>
                         ) : null}
                     </div>

@@ -136,7 +136,7 @@ export default function DualRecordingResultModal({
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-border">
                     <div>
-                        <h2 className="text-lg font-bold text-foreground">Dual Recording</h2>
+                        <h2 className="text-lg font-bold text-foreground">Verification</h2>
                         <p className="text-sm text-muted-foreground">{riderName}</p>
                     </div>
                     <button
@@ -159,7 +159,7 @@ export default function DualRecordingResultModal({
                                 {runForRiderBusy && (
                                     <span className="inline-block w-3 h-3 border-2 border-current border-r-transparent rounded-full animate-spin" />
                                 )}
-                                {runForRiderBusy ? 'Kører DR...' : 'Perform DR for this rider'}
+                                {runForRiderBusy ? 'Kører...' : 'Run Verification for this rider'}
                             </button>
                             {runForRiderStatus && (
                                 <div className={`text-xs ${
@@ -199,7 +199,7 @@ export default function DualRecordingResultModal({
                         <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 text-sm text-slate-700">
                             {status === 'missing_activity'
                                 ? 'Ingen Zwift-aktivitet fundet for dette løb.'
-                                : 'Verifikation fejlede. Prøv igen via "Verify Dual Recording"-knappen.'}
+                                : 'Verifikation fejlede. Prøv igen via "Run Verification"-knappen.'}
                         </div>
                     )}
 

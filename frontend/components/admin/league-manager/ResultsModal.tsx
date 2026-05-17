@@ -15,6 +15,7 @@ import type {
 import type { DualRecordingResult } from '@/hooks/useDualRecording';
 import DualRecordingStatusBadge from '@/components/DualRecordingStatusBadge';
 import WeightVerificationStatusBadge from '@/components/WeightVerificationStatusBadge';
+import StickyWattsStatusBadge from '@/components/StickyWattsStatusBadge';
 import DualRecordingResultModal from '@/components/DualRecordingResultModal';
 import ComposeEmailModal from '@/components/admin/ComposeEmailModal';
 import EmailRecipientControls, { EmailRecipientControlItem } from '@/components/admin/EmailRecipientControls';
@@ -335,7 +336,7 @@ export default function ResultsModal({
     const handleRunSingleDR = async () => {
         if (!race || !user || !drModal) return;
         setSingleDrRunning(true);
-        setSingleDrStatus({ type: 'info', text: 'Running DR verification for rider...' });
+        setSingleDrStatus({ type: 'info', text: 'Running verification for rider...' });
         try {
             const token = await user.getIdToken();
             const res = await fetch(
@@ -351,7 +352,7 @@ export default function ResultsModal({
             );
             const body = await res.json();
             if (!res.ok) {
-                setSingleDrStatus({ type: 'error', text: body.message || 'Failed to run DR for rider' });
+                setSingleDrStatus({ type: 'error', text: body.message || 'Failed to run verification for rider' });
                 return;
             }
 
@@ -364,10 +365,10 @@ export default function ResultsModal({
             await loadDualRecordingDetail(drModal.zwiftId, drModal.activityId, nextStravaId);
             setSingleDrStatus({
                 type: 'success',
-                text: body.message || 'DR verification completed for rider.',
+                text: body.message || 'Verification completed for rider.',
             });
         } catch {
-            setSingleDrStatus({ type: 'error', text: 'Network error while running rider DR' });
+            setSingleDrStatus({ type: 'error', text: 'Network error while running verification' });
         } finally {
             setSingleDrRunning(false);
         }
@@ -842,6 +843,7 @@ function CategoryResultsTable({
                         <th className="px-4 py-2 text-center w-16">Flags</th>
                         <th className="px-4 py-2 text-center w-14" title="Dual Recording">DR</th>
                         <th className="px-4 py-2 text-center w-14" title="Weight Verification">WV</th>
+                        <th className="px-4 py-2 text-center w-14" title="Sticky Watts">SW</th>
                         <th className="px-4 py-2 text-center w-12" title="Disqualify (0 pts)">DQ</th>
                         <th className="px-4 py-2 text-center w-12" title="Declassify (Last place pts)">DC</th>
                         <th className="px-4 py-2 text-center w-12" title="Exclude from results">EX</th>
@@ -942,7 +944,12 @@ function CategoryResultsTable({
                                     )}
                                 </td>
                                 <td className="px-4 py-2 text-center">
-                                    <input 
+                                    <StickyWattsStatusBadge
+                                        stickyWatts={drVerifications.get(riderZwiftId)?.stickyWatts}
+                                    />
+                                </td>
+                                <td className="px-4 py-2 text-center">
+                                    <input
                                         type="checkbox"
                                         checked={isManualDQ}
                                         onChange={() => onToggleDQ(riderZwiftId, isManualDQ)}
