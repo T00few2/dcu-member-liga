@@ -566,3 +566,66 @@ def _run_dr_verification_background(
             exc,
         )
 
+
+def _run_sw_only_background(
+    db: object,
+    user_doc_id: str,
+    zwift_id_canonical: str,
+    activity_id: str,
+    race_id: str,
+    sw_thresholds: dict | None = None,
+) -> None:
+    """Fetch Zwift stream, compute sticky watts, persist to dr_verifications/{zwift_id}."""
+    try:
+        access_token = get_valid_access_token(user_doc_id, get_zwift_service())
+
+        zwift_doc = db.collection("zwift_activities").document(str(activity_id)).get()
+        zwift_raw: dict = {}
+        fresh_activity: dict = {}
+        if zwift_doc.exists:
+            zwift_raw = (zwift_doc.to_dict() or {}).get("data") or {}
+        elif access_token:
+            fresh_activity = get_zwift_service().get_user_activity(str(activity_id), access_token) or {}
+            zwift_raw = fresh_activity
+
+        zwift_streams: dict = {}
+        if access_token and zwift_raw:
+            try:
+                zwift_streams, _ = _fetch_zwift_streams(
+                    zwift_raw, activity_id, access_token,
+                    fresh_activity=fresh_activity or None,
+                )
+            except Exception as exc:
+                logger.warning("_run_sw_only_background: streams: %s", exc)
+
+        sticky_watts = analyze_sticky_watts(
+            zwift_streams.get("time") or [],
+            zwift_streams.get("watts") or [],
+            sw_thresholds,
+        )
+
+        doc_payload: dict = {
+            "zwiftId": zwift_id_canonical,
+            "raceId": race_id,
+            "activityId": activity_id,
+            "status": "sw_only",
+            "verifiedAt": datetime.now(timezone.utc).isoformat(),
+            "stickyWatts": sticky_watts,
+        }
+
+        (
+            db.collection("races")
+            .document(race_id)
+            .collection("dr_verifications")
+            .document(zwift_id_canonical)
+            .set(doc_payload)
+        )
+        logger.info(
+            "SW-only stored: race=%s rider=%s suspicious=%s",
+            race_id, zwift_id_canonical, sticky_watts.get("suspicious"),
+        )
+    except Exception as exc:
+        logger.error(
+            "SW-only failed: race=%s rider=%s activity=%s: %s",
+            race_id, zwift_id_canonical, activity_id, exc,
+        )

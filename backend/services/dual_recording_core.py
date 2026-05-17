@@ -36,6 +36,7 @@ from services.dual_recording.workflows import (  # noqa: F401
     _load_sw_thresholds,
     _persist_dr_verification_result,
     _run_dr_verification_background,
+    _run_sw_only_background,
 )
 from services.dual_recording.zwift import (  # noqa: F401
     _extract_zwift_activity_fields,

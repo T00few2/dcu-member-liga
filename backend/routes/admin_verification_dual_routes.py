@@ -11,6 +11,8 @@ from extensions import db
 from routes.admin import admin_bp
 from services.dual_recording_core import (
     _is_dual_recording_required,
+    _load_sw_thresholds,
+    _run_sw_only_background,
 )
 from services.dual_recording_admin_core import (
     DualRecordingError,
@@ -24,7 +26,6 @@ from services.dual_recording_admin_core import (
     save_missing_activity_payload,
     trigger_rider_dr_verification,
 )
-from services.dual_recording_core import _load_sw_thresholds
 
 logger = logging.getLogger(__name__)
 
@@ -286,4 +287,106 @@ def verify_dual_recording_for_rider(race_id: str, zwift_id: str):
         }), 200
     except Exception as exc:
         logger.error("verify_dual_recording_for_rider error: %s", exc)
+        return jsonify({"message": str(exc)}), 500
+
+
+@admin_bp.route("/admin/races/<race_id>/verify-sticky-watts/candidates", methods=["GET"])
+def get_sw_only_candidates(race_id: str):
+    """Return riders who need SW-only verification (all with activityId, excluding DR-required)."""
+    try:
+        require_admin(request)
+    except AuthzError as e:
+        return jsonify({"message": e.message}), e.status_code
+
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+
+    try:
+        race_doc = db.collection("races").document(race_id).get()
+        if not race_doc.exists:
+            return jsonify({"message": "Race not found"}), 404
+        race_data = race_doc.to_dict() or {}
+
+        dr_candidates = collect_dr_candidates_for_race(db, race_data)
+        dr_set = {c["zwiftId"] for c in dr_candidates}
+
+        candidates: list[dict] = []
+        seen: set[str] = set()
+        for category, riders in (race_data.get("results") or {}).items():
+            for rider in (riders or []):
+                zwift_id = str(rider.get("zwiftId") or "").strip()
+                activity_id = str(rider.get("activityId") or "").strip()
+                if not zwift_id or not activity_id or zwift_id in seen or zwift_id in dr_set:
+                    continue
+                seen.add(zwift_id)
+                candidates.append({
+                    "zwiftId": zwift_id,
+                    "name": str(rider.get("name") or ""),
+                    "category": str(category),
+                    "activityId": activity_id,
+                })
+
+        return jsonify({"total": len(candidates), "riders": candidates}), 200
+    except Exception as exc:
+        logger.error("get_sw_only_candidates error: %s", exc)
+        return jsonify({"message": str(exc)}), 500
+
+
+@admin_bp.route("/admin/races/<race_id>/verify-sticky-watts/<zwift_id>", methods=["POST"])
+def verify_sticky_watts_for_rider(race_id: str, zwift_id: str):
+    """Run SW-only verification for one rider and return the stored result."""
+    try:
+        require_admin(request)
+    except AuthzError as e:
+        return jsonify({"message": e.message}), e.status_code
+
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+
+    try:
+        payload = request.get_json(silent=True) or {}
+        activity_id = str(payload.get("activityId") or "").strip()
+
+        if not activity_id:
+            race_doc = db.collection("races").document(race_id).get()
+            if not race_doc.exists:
+                return jsonify({"message": "Race not found"}), 404
+            race_data = race_doc.to_dict() or {}
+            for riders in (race_data.get("results") or {}).values():
+                for rider in (riders or []):
+                    if str(rider.get("zwiftId") or "").strip() == str(zwift_id):
+                        activity_id = str(rider.get("activityId") or "").strip()
+                        break
+                if activity_id:
+                    break
+
+        if not activity_id:
+            return jsonify({"message": "No Zwift activity found for this rider"}), 404
+
+        sw_thresholds = _load_sw_thresholds(db)
+        _run_sw_only_background(
+            db=db,
+            user_doc_id=str(zwift_id),
+            zwift_id_canonical=str(zwift_id),
+            activity_id=activity_id,
+            race_id=race_id,
+            sw_thresholds=sw_thresholds,
+        )
+
+        vdoc = (
+            db.collection("races")
+            .document(race_id)
+            .collection("dr_verifications")
+            .document(str(zwift_id))
+            .get()
+        )
+        verification = vdoc.to_dict() or {}
+        verification["zwiftId"] = str(zwift_id)
+        return jsonify({
+            "ok": True,
+            "message": "SW verification completed for rider.",
+            "verification": verification,
+        }), 200
+    except Exception as exc:
+        logger.error("verify_sticky_watts_for_rider error: %s", exc)
         return jsonify({"message": str(exc)}), 500
