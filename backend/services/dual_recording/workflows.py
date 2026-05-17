@@ -13,7 +13,7 @@ from extensions import get_zwift_service, strava_service
 from services.zwift_tokens import get_valid_access_token
 
 from .strava import _extract_stream, _match_strava_activity, _trim_strava_streams
-from .time_series import _compute_avg_power_diff, _compute_best_efforts, _resample_to_1hz
+from .time_series import _compute_avg_power_diff, _compute_best_efforts, _resample_to_1hz, analyze_sticky_watts
 from .verdict import _build_cp_comparison, _check_dr_pass, _compute_similarity_metrics
 from .zwift import _extract_zwift_activity_fields, _fetch_zwift_streams
 
@@ -96,6 +96,7 @@ def _compute_dual_recording_for_rider(
     zwift_activity_id: str,
     event_start_iso: str | None = None,
     strava_activity_id: str | None = None,
+    sw_thresholds: dict | None = None,
 ) -> dict:
     """Run the dual-recording comparison for one rider/activity."""
     access_token = get_valid_access_token(user_doc_id, get_zwift_service())
@@ -120,6 +121,12 @@ def _compute_dual_recording_for_rider(
             zwift_streams, _ = _fetch_zwift_streams(zwift_raw, zwift_activity_id, access_token)
         except Exception as exc:
             logger.warning("_compute_dual_recording_for_rider: zwift streams: %s", exc)
+
+    sticky_watts = analyze_sticky_watts(
+        zwift_streams.get("time") or [],
+        zwift_streams.get("watts") or [],
+        sw_thresholds,
+    )
 
     zwift_cp_curve: dict = {}
     if access_token:
@@ -156,6 +163,7 @@ def _compute_dual_recording_for_rider(
                 "avgWatts": zwift_avg_watts,
                 "cpCurve": zwift_cp_curve,
                 "streams": zwift_streams or None,
+                "stickyWatts": sticky_watts,
             },
             "strava": None,
             "sync": None,
@@ -273,6 +281,7 @@ def _compute_dual_recording_for_rider(
             "cpCurve": zwift_cp_curve,
             "cpCurveSynced": zwift_cp_synced,
             "streams": zwift_streams or None,
+            "stickyWatts": sticky_watts,
         },
         "strava": {
             "activityId": int(resolved_strava_id) if resolved_strava_id else None,
@@ -478,6 +487,10 @@ def _persist_dr_verification_result(
     if strava_id is not None:
         doc_payload["stravaActivityId"] = strava_id
 
+    sticky_watts = (result.get("zwift") or {}).get("stickyWatts")
+    if sticky_watts:
+        doc_payload["stickyWatts"] = sticky_watts
+
     stream_meta = _store_dr_stream_blob(
         race_id=race_id,
         zwift_id_canonical=zwift_id_canonical,
@@ -497,6 +510,17 @@ def _persist_dr_verification_result(
     return doc_payload
 
 
+def _load_sw_thresholds(db: object) -> dict | None:
+    """Read saved sticky-watts thresholds from Firestore admin settings."""
+    try:
+        snap = db.collection("league").document("adminSettings").get()
+        if snap.exists:
+            return (snap.to_dict() or {}).get("stickyWattsThresholds") or None
+    except Exception as exc:
+        logger.warning("_load_sw_thresholds: %s", exc)
+    return None
+
+
 def _run_dr_verification_background(
     db: object,
     user_doc_id: str,
@@ -507,7 +531,11 @@ def _run_dr_verification_background(
 ) -> None:
     """Compute DR and persist result to races/{race_id}/dr_verifications/{zwift_id}."""
     try:
-        result = _compute_dual_recording_for_rider(db, user_doc_id, activity_id, event_start_iso)
+        sw_thresholds = _load_sw_thresholds(db)
+        result = _compute_dual_recording_for_rider(
+            db, user_doc_id, activity_id, event_start_iso,
+            sw_thresholds=sw_thresholds,
+        )
         doc_payload = _persist_dr_verification_result(
             db=db,
             result=result,

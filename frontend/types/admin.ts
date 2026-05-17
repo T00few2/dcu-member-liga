@@ -1,4 +1,5 @@
 // Shared types for admin/league management
+import type { StickyWattsResult } from '@/lib/stickyWatts';
 
 export interface Route {
     id: string;
@@ -141,6 +142,7 @@ export interface DualRecordingVerification {
             stdDeltaDiffW?: number;
         };
     };
+    stickyWatts?: StickyWattsResult | null;
 }
 
 export interface WeightVerificationRecord {

@@ -763,18 +763,18 @@ export default function LeagueManager({
                             </div>
 
                             <label className="block text-sm font-semibold text-foreground mb-2">
-                                Dual Recording verification
+                                Verification
                             </label>
                             <div className="space-y-3 p-3 bg-muted/30 rounded-lg border border-border/50">
                                 <p className="text-sm text-muted-foreground">
-                                    Run DR checks for all DR-required riders in this race.
+                                    Run verification for all required riders in this race.
                                 </p>
                                 <button
                                     onClick={handleVerifyDRBatch}
                                     disabled={!viewingResultsId || drBatchRunning}
                                     className="w-full sm:w-auto text-sm bg-blue-600 text-white px-4 py-2 rounded hover:opacity-90 font-semibold disabled:opacity-50"
                                 >
-                                    {drBatchRunning ? 'Verifying Dual Recording...' : 'Verify Dual Recording'}
+                                    {drBatchRunning ? 'Running Verification...' : 'Run Verification'}
                                 </button>
                                 {drBatchProgress && drBatchProgress.total > 0 && (
                                     <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">

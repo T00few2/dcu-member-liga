@@ -116,3 +116,79 @@ def _parse_iso_utc(iso_str: str) -> datetime | None:
     except Exception:
         return None
 
+
+_SW_DEFAULTS: dict = {
+    "minWatts": 100,
+    "minRun": 3,
+    "zeroThresh": 20,
+    "suspiciousPairPct": 25,
+    "suspiciousPreZero": 2,
+}
+
+
+def analyze_sticky_watts(times: list, watts: list, thresholds: dict | None = None) -> dict:
+    """Detect sticky-watts signatures in a Zwift power stream."""
+    t = {**_SW_DEFAULTS, **(thresholds or {})}
+
+    n = min(len(times), len(watts))
+    vals: list[int] = [int(w) if w is not None else 0 for w in watts[:n]]
+
+    total = len(vals)
+    nonzero = sum(1 for w in vals if w > t["minWatts"])
+
+    if total < 4 or nonzero < 4:
+        return {
+            "totalSamples": total,
+            "nonZeroSamples": nonzero,
+            "identicalPairPct": 0.0,
+            "stickyRuns": 0,
+            "maxRunLength": 0,
+            "preZeroEvents": 0,
+            "suspicious": False,
+        }
+
+    identical_pairs = 0
+    eligible_pairs = 0
+    for i in range(len(vals) - 1):
+        w0, w1 = vals[i], vals[i + 1]
+        if w0 > t["minWatts"] and w1 > t["minWatts"]:
+            eligible_pairs += 1
+            if w0 == w1:
+                identical_pairs += 1
+    pair_pct = round(identical_pairs / eligible_pairs * 100, 1) if eligible_pairs > 0 else 0.0
+
+    sticky_runs = 0
+    max_run = 0
+    pre_zero_events = 0
+
+    i = 0
+    while i < len(vals):
+        w = vals[i]
+        if w <= t["minWatts"]:
+            i += 1
+            continue
+        run_len = 1
+        j = i + 1
+        while j < len(vals) and vals[j] == w:
+            run_len += 1
+            j += 1
+        if run_len >= t["minRun"]:
+            sticky_runs += 1
+            if run_len > max_run:
+                max_run = run_len
+            if j < len(vals) and vals[j] < t["zeroThresh"]:
+                pre_zero_events += 1
+        i = j
+
+    suspicious = pre_zero_events >= t["suspiciousPreZero"] or pair_pct >= t["suspiciousPairPct"]
+
+    return {
+        "totalSamples": total,
+        "nonZeroSamples": nonzero,
+        "identicalPairPct": pair_pct,
+        "stickyRuns": sticky_runs,
+        "maxRunLength": max_run,
+        "preZeroEvents": pre_zero_events,
+        "suspicious": suspicious,
+    }
+
