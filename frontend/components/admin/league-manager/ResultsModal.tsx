@@ -39,6 +39,7 @@ interface UserDirectoryRow {
     zwiftId: string;
     name: string;
     email: string;
+    trainer?: string;
 }
 
 interface ComposeRecipient {
@@ -708,6 +709,7 @@ export default function ResultsModal({
                                     manualDeclassifications={race.manualDeclassifications || []}
                                     manualExclusions={race.manualExclusions || []}
                                     drVerifications={drVerifications}
+                                    usersByZwiftId={usersByZwiftId}
                                     weightVerifications={weightVerifications}
                                     onToggleDQ={handleToggleDQ}
                                     onToggleDeclass={handleToggleDeclass}
@@ -805,6 +807,7 @@ interface CategoryResultsTableProps {
     manualDeclassifications: string[];
     manualExclusions: string[];
     drVerifications: Map<string, DualRecordingVerification>;
+    usersByZwiftId: Map<string, UserDirectoryRow>;
     weightVerifications: Map<string, WeightVerificationRecord>;
     onToggleDQ: (zwiftId: string, isCurrentlyDQ: boolean) => void;
     onToggleDeclass: (zwiftId: string, isCurrentlyDeclass: boolean) => void;
@@ -820,6 +823,7 @@ function CategoryResultsTable({
     manualDeclassifications,
     manualExclusions,
     drVerifications,
+    usersByZwiftId,
     weightVerifications,
     onToggleDQ,
     onToggleDeclass,
@@ -946,7 +950,8 @@ function CategoryResultsTable({
                                 <td className="px-4 py-2 text-center">
                                     <StickyWattsStatusBadge
                                         stickyWatts={drVerifications.get(riderZwiftId)?.stickyWatts}
-                                        trainerName={drVerifications.get(riderZwiftId)?.trainerName}
+                                        trainerName={drVerifications.get(riderZwiftId)?.trainerName
+                                            || usersByZwiftId.get(riderZwiftId)?.trainer}
                                     />
                                 </td>
                                 <td className="px-4 py-2 text-center">
