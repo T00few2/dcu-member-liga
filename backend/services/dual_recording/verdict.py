@@ -7,10 +7,13 @@ _DR_THRESHOLDS: dict[str, float] = {
     "w15": 6.5,  # 15 sec
 }
 
+# Similarity thresholds: flags streams that are suspiciously *identical*
+# (e.g. same power file submitted twice). A legitimate dual recording from two
+# independent devices should produce diffs well above these minimums.
 _SIM_THRESHOLDS: dict[str, float] = {
-    "maxMeanAbsDiffW": 5.0,
-    "maxStdDiffW": 6.0,
-    "maxStdDeltaDiffW": 3.0,
+    "minMeanAbsDiffW": 5.0,    # flag if mean |diff| is below this (too similar)
+    "minStdDiffW": 6.0,        # flag if std(diff) is below this
+    "minStdDeltaDiffW": 3.0,   # flag if std(Δdiff) is below this
     "minOverlapSec": 180.0,
 }
 
@@ -67,11 +70,11 @@ def _check_dr_pass(comparison: dict) -> tuple[bool, list[str]]:
         mean_abs = similarity.get("meanAbsDiffW")
         std_diff = similarity.get("stdDiffW")
         std_delta = similarity.get("stdDeltaDiffW")
-        if mean_abs is not None and float(mean_abs) > _SIM_THRESHOLDS["maxMeanAbsDiffW"]:
+        if mean_abs is not None and float(mean_abs) <= _SIM_THRESHOLDS["minMeanAbsDiffW"]:
             failing.append("similarity_mean_abs")
-        if std_diff is not None and float(std_diff) > _SIM_THRESHOLDS["maxStdDiffW"]:
+        if std_diff is not None and float(std_diff) <= _SIM_THRESHOLDS["minStdDiffW"]:
             failing.append("similarity_std_diff")
-        if std_delta is not None and float(std_delta) > _SIM_THRESHOLDS["maxStdDeltaDiffW"]:
+        if std_delta is not None and float(std_delta) <= _SIM_THRESHOLDS["minStdDeltaDiffW"]:
             failing.append("similarity_std_delta")
     return len(failing) == 0, failing
 
