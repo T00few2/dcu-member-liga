@@ -10,6 +10,7 @@ import re
 from routes.admin import admin_bp
 from authz import require_admin, AuthzError
 from extensions import db
+from services.request_models import SendEmailRequest, parse_body
 from utils.email_sender import send_html_email, send_html_emails_individually, _strip_html, EmailConfigError, EmailSendError
 
 import logging
@@ -535,42 +536,28 @@ def send_email_to_selected_users():
     except AuthzError as e:
         return jsonify({'error': e.message}), e.status_code
 
-    payload = request.get_json(silent=True) or {}
-    user_ids_raw   = payload.get('userIds')
-    zwift_ids_raw  = payload.get('zwiftIds') or []
-    subject        = str(payload.get('subject') or '').strip()
-    message        = str(payload.get('message') or '')
-    send_mode      = str(payload.get('sendMode') or 'individual').strip().lower()
-    recipient_mode = str(payload.get('recipientMode') or 'bcc').strip().lower()
-    manual_to_raw  = str(payload.get('manualTo') or '')
-    manual_cc_raw  = str(payload.get('manualCc') or '')
-    manual_bcc_raw = str(payload.get('manualBcc') or '')
+    body, err = parse_body(SendEmailRequest, request.get_json(silent=True) or {})
+    if err:
+        return err
 
-    if not isinstance(user_ids_raw, list):
-        return jsonify({'error': 'userIds must be an array of user document IDs.'}), 400
-    if not isinstance(zwift_ids_raw, list):
-        return jsonify({'error': 'zwiftIds must be an array of Zwift IDs.'}), 400
-    if send_mode not in ('individual', 'group'):
-        return jsonify({'error': "sendMode must be 'individual' or 'group'."}), 400
-    if send_mode == 'group' and recipient_mode not in ('to', 'cc', 'bcc'):
-        return jsonify({'error': "recipientMode must be one of: 'to', 'cc', 'bcc'."}), 400
-    if not subject:
-        return jsonify({'error': 'subject is required.'}), 400
+    subject        = body.subject
+    message        = body.message
+    send_mode      = body.sendMode
+    recipient_mode = body.recipientMode
+
     if not _strip_html(message).strip():
         return jsonify({'error': 'message is required.'}), 400
-    if '\r' in subject or '\n' in subject:
-        return jsonify({'error': 'subject must be a single line.'}), 400
 
-    manual_to_valid,  manual_to_invalid  = _parse_manual_emails(manual_to_raw)
-    manual_cc_valid,  manual_cc_invalid  = _parse_manual_emails(manual_cc_raw)
-    manual_bcc_valid, manual_bcc_invalid = _parse_manual_emails(manual_bcc_raw)
+    manual_to_valid,  manual_to_invalid  = _parse_manual_emails(body.manualTo)
+    manual_cc_valid,  manual_cc_invalid  = _parse_manual_emails(body.manualCc)
+    manual_bcc_valid, manual_bcc_invalid = _parse_manual_emails(body.manualBcc)
     invalid_manual = manual_to_invalid + manual_cc_invalid + manual_bcc_invalid
     if invalid_manual:
         return jsonify({'error': f"Invalid email address(es) in To/CC/BCC: {', '.join(invalid_manual)}"}), 400
 
     unique_user_ids = []
     seen_ids = set()
-    for raw_id in user_ids_raw:
+    for raw_id in body.userIds:
         if not isinstance(raw_id, str):
             continue
         cleaned = raw_id.strip()
@@ -581,7 +568,7 @@ def send_email_to_selected_users():
 
     unique_zwift_ids = []
     seen_zwift_ids = set()
-    for raw_zwift_id in zwift_ids_raw:
+    for raw_zwift_id in body.zwiftIds:
         cleaned = str(raw_zwift_id or '').strip()
         if not cleaned or cleaned in seen_zwift_ids:
             continue

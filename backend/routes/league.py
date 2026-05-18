@@ -10,6 +10,7 @@ from services.schema_validation import (
     validate_league_standings_doc,
     with_schema_version,
 )
+from services.request_models import LeagueSettingsRequest, parse_body
 from authz import require_admin, AuthzError
 
 logger = logging.getLogger(__name__)
@@ -42,28 +43,27 @@ def save_settings():
             return jsonify({'error': 'DB not available'}), 500
     
     try:
-        data = request.get_json()
-        name = data.get('name')
-        finish_points = data.get('finishPoints', [])
-        sprint_points = data.get('sprintPoints', [])
-        league_rank_points = data.get('leagueRankPoints', [])
-        best_races_count = data.get('bestRacesCount', 5)
-        
-        update_data = {
-            'finishPoints': finish_points,
-            'sprintPoints': sprint_points,
-            'leagueRankPoints': league_rank_points,
-            'bestRacesCount': best_races_count,
-            'updatedAt': firestore.SERVER_TIMESTAMP
+        body, err = parse_body(LeagueSettingsRequest, request.get_json(silent=True) or {})
+        if err:
+            return err
+
+        update_data: dict = {
+            'finishPoints': body.finishPoints,
+            'sprintPoints': body.sprintPoints,
+            'leagueRankPoints': body.leagueRankPoints,
+            'bestRacesCount': body.bestRacesCount,
+            'updatedAt': firestore.SERVER_TIMESTAMP,
         }
-        
-        if name is not None:
-            update_data['name'] = name
+        if body.name is not None:
+            update_data['name'] = body.name
+        if body.gracePeriod is not None:
+            update_data['gracePeriod'] = body.gracePeriod
+        if body.seasonStart is not None:
+            update_data['seasonStart'] = body.seasonStart
+
         update_data = with_schema_version(update_data)
         log_schema_issues(logger, "league/settings (save)", validate_league_settings_doc(update_data, partial=True))
-            
         db.collection('league').document('settings').set(update_data, merge=True)
-        
         return jsonify({'message': 'Settings saved'}), 200
     except Exception as e:
         logger.error(f"Save settings error: {e}")
