@@ -4,6 +4,7 @@ import "./globals.css";
 import Link from "next/link";
 import Image from "next/image";
 import { AuthProvider } from "@/lib/auth-context";
+import { ReactQueryProvider } from "@/lib/query-provider";
 import Navbar from "@/components/Navbar";
 import ToastProvider from "@/components/ToastProvider";
 import InAppBrowserBanner from "@/components/InAppBrowserBanner";
@@ -83,6 +84,7 @@ export default function RootLayout({
         />
       </head>
       <body className={`${inter.className} overflow-x-hidden`}>
+        <ReactQueryProvider>
         <AuthProvider>
           <ToastProvider>
             <InAppBrowserBanner />
@@ -118,6 +120,7 @@ export default function RootLayout({
             </footer>
           </ToastProvider>
         </AuthProvider>
+        </ReactQueryProvider>
         <Analytics />
       </body>
     </html>

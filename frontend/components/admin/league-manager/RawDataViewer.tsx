@@ -4,7 +4,9 @@ import { useState, useMemo } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import type { Race, SelectedSegment, SprintDataEntry } from '@/types/admin';
 import { API_URL } from '@/lib/api';
-import { MIN_WORLDTIME, formatWorldTime, formatElapsedTime, formatPoints, parseTimeStringToTimestamp } from '@/lib/timeFormat';
+import { MIN_WORLDTIME, formatWorldTime, parseTimeStringToTimestamp } from '@/lib/timeFormat';
+import RawDataRaceSelector from './raw-data/RawDataRaceSelector';
+import RawDataResultsEditor from './raw-data/RawDataResultsEditor';
 
 interface RawDataViewerProps {
     races: Race[];
@@ -27,7 +29,7 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
     const [selectedCategory, setSelectedCategory] = useState<string>('');
     const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'name', direction: 'asc' });
     const [valueMode, setValueMode] = useState<ValueMode>('worldTime');
-    
+
     // Edit mode state
     const [isEditMode, setIsEditMode] = useState(false);
     const [pendingEdits, setPendingEdits] = useState<PendingEdits>({});
@@ -37,7 +39,7 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
     const [saveError, setSaveError] = useState<string | null>(null);
 
     // Get selected race
-    const selectedRace = useMemo(() => 
+    const selectedRace = useMemo(() =>
         races.find(r => r.id === selectedRaceId) || null,
         [races, selectedRaceId]
     );
@@ -58,9 +60,9 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
     // Get sprint columns from race configuration
     const sprintColumns = useMemo(() => {
         if (!selectedRace) return [];
-        
+
         let segments: SelectedSegment[] = [];
-        
+
         // Check for category-specific configuration
         if (selectedRace.eventMode === 'multi' && selectedRace.eventConfiguration) {
             const catConfig = selectedRace.eventConfiguration.find(c => c.customCategory === selectedCategory);
@@ -73,12 +75,12 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
                 segments = catConfig.sprints;
             }
         }
-        
+
         // Fallback to race-level sprints
         if (segments.length === 0) {
             segments = selectedRace.sprints || [];
         }
-        
+
         return segments.map(s => ({
             key: s.key,
             label: `${s.name} #${s.count}`,
@@ -101,22 +103,22 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
                 finishTime: rider.finishTime || 0,
                 finishRank: rider.finishRank || 0,
             };
-            
+
             // Access sprintData (contains full segment info) and sprintDetails (contains points or worldTime)
             const sprintData = rider.sprintData || {};
             const sprintDetails = rider.sprintDetails || {};
-            
+
             // Extract values for each sprint column based on mode
             sprintColumns.forEach(col => {
                 let value: number | null = null;
                 let foundKey: string | null = null;
-                
+
                 // Try primary key first, then alt keys
                 const keysToTry = [col.key, ...col.altKeys];
                 for (const key of keysToTry) {
                     const dataEntry: SprintDataEntry | undefined = sprintData[key];
                     const detailValue = sprintDetails[key];
-                    
+
                     if (valueMode === 'worldTime') {
                         // First try sprintData.worldTime (points races)
                         if (dataEntry?.worldTime) {
@@ -140,17 +142,17 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
                         break;
                     }
                 }
-                
+
                 // Check for pending edit
                 const pendingValue = pendingEdits[rider.zwiftId]?.[col.key];
                 if (pendingValue !== undefined) {
                     value = pendingValue;
                 }
-                
+
                 row[col.key] = value;
                 row[`${col.key}_foundKey`] = foundKey || col.key;
             });
-            
+
             return row;
         });
     }, [results, sprintColumns, valueMode, pendingEdits]);
@@ -161,18 +163,18 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
         sorted.sort((a, b) => {
             const aVal = a[sortConfig.key];
             const bVal = b[sortConfig.key];
-            
+
             // Handle null values - always sort to end
             if (aVal === null && bVal === null) return 0;
             if (aVal === null) return 1;
             if (bVal === null) return -1;
-            
+
             // String comparison for name
             if (sortConfig.key === 'name') {
                 const cmp = String(aVal).localeCompare(String(bVal));
                 return sortConfig.direction === 'asc' ? cmp : -cmp;
             }
-            
+
             // Numeric comparison
             const diff = Number(aVal) - Number(bVal);
             return sortConfig.direction === 'asc' ? diff : -diff;
@@ -191,7 +193,7 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
     // Handle cell click to start editing
     const handleCellClick = (zwiftId: string, sprintKey: string, currentValue: number | null) => {
         if (!isEditMode || valueMode !== 'worldTime') return;
-        
+
         setEditingCell({ zwiftId, sprintKey });
         setEditValue(currentValue ? formatWorldTime(currentValue) : '');
     };
@@ -207,11 +209,11 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
         // First, try to find from the column's configured keys
         const col = sprintColumns.find(c => c.key === sprintKey);
         const keysToTry = col ? [col.key, ...col.altKeys] : [sprintKey];
-        
+
         // Search in sprintData (where worldTime is stored for all segment types)
         for (const rider of results) {
             const sprintData = rider.sprintData || {};
-            
+
             // Try configured keys first
             for (const key of keysToTry) {
                 const entry = sprintData[key];
@@ -220,7 +222,7 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
                     return entry.worldTime;
                 }
             }
-            
+
             // Try all keys in this rider's sprintData
             for (const key of Object.keys(sprintData)) {
                 const entry = sprintData[key];
@@ -230,7 +232,7 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
                 }
             }
         }
-        
+
         // Check sprintDetails (for splits, worldTime is stored directly)
         for (const rider of results) {
             const sprintDetails = rider.sprintDetails || {};
@@ -242,25 +244,25 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
                 }
             }
         }
-        
+
         console.warn('No reference timestamp found. Results sample:', results.slice(0, 2).map(r => ({
             zwiftId: r.zwiftId,
             sprintData: r.sprintData,
             sprintDetails: r.sprintDetails
         })));
-        
+
         return null;
     };
 
     // Handle edit confirm (Enter or blur)
     const handleEditConfirm = () => {
         if (!editingCell) return;
-        
+
         const { zwiftId, sprintKey } = editingCell;
-        
+
         // Try to find reference timestamp from multiple sources
         let referenceTimestamp = findReferenceTimestamp(sprintKey);
-        
+
         // Fallback: use tableData which has already extracted values
         if (!referenceTimestamp) {
             for (const row of tableData) {
@@ -271,17 +273,17 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
                 }
             }
         }
-        
+
         // Note: We do NOT fallback to race date or current date because
         // Zwift worldTime uses a different epoch than Unix timestamps.
         // Reference must come from existing Zwift data in the same race.
-        
+
         console.log('Attempting to parse:', { editValue, referenceTimestamp, raceDate: selectedRace?.date });
-        
+
         const parsed = parseTimeStringToTimestamp(editValue, referenceTimestamp);
-        
+
         console.log('Parse result:', parsed);
-        
+
         if (parsed !== null) {
             setPendingEdits(prev => ({
                 ...prev,
@@ -295,7 +297,7 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
             console.error('Parse failed:', { editValue, referenceTimestamp, sprintKey, raceDate: selectedRace?.date });
             alert(`Could not parse time "${editValue}". Use format HH:MM:SS.mmm or paste a raw timestamp.${!referenceTimestamp ? ' (No reference timestamp found)' : ''}`);
         }
-        
+
         setEditingCell(null);
         setEditValue('');
     };
@@ -324,13 +326,13 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
     // Save pending edits to backend
     const handleSaveEdits = async () => {
         if (!user || !selectedRaceId || !selectedCategory || Object.keys(pendingEdits).length === 0) return;
-        
+
         setIsSaving(true);
         setSaveError(null);
-        
+
         try {
             const token = await user.getIdToken();
-            
+
             // Build updates array
             const updates = Object.entries(pendingEdits).map(([zwiftId, sprints]) => ({
                 zwiftId,
@@ -341,7 +343,7 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
                     ])
                 )
             }));
-            
+
             const response = await fetch(
                 `${API_URL}/races/${selectedRaceId}/results/${selectedCategory}/sprints`,
                 {
@@ -353,14 +355,14 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
                     body: JSON.stringify({ updates }),
                 }
             );
-            
+
             if (!response.ok) {
                 const data = await response.json();
                 throw new Error(data.message || 'Failed to save');
             }
-            
+
             const data = await response.json();
-            
+
             // Update local race data if callback provided
             if (onRaceUpdate && selectedRace) {
                 onRaceUpdate({
@@ -368,13 +370,13 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
                     results: data.results
                 });
             }
-            
+
             // Clear edits and exit edit mode
             setPendingEdits({});
             setIsEditMode(false);
-            
+
             alert('Changes saved and points recalculated!');
-            
+
         } catch (err) {
             console.error('Save error:', err);
             setSaveError(err instanceof Error ? err.message : 'Failed to save changes');
@@ -385,264 +387,61 @@ export default function RawDataViewer({ races, onRaceUpdate }: RawDataViewerProp
 
     // Count pending edits
     const pendingEditCount = Object.values(pendingEdits).reduce(
-        (sum, sprints) => sum + Object.keys(sprints).length, 
+        (sum, sprints) => sum + Object.keys(sprints).length,
         0
     );
-
-    // Sort indicator
-    const SortIndicator = ({ columnKey }: { columnKey: string }) => {
-        if (sortConfig.key !== columnKey) return <span className="text-muted-foreground/30 ml-1">↕</span>;
-        return <span className="ml-1">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
-    };
 
     return (
         <div className="space-y-6">
             <div className="bg-card p-6 rounded-lg shadow border border-border">
-                <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-xl font-semibold text-card-foreground">Results Editor</h2>
-                    
-                    {/* Edit Mode Toggle */}
-                    {selectedRace && results.length > 0 && selectedRace.type === 'points' && (
-                        <div className="flex items-center gap-2">
-                            {isEditMode ? (
-                                <>
-                                    <span className="text-sm text-muted-foreground">
-                                        {pendingEditCount} pending edit{pendingEditCount !== 1 ? 's' : ''}
-                                    </span>
-                                    <button
-                                        onClick={handleDiscardEdits}
-                                        disabled={isSaving}
-                                        className="px-3 py-1.5 text-sm rounded-md border border-border text-muted-foreground hover:bg-muted transition disabled:opacity-50"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        onClick={handleSaveEdits}
-                                        disabled={isSaving || pendingEditCount === 0}
-                                        className="px-3 py-1.5 text-sm rounded-md bg-primary text-primary-foreground hover:opacity-90 transition disabled:opacity-50"
-                                    >
-                                        {isSaving ? 'Saving...' : 'Save & Recalculate'}
-                                    </button>
-                                </>
-                            ) : (
-                                <button
-                                    onClick={() => {
-                                        setIsEditMode(true);
-                                        setValueMode('worldTime');
-                                    }}
-                                    className="px-3 py-1.5 text-sm rounded-md border border-border text-foreground hover:bg-muted transition"
-                                >
-                                    Edit World Times
-                                </button>
-                            )}
-                        </div>
-                    )}
-                </div>
-                
-                {saveError && (
-                    <div className="mb-4 p-3 bg-destructive/10 border border-destructive/30 rounded-md text-destructive text-sm">
-                        {saveError}
-                    </div>
-                )}
-                
-                {/* Selectors */}
-                <div className="flex gap-4 mb-6">
-                    <div className="flex-1">
-                        <label className="block text-sm font-medium text-muted-foreground mb-1">
-                            Select Race
-                        </label>
-                        <select
-                            value={selectedRaceId}
-                            onChange={(e) => {
-                                setSelectedRaceId(e.target.value);
+                <RawDataResultsEditor
+                    selectedRace={selectedRace}
+                    selectedCategory={selectedCategory}
+                    results={results}
+                    sprintColumns={sprintColumns}
+                    sortConfig={sortConfig}
+                    valueMode={valueMode}
+                    isEditMode={isEditMode}
+                    pendingEdits={pendingEdits}
+                    editingCell={editingCell}
+                    editValue={editValue}
+                    isSaving={isSaving}
+                    saveError={saveError}
+                    pendingEditCount={pendingEditCount}
+                    sortedData={sortedData}
+                    onSort={handleSort}
+                    onCellClick={handleCellClick}
+                    onEditChange={handleEditChange}
+                    onEditConfirm={handleEditConfirm}
+                    onEditCancel={handleEditCancel}
+                    onEditKeyDown={handleEditKeyDown}
+                    onDiscardEdits={handleDiscardEdits}
+                    onSaveEdits={handleSaveEdits}
+                    onEnterEditMode={() => {
+                        setIsEditMode(true);
+                        setValueMode('worldTime');
+                    }}
+                    onValueModeChange={setValueMode}
+                    raceSelectorSlot={
+                        <RawDataRaceSelector
+                            races={races}
+                            selectedRaceId={selectedRaceId}
+                            selectedCategory={selectedCategory}
+                            availableCategories={availableCategories}
+                            onRaceChange={(raceId) => {
+                                setSelectedRaceId(raceId);
                                 setSelectedCategory('');
                                 setPendingEdits({});
                                 setIsEditMode(false);
                             }}
-                            className="w-full p-2 border border-input rounded bg-background text-foreground"
-                        >
-                            <option value="">-- Select a race --</option>
-                            {races.map(race => (
-                                <option key={race.id} value={race.id}>
-                                    {race.date} - {race.name} ({race.type || 'scratch'})
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-                    
-                    <div className="w-48">
-                        <label className="block text-sm font-medium text-muted-foreground mb-1">
-                            Category
-                        </label>
-                        <select
-                            value={selectedCategory}
-                            onChange={(e) => {
-                                setSelectedCategory(e.target.value);
+                            onCategoryChange={(category) => {
+                                setSelectedCategory(category);
                                 setPendingEdits({});
                             }}
-                            disabled={!selectedRace}
-                            className="w-full p-2 border border-input rounded bg-background text-foreground disabled:opacity-50"
-                        >
-                            {availableCategories.length === 0 ? (
-                                <option value="">No results</option>
-                            ) : (
-                                availableCategories.map(cat => (
-                                    <option key={cat} value={cat}>{cat}</option>
-                                ))
-                            )}
-                        </select>
-                    </div>
-                </div>
-
-                {/* Value Mode Toggle */}
-                {selectedRace && results.length > 0 && (
-                    <div className="flex items-center gap-4 mb-4">
-                        <span className="text-sm font-medium text-muted-foreground">Show:</span>
-                        <div className="flex gap-1 bg-muted rounded-lg p-1">
-                            <button
-                                onClick={() => setValueMode('worldTime')}
-                                className={`px-3 py-1 text-sm rounded-md transition ${
-                                    valueMode === 'worldTime' 
-                                        ? 'bg-background text-foreground shadow-sm' 
-                                        : 'text-muted-foreground hover:text-foreground'
-                                }`}
-                            >
-                                World Time
-                            </button>
-                            <button
-                                onClick={() => setValueMode('elapsed')}
-                                disabled={isEditMode}
-                                className={`px-3 py-1 text-sm rounded-md transition ${
-                                    valueMode === 'elapsed' 
-                                        ? 'bg-background text-foreground shadow-sm' 
-                                        : 'text-muted-foreground hover:text-foreground'
-                                } ${isEditMode ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            >
-                                Elapsed Time
-                            </button>
-                            <button
-                                onClick={() => setValueMode('points')}
-                                disabled={isEditMode}
-                                className={`px-3 py-1 text-sm rounded-md transition ${
-                                    valueMode === 'points' 
-                                        ? 'bg-background text-foreground shadow-sm' 
-                                        : 'text-muted-foreground hover:text-foreground'
-                                } ${isEditMode ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            >
-                                Points
-                            </button>
-                        </div>
-                        <span className="text-sm text-muted-foreground ml-auto">
-                            {results.length} riders • {sprintColumns.length} segments
-                        </span>
-                    </div>
-                )}
-                
-                {isEditMode && (
-                    <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-md text-blue-700 dark:text-blue-300 text-sm">
-                        Click on any World Time cell to edit. Enter time as HH:MM:SS.mmm or paste a raw timestamp. Press Enter to confirm or Escape to cancel.
-                    </div>
-                )}
-
-                {/* Table */}
-                {selectedRace && results.length > 0 ? (
-                    <div className="overflow-x-auto border border-border rounded-lg">
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr className="bg-muted/50 border-b border-border">
-                                    <th 
-                                        className="px-3 py-2 text-left font-medium text-muted-foreground cursor-pointer hover:bg-muted/70 select-none"
-                                        onClick={() => handleSort('name')}
-                                    >
-                                        Rider <SortIndicator columnKey="name" />
-                                    </th>
-                                    <th 
-                                        className="px-3 py-2 text-right font-medium text-muted-foreground cursor-pointer hover:bg-muted/70 select-none w-24"
-                                        onClick={() => handleSort('finishRank')}
-                                    >
-                                        Rank <SortIndicator columnKey="finishRank" />
-                                    </th>
-                                    <th 
-                                        className="px-3 py-2 text-right font-medium text-muted-foreground cursor-pointer hover:bg-muted/70 select-none w-32"
-                                        onClick={() => handleSort('finishTime')}
-                                    >
-                                        Finish Time <SortIndicator columnKey="finishTime" />
-                                    </th>
-                                    {sprintColumns.map(col => (
-                                        <th
-                                            key={col.key}
-                                            className="px-3 py-2 text-right font-medium text-muted-foreground cursor-pointer hover:bg-muted/70 select-none whitespace-nowrap"
-                                            onClick={() => handleSort(col.key)}
-                                        >
-                                            {col.label} <SortIndicator columnKey={col.key} />
-                                        </th>
-                                    ))}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {sortedData.map((row, idx) => (
-                                    <tr 
-                                        key={row.zwiftId}
-                                        className={`border-b border-border/50 ${idx % 2 === 0 ? '' : 'bg-muted/20'}`}
-                                    >
-                                        <td className="px-3 py-2 text-foreground">
-                                            <div className="font-medium">{row.name}</div>
-                                            <div className="text-xs text-muted-foreground">{row.zwiftId}</div>
-                                        </td>
-                                        <td className="px-3 py-2 text-right text-foreground tabular-nums">
-                                            {row.finishRank > 0 ? row.finishRank : '-'}
-                                        </td>
-                                        <td className="px-3 py-2 text-right text-foreground tabular-nums">
-                                            {formatElapsedTime(row.finishTime)}
-                                        </td>
-                                        {sprintColumns.map(col => {
-                                            const isEditing = editingCell?.zwiftId === row.zwiftId && editingCell?.sprintKey === col.key;
-                                            const hasPendingEdit = pendingEdits[row.zwiftId]?.[col.key] !== undefined;
-                                            
-                                            return (
-                                                <td 
-                                                    key={col.key}
-                                                    className={`px-3 py-2 text-right tabular-nums ${
-                                                        isEditMode && valueMode === 'worldTime' 
-                                                            ? 'cursor-pointer hover:bg-primary/10' 
-                                                            : ''
-                                                    } ${hasPendingEdit ? 'bg-yellow-500/20' : 'text-foreground'}`}
-                                                    onClick={() => handleCellClick(row.zwiftId, col.key, row[col.key])}
-                                                >
-                                                    {isEditing ? (
-                                                        <input
-                                                            type="text"
-                                                            value={editValue}
-                                                            onChange={handleEditChange}
-                                                            onBlur={handleEditConfirm}
-                                                            onKeyDown={handleEditKeyDown}
-                                                            autoFocus
-                                                            className="w-full px-1 py-0.5 text-right bg-background border border-primary rounded text-sm"
-                                                        />
-                                                    ) : (
-                                                        valueMode === 'worldTime' 
-                                                            ? formatWorldTime(row[col.key])
-                                                            : valueMode === 'elapsed'
-                                                            ? formatElapsedTime(row[col.key])
-                                                            : formatPoints(row[col.key])
-                                                    )}
-                                                </td>
-                                            );
-                                        })}
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                ) : selectedRace ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                        No results available for this race/category.
-                    </div>
-                ) : (
-                    <div className="text-center py-8 text-muted-foreground">
-                        Select a race to view raw data.
-                    </div>
-                )}
+                            selectedRace={selectedRace}
+                        />
+                    }
+                />
             </div>
         </div>
     );

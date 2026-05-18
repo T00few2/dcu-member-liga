@@ -1,12 +1,11 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import {
-    ResponsiveContainer, ComposedChart, Line, Area, XAxis, YAxis,
-    CartesianGrid, Tooltip, Brush, ReferenceArea, ReferenceLine,
-} from 'recharts';
 import type { DualRecordingResult } from '@/hooks/useDualRecording';
 import { computeSyncedPeakWindows } from '@/lib/dualRecordingSyncedPeaks';
+import { StreamComparisonChart, type ChartRow, type HasSeries } from './recording-streams/StreamComparisonChart';
+import { StreamMetricsTable } from './recording-streams/StreamMetricsTable';
+import { StreamStatusBadges } from './recording-streams/StreamStatusBadges';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -17,23 +16,6 @@ const MAX_MEAN_ABS_DIFF_W = 5;
 const MAX_STD_DIFF_W = 6;
 const MAX_STD_DELTA_DIFF_W = 3;
 const MIN_OVERLAP_SEC_FOR_SIMILARITY = 180;
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function fmtRaceTime(sec: number) {
-    const neg = sec < 0;
-    const abs = Math.abs(sec);
-    const m = Math.floor(abs / 60);
-    const s = abs % 60;
-    return `${neg ? '-' : ''}${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
-
-function fmtGap(sec: number, frac: number): string {
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    const time = m > 0 ? (s > 0 ? `${m}m ${s}s` : `${m}m`) : `${s}s`;
-    return `${time} (${(frac * 100).toFixed(1)}%)`;
-}
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -74,13 +56,6 @@ export function RecordingStreamsSection({
     const hasStrava = (strava?.streams?.time?.length ?? 0) > 0;
 
     type StreamPoint = { w: number | null; hr: number | null; cad: number | null; alt: number | null };
-    type ChartRow = {
-        t: number;
-        zwiftW: number | null; stravaW: number | null;
-        zwiftHR: number | null; stravaHR: number | null;
-        zwiftCad: number | null; stravaCad: number | null;
-        zwiftAlt: number | null;
-    };
 
     const chartData = useMemo<ChartRow[]>(() => {
         if (!hasZwift && !hasStrava) return [];
@@ -107,7 +82,6 @@ export function RecordingStreamsSection({
             }));
         }
 
-        // Fuzzy lookup: accept t±1 to handle off-by-one from differing step sizes
         const lookup = (m: Map<number, StreamPoint>, t: number) =>
             m.get(t) ?? m.get(t - 1) ?? m.get(t + 1);
 
@@ -209,7 +183,7 @@ export function RecordingStreamsSection({
         };
     }, [chartData, hasZwift, hasStrava]);
 
-    // ── Gap detection (client-side, works for old cached results) ─────────────
+    // ── Gap detection ─────────────────────────────────────────────────────────
 
     const zwiftStreamStartSec = chartData.find(row => row.zwiftW  !== null)?.t ?? 0;
     const zwiftStreamEndSec   = [...chartData].reverse().find(row => row.zwiftW  !== null)?.t ?? 0;
@@ -218,27 +192,24 @@ export function RecordingStreamsSection({
 
     const zwiftStreamDurationSec = zwiftStreamEndSec - zwiftStreamStartSec;
 
-    // Start gap: Strava starts later than Zwift
     const gapSec = (hasZwift && hasStrava && firstStravaDataT != null)
         ? Math.max(0, firstStravaDataT - zwiftStreamStartSec)
         : 0;
     const gapFraction = gapSec > 0 && zwiftStreamDurationSec > 0 ? gapSec / zwiftStreamDurationSec : 0;
     const showGapOverlay = gapSec > 0;
 
-    // End gap: Zwift continues after Strava stops
     const endGapSec = (hasZwift && hasStrava && lastStravaDataT != null)
         ? Math.max(0, zwiftStreamEndSec - lastStravaDataT)
         : 0;
     const endGapFraction = endGapSec > 0 && zwiftStreamDurationSec > 0 ? endGapSec / zwiftStreamDurationSec : 0;
     const showEndGapOverlay = endGapSec > 0;
 
-    // The 15% limit applies to the TOTAL combined cropping, not each gap independently
     const totalCropFraction  = gapFraction + endGapFraction;
     const cropExceedsLimit   = totalCropFraction > 0.15;
 
     // ── Series visibility ─────────────────────────────────────────────────────
 
-    const hasSeries = useMemo(() => {
+    const hasSeries = useMemo<HasSeries>(() => {
         const hasAny = (key: keyof ChartRow) => chartData.some((row) => row[key] != null);
         return {
             zwiftW:    hasAny('zwiftW'),
@@ -251,18 +222,13 @@ export function RecordingStreamsSection({
         };
     }, [chartData, hideHeartRate]);
 
-    // ── Peak window highlight (driven by hover on the peak profile chart) ────────
+    // ── Peak window highlight ─────────────────────────────────────────────────
+
     const syncedWindowForDuration = useMemo(() => {
         if (!highlightDurationSec) return null;
         const synced = computeSyncedPeakWindows(result, [highlightDurationSec]);
         return synced?.byDuration[highlightDurationSec] ?? null;
     }, [highlightDurationSec, result]);
-
-    // The secondary (right) axis collapses when all secondary series are toggled off
-    const hrAxisOn = (hasSeries.zwiftHR   && !hidden.has('zwiftHR'))   ||
-                     (hasSeries.stravaHR  && !hidden.has('stravaHR'))  ||
-                     (hasSeries.zwiftCad  && !hidden.has('zwiftCad'))  ||
-                     (hasSeries.stravaCad && !hidden.has('stravaCad'));
 
     const seriesMeta = [
         { key: 'zwiftW',    label: 'Zwift Power',  color: zwiftColor,  show: hasSeries.zwiftW },
@@ -284,270 +250,45 @@ export function RecordingStreamsSection({
                 t=0 = Zwift recording start · Strava aligned by power MSE · click legend to toggle
             </div>
 
-            {/* Gap notices */}
-            {!hasZwift && hasStrava && (
-                <p className="text-xs text-amber-700 mb-2 px-1">
-                    Zwift stream data is unavailable for this comparison; showing Strava stream only.
-                </p>
-            )}
-            {/* Gap notices — limit is on the combined total, so both gaps share one exceeds/ok verdict */}
-            {(showGapOverlay || showEndGapOverlay) && cropExceedsLimit && (
-                <p className="text-xs text-amber-700 mb-2 px-1">
-                    {showGapOverlay && <>Strava starts late: {fmtGap(gapSec, gapFraction)}. </>}
-                    {showEndGapOverlay && <>Strava stops early: {fmtGap(endGapSec, endGapFraction)}. </>}
-                    Total crop {fmtGap(gapSec + endGapSec, totalCropFraction)} exceeds the 15% limit —
-                    Zwift stream was not cropped. Peak watt comparison may be distorted.
-                </p>
-            )}
-            {showGapOverlay && !cropExceedsLimit && (
-                <p className="text-xs text-blue-700 mb-1 px-1">
-                    Strava starts late: {fmtGap(gapSec, gapFraction)} — Zwift start cropped to match.
-                </p>
-            )}
-            {showEndGapOverlay && !cropExceedsLimit && (
-                <p className="text-xs text-blue-700 mb-1 px-1">
-                    Strava stops early: {fmtGap(endGapSec, endGapFraction)} — Zwift end cropped to match.
-                </p>
-            )}
-            {showGapOverlay && showEndGapOverlay && !cropExceedsLimit && (
-                <p className="text-xs text-blue-700 mb-2 px-1">
-                    Total crop: {fmtGap(gapSec + endGapSec, totalCropFraction)}.
-                </p>
-            )}
-            {hasZwift && hasStrava && !showGapOverlay && !showEndGapOverlay && (
-                <p className="text-xs text-green-700 mb-2 px-1">
-                    No Strava recording gap detected — both streams start and end at the same point.
-                </p>
-            )}
+            {/* Pass/fail status badges and gap notices */}
+            <StreamStatusBadges
+                hasZwift={hasZwift}
+                hasStrava={hasStrava}
+                showGapOverlay={showGapOverlay}
+                showEndGapOverlay={showEndGapOverlay}
+                gapSec={gapSec}
+                gapFraction={gapFraction}
+                endGapSec={endGapSec}
+                endGapFraction={endGapFraction}
+                totalCropFraction={totalCropFraction}
+                cropExceedsLimit={cropExceedsLimit}
+            />
 
+            {/* Time-series overlay chart */}
+            <StreamComparisonChart
+                chartData={chartData}
+                hasSeries={hasSeries}
+                hidden={hidden}
+                onToggleSeries={toggleSeries}
+                seriesMeta={seriesMeta}
+                zwiftColor={zwiftColor}
+                stravaColor={stravaColor}
+                height={height}
+                gap={{
+                    zwiftStreamStartSec,
+                    zwiftStreamEndSec,
+                    gapSec,
+                    showGapOverlay,
+                    endGapSec,
+                    lastStravaDataT,
+                    showEndGapOverlay,
+                    cropExceedsLimit,
+                }}
+                syncedWindowForDuration={syncedWindowForDuration}
+            />
 
-
-            {/* Clickable legend */}
-            <div className="flex flex-wrap gap-x-4 gap-y-1 mb-2 px-1">
-                {seriesMeta.map(s => (
-                    <button
-                        key={s.key}
-                        onClick={() => toggleSeries(s.key)}
-                        className="flex items-center gap-1.5 text-xs select-none"
-                        style={{
-                            opacity:         hidden.has(s.key) ? 0.35 : 1,
-                            textDecoration:  hidden.has(s.key) ? 'line-through' : 'none',
-                            color: 'var(--muted-foreground)',
-                        }}
-                    >
-                        <span className="inline-block w-4 h-[2px] rounded flex-shrink-0"
-                            style={{ backgroundColor: s.color }} />
-                        {s.label}
-                    </button>
-                ))}
-            </div>
-
-            <div style={{ height }} className="w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.3} />
-                        <XAxis
-                            dataKey="t"
-                            type="number"
-                            domain={['dataMin', 'dataMax']}
-                            tickFormatter={fmtRaceTime}
-                            tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }}
-                        />
-                        <YAxis
-                            yAxisId="w"
-                            orientation="left"
-                            label={{ value: 'W', angle: -90, position: 'insideLeft', style: { fontSize: 11 } }}
-                            tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }}
-                        />
-                        {/* Single right axis for HR and cadence — collapses when all toggled off */}
-                        <YAxis
-                            yAxisId="hr"
-                            orientation="right"
-                            hide={!hrAxisOn}
-                            width={hrAxisOn ? 40 : 0}
-                            label={hrAxisOn
-                                ? { value: 'bpm/rpm', angle: 90, position: 'insideRight', style: { fontSize: 9 } }
-                                : undefined}
-                            tick={hrAxisOn ? { fontSize: 9, fill: 'var(--muted-foreground)' } : false}
-                        />
-                        <YAxis
-                            yAxisId="elevBg"
-                            hide
-                            width={0}
-                            domain={[0, (dataMax: number) => (Number.isFinite(dataMax) ? Math.ceil(dataMax + 10) : 100)]}
-                        />
-                        <Tooltip
-                            labelFormatter={(t: number) => fmtRaceTime(Number(t))}
-                            formatter={(v: unknown, name: string) =>
-                                v != null ? [`${Math.round(v as number)}`, name] : ['—', name]}
-                        />
-                        <Brush
-                            dataKey="t"
-                            height={20}
-                            stroke="var(--border)"
-                            fill="var(--background)"
-                            tickFormatter={fmtRaceTime}
-                        />
-
-                        {/* ── Background overlays (rendered first so lines paint on top) ── */}
-                        {/* Zwift elevation profile as subtle shaded background */}
-                        {hasSeries.zwiftAlt && (
-                            <Area
-                                yAxisId="elevBg"
-                                type="monotone"
-                                dataKey="zwiftAlt"
-                                stroke="none"
-                                fill="#94a3b8"
-                                fillOpacity={0.28}
-                                isAnimationActive={false}
-                                connectNulls
-                            />
-                        )}
-
-                        {/* Peak window highlights — shown when hovering the peak profile chart */}
-                        {syncedWindowForDuration && (
-                            <ReferenceArea
-                                yAxisId="w"
-                                x1={syncedWindowForDuration.startSec}
-                                x2={syncedWindowForDuration.endSec}
-                                fill="#16a34a"
-                                fillOpacity={0.35}
-                                stroke="#16a34a"
-                                strokeOpacity={0.8}
-                                strokeWidth={2}
-                            />
-                        )}
-                        {syncedWindowForDuration && (
-                            <ReferenceArea
-                                yAxisId="w"
-                                x1={syncedWindowForDuration.startSec}
-                                x2={syncedWindowForDuration.endSec}
-                                fill="#4ade80"
-                                fillOpacity={0.28}
-                                stroke="#4ade80"
-                                strokeOpacity={0.8}
-                                strokeWidth={2}
-                            />
-                        )}
-                        {/* Vertical marker lines at peak window boundaries */}
-                        {syncedWindowForDuration && (
-                            <ReferenceLine
-                                yAxisId="w"
-                                x={syncedWindowForDuration.startSec}
-                                stroke="#16a34a"
-                                strokeWidth={2}
-                                strokeDasharray="4 2"
-                                strokeOpacity={0.9}
-                            />
-                        )}
-                        {syncedWindowForDuration && (
-                            <ReferenceLine
-                                yAxisId="w"
-                                x={syncedWindowForDuration.endSec}
-                                stroke="#16a34a"
-                                strokeWidth={2}
-                                strokeDasharray="4 2"
-                                strokeOpacity={0.9}
-                            />
-                        )}
-
-                        {/* Shaded overlay for Strava start gap */}
-                        {showGapOverlay && (
-                            <ReferenceArea
-                                yAxisId="w"
-                                x1={zwiftStreamStartSec}
-                                x2={zwiftStreamStartSec + gapSec}
-                                fill={cropExceedsLimit ? '#f59e0b' : '#6b7280'}
-                                fillOpacity={0.12}
-                                strokeOpacity={0}
-                            />
-                        )}
-                        {/* Shaded overlay for Strava end gap */}
-                        {showEndGapOverlay && lastStravaDataT != null && (
-                            <ReferenceArea
-                                yAxisId="w"
-                                x1={lastStravaDataT}
-                                x2={zwiftStreamEndSec}
-                                fill={cropExceedsLimit ? '#f59e0b' : '#6b7280'}
-                                fillOpacity={0.12}
-                                strokeOpacity={0}
-                            />
-                        )}
-
-                        {/* ── Data lines (rendered after overlays so they appear on top) ── */}
-
-                        {/* Power — draw Strava first so Zwift renders on top */}
-                        {hasSeries.stravaW && (
-                            <Line yAxisId="w" type="monotone" dataKey="stravaW"
-                                stroke={stravaColor} dot={false} strokeWidth={1.5} strokeDasharray="5 3"
-                                name="Strava Power (W)" isAnimationActive={false} connectNulls={false}
-                                hide={hidden.has('stravaW')} />
-                        )}
-                        {hasSeries.zwiftW && (
-                            <Line yAxisId="w" type="monotone" dataKey="zwiftW"
-                                stroke={zwiftColor} dot={false} strokeWidth={2}
-                                name="Zwift Power (W)" isAnimationActive={false} connectNulls={false}
-                                hide={hidden.has('zwiftW')} />
-                        )}
-
-                        {/* Heart rate */}
-                        {hasSeries.zwiftHR && (
-                            <Line yAxisId="hr" type="monotone" dataKey="zwiftHR"
-                                stroke="#ef4444" dot={false} strokeWidth={1.5}
-                                name="Zwift HR (bpm)" isAnimationActive={false}
-                                hide={hidden.has('zwiftHR')} />
-                        )}
-                        {hasSeries.stravaHR && (
-                            <Line yAxisId="hr" type="monotone" dataKey="stravaHR"
-                                stroke="#f87171" dot={false} strokeWidth={1} strokeDasharray="4 2"
-                                name="Strava HR (bpm)" isAnimationActive={false}
-                                hide={hidden.has('stravaHR')} />
-                        )}
-
-                        {/* Cadence */}
-                        {hasSeries.zwiftCad && (
-                            <Line yAxisId="hr" type="monotone" dataKey="zwiftCad"
-                                stroke="#22c55e" dot={false} strokeWidth={1.5}
-                                name="Zwift Cadence (rpm)" isAnimationActive={false}
-                                hide={hidden.has('zwiftCad')} />
-                        )}
-                        {hasSeries.stravaCad && (
-                            <Line yAxisId="hr" type="monotone" dataKey="stravaCad"
-                                stroke="#86efac" dot={false} strokeWidth={1} strokeDasharray="4 2"
-                                name="Strava Cadence (rpm)" isAnimationActive={false}
-                                hide={hidden.has('stravaCad')} />
-                        )}
-
-                    </ComposedChart>
-                </ResponsiveContainer>
-            </div>
-
-            {/* Similarity check panel — shown below the chart */}
-            {similarity && (
-                <div className={`mt-3 rounded-md border px-3 py-2 text-xs ${
-                    similarity.suspicious
-                        ? 'border-amber-300 bg-amber-50 text-amber-900'
-                        : 'border-border bg-muted/20 text-muted-foreground'
-                }`}>
-                    <div className="font-semibold mb-1">Power similarity check</div>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                        <div>Mean |diff|: <span className="font-mono">{similarity.meanAbsDiff.toFixed(1)} W</span></div>
-                        <div>P95 diff: <span className="font-mono">{similarity.p95Diff.toFixed(1)} W</span></div>
-                        <div>Max diff: <span className="font-mono">{similarity.maxDiff.toFixed(1)} W</span></div>
-                        <div>Samples: <span className="font-mono">{similarity.samples}</span></div>
-                        <div>Overlap: <span className="font-mono">{Math.round(similarity.overlapSec)}s</span></div>
-                        <div>Std(diff): <span className="font-mono">{similarity.stdDiff.toFixed(2)} W</span></div>
-                        <div>Std(Δdiff): <span className="font-mono">{similarity.stdDeltaDiff.toFixed(2)} W</span></div>
-                        <div>Near-identical (&lt;={IDENTICAL_TOLERANCE_W}W): <span className="font-mono">{similarity.nearIdenticalPct.toFixed(1)}%</span></div>
-                        <div>Longest near-identical run: <span className="font-mono">{Math.round(similarity.longestNearIdenticalRunSec)}s</span></div>
-                    </div>
-                    <div className="mt-1">
-                        {similarity.suspicious
-                            ? `Suspiciously similar power traces (${similarity.suspiciousByVolatility ? 'volatility' : 'run-length'} trigger). This can indicate shared recording source.`
-                            : 'Similarity level looks plausible for independent recordings.'}
-                    </div>
-                </div>
-            )}
+            {/* Metrics comparison table */}
+            {similarity && <StreamMetricsTable similarity={similarity} />}
         </div>
     );
 }

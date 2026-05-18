@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
-import { getAllPosts, deletePost } from '@/lib/posts';
+import { useQueryClient } from '@tanstack/react-query';
+import { deletePost } from '@/lib/posts';
+import { usePostsQuery } from '@/hooks/queries';
 import { Post } from '@/types/posts';
 
 function formatDate(iso: string) {
@@ -10,27 +12,17 @@ function formatDate(iso: string) {
 }
 
 export default function PostsManager() {
-    const [posts, setPosts] = useState<Post[]>([]);
-    const [loading, setLoading] = useState(true);
+    const queryClient = useQueryClient();
+    const postsQuery = usePostsQuery();
+    const posts = postsQuery.data ?? [];
     const [deleting, setDeleting] = useState<string | null>(null);
-
-    const load = async () => {
-        setLoading(true);
-        try {
-            setPosts(await getAllPosts());
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    useEffect(() => { load(); }, []);
 
     const handleDelete = async (post: Post) => {
         if (!confirm(`Slet "${post.title}"? Dette kan ikke fortrydes.`)) return;
         setDeleting(post.id);
         try {
             await deletePost(post.id);
-            setPosts(prev => prev.filter(p => p.id !== post.id));
+            await queryClient.invalidateQueries({ queryKey: ['posts'] });
         } finally {
             setDeleting(null);
         }
@@ -51,20 +43,20 @@ export default function PostsManager() {
                 </Link>
             </div>
 
-            {loading && (
+            {postsQuery.isLoading && (
                 <div className="space-y-2">
                     {[1, 2, 3].map(i => <div key={i} className="h-16 bg-muted rounded-lg animate-pulse" />)}
                 </div>
             )}
 
-            {!loading && posts.length === 0 && (
+            {!postsQuery.isLoading && posts.length === 0 && (
                 <div className="bg-card rounded-lg border border-border p-8 text-center text-muted-foreground">
                     Ingen indlæg endnu.{' '}
                     <Link href="/admin/nyheder/new" className="text-primary hover:underline">Opret det første.</Link>
                 </div>
             )}
 
-            {!loading && posts.length > 0 && (
+            {!postsQuery.isLoading && posts.length > 0 && (
                 <div className="space-y-2">
                     {posts.map(post => (
                         <div key={post.id} className="bg-card rounded-lg border border-border px-4 py-3 flex items-center gap-4">

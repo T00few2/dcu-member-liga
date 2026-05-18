@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import ECyclingClubsModal from '@/components/ECyclingClubsModal';
 import CodeOfConductModal from '@/components/CodeOfConductModal';
 import RegistrationIntroModal from '@/components/RegistrationIntroModal';
 import UnregisteredLoginModal from '@/components/UnregisteredLoginModal';
 import CommunitySection from './CommunitySection';
-import { API_URL } from '@/lib/api';
+import { useMemberCountQuery } from '@/hooks/queries';
 
 interface LandingPageProps {
     showUnregisteredModal: boolean;
@@ -26,14 +26,8 @@ export default function LandingPage({
     const [showClubsModal, setShowClubsModal] = useState(false);
     const [showCoCModal, setShowCoCModal] = useState(false);
     const [showRegIntroModal, setShowRegIntroModal] = useState(false);
-    const [memberCount, setMemberCount] = useState<number | null>(null);
 
-    useEffect(() => {
-        fetch(`${API_URL}/public/member-count`)
-            .then(r => r.ok ? r.json() : null)
-            .then(d => d?.memberCount != null && setMemberCount(d.memberCount))
-            .catch(() => {});
-    }, []);
+    const { data: memberCount = null } = useMemberCountQuery();
 
     return (
         <div className="w-full relative -mt-4 text-foreground bg-background">

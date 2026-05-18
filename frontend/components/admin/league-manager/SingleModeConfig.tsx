@@ -1,29 +1,19 @@
-import type { Segment, RaceFormState, CategoryConfig } from '@/types/admin';
+import { useRaceFormContext } from '@/lib/race-form-context';
 import SegmentPicker from './SegmentPicker';
 import CategoryConfigRow from './CategoryConfigRow';
 
-interface SingleModeConfigProps {
-    formState: RaceFormState;
-    segments: Segment[];
-    segmentsByLap: Record<number, Segment[]>;
-    onFieldChange: <K extends keyof RaceFormState>(field: K, value: RaceFormState[K]) => void;
-    onToggleSegment: (seg: Segment) => void;
-    onAddSingleModeCategory: () => void;
-    onRemoveSingleModeCategory: (index: number) => void;
-    onUpdateSingleModeCategory: (index: number, field: keyof CategoryConfig, value: CategoryConfig[keyof CategoryConfig]) => void;
-    onToggleSingleModeCategorySprint: (configIndex: number, seg: Segment) => void;
-}
+export default function SingleModeConfig() {
+    const {
+        formState,
+        segments,
+        onFieldChange,
+        onToggleSegment,
+        onAddSingleModeCategory,
+        onRemoveSingleModeCategory,
+        onUpdateSingleModeCategory,
+        onToggleSingleModeCategorySprint,
+    } = useRaceFormContext();
 
-export default function SingleModeConfig({
-    formState,
-    segments,
-    onFieldChange,
-    onToggleSegment,
-    onAddSingleModeCategory,
-    onRemoveSingleModeCategory,
-    onUpdateSingleModeCategory,
-    onToggleSingleModeCategorySprint,
-}: SingleModeConfigProps) {
     return (
         <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -81,6 +71,31 @@ export default function SingleModeConfig({
                     </div>
                 )}
             </div>
+
+            {formState.singleModeCategories.length === 0 && (
+                <div className="border-t border-border pt-4">
+                    <div className="mb-3">
+                        <label className="block font-medium text-card-foreground mb-1">Segments Used For</label>
+                        <select
+                            value={formState.segmentType}
+                            onChange={e => onFieldChange('segmentType', e.target.value as 'sprint' | 'split')}
+                            className="w-full sm:w-64 p-2 border border-input rounded bg-background text-foreground text-sm"
+                        >
+                            <option value="sprint">Sprint Points</option>
+                            <option value="split">Time Trial Splits</option>
+                        </select>
+                    </div>
+                    <label className="block font-medium text-card-foreground mb-3">
+                        {formState.segmentType === 'split' ? 'Split Segments' : 'Sprint Segments (Scoring)'}
+                    </label>
+                    <SegmentPicker
+                        segments={segments}
+                        selectedSprints={formState.selectedSprints}
+                        onToggle={onToggleSegment}
+                        segmentType={formState.segmentType}
+                    />
+                </div>
+            )}
         </div>
     );
 }

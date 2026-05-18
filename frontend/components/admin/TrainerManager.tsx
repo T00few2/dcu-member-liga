@@ -1,22 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
+import { useTrainersQuery } from '@/hooks/queries';
 
 interface Trainer {
   id: string;
   name: string;
   status: string;
   dualRecordingRequired: boolean;
-}
-
-interface TrainerRequest {
-  id: string;
-  trainerName: string;
-  requesterName: string;
-  status: string;
-  createdAt: number;
 }
 
 interface GroupedTrainerRequest {
@@ -30,9 +24,11 @@ interface GroupedTrainerRequest {
 
 export default function TrainerManager() {
   const { user } = useAuth();
-  const [trainers, setTrainers] = useState<Trainer[]>([]);
-  const [requests, setRequests] = useState<TrainerRequest[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const trainersQuery = useTrainersQuery();
+  const trainers = trainersQuery.data?.trainers ?? [];
+  const requests = trainersQuery.data?.requests ?? [];
+
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -43,40 +39,6 @@ export default function TrainerManager() {
   const [trainerStatus, setTrainerStatus] = useState<string>('approved');
   const [dualRecordingRequired, setDualRecordingRequired] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-
-  // Fetch Trainers and Requests
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
-    if (!user) return;
-
-    try {
-      const idToken = await user.getIdToken();
-
-      // Fetch trainers
-      const trainersRes = await fetch(`${API_URL}/trainers`);
-      if (trainersRes.ok) {
-        const trainersData = await trainersRes.json();
-        setTrainers(trainersData.trainers || []);
-      }
-
-      // Fetch requests
-      const requestsRes = await fetch(`${API_URL}/trainers/requests`, {
-        headers: { 'Authorization': `Bearer ${idToken}` }
-      });
-      if (requestsRes.ok) {
-        const requestsData = await requestsRes.json();
-        setRequests(requestsData.requests || []);
-      }
-    } catch (err) {
-      console.error('Error fetching data:', err);
-      setError('Failed to load data');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleOpenAddModal = () => {
     setEditingTrainer(null);
@@ -126,7 +88,7 @@ export default function TrainerManager() {
 
       setSuccess(editingTrainer ? 'Trainer updated!' : 'Trainer added!');
       setShowModal(false);
-      fetchData();
+      await queryClient.invalidateQueries({ queryKey: ['trainers'] });
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -149,7 +111,7 @@ export default function TrainerManager() {
       if (!res.ok) throw new Error(data.message || 'Failed to delete trainer');
 
       setSuccess('Trainer deleted!');
-      fetchData();
+      await queryClient.invalidateQueries({ queryKey: ['trainers'] });
     } catch (err: any) {
       setError(err.message);
     }
@@ -174,7 +136,7 @@ export default function TrainerManager() {
       if (!res.ok) throw new Error(data.message || 'Failed to approve request');
 
       setSuccess('Request approved and trainer added!');
-      fetchData();
+      await queryClient.invalidateQueries({ queryKey: ['trainers'] });
     } catch (err: any) {
       setError(err.message);
     }
@@ -195,13 +157,13 @@ export default function TrainerManager() {
       if (!res.ok) throw new Error(data.message || 'Failed to reject request');
 
       setSuccess('Request rejected!');
-      fetchData();
+      await queryClient.invalidateQueries({ queryKey: ['trainers'] });
     } catch (err: any) {
       setError(err.message);
     }
   };
 
-  if (loading) return <div className="text-center py-8">Loading trainers...</div>;
+  if (trainersQuery.isLoading) return <div className="text-center py-8">Loading trainers...</div>;
 
   const approvedTrainers = trainers.filter(t => t.status === 'approved');
   const notApprovedTrainers = trainers.filter(t => t.status === 'not_approved');
@@ -477,4 +439,3 @@ export default function TrainerManager() {
     </div>
   );
 }
-

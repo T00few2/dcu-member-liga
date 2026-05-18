@@ -28,6 +28,12 @@ from services.zwift_tokens import (
     resolve_user_doc_id_from_auth_uid,
     save_token_doc,
 )
+from services.request_models import (
+    SelectCategoryRequest,
+    SignupRequest,
+    UpdateConsentsRequest,
+    parse_body,
+)
 from routes.users import users_bp
 
 logger = logging.getLogger(__name__)
@@ -140,21 +146,21 @@ def signup():
         uid = decoded_token["uid"]
         email = decoded_token.get("email")
 
-        request_json = request.get_json(silent=True)
-        if not request_json:
-            return jsonify({"message": "Invalid JSON"}), 400
+        body, err = parse_body(SignupRequest, request.get_json(silent=True) or {})
+        if err:
+            return err
 
-        name = request_json.get("name")
-        raw_zwift_id = request_json.get("zwiftId")
+        name = body.name
+        raw_zwift_id = body.zwiftId
         zwift_id = str(raw_zwift_id).strip() if raw_zwift_id is not None else None
-        club = request_json.get("club", "")
-        trainer = request_json.get("trainer", "")
-        is_draft = request_json.get("draft", False)
-        accepted_coc = bool(request_json.get("acceptedCoC", False))
-        accepted_data_policy = bool(request_json.get("acceptedDataPolicy", False))
-        accepted_public_results = bool(request_json.get("acceptedPublicResults", False))
-        data_policy_version = request_json.get("dataPolicyVersion")
-        public_results_consent_version = request_json.get("publicResultsConsentVersion")
+        club = body.club
+        trainer = body.trainer
+        is_draft = body.draft
+        accepted_coc = body.acceptedCoC
+        accepted_data_policy = body.acceptedDataPolicy
+        accepted_public_results = body.acceptedPublicResults
+        data_policy_version = body.dataPolicyVersion
+        public_results_consent_version = body.publicResultsConsentVersion
 
         if is_draft:
             if not name:
@@ -381,11 +387,13 @@ def update_consents():
             return jsonify({"message": e.message}), e.status_code
         uid = decoded_token["uid"]
 
-        request_json = request.get_json(silent=True) or {}
-        accepted_data_policy = bool(request_json.get("acceptedDataPolicy", False))
-        accepted_public_results = bool(request_json.get("acceptedPublicResults", False))
-        data_policy_version = request_json.get("dataPolicyVersion")
-        public_results_consent_version = request_json.get("publicResultsConsentVersion")
+        body, err = parse_body(UpdateConsentsRequest, request.get_json(silent=True) or {})
+        if err:
+            return err
+        accepted_data_policy = body.acceptedDataPolicy
+        accepted_public_results = body.acceptedPublicResults
+        data_policy_version = body.dataPolicyVersion
+        public_results_consent_version = body.publicResultsConsentVersion
 
         try:
             required_versions = get_policy_meta(db)
@@ -469,8 +477,10 @@ def select_category():
     if not user or not user.is_registered:
         return jsonify({"message": "User not registered"}), 403
 
-    data = request.get_json(silent=True) or {}
-    chosen = (data.get("category") or "").strip()
+    body, err = parse_body(SelectCategoryRequest, request.get_json(silent=True) or {})
+    if err:
+        return err
+    chosen = body.category.strip()
 
     cat_names = [name for name, _, _ in ZR_CATEGORIES]
     if chosen not in cat_names:

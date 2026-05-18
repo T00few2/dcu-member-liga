@@ -1,43 +1,22 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { User } from 'firebase/auth';
+import { useQueryClient } from '@tanstack/react-query';
 import MarkdownRenderer from '@/components/MarkdownRenderer';
 import { API_URL } from '@/lib/api';
-
-type PolicyMeta = {
-  displayVersion: string;
-  requiredVersion: string;
-};
-
-type PolicyVersion = {
-  version: string;
-  titleDa?: string;
-  changeType?: 'minor' | 'major';
-  requiresReaccept?: boolean;
-  status?: 'draft' | 'pending_review' | 'approved' | 'published' | 'rejected';
-  createdByUid?: string;
-  approvedByUid?: string;
-  publishedByUid?: string;
-  createdAt?: number;
-  updatedAt?: number;
-  submittedAt?: number;
-  approvedAt?: number;
-  publishedAt?: number;
-  changeSummary?: string;
-  contentMdDa?: string;
-};
+import { usePoliciesMetaQuery, usePoliciesVersionsQuery } from '@/hooks/queries/usePoliciesQuery';
+import type { PolicyVersion } from '@/hooks/queries/usePoliciesQuery';
 
 export default function PolicyManager({ user }: { user: User }) {
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+
+  const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
-  const [knownPolicies, setKnownPolicies] = useState<string[]>([]);
-  const [meta, setMeta] = useState<Record<string, PolicyMeta>>({});
   const [policyKey, setPolicyKey] = useState<string>('dataPolicy');
 
-  const [versions, setVersions] = useState<PolicyVersion[]>([]);
   const [selectedVersion, setSelectedVersion] = useState<string>('');
 
   // Editor fields
@@ -47,6 +26,18 @@ export default function PolicyManager({ user }: { user: User }) {
   const [changeType, setChangeType] = useState<'minor' | 'major'>('minor');
   const [requiresReaccept, setRequiresReaccept] = useState<boolean>(false);
   const [changeSummary, setChangeSummary] = useState<string>('');
+
+  const { data: metaData } = usePoliciesMetaQuery();
+  const knownPolicies = metaData?.knownPolicies ?? [];
+  const meta = metaData?.policies ?? {};
+
+  const {
+    data: versions = [],
+    isFetching: versionsLoading,
+    refetch: refetchVersions,
+  } = usePoliciesVersionsQuery(policyKey);
+
+  const loading = versionsLoading || actionLoading;
 
   const selected = useMemo(
     () => versions.find(v => v.version === (selectedVersion || editVersion)) || null,
@@ -59,71 +50,23 @@ export default function PolicyManager({ user }: { user: User }) {
     return versions.some(x => x.version === v);
   }, [versions, editVersion]);
 
-  const refreshMeta = async () => {
-    const res = await fetch(`${API_URL}/policy/meta`);
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.message || 'Failed to load policy meta');
-    setKnownPolicies(data.knownPolicies || []);
-    setMeta(data.policies || {});
-  };
-
-  const refreshVersions = async (key: string) => {
-    const token = await user.getIdToken();
-    const res = await fetch(`${API_URL}/admin/policy/${key}/versions`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.message || 'Failed to load versions');
-    setVersions((data.versions || []) as PolicyVersion[]);
-  };
-
-  useEffect(() => {
-    const run = async () => {
-      try {
-        setLoading(true);
-        setError('');
-        await refreshMeta();
-        await refreshVersions(policyKey);
-      } catch (e: any) {
-        setError(e?.message || 'Failed to load policies');
-      } finally {
-        setLoading(false);
-      }
-    };
-    run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    const run = async () => {
-      try {
-        setLoading(true);
-        setError('');
-        setMessage('');
-        await refreshMeta();
-        await refreshVersions(policyKey);
-        setSelectedVersion('');
-      } catch (e: any) {
-        setError(e?.message || 'Failed to load versions');
-      } finally {
-        setLoading(false);
-      }
-    };
-    run();
-  }, [policyKey]);
-
   const loadIntoEditor = (v: PolicyVersion) => {
     setSelectedVersion(v.version);
     setEditVersion(v.version);
     setTitleDa(v.titleDa || '');
     setContentMdDa(v.contentMdDa || '');
-    setChangeType((v.changeType as any) || (v.requiresReaccept ? 'major' : 'minor'));
+    setChangeType((v.changeType as 'minor' | 'major') || (v.requiresReaccept ? 'major' : 'minor'));
     setRequiresReaccept(!!v.requiresReaccept);
     setChangeSummary(v.changeSummary || '');
   };
 
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: ['policy', 'versions', policyKey] });
+    queryClient.invalidateQueries({ queryKey: ['policy', 'meta'] });
+  };
+
   const saveDraft = async () => {
-    setLoading(true);
+    setActionLoading(true);
     setError('');
     setMessage('');
     try {
@@ -148,22 +91,22 @@ export default function PolicyManager({ user }: { user: User }) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || 'Failed to save draft');
       setMessage('Draft saved.');
-      await refreshVersions(policyKey);
-    } catch (e: any) {
-      setError(e?.message || 'Failed to save draft');
+      queryClient.invalidateQueries({ queryKey: ['policy', 'versions', policyKey] });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to save draft');
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
   const submit = async () => {
-    setLoading(true);
+    setActionLoading(true);
     setError('');
     setMessage('');
     try {
       const v = editVersion.trim();
       if (!v) throw new Error('Version is required');
-      if (!versionExists) throw new Error('Version not found. Click “Save draft” first to create it.');
+      if (!versionExists) throw new Error('Version not found. Click "Save draft" first to create it.');
       const token = await user.getIdToken();
       const res = await fetch(`${API_URL}/admin/policy/${policyKey}/versions/${encodeURIComponent(v)}/submit`, {
         method: 'POST',
@@ -172,22 +115,22 @@ export default function PolicyManager({ user }: { user: User }) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || 'Failed to submit');
       setMessage('Submitted for review.');
-      await refreshVersions(policyKey);
-    } catch (e: any) {
-      setError(e?.message || 'Failed to submit');
+      queryClient.invalidateQueries({ queryKey: ['policy', 'versions', policyKey] });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to submit');
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
   const approve = async () => {
-    setLoading(true);
+    setActionLoading(true);
     setError('');
     setMessage('');
     try {
       const v = editVersion.trim();
       if (!v) throw new Error('Version is required');
-      if (!versionExists) throw new Error('Version not found. Click “Save draft” first to create it.');
+      if (!versionExists) throw new Error('Version not found. Click "Save draft" first to create it.');
       const token = await user.getIdToken();
       const res = await fetch(`${API_URL}/admin/policy/${policyKey}/versions/${encodeURIComponent(v)}/approve`, {
         method: 'POST',
@@ -196,22 +139,22 @@ export default function PolicyManager({ user }: { user: User }) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || 'Failed to approve');
       setMessage('Approved.');
-      await refreshVersions(policyKey);
-    } catch (e: any) {
-      setError(e?.message || 'Failed to approve');
+      queryClient.invalidateQueries({ queryKey: ['policy', 'versions', policyKey] });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to approve');
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
   const publish = async () => {
-    setLoading(true);
+    setActionLoading(true);
     setError('');
     setMessage('');
     try {
       const v = editVersion.trim();
       if (!v) throw new Error('Version is required');
-      if (!versionExists) throw new Error('Version not found. Click “Save draft” first to create it.');
+      if (!versionExists) throw new Error('Version not found. Click "Save draft" first to create it.');
       const token = await user.getIdToken();
       const res = await fetch(`${API_URL}/admin/policy/${policyKey}/versions/${encodeURIComponent(v)}/publish`, {
         method: 'POST',
@@ -224,12 +167,11 @@ export default function PolicyManager({ user }: { user: User }) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || 'Failed to publish');
       setMessage('Published.');
-      await refreshMeta();
-      await refreshVersions(policyKey);
-    } catch (e: any) {
-      setError(e?.message || 'Failed to publish');
+      invalidateAll();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to publish');
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
@@ -272,7 +214,7 @@ export default function PolicyManager({ user }: { user: User }) {
                 </ul>
               </li>
               <li>
-                <strong>requires re-accept</strong>: if checked, publishing will also update “Required” (and force users to accept again).
+                <strong>requires re-accept</strong>: if checked, publishing will also update "Required" (and force users to accept again).
               </li>
             </ul>
           </div>
@@ -318,7 +260,7 @@ export default function PolicyManager({ user }: { user: User }) {
           </div>
 
           <p className="text-xs">
-            Tip: once a version is submitted/published, it can’t be edited. Create a new version for changes.
+            Tip: once a version is submitted/published, it can&apos;t be edited. Create a new version for changes.
           </p>
         </div>
       </details>
@@ -329,7 +271,7 @@ export default function PolicyManager({ user }: { user: User }) {
             <label className="block text-sm font-medium text-muted-foreground mb-1">Policy</label>
             <select
               value={policyKey}
-              onChange={(e) => setPolicyKey(e.target.value)}
+              onChange={(e) => { setPolicyKey(e.target.value); setSelectedVersion(''); }}
               className="w-full p-2 border border-input rounded bg-background text-foreground"
             >
               {(knownPolicies.length ? knownPolicies : ['dataPolicy', 'publicResultsConsent']).map((k) => (
@@ -344,7 +286,7 @@ export default function PolicyManager({ user }: { user: User }) {
           </div>
           <div className="flex gap-2">
             <button
-              onClick={() => refreshVersions(policyKey)}
+              onClick={() => refetchVersions()}
               className="px-4 py-2 rounded border border-border bg-background hover:bg-muted text-sm"
               disabled={loading}
             >
@@ -434,7 +376,7 @@ export default function PolicyManager({ user }: { user: User }) {
               <span className="text-muted-foreground">Change type</span>
               <select
                 value={changeType}
-                onChange={(e) => setChangeType(e.target.value as any)}
+                onChange={(e) => setChangeType(e.target.value as 'minor' | 'major')}
                 className="p-2 border border-input rounded bg-background text-foreground"
               >
                 <option value="minor">minor</option>
@@ -530,4 +472,3 @@ export default function PolicyManager({ user }: { user: User }) {
     </div>
   );
 }
-

@@ -5,6 +5,7 @@ import logging
 
 from extensions import get_zwift_service, strava_service
 from services.zwift_tokens import get_valid_access_token
+from services.results.errors import DualRecordingWorkflowError
 
 from .strava import _extract_stream, _match_strava_activity, _trim_strava_streams
 from .time_series import (
@@ -45,7 +46,10 @@ def _compute_dual_recording_for_rider(
         fresh_activity = get_zwift_service().get_user_activity(str(zwift_activity_id), access_token) or {}
         zwift_raw = fresh_activity
     if not zwift_raw:
-        raise ValueError(f"Zwift activity {zwift_activity_id} not found")
+        raise DualRecordingWorkflowError(
+            f"Zwift activity {zwift_activity_id} not found",
+            context={"zwift_activity_id": zwift_activity_id, "user_doc_id": user_doc_id},
+        )
 
     zf = _extract_zwift_activity_fields(zwift_raw)
     zwift_started_at = zf["startedAt"]

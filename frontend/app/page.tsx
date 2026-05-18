@@ -2,10 +2,9 @@
 
 import { useAuth } from "@/lib/auth-context";
 import { useEffect, useState } from "react";
-import { API_URL } from '@/lib/api';
 import { useRouter } from "next/navigation";
+import { useRacesQuery, useLeagueSettingsQuery } from '@/hooks/queries';
 import type { Race } from '@/types/live';
-import type { LeagueSettings } from '@/types/admin';
 import LandingPage from '@/components/home/LandingPage';
 import Dashboard from '@/components/home/Dashboard';
 
@@ -13,9 +12,10 @@ import Dashboard from '@/components/home/Dashboard';
 export default function Home() {
     const { user, userCategory, signInWithGoogle, isRegistered, profileLoaded, loading, logOut, authIntent, clearAuthIntent } = useAuth();
     const router = useRouter();
-    const [nextRace, setNextRace] = useState<Race | null>(null);
-    const [leagueSettings, setLeagueSettings] = useState<LeagueSettings | null>(null);
     const [showUnregisteredModal, setShowUnregisteredModal] = useState(false);
+
+    const racesQuery = useRacesQuery();
+    const settingsQuery = useLeagueSettingsQuery();
 
     useEffect(() => {
         if (profileLoaded && user && authIntent === 'login') {
@@ -28,46 +28,24 @@ export default function Home() {
         if (isRegistered && showUnregisteredModal) setShowUnregisteredModal(false);
     }, [isRegistered, showUnregisteredModal]);
 
-    useEffect(() => {
-        if (!user || !isRegistered) return;
-        const fetchNextRace = async () => {
-            try {
-                const token = await user.getIdToken();
-                const [racesRes, settingsRes] = await Promise.all([
-                    fetch(`${API_URL}/races`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    }),
-                    fetch(`${API_URL}/league/settings`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    }),
-                ]);
+    const nextRace = (() => {
+        if (!racesQuery.data) return null;
+        const now = new Date();
+        const upcoming = racesQuery.data
+            .filter((r: Race) => new Date(r.date) > now)
+            .sort((a: Race, b: Race) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        return upcoming[0] ?? null;
+    })();
 
-                if (racesRes.ok) {
-                    const data = await racesRes.json();
-                    const now = new Date();
-                    const upcoming = (data.races || [])
-                        .filter((r: Race) => new Date(r.date) > now)
-                        .sort((a: Race, b: Race) => new Date(a.date).getTime() - new Date(b.date).getTime());
-                    if (upcoming.length > 0) setNextRace(upcoming[0]);
-                }
-
-                if (settingsRes.ok) {
-                    const settingsData = await settingsRes.json();
-                    const settings = settingsData.settings || {};
-                    setLeagueSettings({
-                        name: settings.name || '',
-                        finishPoints: settings.finishPoints || [],
-                        sprintPoints: settings.sprintPoints || [],
-                        leagueRankPoints: settings.leagueRankPoints || [],
-                        bestRacesCount: settings.bestRacesCount || 5,
-                    });
-                }
-            } catch (e) {
-                console.error('Error fetching next race', e);
-            }
-        };
-        fetchNextRace();
-    }, [user, isRegistered]);
+    const leagueSettings = settingsQuery.data
+        ? {
+              name: settingsQuery.data.name ?? '',
+              finishPoints: settingsQuery.data.finishPoints ?? [],
+              sprintPoints: settingsQuery.data.sprintPoints ?? [],
+              leagueRankPoints: settingsQuery.data.leagueRankPoints ?? [],
+              bestRacesCount: settingsQuery.data.bestRacesCount ?? 5,
+          }
+        : null;
 
     if (loading) {
         return (

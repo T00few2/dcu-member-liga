@@ -1,5 +1,7 @@
 // Shared types for admin/league management
 import type { StickyWattsResult } from '@/lib/stickyWatts';
+import type { EventMode, ResultsPhase, RaceType, SegmentType } from './enums';
+export type { EventMode, ResultsPhase, RaceType, SegmentType } from './enums';
 
 export interface Route {
     id: string;
@@ -33,7 +35,7 @@ export interface CategoryConfig {
 
 export interface EventConfig {
     eventId: string;
-    eventSecret: string;
+    eventSecret?: string;
     customCategory: string;
     laps?: number;
     startTime?: string;
@@ -72,28 +74,28 @@ export interface Race {
     id: string;
     name: string;
     date: string;
-    routeId: string;
-    routeName: string;
-    map: string;
-    laps: number;
-    totalDistance: number;
-    totalElevation: number;
-    type?: 'scratch' | 'points' | 'time-trial';
+    routeId?: string;
+    routeName?: string;
+    map?: string;
+    laps?: number;
+    totalDistance?: number;
+    totalElevation?: number;
+    type?: RaceType;
     eventId?: string;
     eventSecret?: string;
-    eventMode?: 'single' | 'multi' | 'grouped';
+    eventMode?: EventMode;
     linkedEventIds?: string[];
     eventConfiguration?: EventConfig[];
     singleModeCategories?: CategoryConfig[];
     raceGroups?: RaceGroup[];
     selectedSegments?: string[];
     sprints?: SelectedSegment[];
-    segmentType?: 'sprint' | 'split';
+    segmentType?: SegmentType;
     results?: Record<string, RaceResult[]>;
     manualDQs?: string[];
     manualDeclassifications?: string[];
     manualExclusions?: string[];
-    resultsPhase?: 'provisional' | 'finalized';
+    resultsPhase?: ResultsPhase;
     provisionalUpdatedAt?: string;
     finalizedAt?: string;
     finalizeRunId?: string;

@@ -5,10 +5,12 @@ import { useEffect, useState } from 'react';
 import type { Route, Segment, RaceFormState, EventConfig, CategoryConfig, RaceGroup, RaceGroupCategoryConfig, LoadingStatus } from '@/types/admin';
 import { getRouteHelpers } from '@/hooks/useLeagueData';
 import { API_URL } from '@/lib/api';
-import SegmentPicker from './SegmentPicker';
+import { RaceFormProvider } from '@/lib/race-form-context';
 import SingleModeConfig from './SingleModeConfig';
 import MultiModeConfig from './MultiModeConfig';
 import GroupedModeConfig from './GroupedModeConfig';
+import RaceBasicFields from './race-form/RaceBasicFields';
+import RaceRouteSelector from './race-form/RaceRouteSelector';
 
 interface RaceFormProps {
     user: User | null;
@@ -87,7 +89,7 @@ export default function RaceForm({
     const [routeProfileSegmentId, setRouteProfileSegmentId] = useState<number | null>(null);
     const [routeProfileError, setRouteProfileError] = useState<string | null>(null);
 
-    const { maps, filteredRoutes, selectedRoute } = getRouteHelpers(
+    const { selectedRoute } = getRouteHelpers(
         routes,
         formState.selectedMap,
         formState.selectedRouteId
@@ -239,6 +241,14 @@ export default function RaceForm({
     };
 
     return (
+        <RaceFormProvider value={{
+            formState, segments, segmentsByLap, status,
+            onFieldChange, onToggleSegment,
+            onAddEventConfig, onRemoveEventConfig, onUpdateEventConfig, onToggleConfigSprint,
+            onAddSingleModeCategory, onRemoveSingleModeCategory, onUpdateSingleModeCategory, onToggleSingleModeCategorySprint,
+            onAddRaceGroup, onRemoveRaceGroup, onUpdateRaceGroup,
+            onAddGroupCategory, onRemoveGroupCategory, onUpdateGroupCategory, onToggleGroupCategorySprint, onToggleGroupSprint,
+        }}>
         <div className="bg-card p-6 rounded-lg shadow mb-8 border border-border">
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-semibold text-card-foreground">
@@ -253,108 +263,14 @@ export default function RaceForm({
 
             <form onSubmit={onSave} className="space-y-6">
                 {/* Basic Info */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div>
-                        <label className="block text-sm font-medium text-muted-foreground mb-1">Race Name</label>
-                        <input
-                            type="text"
-                            required
-                            value={formState.name}
-                            onChange={e => onFieldChange('name', e.target.value)}
-                            className="w-full p-2 border border-input rounded bg-background text-foreground"
-                            placeholder="e.g. League Opener"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-muted-foreground mb-1">Date & Time</label>
-                        <input
-                            type="datetime-local"
-                            required
-                            value={formState.date}
-                            onChange={e => onFieldChange('date', e.target.value)}
-                            className="w-full p-2 border border-input rounded bg-background text-foreground"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-muted-foreground mb-1">Race Type</label>
-                        <select
-                            value={formState.raceType}
-                            onChange={e => onFieldChange('raceType', e.target.value as 'scratch' | 'points' | 'time-trial')}
-                            className="w-full p-2 border border-input rounded bg-background text-foreground"
-                        >
-                            <option value="scratch">Scratch Race</option>
-                            <option value="points">Points Race</option>
-                            <option value="time-trial">Time Trial</option>
-                        </select>
-                    </div>
-                </div>
+                <RaceBasicFields />
 
                 {/* Route Selection */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div>
-                        <label className="block text-sm font-medium text-muted-foreground mb-1">Select Map</label>
-                        <select
-                            value={formState.selectedMap}
-                            onChange={e => {
-                                onFieldChange('selectedMap', e.target.value);
-                                onFieldChange('selectedRouteId', '');
-                            }}
-                            className="w-full p-2 border border-input rounded bg-background text-foreground"
-                            required
-                        >
-                            <option value="">-- Choose a Map --</option>
-                            {maps.map(m => <option key={m} value={m}>{m}</option>)}
-                        </select>
-                    </div>
-                    <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-muted-foreground mb-1">Select Route</label>
-                        <select
-                            value={formState.selectedRouteId}
-                            onChange={e => onFieldChange('selectedRouteId', e.target.value)}
-                            className="w-full p-2 border border-input rounded bg-background text-foreground"
-                            required
-                            disabled={!formState.selectedMap}
-                        >
-                            <option value="">
-                                {formState.selectedMap ? '-- Choose a Route --' : '-- Select Map First --'}
-                            </option>
-                            {filteredRoutes.map(r => (
-                                <option key={r.id} value={r.id}>
-                                    {r.name} ({r.distance.toFixed(1)}km, {r.elevation}m)
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-                </div>
+                <RaceRouteSelector routes={routes} />
 
                 {/* Route Details & Configuration */}
                 {selectedRoute && (
                     <div className="p-4 bg-muted/50 rounded-lg border border-border">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-4">
-                            <div>
-                                <label className="block font-medium text-muted-foreground mb-1">Laps</label>
-                                <input
-                                    type="number"
-                                    min="1"
-                                    value={formState.laps}
-                                    onChange={e => onFieldChange('laps', parseInt(e.target.value) || 1)}
-                                    className="w-20 p-1 border border-input rounded bg-background text-foreground"
-                                />
-                            </div>
-                            <div className="text-card-foreground flex flex-col justify-end">
-                                <span className="text-sm text-muted-foreground">Total Distance</span>
-                                <span className="font-mono font-medium">
-                                    {((selectedRoute.distance * formState.laps) + selectedRoute.leadinDistance).toFixed(1)} km
-                                </span>
-                            </div>
-                            <div className="text-card-foreground flex flex-col justify-end">
-                                <span className="text-sm text-muted-foreground">Total Elevation</span>
-                                <span className="font-mono font-medium">
-                                    {Math.round(selectedRoute.elevation * formState.laps + selectedRoute.leadinElevation)} m
-                                </span>
-                            </div>
-                        </div>
-
                         {/* Event Mode */}
                         <div className="mb-4">
                             <label className="block text-sm font-medium text-muted-foreground mb-2">
@@ -393,47 +309,9 @@ export default function RaceForm({
                                 </label>
                             </div>
 
-                            {formState.eventMode === 'single' && (
-                                <SingleModeConfig
-                                    formState={formState}
-                                    segments={segments}
-                                    segmentsByLap={segmentsByLap}
-                                    onFieldChange={onFieldChange}
-                                    onToggleSegment={onToggleSegment}
-                                    onAddSingleModeCategory={onAddSingleModeCategory}
-                                    onRemoveSingleModeCategory={onRemoveSingleModeCategory}
-                                    onUpdateSingleModeCategory={onUpdateSingleModeCategory}
-                                    onToggleSingleModeCategorySprint={onToggleSingleModeCategorySprint}
-                                />
-                            )}
-
-                            {formState.eventMode === 'multi' && (
-                                <MultiModeConfig
-                                    formState={formState}
-                                    segments={segments}
-                                    segmentsByLap={segmentsByLap}
-                                    onAddEventConfig={onAddEventConfig}
-                                    onRemoveEventConfig={onRemoveEventConfig}
-                                    onUpdateEventConfig={onUpdateEventConfig}
-                                    onToggleConfigSprint={onToggleConfigSprint}
-                                />
-                            )}
-
-                            {formState.eventMode === 'grouped' && (
-                                <GroupedModeConfig
-                                    formState={formState}
-                                    segments={segments}
-                                    segmentsByLap={segmentsByLap}
-                                    onAddRaceGroup={onAddRaceGroup}
-                                    onRemoveRaceGroup={onRemoveRaceGroup}
-                                    onUpdateRaceGroup={onUpdateRaceGroup}
-                                    onAddGroupCategory={onAddGroupCategory}
-                                    onRemoveGroupCategory={onRemoveGroupCategory}
-                                    onUpdateGroupCategory={onUpdateGroupCategory}
-                                    onToggleGroupCategorySprint={onToggleGroupCategorySprint}
-                                    onToggleGroupSprint={onToggleGroupSprint}
-                                />
-                            )}
+                            {formState.eventMode === 'single' && <SingleModeConfig />}
+                            {formState.eventMode === 'multi' && <MultiModeConfig />}
+                            {formState.eventMode === 'grouped' && <GroupedModeConfig />}
 
                             <p className="text-xs text-muted-foreground mt-2">
                                 {formState.eventMode === 'single'
@@ -443,32 +321,6 @@ export default function RaceForm({
                                     : 'Group multiple categories under each Zwift Event (e.g. "High end" event covers Diamond + Ruby).'}
                             </p>
                         </div>
-
-                        {/* Global Sprint Selection (single mode, no per-category config) */}
-                        {formState.eventMode === 'single' && formState.singleModeCategories.length === 0 && (
-                            <div className="border-t border-border pt-4">
-                                <div className="mb-3">
-                                    <label className="block font-medium text-card-foreground mb-1">Segments Used For</label>
-                                    <select
-                                        value={formState.segmentType}
-                                        onChange={e => onFieldChange('segmentType', e.target.value as 'sprint' | 'split')}
-                                        className="w-full sm:w-64 p-2 border border-input rounded bg-background text-foreground text-sm"
-                                    >
-                                        <option value="sprint">Sprint Points</option>
-                                        <option value="split">Time Trial Splits</option>
-                                    </select>
-                                </div>
-                                <label className="block font-medium text-card-foreground mb-3">
-                                    {formState.segmentType === 'split' ? 'Split Segments' : 'Sprint Segments (Scoring)'}
-                                </label>
-                                <SegmentPicker
-                                    segments={segments}
-                                    selectedSprints={formState.selectedSprints}
-                                    onToggle={onToggleSegment}
-                                    segmentType={formState.segmentType}
-                                />
-                            </div>
-                        )}
 
                         {/* Route profile ownership note */}
                         <div className="border-t border-border pt-4 mt-4">
@@ -659,5 +511,6 @@ export default function RaceForm({
                 </div>
             </form>
         </div>
+        </RaceFormProvider>
     );
 }
