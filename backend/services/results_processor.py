@@ -17,6 +17,7 @@ from services.results.constants import (
     RACE_STATUS_DNF,
     RACE_STATUS_WC,
 )
+from services.results.critical_power import resolve_critical_power
 from services.results.errors import (
     ConfigurationError,
     EventInfoFetchError,
@@ -839,7 +840,7 @@ class ResultsProcessor:
                     'raceStatus': RACE_STATUS_DNF,
                     'flaggedCheating': False,
                     'flaggedSandbagging': False,
-                    'criticalP': {},
+                    'criticalP': resolve_critical_power(None, profile),
                 })
                 existing_ids.add(canonical_id)
 
@@ -884,7 +885,7 @@ class ResultsProcessor:
                     'raceStatus': RACE_STATUS_DNF,
                     'flaggedCheating': False,
                     'flaggedSandbagging': False,
-                    'criticalP': {},
+                    'criticalP': resolve_critical_power(None, profile),
                 })
                 existing_ids.add(canonical_id)
 

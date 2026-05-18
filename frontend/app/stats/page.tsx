@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 
 import { ClubSnapshotCards } from './_components/ClubSnapshotCards';
 import { PowerCurveSection } from './_components/PowerCurveSection';
@@ -26,10 +27,12 @@ import type {
 } from './_lib/stats-types';
 import { API_URL } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
-import type { CriticalPower, Race } from '@/types/live';
+import type { Race } from '@/types/live';
 
 export default function MyStatsPage() {
     const { user, loading: authLoading, isRegistered } = useAuth();
+    const router = useRouter();
+    const pathname = usePathname();
 
     const [races, setRaces] = useState<Race[]>([]);
     const [loading, setLoading] = useState(true);
@@ -40,13 +43,20 @@ export default function MyStatsPage() {
     const [sprintXAxis, setSprintXAxis] = useState<SprintXAxisMode>('time');
 
     const [statsMode, setStatsMode] = useState<StatsMode>('all');
-    const [powerCurveByZwiftId, setPowerCurveByZwiftId] = useState<Record<string, CriticalPower>>({});
     const [clubByZwiftId, setClubByZwiftId] = useState<Record<string, string>>({});
     const [hiddenRiderIdsByMode, setHiddenRiderIdsByMode] = useState<HiddenRiderIdsByMode>({ all: [], club: [] });
     const [highlightedRiderId, setHighlightedRiderId] = useState<string | null>(null);
     const [sprintCategoryFilter, setSprintCategoryFilter] = useState<string>('all');
     const [prefsHydrated, setPrefsHydrated] = useState(false);
     const powerCurveChartRef = useRef<HTMLDivElement | null>(null);
+
+    const parseStatsMode = (value: string | null): StatsMode => {
+        return value === 'club' ? 'club' : 'all';
+    };
+
+    const parseSprintXAxis = (value: string | null): SprintXAxisMode => {
+        return value === 'rank' ? 'rank' : 'time';
+    };
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -80,6 +90,24 @@ export default function MyStatsPage() {
         } finally {
             setPrefsHydrated(true);
         }
+    }, []);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const syncFromUrl = () => {
+            const params = new URLSearchParams(window.location.search);
+            setStatsMode(parseStatsMode(params.get('mode')));
+            setSprintXAxis(parseSprintXAxis(params.get('x')));
+            const categoryParam = params.get('cat');
+            setSprintCategoryFilter(categoryParam && categoryParam.trim() ? categoryParam.trim() : 'all');
+            const raceParam = params.get('race');
+            if (raceParam && raceParam.trim()) {
+                setSelectedRaceId(raceParam.trim());
+            }
+        };
+        syncFromUrl();
+        window.addEventListener('popstate', syncFromUrl);
+        return () => window.removeEventListener('popstate', syncFromUrl);
     }, []);
 
     useEffect(() => {
@@ -126,32 +154,39 @@ export default function MyStatsPage() {
 
                     setRaces(finishedRaces);
                     if (finishedRaces.length > 0) {
-                        setSelectedRaceId(finishedRaces[0].id);
+                        const raceFromUrl = typeof window !== 'undefined'
+                            ? new URLSearchParams(window.location.search).get('race')
+                            : null;
+                        const cleanedRaceFromUrl = raceFromUrl?.trim() || '';
+                        const raceExistsInList = cleanedRaceFromUrl
+                            ? finishedRaces.some((race: Race) => race.id === cleanedRaceFromUrl)
+                            : false;
+                        setSelectedRaceId(raceExistsInList ? cleanedRaceFromUrl : finishedRaces[0].id);
                     }
                 }
 
-                // Fallback power-curve source (users collection) for race results where criticalP is empty.
-                const participantsRes = await fetch(`${API_URL}/participants`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (participantsRes.ok) {
-                    const participantsPayload = await participantsRes.json();
-                    const participants = Array.isArray(participantsPayload?.participants) ? participantsPayload.participants : [];
-                    const nextPowerMap: Record<string, CriticalPower> = {};
-                    const nextClubMap: Record<string, string> = {};
-                    for (const participant of participants) {
-                        const zwiftId = String(participant?.zwiftId || '').trim();
-                        if (!zwiftId) continue;
-                        if (typeof participant?.club === 'string' && participant.club.trim().length > 0) {
-                            nextClubMap[zwiftId] = participant.club.trim();
+                // Participant list is optional (club labels only). Network failures
+                // here should not fail the entire stats page.
+                try {
+                    const participantsRes = await fetch(`${API_URL}/participants`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (participantsRes.ok) {
+                        const participantsPayload = await participantsRes.json();
+                        const participants = Array.isArray(participantsPayload?.participants) ? participantsPayload.participants : [];
+                        const nextClubMap: Record<string, string> = {};
+                        for (const participant of participants) {
+                            const zwiftId = String(participant?.zwiftId || '').trim();
+                            if (!zwiftId) continue;
+                            if (typeof participant?.club === 'string' && participant.club.trim().length > 0) {
+                                nextClubMap[zwiftId] = participant.club.trim();
+                            }
                         }
-                        const normalized = normalizeCriticalPower(participant);
-                        if (normalized) {
-                            nextPowerMap[zwiftId] = normalized;
-                        }
+                        setClubByZwiftId(nextClubMap);
                     }
-                    setPowerCurveByZwiftId(nextPowerMap);
-                    setClubByZwiftId(nextClubMap);
+                } catch (participantsError) {
+                    console.warn('Participants lookup unavailable; club labels disabled for now', participantsError);
+                    setClubByZwiftId({});
                 }
             } catch (e) {
                 console.error('Error fetching data', e);
@@ -182,6 +217,15 @@ export default function MyStatsPage() {
         return selectedRace.results[userCategory].find((r) => r.zwiftId === currentUserZwiftId) ?? null;
     }, [selectedRace, userCategory, currentUserZwiftId]);
 
+    const primaryRaceCategory = useMemo(() => {
+        if (!selectedRace?.results) return null;
+        const categories = Object.keys(selectedRace.results).filter((cat) => selectedRace.results?.[cat]?.length);
+        if (categories.length === 0) return null;
+        return categories.sort((a, b) => categoryRankIndex(a) - categoryRankIndex(b))[0];
+    }, [selectedRace]);
+
+    const referenceCategory = userCategory ?? primaryRaceCategory;
+
     const allRiders = useMemo(() => {
         if (!selectedRace?.results) return [];
         const all: RiderWithCategory[] = [];
@@ -204,8 +248,8 @@ export default function MyStatsPage() {
         let riders: RiderWithCategory[] = [];
 
         if (statsMode === 'all') {
-            if (!userCategory || !selectedRace?.results) return [];
-            riders = selectedRace.results[userCategory].map((rider) => ({ ...rider, category: userCategory }));
+            if (!referenceCategory || !selectedRace?.results) return [];
+            riders = selectedRace.results[referenceCategory].map((rider) => ({ ...rider, category: referenceCategory }));
         } else if (statsMode === 'club') {
             riders = allRiders.filter((rider) =>
                 clubRiderIdsInRace.has(String(rider.zwiftId)),
@@ -217,18 +261,17 @@ export default function MyStatsPage() {
             if (b.zwiftId === currentUserZwiftId) return -1;
             return 0;
         });
-    }, [statsMode, selectedRace, userCategory, allRiders, currentUserZwiftId, clubRiderIdsInRace]);
+    }, [statsMode, selectedRace, referenceCategory, allRiders, currentUserZwiftId, clubRiderIdsInRace]);
 
     const displayRidersWithPower = useMemo<RiderWithPower[]>(() => {
         return displayRiders
             .map((rider) => {
-                const raceCriticalPower = normalizeCriticalPower(rider.criticalP);
-                const fallbackCriticalPower = powerCurveByZwiftId[String(rider.zwiftId)];
-                const resolvedCriticalPower = raceCriticalPower ?? fallbackCriticalPower ?? null;
-                return resolvedCriticalPower ? { ...rider, resolvedCriticalPower } : null;
+                // Some race payloads store CP on `criticalP`, others inline on the rider.
+                const raceCriticalPower = normalizeCriticalPower(rider.criticalP ?? rider);
+                return raceCriticalPower ? { ...rider, resolvedCriticalPower: raceCriticalPower } : null;
             })
             .filter((rider): rider is RiderWithPower => rider !== null);
-    }, [displayRiders, powerCurveByZwiftId]);
+    }, [displayRiders]);
 
     const categoryColorMap = useMemo(() => {
         return buildCategoryColorMap(displayRiders.map((rider) => rider.category));
@@ -360,11 +403,24 @@ export default function MyStatsPage() {
         }
     }, [sprintCategoryFilter, sprintFilterCategories]);
 
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        if (!selectedRaceId) return;
+        const params = new URLSearchParams(window.location.search);
+        params.set('race', selectedRaceId);
+        params.set('mode', statsMode);
+        params.set('x', sprintXAxis);
+        if (sprintCategoryFilter === 'all') params.delete('cat');
+        else params.set('cat', sprintCategoryFilter);
+        const query = params.toString();
+        router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    }, [selectedRaceId, statsMode, sprintXAxis, sprintCategoryFilter, pathname, router]);
+
     const comparisonCategory = useMemo(() => {
-        if (userCategory) return userCategory;
+        if (referenceCategory) return referenceCategory;
         if (statsMode === 'club' && displayRiders.length > 0) return displayRiders[0].category;
         return null;
-    }, [userCategory, statsMode, displayRiders]);
+    }, [referenceCategory, statsMode, displayRiders]);
 
     const configuredSprints = useMemo(() => {
         return getConfiguredSprintsForCategory(selectedRace, comparisonCategory);
@@ -372,7 +428,7 @@ export default function MyStatsPage() {
 
     const canRenderStatsSections = statsMode === 'club'
         ? displayRiders.length > 0
-        : Boolean(userResult);
+        : displayRiders.length > 0;
 
     const sprintAnalysisRows = useMemo<SprintAnalysisRow[]>(() => {
         return configuredSprints.map((sprint, index) => {
@@ -638,7 +694,7 @@ export default function MyStatsPage() {
 
                     <PowerCurveSection
                         statsMode={statsMode}
-                        userCategory={userCategory}
+                        userCategory={referenceCategory}
                         powerLegendEntries={powerLegendEntries}
                         visibleDisplayRidersWithPower={visibleDisplayRidersWithPower}
                         highlightedRiderId={highlightedRiderId}

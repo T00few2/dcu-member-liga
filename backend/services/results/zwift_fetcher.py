@@ -17,6 +17,7 @@ from services.results.finish_selector import (
     select_finish_entries_from_route_instances,
 )
 from services.results.finish_time import resolve_finish_time_ms
+from services.results.critical_power import resolve_critical_power
 
 logger = logging.getLogger('ZwiftFetcher')
 
@@ -91,7 +92,7 @@ class ZwiftFetcher:
                     'raceStatus': RACE_STATUS_FIN if finish_time_ms > 0 else RACE_STATUS_DNF,
                     'flaggedCheating': entry.get('flaggedCheating', False),
                     'flaggedSandbagging': entry.get('flaggedSandbagging', False),
-                    'criticalP': entry.get('criticalP', {})
+                    'criticalP': resolve_critical_power(entry.get('criticalP'), registered_profile),
                 }
                 official_sr = entry.get('_officialSegmentResult') or {}
                 seg_activity_id = str(official_sr.get('activityId') or '').strip()
@@ -117,7 +118,7 @@ class ZwiftFetcher:
                     'raceStatus': RACE_STATUS_DNF,
                     'flaggedCheating': False,
                     'flaggedSandbagging': False,
-                    'criticalP': {}
+                    'criticalP': resolve_critical_power(None, registered_profile),
                 }
 
                 if registered_profile:
