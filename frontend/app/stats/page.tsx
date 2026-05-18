@@ -179,7 +179,7 @@ export default function MyStatsPage() {
 
     const userResult = useMemo(() => {
         if (!selectedRace?.results || !userCategory || !currentUserZwiftId) return null;
-        return selectedRace.results[userCategory].find((r) => r.zwiftId === currentUserZwiftId);
+        return selectedRace.results[userCategory].find((r) => r.zwiftId === currentUserZwiftId) ?? null;
     }, [selectedRace, userCategory, currentUserZwiftId]);
 
     const allRiders = useMemo(() => {
