@@ -14,6 +14,7 @@ import {
   Customized,
 } from 'recharts';
 import { API_URL } from '@/lib/api';
+import { useParticipantsQuery, usePredictorConfigQuery } from '@/hooks/queries';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -372,9 +373,20 @@ function DiagonalLine({ xAxisMap, yAxisMap, minV, maxV }: { xAxisMap?: Record<st
 }
 
 export default function CategoryPredictor({ user }: CategoryPredictorProps) {
-  const [participants, setParticipants] = useState<Participant[]>([]);
-  const [loadingParticipants, setLoadingParticipants] = useState(true);
+  const { data: participantsRaw, isLoading: loadingParticipants } = useParticipantsQuery();
+  const participants = (participantsRaw ?? []) as Participant[];
+
+  const { data: predictorConfig } = usePredictorConfigQuery();
+
   const [selectedFeatures, setSelectedFeatures] = useState<Record<FeatureKey, boolean>>(ALL_ON);
+
+  // Sync feature selection from server config when it loads
+  useEffect(() => {
+    if (predictorConfig?.features && typeof predictorConfig.features === 'object') {
+      setSelectedFeatures(mergeFeatures(predictorConfig.features));
+    }
+  }, [predictorConfig]);
+
   const [featuresOpen, setFeaturesOpen] = useState(false);
   const [savedFeedback, setSavedFeedback] = useState(false);
   const [selectedZwiftId, setSelectedZwiftId] = useState('');
@@ -387,46 +399,6 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   const [assigning, setAssigning] = useState(false);
   const [assignResult, setAssignResult] = useState<{ category: string } | null>(null);
   const [assignError, setAssignError] = useState('');
-
-  // Load saved feature selection from Firestore on first render
-  useEffect(() => {
-    if (!user) return;
-    (async () => {
-      try {
-        const token = await user.getIdToken();
-        const res = await fetch(`${API_URL}/admin/predictor-config`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.features && typeof data.features === 'object') {
-            setSelectedFeatures(mergeFeatures(data.features));
-          }
-        }
-      } catch { /* fall back to defaults */ }
-    })();
-  }, [user]);
-
-  // Fetch participants
-  useEffect(() => {
-    if (!user) return;
-    (async () => {
-      try {
-        const token = await user.getIdToken();
-        const res = await fetch(`${API_URL}/participants`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setParticipants(data.participants ?? []);
-        }
-      } catch {
-        // ignore
-      } finally {
-        setLoadingParticipants(false);
-      }
-    })();
-  }, [user]);
 
   const model = useMemo(() => buildModel(participants, selectedFeatures), [participants, selectedFeatures]);
 

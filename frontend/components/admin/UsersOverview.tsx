@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
+import { useUsersOverviewQuery } from '@/hooks/queries/useUsersOverviewQuery';
 import ComposeEmailModal from '@/components/admin/ComposeEmailModal';
 import EmailRecipientControls from '@/components/admin/EmailRecipientControls';
 import { defaultDcuSignatureHtml, withDcuSignature } from '@/lib/email-signature';

@@ -2,8 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/components/ToastProvider';
 import { API_URL } from '@/lib/api';
+import { useWeightVerificationsListQuery } from '@/hooks/queries/useWeightVerificationsListQuery';
+import { useRacesQuery } from '@/hooks/queries/useRacesQuery';
 import ComposeEmailModal from '@/components/admin/ComposeEmailModal';
 import { defaultDcuSignatureHtml, withDcuSignature } from '@/lib/email-signature';
 
@@ -133,21 +136,40 @@ function formatCopenhagenDateTime(value: unknown): string | null {
 
 export default function WeightVerificationManager() {
     const { user } = useAuth();
+    const queryClient = useQueryClient();
     const { showToast } = useToast();
+
+    const {
+        data: verificationsData,
+        isLoading: loading,
+        refetch: refetchVerifications,
+    } = useWeightVerificationsListQuery();
+
+    const { data: racesData } = useRacesQuery();
+
+    const pendingReviews = verificationsData?.pending ?? [];
+    const activeRequests = verificationsData?.requests ?? [];
+    const approvedList = verificationsData?.approved ?? [];
+    const rejectedList = verificationsData?.rejected ?? [];
+
+    const raceOptions: RaceOption[] = racesData ? getFinishedRaces(racesData as any[]) : [];
 
     // Trigger State
     const [triggerPercent, setTriggerPercent] = useState(5);
     const [deadlineDays, setDeadlineDays] = useState(2);
     const [triggering, setTriggering] = useState(false);
-    const [raceOptions, setRaceOptions] = useState<RaceOption[]>([]);
     const [selectedRaceId, setSelectedRaceId] = useState<string>('');
 
-    // Lists State
-    const [pendingReviews, setPendingReviews] = useState<PendingVerification[]>([]);
-    const [activeRequests, setActiveRequests] = useState<ActiveRequest[]>([]);
-    const [approvedList, setApprovedList] = useState<ApprovedVerification[]>([]);
-    const [rejectedList, setRejectedList] = useState<RejectedVerification[]>([]);
-    const [loading, setLoading] = useState(true);
+    // Sync selectedRaceId when raceOptions becomes available
+    const firstRaceId = raceOptions[0]?.id ?? '';
+    useEffect(() => {
+        if (!firstRaceId) return;
+        setSelectedRaceId(prev => {
+            if (prev && raceOptions.some(r => r.id === prev)) return prev;
+            return firstRaceId;
+        });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [firstRaceId]);
 
     // Review State
     const [reviewingId, setReviewingId] = useState<string | null>(null);
@@ -164,60 +186,6 @@ export default function WeightVerificationManager() {
 
     // Revoke State
     const [revokingId, setRevokingId] = useState<string | null>(null);
-
-    const fetchData = async () => {
-        if (!user) return;
-        setLoading(true);
-        try {
-            const token = await user.getIdToken();
-            const headers = { 'Authorization': `Bearer ${token}` };
-
-            const [pendingRes, requestsRes, approvedRes, rejectedRes] = await Promise.all([
-                fetch(`${API_URL}/admin/verification/pending`, { headers }),
-                fetch(`${API_URL}/admin/verification/requests`, { headers }),
-                fetch(`${API_URL}/admin/verification/approved`, { headers }),
-                fetch(`${API_URL}/admin/verification/rejected`, { headers }),
-            ]);
-
-            if (pendingRes.ok) {
-                const data = await pendingRes.json();
-                setPendingReviews(data.pending || []);
-            }
-            if (requestsRes.ok) {
-                const data = await requestsRes.json();
-                setActiveRequests(data.requests || []);
-            }
-            if (approvedRes.ok) {
-                const data = await approvedRes.json();
-                setApprovedList(data.approved || []);
-            }
-            if (rejectedRes.ok) {
-                const data = await rejectedRes.json();
-                setRejectedList(data.rejected || []);
-            }
-
-            const racesRes = await fetch(`${API_URL}/races`, { headers });
-            if (racesRes.ok) {
-                const racesData = await racesRes.json();
-                const finished = getFinishedRaces(racesData.races || []);
-                setRaceOptions(finished);
-                setSelectedRaceId((prev) => {
-                    if (!finished.length) return '';
-                    if (prev && finished.some(r => r.id === prev)) return prev;
-                    return finished[0].id;
-                });
-            }
-        } catch (e) {
-            console.error(e);
-            showToast('Failed to load verification data', 'error');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchData();
-    }, [user]);
 
     const handleTrigger = async () => {
         if (!user) return;
@@ -244,7 +212,7 @@ export default function WeightVerificationManager() {
             const data = await res.json();
             if (res.ok) {
                 showToast(data.message || 'Verification triggered!', 'success');
-                fetchData(); // Refresh lists
+                await queryClient.invalidateQueries({ queryKey: ['admin', 'weight-verifications'] });
             } else {
                 showToast(data.message || 'Failed to trigger', 'error');
             }
@@ -269,7 +237,7 @@ export default function WeightVerificationManager() {
 
             if (res.ok) {
                 showToast('Verification request revoked', 'success');
-                setActiveRequests(prev => prev.filter(r => r.id !== id));
+                await queryClient.invalidateQueries({ queryKey: ['admin', 'weight-verifications'] });
             } else {
                 const data = await res.json();
                 showToast(data.message || 'Failed to revoke', 'error');
@@ -302,7 +270,7 @@ export default function WeightVerificationManager() {
             if (res.ok) {
                 showToast(`Rider ${action}d successfully`, 'success');
                 setRejectionReasons(prev => { const next = { ...prev }; delete next[id]; return next; });
-                fetchData();
+                await queryClient.invalidateQueries({ queryKey: ['admin', 'weight-verifications'] });
                 return true;
             } else {
                 const data = await res.json();
@@ -539,7 +507,7 @@ export default function WeightVerificationManager() {
                 <div className="bg-card p-6 rounded-lg shadow border border-border">
                     <div className="flex justify-between items-center mb-4">
                         <h2 className="text-xl font-bold text-card-foreground">Pending Reviews ({pendingReviews.length})</h2>
-                        <button onClick={fetchData} className="text-sm text-primary hover:underline">Refresh</button>
+                        <button onClick={() => refetchVerifications()} className="text-sm text-primary hover:underline">Refresh</button>
                     </div>
 
                     {loading ? (
