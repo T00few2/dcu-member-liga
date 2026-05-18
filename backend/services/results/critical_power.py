@@ -15,6 +15,22 @@ def _as_positive_int(value: Any) -> int | None:
 
 def _normalize_critical_power(payload: dict[str, Any] | None) -> dict[str, int]:
     source = payload or {}
+    points_watts = source.get("pointsWatts")
+    if isinstance(points_watts, dict):
+        def _points_watts_value(duration: int) -> Any:
+            point = points_watts.get(str(duration))
+            if isinstance(point, dict):
+                return point.get("value")
+            return point
+
+        source = {
+            **source,
+            "criticalP15Seconds": source.get("criticalP15Seconds") or _points_watts_value(15),
+            "criticalP1Minute": source.get("criticalP1Minute") or _points_watts_value(60),
+            "criticalP5Minutes": source.get("criticalP5Minutes") or _points_watts_value(300),
+            "criticalP20Minutes": source.get("criticalP20Minutes") or _points_watts_value(1200),
+        }
+
     relevant_efforts = source.get("relevantCpEfforts")
     if isinstance(relevant_efforts, list):
         watts_by_duration: dict[int, int] = {}
