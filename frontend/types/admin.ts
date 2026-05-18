@@ -35,7 +35,7 @@ export interface CategoryConfig {
 
 export interface EventConfig {
     eventId: string;
-    eventSecret: string;
+    eventSecret?: string;
     customCategory: string;
     laps?: number;
     startTime?: string;
@@ -74,12 +74,12 @@ export interface Race {
     id: string;
     name: string;
     date: string;
-    routeId: string;
-    routeName: string;
-    map: string;
-    laps: number;
-    totalDistance: number;
-    totalElevation: number;
+    routeId?: string;
+    routeName?: string;
+    map?: string;
+    laps?: number;
+    totalDistance?: number;
+    totalElevation?: number;
     type?: RaceType;
     eventId?: string;
     eventSecret?: string;

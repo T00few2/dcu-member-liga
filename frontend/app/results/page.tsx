@@ -20,6 +20,7 @@ import type {
 import StandingsTable from './_components/StandingsTable';
 import RaceResultsTable from './_components/RaceResultsTable';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import { sortCategoriesByRank } from '@/lib/categories';
 
 type ProcessedRider = StandingEntry & { calculatedTotal: number; countingRaceIds: Set<string> };
 
@@ -342,20 +343,3 @@ function getConfiguredSprintsForCategory(race: Race | undefined, category: strin
     return pickFirstNonEmpty(race.sprints, race.sprintData);
 }
 
-function sortCategoriesByRank(categories: string[], rankOrder: string[]): string[] {
-    const orderMap = new Map<string, number>();
-    rankOrder.forEach((name, idx) => {
-        const key = String(name || '').trim().toLowerCase();
-        if (key && !orderMap.has(key)) orderMap.set(key, idx);
-    });
-    return [...categories].sort((a, b) => {
-        const aKey = String(a || '').trim().toLowerCase();
-        const bKey = String(b || '').trim().toLowerCase();
-        const aRank = orderMap.get(aKey);
-        const bRank = orderMap.get(bKey);
-        if (aRank !== undefined && bRank !== undefined) return aRank - bRank;
-        if (aRank !== undefined) return -1;
-        if (bRank !== undefined) return 1;
-        return a.localeCompare(b);
-    });
-}

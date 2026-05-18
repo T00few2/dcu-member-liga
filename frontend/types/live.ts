@@ -1,5 +1,6 @@
 import type { EventMode, ResultsPhase, RaceType, SegmentType } from './enums';
 export type { EventMode, ResultsPhase, RaceType, SegmentType } from './enums';
+import type { StickyWattsResult } from '@/lib/stickyWatts';
 
 export interface Sprint {
     id: string;
@@ -28,7 +29,7 @@ export interface EventCategoryConfig {
     startTime?: string;
 }
 
-export type DualRecordingStatus = 'passed' | 'failed' | 'missing_strava' | 'missing_activity' | 'error';
+export type DualRecordingStatus = 'passed' | 'failed' | 'missing_strava' | 'missing_activity' | 'error' | 'sw_only';
 export type PublicWeightVerificationStatus = 'pending' | 'submitted' | 'approved' | 'rejected' | 'revoked' | 'none';
 
 export interface DualRecordingVerification {
@@ -56,6 +57,8 @@ export interface DualRecordingVerification {
             stdDeltaDiffW?: number;
         };
     };
+    stickyWatts?: StickyWattsResult | null;
+    trainerName?: string | null;
 }
 
 export interface PublicWeightVerificationRecord {
