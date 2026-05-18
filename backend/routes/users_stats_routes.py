@@ -66,6 +66,7 @@ def get_participants():
                         "zwiftCategory": zpro.get("category", "N/A"),
                         "weightInGrams": zpro.get("weight") or zpro.get("weightInGrams"),
                         "cp5s": cp(5),
+                        "cp15s": cp(15),
                         "cp1min": cp(60),
                         "cp5min": cp(300),
                         "cp20min": cp(1200),

@@ -53,6 +53,7 @@ export default function ResultsPage() {
     const [autoSelectStandingsCategory, setAutoSelectStandingsCategory] = useState(true);
     const [bestRacesCount, setBestRacesCount] = useState<number>(5);
     const [configuredCategoryNames, setConfiguredCategoryNames] = useState<string[]>([]);
+    const [clubByZwiftId, setClubByZwiftId] = useState<Map<string, string>>(new Map());
 
     useEffect(() => {
         const fetchData = async () => {
@@ -64,9 +65,10 @@ export default function ResultsPage() {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
 
-                const [standingsRes, settingsRes] = await Promise.all([
+                const [standingsRes, settingsRes, participantsRes] = await Promise.all([
                     fetch(`${API_URL}/league/standings`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                    fetch(`${API_URL}/league/settings`, { headers: { 'Authorization': `Bearer ${token}` } })
+                    fetch(`${API_URL}/league/settings`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(`${API_URL}/participants`, { headers: { 'Authorization': `Bearer ${token}` } }),
                 ]);
 
                 if (settingsRes.ok) {
@@ -94,6 +96,19 @@ export default function ResultsPage() {
                     setStandings(data.standings || {});
                     setAutoSelectStandingsCategory(true);
                     setStandingsCategory('');
+                }
+
+                if (participantsRes.ok) {
+                    const data = await participantsRes.json();
+                    const map = new Map<string, string>();
+                    const participants = Array.isArray(data?.participants) ? data.participants : [];
+                    participants.forEach((participant: { zwiftId?: string; club?: string }) => {
+                        const zwiftId = String(participant?.zwiftId || '').trim();
+                        const club = String(participant?.club || '').trim();
+                        if (!zwiftId || !club) return;
+                        map.set(zwiftId, club);
+                    });
+                    setClubByZwiftId(map);
                 }
             } catch (e) {
                 console.error('Error fetching data', e);
@@ -364,6 +379,7 @@ export default function ResultsPage() {
                     displayStandingsCategory={displayStandingsCategory}
                     standingsCategory={standingsCategory}
                     setStandingsCategory={handleStandingsCategoryChange}
+                    clubByZwiftId={clubByZwiftId}
                 />
             )}
 
@@ -383,6 +399,7 @@ export default function ResultsPage() {
                     bestSplitTimes={bestSplitTimes}
                     getSprintHeader={getSprintHeader}
                     leaguePointsByZwiftId={leaguePointsByZwiftId}
+                    clubByZwiftId={clubByZwiftId}
                     drVerifications={drVerifications}
                     weightVerifications={weightVerifications}
                     user={user}

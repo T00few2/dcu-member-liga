@@ -9,6 +9,7 @@ interface Props {
     displayStandingsCategory: string;
     standingsCategory: string;
     setStandingsCategory: (cat: string) => void;
+    clubByZwiftId?: Map<string, string>;
 }
 
 export default function StandingsTable({
@@ -18,6 +19,7 @@ export default function StandingsTable({
     displayStandingsCategory,
     standingsCategory,
     setStandingsCategory,
+    clubByZwiftId,
 }: Props) {
     return (
         <div className="space-y-6">
@@ -47,6 +49,7 @@ export default function StandingsTable({
                                 <tr>
                                     <th className="px-4 py-3 w-12 text-center">Rang</th>
                                     <th className="px-4 py-3">Rytter</th>
+                                    <th className="px-4 py-3">Klub</th>
                                     <th className="px-4 py-3 text-center">Løb</th>
                                     {races.map((race) => (
                                         <th key={race.id} className="px-2 py-3 text-center text-xs font-medium text-muted-foreground whitespace-normal min-w-[60px]">
@@ -63,6 +66,7 @@ export default function StandingsTable({
                                             {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
                                         </td>
                                         <td className="px-4 py-3 font-medium text-card-foreground">{rider.name}</td>
+                                        <td className="px-4 py-3 text-muted-foreground">{clubByZwiftId?.get(rider.zwiftId) || '-'}</td>
                                         <td className="px-4 py-3 text-center text-muted-foreground">{rider.raceCount}</td>
                                         {races.map(race => {
                                             const result = rider.results.find(r => r.raceId === race.id);
