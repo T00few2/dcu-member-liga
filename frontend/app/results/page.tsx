@@ -114,22 +114,26 @@ export default function ResultsPage() {
 
     const selectedRace = races.find(r => r.id === selectedRaceId);
 
-    // Available race categories
-    let availableRaceCategories: string[] = [];
-    if (selectedRace?.results && Object.keys(selectedRace.results).length > 0) {
-        availableRaceCategories = Object.keys(selectedRace.results);
-    } else if (selectedRace?.eventMode === 'multi' && selectedRace.eventConfiguration) {
-        availableRaceCategories = selectedRace.eventConfiguration.map(c => c.customCategory).filter(Boolean);
-    } else if (selectedRace?.singleModeCategories?.length) {
-        availableRaceCategories = selectedRace.singleModeCategories.map(c => c.category).filter(Boolean);
-    } else {
-        availableRaceCategories = configuredCategoryNames.length > 0 ? configuredCategoryNames : ['A', 'B', 'C', 'D', 'E'];
-    }
+    const categoryRankOrder = useMemo(
+        () => configuredCategoryNames.length > 0
+            ? [...configuredCategoryNames, ...DEFAULT_CATEGORY_RANK]
+            : DEFAULT_CATEGORY_RANK,
+        [configuredCategoryNames],
+    );
 
-    const raceRankOrder = configuredCategoryNames.length > 0
-        ? [...configuredCategoryNames, ...DEFAULT_CATEGORY_RANK]
-        : DEFAULT_CATEGORY_RANK;
-    availableRaceCategories = sortCategoriesByRank(availableRaceCategories, raceRankOrder);
+    const availableRaceCategories = useMemo(() => {
+        let cats: string[];
+        if (selectedRace?.results && Object.keys(selectedRace.results).length > 0) {
+            cats = Object.keys(selectedRace.results);
+        } else if (selectedRace?.eventMode === 'multi' && selectedRace.eventConfiguration) {
+            cats = selectedRace.eventConfiguration.map(c => c.customCategory).filter(Boolean) as string[];
+        } else if (selectedRace?.singleModeCategories?.length) {
+            cats = selectedRace.singleModeCategories.map(c => c.category).filter(Boolean) as string[];
+        } else {
+            cats = configuredCategoryNames.length > 0 ? configuredCategoryNames : ['A', 'B', 'C', 'D', 'E'];
+        }
+        return sortCategoriesByRank(cats, categoryRankOrder);
+    }, [selectedRace, configuredCategoryNames, categoryRankOrder]);
 
     const displayRaceCategory = (selectedRace?.results && !availableRaceCategories.includes(selectedCategory) && availableRaceCategories.length > 0)
         ? availableRaceCategories[0]
@@ -147,24 +151,22 @@ export default function ResultsPage() {
         return map;
     }, [standings, displayRaceCategory, selectedRaceId]);
 
-    let displayLaps = selectedRace?.laps;
-    if (selectedRace?.eventMode === 'multi' && selectedRace.eventConfiguration) {
-        const cfg = selectedRace.eventConfiguration.find(c => c.customCategory === displayRaceCategory);
-        if (cfg?.laps) displayLaps = cfg.laps;
-    } else if (selectedRace?.singleModeCategories?.length) {
-        const cfg = selectedRace.singleModeCategories.find(c => c.category === displayRaceCategory);
-        if (cfg?.laps) displayLaps = cfg.laps;
-    }
+    const displayLaps = useMemo(() => {
+        if (!selectedRace) return undefined;
+        if (selectedRace.eventMode === 'multi' && selectedRace.eventConfiguration) {
+            const cfg = selectedRace.eventConfiguration.find(c => c.customCategory === displayRaceCategory);
+            if (cfg?.laps) return cfg.laps;
+        } else if (selectedRace.singleModeCategories?.length) {
+            const cfg = selectedRace.singleModeCategories.find(c => c.category === displayRaceCategory);
+            if (cfg?.laps) return cfg.laps;
+        }
+        return selectedRace.laps;
+    }, [selectedRace, displayRaceCategory]);
 
-    let availableStandingsCategories = Object.keys(standings).length > 0 ? Object.keys(standings) : [];
-    if (availableStandingsCategories.length === 0) {
-        availableStandingsCategories = [...availableRaceCategories];
-    }
-
-    const standingsRankOrder = configuredCategoryNames.length > 0
-        ? [...configuredCategoryNames, ...DEFAULT_CATEGORY_RANK]
-        : DEFAULT_CATEGORY_RANK;
-    availableStandingsCategories = sortCategoriesByRank(availableStandingsCategories, standingsRankOrder);
+    const availableStandingsCategories = useMemo(() => {
+        const cats = Object.keys(standings).length > 0 ? Object.keys(standings) : [...availableRaceCategories];
+        return sortCategoriesByRank(cats, categoryRankOrder);
+    }, [standings, availableRaceCategories, categoryRankOrder]);
 
     const displayStandingsCategory = (Object.keys(standings).length > 0 && !availableStandingsCategories.includes(standingsCategory))
         ? availableStandingsCategories[0]
