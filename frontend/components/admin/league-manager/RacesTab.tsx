@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useRaceForm } from '@/hooks/useRaceForm';
+import { fetchSegments } from '@/hooks/useLeagueData';
 import { API_URL } from '@/lib/api';
 import { User } from 'firebase/auth';
 import type { Race, Route, Segment, LeagueSettings, LoadingStatus } from '@/types/admin';
@@ -14,10 +16,7 @@ interface RacesTabProps {
     routes: Route[];
     leagueSettings: LeagueSettings;
     status: LoadingStatus;
-    setRaces: React.Dispatch<React.SetStateAction<Race[]>>;
-    setLeagueSettings: React.Dispatch<React.SetStateAction<LeagueSettings>>;
     setStatus: (s: LoadingStatus) => void;
-    fetchSegments: (routeId: string, laps: number) => Promise<Segment[]>;
 }
 
 export default function RacesTab({
@@ -26,16 +25,19 @@ export default function RacesTab({
     routes,
     leagueSettings,
     status,
-    setRaces,
-    setLeagueSettings,
     setStatus,
-    fetchSegments,
 }: RacesTabProps) {
+    const queryClient = useQueryClient();
     const raceForm = useRaceForm();
     const [availableSegments, setAvailableSegments] = useState<Segment[]>([]);
+    const [leagueName, setLeagueName] = useState(leagueSettings.name || '');
     const [archiveName, setArchiveName] = useState('');
     const [archiving, setArchiving] = useState(false);
     const [resetting, setResetting] = useState(false);
+
+    useEffect(() => {
+        setLeagueName(leagueSettings.name || '');
+    }, [leagueSettings.name]);
 
     const eventConfigLapSig = raceForm.formState.eventConfiguration.map(c => c.laps ?? 0).join(',');
     const singleCatLapSig = raceForm.formState.singleModeCategories.map(c => c.laps ?? 0).join(',');
@@ -66,7 +68,6 @@ export default function RacesTab({
         eventConfigLapSig,
         singleCatLapSig,
         raceGroupLapSig,
-        fetchSegments,
     ]);
 
     const handleEdit = useCallback((race: Race) => {
@@ -135,16 +136,11 @@ export default function RacesTab({
 
             if (res.ok) {
                 const data = await res.json();
-                const saved = (data.race || { ...raceData, id: formState.editingRaceId || data.id }) as Race;
-                if (formState.editingRaceId) {
-                    setRaces(prev => prev.map(r => r.id === formState.editingRaceId ? saved : r));
-                } else {
-                    setRaces(prev => [...prev, saved]);
-                }
                 if (Array.isArray(data.warnings) && data.warnings.length > 0) {
                     alert(`Race saved with warnings:\n- ${data.warnings.join('\n- ')}`);
                 }
                 raceForm.resetForm();
+                await queryClient.invalidateQueries({ queryKey: ['races'] });
             } else {
                 const err = await res.json();
                 alert(`Error: ${err.message}`);
@@ -161,7 +157,7 @@ export default function RacesTab({
         try {
             const token = await user.getIdToken();
             await fetch(`${API_URL}/races/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
-            setRaces(prev => prev.filter(r => r.id !== id));
+            await queryClient.invalidateQueries({ queryKey: ['races'] });
         } catch {
             alert('Failed to delete');
         }
@@ -177,8 +173,8 @@ export default function RacesTab({
                         <label className="block text-sm font-medium text-muted-foreground mb-1">League Name</label>
                         <input
                             type="text"
-                            value={leagueSettings.name || ''}
-                            onChange={e => setLeagueSettings({ ...leagueSettings, name: e.target.value })}
+                            value={leagueName}
+                            onChange={e => setLeagueName(e.target.value)}
                             className="w-full p-2 border border-input rounded bg-background text-foreground"
                             placeholder="e.g. DCU e-Cycling Cup 2026"
                         />
@@ -192,9 +188,10 @@ export default function RacesTab({
                                 await fetch(`${API_URL}/league/settings`, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                                    body: JSON.stringify(leagueSettings),
+                                    body: JSON.stringify({ ...leagueSettings, name: leagueName }),
                                 });
                                 alert('Name saved!');
+                                await queryClient.invalidateQueries({ queryKey: ['league', 'settings'] });
                             } catch {
                                 alert('Failed to save');
                             } finally {
@@ -311,7 +308,10 @@ export default function RacesTab({
                                 const token = await user?.getIdToken();
                                 const res = await fetch(`${API_URL}/admin/reset-season`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
                                 const data = await res.json();
-                                if (res.ok) { alert(`Sæson nulstillet. ${data.racesDeleted} løb slettet.`); setRaces([]); }
+                                if (res.ok) {
+                                    alert(`Sæson nulstillet. ${data.racesDeleted} løb slettet.`);
+                                    await queryClient.invalidateQueries({ queryKey: ['races'] });
+                                }
                                 else alert(`Fejl: ${data.message}`);
                             } catch {
                                 alert('Nulstilling fejlede');

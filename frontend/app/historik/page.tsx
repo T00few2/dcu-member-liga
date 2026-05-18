@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { API_URL } from '@/lib/api';
 import type { Race, Sprint, ResultEntry, StandingEntry } from '@/types/live';
 import StandingsTable from '@/app/results/_components/StandingsTable';
@@ -36,84 +37,96 @@ const pickFirstNonEmpty = (...lists: (Sprint[] | undefined)[]): Sprint[] => {
 };
 
 export default function HistorikPage() {
-    const [archives, setArchives] = useState<ArchiveSummary[]>([]);
     const [selectedArchiveId, setSelectedArchiveId] = useState<string>('');
-    const [archiveDetail, setArchiveDetail] = useState<ArchiveDetail | null>(null);
-    const [races, setRaces] = useState<Race[]>([]);
-    const [loadingList, setLoadingList] = useState(true);
-    const [loadingDetail, setLoadingDetail] = useState(false);
-
     const [activeTab, setActiveTab] = useState<'standings' | 'results'>('standings');
     const [selectedRaceId, setSelectedRaceId] = useState<string>('');
     const [selectedCategory, setSelectedCategory] = useState<string>('A');
-    const [standingsCategory, setStandingsCategory] = useState<string>('A');
+    const [standingsCategory, setStandingsCategory] = useState<string>('');
     const [autoSelectStandingsCategory, setAutoSelectStandingsCategory] = useState(true);
 
-    // Fetch archive list on mount
-    useEffect(() => {
-        fetch(`${API_URL}/archives`)
-            .then(r => r.ok ? r.json() : { archives: [] })
-            .then(data => {
-                setArchives(data.archives || []);
-                if (data.archives?.length > 0) setSelectedArchiveId(data.archives[0].id);
-            })
-            .catch(() => {})
-            .finally(() => setLoadingList(false));
-    }, []);
+    const archivesQuery = useQuery<ArchiveSummary[]>({
+        queryKey: ['archives'],
+        queryFn: async () => {
+            const res = await fetch(`${API_URL}/archives`);
+            const data = res.ok ? await res.json() : { archives: [] };
+            return data.archives ?? [];
+        },
+        staleTime: 5 * 60_000,
+    });
 
-    // Fetch archive detail when selection changes
+    const archiveDetailQuery = useQuery<ArchiveDetail | null>({
+        queryKey: ['archives', selectedArchiveId],
+        queryFn: async () => {
+            const res = await fetch(`${API_URL}/archives/${selectedArchiveId}`);
+            if (!res.ok) return null;
+            return res.json();
+        },
+        enabled: !!selectedArchiveId,
+        staleTime: 5 * 60_000,
+    });
+
+    const archiveRaceQuery = useQuery<{ race: Race } | null>({
+        queryKey: ['archives', selectedArchiveId, 'races', selectedRaceId],
+        queryFn: async () => {
+            const res = await fetch(`${API_URL}/archives/${selectedArchiveId}/races/${selectedRaceId}`);
+            if (!res.ok) return null;
+            return res.json();
+        },
+        enabled: !!selectedArchiveId && !!selectedRaceId,
+        staleTime: 10 * 60_000,
+    });
+
+    // Auto-select first archive on load
+    useEffect(() => {
+        if (archivesQuery.data?.length && !selectedArchiveId) {
+            setSelectedArchiveId(archivesQuery.data[0].id);
+        }
+    }, [archivesQuery.data, selectedArchiveId]);
+
+    // Reset UI state when archive changes
     useEffect(() => {
         if (!selectedArchiveId) return;
-        setLoadingDetail(true);
         setAutoSelectStandingsCategory(true);
-        setArchiveDetail(null);
-        setRaces([]);
-        setSelectedRaceId('');
         setStandingsCategory('');
-
-        fetch(`${API_URL}/archives/${selectedArchiveId}`)
-            .then(r => r.ok ? r.json() : null)
-            .then(data => {
-                if (!data) return;
-                setArchiveDetail(data);
-                if (data.races?.length > 0) setSelectedRaceId(data.races[0].id);
-            })
-            .catch(() => {})
-            .finally(() => setLoadingDetail(false));
+        setSelectedRaceId('');
     }, [selectedArchiveId]);
 
-    // Fetch full race when selected race changes
+    // Auto-select first race when detail loads or archive changes
     useEffect(() => {
-        if (!selectedArchiveId || !selectedRaceId) return;
-        fetch(`${API_URL}/archives/${selectedArchiveId}/races/${selectedRaceId}`)
-            .then(r => r.ok ? r.json() : null)
-            .then(data => {
-                if (!data?.race) return;
-                setRaces(prev => {
-                    const exists = prev.find(r => r.id === data.race.id);
-                    if (exists) return prev.map(r => r.id === data.race.id ? data.race : r);
-                    return [...prev, data.race];
-                });
-            })
-            .catch(() => {});
-    }, [selectedArchiveId, selectedRaceId]);
+        if (!archiveDetailQuery.data?.races?.length) return;
+        const raceIds = archiveDetailQuery.data.races.map(r => r.id);
+        if (!selectedRaceId || !raceIds.includes(selectedRaceId)) {
+            setSelectedRaceId(archiveDetailQuery.data.races[0].id);
+        }
+    }, [archiveDetailQuery.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
+    const archiveDetail = archiveDetailQuery.data ?? null;
     const bestRacesCount = archiveDetail?.settings?.bestRacesCount ?? 3;
     const standings = archiveDetail?.standings ?? {};
-    const selectedRace = races.find(r => r.id === selectedRaceId);
 
-    // Available race categories
+    const currentFullRace = archiveRaceQuery.data?.race ?? null;
+
+    const raceSummaries: Race[] = (archiveDetail?.races ?? []).map(r => ({
+        id: r.id,
+        name: r.name,
+        date: r.date,
+    }));
+    const racesForTable: Race[] = raceSummaries.map(summary =>
+        currentFullRace?.id === summary.id ? currentFullRace : summary,
+    );
+
+    const selectedRace = currentFullRace?.id === selectedRaceId ? currentFullRace : undefined;
+
     let availableRaceCategories: string[] = [];
     if (selectedRace?.results && Object.keys(selectedRace.results).length > 0) {
         availableRaceCategories = Object.keys(selectedRace.results);
     } else if (selectedRace?.eventMode === 'multi' && selectedRace.eventConfiguration) {
-        availableRaceCategories = selectedRace.eventConfiguration.map(c => c.customCategory).filter(Boolean);
+        availableRaceCategories = selectedRace.eventConfiguration.map(c => c.customCategory).filter(Boolean) as string[];
     } else if (selectedRace?.singleModeCategories?.length) {
-        availableRaceCategories = selectedRace.singleModeCategories.map(c => c.category).filter(Boolean);
+        availableRaceCategories = selectedRace.singleModeCategories.map(c => c.category).filter(Boolean) as string[];
     } else {
         availableRaceCategories = ['A', 'B', 'C', 'D', 'E'];
     }
-
     availableRaceCategories = sortCategoriesByRank(availableRaceCategories, DEFAULT_CATEGORY_RANK);
 
     const displayRaceCategory = (selectedRace?.results && !availableRaceCategories.includes(selectedCategory) && availableRaceCategories.length > 0)
@@ -123,10 +136,9 @@ export default function HistorikPage() {
     const raceResults: ResultEntry[] = selectedRace?.results?.[displayRaceCategory] || [];
     const leaguePointsByZwiftId = useMemo(() => {
         const map = new Map<string, number>();
-        const raceKey = selectedRaceId;
-        if (!raceKey) return map;
+        if (!selectedRaceId) return map;
         (standings[displayRaceCategory] || []).forEach(entry => {
-            const match = entry.results?.find(r => r.raceId === raceKey);
+            const match = entry.results?.find(r => r.raceId === selectedRaceId);
             if (match) map.set(entry.zwiftId, match.points);
         });
         return map;
@@ -141,7 +153,6 @@ export default function HistorikPage() {
         if (cfg?.laps) displayLaps = cfg.laps;
     }
 
-    // Available standings categories
     let availableStandingsCategories = Object.keys(standings).length > 0 ? Object.keys(standings) : ['A', 'B', 'C', 'D', 'E'];
     availableStandingsCategories = sortCategoriesByRank(availableStandingsCategories, DEFAULT_CATEGORY_RANK);
 
@@ -149,9 +160,8 @@ export default function HistorikPage() {
         ? availableStandingsCategories[0]
         : standingsCategory;
 
-    const selectedRaceLoaded = !selectedRaceId || races.some(r => r.id === selectedRaceId);
+    const selectedRaceLoaded = !selectedRaceId || !!currentFullRace;
 
-    // Default standings category should follow the same visible category order as the tabs.
     useEffect(() => {
         if (!autoSelectStandingsCategory) return;
         if (!selectedRaceLoaded) return;
@@ -216,20 +226,9 @@ export default function HistorikPage() {
         return key.replace(/_/g, ' ');
     };
 
-    // Race list for the results tab (use summary from archiveDetail for the selector)
-    const raceSummaries: Race[] = (archiveDetail?.races ?? []).map(r => ({
-        id: r.id,
-        name: r.name,
-        date: r.date,
-    }));
+    const archives = archivesQuery.data ?? [];
 
-    // Merge fetched full race data into summaries
-    const racesForTable: Race[] = raceSummaries.map(summary => {
-        const full = races.find(r => r.id === summary.id);
-        return full ?? summary;
-    });
-
-    if (loadingList) {
+    if (archivesQuery.isLoading) {
         return <div className="p-8 text-center text-muted-foreground">Indlæser historik...</div>;
     }
 
@@ -257,7 +256,7 @@ export default function HistorikPage() {
                 </select>
             </div>
 
-            {loadingDetail ? (
+            {archiveDetailQuery.isLoading ? (
                 <div className="p-8 text-center text-muted-foreground">Indlæser sæson...</div>
             ) : archiveDetail && (
                 <>

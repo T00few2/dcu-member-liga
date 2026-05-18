@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth-context';
-import { useLeagueData } from '@/hooks/useLeagueData';
-import type { Race } from '@/types/admin';
+import { useRoutesQuery, useRacesQuery, useLeagueSettingsQuery } from '@/hooks/queries';
+import type { Race, LeagueSettings, LoadingStatus } from '@/types/admin';
 import {
     RacesTab,
     ResultsTab,
@@ -28,14 +29,28 @@ const TAB_LABELS: Record<LeagueManagerTab, string> = {
     rawdata: 'Results Editor',
 };
 
+const DEFAULT_SETTINGS: LeagueSettings = {
+    finishPoints: [],
+    sprintPoints: [],
+    leagueRankPoints: [],
+    bestRacesCount: 5,
+};
+
 export default function LeagueManager({ initialActiveTab = 'races', onTabChange }: LeagueManagerProps) {
     const { user, loading: authLoading } = useAuth();
-    const { routes, races, leagueSettings, status, error, setRaces, setLeagueSettings, setStatus, fetchSegments, refreshRace } =
-        useLeagueData({ user, authLoading });
+    const queryClient = useQueryClient();
+    const routesQuery = useRoutesQuery();
+    const racesQuery = useRacesQuery();
+    const settingsQuery = useLeagueSettingsQuery();
+
+    const routes = routesQuery.data ?? [];
+    const races = (racesQuery.data ?? []) as unknown as Race[];
+    const leagueSettings = settingsQuery.data ?? DEFAULT_SETTINGS;
 
     const [activeTab, setActiveTab] = useState<LeagueManagerTab>(() =>
         TABS.includes(initialActiveTab) ? initialActiveTab : 'races',
     );
+    const [status, setStatus] = useState<LoadingStatus>('idle');
 
     useEffect(() => {
         if (TABS.includes(initialActiveTab) && initialActiveTab !== activeTab) {
@@ -53,12 +68,14 @@ export default function LeagueManager({ initialActiveTab = 'races', onTabChange 
 
     const handleRaceUpdate = useCallback(
         (updatedRace: Race) => {
-            setRaces(prev => prev.map(r => (r.id === updatedRace.id ? updatedRace : r)));
+            queryClient.setQueryData<Race[]>(['races'], prev =>
+                prev ? prev.map(r => (r.id === updatedRace.id ? updatedRace : r)) : [updatedRace],
+            );
         },
-        [setRaces],
+        [queryClient],
     );
 
-    if (authLoading || status === 'loading') {
+    if (authLoading || racesQuery.isLoading || settingsQuery.isLoading || routesQuery.isLoading) {
         return <div className="p-8 text-center">Loading...</div>;
     }
 
@@ -87,10 +104,7 @@ export default function LeagueManager({ initialActiveTab = 'races', onTabChange 
                     routes={routes}
                     leagueSettings={leagueSettings}
                     status={status}
-                    setRaces={setRaces}
-                    setLeagueSettings={setLeagueSettings}
                     setStatus={setStatus}
-                    fetchSegments={fetchSegments}
                 />
             )}
 
@@ -100,7 +114,6 @@ export default function LeagueManager({ initialActiveTab = 'races', onTabChange 
                     races={races}
                     status={status}
                     setStatus={setStatus}
-                    refreshRace={refreshRace}
                 />
             )}
 
@@ -108,7 +121,6 @@ export default function LeagueManager({ initialActiveTab = 'races', onTabChange 
                 <LeagueSettingsForm
                     user={user}
                     settings={leagueSettings}
-                    onSave={setLeagueSettings}
                     status={status}
                     setStatus={setStatus}
                 />

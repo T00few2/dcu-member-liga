@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { User } from 'firebase/auth';
 import type { LeagueSettings, LoadingStatus } from '@/types/admin';
 
@@ -9,7 +10,6 @@ import { API_URL } from '@/lib/api';
 interface LeagueSettingsFormProps {
     user: User | null;
     settings: LeagueSettings;
-    onSave: (settings: LeagueSettings) => void;
     status: LoadingStatus;
     setStatus: (status: LoadingStatus) => void;
 }
@@ -17,10 +17,10 @@ interface LeagueSettingsFormProps {
 export default function LeagueSettingsForm({
     user,
     settings,
-    onSave,
     status,
     setStatus,
 }: LeagueSettingsFormProps) {
+    const queryClient = useQueryClient();
     const [leagueName, setLeagueName] = useState('');
     const [finishPointsStr, setFinishPointsStr] = useState('');
     const [sprintPointsStr, setSprintPointsStr] = useState('');
@@ -92,13 +92,7 @@ export default function LeagueSettingsForm({
             
             if (res.ok) {
                 alert('Settings saved!');
-                onSave({ 
-                    name: leagueName, 
-                    finishPoints, 
-                    sprintPoints, 
-                    leagueRankPoints, 
-                    bestRacesCount 
-                });
+                await queryClient.invalidateQueries({ queryKey: ['league', 'settings'] });
             } else {
                 alert('Failed to save settings');
             }

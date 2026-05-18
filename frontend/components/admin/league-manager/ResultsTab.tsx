@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { db } from '@/lib/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
@@ -14,7 +15,6 @@ interface ResultsTabProps {
     races: Race[];
     status: LoadingStatus;
     setStatus: (s: LoadingStatus) => void;
-    refreshRace: (raceId: string) => Promise<void>;
 }
 
 const formatTimestamp = (value?: unknown) => {
@@ -33,7 +33,8 @@ const formatTimestamp = (value?: unknown) => {
     return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString();
 };
 
-export default function ResultsTab({ user, races, status, setStatus, refreshRace }: ResultsTabProps) {
+export default function ResultsTab({ user, races, status, setStatus }: ResultsTabProps) {
+    const queryClient = useQueryClient();
     const [viewingResultsId, setViewingResultsId] = useState<string | null>(null);
     const [liveResultsRunning, setLiveResultsRunning] = useState(false);
     const [finalizeResultsRunning, setFinalizeResultsRunning] = useState(false);
@@ -115,7 +116,7 @@ export default function ResultsTab({ user, races, status, setStatus, refreshRace
             });
 
             if (res.ok) {
-                await refreshRace(raceId);
+                await queryClient.invalidateQueries({ queryKey: ['races'] });
                 return {
                     ok: true,
                     message: isFinalize
@@ -124,10 +125,10 @@ export default function ResultsTab({ user, races, status, setStatus, refreshRace
                 };
             } else {
                 const data = await res.json();
-                return {
-                    ok: false,
-                    message: `${isFinalize ? 'Finalize' : 'Live'} failed: ${data.message || 'Unknown error'}`,
-                };
+                const prefix = res.status === 422
+                    ? 'Race configuration issue'
+                    : `${isFinalize ? 'Finalize' : 'Live'} failed`;
+                return { ok: false, message: `${prefix}: ${data.message || 'Unknown error'}` };
             }
         } catch {
             return { ok: false, message: `Error running ${phase} results` };
@@ -171,14 +172,14 @@ export default function ResultsTab({ user, races, status, setStatus, refreshRace
         setStatus('saving');
         try {
             await updateDoc(doc(db, 'races', viewingResultsId), { resultsAutomation: automationConfig });
-            await refreshRace(viewingResultsId);
+            await queryClient.invalidateQueries({ queryKey: ['races'] });
             setResultsCalcStatus({ type: 'success', text: 'Automation settings saved.' });
         } catch {
             setResultsCalcStatus({ type: 'error', text: 'Failed to save automation settings.' });
         } finally {
             setStatus('idle');
         }
-    }, [viewingResultsId, user, automationConfig, refreshRace, setStatus]);
+    }, [viewingResultsId, user, automationConfig, queryClient, setStatus]);
 
     // Shared verification batch runner
     const runVerificationBatch = async (
