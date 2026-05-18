@@ -1,3 +1,6 @@
+import type { EventMode, ResultsPhase, RaceType, SegmentType } from './enums';
+export type { EventMode, ResultsPhase, RaceType, SegmentType } from './enums';
+
 export interface Sprint {
     id: string;
     name: string;
@@ -98,10 +101,10 @@ export interface Race {
     laps?: number;
     totalDistance?: number;
     totalElevation?: number;
-    type?: 'scratch' | 'points' | 'time-trial';
+    type?: RaceType;
     eventId?: string;
     eventSecret?: string;
-    eventMode?: 'single' | 'multi' | 'grouped';
+    eventMode?: EventMode;
     eventConfiguration?: EventCategoryConfig[];
     singleModeCategories?: CategoryConfig[];
     raceGroups?: import('./admin').RaceGroup[];
@@ -109,11 +112,11 @@ export interface Race {
     results?: Record<string, ResultEntry[]>;
     sprints?: Sprint[];
     sprintData?: Sprint[];
-    segmentType?: 'sprint' | 'split';
+    segmentType?: SegmentType;
     manualDQs?: string[];
     manualDeclassifications?: string[];
     manualExclusions?: string[];
-    resultsPhase?: 'provisional' | 'finalized';
+    resultsPhase?: ResultsPhase;
     provisionalUpdatedAt?: string;
     finalizedAt?: string;
     finalizeRunId?: string;

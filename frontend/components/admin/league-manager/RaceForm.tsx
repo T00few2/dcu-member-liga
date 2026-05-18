@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import type { Route, Segment, RaceFormState, EventConfig, CategoryConfig, RaceGroup, RaceGroupCategoryConfig, LoadingStatus } from '@/types/admin';
 import { getRouteHelpers } from '@/hooks/useLeagueData';
 import { API_URL } from '@/lib/api';
-import SegmentPicker from './SegmentPicker';
+import { RaceFormProvider } from '@/lib/race-form-context';
 import SingleModeConfig from './SingleModeConfig';
 import MultiModeConfig from './MultiModeConfig';
 import GroupedModeConfig from './GroupedModeConfig';
@@ -239,6 +239,14 @@ export default function RaceForm({
     };
 
     return (
+        <RaceFormProvider value={{
+            formState, segments, segmentsByLap, status,
+            onFieldChange, onToggleSegment,
+            onAddEventConfig, onRemoveEventConfig, onUpdateEventConfig, onToggleConfigSprint,
+            onAddSingleModeCategory, onRemoveSingleModeCategory, onUpdateSingleModeCategory, onToggleSingleModeCategorySprint,
+            onAddRaceGroup, onRemoveRaceGroup, onUpdateRaceGroup,
+            onAddGroupCategory, onRemoveGroupCategory, onUpdateGroupCategory, onToggleGroupCategorySprint, onToggleGroupSprint,
+        }}>
         <div className="bg-card p-6 rounded-lg shadow mb-8 border border-border">
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-semibold text-card-foreground">
@@ -393,47 +401,9 @@ export default function RaceForm({
                                 </label>
                             </div>
 
-                            {formState.eventMode === 'single' && (
-                                <SingleModeConfig
-                                    formState={formState}
-                                    segments={segments}
-                                    segmentsByLap={segmentsByLap}
-                                    onFieldChange={onFieldChange}
-                                    onToggleSegment={onToggleSegment}
-                                    onAddSingleModeCategory={onAddSingleModeCategory}
-                                    onRemoveSingleModeCategory={onRemoveSingleModeCategory}
-                                    onUpdateSingleModeCategory={onUpdateSingleModeCategory}
-                                    onToggleSingleModeCategorySprint={onToggleSingleModeCategorySprint}
-                                />
-                            )}
-
-                            {formState.eventMode === 'multi' && (
-                                <MultiModeConfig
-                                    formState={formState}
-                                    segments={segments}
-                                    segmentsByLap={segmentsByLap}
-                                    onAddEventConfig={onAddEventConfig}
-                                    onRemoveEventConfig={onRemoveEventConfig}
-                                    onUpdateEventConfig={onUpdateEventConfig}
-                                    onToggleConfigSprint={onToggleConfigSprint}
-                                />
-                            )}
-
-                            {formState.eventMode === 'grouped' && (
-                                <GroupedModeConfig
-                                    formState={formState}
-                                    segments={segments}
-                                    segmentsByLap={segmentsByLap}
-                                    onAddRaceGroup={onAddRaceGroup}
-                                    onRemoveRaceGroup={onRemoveRaceGroup}
-                                    onUpdateRaceGroup={onUpdateRaceGroup}
-                                    onAddGroupCategory={onAddGroupCategory}
-                                    onRemoveGroupCategory={onRemoveGroupCategory}
-                                    onUpdateGroupCategory={onUpdateGroupCategory}
-                                    onToggleGroupCategorySprint={onToggleGroupCategorySprint}
-                                    onToggleGroupSprint={onToggleGroupSprint}
-                                />
-                            )}
+                            {formState.eventMode === 'single' && <SingleModeConfig />}
+                            {formState.eventMode === 'multi' && <MultiModeConfig />}
+                            {formState.eventMode === 'grouped' && <GroupedModeConfig />}
 
                             <p className="text-xs text-muted-foreground mt-2">
                                 {formState.eventMode === 'single'
@@ -443,32 +413,6 @@ export default function RaceForm({
                                     : 'Group multiple categories under each Zwift Event (e.g. "High end" event covers Diamond + Ruby).'}
                             </p>
                         </div>
-
-                        {/* Global Sprint Selection (single mode, no per-category config) */}
-                        {formState.eventMode === 'single' && formState.singleModeCategories.length === 0 && (
-                            <div className="border-t border-border pt-4">
-                                <div className="mb-3">
-                                    <label className="block font-medium text-card-foreground mb-1">Segments Used For</label>
-                                    <select
-                                        value={formState.segmentType}
-                                        onChange={e => onFieldChange('segmentType', e.target.value as 'sprint' | 'split')}
-                                        className="w-full sm:w-64 p-2 border border-input rounded bg-background text-foreground text-sm"
-                                    >
-                                        <option value="sprint">Sprint Points</option>
-                                        <option value="split">Time Trial Splits</option>
-                                    </select>
-                                </div>
-                                <label className="block font-medium text-card-foreground mb-3">
-                                    {formState.segmentType === 'split' ? 'Split Segments' : 'Sprint Segments (Scoring)'}
-                                </label>
-                                <SegmentPicker
-                                    segments={segments}
-                                    selectedSprints={formState.selectedSprints}
-                                    onToggle={onToggleSegment}
-                                    segmentType={formState.segmentType}
-                                />
-                            </div>
-                        )}
 
                         {/* Route profile ownership note */}
                         <div className="border-t border-border pt-4 mt-4">
@@ -659,5 +603,6 @@ export default function RaceForm({
                 </div>
             </form>
         </div>
+        </RaceFormProvider>
     );
 }
