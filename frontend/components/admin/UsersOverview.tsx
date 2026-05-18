@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
 import { useUsersOverviewQuery } from '@/hooks/queries/useUsersOverviewQuery';
@@ -8,27 +8,9 @@ import ComposeEmailModal from '@/components/admin/ComposeEmailModal';
 import EmailRecipientControls from '@/components/admin/EmailRecipientControls';
 import { defaultDcuSignatureHtml, withDcuSignature } from '@/lib/email-signature';
 
-interface UserRow {
-    userId: string;
-    zwiftId: string;
-    name: string;
-    email: string;
-    club: string;
-    trainer: string;
-    category: string;
-    categoryLocked: boolean;
-    zwiftConnected: boolean;
-    stravaConnected: boolean;
-    needsStravaForDR: boolean;
-    verificationStatus: string;
-    currentRating: number | string;
-    max30Rating: number | string;
-    phenotype: string;
-    signedUpAt: number | null;
-}
-
-type SortKey = keyof UserRow;
-type SortDir = 'asc' | 'desc';
+import UsersFilters from './users-overview/UsersFilters';
+import UsersTable from './users-overview/UsersTable';
+import type { UserRow, SortKey, SortDir } from './users-overview/types';
 
 interface EmailSendSummary {
     requested: number;
@@ -46,57 +28,16 @@ interface SendResult {
     reason?: string;
 }
 
-const CATEGORY_STYLES: Record<string, string> = {
-    Diamond:  'bg-cyan-100 text-cyan-800',
-    Ruby:     'bg-red-100 text-red-800',
-    Emerald:  'bg-green-100 text-green-800',
-    Sapphire: 'bg-blue-100 text-blue-800',
-    Amethyst: 'bg-purple-100 text-purple-800',
-    Platinum: 'bg-slate-100 text-slate-700',
-    Gold:     'bg-yellow-100 text-yellow-800',
-    Silver:   'bg-gray-100 text-gray-700',
-    Bronze:   'bg-orange-100 text-orange-800',
-    Copper:   'bg-amber-100 text-amber-800',
-};
-
-const VERIFICATION_STYLES: Record<string, string> = {
-    approved:  'bg-green-100 text-green-800',
-    submitted: 'bg-blue-100 text-blue-800',
-    pending:   'bg-yellow-100 text-yellow-800',
-    rejected:  'bg-red-100 text-red-800',
-    none:      'bg-gray-100 text-gray-600',
-};
-
-function Badge({ label, className }: { label: string; className: string }) {
-    return (
-        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${className}`}>
-            {label}
-        </span>
-    );
-}
-
-function ConnDot({ ok, title }: { ok: boolean; title: string }) {
-    return (
-        <span
-            title={title}
-            className={`inline-block w-2.5 h-2.5 rounded-full ${ok ? 'bg-green-500' : 'bg-gray-300'}`}
-        />
-    );
-}
-
-function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
-    if (!active) return <span className="ml-1 text-muted-foreground opacity-30">↕</span>;
-    return <span className="ml-1">{dir === 'asc' ? '↑' : '↓'}</span>;
-}
-
 export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId: string) => void }) {
     const { user } = useAuth();
     const { data: rows = [], isLoading: loading, error: queryError, refetch: refetchUsers } = useUsersOverviewQuery();
     const error = queryError ? (queryError instanceof Error ? queryError.message : 'Failed to load users') : null;
+
     const [search, setSearch] = useState('');
     const [sortKey, setSortKey] = useState<SortKey>('club');
     const [sortDir, setSortDir] = useState<SortDir>('asc');
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
     const [isComposeOpen, setIsComposeOpen] = useState(false);
     const [emailSubject, setEmailSubject] = useState('');
     const [emailMessage, setEmailMessage] = useState('');
@@ -114,7 +55,6 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
     const [ccError, setCcError] = useState<string | null>(null);
     const [bccError, setBccError] = useState<string | null>(null);
     const [recipientsOpen, setRecipientsOpen] = useState(false);
-    const selectAllRef = useRef<HTMLInputElement>(null);
 
     const getRowId = useCallback((row: UserRow) => row.userId || row.zwiftId, []);
 
@@ -132,7 +72,7 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
     const filtered = useMemo(() => {
         const q = search.toLowerCase().trim();
         const base = q
-            ? rows.filter(r =>
+            ? rows.filter((r: UserRow) =>
                 r.name.toLowerCase().includes(q) ||
                 r.email.toLowerCase().includes(q) ||
                 r.club.toLowerCase().includes(q) ||
@@ -142,7 +82,7 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
             )
             : rows;
 
-        return [...base].sort((a, b) => {
+        return [...base].sort((a: UserRow, b: UserRow) => {
             let av = a[sortKey] ?? '';
             let bv = b[sortKey] ?? '';
             if (typeof av === 'number' && typeof bv === 'number') {
@@ -157,7 +97,7 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
     }, [rows, search, sortKey, sortDir]);
 
     const filteredIds = useMemo(
-        () => filtered.map(row => getRowId(row)).filter(Boolean),
+        () => filtered.map((row: UserRow) => getRowId(row)).filter(Boolean),
         [filtered, getRowId]
     );
 
@@ -167,19 +107,14 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
     const someFilteredSelected = selectedFilteredCount > 0 && !allFilteredSelected;
 
     const selectedRows = useMemo(
-        () => rows.filter(row => selectedIds.has(getRowId(row))),
+        () => rows.filter((row: UserRow) => selectedIds.has(getRowId(row))),
         [rows, selectedIds, getRowId]
     );
     const selectedRowsSorted = useMemo(
-        () => [...selectedRows].sort((a, b) => a.name.localeCompare(b.name)),
+        () => [...selectedRows].sort((a: UserRow, b: UserRow) => a.name.localeCompare(b.name)),
         [selectedRows]
     );
-    const selectedWithoutEmail = selectedRows.filter(r => !r.email?.trim()).length;
-
-    useEffect(() => {
-        if (!selectAllRef.current) return;
-        selectAllRef.current.indeterminate = someFilteredSelected;
-    }, [someFilteredSelected]);
+    const selectedWithoutEmail = selectedRows.filter((r: UserRow) => !r.email?.trim()).length;
 
     const handleSort = (key: SortKey) => {
         if (key === sortKey) {
@@ -326,15 +261,6 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
         }
     };
 
-    const Th = ({ label, k }: { label: string; k: SortKey }) => (
-        <th
-            className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground cursor-pointer select-none whitespace-nowrap hover:text-foreground transition"
-            onClick={() => handleSort(k)}
-        >
-            {label}<SortIcon active={sortKey === k} dir={sortDir} />
-        </th>
-    );
-
     if (loading) return (
         <div className="flex items-center justify-center py-20 text-muted-foreground">Loading users…</div>
     );
@@ -348,49 +274,21 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
 
     return (
         <div className="space-y-4 pb-12">
-            {/* Toolbar */}
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-                <div className="flex items-center gap-3 flex-wrap">
-                    <input
-                        type="text"
-                        placeholder="Search name, email, club, Zwift ID…"
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                        className="border border-border rounded-lg px-3 py-1.5 text-sm bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary w-72"
-                    />
-                    <span className="text-sm text-muted-foreground">{filtered.length} / {rows.length} riders</span>
-                    <span className="text-sm text-muted-foreground">{selectedCount} selected</span>
-                    <button
-                        onClick={toggleSelectAllFiltered}
-                        className="text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg px-3 py-1.5 transition disabled:opacity-50"
-                        disabled={filteredIds.length === 0}
-                    >
-                        {allFilteredSelected ? 'Deselect filtered' : 'Select all filtered'}
-                    </button>
-                    <button
-                        onClick={clearFilteredSelection}
-                        className="text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg px-3 py-1.5 transition disabled:opacity-50"
-                        disabled={selectedFilteredCount === 0}
-                    >
-                        Clear filtered
-                    </button>
-                    <button
-                        onClick={openComposeModal}
-                        className="text-sm bg-primary text-primary-foreground rounded-lg px-3 py-1.5 transition hover:opacity-90 disabled:opacity-50"
-                        disabled={selectedCount === 0}
-                    >
-                        Compose email
-                    </button>
-                </div>
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={() => refetchUsers()}
-                        className="text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg px-3 py-1.5 transition"
-                    >
-                        Refresh
-                    </button>
-                </div>
-            </div>
+            {/* Toolbar / Filters */}
+            <UsersFilters
+                search={search}
+                onSearchChange={setSearch}
+                filteredCount={filtered.length}
+                totalCount={rows.length}
+                selectedCount={selectedCount}
+                selectedFilteredCount={selectedFilteredCount}
+                allFilteredSelected={allFilteredSelected}
+                filteredEmpty={filteredIds.length === 0}
+                onToggleSelectAllFiltered={toggleSelectAllFiltered}
+                onClearFilteredSelection={clearFilteredSelection}
+                onComposeEmail={openComposeModal}
+                onRefresh={() => refetchUsers()}
+            />
 
             {lastSendSummary && (() => {
                 const failedResults = lastSendResults.filter(r => r.status === 'failed' && r.userId);
@@ -458,107 +356,20 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
             })()}
 
             {/* Table */}
-            <div className="rounded-xl border border-border overflow-x-auto shadow-sm">
-                <table className="w-full text-sm">
-                    <thead className="bg-muted border-b border-border">
-                        <tr>
-                            <th className="px-3 py-2.5 text-left">
-                                <input
-                                    ref={selectAllRef}
-                                    type="checkbox"
-                                    checked={allFilteredSelected}
-                                    onChange={toggleSelectAllFiltered}
-                                    disabled={filteredIds.length === 0}
-                                    aria-label="Select all filtered users"
-                                />
-                            </th>
-                            <Th label="Zwift ID"   k="zwiftId" />
-                            <Th label="Name"       k="name" />
-                            <Th label="Email"      k="email" />
-                            <Th label="Club"       k="club" />
-                            <Th label="Trainer"    k="trainer" />
-                            <Th label="Kategori"   k="category" />
-                            <Th label="vELO (30d)" k="max30Rating" />
-                            <Th label="Phenotype"  k="phenotype" />
-                            <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap">Connections</th>
-                            <Th label="Verification" k="verificationStatus" />
-                            <Th label="Signed up"  k="signedUpAt" />
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                        {filtered.length === 0 && (
-                            <tr>
-                                <td colSpan={12} className="px-4 py-8 text-center text-muted-foreground">
-                                    No users found.
-                                </td>
-                            </tr>
-                        )}
-                        {filtered.map(row => (
-                            <tr
-                                key={getRowId(row)}
-                                className={`bg-card hover:bg-muted/50 transition${onUserSelect ? ' cursor-pointer' : ''}`}
-                                onClick={onUserSelect ? () => onUserSelect(getRowId(row)) : undefined}
-                            >
-                                <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
-                                    <input
-                                        type="checkbox"
-                                        checked={selectedIds.has(getRowId(row))}
-                                        onChange={e => toggleRowSelection(getRowId(row), e.target.checked)}
-                                        aria-label={`Select ${row.name}`}
-                                    />
-                                </td>
-                                <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{row.zwiftId}</td>
-                                <td className="px-3 py-2 font-medium text-foreground whitespace-nowrap">{row.name}</td>
-                                <td className="px-3 py-2 text-muted-foreground text-xs">{row.email}</td>
-                                <td className="px-3 py-2 whitespace-nowrap">{row.club}</td>
-                                <td className="px-3 py-2 text-muted-foreground">{row.trainer || '—'}</td>
-                                <td className="px-3 py-2">
-                                    {row.category ? (
-                                        <Badge
-                                            label={row.category}
-                                            className={CATEGORY_STYLES[row.category] ?? 'bg-gray-100 text-gray-700'}
-                                        />
-                                    ) : <span className="text-muted-foreground">—</span>}
-                                    {row.categoryLocked && (
-                                        <span className="ml-1 text-xs text-muted-foreground" title="Locked after first race">🔒</span>
-                                    )}
-                                </td>
-                                <td className="px-3 py-2 text-right font-mono text-xs">
-                                    {row.max30Rating !== '' && row.max30Rating !== 'N/A' ? Number(row.max30Rating).toFixed(0) : '—'}
-                                </td>
-                                <td className="px-3 py-2 text-muted-foreground capitalize">{row.phenotype || '—'}</td>
-                                <td className="px-3 py-2">
-                                    <div className="flex items-center gap-2">
-                                        <ConnDot ok={row.zwiftConnected}  title={row.zwiftConnected  ? 'Zwift connected'  : 'Zwift not connected'} />
-                                        <span className="text-xs text-muted-foreground">Z</span>
-                                        <ConnDot ok={row.stravaConnected} title={row.stravaConnected ? 'Strava connected' : 'Strava not connected'} />
-                                        <span className="text-xs text-muted-foreground">S</span>
-                                        {row.needsStravaForDR && (
-                                            <span
-                                                title="Trainer requires dual recording but Strava is not connected"
-                                                className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-100 text-amber-700 text-xs font-bold leading-none"
-                                            >
-                                                !
-                                            </span>
-                                        )}
-                                    </div>
-                                </td>
-                                <td className="px-3 py-2">
-                                    <Badge
-                                        label={row.verificationStatus}
-                                        className={VERIFICATION_STYLES[row.verificationStatus] ?? 'bg-gray-100 text-gray-600'}
-                                    />
-                                </td>
-                                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
-                                    {row.signedUpAt
-                                        ? new Date(row.signedUpAt).toLocaleDateString('en-IE', { day: 'numeric', month: 'short', year: 'numeric' })
-                                        : '—'}
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
+            <UsersTable
+                filtered={filtered as UserRow[]}
+                selectedIds={selectedIds}
+                sortKey={sortKey}
+                sortDir={sortDir}
+                allFilteredSelected={allFilteredSelected}
+                someFilteredSelected={someFilteredSelected}
+                filteredEmpty={filteredIds.length === 0}
+                onUserSelect={onUserSelect}
+                onSort={handleSort}
+                onToggleRowSelection={toggleRowSelection}
+                onToggleSelectAllFiltered={toggleSelectAllFiltered}
+                getRowId={getRowId}
+            />
 
             <ComposeEmailModal
                 isOpen={isComposeOpen}
@@ -578,7 +389,7 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
                     <EmailRecipientControls
                         recipientsOpen={recipientsOpen}
                         onToggleOpen={() => setRecipientsOpen(o => !o)}
-                        recipients={selectedRowsSorted.map((row) => ({
+                        recipients={selectedRowsSorted.map((row: UserRow) => ({
                             id: getRowId(row),
                             name: row.name || row.zwiftId || 'Unknown rider',
                             email: row.email || '',
