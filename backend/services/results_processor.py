@@ -17,7 +17,14 @@ from services.results.constants import (
     RACE_STATUS_DNF,
     RACE_STATUS_WC,
 )
-from services.results.errors import EventInfoFetchError, ResultsProcessingError, StartTimeParseError
+from services.results.errors import (
+    ConfigurationError,
+    EventInfoFetchError,
+    FatalResultsError,
+    RaceNotFoundError,
+    ResultsProcessingError,
+    StartTimeParseError,
+)
 from services.results.league_engine import LeagueEngine
 from services.results.zwift_fetcher import ZwiftFetcher
 from services.category_config import CategoryConfigResolver
@@ -58,7 +65,7 @@ class ResultsProcessor:
         category_filter: string, e.g. 'A', 'B' or None/'All'
         """
         if not self.db:
-            raise Exception("Database not available")
+            raise FatalResultsError("Database not available")
 
         normalized_phase = self._normalize_results_phase(results_phase)
         logger.info(
@@ -72,7 +79,7 @@ class ResultsProcessor:
         # 1. Fetch Race Config
         race_doc = self.db.collection('races').document(race_id).get()
         if not race_doc.exists:
-            raise Exception(f"Race {race_id} not found")
+            raise RaceNotFoundError(f"Race {race_id} not found", context={"race_id": race_id})
 
         race_data = race_doc.to_dict()
 
@@ -114,7 +121,10 @@ class ResultsProcessor:
                     })
 
         if not event_sources:
-            raise Exception("No Zwift Event ID(s) linked to this race")
+            raise ConfigurationError(
+                "No Zwift Event ID(s) linked to this race",
+                context={"race_id": race_id, "event_mode": race_data.get("eventMode")},
+            )
 
         # 2. Fetch League Settings (Point Schemes)
         settings_doc = self.db.collection('league').document('settings').get()
@@ -229,13 +239,13 @@ class ResultsProcessor:
         Recalculates points for an existing race using league scoring settings.
         """
         if not self.db:
-            raise Exception("Database not available")
+            raise FatalResultsError("Database not available")
 
         logger.info(f"Recalculating points for race: {race_id}")
 
         race_doc = self.db.collection('races').document(race_id).get()
         if not race_doc.exists:
-            raise Exception(f"Race {race_id} not found")
+            raise RaceNotFoundError(f"Race {race_id} not found", context={"race_id": race_id})
 
         race_data = race_doc.to_dict()
         results = race_data.get('results', {})

@@ -8,7 +8,7 @@ from services.results.constants import (
     RESULTS_PHASE_FINALIZED,
     RESULTS_PHASE_PROVISIONAL,
 )
-from services.results.errors import ResultsProcessingError
+from services.results.errors import FatalResultsError, ResultsProcessingError
 from services.category_engine import _effective_cat_name, build_liga_category, effective_rating
 from services.schema_validation import log_schema_issues, validate_race_doc, with_schema_version
 from datetime import datetime, timedelta, timezone
@@ -740,11 +740,14 @@ def refresh_results(race_id):
             'finalizedAt': race_data.get('finalizedAt'),
             'finalizeRunId': race_data.get('finalizeRunId'),
         }), 200
+    except FatalResultsError as e:
+        logger.error(f"Results Processing fatal error: {e}")
+        return jsonify({'message': str(e)}), 422
     except ResultsProcessingError as e:
-        logger.error(f"Results Processing Domain Error: {e}")
+        logger.error(f"Results Processing domain error: {e}")
         return jsonify({'message': str(e)}), 500
     except Exception as e:
-        logger.error(f"Results Processing Error: {e}")
+        logger.error(f"Results Processing unexpected error: {e}")
         return jsonify({'message': str(e)}), 500
 
 
@@ -785,11 +788,14 @@ def finalize_results(race_id):
             'finalizedAt': race_data.get('finalizedAt'),
             'finalizeRunId': race_data.get('finalizeRunId'),
         }), 200
+    except FatalResultsError as e:
+        logger.error(f"Finalize results fatal error: {e}")
+        return jsonify({'message': str(e)}), 422
     except ResultsProcessingError as e:
-        logger.error(f"Finalize Results Domain Error: {e}")
+        logger.error(f"Finalize results domain error: {e}")
         return jsonify({'message': str(e)}), 500
     except Exception as e:
-        logger.error(f"Finalize Results Error: {e}")
+        logger.error(f"Finalize results unexpected error: {e}")
         return jsonify({'message': str(e)}), 500
 
 
