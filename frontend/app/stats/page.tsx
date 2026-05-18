@@ -15,6 +15,7 @@ import {
     normalizeCriticalPower,
     STATS_PREFS_STORAGE_KEY,
 } from './_lib/stats-helpers';
+import { useStatsPageData } from './_lib/useStatsPageData';
 import type {
     ClubSnapshot,
     HiddenRiderIdsByMode,
@@ -25,30 +26,29 @@ import type {
     SprintXAxisMode,
     StatsMode,
 } from './_lib/stats-types';
-import { API_URL } from '@/lib/api';
-import { useAuth } from '@/lib/auth-context';
-import type { Race } from '@/types/live';
 
 export default function MyStatsPage() {
-    const { user, loading: authLoading, isRegistered } = useAuth();
     const router = useRouter();
     const pathname = usePathname();
 
-    const [races, setRaces] = useState<Race[]>([]);
-    const [loading, setLoading] = useState(true);
     const [selectedRaceId, setSelectedRaceId] = useState<string>('');
-    const [currentUserZwiftId, setCurrentUserZwiftId] = useState<string | null>(null);
-    const [currentUserClub, setCurrentUserClub] = useState<string | null>(null);
 
     const [sprintXAxis, setSprintXAxis] = useState<SprintXAxisMode>('time');
 
     const [statsMode, setStatsMode] = useState<StatsMode>('all');
-    const [clubByZwiftId, setClubByZwiftId] = useState<Record<string, string>>({});
     const [hiddenRiderIdsByMode, setHiddenRiderIdsByMode] = useState<HiddenRiderIdsByMode>({ all: [], club: [] });
     const [highlightedRiderId, setHighlightedRiderId] = useState<string | null>(null);
     const [sprintCategoryFilter, setSprintCategoryFilter] = useState<string>('all');
     const [prefsHydrated, setPrefsHydrated] = useState(false);
     const powerCurveChartRef = useRef<HTMLDivElement | null>(null);
+
+    const {
+        races,
+        currentUserZwiftId,
+        currentUserClub,
+        clubByZwiftId,
+        isLoading,
+    } = useStatsPageData({ selectedRaceId, setSelectedRaceId });
 
     const parseStatsMode = (value: string | null): StatsMode => {
         return value === 'club' ? 'club' : 'all';
@@ -120,85 +120,6 @@ export default function MyStatsPage() {
         };
         window.localStorage.setItem(STATS_PREFS_STORAGE_KEY, JSON.stringify(payload));
     }, [prefsHydrated, statsMode, sprintXAxis, sprintCategoryFilter, hiddenRiderIdsByMode]);
-
-    // --- 1. Fetch Races & User Profile ---
-    useEffect(() => {
-        const fetchData = async () => {
-            if (!user) return;
-            try {
-                const token = await user.getIdToken();
-
-                // Get User Profile to know ZwiftID
-                const profileRes = await fetch(`${API_URL}/profile`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (profileRes.ok) {
-                    const profile = await profileRes.json();
-                    setCurrentUserZwiftId(profile.zwiftId?.toString());
-                    setCurrentUserClub(typeof profile.club === 'string' ? profile.club : null);
-                }
-
-                // Get Races
-                const racesRes = await fetch(`${API_URL}/races`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (racesRes.ok) {
-                    const data = await racesRes.json();
-                    // Filter for races that have results
-                    const finishedRaces = (data.races || []).filter((r: Race) => r.results && Object.keys(r.results).length > 0);
-
-                    // Sort by date desc
-                    finishedRaces.sort((a: Race, b: Race) =>
-                        new Date(b.date).getTime() - new Date(a.date).getTime()
-                    );
-
-                    setRaces(finishedRaces);
-                    if (finishedRaces.length > 0) {
-                        const raceFromUrl = typeof window !== 'undefined'
-                            ? new URLSearchParams(window.location.search).get('race')
-                            : null;
-                        const cleanedRaceFromUrl = raceFromUrl?.trim() || '';
-                        const raceExistsInList = cleanedRaceFromUrl
-                            ? finishedRaces.some((race: Race) => race.id === cleanedRaceFromUrl)
-                            : false;
-                        setSelectedRaceId(raceExistsInList ? cleanedRaceFromUrl : finishedRaces[0].id);
-                    }
-                }
-
-                // Participant list is optional (club labels only). Network failures
-                // here should not fail the entire stats page.
-                try {
-                    const participantsRes = await fetch(`${API_URL}/participants`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    if (participantsRes.ok) {
-                        const participantsPayload = await participantsRes.json();
-                        const participants = Array.isArray(participantsPayload?.participants) ? participantsPayload.participants : [];
-                        const nextClubMap: Record<string, string> = {};
-                        for (const participant of participants) {
-                            const zwiftId = String(participant?.zwiftId || '').trim();
-                            if (!zwiftId) continue;
-                            if (typeof participant?.club === 'string' && participant.club.trim().length > 0) {
-                                nextClubMap[zwiftId] = participant.club.trim();
-                            }
-                        }
-                        setClubByZwiftId(nextClubMap);
-                    }
-                } catch (participantsError) {
-                    console.warn('Participants lookup unavailable; club labels disabled for now', participantsError);
-                    setClubByZwiftId({});
-                }
-            } catch (e) {
-                console.error('Error fetching data', e);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        if (user && isRegistered) {
-            fetchData();
-        }
-    }, [user, isRegistered]);
 
     const selectedRace = useMemo(() => races.find((race) => race.id === selectedRaceId), [races, selectedRaceId]);
 
@@ -610,7 +531,7 @@ export default function MyStatsPage() {
             image.src = imgSrc;
         });
     };
-    if (authLoading || loading) {
+    if (isLoading) {
         return <div className="p-12 text-center text-muted-foreground">Indlæser din statistik...</div>;
     }
 

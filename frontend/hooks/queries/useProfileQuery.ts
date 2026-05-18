@@ -22,6 +22,7 @@ interface LigaCategory {
 export interface ProfileData {
     name: string;
     zwiftId: string;
+    club?: string | null;
     ligaCategory?: LigaCategory;
 }
 
