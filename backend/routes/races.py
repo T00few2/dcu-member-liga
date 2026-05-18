@@ -694,7 +694,12 @@ def update_sprint_data(race_id, category):
             'message': f'Updated {updated_count} riders, points recalculated',
             'results': updated_results
         }), 200
-        
+    except FatalResultsError as e:
+        logger.error(f"Sprint data update fatal error: {e}")
+        return jsonify({'message': str(e)}), 422
+    except ResultsProcessingError as e:
+        logger.error(f"Sprint data update domain error: {e}")
+        return jsonify({'message': str(e)}), 500
     except Exception as e:
         logger.error(f"Sprint data update error: {e}")
         return jsonify({'message': str(e)}), 500

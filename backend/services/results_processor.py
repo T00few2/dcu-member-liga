@@ -188,9 +188,10 @@ class ResultsProcessor:
                 failed_sources += 1
 
         if processed_sources == 0 and failed_sources > 0:
-            raise Exception(
+            raise FatalResultsError(
                 "Unable to fetch Zwift event data for configured source(s). "
-                "Verify Event IDs, Event Secret, and event availability."
+                "Verify Event IDs, Event Secret, and event availability.",
+                context={"race_id": race_id},
             )
 
         # 6. Save Results to Firestore

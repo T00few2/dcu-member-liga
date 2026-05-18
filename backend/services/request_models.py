@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from flask import Response, jsonify
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 
 def parse_body(
@@ -73,3 +73,90 @@ class SendEmailRequest(BaseModel):
         return v
 
     model_config = {'extra': 'ignore'}
+
+
+# ── users_profile_routes models ───────────────────────────────────────────────
+
+class SignupRequest(BaseModel):
+    name: str | None = None
+    zwiftId: str | None = None
+    club: str = ''
+    trainer: str = ''
+    draft: bool = False
+    acceptedCoC: bool = False
+    acceptedDataPolicy: bool = False
+    acceptedPublicResults: bool = False
+    dataPolicyVersion: str | None = None
+    publicResultsConsentVersion: str | None = None
+
+    model_config = ConfigDict(extra='ignore')
+
+
+class UpdateConsentsRequest(BaseModel):
+    acceptedDataPolicy: bool = False
+    acceptedPublicResults: bool = False
+    dataPolicyVersion: str | None = None
+    publicResultsConsentVersion: str | None = None
+
+    model_config = ConfigDict(extra='ignore')
+
+
+class SelectCategoryRequest(BaseModel):
+    category: str = ''
+
+    model_config = ConfigDict(extra='ignore')
+
+
+# ── admin_trainers models ─────────────────────────────────────────────────────
+
+class CreateTrainerRequest(BaseModel):
+    name: str
+    status: str = 'approved'
+    dualRecordingRequired: bool = False
+
+    model_config = ConfigDict(extra='ignore')
+
+
+class UpdateTrainerRequest(BaseModel):
+    name: str | None = None
+    status: str | None = None
+    dualRecordingRequired: bool | None = None
+
+    model_config = ConfigDict(extra='ignore')
+
+
+class RequestTrainerRequest(BaseModel):
+    trainerName: str
+    requesterName: str = ''
+
+    model_config = ConfigDict(extra='ignore')
+
+
+class ApproveTrainerRequest(BaseModel):
+    dualRecordingRequired: bool = False
+
+    model_config = ConfigDict(extra='ignore')
+
+
+# ── verification models ───────────────────────────────────────────────────────
+
+class TriggerVerificationRequest(BaseModel):
+    percentage: int = 5
+    deadlineDays: int = 2
+    raceId: str | None = None
+
+    model_config = ConfigDict(extra='ignore')
+
+
+class SubmitVerificationRequest(BaseModel):
+    videoLink: str
+
+    model_config = ConfigDict(extra='ignore')
+
+
+class ReviewVerificationRequest(BaseModel):
+    userId: str
+    action: Literal['approve', 'reject']
+    reason: str = ''
+
+    model_config = ConfigDict(extra='ignore')

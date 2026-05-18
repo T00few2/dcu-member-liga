@@ -9,6 +9,13 @@ from firebase_admin import firestore
 from routes.admin import admin_bp
 from authz import require_admin, verify_user_token, AuthzError
 from extensions import db
+from services.request_models import (
+    ApproveTrainerRequest,
+    CreateTrainerRequest,
+    RequestTrainerRequest,
+    UpdateTrainerRequest,
+    parse_body,
+)
 
 import logging
 
@@ -64,17 +71,18 @@ def create_trainer():
         return jsonify({'error': 'DB not available'}), 500
 
     try:
-        data = request.get_json()
-        name = data.get('name')
+        body, err = parse_body(CreateTrainerRequest, request.get_json(silent=True) or {})
+        if err:
+            return err
+        name = body.name.strip()
         if not name:
             return jsonify({'message': 'Trainer name is required'}), 400
-        name = name.strip()
 
         trainer_data = {
             'name': name,
             'normalizedName': _normalize_trainer_name(name),
-            'status': data.get('status', 'approved'),
-            'dualRecordingRequired': data.get('dualRecordingRequired', False),
+            'status': body.status,
+            'dualRecordingRequired': body.dualRecordingRequired,
             'createdAt': firestore.SERVER_TIMESTAMP,
             'updatedAt': firestore.SERVER_TIMESTAMP,
         }
@@ -95,16 +103,19 @@ def update_trainer(trainer_id):
         return jsonify({'error': 'DB not available'}), 500
 
     try:
-        data = request.get_json()
+        raw = request.get_json(silent=True) or {}
+        body, err = parse_body(UpdateTrainerRequest, raw)
+        if err:
+            return err
         update_data = {'updatedAt': firestore.SERVER_TIMESTAMP}
-        if 'name' in data:
-            cleaned_name = (data['name'] or '').strip()
+        if body.name is not None:
+            cleaned_name = body.name.strip()
             update_data['name'] = cleaned_name
             update_data['normalizedName'] = _normalize_trainer_name(cleaned_name)
-        if 'status' in data:
-            update_data['status'] = data['status']
-        if 'dualRecordingRequired' in data:
-            update_data['dualRecordingRequired'] = data['dualRecordingRequired']
+        if body.status is not None:
+            update_data['status'] = body.status
+        if body.dualRecordingRequired is not None:
+            update_data['dualRecordingRequired'] = body.dualRecordingRequired
 
         db.collection('trainers').document(trainer_id).update(update_data)
         return jsonify({'message': 'Trainer updated'}), 200
@@ -145,8 +156,10 @@ def request_trainer():
         return jsonify({'error': 'DB not available'}), 500
 
     try:
-        data = request.get_json()
-        trainer_name = (data.get('trainerName') or '').strip()
+        body, err = parse_body(RequestTrainerRequest, request.get_json(silent=True) or {})
+        if err:
+            return err
+        trainer_name = body.trainerName.strip()
         if not trainer_name:
             return jsonify({'message': 'Trainer name is required'}), 400
 
@@ -177,7 +190,7 @@ def request_trainer():
         request_data = {
             'trainerName': trainer_name,
             'normalizedTrainerName': normalized_name,
-            'requesterName': data.get('requesterName', ''),
+            'requesterName': body.requesterName,
             'requesterUid': uid,
             'status': 'pending',
             'createdAt': firestore.SERVER_TIMESTAMP,
@@ -227,7 +240,9 @@ def approve_trainer_request(request_id):
         return jsonify({'error': 'DB not available'}), 500
 
     try:
-        data = request.get_json()
+        body, err = parse_body(ApproveTrainerRequest, request.get_json(silent=True) or {})
+        if err:
+            return err
         request_doc = db.collection('trainer_requests').document(request_id).get()
         if not request_doc.exists:
             return jsonify({'message': 'Request not found'}), 404
@@ -235,7 +250,7 @@ def approve_trainer_request(request_id):
         request_data = request_doc.to_dict() or {}
         trainer_name = (request_data.get('trainerName') or '').strip()
         normalized_name = request_data.get('normalizedTrainerName') or _normalize_trainer_name(trainer_name)
-        require_dual_recording = data.get('dualRecordingRequired', False)
+        require_dual_recording = body.dualRecordingRequired
 
         existing_trainer_doc = _find_trainer_by_normalized_name(normalized_name)
         if existing_trainer_doc:

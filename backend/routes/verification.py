@@ -7,6 +7,12 @@ import random
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from services.user_service import UserService
+from services.request_models import (
+    ReviewVerificationRequest,
+    SubmitVerificationRequest,
+    TriggerVerificationRequest,
+    parse_body,
+)
 
 import logging
 
@@ -336,10 +342,12 @@ def trigger_verification():
         return jsonify({'error': 'DB not available'}), 500
 
     try:
-        data = request.get_json() or {}
-        percentage = data.get('percentage', 5)
-        deadline_days = data.get('deadlineDays', 2)
-        requested_race_id = data.get('raceId')
+        body, err = parse_body(TriggerVerificationRequest, request.get_json(silent=True) or {})
+        if err:
+            return err
+        percentage = body.percentage
+        deadline_days = body.deadlineDays
+        requested_race_id = body.raceId
 
         target_race_id, target_race, finisher_ids = _resolve_target_race(requested_race_id)
         if not target_race_id:
@@ -459,10 +467,10 @@ def submit_verification():
         return jsonify({'error': 'DB not available'}), 500
 
     try:
-        data = request.get_json()
-        video_link = data.get('videoLink')
-        if not video_link:
-            return jsonify({'message': 'Video link is required'}), 400
+        body, err = parse_body(SubmitVerificationRequest, request.get_json(silent=True) or {})
+        if err:
+            return err
+        video_link = body.videoLink
 
         # Resolve user
         user = UserService.get_user_by_auth_uid(uid)
@@ -523,15 +531,13 @@ def review_verification():
         return jsonify({'error': 'DB not available'}), 500
         
     try:
-        data = request.get_json()
-        target_user_id = data.get('userId') # This is likely ZwiftID or UID
-        action = data.get('action')
-        reason = data.get('reason', '')
-        
-        if action not in ['approve', 'reject']:
-            return jsonify({'message': 'Invalid action'}), 400
-            
-        
+        body, err = parse_body(ReviewVerificationRequest, request.get_json(silent=True) or {})
+        if err:
+            return err
+        target_user_id = body.userId
+        action = body.action
+        reason = body.reason
+
         user = UserService.get_user_by_id(target_user_id)
         if not user:
             return jsonify({'message': 'User not found'}), 404

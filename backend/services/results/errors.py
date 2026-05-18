@@ -58,3 +58,11 @@ class FinishSegmentResolutionError(RecoverableResultsError):
 
 class StartTimeParseError(RecoverableResultsError):
     """Raised when subgroup start time cannot be parsed."""
+
+
+class CategoryAssignmentError(FatalResultsError):
+    """Raised when liga category assignment fails at the service boundary."""
+
+
+class DualRecordingWorkflowError(RecoverableResultsError):
+    """Raised when a dual-recording workflow step fails in a recoverable way."""
