@@ -15,6 +15,27 @@ def _as_positive_int(value: Any) -> int | None:
 
 def _normalize_critical_power(payload: dict[str, Any] | None) -> dict[str, int]:
     source = payload or {}
+    relevant_efforts = source.get("relevantCpEfforts")
+    if isinstance(relevant_efforts, list):
+        watts_by_duration: dict[int, int] = {}
+        for effort in relevant_efforts:
+            if not isinstance(effort, dict):
+                continue
+            try:
+                duration = int(effort.get("duration"))
+            except (TypeError, ValueError):
+                continue
+            watts = _as_positive_int(effort.get("watts"))
+            if watts:
+                watts_by_duration[duration] = watts
+        source = {
+            **source,
+            "criticalP15Seconds": source.get("criticalP15Seconds") or watts_by_duration.get(15),
+            "criticalP1Minute": source.get("criticalP1Minute") or watts_by_duration.get(60),
+            "criticalP5Minutes": source.get("criticalP5Minutes") or watts_by_duration.get(300),
+            "criticalP20Minutes": source.get("criticalP20Minutes") or watts_by_duration.get(1200),
+        }
+
     cp15 = _as_positive_int(source.get("criticalP15Seconds") or source.get("cp15s"))
     cp60 = _as_positive_int(source.get("criticalP1Minute") or source.get("cp1min"))
     cp300 = _as_positive_int(source.get("criticalP5Minutes") or source.get("cp5min"))
@@ -67,9 +88,13 @@ def _critical_power_from_user_doc(user_doc: dict[str, Any] | None) -> dict[str, 
 
 def resolve_critical_power(
     entry_payload: dict[str, Any] | None,
-    user_doc: dict[str, Any] | None,
+    user_doc: dict[str, Any] | None = None,
+    *,
+    allow_user_fallback: bool = False,
 ) -> dict[str, int]:
     normalized_entry = _normalize_critical_power(entry_payload)
     if normalized_entry:
         return normalized_entry
-    return _critical_power_from_user_doc(user_doc)
+    if allow_user_fallback:
+        return _critical_power_from_user_doc(user_doc)
+    return {}

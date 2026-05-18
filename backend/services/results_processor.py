@@ -36,6 +36,7 @@ from services.schema_validation import (
     validate_race_doc,
     with_schema_version,
 )
+from services.zwift_tokens import get_valid_access_token
 from firebase_admin import firestore
 
 from models import LeagueStandings, RaceConfig, RaceResults
@@ -143,6 +144,7 @@ class ResultsProcessor:
         registered_riders: dict[str, Any] = {}
         for doc in users_docs:
             data = doc.to_dict()
+            data['_docId'] = doc.id
             zid = data.get('zwiftId')
             zuid = data.get('zwiftUserId')
             conn_zwift = (data.get('connections') or {}).get('zwift') if isinstance(data.get('connections'), dict) else {}
@@ -422,6 +424,11 @@ class ResultsProcessor:
                 subgroup_start_time=start_time,
                 all_results_raw=all_crossings_raw,
             )
+            if results_phase == RESULTS_PHASE_FINALIZED:
+                finishers = self._hydrate_activity_critical_power(
+                    finishers=finishers,
+                    registered_riders=registered_riders,
+                )
 
             # Fetch Segment Efforts using ZwiftFetcher
             segment_efforts: dict[str | int, Any] = {}
@@ -793,6 +800,66 @@ class ResultsProcessor:
             if current_time > existing_time:
                 by_id[zid] = rider
         return list(by_id.values())
+
+    def _hydrate_activity_critical_power(
+        self,
+        finishers: list[dict[str, Any]],
+        registered_riders: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        if not finishers:
+            return finishers
+
+        token_cache: dict[str, str | None] = {}
+        curve_cache: dict[str, dict[str, Any] | None] = {}
+        hydrated = 0
+        missing_activity = 0
+        missing_token = 0
+
+        for finisher in finishers:
+            if resolve_critical_power(finisher.get('criticalP')):
+                continue
+
+            rider_id = str(finisher.get('zwiftId') or '').strip()
+            activity_id = str(finisher.get('activityId') or '').strip()
+            if not rider_id or not activity_id:
+                missing_activity += 1
+                continue
+
+            rider_doc = registered_riders.get(rider_id) or {}
+            user_doc_id = str(rider_doc.get('_docId') or '').strip()
+            if not user_doc_id:
+                continue
+
+            if user_doc_id not in token_cache:
+                token_cache[user_doc_id] = get_valid_access_token(
+                    user_doc_id,
+                    self.zwift_fetcher.zwift,
+                )
+            access_token = token_cache.get(user_doc_id)
+            if not access_token:
+                missing_token += 1
+                continue
+
+            if activity_id not in curve_cache:
+                curve_cache[activity_id] = self.zwift_fetcher.zwift.get_best_power_curve_activity(
+                    access_token,
+                    activity_id,
+                )
+            activity_curve = curve_cache.get(activity_id)
+            critical_power = resolve_critical_power(activity_curve)
+            if critical_power:
+                finisher['criticalP'] = critical_power
+                hydrated += 1
+
+        if hydrated or missing_activity or missing_token:
+            logger.info(
+                "Critical power hydration: hydrated=%s missing_activity=%s missing_token=%s",
+                hydrated,
+                missing_activity,
+                missing_token,
+            )
+
+        return finishers
 
     def _append_segment_starter_dnfs(
         self,
