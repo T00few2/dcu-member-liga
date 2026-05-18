@@ -19,6 +19,7 @@ import type {
 } from '@/types/live';
 import StandingsTable from './_components/StandingsTable';
 import RaceResultsTable from './_components/RaceResultsTable';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 type ProcessedRider = StandingEntry & { calculatedTotal: number; countingRaceIds: Set<string> };
 
@@ -273,36 +274,40 @@ export default function ResultsPage() {
             </div>
 
             {activeTab === 'standings' && (
-                <StandingsTable
-                    currentStandings={currentStandings}
-                    races={races}
-                    availableStandingsCategories={availableStandingsCategories}
-                    displayStandingsCategory={displayStandingsCategory}
-                    standingsCategory={standingsCategory}
-                    setStandingsCategory={handleStandingsCategoryChange}
-                />
+                <ErrorBoundary label="Ligastilling">
+                    <StandingsTable
+                        currentStandings={currentStandings}
+                        races={races}
+                        availableStandingsCategories={availableStandingsCategories}
+                        displayStandingsCategory={displayStandingsCategory}
+                        standingsCategory={standingsCategory}
+                        setStandingsCategory={handleStandingsCategoryChange}
+                    />
+                </ErrorBoundary>
             )}
 
             {activeTab === 'results' && (
-                <RaceResultsTable
-                    races={races}
-                    selectedRaceId={selectedRaceId}
-                    setSelectedRaceId={setSelectedRaceId}
-                    selectedRace={selectedRace}
-                    availableRaceCategories={availableRaceCategories}
-                    displayRaceCategory={displayRaceCategory}
-                    selectedCategory={selectedCategory}
-                    setSelectedCategory={setSelectedCategory}
-                    displayLaps={displayLaps}
-                    raceResults={raceResults}
-                    sprintColumns={sprintColumns}
-                    bestSplitTimes={bestSplitTimes}
-                    getSprintHeader={getSprintHeader}
-                    leaguePointsByZwiftId={leaguePointsByZwiftId}
-                    drVerifications={drVerifications}
-                    weightVerifications={weightVerifications}
-                    user={user}
-                />
+                <ErrorBoundary label="Løbsresultater">
+                    <RaceResultsTable
+                        races={races}
+                        selectedRaceId={selectedRaceId}
+                        setSelectedRaceId={setSelectedRaceId}
+                        selectedRace={selectedRace}
+                        availableRaceCategories={availableRaceCategories}
+                        displayRaceCategory={displayRaceCategory}
+                        selectedCategory={selectedCategory}
+                        setSelectedCategory={setSelectedCategory}
+                        displayLaps={displayLaps}
+                        raceResults={raceResults}
+                        sprintColumns={sprintColumns}
+                        bestSplitTimes={bestSplitTimes}
+                        getSprintHeader={getSprintHeader}
+                        leaguePointsByZwiftId={leaguePointsByZwiftId}
+                        drVerifications={drVerifications}
+                        weightVerifications={weightVerifications}
+                        user={user}
+                    />
+                </ErrorBoundary>
             )}
         </div>
     );

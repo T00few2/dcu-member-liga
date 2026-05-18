@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import LeagueManager, { type LeagueManagerTab } from '@/components/admin/LeagueManager';
 import VerificationDashboard from '@/components/admin/VerificationDashboard';
 import TrainerManager from '@/components/admin/TrainerManager';
@@ -202,50 +203,52 @@ function AdminPageContent() {
 
       {/* Section Content */}
       <div className="min-h-[500px]">
-        {activeSection === 'users' ? (
-          <div>
-            <div className="flex border-b border-border mb-6">
-              <button
-                onClick={() => handleUsersTabChange('overview')}
-                className={`pb-3 px-5 text-sm font-medium transition whitespace-nowrap ${usersTabFromUrl === 'overview' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
-              >
-                Overview
-              </button>
-              <button
-                onClick={() => handleUsersTabChange('details', selectedUserIdFromUrl)}
-                className={`pb-3 px-5 text-sm font-medium transition whitespace-nowrap ${usersTabFromUrl === 'details' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
-              >
-                User Details
-              </button>
+        <ErrorBoundary key={activeSection} label={activeSection}>
+          {activeSection === 'users' ? (
+            <div>
+              <div className="flex border-b border-border mb-6">
+                <button
+                  onClick={() => handleUsersTabChange('overview')}
+                  className={`pb-3 px-5 text-sm font-medium transition whitespace-nowrap ${usersTabFromUrl === 'overview' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                >
+                  Overview
+                </button>
+                <button
+                  onClick={() => handleUsersTabChange('details', selectedUserIdFromUrl)}
+                  className={`pb-3 px-5 text-sm font-medium transition whitespace-nowrap ${usersTabFromUrl === 'details' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                >
+                  User Details
+                </button>
+              </div>
+              {usersTabFromUrl === 'overview' ? (
+                <UsersOverview onUserSelect={handleUserSelect} />
+              ) : (
+                <UserDetailsTab
+                  initialUserId={selectedUserIdFromUrl}
+                  onUserSelect={handleUserSelect}
+                />
+              )}
             </div>
-            {usersTabFromUrl === 'overview' ? (
-              <UsersOverview onUserSelect={handleUserSelect} />
-            ) : (
-              <UserDetailsTab
-                initialUserId={selectedUserIdFromUrl}
-                onUserSelect={handleUserSelect}
-              />
-            )}
-          </div>
-        ) : activeSection === 'stats' ? (
-          <StatsDashboard />
-        ) : activeSection === 'league' ? (
-          <LeagueManager initialActiveTab={leagueTabFromUrl} onTabChange={handleLeagueTabChange} />
-        ) : activeSection === 'categories' ? (
-          <CategoryManager user={user} />
-        ) : activeSection === 'predictor' ? (
-          <CategoryPredictor user={user} />
-        ) : activeSection === 'verification' ? (
-          <VerificationDashboard />
-        ) : activeSection === 'weight' ? (
-          <WeightVerificationManager />
-        ) : activeSection === 'trainers' ? (
-          <TrainerManager />
-        ) : activeSection === 'nyheder' ? (
-          <PostsManager />
-        ) : (
-          <PolicyManager user={user} />
-        )}
+          ) : activeSection === 'stats' ? (
+            <StatsDashboard />
+          ) : activeSection === 'league' ? (
+            <LeagueManager initialActiveTab={leagueTabFromUrl} onTabChange={handleLeagueTabChange} />
+          ) : activeSection === 'categories' ? (
+            <CategoryManager user={user} />
+          ) : activeSection === 'predictor' ? (
+            <CategoryPredictor user={user} />
+          ) : activeSection === 'verification' ? (
+            <VerificationDashboard />
+          ) : activeSection === 'weight' ? (
+            <WeightVerificationManager />
+          ) : activeSection === 'trainers' ? (
+            <TrainerManager />
+          ) : activeSection === 'nyheder' ? (
+            <PostsManager />
+          ) : (
+            <PolicyManager user={user} />
+          )}
+        </ErrorBoundary>
       </div>
     </div>
   );
