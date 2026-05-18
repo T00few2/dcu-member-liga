@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { analyzeStickyWatts, type StickyWattsThresholds } from '@/lib/stickyWatts';
 import { useStickyWattsThresholds } from '@/hooks/useStickyWattsThresholds';
+import { StickyWattsProvider, useStickyWattsContext } from '@/lib/sw-context';
 
 interface Props {
     stream: {
@@ -42,7 +43,10 @@ function ThresholdInput({
     );
 }
 
-export default function StickyWattsPanel({ stream }: Props) {
+// ─── Inner panel (consumes context) ──────────────────────────────────────────
+
+function StickyWattsPanelInner() {
+    const { stream } = useStickyWattsContext();
     const { thresholds, setThresholds, save, saving, saveError } = useStickyWattsThresholds();
     const [showThresholds, setShowThresholds] = useState(false);
 
@@ -119,5 +123,15 @@ export default function StickyWattsPanel({ stream }: Props) {
                 </div>
             )}
         </div>
+    );
+}
+
+// ─── Public component ─────────────────────────────────────────────────────────
+
+export default function StickyWattsPanel({ stream }: Props) {
+    return (
+        <StickyWattsProvider stream={stream}>
+            <StickyWattsPanelInner />
+        </StickyWattsProvider>
     );
 }
