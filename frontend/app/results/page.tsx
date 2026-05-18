@@ -2,20 +2,26 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { db } from '@/lib/firebase';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { API_URL } from '@/lib/api';
 import { usePathname, useRouter } from 'next/navigation';
+import {
+    useRacesQuery,
+    useLeagueSettingsQuery,
+    useRaceDrVerificationsQuery,
+    useRaceWeightVerificationsQuery,
+    useParticipantsQuery,
+} from '@/hooks/queries';
+import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
+import { normalizeRace } from '@/lib/firestore-normalizers';
 import type {
     Race,
     Sprint,
     ResultEntry,
     StandingEntry,
-    DualRecordingVerification,
-    PublicWeightVerificationRecord,
 } from '@/types/live';
 import StandingsTable from './_components/StandingsTable';
 import RaceResultsTable from './_components/RaceResultsTable';
+import ErrorBoundary from '@/components/ErrorBoundary';
+import { sortCategoriesByRank } from '@/lib/categories';
 
 type ProcessedRider = StandingEntry & { calculatedTotal: number; countingRaceIds: Set<string> };
 
@@ -40,161 +46,76 @@ export default function ResultsPage() {
         return value === 'results' ? 'results' : 'standings';
     };
 
-    const [races, setRaces] = useState<Race[]>([]);
-    const [standings, setStandings] = useState<Record<string, StandingEntry[]>>({});
-    const [loading, setLoading] = useState(true);
-
     const [activeTab, setActiveTab] = useState<'standings' | 'results'>('standings');
     const [selectedRaceId, setSelectedRaceId] = useState<string>('');
     const [selectedCategory, setSelectedCategory] = useState<string>('A');
-    const [drVerifications, setDrVerifications] = useState<Map<string, DualRecordingVerification>>(new Map());
-    const [weightVerifications, setWeightVerifications] = useState<Map<string, PublicWeightVerificationRecord>>(new Map());
     const [standingsCategory, setStandingsCategory] = useState<string>('');
     const [autoSelectStandingsCategory, setAutoSelectStandingsCategory] = useState(true);
-    const [bestRacesCount, setBestRacesCount] = useState<number>(5);
-    const [configuredCategoryNames, setConfiguredCategoryNames] = useState<string[]>([]);
-    const [clubByZwiftId, setClubByZwiftId] = useState<Map<string, string>>(new Map());
 
+    // ── Data fetching ────────────────────────────────────────────────────────
+    const racesQuery = useRacesQuery();
+    const settingsQuery = useLeagueSettingsQuery();
+    const participantsQuery = useParticipantsQuery();
+    const drVerificationsQuery = useRaceDrVerificationsQuery(selectedRaceId || null);
+    const weightVerificationsQuery = useRaceWeightVerificationsQuery(selectedRaceId || null);
+
+    // Real-time Firestore subscriptions replace onSnapshot useEffects
+    const liveRaceDoc = useFirestoreDoc<Race>('races', selectedRaceId || null);
+    const liveStandingsDoc = useFirestoreDoc<{ standings: Record<string, StandingEntry[]> }>(
+        'league',
+        'standings',
+    );
+
+    // ── Derived data ─────────────────────────────────────────────────────────
+
+    // Merge real-time race update into the cached races list
+    const races = useMemo<Race[]>(() => {
+        const base = (racesQuery.data ?? []) as Race[];
+        if (!liveRaceDoc.data || !selectedRaceId) return base;
+        const updated = normalizeRace(liveRaceDoc.data, selectedRaceId);
+        return base.map(r => (r.id === selectedRaceId ? { ...r, ...updated } : r));
+    }, [racesQuery.data, liveRaceDoc.data, selectedRaceId]);
+
+    // Prefer real-time Firestore standings; fall back to empty while loading
+    const standings = liveStandingsDoc.data?.standings ?? {};
+
+    const sortedRaces = useMemo(
+        () =>
+            [...races].sort(
+                (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+            ),
+        [races],
+    );
+
+    const bestRacesCount = settingsQuery.data?.bestRacesCount ?? 5;
+    const configuredCategoryNames = useMemo(() => {
+        const cats = settingsQuery.data?.ligaCategories;
+        return Array.isArray(cats) ? cats.map((c: { name: string }) => c.name) : [];
+    }, [settingsQuery.data]);
+
+    const drVerifications = drVerificationsQuery.data ?? new Map();
+    const weightVerifications = weightVerificationsQuery.data ?? new Map();
+    const clubByZwiftId = useMemo(() => {
+        const map = new Map<string, string>();
+        const participants = Array.isArray(participantsQuery.data) ? participantsQuery.data : [];
+        participants.forEach((participant: unknown) => {
+            const value = participant as { zwiftId?: string | number; club?: string };
+            const zwiftId = String(value?.zwiftId ?? '').trim();
+            const club = String(value?.club ?? '').trim();
+            if (!zwiftId || !club) return;
+            map.set(zwiftId, club);
+        });
+        return map;
+    }, [participantsQuery.data]);
+
+    // Auto-select first race once loaded
     useEffect(() => {
-        const fetchData = async () => {
-            if (!user) return;
-            try {
-                const token = await user.getIdToken();
+        if (sortedRaces.length > 0 && !selectedRaceId) {
+            setSelectedRaceId(sortedRaces[0].id);
+        }
+    }, [sortedRaces, selectedRaceId]);
 
-                const racesRes = await fetch(`${API_URL}/races`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-
-                const [standingsRes, settingsRes, participantsRes] = await Promise.all([
-                    fetch(`${API_URL}/league/standings`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                    fetch(`${API_URL}/league/settings`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                    fetch(`${API_URL}/participants`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                ]);
-
-                if (settingsRes.ok) {
-                    const settingsData = await settingsRes.json();
-                    if (settingsData.settings?.bestRacesCount) {
-                        setBestRacesCount(settingsData.settings.bestRacesCount);
-                    }
-                    const cats = settingsData.settings?.ligaCategories;
-                    if (Array.isArray(cats) && cats.length > 0) {
-                        setConfiguredCategoryNames(cats.map((c: { name: string }) => c.name));
-                    }
-                }
-
-                if (racesRes.ok) {
-                    const data = await racesRes.json();
-                    const sorted = (data.races || []).sort((a: Race, b: Race) =>
-                        new Date(a.date).getTime() - new Date(b.date).getTime()
-                    );
-                    setRaces(sorted);
-                    if (sorted.length > 0) setSelectedRaceId(sorted[0].id);
-                }
-
-                if (standingsRes.ok) {
-                    const data = await standingsRes.json();
-                    setStandings(data.standings || {});
-                    setAutoSelectStandingsCategory(true);
-                    setStandingsCategory('');
-                }
-
-                if (participantsRes.ok) {
-                    const data = await participantsRes.json();
-                    const map = new Map<string, string>();
-                    const participants = Array.isArray(data?.participants) ? data.participants : [];
-                    participants.forEach((participant: { zwiftId?: string; club?: string }) => {
-                        const zwiftId = String(participant?.zwiftId || '').trim();
-                        const club = String(participant?.club || '').trim();
-                        if (!zwiftId || !club) return;
-                        map.set(zwiftId, club);
-                    });
-                    setClubByZwiftId(map);
-                }
-            } catch (e) {
-                console.error('Error fetching data', e);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        if (user && isRegistered) fetchData();
-    }, [user, isRegistered]);
-
-    useEffect(() => {
-        if (!selectedRaceId) return;
-        const unsubscribe = onSnapshot(doc(db, 'races', selectedRaceId), (snap) => {
-            if (snap.exists()) {
-                const updated = { ...snap.data(), id: snap.id } as Race;
-                setRaces(prev => prev.map(r => r.id === updated.id ? { ...r, ...updated } : r));
-            }
-        }, (err) => console.error('Error listening to race updates:', err));
-        return () => unsubscribe();
-    }, [selectedRaceId]);
-
-    useEffect(() => {
-        const loadDrVerifications = async () => {
-            if (!selectedRaceId || !user) return;
-            try {
-                const token = await user.getIdToken();
-                const res = await fetch(`${API_URL}/races/${selectedRaceId}/dr-verifications`, {
-                    headers: { Authorization: `Bearer ${token}` },
-                });
-                if (!res.ok) {
-                    setDrVerifications(new Map());
-                    return;
-                }
-                const body = await res.json();
-                const map = new Map<string, DualRecordingVerification>();
-                (body.verifications || []).forEach((v: DualRecordingVerification & { zwiftId?: string | number }) => {
-                    const key = String(v.zwiftId || '');
-                    if (!key) return;
-                    map.set(key, v);
-                });
-                setDrVerifications(map);
-            } catch {
-                setDrVerifications(new Map());
-            }
-        };
-        void loadDrVerifications();
-    }, [selectedRaceId, user]);
-
-    useEffect(() => {
-        const loadWeightVerifications = async () => {
-            if (!selectedRaceId || !user) return;
-            try {
-                const token = await user.getIdToken();
-                const res = await fetch(`${API_URL}/races/${selectedRaceId}/weight-verifications`, {
-                    headers: { Authorization: `Bearer ${token}` },
-                });
-                if (!res.ok) {
-                    setWeightVerifications(new Map());
-                    return;
-                }
-                const body = await res.json();
-                const map = new Map<string, PublicWeightVerificationRecord>();
-                (body.verifications || []).forEach((v: PublicWeightVerificationRecord & { zwiftId?: string | number }) => {
-                    const key = String(v.zwiftId || '');
-                    if (!key) return;
-                    map.set(key, v);
-                });
-                setWeightVerifications(map);
-            } catch {
-                setWeightVerifications(new Map());
-            }
-        };
-        void loadWeightVerifications();
-    }, [selectedRaceId, user]);
-
-    useEffect(() => {
-        const unsubscribe = onSnapshot(doc(db, 'league', 'standings'), (snap) => {
-            if (snap.exists()) {
-                const data = snap.data();
-                if (data.standings) setStandings(data.standings);
-            }
-        }, (err) => console.error('Error listening to standings updates:', err));
-        return () => unsubscribe();
-    }, []);
-
+    // Sync active tab from URL
     useEffect(() => {
         if (typeof window === 'undefined') return;
         const syncFromUrl = () => {
@@ -206,33 +127,34 @@ export default function ResultsPage() {
         return () => window.removeEventListener('popstate', syncFromUrl);
     }, []);
 
-    // --- Derived data ---
-    // NOTE: All hooks (useMemo below) must be called before any early return to satisfy Rules of Hooks.
-
     const selectedRace = races.find(r => r.id === selectedRaceId);
 
-    // Available race categories
-    let availableRaceCategories: string[] = [];
-    if (selectedRace?.results && Object.keys(selectedRace.results).length > 0) {
-        availableRaceCategories = Object.keys(selectedRace.results);
-    } else if (selectedRace?.eventMode === 'multi' && selectedRace.eventConfiguration) {
-        availableRaceCategories = selectedRace.eventConfiguration.map(c => c.customCategory).filter(Boolean);
-    } else if (selectedRace?.singleModeCategories?.length) {
-        availableRaceCategories = selectedRace.singleModeCategories.map(c => c.category).filter(Boolean);
-    } else {
-        availableRaceCategories = configuredCategoryNames.length > 0 ? configuredCategoryNames : ['A', 'B', 'C', 'D', 'E'];
-    }
+    const categoryRankOrder = useMemo(
+        () => configuredCategoryNames.length > 0
+            ? [...configuredCategoryNames, ...DEFAULT_CATEGORY_RANK]
+            : DEFAULT_CATEGORY_RANK,
+        [configuredCategoryNames],
+    );
 
-    const raceRankOrder = configuredCategoryNames.length > 0
-        ? [...configuredCategoryNames, ...DEFAULT_CATEGORY_RANK]
-        : DEFAULT_CATEGORY_RANK;
-    availableRaceCategories = sortCategoriesByRank(availableRaceCategories, raceRankOrder);
+    const availableRaceCategories = useMemo(() => {
+        let cats: string[];
+        if (selectedRace?.results && Object.keys(selectedRace.results).length > 0) {
+            cats = Object.keys(selectedRace.results);
+        } else if (selectedRace?.eventMode === 'multi' && selectedRace.eventConfiguration) {
+            cats = selectedRace.eventConfiguration.map(c => c.customCategory).filter(Boolean) as string[];
+        } else if (selectedRace?.singleModeCategories?.length) {
+            cats = selectedRace.singleModeCategories.map(c => c.category).filter(Boolean) as string[];
+        } else {
+            cats = configuredCategoryNames.length > 0 ? configuredCategoryNames : ['A', 'B', 'C', 'D', 'E'];
+        }
+        return sortCategoriesByRank(cats, categoryRankOrder);
+    }, [selectedRace, configuredCategoryNames, categoryRankOrder]);
 
     const displayRaceCategory = (selectedRace?.results && !availableRaceCategories.includes(selectedCategory) && availableRaceCategories.length > 0)
         ? availableRaceCategories[0]
         : selectedCategory;
 
-    const raceResults = selectedRace?.results?.[displayRaceCategory] || [];
+    const raceResults: ResultEntry[] = selectedRace?.results?.[displayRaceCategory] || [];
     const leaguePointsByZwiftId = useMemo(() => {
         const map = new Map<string, number>();
         const raceKey = selectedRaceId;
@@ -244,26 +166,22 @@ export default function ResultsPage() {
         return map;
     }, [standings, displayRaceCategory, selectedRaceId]);
 
-    let displayLaps = selectedRace?.laps;
-    if (selectedRace?.eventMode === 'multi' && selectedRace.eventConfiguration) {
-        const cfg = selectedRace.eventConfiguration.find(c => c.customCategory === displayRaceCategory);
-        if (cfg?.laps) displayLaps = cfg.laps;
-    } else if (selectedRace?.singleModeCategories?.length) {
-        const cfg = selectedRace.singleModeCategories.find(c => c.category === displayRaceCategory);
-        if (cfg?.laps) displayLaps = cfg.laps;
-    }
+    const displayLaps = useMemo(() => {
+        if (!selectedRace) return undefined;
+        if (selectedRace.eventMode === 'multi' && selectedRace.eventConfiguration) {
+            const cfg = selectedRace.eventConfiguration.find(c => c.customCategory === displayRaceCategory);
+            if (cfg?.laps) return cfg.laps;
+        } else if (selectedRace.singleModeCategories?.length) {
+            const cfg = selectedRace.singleModeCategories.find(c => c.category === displayRaceCategory);
+            if (cfg?.laps) return cfg.laps;
+        }
+        return selectedRace.laps;
+    }, [selectedRace, displayRaceCategory]);
 
-    // Available standings categories (never default to A-E).
-    // If standings are empty, fall back to configured race categories.
-    let availableStandingsCategories = Object.keys(standings).length > 0 ? Object.keys(standings) : [];
-    if (availableStandingsCategories.length === 0) {
-        availableStandingsCategories = [...availableRaceCategories];
-    }
-
-    const standingsRankOrder = configuredCategoryNames.length > 0
-        ? [...configuredCategoryNames, ...DEFAULT_CATEGORY_RANK]
-        : DEFAULT_CATEGORY_RANK;
-    availableStandingsCategories = sortCategoriesByRank(availableStandingsCategories, standingsRankOrder);
+    const availableStandingsCategories = useMemo(() => {
+        const cats = Object.keys(standings).length > 0 ? Object.keys(standings) : [...availableRaceCategories];
+        return sortCategoriesByRank(cats, categoryRankOrder);
+    }, [standings, availableRaceCategories, categoryRankOrder]);
 
     const displayStandingsCategory = (Object.keys(standings).length > 0 && !availableStandingsCategories.includes(standingsCategory))
         ? availableStandingsCategories[0]
@@ -271,7 +189,6 @@ export default function ResultsPage() {
 
     const selectedRaceLoaded = !selectedRaceId || races.some(r => r.id === selectedRaceId);
 
-    // Default standings category should follow the same visible category order as the tabs.
     useEffect(() => {
         if (!autoSelectStandingsCategory) return;
         if (!selectedRaceLoaded) return;
@@ -323,7 +240,9 @@ export default function ResultsPage() {
         return { sprintColumns: finalColumns, bestSplitTimes: splitTimes };
     }, [selectedRace, raceResults, displayRaceCategory]);
 
-    if (authLoading || loading) {
+    const isLoading = authLoading || racesQuery.isLoading || settingsQuery.isLoading || liveStandingsDoc.loading;
+
+    if (isLoading) {
         return <div className="p-8 text-center text-muted-foreground">Indlæser resultater...</div>;
     }
 
@@ -372,38 +291,42 @@ export default function ResultsPage() {
             </div>
 
             {activeTab === 'standings' && (
-                <StandingsTable
-                    currentStandings={currentStandings}
-                    races={races}
-                    availableStandingsCategories={availableStandingsCategories}
-                    displayStandingsCategory={displayStandingsCategory}
-                    standingsCategory={standingsCategory}
-                    setStandingsCategory={handleStandingsCategoryChange}
-                    clubByZwiftId={clubByZwiftId}
-                />
+                <ErrorBoundary label="Ligastilling">
+                    <StandingsTable
+                        currentStandings={currentStandings}
+                        races={races}
+                        availableStandingsCategories={availableStandingsCategories}
+                        displayStandingsCategory={displayStandingsCategory}
+                        standingsCategory={standingsCategory}
+                        setStandingsCategory={handleStandingsCategoryChange}
+                        clubByZwiftId={clubByZwiftId}
+                    />
+                </ErrorBoundary>
             )}
 
             {activeTab === 'results' && (
-                <RaceResultsTable
-                    races={races}
-                    selectedRaceId={selectedRaceId}
-                    setSelectedRaceId={setSelectedRaceId}
-                    selectedRace={selectedRace}
-                    availableRaceCategories={availableRaceCategories}
-                    displayRaceCategory={displayRaceCategory}
-                    selectedCategory={selectedCategory}
-                    setSelectedCategory={setSelectedCategory}
-                    displayLaps={displayLaps}
-                    raceResults={raceResults}
-                    sprintColumns={sprintColumns}
-                    bestSplitTimes={bestSplitTimes}
-                    getSprintHeader={getSprintHeader}
-                    leaguePointsByZwiftId={leaguePointsByZwiftId}
-                    clubByZwiftId={clubByZwiftId}
-                    drVerifications={drVerifications}
-                    weightVerifications={weightVerifications}
-                    user={user}
-                />
+                <ErrorBoundary label="Løbsresultater">
+                    <RaceResultsTable
+                        races={races}
+                        selectedRaceId={selectedRaceId}
+                        setSelectedRaceId={setSelectedRaceId}
+                        selectedRace={selectedRace}
+                        availableRaceCategories={availableRaceCategories}
+                        displayRaceCategory={displayRaceCategory}
+                        selectedCategory={selectedCategory}
+                        setSelectedCategory={setSelectedCategory}
+                        displayLaps={displayLaps}
+                        raceResults={raceResults}
+                        sprintColumns={sprintColumns}
+                        bestSplitTimes={bestSplitTimes}
+                        getSprintHeader={getSprintHeader}
+                        leaguePointsByZwiftId={leaguePointsByZwiftId}
+                        clubByZwiftId={clubByZwiftId}
+                        drVerifications={drVerifications}
+                        weightVerifications={weightVerifications}
+                        user={user}
+                    />
+                </ErrorBoundary>
             )}
         </div>
     );
@@ -436,20 +359,3 @@ function getConfiguredSprintsForCategory(race: Race | undefined, category: strin
     return pickFirstNonEmpty(race.sprints, race.sprintData);
 }
 
-function sortCategoriesByRank(categories: string[], rankOrder: string[]): string[] {
-    const orderMap = new Map<string, number>();
-    rankOrder.forEach((name, idx) => {
-        const key = String(name || '').trim().toLowerCase();
-        if (key && !orderMap.has(key)) orderMap.set(key, idx);
-    });
-    return [...categories].sort((a, b) => {
-        const aKey = String(a || '').trim().toLowerCase();
-        const bKey = String(b || '').trim().toLowerCase();
-        const aRank = orderMap.get(aKey);
-        const bRank = orderMap.get(bKey);
-        if (aRank !== undefined && bRank !== undefined) return aRank - bRank;
-        if (aRank !== undefined) return -1;
-        if (bRank !== undefined) return 1;
-        return a.localeCompare(b);
-    });
-}

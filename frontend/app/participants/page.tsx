@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { API_URL } from '@/lib/api';
+import { useParticipantsQuery } from '@/hooks/queries';
 
 function getZRCategory(rating: number | string): string {
   const r = Number(rating);
@@ -161,41 +161,14 @@ function SortIcon({ active, direction }: { active: boolean; direction: SortDirec
 }
 
 export default function ParticipantsPage() {
-  const { user, loading: authLoading, isRegistered } = useAuth();
-  const [participants, setParticipants] = useState<Participant[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { loading: authLoading } = useAuth();
+  const participantsQuery = useParticipantsQuery();
+  const participants = (participantsQuery.data ?? []) as Participant[];
   const [search, setSearch] = useState('');
   const [ligaKatFilter, setLigaKatFilter] = useState('');
   const [sortCol, setSortCol] = useState<SortColumn>('name');
   const [sortDir, setSortDir] = useState<SortDirection>('asc');
   const [powerUnit, setPowerUnit] = useState<PowerUnit>('watts');
-
-  useEffect(() => {
-    if (!user || !isRegistered) return;
-
-    const fetchParticipants = async () => {
-      try {
-        const token = await user.getIdToken();
-        const res = await fetch(`${API_URL}/participants?limit=2000`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          setParticipants(data.participants || []);
-        } else {
-          setError('Kunne ikke hente deltagere');
-        }
-      } catch (e) {
-        setError('Netværksfejl');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchParticipants();
-  }, [user, isRegistered]);
 
   const ligaKatOptions = useMemo(() => {
     const cats = new Set<string>();
@@ -248,9 +221,9 @@ export default function ParticipantsPage() {
     };
   }
 
-  if (authLoading || loading) return <div className="p-8 text-center text-muted-foreground">Indlæser deltagere...</div>;
+  if (authLoading || participantsQuery.isLoading) return <div className="p-8 text-center text-muted-foreground">Indlæser deltagere...</div>;
 
-  if (error) return <div className="p-8 text-center text-red-600">{error}</div>;
+  if (participantsQuery.isError) return <div className="p-8 text-center text-red-600">Kunne ikke hente deltagere</div>;
 
   return (
     <div className="max-w-7xl mx-auto mt-8 px-4">

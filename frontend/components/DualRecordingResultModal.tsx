@@ -4,24 +4,28 @@ import type React from 'react';
 import { useState } from 'react';
 import { RecordingStreamsSection } from '@/components/shared/RecordingStreamsSection';
 import { ExtendedPeakProfileChart } from '@/components/shared/ExtendedPeakProfileChart';
-import type { DualRecordingVerification, CpDiffRow } from '@/types/admin';
-import type { DualRecordingResult } from '@/hooks/useDualRecording';
+import type { CpDiffRow } from '@/types/admin';
 import { explainDrFailureMetrics } from '@/lib/drFailureLabels';
+import { DualRecordingProvider, useDualRecordingContext } from '@/lib/dr-context';
+
+// ─── Public props (minimal — caller only needs to supply these) ───────────────
 
 interface Props {
     open: boolean;
     onClose: () => void;
     riderName: string;
-    verification: DualRecordingVerification;
     onRunForRider?: () => Promise<void>;
     runForRiderBusy?: boolean;
     runForRiderStatus?: { type: 'info' | 'success' | 'error'; text: string } | null;
-    streamResult?: DualRecordingResult | null;
+    verification: import('@/types/admin').DualRecordingVerification;
+    streamResult?: import('@/hooks/useDualRecording').DualRecordingResult | null;
     streamLoading?: boolean;
     streamError?: string | null;
     hideHeartRate?: boolean;
     showRunActions?: boolean;
 }
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const THRESHOLD_LABELS: Record<string, string> = {
     w1200: '20 min (max 5%)',
@@ -29,6 +33,7 @@ const THRESHOLD_LABELS: Record<string, string> = {
     w60: '1 min (max 6%)',
     w15: '15 sek (max 6,5%)',
 };
+
 function diffColour(pct: number | null | undefined, key: string): string {
     if (pct == null) return 'text-muted-foreground';
     const thresholds: Record<string, number> = { w1200: 5, w300: 5.5, w60: 6, w15: 6.5 };
@@ -39,7 +44,7 @@ function diffColour(pct: number | null | undefined, key: string): string {
     return Math.abs(pct) <= 3 ? 'text-green-600' : Math.abs(pct) <= 8 ? 'text-yellow-600' : 'text-red-600';
 }
 
-function StatusHeader({ status, passed }: { status: string; passed?: boolean }) {
+function StatusHeader({ status }: { status: string }) {
     if (status === 'passed') {
         return (
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-100 text-green-800 font-semibold text-sm">
@@ -101,21 +106,29 @@ function formatSelectionReason(reason: string | undefined): string {
     }
 }
 
+// ─── Inner content (consumes context) ────────────────────────────────────────
 
-export default function DualRecordingResultModal({
+function DualRecordingModalContent({
     open,
     onClose,
     riderName,
-    verification,
-    onRunForRider,
-    runForRiderBusy = false,
-    runForRiderStatus = null,
-    streamResult = null,
-    streamLoading = false,
-    streamError = null,
-    hideHeartRate = false,
-    showRunActions = true,
-}: Props) {
+}: {
+    open: boolean;
+    onClose: () => void;
+    riderName: string;
+}) {
+    const {
+        verification,
+        streamResult,
+        streamLoading,
+        streamError,
+        hideHeartRate,
+        runForRiderBusy,
+        runForRiderStatus,
+        onRunForRider,
+        showRunActions,
+    } = useDualRecordingContext();
+
     const [hoveredDurationSec, setHoveredDurationSec] = useState<number | null>(null);
 
     if (!open) return null;
@@ -177,7 +190,7 @@ export default function DualRecordingResultModal({
 
                     {/* Status */}
                     <div className="flex items-center justify-between">
-                        <StatusHeader status={status} passed={verification.passed} />
+                        <StatusHeader status={status} />
                         {verifiedAt && (
                             <span className="text-xs text-muted-foreground">
                                 {new Date(verifiedAt).toLocaleString('da-DK')}
@@ -265,11 +278,9 @@ export default function DualRecordingResultModal({
                         </div>
                     )}
 
-                    {/* On large screens: graphs left (peak profile + recording streams),
-                        CP table + avg power + thresholds right */}
                     <div className="lg:grid lg:grid-cols-[1.6fr_1fr] lg:gap-6 lg:items-start space-y-4 lg:space-y-0">
 
-                        {/* Left column: peak profile directly above recording streams */}
+                        {/* Left column: peak profile + recording streams */}
                         <div className="space-y-3">
                             {streamResult && cpDiffRows.length > 0 && (
                                 <div>
@@ -389,3 +400,35 @@ export default function DualRecordingResultModal({
     );
 }
 
+// ─── Public component ─────────────────────────────────────────────────────────
+
+export default function DualRecordingResultModal({
+    open,
+    onClose,
+    riderName,
+    verification,
+    onRunForRider,
+    runForRiderBusy = false,
+    runForRiderStatus = null,
+    streamResult = null,
+    streamLoading = false,
+    streamError = null,
+    hideHeartRate = false,
+    showRunActions = true,
+}: Props) {
+    return (
+        <DualRecordingProvider
+            verification={verification}
+            streamResult={streamResult}
+            streamLoading={streamLoading}
+            streamError={streamError}
+            hideHeartRate={hideHeartRate}
+            runForRiderBusy={runForRiderBusy}
+            runForRiderStatus={runForRiderStatus}
+            onRunForRider={onRunForRider}
+            showRunActions={showRunActions}
+        >
+            <DualRecordingModalContent open={open} onClose={onClose} riderName={riderName} />
+        </DualRecordingProvider>
+    );
+}

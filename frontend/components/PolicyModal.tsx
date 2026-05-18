@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react';
 import MarkdownRenderer from '@/components/MarkdownRenderer';
-import { API_URL } from '@/lib/api';
+import { usePolicyDocQuery } from '@/hooks/queries/usePolicyDocQuery';
 
 interface PolicyModalProps {
     isOpen: boolean;
@@ -11,15 +10,6 @@ interface PolicyModalProps {
     disableAccept?: boolean;
 }
 
-type PolicyDoc = {
-    policyKey: string;
-    version: string;
-    titleDa: string;
-    contentMdDa: string;
-    changeSummary?: string;
-    publishedAt?: number | null;
-};
-
 export default function PolicyModal({
     isOpen,
     onClose,
@@ -28,31 +18,9 @@ export default function PolicyModal({
     onAccept,
     disableAccept
 }: PolicyModalProps) {
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
-    const [policy, setPolicy] = useState<PolicyDoc | null>(null);
+    const { data: policy, isFetching: loading, error: queryError } = usePolicyDocQuery(policyEndpoint, isOpen);
 
-    // Only fetch when the modal is opened
-    useEffect(() => {
-        if (!isOpen) return;
-
-        const fetchPolicy = async () => {
-            try {
-                setLoading(true);
-                setError('');
-                const res = await fetch(`${API_URL}/policy/${policyEndpoint}/current`);
-                const data = await res.json().catch(() => ({}));
-                if (!res.ok) throw new Error(data.message || 'Kunne ikke hente politikken.');
-                setPolicy(data as PolicyDoc);
-            } catch (err: unknown) {
-                setError(err instanceof Error ? err.message : 'Der skete en fejl.');
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchPolicy();
-    }, [isOpen, policyEndpoint]);
+    const error = queryError instanceof Error ? queryError.message : queryError ? 'Der skete en fejl.' : '';
 
     if (!isOpen) return null;
 

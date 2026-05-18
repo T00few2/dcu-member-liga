@@ -1,8 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { useAuth } from '@/lib/auth-context';
-import { API_URL } from '@/lib/api';
+import { useAdminStatsQuery } from '@/hooks/queries';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     PieChart, Pie, Cell, Legend,
@@ -29,22 +27,6 @@ const CHART_PALETTE = [
     '#7c3aed', '#0891b2', '#dc2626', '#059669',
     '#d97706', '#6366f1', '#db2777', '#0d9488',
 ];
-
-interface StatsData {
-    total: number;
-    clubCount: number;
-    lockedCount: number;
-    selfSelectedCount: number;
-    leagueName?: string;
-    seasonStart?: string;
-    growthSeries: { date: string; signups: number; clubs: number }[];
-    registrationStatus: { status: string; count: number }[];
-    categoryDistribution: { category: string; count: number }[];
-    clubDistribution: { club: string; count: number }[];
-    trainerDistribution: { trainer: string; count: number }[];
-    verificationStatus: { status: string; count: number }[];
-    phenotypeDistribution: { phenotype: string; count: number }[];
-}
 
 // ── Small helpers ─────────────────────────────────────────────────────────────
 
@@ -102,32 +84,9 @@ function ChartTip({ active, payload, label }: any) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function StatsDashboard() {
-    const { user } = useAuth();
-    const [stats, setStats] = useState<StatsData | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const statsQuery = useAdminStatsQuery();
 
-    const fetchStats = useCallback(async () => {
-        if (!user) return;
-        setLoading(true);
-        setError(null);
-        try {
-            const token = await user.getIdToken();
-            const res = await fetch(`${API_URL}/admin/stats`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            setStats(await res.json());
-        } catch (e: any) {
-            setError(e.message ?? 'Failed to load stats');
-        } finally {
-            setLoading(false);
-        }
-    }, [user]);
-
-    useEffect(() => { fetchStats(); }, [fetchStats]);
-
-    if (loading) {
+    if (statsQuery.isLoading) {
         return (
             <div className="flex items-center justify-center py-20 text-muted-foreground">
                 Loading stats…
@@ -135,12 +94,14 @@ export default function StatsDashboard() {
         );
     }
 
-    if (error || !stats) {
+    if (statsQuery.isError || !statsQuery.data) {
         return (
             <div className="flex flex-col items-center gap-4 py-20">
-                <p className="text-destructive-foreground font-medium">Error: {error}</p>
+                <p className="text-destructive-foreground font-medium">
+                    Error: {statsQuery.error instanceof Error ? statsQuery.error.message : 'Failed to load stats'}
+                </p>
                 <button
-                    onClick={fetchStats}
+                    onClick={() => statsQuery.refetch()}
                     className="bg-primary text-primary-foreground px-4 py-2 rounded hover:opacity-90 text-sm font-medium"
                 >
                     Retry
@@ -148,6 +109,8 @@ export default function StatsDashboard() {
             </div>
         );
     }
+
+    const stats = statsQuery.data;
 
     const completeCount = stats.registrationStatus.find(s => s.status === 'complete')?.count ?? 0;
     const completePct = stats.total > 0 ? Math.round((completeCount / stats.total) * 100) : 0;
@@ -171,7 +134,7 @@ export default function StatsDashboard() {
                     )}
                 </div>
                 <button
-                    onClick={fetchStats}
+                    onClick={() => statsQuery.refetch()}
                     className="text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg px-3 py-1.5 transition"
                 >
                     Refresh
