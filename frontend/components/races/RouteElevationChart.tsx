@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import {
     Area,
     AreaChart,
@@ -12,6 +11,7 @@ import {
     YAxis,
 } from 'recharts';
 import type { Sprint } from '@/types/live';
+import { useRouteElevationQuery } from '@/hooks/queries';
 
 interface RouteSegment {
     from: number;
@@ -193,72 +193,55 @@ export default function RouteElevationChart({
     laps = 1,
     pointSegments = [],
 }: Props) {
-    const [data, setData] = useState<DataPoint[] | null>(null);
-    const [routeSegments, setRouteSegments] = useState<RouteSegment[]>([]);
-    const [loading, setLoading] = useState(true);
+    const { data: json, isLoading: loading } = useRouteElevationQuery(worldName, routeName, laps);
 
-    useEffect(() => {
-        const params = new URLSearchParams({ world: worldName, route: routeName, laps: String(laps) });
-        fetch(`/api/route-elevation?${params}`)
-            .then((res) => (res.ok ? res.json() : null))
-            .then((json: {
-                distance: number[];
-                altitude: number[];
-                segments?: RouteSegment[];
-                profileSegments?: ProfileSegment[];
-            } | null) => {
-                if (json?.distance?.length && json?.altitude?.length) {
-                    const n = Math.max(1, Math.floor(json.distance.length / TARGET_POINTS));
-                    const raw = json.distance
-                        .filter((_, i) => i % n === 0)
-                        .map((d, i) => ({
-                            distance: d / 1_000,
-                            altitude: json.altitude[i * n],
-                        }));
-                    const enriched: DataPoint[] = raw.map((pt, i) => ({
-                        ...pt,
-                        gradient:
-                            i === 0
-                                ? 0
-                                : Math.round(
-                                      ((pt.altitude - raw[i - 1].altitude) /
-                                          ((pt.distance - raw[i - 1].distance) * 1_000)) *
-                                          1_000
-                                  ) / 10,
-                    }));
-                    setData(enriched);
-                    const fromRouteProfile: RouteSegment[] = (json.profileSegments ?? [])
-                        .map((seg): RouteSegment => {
-                            const rawFrom = Number(seg.fromKm) || 0;
-                            const rawTo = Number(seg.toKm) || 0;
-                            return {
-                                // Normalize bounds so segments always render even if entered in reverse order.
-                                from: Math.min(rawFrom, rawTo),
-                                to: Math.max(rawFrom, rawTo),
-                                type: normalizeSegmentType(seg.type),
-                                name: getSegmentName(seg.name),
-                                direction: normalizeDirection(seg.direction),
-                            };
-                        })
-                        .sort((a, b) => a.from - b.from || a.to - b.to);
-                    if (fromRouteProfile.length > 0) {
-                        setRouteSegments(fromRouteProfile);
-                    } else {
-                        setRouteSegments(
-                            (json.segments ?? []).map((seg) => ({
-                                from: Number.isFinite(seg?.from) ? seg.from : 0,
-                                to: Number.isFinite(seg?.to) ? seg.to : 0,
-                                type: normalizeSegmentType(seg?.type),
-                                name: getSegmentName(seg?.name),
-                                direction: normalizeDirection(seg?.direction),
-                            })),
-                        );
-                    }
-                }
+    const data: DataPoint[] | null = (() => {
+        if (!json?.distance?.length || !json?.altitude?.length) return null;
+        const n = Math.max(1, Math.floor(json.distance.length / TARGET_POINTS));
+        const raw = json.distance
+            .filter((_, i) => i % n === 0)
+            .map((d, i) => ({
+                distance: d / 1_000,
+                altitude: json.altitude[i * n],
+            }));
+        return raw.map((pt, i) => ({
+            ...pt,
+            gradient:
+                i === 0
+                    ? 0
+                    : Math.round(
+                          ((pt.altitude - raw[i - 1].altitude) /
+                              ((pt.distance - raw[i - 1].distance) * 1_000)) *
+                              1_000
+                      ) / 10,
+        }));
+    })();
+
+    const routeSegments: RouteSegment[] = (() => {
+        if (!json) return [];
+        const fromRouteProfile: RouteSegment[] = (json.profileSegments ?? [])
+            .map((seg): RouteSegment => {
+                const rawFrom = Number(seg.fromKm) || 0;
+                const rawTo = Number(seg.toKm) || 0;
+                return {
+                    // Normalize bounds so segments always render even if entered in reverse order.
+                    from: Math.min(rawFrom, rawTo),
+                    to: Math.max(rawFrom, rawTo),
+                    type: normalizeSegmentType(seg.type),
+                    name: getSegmentName(seg.name),
+                    direction: normalizeDirection(seg.direction),
+                };
             })
-            .catch(() => {})
-            .finally(() => setLoading(false));
-    }, [worldName, routeName, laps]);
+            .sort((a, b) => a.from - b.from || a.to - b.to);
+        if (fromRouteProfile.length > 0) return fromRouteProfile;
+        return (json.segments ?? []).map((seg) => ({
+            from: Number.isFinite(seg?.from) ? seg.from : 0,
+            to: Number.isFinite(seg?.to) ? seg.to : 0,
+            type: normalizeSegmentType(seg?.type),
+            name: getSegmentName(seg?.name),
+            direction: normalizeDirection(seg?.direction),
+        }));
+    })();
 
     if (loading) {
         return (

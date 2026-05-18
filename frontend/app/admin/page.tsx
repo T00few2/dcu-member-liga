@@ -234,7 +234,7 @@ function AdminPageContent() {
           ) : activeSection === 'league' ? (
             <LeagueManager initialActiveTab={leagueTabFromUrl} onTabChange={handleLeagueTabChange} />
           ) : activeSection === 'categories' ? (
-            <CategoryManager user={user} />
+            <CategoryManager />
           ) : activeSection === 'predictor' ? (
             <CategoryPredictor user={user} />
           ) : activeSection === 'verification' ? (

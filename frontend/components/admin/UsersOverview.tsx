@@ -91,9 +91,8 @@ function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
 
 export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId: string) => void }) {
     const { user } = useAuth();
-    const [rows, setRows] = useState<UserRow[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const { data: rows = [], isLoading: loading, error: queryError, refetch: refetchUsers } = useUsersOverviewQuery();
+    const error = queryError ? (queryError instanceof Error ? queryError.message : 'Failed to load users') : null;
     const [search, setSearch] = useState('');
     const [sortKey, setSortKey] = useState<SortKey>('club');
     const [sortDir, setSortDir] = useState<SortDir>('asc');
@@ -119,29 +118,16 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
 
     const getRowId = useCallback((row: UserRow) => row.userId || row.zwiftId, []);
 
-    const fetchUsers = useCallback(async () => {
-        if (!user) return;
-        setLoading(true);
-        setError(null);
-        try {
-            const token = await user.getIdToken();
-            const res = await fetch(`${API_URL}/admin/users`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data = await res.json();
-            const nextRows = data.users ?? [];
-            setRows(nextRows);
-            const validIds = new Set(nextRows.map((row: UserRow) => getRowId(row)));
-            setSelectedIds(prev => new Set(Array.from(prev).filter(id => validIds.has(id))));
-        } catch (e: any) {
-            setError(e.message ?? 'Failed to load users');
-        } finally {
-            setLoading(false);
-        }
-    }, [user, getRowId]);
-
-    useEffect(() => { fetchUsers(); }, [fetchUsers]);
+    // Keep selectedIds valid when rows change
+    useEffect(() => {
+        if (rows.length === 0) return;
+        const validIds = new Set(rows.map((row: UserRow) => getRowId(row)));
+        setSelectedIds(prev => {
+            const filtered = Array.from(prev).filter(id => validIds.has(id));
+            if (filtered.length === prev.size) return prev;
+            return new Set(filtered);
+        });
+    }, [rows, getRowId]);
 
     const filtered = useMemo(() => {
         const q = search.toLowerCase().trim();
@@ -356,7 +342,7 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
     if (error) return (
         <div className="flex flex-col items-center gap-4 py-20">
             <p className="text-red-600 font-medium">Error: {error}</p>
-            <button onClick={fetchUsers} className="bg-primary text-primary-foreground px-4 py-2 rounded hover:opacity-90 text-sm font-medium">Retry</button>
+            <button onClick={() => refetchUsers()} className="bg-primary text-primary-foreground px-4 py-2 rounded hover:opacity-90 text-sm font-medium">Retry</button>
         </div>
     );
 
@@ -398,7 +384,7 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
                 </div>
                 <div className="flex items-center gap-2">
                     <button
-                        onClick={fetchUsers}
+                        onClick={() => refetchUsers()}
                         className="text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg px-3 py-1.5 transition"
                     >
                         Refresh

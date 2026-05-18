@@ -1,8 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { User } from 'firebase/auth';
+import { useState, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
+import { useLigaCategoriesQuery } from '@/hooks/queries/useLigaCategoriesQuery';
+import { useLeagueSettingsQuery } from '@/hooks/queries/useLeagueSettingsQuery';
 
 // ---------------------------------------------------------------------------
 // Category style map (for badge colours in the rider table)
@@ -69,10 +72,6 @@ interface RiderEntry {
   ligaCategory: LigaCategory | null;
 }
 
-interface CategoryManagerProps {
-  user: User | null;
-}
-
 type FilterMode = 'all' | 'grace' | 'over';
 
 // ---------------------------------------------------------------------------
@@ -99,66 +98,35 @@ function countInRange(riders: RiderEntry[], lower: number, upper: number | null)
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
-export default function CategoryManager({ user }: CategoryManagerProps) {
-  const [riders, setRiders] = useState<RiderEntry[]>([]);
-  const [loading, setLoading] = useState(false);
+export default function CategoryManager() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  const { data: riders = [], isFetching: ridersLoading, refetch: refetchRiders } = useLigaCategoriesQuery();
+  const { data: leagueSettings } = useLeagueSettingsQuery();
+
   const [assigning, setAssigning] = useState(false);
-  const [gracePeriod, setGracePeriod] = useState(35);
   const [filter, setFilter] = useState<FilterMode>('all');
   const [search, setSearch] = useState('');
-  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
-  // Category configuration state
-  const [ligaCategories, setLigaCategories] = useState<CategoryDef[]>(ZR_CATEGORY_DEFAULTS);
+  // Grace period — seeded from leagueSettings once available
+  const [gracePeriod, setGracePeriod] = useState<number | null>(null);
+  const effectiveGracePeriod = gracePeriod ?? (leagueSettings?.gracePeriod as number | undefined) ?? 35;
+
+  // Category configuration state — seeded from leagueSettings once available
+  const [ligaCategories, setLigaCategories] = useState<CategoryDef[] | null>(null);
   const [configDirty, setConfigDirty] = useState(false);
   const [configSaving, setConfigSaving] = useState(false);
 
-  // Load league settings (season, gracePeriod, ligaCategories)
-  useEffect(() => {
-    if (!user || settingsLoaded) return;
-    const load = async () => {
-      try {
-        const token = await user.getIdToken();
-        const res = await fetch(`${API_URL}/league/settings`, {
-          headers: { 'Authorization': `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const s = data.settings || {};
-          if (s.gracePeriod) setGracePeriod(s.gracePeriod);
-          if (s.ligaCategories && Array.isArray(s.ligaCategories) && s.ligaCategories.length >= 2) {
-            setLigaCategories(s.ligaCategories);
-          }
-        }
-      } catch { /* non-fatal */ }
-      setSettingsLoaded(true);
-    };
-    load();
-  }, [user, settingsLoaded]);
-
-  const loadRiders = useCallback(async () => {
-    if (!user) return;
-    setLoading(true);
-    try {
-      const token = await user.getIdToken();
-      const res = await fetch(`${API_URL}/admin/liga-categories`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setRiders(data.riders || []);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
-
-  useEffect(() => { loadRiders(); }, [loadRiders]);
+  const effectiveLigaCategories: CategoryDef[] = ligaCategories ??
+    (leagueSettings?.ligaCategories && Array.isArray(leagueSettings.ligaCategories) && leagueSettings.ligaCategories.length >= 2
+      ? (leagueSettings.ligaCategories as CategoryDef[])
+      : ZR_CATEGORY_DEFAULTS);
 
   // ── Category config operations ──────────────────────────────────────────
 
   function updateCatName(i: number, name: string) {
-    const next = [...ligaCategories];
+    const next = [...effectiveLigaCategories];
     next[i] = { ...next[i], name };
     setLigaCategories(next);
     setConfigDirty(true);
@@ -167,7 +135,7 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
   function updateCatUpper(i: number, raw: string) {
     const n = parseInt(raw, 10);
     if (isNaN(n) || n < 0) return;
-    const next = [...ligaCategories];
+    const next = [...effectiveLigaCategories];
     next[i] = { ...next[i], upper: n };
     setLigaCategories(next);
     setConfigDirty(true);
@@ -175,13 +143,13 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
 
   /** Split category i at the midpoint (or lower + 100 for unbounded top). */
   function splitCat(i: number) {
-    const cat = ligaCategories[i];
-    const lower = getCatLower(ligaCategories, i);
+    const cat = effectiveLigaCategories[i];
+    const lower = getCatLower(effectiveLigaCategories, i);
     const upper = cat.upper;
     const mid = upper !== null
       ? Math.floor((lower + upper) / 2)
       : lower + 100;
-    const next = [...ligaCategories];
+    const next = [...effectiveLigaCategories];
     next[i] = { name: `${cat.name} A`, upper: cat.upper };
     next.splice(i + 1, 0, { name: `${cat.name} B`, upper: mid });
     setLigaCategories(next);
@@ -190,8 +158,8 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
 
   /** Merge category i upward into the category above it (i-1). */
   function mergeCatUp(i: number) {
-    if (i === 0 || ligaCategories.length <= 2) return;
-    const next = [...ligaCategories];
+    if (i === 0 || effectiveLigaCategories.length <= 2) return;
+    const next = [...effectiveLigaCategories];
     next.splice(i, 1);
     setLigaCategories(next);
     setConfigDirty(true);
@@ -205,11 +173,12 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
       const res = await fetch(`${API_URL}/admin/liga-categories/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ categories: ligaCategories }),
+        body: JSON.stringify({ categories: effectiveLigaCategories }),
       });
       const data = await res.json();
       if (res.ok) {
         setConfigDirty(false);
+        queryClient.invalidateQueries({ queryKey: ['league', 'settings'] });
         alert(`Configuration saved (${data.count} categories).`);
       } else {
         alert(`Error: ${data.message}`);
@@ -226,7 +195,7 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
   const handleAssign = async () => {
     if (!user) return;
     if (!confirm(
-      `Assign liga categories based on effective vELO (max of current and 30-day max)?\n\nLimit buffer: ${gracePeriod} points\nCategories: ${ligaCategories.length} configured\n\nThis will overwrite existing assignments for all riders.`
+      `Assign liga categories based on effective vELO (max of current and 30-day max)?\n\nLimit buffer: ${effectiveGracePeriod} points\nCategories: ${effectiveLigaCategories.length} configured\n\nThis will overwrite existing assignments for all riders.`
     )) return;
 
     setAssigning(true);
@@ -235,12 +204,12 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
       const res = await fetch(`${API_URL}/admin/assign-liga-categories`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ gracePeriod, categories: ligaCategories }),
+        body: JSON.stringify({ gracePeriod: effectiveGracePeriod, categories: effectiveLigaCategories }),
       });
       const data = await res.json();
       if (res.ok) {
         alert(`Done! Assigned: ${data.assigned}, Skipped (no rating): ${data.skipped}`);
-        await loadRiders();
+        queryClient.invalidateQueries({ queryKey: ['admin', 'liga-categories'] });
       } else {
         alert(`Error: ${data.message}`);
       }
@@ -249,9 +218,9 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
     }
   };
 
-  const handleReassign = async (zwiftId: string, name: string) => {
+  const handleReassign = useCallback(async (zwiftId: string, name: string) => {
     if (!user) return;
-    if (!confirm(`Move ${name} up to the next category?\n\nThis resets their grace limit to the new category boundary + ${gracePeriod} points.`)) return;
+    if (!confirm(`Move ${name} up to the next category?\n\nThis resets their grace limit to the new category boundary + ${effectiveGracePeriod} points.`)) return;
     try {
       const token = await user.getIdToken();
       const res = await fetch(`${API_URL}/admin/liga-categories/${zwiftId}/reassign`, {
@@ -260,11 +229,11 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
       });
       const data = await res.json();
       if (!res.ok) alert(`Error: ${data.message}`);
-      else await loadRiders();
+      else queryClient.invalidateQueries({ queryKey: ['admin', 'liga-categories'] });
     } catch {
       alert('Failed to reassign rider');
     }
-  };
+  }, [user, effectiveGracePeriod, queryClient]);
 
   // ── Derived stats ───────────────────────────────────────────────────────
 
@@ -285,8 +254,8 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
   const ridersWithRating = riders.filter(r => !isNaN(parseFloat(String(r.effectiveRating))));
   const maxInAnyBucket = Math.max(
     1,
-    ...ligaCategories.map((_, i) =>
-      countInRange(riders, getCatLower(ligaCategories, i), ligaCategories[i].upper)
+    ...effectiveLigaCategories.map((_, i) =>
+      countInRange(riders as RiderEntry[], getCatLower(effectiveLigaCategories, i), effectiveLigaCategories[i].upper)
     )
   );
 
@@ -357,15 +326,15 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {ligaCategories.map((cat, i) => {
-                const lower = getCatLower(ligaCategories, i);
+              {effectiveLigaCategories.map((cat, i) => {
+                const lower = getCatLower(effectiveLigaCategories, i);
                 const upper = cat.upper;
-                const count = countInRange(riders, lower, upper);
+                const count = countInRange(riders as RiderEntry[], lower, upper);
                 const pct = ridersWithRating.length > 0 ? Math.round((count / ridersWithRating.length) * 100) : 0;
                 const barW = Math.round((count / maxInAnyBucket) * 100);
                 const isTop = i === 0;
                 const canSplit = upper === null ? true : (upper - lower) >= 2;
-                const canMergeUp = i > 0 && ligaCategories.length > 2;
+                const canMergeUp = i > 0 && effectiveLigaCategories.length > 2;
 
                 return (
                   <tr key={i} className="hover:bg-muted/30">
@@ -421,7 +390,7 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
                           <button
                             onClick={() => mergeCatUp(i)}
                             className="px-2 py-1 text-xs rounded bg-muted text-muted-foreground hover:text-foreground border border-border"
-                            title={`Merge ${cat.name} into ${ligaCategories[i - 1].name}`}
+                            title={`Merge ${cat.name} into ${effectiveLigaCategories[i - 1].name}`}
                           >
                             Merge ↑
                           </button>
@@ -475,7 +444,7 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
               Limit buffer
               <input
                 type="number"
-                value={gracePeriod}
+                value={effectiveGracePeriod}
                 min={0}
                 onChange={e => setGracePeriod(parseInt(e.target.value) || 0)}
                 className="w-16 px-2 py-1 border border-input rounded bg-background text-foreground text-sm text-right"
@@ -504,7 +473,7 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
                 </button>
               ))}
               <button
-                onClick={loadRiders}
+                onClick={() => refetchRiders()}
                 className="px-3 py-1 rounded text-sm bg-muted text-muted-foreground hover:text-foreground"
               >
                 Refresh
@@ -513,7 +482,7 @@ export default function CategoryManager({ user }: CategoryManagerProps) {
           </div>
         </div>
 
-        {loading ? (
+        {ridersLoading ? (
           <div className="p-8 text-center text-muted-foreground">Loading…</div>
         ) : (
           <div className="overflow-x-auto">

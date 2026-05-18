@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useAuth } from '@/lib/auth-context';
-import { API_URL } from '@/lib/api';
+import { useState, useEffect, useRef } from 'react';
+import { useUserDetailsQuery } from '@/hooks/queries/useUserDetailsQuery';
+import { useUsersOverviewQuery } from '@/hooks/queries/useUsersOverviewQuery';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -359,80 +359,42 @@ interface UserDetailsTabProps {
 }
 
 export default function UserDetailsTab({ initialUserId, onUserSelect }: UserDetailsTabProps) {
-    const { user: authUser } = useAuth();
-
     // Search
     const [searchQuery, setSearchQuery] = useState('');
-    const [allUsers, setAllUsers] = useState<UserSearchRow[]>([]);
     const [showDropdown, setShowDropdown] = useState(false);
     const searchRef = useRef<HTMLDivElement>(null);
 
-    // Selected user data
+    // Selected user id (local UI state)
     const [selectedId, setSelectedId] = useState<string | null>(initialUserId);
-    const [detail, setDetail] = useState<UserDetail | null>(null);
-    const [races, setRaces] = useState<RaceEntry[]>([]);
-    const [loadingDetail, setLoadingDetail] = useState(false);
-    const [loadingRaces, setLoadingRaces] = useState(false);
-    const [detailError, setDetailError] = useState<string | null>(null);
 
     // Sync with URL-driven prop
     useEffect(() => {
         setSelectedId(initialUserId);
     }, [initialUserId]);
 
-    // Fetch user list for search
-    useEffect(() => {
-        if (!authUser) return;
-        authUser.getIdToken().then(token => {
-            fetch(`${API_URL}/admin/users`, { headers: { Authorization: `Bearer ${token}` } })
-                .then(r => r.json())
-                .then(data => {
-                    if (data.users) setAllUsers(data.users);
-                })
-                .catch(() => {});
-        });
-    }, [authUser]);
+    // User list for search autocomplete
+    const { data: allUsersData = [] } = useUsersOverviewQuery();
+    const allUsers: UserSearchRow[] = allUsersData.map(u => ({
+        userId: u.userId,
+        zwiftId: u.zwiftId,
+        name: u.name,
+        email: u.email,
+        club: u.club,
+    }));
 
-    // Fetch full detail when selectedId changes
-    const fetchDetail = useCallback(async (userId: string) => {
-        if (!authUser) return;
-        setLoadingDetail(true);
-        setLoadingRaces(true);
-        setDetailError(null);
-        setDetail(null);
-        setRaces([]);
+    // Detail + races query
+    const {
+        data: detailData,
+        isLoading: loadingDetail,
+        error: detailQueryError,
+    } = useUserDetailsQuery(selectedId);
 
-        try {
-            const token = await authUser.getIdToken();
-            const headers = { Authorization: `Bearer ${token}` };
-
-            const [detailRes, racesRes] = await Promise.all([
-                fetch(`${API_URL}/admin/users/${encodeURIComponent(userId)}`, { headers }),
-                fetch(`${API_URL}/admin/users/${encodeURIComponent(userId)}/races`, { headers }),
-            ]);
-
-            const detailData = await detailRes.json();
-            const racesData = await racesRes.json();
-
-            if (!detailRes.ok) {
-                setDetailError(detailData.error ?? 'Failed to load user details');
-            } else {
-                setDetail(detailData.user);
-            }
-            if (racesRes.ok && racesData.races) {
-                setRaces(racesData.races);
-            }
-        } catch {
-            setDetailError('Network error loading user details');
-        } finally {
-            setLoadingDetail(false);
-            setLoadingRaces(false);
-        }
-    }, [authUser]);
-
-    useEffect(() => {
-        if (selectedId) fetchDetail(selectedId);
-    }, [selectedId, fetchDetail]);
+    const detail = detailData?.detail ?? null;
+    const races = detailData?.races ?? [];
+    const loadingRaces = loadingDetail;
+    const detailError = detailQueryError
+        ? (detailQueryError instanceof Error ? detailQueryError.message : 'Failed to load user details')
+        : null;
 
     // Search filtering
     const q = searchQuery.trim().toLowerCase();

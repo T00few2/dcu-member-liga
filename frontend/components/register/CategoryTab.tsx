@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
+import { useProfileQuery } from '@/hooks/queries';
 
 // ---------------------------------------------------------------------------
 // Category metadata (mirrors category_engine.py)
@@ -102,29 +104,13 @@ function CategoryExplanation() {
 
 export default function CategoryTab() {
     const { user } = useAuth();
+    const queryClient = useQueryClient();
 
-    const [profile, setProfile] = useState<Profile | null>(null);
-    const [loading, setLoading] = useState(true);
+    const { data: profile, isLoading: loading } = useProfileQuery();
+
     const [selected, setSelected] = useState<CategoryName | ''>('');
     const [saving, setSaving] = useState(false);
     const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
-
-    useEffect(() => {
-        if (!user) return;
-        (async () => {
-            try {
-                const token = await user.getIdToken();
-                const res = await fetch(`${API_URL}/profile`, {
-                    headers: { Authorization: `Bearer ${token}` },
-                });
-                if (res.ok) setProfile(await res.json());
-            } catch (e) {
-                console.error('Failed to load profile', e);
-            } finally {
-                setLoading(false);
-            }
-        })();
-    }, [user]);
 
     const lc = profile?.ligaCategory;
     const currentCatIndex = lc ? catIndex(lc.category) : -1;
@@ -152,10 +138,7 @@ export default function CategoryTab() {
             const data = await res.json();
             if (res.ok) {
                 setToast({ msg: data.message, ok: true });
-                const profileRes = await fetch(`${API_URL}/profile`, {
-                    headers: { Authorization: `Bearer ${token}` },
-                });
-                if (profileRes.ok) setProfile(await profileRes.json());
+                await queryClient.invalidateQueries({ queryKey: ['profile'] });
                 setSelected('');
             } else {
                 setToast({ msg: data.message || 'Noget gik galt', ok: false });

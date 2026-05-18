@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { API_URL, getZwiftInsiderUrl } from '@/lib/api';
+import { getZwiftInsiderUrl } from '@/lib/api';
 import { formatDateLong, formatTimeWithTz, fromTimestamp } from '@/lib/formatDate';
 import PointsSplitBadge from '@/components/races/PointsSplitBadge';
 import RouteElevationChart from '@/components/races/RouteElevationChart';
 import type { Race, Sprint, EventCategoryConfig, CategoryConfig } from '@/types/live';
 import type { LeagueSettings, RaceGroup } from '@/types/admin';
+import { useRouteElevationQuery, useRaceSegmentsQuery } from '@/hooks/queries';
 
 interface ProfileSegment {
     name: string;
@@ -258,8 +258,6 @@ export default function RaceCard({
 }: RaceCardProps) {
     const raceDate = fromTimestamp(race.date) || new Date(NaN);
     const isPublicVariant = variant === 'public';
-    const [profileData, setProfileData] = useState<ProfileData | null>(null);
-    const [eventSegments, setEventSegments] = useState<EventSegmentInstance[]>([]);
     const userConfig = race.eventMode === 'multi' ? getUserEventConfig(race, userCategory) : null;
     const userSingleConfig = (race.eventMode !== 'multi' && race.eventMode !== 'grouped') ? getUserSingleConfig(race, userCategory) : null;
     const userGroupConfig = race.eventMode === 'grouped' ? getUserGroupConfig(race, userCategory) : null;
@@ -268,10 +266,10 @@ export default function RaceCard({
     ) || null;
 
     const lapsToShow = race.eventMode === 'multi'
-        ? (userConfig?.laps || race.laps)
+        ? (userConfig?.laps || race.laps || 1)
         : race.eventMode === 'grouped'
-        ? (userGroupCatConfig?.laps || userGroupConfig?.laps || race.laps)
-        : (userSingleConfig?.laps || race.laps);
+        ? (userGroupCatConfig?.laps || userGroupConfig?.laps || race.laps || 1)
+        : (userSingleConfig?.laps || race.laps || 1);
 
     const sprintsToShow = isPublicVariant
         ? getPublicSprints(race)
@@ -290,6 +288,28 @@ export default function RaceCard({
     const resolvedSprintsToShow = sprintsToShow.length > 0
         ? sprintsToShow
         : fallbackSprintsFromSelectedKeys(race.selectedSegments);
+
+    const hasSprintsAndRoute = resolvedSprintsToShow.length > 0;
+
+    const { data: elevationData } = useRouteElevationQuery(
+        race.map && race.routeName && hasSprintsAndRoute ? race.map : undefined,
+        race.map && race.routeName && hasSprintsAndRoute ? race.routeName : undefined,
+        lapsToShow,
+    );
+
+    const profileData: ProfileData | null = elevationData
+        ? {
+              leadInDistance: Number(elevationData.leadInDistance) || 0,
+              profileSegments: Array.isArray(elevationData.profileSegments) ? elevationData.profileSegments : [],
+          }
+        : null;
+
+    const { data: eventSegmentsData } = useRaceSegmentsQuery(
+        race.routeId,
+        lapsToShow,
+        hasSprintsAndRoute,
+    );
+    const eventSegments = eventSegmentsData ?? [];
 
     const resolvedProfileSprintsToShow = resolvedSprintsToShow.map((seg) => {
         const segId = String(seg.id || '').trim();
@@ -316,42 +336,6 @@ export default function RaceCard({
         if (onRouteOccurrence < 1) return seg;
         return { ...seg, count: onRouteOccurrence };
     });
-
-    useEffect(() => {
-        if (!race.map || !race.routeName || resolvedSprintsToShow.length === 0) return;
-        const params = new URLSearchParams({ world: race.map, route: race.routeName, laps: String(lapsToShow) });
-        fetch(`/api/route-elevation?${params}`)
-            .then((r) => (r.ok ? r.json() : null))
-            .then((json) => {
-                if (!json) return;
-                setProfileData({
-                    leadInDistance: Number(json.leadInDistance) || 0,
-                    profileSegments: Array.isArray(json.profileSegments) ? json.profileSegments : [],
-                });
-            })
-            .catch(() => {});
-    }, [race.map, race.routeName, lapsToShow, resolvedSprintsToShow.length]);
-
-    useEffect(() => {
-        if (!race.routeId || resolvedSprintsToShow.length === 0) {
-            setEventSegments([]);
-            return;
-        }
-        const params = new URLSearchParams({ routeId: String(race.routeId), laps: String(lapsToShow) });
-        fetch(`${API_URL}/segments?${params}`)
-            .then((r) => (r.ok ? r.json() : null))
-            .then((json) => {
-                const raw = Array.isArray(json?.segments) ? json.segments : [];
-                const mapped = raw.map((s: any) => ({
-                    id: String(s?.id ?? ''),
-                    count: Number(s?.count) || 0,
-                    direction: s?.direction,
-                    lap: Number(s?.lap) || 0,
-                })) as EventSegmentInstance[];
-                setEventSegments(mapped);
-            })
-            .catch(() => setEventSegments([]));
-    }, [race.routeId, lapsToShow, resolvedSprintsToShow.length]);
 
     const racePassHref = race.eventMode === 'multi'
         ? (userConfig?.eventId ? getZwiftEventUrl(userConfig.eventId, userConfig.eventSecret) : null)
