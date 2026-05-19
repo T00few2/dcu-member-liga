@@ -15,8 +15,9 @@ import {
     increment,
     writeBatch,
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, auth } from './firebase';
 import { Post, Comment } from '@/types/posts';
+import { API_URL } from './api';
 
 function tsToString(ts: unknown): string {
     if (ts instanceof Timestamp) return ts.toDate().toISOString();
@@ -133,16 +134,27 @@ export async function getComments(postId: string): Promise<Comment[]> {
 }
 
 export async function addComment(postId: string, input: { uid: string; displayName: string; body: string; parentId: string | null }): Promise<string> {
-    const batch = writeBatch(db);
-    const commentRef = doc(collection(db, 'posts', postId, 'comments'));
-    batch.set(commentRef, {
-        ...input,
-        reported: false,
-        createdAt: serverTimestamp(),
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error('Not authenticated');
+    const idToken = await currentUser.getIdToken();
+    const res = await fetch(`${API_URL}/posts/${postId}/comments`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+            displayName: input.displayName,
+            body: input.body,
+            parentId: input.parentId,
+        }),
     });
-    batch.update(doc(db, 'posts', postId), { commentCount: increment(1) });
-    await batch.commit();
-    return commentRef.id;
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || 'Failed to add comment');
+    }
+    const data = await res.json();
+    return data.id;
 }
 
 export async function reportComment(postId: string, commentId: string): Promise<void> {
