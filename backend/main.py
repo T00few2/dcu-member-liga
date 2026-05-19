@@ -10,6 +10,7 @@ from routes.admin import admin_bp
 from routes.integration import integration_bp
 from routes.seed import seed_bp
 from routes.policy import policy_bp
+from routes.posts import posts_bp
 from utils.logging_setup import configure_logging
 
 # ---------------------------------------------------------------------------
@@ -81,6 +82,7 @@ def create_app():
     app.register_blueprint(policy_bp)
     from routes.verification import verification_bp
     app.register_blueprint(verification_bp)
+    app.register_blueprint(posts_bp)
 
     @app.after_request
     def after_request(response):
