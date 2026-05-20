@@ -4,6 +4,8 @@ import os
 import json
 from collections import defaultdict
 
+from services.pen_exit_routing import synthesize_leadin_entries
+
 class ZwiftGameService:
     def __init__(self):
         self._cache = None
@@ -110,7 +112,12 @@ class ZwiftGameService:
             strict_start_end_ids = set()
 
         # Partition the manifest into lead‑in and main entries.
-        manifest = route.get("manifest", [])
+        manifest = list(route.get("manifest", []))
+        if not any(entry.get("leadin") for entry in manifest):
+            synthesized_leadin = synthesize_leadin_entries(route, base_dir)
+            if synthesized_leadin:
+                manifest = synthesized_leadin + manifest
+
         leadin_entries = [entry for entry in manifest if entry.get("leadin")]
         main_entries   = [entry for entry in manifest if not entry.get("leadin")]
 
