@@ -1,6 +1,6 @@
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
@@ -54,14 +54,58 @@ def test_filter_finish_entries_all_sprints_uses_last_route_crossing_instance():
     assert {e["_officialSegmentResult"]["endWorldTime"] for e in filtered} == {250, 260}
 
 
-def test_resolve_finish_time_prefers_end_date_delta_over_segment_duration():
+def test_resolve_finish_time_prefers_world_time_delta_over_end_date_and_segment_duration():
     subgroup_start = datetime(2026, 5, 13, 17, 0, 0, tzinfo=timezone.utc)
+    finish_dt = subgroup_start + timedelta(minutes=49, seconds=1)
     entry = {
         "activityData": {"durationInMilliseconds": 2668000},  # 44:28
-        "_officialSegmentResult": {"endDate": "2026-05-13T17:49:01Z"},
+        "_officialSegmentResult": {
+            "endWorldTime": int(finish_dt.timestamp()),
+            "endDate": "2026-05-13T17:48:00Z",
+        },
     }
 
     assert resolve_finish_time_ms(entry, subgroup_start) == 2941000
+
+
+def test_resolve_finish_time_supports_world_time_in_milliseconds():
+    subgroup_start = datetime(2026, 5, 13, 17, 0, 0, tzinfo=timezone.utc)
+    finish_dt = subgroup_start + timedelta(minutes=49, seconds=1)
+    entry = {
+        "activityData": {"durationInMilliseconds": 2668000},  # 44:28
+        "_officialSegmentResult": {
+            "endWorldTime": int(finish_dt.timestamp() * 1000),
+        },
+    }
+
+    assert resolve_finish_time_ms(entry, subgroup_start) == 2941000
+
+
+def test_resolve_finish_time_parses_end_date_with_numeric_timezone_without_ms():
+    subgroup_start = datetime(2026, 5, 20, 17, 0, 0, tzinfo=timezone.utc)
+    entry = {
+        "activityData": {"durationInMilliseconds": 278579},
+        "_officialSegmentResult": {
+            # World time may not align with Unix epoch; should then fall back to endDate.
+            "endWorldTime": 365281266848,
+            "endDate": "2026-05-20T17:55:33+0000",
+        },
+    }
+
+    assert resolve_finish_time_ms(entry, subgroup_start) == 3333000
+
+
+def test_resolve_finish_time_never_falls_back_to_segment_duration():
+    subgroup_start = datetime(2026, 5, 20, 17, 0, 0, tzinfo=timezone.utc)
+    entry = {
+        "activityData": {"durationInMilliseconds": 278579},
+        "_officialSegmentResult": {
+            "endWorldTime": 0,
+            "endDate": "",
+        },
+    }
+
+    assert resolve_finish_time_ms(entry, subgroup_start) == 0
 
 
 def test_filter_finish_entries_uses_route_instances_over_id_guessing():
