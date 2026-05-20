@@ -111,6 +111,12 @@ def resolve_finish_segment_candidate(
     if not segmented or not route_segments:
         return None
 
+    def _is_sprint_like_route_segment(seg: dict[str, Any]) -> bool:
+        name = str(seg.get("name") or "").strip().lower()
+        if not name:
+            return False
+        return any(token in name for token in ("sprint", "kom", "qom"))
+
     def _norm_direction(value: Any) -> str:
         raw = str(value or "").strip().lower()
         if raw in {"reverse", "rev", "r"}:
@@ -176,6 +182,11 @@ def resolve_finish_segment_candidate(
         elif lap > 0 and (sid, lap) in sprint_instances_by_lap_wild_dir:
             is_configured_sprint = True
         elif lap > 0 and (sid, lap, seg_direction) in sprint_instances_by_lap:
+            is_configured_sprint = True
+
+        # Some routes include additional sprint/KOM arches that are not configured
+        # for points. They must still be excluded from finish-line inference.
+        if _is_sprint_like_route_segment(seg):
             is_configured_sprint = True
 
         if is_configured_sprint:

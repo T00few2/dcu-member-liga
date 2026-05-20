@@ -139,6 +139,22 @@ def test_filter_finish_entries_does_not_treat_first_sprint_as_finish_before_fini
     assert filtered == []
 
 
+def test_filter_finish_entries_excludes_unconfigured_sprint_named_route_arches():
+    fetcher = ZwiftFetcher(zwift_service=None)
+    entries = [_entry("r1", "seg-acropolis", 100, 1000)]
+
+    filtered = fetcher._filter_finish_entries(
+        entries=entries,
+        route_segments=[
+            {"id": "seg-grade", "name": "The Grade", "count": 1, "lap": 1, "direction": "forward"},
+            {"id": "seg-acropolis", "name": "Acropolis Sprint", "count": 1, "lap": 1, "direction": "forward"},
+        ],
+        configured_sprints=[{"id": "seg-mayan", "count": 1, "lap": 1, "direction": "forward"}],
+    )
+
+    assert filtered == []
+
+
 def test_fetch_segment_efforts_uses_prefetched_crossings():
     fetcher = ZwiftFetcher(zwift_service=None)
     entries = [
