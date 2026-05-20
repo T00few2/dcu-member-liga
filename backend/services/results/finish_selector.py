@@ -102,60 +102,19 @@ def resolve_finish_segment_candidate(
     configured_sprints: list[dict[str, Any]] | None,
 ) -> tuple[str, int] | None:
     """
-    Resolve finish segment instance from route/sprint config without selecting riders.
+    Resolve finish segment instance from ordered route instances.
 
-    Returns (segment_id, segment_count) when a deterministic finish segment candidate
-    can be identified from route instances. Returns None for true mapping/config
-    failures where finish cannot be resolved.
+    The finish segment is always the final route segment instance (lap >= 1).
+    This follows route-profile ordering from elevation cache / route metadata.
+    configured_sprints is ignored for finish selection.
     """
     if not segmented or not route_segments:
         return None
-
-    def _norm_direction(value: Any) -> str:
-        raw = str(value or "").strip().lower()
-        if raw in {"reverse", "rev", "r"}:
-            return "reverse"
-        return "forward"
-
-    sprint_instances: set[tuple[str, int, str]] = set()
-    sprint_instances_wild_dir: set[tuple[str, int]] = set()
-    sprint_instances_by_lap: set[tuple[str, int, str]] = set()
-    sprint_instances_by_lap_wild_dir: set[tuple[str, int]] = set()
-
-    for sprint in configured_sprints or []:
-        sid = str(sprint.get("id") or "").strip()
-        if not sid:
-            continue
-        try:
-            count = int(sprint.get("count") or 1)
-        except (TypeError, ValueError):
-            count = 1
-        if count < 1:
-            count = 1
-
-        direction_raw = sprint.get("direction")
-        if direction_raw is None or str(direction_raw).strip() == "":
-            sprint_instances_wild_dir.add((sid, count))
-        else:
-            sprint_instances.add((sid, count, _norm_direction(direction_raw)))
-
-        lap_raw = sprint.get("lap")
-        try:
-            lap = int(lap_raw) if lap_raw is not None else 0
-        except (TypeError, ValueError):
-            lap = 0
-        if lap > 0:
-            if direction_raw is None or str(direction_raw).strip() == "":
-                sprint_instances_by_lap_wild_dir.add((sid, lap))
-            else:
-                sprint_instances_by_lap.add((sid, lap, _norm_direction(direction_raw)))
-
-    finish_candidate: tuple[str, int] | None = None
-    all_sprints_candidate: tuple[str, int] | None = None
+    del configured_sprints
 
     for seg in reversed(route_segments):
         sid = str(seg.get("id") or "").strip()
-        if not sid or sid not in segmented:
+        if not sid:
             continue
         lap = int(seg.get("lap") or 0)
         if lap < 1:
@@ -166,24 +125,5 @@ def resolve_finish_segment_candidate(
             seg_count = 1
         if seg_count < 1:
             seg_count = 1
-
-        seg_direction = _norm_direction(seg.get("direction"))
-        is_configured_sprint = False
-        if (sid, seg_count) in sprint_instances_wild_dir:
-            is_configured_sprint = True
-        elif (sid, seg_count, seg_direction) in sprint_instances:
-            is_configured_sprint = True
-        elif lap > 0 and (sid, lap) in sprint_instances_by_lap_wild_dir:
-            is_configured_sprint = True
-        elif lap > 0 and (sid, lap, seg_direction) in sprint_instances_by_lap:
-            is_configured_sprint = True
-
-        if is_configured_sprint:
-            if all_sprints_candidate is None:
-                all_sprints_candidate = (sid, seg_count)
-            continue
-
-        finish_candidate = (sid, seg_count)
-        break
-
-    return finish_candidate or all_sprints_candidate
+        return (sid, seg_count)
+    return None
