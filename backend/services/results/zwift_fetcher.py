@@ -76,6 +76,7 @@ class ZwiftFetcher:
                 crossings,
                 route_segments,
                 configured_sprints,
+                subgroup_start_time,
             )
 
             for entry in finish_results_raw:
@@ -134,6 +135,7 @@ class ZwiftFetcher:
         entries: list[dict[str, Any]],
         route_segments: list[dict[str, Any]] | None = None,
         configured_sprints: list[dict[str, Any]] | None = None,
+        subgroup_start_time: datetime | None = None,
     ) -> list[dict[str, Any]]:
         """
         Filter segment entries to finish-line entries only.
@@ -164,6 +166,7 @@ class ZwiftFetcher:
             route_segments=route_segments,
             configured_sprints=configured_sprints,
             entry_sort_key=self._entry_sort_key,
+            subgroup_start_time=subgroup_start_time,
         )
         if selected_from_route:
             return selected_from_route

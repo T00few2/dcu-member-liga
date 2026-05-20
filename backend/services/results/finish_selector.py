@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 
@@ -13,6 +14,7 @@ def select_finish_entries_from_route_instances(
     route_segments: list[dict[str, Any]] | None,
     configured_sprints: list[dict[str, Any]] | None,
     entry_sort_key: Callable[[dict[str, Any]], tuple[int, int]],
+    subgroup_start_time: datetime | None = None,
 ) -> list[dict[str, Any]]:
     """
     Deterministically pick finish entries from route segment instances.
@@ -79,11 +81,46 @@ def select_finish_entries_from_route_instances(
         if rider_id:
             by_rider[rider_id].append(e)
 
+    start_dt = subgroup_start_time
+    if start_dt is not None and start_dt.tzinfo is None:
+        start_dt = start_dt.replace(tzinfo=timezone.utc)
+
+    def _parse_end_date(raw_value: Any) -> datetime | None:
+        text = str(raw_value or "").strip()
+        if not text:
+            return None
+        candidates = [text]
+        if text.endswith("Z"):
+            candidates.append(text[:-1] + "+00:00")
+        elif len(text) >= 5 and (text[-5] in {"+", "-"}) and text[-3] != ":":
+            candidates.append(f"{text[:-5]}{text[-5:-2]}:{text[-2:]}")
+        for candidate in candidates:
+            try:
+                parsed = datetime.fromisoformat(candidate)
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                return parsed
+            except ValueError:
+                continue
+        return None
+
     selected: list[dict[str, Any]] = []
     for rider_entries in by_rider.values():
-        rider_entries.sort(key=entry_sort_key)
-        if len(rider_entries) >= finish_seg_count:
-            selected.append(rider_entries[finish_seg_count - 1])
+        rider_entries_sorted = sorted(rider_entries, key=entry_sort_key)
+        if start_dt is not None:
+            rider_entries_after_start = []
+            for entry in rider_entries_sorted:
+                raw = entry.get("_officialSegmentResult") or {}
+                end_dt = _parse_end_date(raw.get("endDate"))
+                # If endDate is missing/invalid, keep entry to avoid dropping
+                # legitimate crossings from sparse payloads.
+                if end_dt is None or end_dt >= start_dt:
+                    rider_entries_after_start.append(entry)
+            if len(rider_entries_after_start) >= finish_seg_count:
+                selected.append(rider_entries_after_start[finish_seg_count - 1])
+                continue
+        if len(rider_entries_sorted) >= finish_seg_count:
+            selected.append(rider_entries_sorted[finish_seg_count - 1])
 
     logger.info(
         "route-instance finish selection: segment=%s count=%s selected=%s riders_with_segment=%s",
