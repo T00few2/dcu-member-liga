@@ -60,6 +60,7 @@ class ZwiftFetcher:
         fetch_mode: str,
         registered_riders: dict[str, Any],
         route_segments: list[dict[str, Any]] | None = None,
+        route_profile_segments: list[dict[str, Any]] | None = None,
         configured_sprints: list[dict[str, Any]] | None = None,
         subgroup_start_time: datetime | None = None,
         all_results_raw: list[dict[str, Any]] | None = None,
@@ -75,6 +76,7 @@ class ZwiftFetcher:
             finish_results_raw = self._filter_finish_entries(
                 crossings,
                 route_segments,
+                route_profile_segments,
                 configured_sprints,
                 subgroup_start_time,
             )
@@ -134,6 +136,7 @@ class ZwiftFetcher:
         self,
         entries: list[dict[str, Any]],
         route_segments: list[dict[str, Any]] | None = None,
+        route_profile_segments: list[dict[str, Any]] | None = None,
         configured_sprints: list[dict[str, Any]] | None = None,
         subgroup_start_time: datetime | None = None,
     ) -> list[dict[str, Any]]:
@@ -164,6 +167,7 @@ class ZwiftFetcher:
         selected_from_route = select_finish_entries_from_route_instances(
             segmented=segmented,
             route_segments=route_segments,
+            route_profile_segments=route_profile_segments,
             configured_sprints=configured_sprints,
             entry_sort_key=self._entry_sort_key,
             subgroup_start_time=subgroup_start_time,
@@ -173,6 +177,7 @@ class ZwiftFetcher:
         finish_candidate = resolve_finish_segment_candidate(
             segmented=segmented,
             route_segments=route_segments,
+            route_profile_segments=route_profile_segments,
             configured_sprints=configured_sprints,
         )
         # Provisional in-race runs can legitimately have zero finish crossings so far.

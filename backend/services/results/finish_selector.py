@@ -12,6 +12,7 @@ logger = logging.getLogger("FinishSelector")
 def select_finish_entries_from_route_instances(
     segmented: dict[str, list[dict[str, Any]]],
     route_segments: list[dict[str, Any]] | None,
+    route_profile_segments: list[dict[str, Any]] | None,
     configured_sprints: list[dict[str, Any]] | None,
     entry_sort_key: Callable[[dict[str, Any]], tuple[int, int]],
     subgroup_start_time: datetime | None = None,
@@ -68,6 +69,7 @@ def select_finish_entries_from_route_instances(
     chosen = resolve_finish_segment_candidate(
         segmented=segmented,
         route_segments=route_segments,
+        route_profile_segments=route_profile_segments,
         configured_sprints=configured_sprints,
     )
     if not chosen:
@@ -116,10 +118,12 @@ def select_finish_entries_from_route_instances(
                 # legitimate crossings from sparse payloads.
                 if end_dt is None or end_dt >= start_dt:
                     rider_entries_after_start.append(entry)
-            if len(rider_entries_after_start) >= finish_seg_count:
-                selected.append(rider_entries_after_start[finish_seg_count - 1])
+            if rider_entries_after_start and len(rider_entries_after_start) >= finish_seg_count:
+                # Finish line can be crossed in lead-in and race laps. We always
+                # want the final crossing on the resolved finish segment.
+                selected.append(rider_entries_after_start[-1])
                 continue
-        if len(rider_entries_sorted) >= finish_seg_count:
+        if start_dt is None and len(rider_entries_sorted) >= finish_seg_count:
             selected.append(rider_entries_sorted[finish_seg_count - 1])
 
     logger.info(
@@ -136,28 +140,74 @@ def select_finish_entries_from_route_instances(
 def resolve_finish_segment_candidate(
     segmented: dict[str, list[dict[str, Any]]],
     route_segments: list[dict[str, Any]] | None,
+    route_profile_segments: list[dict[str, Any]] | None,
     configured_sprints: list[dict[str, Any]] | None,
 ) -> tuple[str, int] | None:
     """
     Resolve finish segment instance from ordered route instances.
 
-    The finish segment is always the final route segment instance (lap >= 1).
-    This follows route-profile ordering from elevation cache / route metadata.
-
-    When a segment is crossed in lead-in and again in race laps, route segment
-    occurrence counts can drift. Mirror frontend RaceCard logic by remapping the
-    final route-instance count to "on-route" occurrence (lap >= 1 only) using
-    id+direction matching.
+    Primary source: elevation_cache.profileSegments ordering.
+    Fallback source: route segment ordering from Zwift game route manifest.
     """
     if not segmented or not route_segments:
         return None
-    del configured_sprints
+
+    def _norm_name(value: Any) -> str:
+        raw = str(value or "").strip().lower()
+        raw = raw.replace(" rev.", "").replace(" rev", "").replace(" reverse", "")
+        cleaned = "".join(ch if ch.isalnum() or ch.isspace() else " " for ch in raw)
+        return " ".join(cleaned.split())
 
     def _norm_direction(value: Any) -> str:
         raw = str(value or "").strip().lower()
         if raw in {"reverse", "rev", "r"}:
             return "reverse"
         return "forward"
+
+    # 1) Primary: elevation_cache profile ordering (last segment is finish)
+    if route_profile_segments:
+        profile_sorted = sorted(
+            [s for s in route_profile_segments if isinstance(s, dict)],
+            key=lambda s: (
+                min(float(s.get("fromKm") or 0.0), float(s.get("toKm") or 0.0)),
+                max(float(s.get("fromKm") or 0.0), float(s.get("toKm") or 0.0)),
+            ),
+        )
+        if profile_sorted:
+            last_profile = profile_sorted[-1]
+            target_name = _norm_name(last_profile.get("name"))
+            target_dir = _norm_direction(last_profile.get("direction"))
+
+            # Occurrence index from profile ordering (handles duplicated names like
+            # lead-in + race-lap appearances of the same segment).
+            profile_occurrence = sum(
+                1
+                for seg in profile_sorted
+                if _norm_name(seg.get("name")) == target_name
+                and _norm_direction(seg.get("direction")) == target_dir
+            )
+            if profile_occurrence < 1:
+                profile_occurrence = 1
+
+            route_matches: list[dict[str, Any]] = []
+            for seg in route_segments:
+                if int(seg.get("lap") or 0) < 1:
+                    continue
+                if _norm_name(seg.get("name")) != target_name:
+                    continue
+                if _norm_direction(seg.get("direction")) != target_dir:
+                    continue
+                route_matches.append(seg)
+            if route_matches:
+                idx = min(profile_occurrence, len(route_matches)) - 1
+                chosen = route_matches[idx]
+                sid = str(chosen.get("id") or "").strip()
+                seg_count = int(chosen.get("count") or 1)
+                if sid and seg_count > 0:
+                    return (sid, seg_count)
+
+    # 2) Fallback: route ordering (existing behavior)
+    del configured_sprints
 
     for seg in reversed(route_segments):
         sid = str(seg.get("id") or "").strip()
