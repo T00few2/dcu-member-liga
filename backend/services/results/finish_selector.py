@@ -111,12 +111,6 @@ def resolve_finish_segment_candidate(
     if not segmented or not route_segments:
         return None
 
-    def _is_sprint_like_route_segment(seg: dict[str, Any]) -> bool:
-        name = str(seg.get("name") or "").strip().lower()
-        if not name:
-            return False
-        return any(token in name for token in ("sprint", "kom", "qom"))
-
     def _norm_direction(value: Any) -> str:
         raw = str(value or "").strip().lower()
         if raw in {"reverse", "rev", "r"}:
@@ -161,7 +155,7 @@ def resolve_finish_segment_candidate(
 
     for seg in reversed(route_segments):
         sid = str(seg.get("id") or "").strip()
-        if not sid:
+        if not sid or sid not in segmented:
             continue
         lap = int(seg.get("lap") or 0)
         if lap < 1:
@@ -184,16 +178,7 @@ def resolve_finish_segment_candidate(
         elif lap > 0 and (sid, lap, seg_direction) in sprint_instances_by_lap:
             is_configured_sprint = True
 
-        # Some routes include additional sprint/KOM arches that are not configured
-        # for points. They must still be excluded from finish-line inference.
-        if _is_sprint_like_route_segment(seg):
-            is_configured_sprint = True
-
         if is_configured_sprint:
-            # Keep the most recent configured sprint instance as a fallback
-            # only when every race-lap segment instance is configured sprint.
-            # Do not require live crossings here: in-race provisional runs may
-            # have crossed only early route instances.
             if all_sprints_candidate is None:
                 all_sprints_candidate = (sid, seg_count)
             continue
