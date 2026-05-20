@@ -406,7 +406,6 @@ class ResultsProcessor:
             # Build ordered route segment list for finish-line identification.
             # The finish segment = last non-sprint segment in route chronology.
             route_segments = self._resolve_route_segments(race_data, subgroup)
-            route_profile_segments = self._resolve_elevation_profile_segments(route_segments)
             all_crossings_raw = self._prefetch_subgroup_crossings_if_needed(
                 subgroup_id=subgroup_id,
                 event_secret=event_secret,
@@ -421,7 +420,6 @@ class ResultsProcessor:
                 fetch_mode,
                 registered_riders,
                 route_segments=route_segments,
-                route_profile_segments=route_profile_segments,
                 configured_sprints=category_sprints,
                 subgroup_start_time=start_time,
                 all_results_raw=all_crossings_raw,
@@ -678,103 +676,6 @@ class ResultsProcessor:
             except Exception as e:
                 logger.warning(f"Could not resolve route segments for {route_id}: {e}")
         return route_segments
-
-    def _resolve_elevation_profile_segments(
-        self,
-        route_segments: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        """
-        Resolve best-matching elevation_cache.profileSegments for a route.
-
-        This makes finish-line resolution follow the same profile ordering used
-        in route/elevation admin tooling.
-        """
-        if not self.db or not route_segments:
-            return []
-
-        def _norm_name(value: Any) -> str:
-            raw = str(value or "").strip().lower()
-            raw = raw.replace(" rev.", "").replace(" rev", "").replace(" reverse", "")
-            cleaned = "".join(ch if ch.isalnum() or ch.isspace() else " " for ch in raw)
-            return " ".join(cleaned.split())
-
-        def _norm_dir(value: Any, name: Any = None) -> str:
-            d = str(value or "").strip().lower()
-            if d in {"reverse", "rev", "r"}:
-                return "reverse"
-            if d in {"forward", "f"}:
-                return "forward"
-            n = str(name or "").strip().lower()
-            if "reverse" in n or " rev" in n:
-                return "reverse"
-            return "forward"
-
-        route_keys = [
-            (_norm_name(seg.get("name")), _norm_dir(seg.get("direction"), seg.get("name")))
-            for seg in route_segments
-            if int(seg.get("lap") or 0) >= 1 and str(seg.get("name") or "").strip()
-        ]
-        if not route_keys:
-            return []
-
-        best_segments: list[dict[str, Any]] = []
-        best_score: tuple[int, int] = (0, 0)
-
-        try:
-            docs = self.db.collection("elevation_cache").stream()
-            for doc in docs:
-                payload = doc.to_dict() or {}
-                profile_segments = payload.get("profileSegments")
-                if not isinstance(profile_segments, list) or not profile_segments:
-                    continue
-                prof = [s for s in profile_segments if isinstance(s, dict)]
-                if not prof:
-                    continue
-
-                prof_sorted = sorted(
-                    prof,
-                    key=lambda s: (
-                        min(float(s.get("fromKm") or 0.0), float(s.get("toKm") or 0.0)),
-                        max(float(s.get("fromKm") or 0.0), float(s.get("toKm") or 0.0)),
-                    ),
-                )
-                prof_keys = [
-                    (_norm_name(s.get("name")), _norm_dir(s.get("direction"), s.get("name")))
-                    for s in prof_sorted
-                    if str(s.get("name") or "").strip()
-                ]
-                if not prof_keys:
-                    continue
-
-                j = 0
-                ordered = 0
-                for key in prof_keys:
-                    while j < len(route_keys):
-                        if route_keys[j] == key:
-                            ordered += 1
-                            j += 1
-                            break
-                        j += 1
-
-                overlap = len(set(prof_keys) & set(route_keys))
-                score = (ordered, overlap)
-                if score > best_score:
-                    best_score = score
-                    best_segments = prof_sorted
-        except Exception as e:
-            logger.warning(f"Could not resolve elevation_cache profileSegments: {e}")
-            return []
-
-        min_ordered = max(2, len(route_keys) // 2)
-        if best_segments and best_score[0] >= min_ordered:
-            logger.info(
-                "Using elevation_cache profileSegments for finish resolution (ordered=%s overlap=%s entries=%s)",
-                best_score[0],
-                best_score[1],
-                len(best_segments),
-            )
-            return best_segments
-        return []
 
     def _prefetch_subgroup_crossings_if_needed(
         self,

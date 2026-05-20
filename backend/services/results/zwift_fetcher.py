@@ -60,7 +60,6 @@ class ZwiftFetcher:
         fetch_mode: str,
         registered_riders: dict[str, Any],
         route_segments: list[dict[str, Any]] | None = None,
-        route_profile_segments: list[dict[str, Any]] | None = None,
         configured_sprints: list[dict[str, Any]] | None = None,
         subgroup_start_time: datetime | None = None,
         all_results_raw: list[dict[str, Any]] | None = None,
@@ -76,9 +75,7 @@ class ZwiftFetcher:
             finish_results_raw = self._filter_finish_entries(
                 crossings,
                 route_segments,
-                route_profile_segments,
                 configured_sprints,
-                subgroup_start_time,
             )
 
             for entry in finish_results_raw:
@@ -136,9 +133,7 @@ class ZwiftFetcher:
         self,
         entries: list[dict[str, Any]],
         route_segments: list[dict[str, Any]] | None = None,
-        route_profile_segments: list[dict[str, Any]] | None = None,
         configured_sprints: list[dict[str, Any]] | None = None,
-        subgroup_start_time: datetime | None = None,
     ) -> list[dict[str, Any]]:
         """
         Filter segment entries to finish-line entries only.
@@ -162,22 +157,17 @@ class ZwiftFetcher:
         if not segmented:
             return entries
 
-        self._log_configured_sprint_crossings(segmented, configured_sprints)
-
         selected_from_route = select_finish_entries_from_route_instances(
             segmented=segmented,
             route_segments=route_segments,
-            route_profile_segments=route_profile_segments,
             configured_sprints=configured_sprints,
             entry_sort_key=self._entry_sort_key,
-            subgroup_start_time=subgroup_start_time,
         )
         if selected_from_route:
             return selected_from_route
         finish_candidate = resolve_finish_segment_candidate(
             segmented=segmented,
             route_segments=route_segments,
-            route_profile_segments=route_profile_segments,
             configured_sprints=configured_sprints,
         )
         # Provisional in-race runs can legitimately have zero finish crossings so far.
@@ -194,48 +184,6 @@ class ZwiftFetcher:
                 "configured_sprint_count": len(configured_sprints or []),
             },
         )
-
-    def _log_configured_sprint_crossings(
-        self,
-        segmented: dict[str, list[dict[str, Any]]],
-        configured_sprints: list[dict[str, Any]] | None,
-    ) -> None:
-        sprint_ids = {
-            str(s.get("id") or "").strip()
-            for s in (configured_sprints or [])
-            if str(s.get("id") or "").strip()
-        }
-        if not sprint_ids:
-            return
-
-        for sprint_id in sorted(sprint_ids):
-            rows = segmented.get(sprint_id, [])
-            if not rows:
-                logger.info("Sprint crossings segment=%s total=0 riders=0", sprint_id)
-                continue
-
-            by_rider: dict[str, list[int]] = {}
-            for e in rows:
-                profile = e.get("profileData", {}) if isinstance(e, dict) else {}
-                rider_id = str(profile.get("id") or e.get("profileId") or "").strip()
-                if not rider_id:
-                    continue
-                raw = e.get("_officialSegmentResult") or {}
-                wt = int(raw.get("endWorldTime", 0) or 0)
-                by_rider.setdefault(rider_id, []).append(wt)
-
-            details: list[str] = []
-            for rider_id in sorted(by_rider.keys()):
-                wts = sorted(by_rider[rider_id])
-                details.append(f"{rider_id}:{wts}")
-
-            logger.info(
-                "Sprint crossings segment=%s total=%s riders=%s details=%s",
-                sprint_id,
-                len(rows),
-                len(by_rider),
-                " | ".join(details),
-            )
 
     def _entry_sort_key(self, entry: dict[str, Any]) -> tuple[int, int]:
         raw = entry.get("_officialSegmentResult") or {}
