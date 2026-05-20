@@ -157,6 +157,8 @@ class ZwiftFetcher:
         if not segmented:
             return entries
 
+        self._log_configured_sprint_crossings(segmented, configured_sprints)
+
         selected_from_route = select_finish_entries_from_route_instances(
             segmented=segmented,
             route_segments=route_segments,
@@ -184,6 +186,48 @@ class ZwiftFetcher:
                 "configured_sprint_count": len(configured_sprints or []),
             },
         )
+
+    def _log_configured_sprint_crossings(
+        self,
+        segmented: dict[str, list[dict[str, Any]]],
+        configured_sprints: list[dict[str, Any]] | None,
+    ) -> None:
+        sprint_ids = {
+            str(s.get("id") or "").strip()
+            for s in (configured_sprints or [])
+            if str(s.get("id") or "").strip()
+        }
+        if not sprint_ids:
+            return
+
+        for sprint_id in sorted(sprint_ids):
+            rows = segmented.get(sprint_id, [])
+            if not rows:
+                logger.info("Sprint crossings segment=%s total=0 riders=0", sprint_id)
+                continue
+
+            by_rider: dict[str, list[int]] = {}
+            for e in rows:
+                profile = e.get("profileData", {}) if isinstance(e, dict) else {}
+                rider_id = str(profile.get("id") or e.get("profileId") or "").strip()
+                if not rider_id:
+                    continue
+                raw = e.get("_officialSegmentResult") or {}
+                wt = int(raw.get("endWorldTime", 0) or 0)
+                by_rider.setdefault(rider_id, []).append(wt)
+
+            details: list[str] = []
+            for rider_id in sorted(by_rider.keys()):
+                wts = sorted(by_rider[rider_id])
+                details.append(f"{rider_id}:{wts}")
+
+            logger.info(
+                "Sprint crossings segment=%s total=%s riders=%s details=%s",
+                sprint_id,
+                len(rows),
+                len(by_rider),
+                " | ".join(details),
+            )
 
     def _entry_sort_key(self, entry: dict[str, Any]) -> tuple[int, int]:
         raw = entry.get("_officialSegmentResult") or {}

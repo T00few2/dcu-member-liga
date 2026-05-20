@@ -106,11 +106,21 @@ def resolve_finish_segment_candidate(
 
     The finish segment is always the final route segment instance (lap >= 1).
     This follows route-profile ordering from elevation cache / route metadata.
-    configured_sprints is ignored for finish selection.
+
+    When a segment is crossed in lead-in and again in race laps, route segment
+    occurrence counts can drift. Mirror frontend RaceCard logic by remapping the
+    final route-instance count to "on-route" occurrence (lap >= 1 only) using
+    id+direction matching.
     """
     if not segmented or not route_segments:
         return None
     del configured_sprints
+
+    def _norm_direction(value: Any) -> str:
+        raw = str(value or "").strip().lower()
+        if raw in {"reverse", "rev", "r"}:
+            return "reverse"
+        return "forward"
 
     for seg in reversed(route_segments):
         sid = str(seg.get("id") or "").strip()
@@ -125,5 +135,19 @@ def resolve_finish_segment_candidate(
             seg_count = 1
         if seg_count < 1:
             seg_count = 1
+
+        desired_dir = _norm_direction(seg.get("direction"))
+        # Same rule as RaceCard resolvedProfileSprintsToShow:
+        # count only race laps (lap >= 1), same id+direction, and up to desired count.
+        on_route_occurrence = sum(
+            1
+            for route_seg in route_segments
+            if str(route_seg.get("id") or "").strip() == sid
+            and _norm_direction(route_seg.get("direction")) == desired_dir
+            and (int(route_seg.get("lap") or 0) >= 1)
+            and (int(route_seg.get("count") or 0) <= seg_count)
+        )
+        if on_route_occurrence > 0:
+            return (sid, on_route_occurrence)
         return (sid, seg_count)
     return None
