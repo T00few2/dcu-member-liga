@@ -155,7 +155,7 @@ def resolve_finish_segment_candidate(
 
     for seg in reversed(route_segments):
         sid = str(seg.get("id") or "").strip()
-        if not sid or sid not in segmented:
+        if not sid:
             continue
         lap = int(seg.get("lap") or 0)
         if lap < 1:
@@ -179,6 +179,10 @@ def resolve_finish_segment_candidate(
             is_configured_sprint = True
 
         if is_configured_sprint:
+            # Keep the most recent configured sprint instance as a fallback
+            # only when every race-lap segment instance is configured sprint.
+            # Do not require live crossings here: in-race provisional runs may
+            # have crossed only early route instances.
             if all_sprints_candidate is None:
                 all_sprints_candidate = (sid, seg_count)
             continue

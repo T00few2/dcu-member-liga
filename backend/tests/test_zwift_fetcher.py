@@ -123,6 +123,22 @@ def test_filter_finish_entries_returns_empty_when_finish_is_resolved_but_no_cros
     assert filtered == []
 
 
+def test_filter_finish_entries_does_not_treat_first_sprint_as_finish_before_finish_crossing():
+    fetcher = ZwiftFetcher(zwift_service=None)
+    entries = [_entry("r1", "seg-sprint", 100, 1000)]
+
+    filtered = fetcher._filter_finish_entries(
+        entries=entries,
+        route_segments=[
+            {"id": "seg-sprint", "count": 1, "lap": 1, "direction": "forward"},
+            {"id": "seg-finish", "count": 1, "lap": 1, "direction": "forward"},
+        ],
+        configured_sprints=[{"id": "seg-sprint", "count": 1, "lap": 1, "direction": "forward"}],
+    )
+
+    assert filtered == []
+
+
 def test_fetch_segment_efforts_uses_prefetched_crossings():
     fetcher = ZwiftFetcher(zwift_service=None)
     entries = [
