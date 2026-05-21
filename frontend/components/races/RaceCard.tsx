@@ -473,27 +473,18 @@ export default function RaceCard({
                     <div className="flex flex-col gap-2">
                         {categoryHint && (
                             <div className="flex items-center justify-center gap-2 text-sm bg-muted/40 border border-border rounded-lg px-4 py-2">
-                                <span className="text-muted-foreground">Vælg kategori i Zwift:</span>
+                                <span className="text-muted-foreground">Kategori:</span>
                                 <span className="font-semibold text-card-foreground">{categoryHint}</span>
                             </div>
                         )}
-                        <a
-                            href={racePassHref}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="block w-full bg-primary hover:bg-primary-dark text-white font-bold py-3 px-4 rounded-lg text-center transition shadow-md flex items-center justify-center gap-2"
-                        >
-                            <span>Løbspas</span>
-                            <ExternalLinkIcon size={16} />
-                        </a>
-                        {isRegistered && !isPast && (
+                        {isRegistered && !isPast ? (
                             <div className="flex flex-col gap-1">
                                 <button
                                     onClick={handleZwiftSignup}
                                     disabled={signupState === 'loading' || signupState === 'success'}
-                                    className="w-full border border-primary text-primary font-semibold py-2 px-4 rounded-lg text-center transition hover:bg-primary/10 disabled:opacity-60 disabled:cursor-not-allowed"
+                                    className="block w-full bg-primary hover:bg-primary-dark text-white font-bold py-3 px-4 rounded-lg text-center transition shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
                                 >
-                                    {signupState === 'loading' ? 'Tilmelder...' : 'Tilmeld direkte'}
+                                    {signupState === 'loading' ? 'Tilmelder...' : 'Tilmeld'}
                                 </button>
                                 {signupMessage && (
                                     <p className={`text-sm text-center ${signupState === 'success' ? 'text-green-600' : 'text-red-500'}`}>
@@ -501,7 +492,13 @@ export default function RaceCard({
                                     </p>
                                 )}
                             </div>
-                        )}
+                        ) : !isRegistered && !isPast ? (
+                            <div className="text-sm text-center text-muted-foreground bg-muted/40 border border-border rounded-lg px-4 py-3">
+                                Du skal tilknytte en Zwift-konto i din{' '}
+                                <a href="/register" className="text-primary underline hover:no-underline">profil</a>
+                                {' '}for at tilmelde dig direkte.
+                            </div>
+                        ) : null}
                     </div>
                 ) : !isPublicVariant ? (
                     <div
