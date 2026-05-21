@@ -41,6 +41,8 @@ def _competition_metrics_to_profile(competition: dict, profile: dict) -> dict:
         'weightInGrams': competition.get('weightInGrams'),
         'weight': profile.get('weight'),
         'height': profile.get('heightInMillimeters'),
+        'powerSourceType': profile.get('powerSourceType'),
+        'powerSourceModel': profile.get('powerSourceModel'),
         'updatedAt': firestore.SERVER_TIMESTAMP,
     }
 
@@ -569,6 +571,16 @@ def zwift_webhook():
                             'data': activity,
                             'updatedAt': firestore.SERVER_TIMESTAMP,
                         }), merge=True)
+                        power_source_update: dict = {}
+                        if activity.get('powerSourceType') is not None:
+                            power_source_update['zwiftProfile.powerSourceType'] = activity['powerSourceType']
+                        if activity.get('powerSourceModel') is not None:
+                            power_source_update['zwiftProfile.powerSourceModel'] = activity['powerSourceModel']
+                        if power_source_update:
+                            power_source_update['updatedAt'] = firestore.SERVER_TIMESTAMP
+                            db.collection('users').document(user_doc_id).set(
+                                with_schema_version(power_source_update), merge=True
+                            )
                         # Try to link activity to a league race and trigger DR if required
                         _try_link_and_verify_activity(db, str(activity_id), user_doc_id, str(user_id))
                     if token_owner_id != user_doc_id:

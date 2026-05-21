@@ -214,6 +214,8 @@ def get_user_details(user_id):
                 'powerCompoundScore': zp.get('powerCompoundScore'),
                 'vo2max': zp.get('vo2max'),
                 'category': zp.get('category'),
+                'powerSourceType': zp.get('powerSourceType'),
+                'powerSourceModel': zp.get('powerSourceModel'),
                 'updatedAt': _ts_ms(zp.get('updatedAt')),
             } if zp else None,
             'zwiftPowerCurve': {

@@ -88,7 +88,7 @@ def build_weight_history_entry(
         "expiresAt": now + timedelta(days=keep_days),
         "retentionDays": keep_days,
         "weightInGrams": int(weight_grams),
-        "weightKg": round(float(weight_grams) / 1000.0, 1),
+        "weightKg": float(weight_grams) / 1000.0,
         "source": str(source or "unknown"),
         "trigger": str(trigger or "unknown"),
     }

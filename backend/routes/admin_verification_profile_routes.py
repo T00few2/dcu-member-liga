@@ -111,7 +111,7 @@ def verify_rider(rider_id):
                 if weight_raw is None:
                     weight_raw = competition.get("weightInGrams")
                 try:
-                    weight_kg = round(float(weight_raw) / 1000, 1) if weight_raw is not None else None
+                    weight_kg = float(weight_raw) / 1000 if weight_raw is not None else None
                 except (TypeError, ValueError):
                     weight_kg = None
                 response_data["profile"] = {
