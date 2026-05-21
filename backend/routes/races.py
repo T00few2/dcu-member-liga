@@ -176,36 +176,95 @@ def _should_auto_finalize_race(race_data: dict[str, Any], now_utc: datetime) -> 
     return now_utc >= race_start + timedelta(minutes=finalize_delay_minutes)
 
 
-def _normalize_category(value: Any) -> str:
+def _normalize_liga_category(value: Any) -> str:
+    """Case-insensitive match key for liga category names (e.g. Silver, Diamond)."""
+    return str(value or "").strip().lower()
+
+
+def _normalize_subgroup_label(value: Any) -> str:
+    """Extract Zwift pen label A-E from values like 'A', 'Category A', 'A (4.0+)'."""
     raw = str(value or "").strip().upper()
     if not raw:
         return ""
-    # Accept values like "A", "Category A", "A (4.0+)", etc.
     for ch in raw:
         if ch in {"A", "B", "C", "D", "E"}:
             return ch
     return raw
 
 
-def _select_subgroup_id(event_payload: dict[str, Any], custom_category: Any) -> str | None:
+def _sort_event_subgroups(subgroups: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Order subgroups A..E first (matches results processing)."""
+
+    def _sort_key(sg: dict[str, Any]) -> tuple[int, str]:
+        label = str(sg.get("subgroupLabel") or "").strip()
+        if len(label) == 1 and label.isalpha():
+            return (0, label.upper())
+        return (1, label)
+
+    return sorted(subgroups, key=_sort_key)
+
+
+def _find_grouped_group_for_category(
+    race_data: dict[str, Any],
+    user_category: str,
+) -> dict[str, Any] | None:
+    groups = race_data.get("raceGroups") if isinstance(race_data.get("raceGroups"), list) else []
+    wanted = _normalize_liga_category(user_category)
+    if not wanted:
+        return None
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+        categories = group.get("categories") if isinstance(group.get("categories"), list) else []
+        if any(
+            _normalize_liga_category((c or {}).get("category")) == wanted
+            for c in categories
+            if isinstance(c, dict)
+        ):
+            return group
+    return None
+
+
+def _category_index_in_group(group: dict[str, Any], user_category: str) -> int | None:
+    categories = group.get("categories") if isinstance(group.get("categories"), list) else []
+    wanted = _normalize_liga_category(user_category)
+    for idx, cfg in enumerate(categories):
+        if isinstance(cfg, dict) and _normalize_liga_category(cfg.get("category")) == wanted:
+            return idx
+    return None
+
+
+def _select_subgroup_id_by_index(event_payload: dict[str, Any], category_index: int) -> str | None:
+    subgroups = event_payload.get("eventSubgroups", []) if isinstance(event_payload, dict) else []
+    if not isinstance(subgroups, list) or not subgroups:
+        return None
+    ordered = _sort_event_subgroups([sg for sg in subgroups if isinstance(sg, dict)])
+    if category_index < 0 or category_index >= len(ordered):
+        return None
+    sid = ordered[category_index].get("id")
+    return str(sid) if sid is not None else None
+
+
+def _select_subgroup_id(event_payload: dict[str, Any], pen_label: Any) -> str | None:
+    """Resolve a Zwift subgroup id from an explicit pen label (A-E)."""
     subgroups = event_payload.get("eventSubgroups", []) if isinstance(event_payload, dict) else []
     if not isinstance(subgroups, list) or not subgroups:
         return None
 
-    if custom_category:
-        wanted = _normalize_category(custom_category)
+    wanted = _normalize_subgroup_label(pen_label)
+    if wanted in {"A", "B", "C", "D", "E"}:
         label_to_number = {"A": "1", "B": "2", "C": "3", "D": "4", "E": "5"}
         for subgroup in subgroups:
+            if not isinstance(subgroup, dict):
+                continue
             sid = subgroup.get("id")
             if sid is None:
                 continue
-            subgroup_label = _normalize_category(subgroup.get("subgroupLabel"))
-            subgroup_name = _normalize_category(subgroup.get("name"))
+            subgroup_label = _normalize_subgroup_label(subgroup.get("subgroupLabel"))
             subgroup_numeric = str(subgroup.get("label") or "").strip()
-            if wanted and (
+            if (
                 subgroup_label == wanted
-                or subgroup_name == wanted
-                or (wanted in label_to_number and subgroup_numeric == label_to_number[wanted])
+                or subgroup_numeric == label_to_number[wanted]
             ):
                 return str(sid)
 
@@ -242,7 +301,12 @@ def _hydrate_event_config_subgroup_ids(data: dict[str, Any]) -> tuple[dict[str, 
             )
             continue
 
-        subgroup_id = _select_subgroup_id(event_payload, cfg.get("customCategory"))
+        pen = _normalize_subgroup_label(cfg.get("customCategory"))
+        subgroup_id = (
+            _select_subgroup_id(event_payload, pen)
+            if pen in {"A", "B", "C", "D", "E"}
+            else _select_subgroup_id(event_payload, None)
+        )
         if subgroup_id:
             cfg["subgroupId"] = subgroup_id
             # Store event start time for webhook activity matching (if not already set)
@@ -266,7 +330,7 @@ def _hydrate_event_config_subgroup_ids(data: dict[str, Any]) -> tuple[dict[str, 
 
 def _pick_mode_config_for_user(race_data: dict[str, Any], user_category: str) -> tuple[str | None, str | None, str | None]:
     event_mode = str(race_data.get("eventMode") or "single").strip().lower()
-    wanted = _normalize_category(user_category)
+    wanted = _normalize_liga_category(user_category)
 
     if event_mode == "multi":
         cfgs = race_data.get("eventConfiguration") if isinstance(race_data.get("eventConfiguration"), list) else []
@@ -276,11 +340,9 @@ def _pick_mode_config_for_user(race_data: dict[str, Any], user_category: str) ->
         for cfg in cfgs:
             if not isinstance(cfg, dict):
                 continue
-            if _normalize_category(cfg.get("customCategory")) == wanted:
+            if _normalize_liga_category(cfg.get("customCategory")) == wanted:
                 chosen = cfg
                 break
-        if chosen is None:
-            chosen = cfgs[0] if isinstance(cfgs[0], dict) else None
         if not chosen:
             return None, None, None
         subgroup_id = str(chosen.get("subgroupId") or "").strip() or None
@@ -289,19 +351,7 @@ def _pick_mode_config_for_user(race_data: dict[str, Any], user_category: str) ->
         return subgroup_id, event_id, event_secret
 
     if event_mode == "grouped":
-        groups = race_data.get("raceGroups") if isinstance(race_data.get("raceGroups"), list) else []
-        if not groups:
-            return None, None, None
-        chosen = None
-        for group in groups:
-            if not isinstance(group, dict):
-                continue
-            categories = group.get("categories") if isinstance(group.get("categories"), list) else []
-            if any(_normalize_category((c or {}).get("category")) == wanted for c in categories if isinstance(c, dict)):
-                chosen = group
-                break
-        if chosen is None:
-            chosen = groups[0] if isinstance(groups[0], dict) else None
+        chosen = _find_grouped_group_for_category(race_data, user_category)
         if not chosen:
             return None, None, None
         subgroup_id = str(chosen.get("subgroupId") or "").strip() or None
@@ -320,6 +370,7 @@ def _resolve_signup_subgroup_id(
     user_category: str,
     zwift_service,
 ) -> tuple[str | None, str | None]:
+    event_mode = str(race_data.get("eventMode") or "single").strip().lower()
     subgroup_id, event_id, event_secret = _pick_mode_config_for_user(race_data, user_category)
     if subgroup_id:
         return subgroup_id, None
@@ -330,9 +381,18 @@ def _resolve_signup_subgroup_id(
     if not event_payload:
         return None, f"Unable to resolve subgroup from eventId {event_id}"
 
-    resolved = _select_subgroup_id(event_payload, user_category)
-    if not resolved:
+    resolved: str | None = None
+    if event_mode == "grouped":
+        group = _find_grouped_group_for_category(race_data, user_category)
+        if group is None:
+            return None, "No event/subgroup configuration found for rider category"
+        category_index = _category_index_in_group(group, user_category)
+        if category_index is None:
+            return None, "No event/subgroup configuration found for rider category"
+        resolved = _select_subgroup_id_by_index(event_payload, category_index)
+    else:
         resolved = _select_subgroup_id(event_payload, None)
+
     if not resolved:
         return None, f"Could not resolve subgroup for eventId {event_id}"
     return resolved, None
