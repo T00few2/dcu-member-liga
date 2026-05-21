@@ -41,6 +41,8 @@ def _competition_metrics_to_profile(competition: dict, profile: dict) -> dict:
         'weightInGrams': competition.get('weightInGrams'),
         'weight': profile.get('weight'),
         'height': profile.get('heightInMillimeters'),
+        'powerSourceType': profile.get('powerSourceType'),
+        'powerSourceModel': profile.get('powerSourceModel'),
         'updatedAt': firestore.SERVER_TIMESTAMP,
     }
 

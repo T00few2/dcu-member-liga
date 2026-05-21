@@ -303,6 +303,8 @@ class ZwiftGameProfile(TypedDict, total=False):
     vo2max: int
     category: str
     categoryWomen: str
+    powerSourceType: str
+    powerSourceModel: str
     updatedAt: Any
 
 
