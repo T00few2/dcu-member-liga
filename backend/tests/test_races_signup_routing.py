@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import sys
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -72,7 +71,11 @@ ZWIFT_EVENT_PAYLOADS = {
 
 
 class FakeZwiftService:
-    def get_public_event_info(self, event_id: str, event_secret: str | None = None):
+    def get_public_event_info(
+        self,
+        event_id: str,
+        event_secret: str | None = None,
+    ):
         return ZWIFT_EVENT_PAYLOADS.get(str(event_id))
 
 
@@ -95,7 +98,10 @@ def test_grouped_signup_routes_category_to_event_and_pen(
     expected_event_id: str,
     expected_subgroup_id: str,
 ) -> None:
-    _, event_id, _ = races._pick_mode_config_for_user(THE_CLASSIC_RACE, category)
+    _, event_id, _ = races._pick_mode_config_for_user(
+        THE_CLASSIC_RACE,
+        category,
+    )
     assert event_id == expected_event_id
 
     subgroup_id, error = races._resolve_signup_subgroup_id(
@@ -108,8 +114,13 @@ def test_grouped_signup_routes_category_to_event_and_pen(
 
 
 def test_silver_does_not_collide_with_emerald() -> None:
-    assert races._normalize_liga_category("Silver") != races._normalize_liga_category("Emerald")
-    _, event_id, _ = races._pick_mode_config_for_user(THE_CLASSIC_RACE, "Silver")
+    assert races._normalize_liga_category("Silver") != (
+        races._normalize_liga_category("Emerald")
+    )
+    _, event_id, _ = races._pick_mode_config_for_user(
+        THE_CLASSIC_RACE,
+        "Silver",
+    )
     assert event_id == "5593353"
 
 
@@ -128,7 +139,10 @@ def test_subgroup_label_normalization_supports_e_pen() -> None:
 
 
 def test_unknown_category_does_not_fallback_to_first_group() -> None:
-    _, event_id, _ = races._pick_mode_config_for_user(THE_CLASSIC_RACE, "Bronze")
+    _, event_id, _ = races._pick_mode_config_for_user(
+        THE_CLASSIC_RACE,
+        "Bronze",
+    )
     assert event_id is None
 
 
