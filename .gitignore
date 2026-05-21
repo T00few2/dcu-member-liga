@@ -37,6 +37,11 @@ yarn-error.log*
 # Google Cloud
 backend/serviceAccountKey.json
 
+# Local admin scripts (batch files with rider ids / one-off ops)
+backend/scripts/local/*
+!backend/scripts/local/.gitkeep
+backend/scripts/_tmp_*.py
+
 Zwift API documentation.docx
 .gitignore
 Zwift API documentation.txt

@@ -262,6 +262,55 @@ Scripts are provided to manage user roles (specifically the `admin` custom claim
 *   **Revoke Admin Access**:
     *   `python backend/scripts/set_admin_claim.py --email <USER_EMAIL> --admin false`
 
+### Zwift event signup cleanup (admin)
+
+Use `backend/scripts/zwift_event_participants.py` to manually register or
+unregister riders on Zwift subgroup pens when fixing bad signups.
+
+Requires `ZWIFT_CLIENT_ID` / `ZWIFT_CLIENT_SECRET` in `backend/.env`. For
+`--zwift-id` lookups, Firestore credentials are also required (see AGENTS.md).
+
+**Single rider**
+
+```bash
+# Unregister from pens (uses Zwift public UUID)
+conda run -n py311 python backend/scripts/zwift_event_participants.py unregister \
+  --public-id <zwift-public-uuid> \
+  --subgroup-id 7158675 --subgroup-id 7158679
+
+# Register on a pen (lookup public UUID from Firestore users/{zwiftId})
+conda run -n py311 python backend/scripts/zwift_event_participants.py register \
+  --zwift-id 1747183 \
+  --subgroup-id 7158674
+```
+
+**Batch fixups**
+
+Copy `backend/scripts/zwift_signup_batch.example.json` to
+`backend/scripts/local/` (that folder is gitignored) and run:
+
+```bash
+conda run -n py311 python backend/scripts/zwift_event_participants.py apply \
+  --batch backend/scripts/local/my_fixups.json
+```
+
+**The Classic subgroup reference (Race 4 grouped mode)**
+
+| Group | Category | Pen | Subgroup ID |
+|-------|----------|-----|-------------|
+| High End | Diamond | A | 7158672 |
+| High End | Ruby | B | 7158673 |
+| Mid | Emerald | A | 7158675 |
+| Mid | Sapphire | B | 7158674 |
+| Mid | Amethyst | C | 7158676 |
+| Low End | Platinum | A | 7158679 |
+| Low End | Gold | B | 7158677 |
+| Low End | Silver | C | 7158678 |
+| Low End | Copper | D | 7158680 |
+
+API reference: `zwift_api_docs.md` sections on
+`batch-register` / `batch-unregister`.
+
 ## Admin Email Endpoint
 
 The admin users workflow supports sending plain-text emails to selected users:

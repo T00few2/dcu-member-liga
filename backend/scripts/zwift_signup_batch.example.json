@@ -1,0 +1,9 @@
+[
+  {
+    "name": "Example Rider",
+    "zwiftId": "123456",
+    "publicId": "optional-if-not-using-firestore-lookup",
+    "unregister": ["7158675"],
+    "register": ["7158674"]
+  }
+]

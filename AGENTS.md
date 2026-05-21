@@ -11,6 +11,7 @@
 ### Examples
 - `conda run -n py311 python backend/scripts/inspect_data.py --list-collections`
 - `conda run -n py311 python backend/scripts/inspect_data.py --collection users --limit 20`
+- `conda run -n py311 python backend/scripts/zwift_event_participants.py register --zwift-id <ID> --subgroup-id <SUBGROUP_ID>`
 
 ## Firestore Credentials
 
