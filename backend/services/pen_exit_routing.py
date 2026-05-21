@@ -249,7 +249,7 @@ def _build_leadin_entries(pen_exit_route: list[dict[str, Any]]) -> list[dict[str
     if exit_roads:
         last_exit_road = exit_roads[-1]
         idx_exit_road = pen_exit_route.index(last_exit_road)
-        manifest = pen_exit_route[idx_exit_road - 1 :]
+        manifest = pen_exit_route[idx_exit_road - 1:]
         for idx in range(1, len(manifest)):
             entry = manifest[idx]
             leadin.append(
@@ -266,7 +266,7 @@ def _build_leadin_entries(pen_exit_route: list[dict[str, Any]]) -> list[dict[str
         if not first_non_paddock:
             return []
         idx_first = pen_exit_route.index(first_non_paddock)
-        manifest = pen_exit_route[idx_first - 1 :]
+        manifest = pen_exit_route[idx_first - 1:]
         for idx in range(1, len(manifest)):
             entry = manifest[idx]
             leadin.append(
