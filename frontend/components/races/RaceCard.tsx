@@ -473,7 +473,7 @@ export default function RaceCard({
                     <div className="flex flex-col gap-2">
                         {categoryHint && (
                             <div className="flex items-center justify-center gap-2 text-sm bg-muted/40 border border-border rounded-lg px-4 py-2">
-                                <span className="text-muted-foreground">Vælg kategori i Zwift:</span>
+                                <span className="text-muted-foreground">Kategori:</span>
                                 <span className="font-semibold text-card-foreground">{categoryHint}</span>
                             </div>
                         )}
