@@ -1,12 +1,14 @@
 'use client';
 
-import { getZwiftInsiderUrl } from '@/lib/api';
+import { useState } from 'react';
+import { getZwiftInsiderUrl, API_URL } from '@/lib/api';
 import { formatDateLong, formatTimeWithTz, fromTimestamp } from '@/lib/formatDate';
 import PointsSplitBadge from '@/components/races/PointsSplitBadge';
 import RouteElevationChart from '@/components/races/RouteElevationChart';
 import type { Race, Sprint, EventCategoryConfig, CategoryConfig } from '@/types/live';
 import type { LeagueSettings, RaceGroup } from '@/types/admin';
 import { useRouteElevationQuery, useRaceSegmentsQuery } from '@/hooks/queries';
+import { useAuth } from '@/lib/auth-context';
 
 interface ProfileSegment {
     name: string;
@@ -258,6 +260,9 @@ export default function RaceCard({
 }: RaceCardProps) {
     const raceDate = fromTimestamp(race.date) || new Date(NaN);
     const isPublicVariant = variant === 'public';
+    const { user, isRegistered } = useAuth();
+    const [signupState, setSignupState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+    const [signupMessage, setSignupMessage] = useState('');
     const userConfig = race.eventMode === 'multi' ? getUserEventConfig(race, userCategory) : null;
     const userSingleConfig = (race.eventMode !== 'multi' && race.eventMode !== 'grouped') ? getUserSingleConfig(race, userCategory) : null;
     const userGroupConfig = race.eventMode === 'grouped' ? getUserGroupConfig(race, userCategory) : null;
@@ -354,6 +359,30 @@ export default function RaceCard({
         }
         return null;
     })();
+
+    const handleZwiftSignup = async () => {
+        if (!user || signupState === 'loading') return;
+        setSignupState('loading');
+        setSignupMessage('');
+        try {
+            const token = await user.getIdToken();
+            const res = await fetch(`${API_URL}/races/${race.id}/signup`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setSignupState('success');
+                setSignupMessage(data.message || 'Tilmeldt!');
+            } else {
+                setSignupState('error');
+                setSignupMessage(data.message || 'Tilmelding fejlede');
+            }
+        } catch {
+            setSignupState('error');
+            setSignupMessage('Netværksfejl – prøv igen');
+        }
+    };
 
     return (
         <div className={`bg-card border border-border rounded-lg shadow-sm overflow-hidden mb-6 ${isPast ? 'opacity-75' : ''}`}>
@@ -457,6 +486,22 @@ export default function RaceCard({
                             <span>Løbspas</span>
                             <ExternalLinkIcon size={16} />
                         </a>
+                        {isRegistered && !isPast && (
+                            <div className="flex flex-col gap-1">
+                                <button
+                                    onClick={handleZwiftSignup}
+                                    disabled={signupState === 'loading' || signupState === 'success'}
+                                    className="w-full border border-primary text-primary font-semibold py-2 px-4 rounded-lg text-center transition hover:bg-primary/10 disabled:opacity-60 disabled:cursor-not-allowed"
+                                >
+                                    {signupState === 'loading' ? 'Tilmelder...' : 'Tilmeld direkte'}
+                                </button>
+                                {signupMessage && (
+                                    <p className={`text-sm text-center ${signupState === 'success' ? 'text-green-600' : 'text-red-500'}`}>
+                                        {signupMessage}
+                                    </p>
+                                )}
+                            </div>
+                        )}
                     </div>
                 ) : !isPublicVariant ? (
                     <div
