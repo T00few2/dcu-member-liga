@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import RouteElevationChart from '@/components/races/RouteElevationChart';
 import LiveRiderOverlay from '@/components/live-race/LiveRiderOverlay';
@@ -56,7 +56,7 @@ function getCategoryTabs(race: CurrentLiveRace): CategoryTab[] {
     return [{ cat: 'A', label: 'A', laps: race.laps ?? 1, sprints: [] }];
 }
 
-export default function LiveRacePage() {
+function LiveRacePageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const chartWrapRef = useRef<HTMLDivElement>(null);
@@ -280,5 +280,19 @@ export default function LiveRacePage() {
                 loading={resultsLoading}
             />
         </div>
+    );
+}
+
+export default function LiveRacePage() {
+    return (
+        <Suspense
+            fallback={
+                <div className="container mx-auto px-4 py-12 text-center text-muted-foreground">
+                    Henter live løb…
+                </div>
+            }
+        >
+            <LiveRacePageContent />
+        </Suspense>
     );
 }
