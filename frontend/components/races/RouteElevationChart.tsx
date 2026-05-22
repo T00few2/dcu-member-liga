@@ -1,14 +1,19 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import {
     Area,
     AreaChart,
     CartesianGrid,
+    Customized,
     ReferenceArea,
     ResponsiveContainer,
     Tooltip,
     XAxis,
     YAxis,
+    usePlotArea,
+    useXAxisDomain,
+    useYAxisDomain,
 } from 'recharts';
 import type { Sprint } from '@/types/live';
 import { useRouteElevationQuery } from '@/hooks/queries';
@@ -29,11 +34,24 @@ interface ProfileSegment {
     direction?: 'forward' | 'reverse';
 }
 
+export interface RouteElevationOverlayContext {
+    lapLengthKm: number;
+    totalDistanceKm: number;
+    leadInKm: number;
+    laps: number;
+    xScale: (km: number) => number;
+    yScale: (altitudeM: number) => number;
+    altitudeAt: (km: number) => number;
+    dataPoints: DataPoint[];
+    chartHeight: number;
+}
+
 interface Props {
     worldName: string;
     routeName: string;
     laps?: number;
     pointSegments?: Sprint[];
+    overlay?: (ctx: RouteElevationOverlayContext) => ReactNode;
 }
 
 interface DataPoint {
@@ -187,11 +205,84 @@ function ElevationTooltip({
     );
 }
 
+const CHART_HEIGHT = 160;
+
+function buildAltitudeAt(data: DataPoint[]): (km: number) => number {
+    return (km: number) => {
+        if (!data.length) return 0;
+        if (km <= data[0].distance) return data[0].altitude;
+        if (km >= data[data.length - 1].distance) return data[data.length - 1].altitude;
+        let lo = 0;
+        let hi = data.length - 1;
+        while (lo < hi - 1) {
+            const mid = Math.floor((lo + hi) / 2);
+            if (data[mid].distance <= km) lo = mid;
+            else hi = mid;
+        }
+        const a = data[lo];
+        const b = data[hi];
+        const span = b.distance - a.distance;
+        if (span <= 0) return a.altitude;
+        const t = (km - a.distance) / span;
+        return a.altitude + t * (b.altitude - a.altitude);
+    };
+}
+
+function isNumericDomain(d: unknown): d is readonly [number, number] {
+    return Array.isArray(d) && d.length === 2 && typeof d[0] === 'number' && typeof d[1] === 'number';
+}
+
+function ElevationOverlayHost({
+    overlay,
+    data,
+    laps,
+    leadInDistance,
+}: {
+    overlay: (ctx: RouteElevationOverlayContext) => ReactNode;
+    data: DataPoint[];
+    laps: number;
+    leadInDistance: number | undefined;
+}): ReactNode {
+    const plotArea = usePlotArea();
+    const xDomain = useXAxisDomain(0);
+    const yDomain = useYAxisDomain(0);
+
+    if (!plotArea || !isNumericDomain(xDomain) || !isNumericDomain(yDomain) || !data.length) {
+        return null;
+    }
+
+    const [xMin, xMax] = xDomain;
+    const [yMin, yMax] = yDomain;
+    const xSpan = xMax - xMin || 1;
+    const ySpan = yMax - yMin || 1;
+
+    const xScale = (km: number) => plotArea.x + ((km - xMin) / xSpan) * plotArea.width;
+    const yScale = (alt: number) =>
+        plotArea.y + plotArea.height - ((alt - yMin) / ySpan) * plotArea.height;
+
+    const totalDistanceKm = data[data.length - 1]?.distance ?? 0;
+    const lapLengthKm = laps > 0 ? totalDistanceKm / laps : totalDistanceKm;
+    const leadInKm = Number(leadInDistance) || 0;
+
+    return overlay({
+        lapLengthKm,
+        totalDistanceKm,
+        leadInKm,
+        laps,
+        xScale,
+        yScale,
+        altitudeAt: buildAltitudeAt(data),
+        dataPoints: data,
+        chartHeight: CHART_HEIGHT,
+    });
+}
+
 export default function RouteElevationChart({
     worldName,
     routeName,
     laps = 1,
     pointSegments = [],
+    overlay,
 }: Props) {
     const { data: json, isLoading: loading } = useRouteElevationQuery(worldName, routeName, laps);
 
@@ -288,7 +379,7 @@ export default function RouteElevationChart({
 
     return (
         <div>
-            <div style={{ width: '100%', height: 160 }}>
+            <div style={{ width: '100%', height: CHART_HEIGHT }}>
                 <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={data} margin={{ top: 8, right: 6, bottom: 4, left: 0 }} baseValue="dataMin">
                         <defs>
@@ -369,6 +460,19 @@ export default function RouteElevationChart({
                             dot={false}
                             isAnimationActive={false}
                         />
+
+                        {overlay && data && (
+                            <Customized
+                                component={
+                                    <ElevationOverlayHost
+                                        overlay={overlay}
+                                        data={data}
+                                        laps={laps}
+                                        leadInDistance={json?.leadInDistance}
+                                    />
+                                }
+                            />
+                        )}
                     </AreaChart>
                 </ResponsiveContainer>
             </div>

@@ -4,6 +4,7 @@ from flask import Flask, request as flask_request
 from urllib.parse import urlparse
 from extensions import db
 from routes.races import races_bp
+from routes.live_race import live_race_bp
 from routes.league import league_bp
 from routes.users import users_bp
 from routes.admin import admin_bp
@@ -73,6 +74,7 @@ def create_app():
     app = Flask(__name__)
 
     app.register_blueprint(races_bp)
+    app.register_blueprint(live_race_bp)
     app.register_blueprint(league_bp)
     app.register_blueprint(users_bp)
     app.register_blueprint(admin_bp)

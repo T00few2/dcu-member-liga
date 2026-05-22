@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { db } from '@/lib/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
+import { useCurrentLiveRaceQuery } from '@/hooks/queries';
 import { API_URL } from '@/lib/api';
 import { User } from 'firebase/auth';
 import type { Race, LoadingStatus, ResultsAutomationConfig } from '@/types/admin';
@@ -51,6 +52,8 @@ export default function ResultsTab({ user, races, status, setStatus }: ResultsTa
         etaSec?: number;
     } | null>(null);
     const [categoryFilter, setCategoryFilter] = useState('All');
+    const [liveRaceActivateStatus, setLiveRaceActivateStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [liveRaceActivating, setLiveRaceActivating] = useState(false);
     const [automationConfig, setAutomationConfig] = useState<ResultsAutomationConfig>({
         automationEnabled: false,
         pollingIntervalMinutes: 5,
@@ -62,8 +65,14 @@ export default function ResultsTab({ user, races, status, setStatus }: ResultsTa
 
     // Real-time race updates via Firestore
     const { data: liveRaceData } = useFirestoreDoc<Race>('races', viewingResultsId);
+    const { data: currentLiveRace } = useCurrentLiveRaceQuery();
     const viewingRace = viewingResultsId
         ? (liveRaceData ?? races.find(r => r.id === viewingResultsId) ?? null)
+        : null;
+
+    const activeLiveRaceId = currentLiveRace?.id ? String(currentLiveRace.id) : null;
+    const activeLiveRaceName = activeLiveRaceId
+        ? races.find((r) => r.id === activeLiveRaceId)?.name ?? activeLiveRaceId
         : null;
 
     useEffect(() => {
@@ -166,6 +175,51 @@ export default function ResultsTab({ user, races, status, setStatus }: ResultsTa
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [viewingResultsId, liveResultsRunning, finalizeResultsRunning, categoryFilter]);
+
+    const handleToggleLiveRacePage = useCallback(async () => {
+        if (!user || !viewingResultsId) return;
+        const isActive = activeLiveRaceId === viewingResultsId;
+        const msg = isActive
+            ? 'Deaktivér live-race siden for dette løb?'
+            : 'Aktivér live-race siden for dette løb? Besøgende på /live-race vil se dette løb.';
+        if (!confirm(msg)) return;
+
+        setLiveRaceActivating(true);
+        setLiveRaceActivateStatus(null);
+        try {
+            const token = await user.getIdToken();
+            const res = await fetch(`${API_URL}/admin/live-race/activate`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ raceId: isActive ? null : viewingResultsId }),
+            });
+            if (res.ok) {
+                await queryClient.invalidateQueries({ queryKey: ['live-race', 'current'] });
+                setLiveRaceActivateStatus({
+                    type: 'success',
+                    text: isActive
+                        ? 'Live-race siden er deaktiveret.'
+                        : 'Live-race siden viser nu dette løb.',
+                });
+            } else {
+                const data = await res.json().catch(() => ({}));
+                setLiveRaceActivateStatus({
+                    type: 'error',
+                    text: (data as { message?: string }).message || 'Kunne ikke opdatere live-race status.',
+                });
+            }
+        } catch {
+            setLiveRaceActivateStatus({
+                type: 'error',
+                text: 'Kunne ikke opdatere live-race status.',
+            });
+        } finally {
+            setLiveRaceActivating(false);
+        }
+    }, [user, viewingResultsId, activeLiveRaceId, queryClient]);
 
     const handleSaveAutomation = useCallback(async () => {
         if (!viewingResultsId || !user) return;
@@ -385,7 +439,42 @@ export default function ResultsTab({ user, races, status, setStatus }: ResultsTa
                                 </div>
                             </div>
 
+                            <div
+                                className={`text-xs px-2 py-1.5 rounded border ${
+                                    activeLiveRaceId === viewingResultsId
+                                        ? 'border-green-600/50 bg-green-600/10 text-green-700 dark:text-green-400'
+                                        : activeLiveRaceId
+                                          ? 'border-amber-600/50 bg-amber-600/10 text-amber-800 dark:text-amber-400'
+                                          : 'border-border bg-muted/20 text-muted-foreground'
+                                }`}
+                            >
+                                Live-race side:{' '}
+                                <span className="font-semibold">
+                                    {activeLiveRaceId === viewingResultsId
+                                        ? viewingRace?.name ?? 'dette løb'
+                                        : activeLiveRaceId
+                                          ? activeLiveRaceName ?? activeLiveRaceId
+                                          : 'ingen'}
+                                </span>
+                            </div>
+
                             <div className="flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    onClick={handleToggleLiveRacePage}
+                                    disabled={!viewingResultsId || liveRaceActivating || liveResultsRunning || finalizeResultsRunning}
+                                    className={`w-full sm:w-auto text-sm px-4 py-2 rounded hover:opacity-90 font-semibold disabled:opacity-50 ${
+                                        activeLiveRaceId === viewingResultsId
+                                            ? 'bg-red-600/90 text-white'
+                                            : 'bg-violet-600 text-white'
+                                    }`}
+                                >
+                                    {liveRaceActivating
+                                        ? 'Opdaterer…'
+                                        : activeLiveRaceId === viewingResultsId
+                                          ? 'Deaktivér live-race side'
+                                          : 'Aktivér live-race side'}
+                                </button>
                                 <button
                                     onClick={handleRunLiveResults}
                                     disabled={!viewingResultsId || liveResultsRunning || finalizeResultsRunning}
@@ -479,10 +568,19 @@ export default function ResultsTab({ user, races, status, setStatus }: ResultsTa
                                 </p>
                             </div>
 
-                            {resultsCalcStatus && (
-                                <p className={`text-xs ${resultsCalcStatus.type === 'success' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                                    {resultsCalcStatus.text}
-                                </p>
+                            {(resultsCalcStatus || liveRaceActivateStatus) && (
+                                <div className="space-y-1">
+                                    {resultsCalcStatus && (
+                                        <p className={`text-xs ${resultsCalcStatus.type === 'success' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                            {resultsCalcStatus.text}
+                                        </p>
+                                    )}
+                                    {liveRaceActivateStatus && (
+                                        <p className={`text-xs ${liveRaceActivateStatus.type === 'success' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                            {liveRaceActivateStatus.text}
+                                        </p>
+                                    )}
+                                </div>
                             )}
                         </div>
                     </div>

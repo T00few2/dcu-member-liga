@@ -76,6 +76,14 @@
       ]
     }
   ],
+  "liveRaceState": [
+    {
+      "_id": "active",
+      "raceId": "race_001",
+      "activatedAt": "2026-05-22T17:00:00+00:00",
+      "activatedBy": "admin_uid_example"
+    }
+  ],
   "league": [
     {
       "_id": "liveOverlay",

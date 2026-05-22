@@ -18,6 +18,8 @@ export { usePolicyDocQuery } from './usePolicyDocQuery';
 export type { PolicyDoc } from './usePolicyDocQuery';
 export { usePredictorConfigQuery } from './usePredictorConfigQuery';
 export { useMemberCountQuery } from './useMemberCountQuery';
+export { useCurrentLiveRaceQuery } from './useCurrentLiveRaceQuery';
+export { useLiveRidersQuery } from './useLiveRidersQuery';
 export { useRouteElevationQuery } from './useRouteElevationQuery';
 export type { RouteElevationData } from './useRouteElevationQuery';
 export { useRaceSegmentsQuery } from './useRaceSegmentsQuery';

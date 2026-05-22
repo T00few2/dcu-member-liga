@@ -22,11 +22,69 @@ export interface CategoryConfig {
 export interface EventCategoryConfig {
     eventId: string;
     eventSecret?: string;
+    subgroupId?: string;
     customCategory: string;
     laps?: number;
     sprints?: Sprint[];
     segmentType?: 'sprint' | 'split';
     startTime?: string;
+}
+
+/** Zwift live-data rider enriched by backend for /live-race map overlay. */
+export interface LiveRider {
+    userId: string;
+    zwiftId?: string | null;
+    name?: string | null;
+    club?: string | null;
+    lap: number;
+    distanceCovered: number;
+    totalDistanceInMeters?: number | null;
+    routeDistanceInCentimeters?: number | null;
+    powerOutputInWatts?: number | null;
+    heartRateInBpm?: number | null;
+    speedInMillimetersPerHour?: number | null;
+    registered: boolean;
+}
+
+export interface LiveRidersResponse {
+    asOf: number;
+    riders: LiveRider[];
+}
+
+export interface LiveRaceGroupCategory {
+    category: string;
+    laps?: number;
+    sprints?: Sprint[];
+    segmentType?: 'sprint' | 'split';
+}
+
+export interface LiveRaceGroup {
+    id?: string;
+    name?: string;
+    eventId?: string;
+    laps?: number;
+    sprints?: Sprint[];
+    segmentType?: 'sprint' | 'split';
+    categories: LiveRaceGroupCategory[];
+}
+
+/** Summary returned by GET /live-race/current */
+export interface CurrentLiveRace {
+    id: string;
+    name: string;
+    routeId?: string;
+    routeName?: string;
+    map?: string;
+    laps?: number;
+    totalDistance?: number;
+    totalElevation?: number;
+    date?: string;
+    eventMode?: EventMode;
+    eventConfiguration?: EventCategoryConfig[];
+    singleModeCategories?: CategoryConfig[];
+    raceGroups?: LiveRaceGroup[];
+    subgroupId?: string;
+    activatedAt?: unknown;
 }
 
 export type DualRecordingStatus = 'passed' | 'failed' | 'missing_strava' | 'missing_activity' | 'error' | 'sw_only';

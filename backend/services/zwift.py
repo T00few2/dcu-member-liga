@@ -498,6 +498,51 @@ class ZwiftService:
                 time.sleep(page_delay)
         return participants
 
+    def get_live_riders(
+        self,
+        event_sub_id: str,
+        limit: int = 100,
+        page_delay: int = 0,
+    ) -> list[dict[str, Any]]:
+        """
+        Fetch trimmed live-data rows for active riders in a subgroup.
+        Does not request includePosition / includeAvatar (lighter payload).
+        """
+        current_page = 0
+        riders: list[dict[str, Any]] = []
+
+        while True:
+            response = self._api_get(
+                f"/api/link/events/subgroups/{event_sub_id}/live-data",
+                params={"page": current_page, "limit": limit},
+            )
+            response.raise_for_status()
+            data = self._safe_json(response)
+            rows = data.get("data", [])
+            for row in rows:
+                user_id = row.get("userId")
+                if not user_id:
+                    continue
+                riders.append(
+                    {
+                        "userId": user_id,
+                        "asOf": row.get("asOf"),
+                        "lap": row.get("lap"),
+                        "distanceCovered": row.get("distanceCovered"),
+                        "totalDistanceInMeters": row.get("totalDistanceInMeters"),
+                        "routeDistanceInCentimeters": row.get("routeDistanceInCentimeters"),
+                        "powerOutputInWatts": row.get("powerOutputInWatts"),
+                        "heartRateInBpm": row.get("heartRateInBpm"),
+                        "speedInMillimetersPerHour": row.get("speedInMillimetersPerHour"),
+                    }
+                )
+            if len(rows) < limit:
+                break
+            current_page += 1
+            if page_delay:
+                time.sleep(page_delay)
+        return riders
+
     def get_segment_results(self, segment_id: str, from_date: datetime | None = None, to_date: datetime | None = None) -> dict[str, Any]:
         """
         There is no direct official equivalent for legacy global segment-result lookup.

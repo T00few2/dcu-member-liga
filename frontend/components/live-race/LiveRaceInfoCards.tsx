@@ -1,0 +1,153 @@
+'use client';
+
+import type { CurrentLiveRace } from '@/types/live';
+import type { RiderGroup } from '@/lib/live-race/cluster';
+import { speedMmPerHourToKmh } from '@/lib/live-race/position';
+import { fromTimestamp } from '@/lib/formatDate';
+
+interface Props {
+    race: CurrentLiveRace;
+    totalDistanceKm: number;
+    groups: RiderGroup[];
+    frontGroup: RiderGroup | null;
+    selectedGroup: RiderGroup | null;
+    onSelectGroup: (group: RiderGroup) => void;
+}
+
+function formatElapsed(ms: number): string {
+    if (ms <= 0) return "0' 00\"";
+    const totalSec = Math.floor(ms / 1000);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    if (h > 0) return `${h}h ${m}' ${String(s).padStart(2, '0')}"`;
+    return `${m}' ${String(s).padStart(2, '0')}"`;
+}
+
+function formatRaceElapsed(race: CurrentLiveRace): string {
+    const start = fromTimestamp(race.date as never);
+    if (!start || Number.isNaN(start.getTime())) return '—';
+    return formatElapsed(Date.now() - start.getTime());
+}
+
+export default function LiveRaceInfoCards({
+    race,
+    totalDistanceKm,
+    groups,
+    frontGroup,
+    selectedGroup,
+    onSelectGroup,
+}: Props) {
+    const selectedKm = selectedGroup?.chartKm ?? 0;
+    const missingKm = Math.max(0, totalDistanceKm - selectedKm);
+    const showingFront = !selectedGroup || selectedGroup === frontGroup;
+    const gapToFrontKm =
+        selectedGroup && frontGroup
+            ? Math.max(0, frontGroup.chartKm - selectedGroup.chartKm)
+            : 0;
+
+    const speeds = (selectedGroup?.riders ?? [])
+        .map((r) => speedMmPerHourToKmh(r.speedInMillimetersPerHour ?? undefined))
+        .filter((v) => v > 0);
+    const avgSpeed =
+        speeds.length > 0 ? speeds.reduce((a, b) => a + b, 0) / speeds.length : 0;
+
+    const selectedRiders = selectedGroup
+        ? [...selectedGroup.riders].sort((a, b) => {
+              if (a.registered !== b.registered) return a.registered ? -1 : 1;
+              return (a.name || '').localeCompare(b.name || '', 'da');
+          })
+        : [];
+
+    const orderedGroups = groups.length ? [...groups].reverse() : [];
+
+    const groupHeading = !selectedGroup
+        ? 'Hovedgruppe'
+        : showingFront
+          ? `Hovedgruppe · ${selectedGroup.riders.length}`
+          : `Gruppe · ${selectedGroup.riders.length} · +${gapToFrontKm.toFixed(1)} km bagved`;
+
+    return (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+            <div className="rounded-lg border border-border bg-card p-4">
+                <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-3">
+                    {showingFront ? 'Race data' : 'Gruppe data'}
+                </h3>
+                <dl className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                        <dt className="text-muted-foreground">Tid forløbet</dt>
+                        <dd className="font-mono font-semibold text-primary">{formatRaceElapsed(race)}</dd>
+                    </div>
+                    <div className="flex justify-between">
+                        <dt className="text-muted-foreground">Manglende km</dt>
+                        <dd className="font-mono font-semibold text-primary">{missingKm.toFixed(1)} km</dd>
+                    </div>
+                    <div className="flex justify-between">
+                        <dt className="text-muted-foreground">Hastighed</dt>
+                        <dd className="font-mono font-semibold text-primary">
+                            {avgSpeed > 0 ? `${avgSpeed.toFixed(1)} km/t` : '—'}
+                        </dd>
+                    </div>
+                </dl>
+            </div>
+
+            <div className="rounded-lg border border-border bg-card p-4 flex flex-col">
+                <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-3">
+                    {groupHeading}
+                </h3>
+                {selectedRiders.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Ingen aktive ryttere.</p>
+                ) : (
+                    <ul className="space-y-1 text-sm max-h-32 overflow-auto">
+                        {selectedRiders.map((r) => (
+                            <li key={r.userId} className="flex justify-between gap-2">
+                                <span className={`truncate ${r.registered ? 'text-card-foreground' : 'text-muted-foreground'}`}>
+                                    {r.name || `Ukendt #${r.userId.slice(0, 6)}`}
+                                </span>
+                                <span className="font-mono text-xs text-muted-foreground shrink-0">
+                                    {r.club || '—'}
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </div>
+
+            <div className="rounded-lg border border-border bg-card p-4">
+                <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-3">Gruppeafstand</h3>
+                {orderedGroups.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Ingen aktive ryttere</p>
+                ) : (
+                    <ul className="space-y-1 text-sm max-h-32 overflow-auto">
+                        {orderedGroups.map((g, i) => {
+                            const isFront = g === frontGroup;
+                            const isActive = g === selectedGroup;
+                            const gapKm = frontGroup ? Math.max(0, frontGroup.chartKm - g.chartKm) : 0;
+                            const label = isFront ? 'Hovedgruppe' : `Gruppe ${i}`;
+                            const gapLabel = isFront ? '—' : `+${gapKm.toFixed(1)} km`;
+                            return (
+                                <li key={i}>
+                                    <button
+                                        type="button"
+                                        onClick={() => onSelectGroup(g)}
+                                        className={`w-full flex justify-between items-center px-2 py-1 rounded text-left transition ${
+                                            isActive
+                                                ? 'bg-primary/10 text-primary font-semibold'
+                                                : 'hover:bg-muted/30 text-muted-foreground'
+                                        }`}
+                                    >
+                                        <span className="flex items-center gap-2">
+                                            {label}
+                                            <span className="text-xs opacity-70">({g.riders.length})</span>
+                                        </span>
+                                        <span className="font-mono text-primary">{gapLabel}</span>
+                                    </button>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                )}
+            </div>
+        </div>
+    );
+}

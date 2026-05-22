@@ -30,6 +30,13 @@
         "$ref": "#/$defs/leagueDoc"
       }
     },
+    "liveRaceState": {
+      "type": "array",
+      "description": "Singleton-style collection; document id 'active' points at the race shown on /live-race.",
+      "items": {
+        "$ref": "#/$defs/liveRaceStateActiveDoc"
+      }
+    },
     "policies": {
       "type": "array",
       "items": {
@@ -1172,6 +1179,27 @@
               }
             }
           }
+        }
+      }
+    },
+    "liveRaceStateActiveDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "_id": {
+          "type": "string",
+          "description": "Document id; use 'active' for the single live-race pointer."
+        },
+        "raceId": {
+          "type": ["string", "null"],
+          "description": "Firestore races/{raceId} shown on /live-race; null when deactivated."
+        },
+        "activatedAt": {
+          "$ref": "#/$defs/timestampString"
+        },
+        "activatedBy": {
+          "type": "string",
+          "description": "Firebase Auth uid of admin who activated."
         }
       }
     }
