@@ -43,6 +43,7 @@ export async function GET(req: NextRequest) {
     const world = req.nextUrl.searchParams.get('world');
     const route = req.nextUrl.searchParams.get('route');
     const fresh = req.nextUrl.searchParams.get('fresh') === '1';
+    const laps = Math.max(1, parseInt(req.nextUrl.searchParams.get('laps') ?? '1', 10) || 1);
 
     if (!world || !route) {
         return NextResponse.json({ error: 'Missing world or route param' }, { status: 400 });
@@ -80,7 +81,7 @@ export async function GET(req: NextRequest) {
     }
 
     const data = await upstream.json();
-    const profileSegments: ProfileSegment[] = Array.isArray(data?.profileSegments)
+    const singleLapProfileSegments: ProfileSegment[] = Array.isArray(data?.profileSegments)
         ? data.profileSegments
         : routeSegments.map((seg) => ({
             name: seg.name,
@@ -90,9 +91,43 @@ export async function GET(req: NextRequest) {
             direction: seg.direction,
         }));
 
+    // Tile elevation arrays and profileSegments for multi-lap routes.
+    // The backend returns data for a single lap (no lead-in); each subsequent lap is appended
+    // with distance offset = lapLength * lapIndex.
+    const singleLapDistances: number[] = Array.isArray(data?.distance) ? data.distance : [];
+    const singleLapAltitudes: number[] = Array.isArray(data?.altitude) ? data.altitude : [];
+    const lapLengthM = singleLapDistances.length > 0
+        ? (singleLapDistances[singleLapDistances.length - 1] ?? 0)
+        : 0;
+
+    const tiledDistance: number[] = [];
+    const tiledAltitude: number[] = [];
+    for (let lap = 0; lap < laps; lap++) {
+        const offsetM = lapLengthM * lap;
+        for (let i = 0; i < singleLapDistances.length; i++) {
+            tiledDistance.push((singleLapDistances[i] ?? 0) + offsetM);
+            tiledAltitude.push(singleLapAltitudes[i] ?? 0);
+        }
+    }
+
+    const lapLengthKm = lapLengthM / 1000;
+    const profileSegments: ProfileSegment[] = [];
+    for (let lap = 0; lap < laps; lap++) {
+        const offsetKm = lapLengthKm * lap;
+        for (const seg of singleLapProfileSegments) {
+            profileSegments.push({
+                ...seg,
+                fromKm: seg.fromKm + offsetKm,
+                toKm: seg.toKm + offsetKm,
+            });
+        }
+    }
+
     return NextResponse.json(
         {
             ...data,
+            distance: tiledDistance.length > 0 ? tiledDistance : data?.distance,
+            altitude: tiledAltitude.length > 0 ? tiledAltitude : data?.altitude,
             segments: routeSegments,
             profileSegments,
             stravaSegmentId: match.stravaSegmentId,

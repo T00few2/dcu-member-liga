@@ -100,12 +100,14 @@ function SprintsByLap({ sprints, profileData }: { sprints: Sprint[]; profileData
     const profileIndex = profileData ? buildProfileSegmentIndex(profileData.profileSegments) : null;
     const leadIn = profileData?.leadInDistance ?? 0;
 
+    // profileSegments are tiled by the API (one entry per lap), so the occurrence count
+    // in the index equals the lap number for segments appearing once per lap.
     const getKmFromTo = (seg: Sprint): { from: string; to: string } | null => {
         if (!profileIndex) return null;
         const base = normalizeNameForMatch(seg.name);
         const dir = normalizeDirectionForMatch(seg.direction, seg.name);
-        const count = Number.isFinite(seg.count) && seg.count > 0 ? seg.count : 1;
-        const match = profileIndex.get(`${base}::${dir}::${count}`);
+        const lap = seg.lap || 1;
+        const match = profileIndex.get(`${base}::${dir}::${lap}`);
         if (!match) return null;
         return {
             from: (Math.min(match.fromKm, match.toKm) + leadIn).toFixed(1),
@@ -117,8 +119,8 @@ function SprintsByLap({ sprints, profileData }: { sprints: Sprint[]; profileData
         if (!profileIndex) return Infinity;
         const base = normalizeNameForMatch(seg.name);
         const dir = normalizeDirectionForMatch(seg.direction, seg.name);
-        const count = Number.isFinite(seg.count) && seg.count > 0 ? seg.count : 1;
-        const match = profileIndex.get(`${base}::${dir}::${count}`);
+        const lap = seg.lap || 1;
+        const match = profileIndex.get(`${base}::${dir}::${lap}`);
         if (!match) return Infinity;
         return Math.min(match.fromKm, match.toKm) + leadIn;
     };
