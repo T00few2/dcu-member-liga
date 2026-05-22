@@ -91,7 +91,7 @@ function buildProfileSegmentIndex(profileSegments: ProfileSegment[]): Map<string
     return index;
 }
 
-function SprintsByLap({ sprints, profileData, lapDistance }: { sprints: Sprint[]; profileData: ProfileData | null; lapDistance: number }) {
+function SprintsByLap({ sprints, profileData }: { sprints: Sprint[]; profileData: ProfileData | null }) {
     const sprintLabel = (seg: Sprint) => {
         const isReverse = normalize(seg.direction) === 'reverse';
         return isReverse ? `${seg.name} Reverse` : seg.name;
@@ -100,29 +100,18 @@ function SprintsByLap({ sprints, profileData, lapDistance }: { sprints: Sprint[]
     const profileIndex = profileData ? buildProfileSegmentIndex(profileData.profileSegments) : null;
     const leadIn = profileData?.leadInDistance ?? 0;
 
+    // profileSegments are tiled by the API (one entry per lap), so the occurrence count
+    // in the index equals the lap number for segments appearing once per lap.
     const getKmFromTo = (seg: Sprint): { from: string; to: string } | null => {
         if (!profileIndex) return null;
         const base = normalizeNameForMatch(seg.name);
         const dir = normalizeDirectionForMatch(seg.direction, seg.name);
         const lap = seg.lap || 1;
-
-        // With tiled profileSegments (API returns one entry per lap), the occurrence count
-        // equals the lap number. Try that first.
-        const tiledMatch = profileIndex.get(`${base}::${dir}::${lap}`);
-        if (tiledMatch) {
-            return {
-                from: (Math.min(tiledMatch.fromKm, tiledMatch.toKm) + leadIn).toFixed(1),
-                to: (Math.max(tiledMatch.fromKm, tiledMatch.toKm) + leadIn).toFixed(1),
-            };
-        }
-
-        // Fallback for cached single-lap profileSegments: use lap-1 position + lap offset.
-        const lap1Match = profileIndex.get(`${base}::${dir}::1`);
-        if (!lap1Match) return null;
-        const lapOffset = lapDistance * (lap - 1);
+        const match = profileIndex.get(`${base}::${dir}::${lap}`);
+        if (!match) return null;
         return {
-            from: (Math.min(lap1Match.fromKm, lap1Match.toKm) + leadIn + lapOffset).toFixed(1),
-            to: (Math.max(lap1Match.fromKm, lap1Match.toKm) + leadIn + lapOffset).toFixed(1),
+            from: (Math.min(match.fromKm, match.toKm) + leadIn).toFixed(1),
+            to: (Math.max(match.fromKm, match.toKm) + leadIn).toFixed(1),
         };
     };
 
@@ -131,15 +120,9 @@ function SprintsByLap({ sprints, profileData, lapDistance }: { sprints: Sprint[]
         const base = normalizeNameForMatch(seg.name);
         const dir = normalizeDirectionForMatch(seg.direction, seg.name);
         const lap = seg.lap || 1;
-
-        const tiledMatch = profileIndex.get(`${base}::${dir}::${lap}`);
-        if (tiledMatch) {
-            return Math.min(tiledMatch.fromKm, tiledMatch.toKm) + leadIn;
-        }
-
-        const lap1Match = profileIndex.get(`${base}::${dir}::1`);
-        if (!lap1Match) return Infinity;
-        return Math.min(lap1Match.fromKm, lap1Match.toKm) + leadIn + lapDistance * (lap - 1);
+        const match = profileIndex.get(`${base}::${dir}::${lap}`);
+        if (!match) return Infinity;
+        return Math.min(match.fromKm, match.toKm) + leadIn;
     };
 
     const rows = [...sprints]
@@ -328,14 +311,6 @@ export default function RaceCard({
           }
         : null;
 
-    // Fallback single-lap km length for when profileSegments are not yet tiled
-    // (i.e. still served from cache before the multi-lap API was deployed).
-    const lapDistance = (() => {
-        const distArr = elevationData?.distance;
-        if (!distArr?.length) return 0;
-        return (distArr[distArr.length - 1] ?? 0) / 1000;
-    })();
-
     const { data: eventSegmentsData } = useRaceSegmentsQuery(
         race.routeId,
         lapsToShow,
@@ -492,7 +467,7 @@ export default function RaceCard({
                 {!isPublicVariant && resolvedSprintsToShow.length > 0 && (
                     <div className="border-t border-border pt-4 mb-6">
                         <h4 className="text-sm font-semibold text-card-foreground mb-3">Pointsprint</h4>
-                        <SprintsByLap sprints={resolvedProfileSprintsToShow} profileData={profileData} lapDistance={lapDistance} />
+                        <SprintsByLap sprints={resolvedProfileSprintsToShow} profileData={profileData} />
                     </div>
                 )}
 
