@@ -19,6 +19,7 @@ export type { PolicyDoc } from './usePolicyDocQuery';
 export { usePredictorConfigQuery } from './usePredictorConfigQuery';
 export { useMemberCountQuery } from './useMemberCountQuery';
 export { useCurrentLiveRaceQuery } from './useCurrentLiveRaceQuery';
+export { useUpcomingRaceQuery } from './useUpcomingRaceQuery';
 export { useLiveRidersQuery } from './useLiveRidersQuery';
 export { useRouteElevationQuery } from './useRouteElevationQuery';
 export type { RouteElevationData } from './useRouteElevationQuery';

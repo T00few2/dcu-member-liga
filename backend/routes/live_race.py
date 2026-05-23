@@ -4,14 +4,18 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import datetime, timezone, timedelta
 from typing import Any
 
+import pytz
 from flask import Blueprint, jsonify, request
 
 from extensions import db, get_zwift_service
 from routes.races import resolve_signup_subgroup_id
 
 logger = logging.getLogger(__name__)
+
+_COPENHAGEN_TZ = pytz.timezone('Europe/Copenhagen')
 
 live_race_bp = Blueprint('live_race', __name__)
 
@@ -80,6 +84,58 @@ def _public_club(profile: dict[str, Any] | None) -> str | None:
     club = profile.get('club') or profile.get('team')
     if isinstance(club, str) and club.strip():
         return club.strip()
+    return None
+
+
+def _parse_race_date(date_val: Any) -> datetime | None:
+    if date_val is None:
+        return None
+    if isinstance(date_val, datetime):
+        return date_val if date_val.tzinfo else date_val.replace(tzinfo=timezone.utc)
+    # Firestore Timestamp proto or similar object with .seconds
+    if hasattr(date_val, 'seconds') and not isinstance(date_val, str):
+        return datetime.fromtimestamp(date_val.seconds, tz=timezone.utc)
+    # Date stored as a plain map {"seconds": ..., "nanoseconds": ...}
+    if isinstance(date_val, dict) and 'seconds' in date_val:
+        try:
+            return datetime.fromtimestamp(float(date_val['seconds']), tz=timezone.utc)
+        except (TypeError, ValueError):
+            return None
+    if isinstance(date_val, str):
+        try:
+            dt = datetime.fromisoformat(date_val.replace('Z', '+00:00'))
+            if dt.tzinfo is None:
+                # Stored as Copenhagen local time with no timezone suffix — localize properly (handles CEST/CET DST)
+                dt = _COPENHAGEN_TZ.localize(dt)
+            return dt.astimezone(timezone.utc)
+        except (ValueError, AttributeError):
+            return None
+    return None
+
+
+def _auto_activate_if_due() -> tuple[str, dict[str, Any], str] | None:
+    """If a scheduled race start time has arrived, write it to liveRaceState/active and return its data."""
+    if not db:
+        return None
+    now = datetime.now(timezone.utc)
+    # Avoid order_by: it silently drops documents with incompatible/missing date types.
+    best: tuple[datetime, str, dict[str, Any]] | None = None
+    for doc in db.collection('races').stream():
+        race_data = doc.to_dict() or {}
+        race_date = _parse_race_date(race_data.get('date'))
+        if race_date is None:
+            continue
+        if race_date <= now <= race_date + timedelta(hours=4):
+            # Prefer the most recently started race (highest race_date ≤ now)
+            if best is None or race_date > best[0]:
+                best = (race_date, doc.id, race_data)
+    if best:
+        _, race_id, race_data = best
+        activated_at = now.isoformat()
+        db.collection('liveRaceState').document('active').set(
+            {'raceId': race_id, 'activatedAt': activated_at, 'activatedBy': 'auto'}
+        )
+        return race_id, race_data, activated_at
     return None
 
 
@@ -156,11 +212,19 @@ def get_live_race_current():
     state_ref = db.collection('liveRaceState').document('active')
     state_doc = state_ref.get()
     if not state_doc.exists:
+        result = _auto_activate_if_due()
+        if result:
+            race_id, race_data, activated_at = result
+            return jsonify(_serialize_race_summary(race_id, race_data, activated_at)), 200
         return '', 204
 
     state = state_doc.to_dict() or {}
     race_id = str(state.get('raceId') or '').strip()
     if not race_id:
+        result = _auto_activate_if_due()
+        if result:
+            race_id, race_data, activated_at = result
+            return jsonify(_serialize_race_summary(race_id, race_data, activated_at)), 200
         return '', 204
 
     race_doc = db.collection('races').document(race_id).get()
@@ -170,6 +234,27 @@ def get_live_race_current():
     race_data = race_doc.to_dict() or {}
     activated_at = state.get('activatedAt')
     return jsonify(_serialize_race_summary(race_id, race_data, activated_at)), 200
+
+
+@live_race_bp.route('/live-race/upcoming', methods=['GET'])
+def get_upcoming_race():
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    now = datetime.now(timezone.utc)
+    # Avoid order_by: it silently drops documents with incompatible/missing date types.
+    best: tuple[datetime, str, dict[str, Any]] | None = None
+    for doc in db.collection('races').stream():
+        race_data = doc.to_dict() or {}
+        race_date = _parse_race_date(race_data.get('date'))
+        if race_date and race_date > now:
+            if best is None or race_date < best[0]:
+                best = (race_date, doc.id, race_data)
+
+    if best:
+        _, race_id, race_data = best
+        return jsonify(_serialize_race_summary(race_id, race_data)), 200
+    return '', 204
 
 
 @live_race_bp.route('/races/<race_id>/live-riders', methods=['GET'])
