@@ -22,6 +22,13 @@ interface CategoryTab {
     sprints: Sprint[];
 }
 
+function pickSprints(...candidates: (Sprint[] | undefined | null)[]): Sprint[] {
+    for (const c of candidates) {
+        if (c && c.length > 0) return c;
+    }
+    return [];
+}
+
 function getCategoryTabs(race: CurrentLiveRace): CategoryTab[] {
     if (race.eventMode === 'grouped' && race.raceGroups?.length) {
         const tabs: CategoryTab[] = [];
@@ -33,7 +40,7 @@ function getCategoryTabs(race: CurrentLiveRace): CategoryTab[] {
                     label: cat.category,
                     groupName: group.name || undefined,
                     laps: cat.laps ?? group.laps ?? race.laps ?? 1,
-                    sprints: cat.sprints ?? group.sprints ?? [],
+                    sprints: pickSprints(cat.sprints, group.sprints, race.sprints),
                 });
             }
         }
@@ -44,7 +51,7 @@ function getCategoryTabs(race: CurrentLiveRace): CategoryTab[] {
             cat: cfg.customCategory,
             label: cfg.customCategory,
             laps: cfg.laps ?? race.laps ?? 1,
-            sprints: cfg.sprints ?? [],
+            sprints: pickSprints(cfg.sprints, race.sprints),
         }));
     }
     if (race.singleModeCategories?.length) {
@@ -52,10 +59,10 @@ function getCategoryTabs(race: CurrentLiveRace): CategoryTab[] {
             cat: cfg.category,
             label: cfg.category,
             laps: cfg.laps ?? race.laps ?? 1,
-            sprints: cfg.sprints ?? [],
+            sprints: pickSprints(cfg.sprints, race.sprints),
         }));
     }
-    return [{ cat: 'A', label: 'A', laps: race.laps ?? 1, sprints: [] }];
+    return [{ cat: 'A', label: 'A', laps: race.laps ?? 1, sprints: race.sprints ?? [] }];
 }
 
 function LiveRacePageContent() {

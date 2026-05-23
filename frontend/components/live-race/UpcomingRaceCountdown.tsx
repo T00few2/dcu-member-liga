@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import RouteElevationChart from '@/components/races/RouteElevationChart';
+import LiveRaceResultsTable from '@/components/live-race/LiveRaceResultsTable';
 import { fromTimestamp, formatDateLong, formatTimeWithTz } from '@/lib/formatDate';
 import type { CurrentLiveRace, Sprint } from '@/types/live';
 
@@ -9,24 +10,40 @@ interface Props {
     race: CurrentLiveRace;
 }
 
-function getFirstTabInfo(race: CurrentLiveRace): { laps: number; sprints: Sprint[] } {
+function pickSprints(...candidates: (Sprint[] | undefined | null)[]): Sprint[] {
+    for (const c of candidates) {
+        if (c && c.length > 0) return c;
+    }
+    return [];
+}
+
+function getFirstTabInfo(race: CurrentLiveRace): { category: string; laps: number; sprints: Sprint[] } {
     if (race.eventMode === 'grouped' && race.raceGroups?.length) {
         const group = race.raceGroups[0];
         const cat = group.categories?.[0];
         return {
-            laps: (cat?.laps ?? group.laps ?? race.laps ?? 1),
-            sprints: (cat?.sprints ?? group.sprints ?? []),
+            category: cat?.category ?? 'A',
+            laps: cat?.laps ?? group.laps ?? race.laps ?? 1,
+            sprints: pickSprints(cat?.sprints, group.sprints, race.sprints),
         };
     }
     if (race.eventConfiguration?.length) {
         const cfg = race.eventConfiguration[0];
-        return { laps: cfg.laps ?? race.laps ?? 1, sprints: cfg.sprints ?? [] };
+        return {
+            category: cfg.customCategory ?? 'A',
+            laps: cfg.laps ?? race.laps ?? 1,
+            sprints: pickSprints(cfg.sprints, race.sprints),
+        };
     }
     if (race.singleModeCategories?.length) {
         const cfg = race.singleModeCategories[0];
-        return { laps: cfg.laps ?? race.laps ?? 1, sprints: cfg.sprints ?? [] };
+        return {
+            category: cfg.category ?? 'A',
+            laps: cfg.laps ?? race.laps ?? 1,
+            sprints: pickSprints(cfg.sprints, race.sprints),
+        };
     }
-    return { laps: race.laps ?? 1, sprints: [] };
+    return { category: 'A', laps: race.laps ?? 1, sprints: race.sprints ?? [] };
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -46,7 +63,7 @@ export default function UpcomingRaceCountdown({ race }: Props) {
         return () => clearInterval(id);
     }, [raceDate]);
 
-    const { laps, sprints } = useMemo(() => getFirstTabInfo(race), [race]);
+    const { category, laps, sprints } = useMemo(() => getFirstTabInfo(race), [race]);
 
     const days = Math.floor(secondsLeft / 86400);
     const hours = Math.floor((secondsLeft % 86400) / 3600);
@@ -143,6 +160,18 @@ export default function UpcomingRaceCountdown({ race }: Props) {
                     <p className="text-sm text-muted-foreground">Ruteprofil ikke tilgængelig.</p>
                 )}
             </div>
+
+            <LiveRaceResultsTable
+                race={null}
+                category={category}
+                loading={false}
+                sprints={sprints}
+                laps={laps}
+                routeId={race.routeId}
+                worldName={race.map}
+                routeName={race.routeName}
+                prerace
+            />
         </div>
     );
 }

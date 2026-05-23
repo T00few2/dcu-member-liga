@@ -84,6 +84,8 @@ export interface CurrentLiveRace {
     eventConfiguration?: EventCategoryConfig[];
     singleModeCategories?: CategoryConfig[];
     raceGroups?: LiveRaceGroup[];
+    sprints?: Sprint[];
+    selectedSegments?: string[];
     subgroupId?: string;
     activatedAt?: unknown;
 }

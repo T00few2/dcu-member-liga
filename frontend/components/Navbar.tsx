@@ -11,7 +11,7 @@ export default function Navbar() {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
     const pathname = usePathname();
-    const hideNavbar = pathname?.startsWith('/live');
+    const hideNavbar = pathname === '/live' || pathname?.startsWith('/live/');
 
     // Close drawer when route changes
     useEffect(() => {
@@ -32,7 +32,10 @@ export default function Navbar() {
     }, [isDrawerOpen]);
 
 
+    const liveNavLink = { href: '/live-race', label: 'Live' };
+
     const authNavLinks = [
+        liveNavLink,
         { href: '/participants', label: 'Deltagere' },
         { href: '/schedule', label: 'Kalender' },
         { href: '/results', label: 'Resultater' },
@@ -164,6 +167,12 @@ export default function Navbar() {
                                 ) : (
                                     <div className="flex items-center gap-4">
                                         <Link
+                                            href={liveNavLink.href}
+                                            className={`hidden md:inline hover:bg-white/10 px-3 py-2 rounded-md text-base transition-colors ${pathname === liveNavLink.href ? 'text-white font-bold' : 'text-white/90 font-bold'}`}
+                                        >
+                                            {liveNavLink.label}
+                                        </Link>
+                                        <Link
                                             href="/info"
                                             className={`hidden md:inline hover:bg-white/10 px-3 py-2 rounded-md text-base transition-colors ${pathname === '/info' ? 'text-white font-bold' : 'text-white/90 font-bold'}`}
                                         >
@@ -276,6 +285,13 @@ export default function Navbar() {
                             </div>
                         ) : (
                             <div className="border-t border-slate-800 pt-4 mt-4">
+                                <Link
+                                    href={liveNavLink.href}
+                                    className={`block px-4 py-3 rounded-lg ${pathname === liveNavLink.href ? 'bg-primary text-primary-foreground font-medium' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}
+                                    onClick={() => setIsDrawerOpen(false)}
+                                >
+                                    {liveNavLink.label}
+                                </Link>
                                 <Link
                                     href="/info"
                                     className="block px-4 py-3 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg"

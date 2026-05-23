@@ -6,6 +6,7 @@ import CodeOfConductModal from '@/components/CodeOfConductModal';
 import RegistrationIntroModal from '@/components/RegistrationIntroModal';
 import UnregisteredLoginModal from '@/components/UnregisteredLoginModal';
 import CommunitySection from './CommunitySection';
+import LiveRaceBanner from './LiveRaceBanner';
 import { useMemberCountQuery } from '@/hooks/queries';
 
 interface LandingPageProps {
@@ -79,6 +80,9 @@ export default function LandingPage({
 
             {/* Action Cards */}
             <div className="container mx-auto px-4 -mt-24 relative z-20 pb-20 animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-500 fill-mode-both">
+                <div className="w-full max-w-4xl mx-auto mb-6">
+                    <LiveRaceBanner />
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl mx-auto">
                     <div className="bg-card/80 backdrop-blur-md border border-border/50 text-card-foreground p-8 rounded-2xl shadow-2xl flex flex-col hover:-translate-y-1 hover:shadow-primary/10 transition-all duration-300 relative overflow-hidden group text-left text-base">
                         <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity z-0 pointer-events-none"></div>

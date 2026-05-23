@@ -199,6 +199,8 @@ def _serialize_race_summary(race_id: str, race_data: dict[str, Any], activated_a
         'eventConfiguration': configs_out,
         'singleModeCategories': race_data.get('singleModeCategories'),
         'raceGroups': race_groups_out,
+        'sprints': race_data.get('sprints'),
+        'selectedSegments': race_data.get('selectedSegments'),
         'subgroupId': race_data.get('subgroupId'),
         'activatedAt': activated_at,
     }

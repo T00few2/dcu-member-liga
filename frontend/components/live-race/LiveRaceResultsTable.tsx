@@ -18,6 +18,8 @@ interface Props {
     routeId?: string | number;
     worldName?: string;
     routeName?: string;
+    /** Hide live empty-state and replace with pre-race wording. */
+    prerace?: boolean;
 }
 
 type TabKey = 'live' | 'info';
@@ -45,10 +47,12 @@ function LiveResultsView({
     race,
     category,
     loading,
+    prerace,
 }: {
     race: Race | null;
     category: string;
     loading?: boolean;
+    prerace?: boolean;
 }) {
     const rows = race?.results?.[category] ?? [];
 
@@ -64,7 +68,9 @@ function LiveResultsView({
 
             {!loading && rows.length === 0 && (
                 <p className="text-sm text-muted-foreground">
-                    Ingen resultater endnu — venter på første passage.
+                    {prerace
+                        ? 'Løbet er ikke startet endnu.'
+                        : 'Ingen resultater endnu — venter på første passage.'}
                 </p>
             )}
 
@@ -187,6 +193,7 @@ export default function LiveRaceResultsTable({
     routeId,
     worldName,
     routeName,
+    prerace,
 }: Props) {
     const [tab, setTab] = useState<TabKey>('live');
 
@@ -208,13 +215,13 @@ export default function LiveRaceResultsTable({
         <section className="border-t border-border pt-6 mt-6">
             <header className="flex flex-wrap items-end justify-between gap-2 mb-3 border-b border-border">
                 <div className="flex items-center gap-1">
-                    {tabBtn('live', `Live resultater · ${category}`)}
+                    {tabBtn('live', prerace ? 'Live resultater' : `Live resultater · ${category}`)}
                     {tabBtn('info', 'Info')}
                 </div>
             </header>
 
             {tab === 'live' ? (
-                <LiveResultsView race={race} category={category} loading={loading} />
+                <LiveResultsView race={race} category={category} loading={loading} prerace={prerace} />
             ) : (
                 <InfoView
                     sprints={sprints}

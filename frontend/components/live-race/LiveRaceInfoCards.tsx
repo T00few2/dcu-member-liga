@@ -82,11 +82,38 @@ export default function LiveRaceInfoCards({
 
     const orderedGroups = groups.length ? [...groups].reverse() : [];
 
+    // Largest non-front group becomes the "Peloton". If the front group is also
+    // the biggest bunch, we still call it "Førergruppe" — Peloton only makes
+    // sense as a distinct chasing pack.
+    const pelotonGroup = (() => {
+        if (groups.length < 2 || !frontGroup) return null;
+        let best: RiderGroup | null = null;
+        for (const g of groups) {
+            if (g === frontGroup) continue;
+            if (!best || g.riders.length > best.riders.length) best = g;
+        }
+        return best && best.riders.length >= 2 ? best : null;
+    })();
+
+    const labelForGroup = (g: RiderGroup, fallbackIdx: number): string => {
+        if (g === frontGroup) return 'Førergruppe';
+        if (g === pelotonGroup) return 'Peloton';
+        return `Gruppe ${fallbackIdx}`;
+    };
+
+    const selectedGroupLabel = selectedGroup
+        ? selectedGroup === frontGroup
+            ? 'Førergruppe'
+            : selectedGroup === pelotonGroup
+              ? 'Peloton'
+              : 'Gruppe'
+        : 'Førergruppe';
+
     const groupHeading = !selectedGroup
-        ? 'Hovedgruppe'
+        ? 'Førergruppe'
         : showingFront
-          ? `Hovedgruppe · ${selectedGroup.riders.length}`
-          : `Gruppe · ${selectedGroup.riders.length} · +${gapToFrontKm.toFixed(1)} km bagved`;
+          ? `${selectedGroupLabel} · ${selectedGroup.riders.length}`
+          : `${selectedGroupLabel} · ${selectedGroup.riders.length} · +${gapToFrontKm.toFixed(1)} km bagved`;
 
     return (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
@@ -157,7 +184,7 @@ export default function LiveRaceInfoCards({
                             const isFront = g === frontGroup;
                             const isActive = origIdx === selectedIdx;
                             const gapKm = frontGroup ? Math.max(0, frontGroup.chartKm - g.chartKm) : 0;
-                            const label = isFront ? 'Hovedgruppe' : `Gruppe ${i}`;
+                            const label = labelForGroup(g, i);
                             const gapLabel = isFront ? '—' : `+${gapKm.toFixed(1)} km`;
                             return (
                                 <li key={i}>
