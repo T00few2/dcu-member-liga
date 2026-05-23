@@ -503,6 +503,7 @@ class ZwiftService:
         event_sub_id: str,
         limit: int = 100,
         page_delay: int = 0,
+        max_pages: int = 10,
     ) -> list[dict[str, Any]]:
         """
         Fetch trimmed live-data rows for active riders in a subgroup.
@@ -511,7 +512,7 @@ class ZwiftService:
         current_page = 0
         riders: list[dict[str, Any]] = []
 
-        while True:
+        while current_page < max_pages:
             response = self._api_get(
                 f"/api/link/events/subgroups/{event_sub_id}/live-data",
                 params={"page": current_page, "limit": limit},

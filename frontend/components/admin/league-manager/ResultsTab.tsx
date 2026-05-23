@@ -403,6 +403,7 @@ export default function ResultsTab({ user, races, status, setStatus }: ResultsTa
                             onChange={(e) => {
                                 setViewingResultsId(e.target.value || null);
                                 setResultsCalcStatus(null);
+                                setLiveRaceActivateStatus(null);
                                 setDrBatchStatus(null);
                                 setDrBatchProgress(null);
                             }}

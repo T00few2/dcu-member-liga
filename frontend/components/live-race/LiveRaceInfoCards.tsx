@@ -8,6 +8,7 @@ import { fromTimestamp } from '@/lib/formatDate';
 interface Props {
     race: CurrentLiveRace;
     totalDistanceKm: number;
+    leadInKm: number;
     groups: RiderGroup[];
     frontGroup: RiderGroup | null;
     selectedGroup: RiderGroup | null;
@@ -33,13 +34,15 @@ function formatRaceElapsed(race: CurrentLiveRace): string {
 export default function LiveRaceInfoCards({
     race,
     totalDistanceKm,
+    leadInKm,
     groups,
     frontGroup,
     selectedGroup,
     onSelectGroup,
 }: Props) {
     const selectedKm = selectedGroup?.chartKm ?? 0;
-    const missingKm = Math.max(0, totalDistanceKm - selectedKm);
+    const raceOnlyDistanceKm = Math.max(0, totalDistanceKm - leadInKm);
+    const missingKm = Math.max(0, raceOnlyDistanceKm - selectedKm);
     const showingFront = !selectedGroup || selectedGroup === frontGroup;
     const gapToFrontKm =
         selectedGroup && frontGroup

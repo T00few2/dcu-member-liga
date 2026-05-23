@@ -70,6 +70,15 @@ function LiveRacePageContent() {
     const activeCat = searchParams.get('cat') || tabs[0]?.cat || 'A';
     const activeTab = tabs.find((t) => t.cat === activeCat) ?? tabs[0];
 
+    // Redirect to the first valid category if the URL carries a stale one.
+    useEffect(() => {
+        if (!tabs.length || !tabs[0]) return;
+        if (tabs.find((t) => t.cat === activeCat)) return;
+        const params = new URLSearchParams(searchParams.toString());
+        params.set('cat', tabs[0].cat);
+        router.replace(`/live-race?${params.toString()}`);
+    }, [tabs, activeCat, router, searchParams]);
+
     const tabsByGroup = useMemo(() => {
         const buckets = new Map<string | undefined, CategoryTab[]>();
         const order: (string | undefined)[] = [];
@@ -268,6 +277,7 @@ function LiveRacePageContent() {
             <LiveRaceInfoCards
                 race={currentRace}
                 totalDistanceKm={tabTotalDistanceKm}
+                leadInKm={leadInKm}
                 groups={groups}
                 frontGroup={frontGroup}
                 selectedGroup={selectedGroup}
