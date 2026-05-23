@@ -82,35 +82,41 @@ export default function LiveRaceInfoCards({
 
     const orderedGroups = groups.length ? [...groups].reverse() : [];
 
-    // Largest non-front group becomes the "Peloton". If the front group is also
-    // the biggest bunch, we still call it "Førergruppe" — Peloton only makes
-    // sense as a distinct chasing pack.
+    // The largest group is always the Peloton. Ties resolve to the rear-most
+    // bunch (since `groups` is sorted front-last, iterating forward picks the
+    // first rear group with the max count). "Førergruppe" is only used for the
+    // leading group when it is distinct from the Peloton.
     const pelotonGroup = (() => {
-        if (groups.length < 2 || !frontGroup) return null;
-        let best: RiderGroup | null = null;
+        if (!groups.length) return null;
+        let best: RiderGroup = groups[0];
         for (const g of groups) {
-            if (g === frontGroup) continue;
-            if (!best || g.riders.length > best.riders.length) best = g;
+            if (g.riders.length > best.riders.length) best = g;
         }
-        return best && best.riders.length >= 2 ? best : null;
+        return best;
     })();
 
     const labelForGroup = (g: RiderGroup, fallbackIdx: number): string => {
-        if (g === frontGroup) return 'Førergruppe';
         if (g === pelotonGroup) return 'Peloton';
+        if (g === frontGroup) return 'Førergruppe';
         return `Gruppe ${fallbackIdx}`;
     };
 
-    const selectedGroupLabel = selectedGroup
-        ? selectedGroup === frontGroup
-            ? 'Førergruppe'
-            : selectedGroup === pelotonGroup
-              ? 'Peloton'
-              : 'Gruppe'
+    const frontGroupLabel = frontGroup
+        ? frontGroup === pelotonGroup
+            ? 'Peloton'
+            : 'Førergruppe'
         : 'Førergruppe';
 
+    const selectedGroupLabel = selectedGroup
+        ? selectedGroup === pelotonGroup
+            ? 'Peloton'
+            : selectedGroup === frontGroup
+              ? 'Førergruppe'
+              : 'Gruppe'
+        : frontGroupLabel;
+
     const groupHeading = !selectedGroup
-        ? 'Førergruppe'
+        ? frontGroupLabel
         : showingFront
           ? `${selectedGroupLabel} · ${selectedGroup.riders.length}`
           : `${selectedGroupLabel} · ${selectedGroup.riders.length} · +${gapToFrontKm.toFixed(1)} km bagved`;

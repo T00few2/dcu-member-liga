@@ -44,6 +44,10 @@ export interface RouteElevationOverlayContext {
     altitudeAt: (km: number) => number;
     dataPoints: DataPoint[];
     chartHeight: number;
+    plotTop: number;
+    plotBottom: number;
+    plotLeft: number;
+    plotRight: number;
 }
 
 interface Props {
@@ -275,6 +279,10 @@ function ElevationOverlayHost({
         altitudeAt: buildAltitudeAt(data),
         dataPoints: data,
         chartHeight: CHART_HEIGHT,
+        plotTop: plotArea.y,
+        plotBottom: plotArea.y + plotArea.height,
+        plotLeft: plotArea.x,
+        plotRight: plotArea.x + plotArea.width,
     });
 }
 

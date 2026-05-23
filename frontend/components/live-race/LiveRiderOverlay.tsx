@@ -17,6 +17,7 @@ const COLOR_REGISTERED = '#c00418';
 const COLOR_UNREGISTERED = '#64748b';
 const COLOR_SELECTION = '#f59e0b';
 const COLOR_MARKER_STROKE = '#ffffff';
+const COLOR_DCU_RED = '#c00418';
 
 function markerLayout(
     group: RiderGroup,
@@ -123,7 +124,10 @@ export default function LiveRiderOverlay({
     xScale,
     yScale,
     altitudeAt,
+    dataPoints,
     chartHeight,
+    plotTop,
+    plotBottom,
     onGroupClick,
     onGroupHover,
 }: Props) {
@@ -136,6 +140,29 @@ export default function LiveRiderOverlay({
     const missingKm = frontGroup
         ? Math.max(0, totalDistanceKm - frontGroup.chartKm)
         : totalDistanceKm;
+
+    const coveredPath = useMemo(() => {
+        if (!frontGroup || frontGroup.chartKm <= 0 || !dataPoints.length) return null;
+        const frontKm = frontGroup.chartKm;
+        const baseAlt = dataPoints.reduce(
+            (min, d) => (d.altitude < min ? d.altitude : min),
+            dataPoints[0].altitude,
+        );
+        const baseY = yScale(baseAlt);
+        const segments: string[] = [];
+        const startX = xScale(dataPoints[0].distance);
+        segments.push(`M ${startX} ${baseY}`);
+        for (const pt of dataPoints) {
+            if (pt.distance > frontKm) break;
+            segments.push(`L ${xScale(pt.distance)} ${yScale(pt.altitude)}`);
+        }
+        segments.push(`L ${xScale(frontKm)} ${yScale(altitudeAt(frontKm))}`);
+        segments.push(`L ${xScale(frontKm)} ${baseY}`);
+        segments.push('Z');
+        return segments.join(' ');
+    }, [frontGroup, dataPoints, xScale, yScale, altitudeAt]);
+
+    const frontLineX = frontGroup ? xScale(frontGroup.chartKm) : null;
 
     const selectionLayout =
         selectedIdx >= 0 && groups[selectedIdx]
@@ -150,6 +177,28 @@ export default function LiveRiderOverlay({
 
     return (
         <g>
+            {coveredPath && (
+                <path
+                    d={coveredPath}
+                    fill={COLOR_DCU_RED}
+                    fillOpacity={0.55}
+                    stroke="none"
+                    style={{ pointerEvents: 'none' }}
+                />
+            )}
+            {frontLineX != null && (
+                <line
+                    x1={frontLineX}
+                    y1={plotTop}
+                    x2={frontLineX}
+                    y2={plotBottom}
+                    stroke={COLOR_DCU_RED}
+                    strokeWidth={1.5}
+                    strokeDasharray="4 3"
+                    strokeOpacity={0.9}
+                    style={{ pointerEvents: 'none' }}
+                />
+            )}
             {renderOrder.map((idx) => {
                 const group = groups[idx];
                 const isSelected = idx === selectedIdx;
