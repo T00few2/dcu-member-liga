@@ -7,12 +7,15 @@ import time
 from datetime import datetime, timezone, timedelta
 from typing import Any
 
+import pytz
 from flask import Blueprint, jsonify, request
 
 from extensions import db, get_zwift_service
 from routes.races import resolve_signup_subgroup_id
 
 logger = logging.getLogger(__name__)
+
+_COPENHAGEN_TZ = pytz.timezone('Europe/Copenhagen')
 
 live_race_bp = Blueprint('live_race', __name__)
 
@@ -100,8 +103,12 @@ def _parse_race_date(date_val: Any) -> datetime | None:
             return None
     if isinstance(date_val, str):
         try:
-            return datetime.fromisoformat(date_val.replace('Z', '+00:00'))
-        except ValueError:
+            dt = datetime.fromisoformat(date_val.replace('Z', '+00:00'))
+            if dt.tzinfo is None:
+                # Stored as Copenhagen local time with no timezone suffix — localize properly (handles CEST/CET DST)
+                dt = _COPENHAGEN_TZ.localize(dt)
+            return dt.astimezone(timezone.utc)
+        except (ValueError, AttributeError):
             return None
     return None
 
