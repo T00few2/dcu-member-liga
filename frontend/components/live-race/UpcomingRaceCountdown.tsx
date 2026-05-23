@@ -53,6 +53,14 @@ export default function UpcomingRaceCountdown({ race }: Props) {
     const minutes = Math.floor((secondsLeft % 3600) / 60);
     const seconds = secondsLeft % 60;
 
+    // totalDistance is in km; compute per-category distance the same way the live page does
+    const totalKm = useMemo(() => {
+        const raceLaps = Math.max(1, race.laps ?? 1);
+        const lapKm = (race.totalDistance ?? 0) / raceLaps;
+        const tabKm = lapKm * Math.max(1, laps);
+        return tabKm > 0 ? tabKm : null;
+    }, [race.totalDistance, race.laps, laps]);
+
     const dateLabel = raceDate
         ? `${formatDateLong(raceDate)} · ${formatTimeWithTz(raceDate)}`
         : null;
@@ -61,7 +69,7 @@ export default function UpcomingRaceCountdown({ race }: Props) {
         race.map,
         race.routeName,
         laps ? `${laps} omgang${laps !== 1 ? 'e' : ''}` : null,
-        race.totalDistance ? `${(race.totalDistance / 1000).toFixed(1)} km` : null,
+        totalKm ? `${totalKm.toFixed(1)} km` : null,
         dateLabel,
     ]
         .filter(Boolean)
@@ -85,6 +93,7 @@ export default function UpcomingRaceCountdown({ race }: Props) {
                             routeName={race.routeName}
                             laps={laps}
                             pointSegments={sprints}
+                            height={260}
                         />
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                             <div className="bg-background/85 backdrop-blur-sm rounded-lg border border-border px-6 py-4 text-center">
