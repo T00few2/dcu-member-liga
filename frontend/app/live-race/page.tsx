@@ -7,9 +7,11 @@ import LiveRiderOverlay from '@/components/live-race/LiveRiderOverlay';
 import LiveRiderTooltip from '@/components/live-race/LiveRiderTooltip';
 import LiveRaceInfoCards from '@/components/live-race/LiveRaceInfoCards';
 import LiveRaceResultsTable from '@/components/live-race/LiveRaceResultsTable';
-import { useCurrentLiveRaceQuery, useLiveRidersQuery, useRouteElevationQuery } from '@/hooks/queries';
+import UpcomingRaceCountdown from '@/components/live-race/UpcomingRaceCountdown';
+import { useCurrentLiveRaceQuery, useLiveRidersQuery, useRouteElevationQuery, useUpcomingRaceQuery } from '@/hooks/queries';
 import { useLiveRaceDoc } from '@/hooks/live-race/useLiveRaceDoc';
 import { clusterRiders, positionRiders, type RiderGroup } from '@/lib/live-race/cluster';
+import { fromTimestamp } from '@/lib/formatDate';
 import type { CurrentLiveRace, Sprint } from '@/types/live';
 
 interface CategoryTab {
@@ -61,7 +63,26 @@ function LiveRacePageContent() {
     const searchParams = useSearchParams();
     const chartWrapRef = useRef<HTMLDivElement>(null);
 
-    const { data: currentRace, isLoading: raceLoading } = useCurrentLiveRaceQuery();
+    const { data: upcomingRace } = useUpcomingRaceQuery();
+
+    // Flip to fast polling once the upcoming race's start time arrives so the
+    // auto-activation is picked up within a few seconds.
+    const upcomingDate = useMemo(
+        () => (upcomingRace?.date ? fromTimestamp(upcomingRace.date) : null),
+        [upcomingRace?.date],
+    );
+    const [isRaceDue, setIsRaceDue] = useState(
+        () => (upcomingDate ? upcomingDate.getTime() <= Date.now() : false),
+    );
+    useEffect(() => {
+        if (!upcomingDate || isRaceDue) return;
+        const ms = upcomingDate.getTime() - Date.now();
+        if (ms <= 0) { setIsRaceDue(true); return; }
+        const tid = setTimeout(() => setIsRaceDue(true), ms);
+        return () => clearTimeout(tid);
+    }, [upcomingDate, isRaceDue]);
+
+    const { data: currentRace, isLoading: raceLoading } = useCurrentLiveRaceQuery(isRaceDue ? 5_000 : 30_000);
     const tabs = useMemo(
         () => (currentRace ? getCategoryTabs(currentRace) : []),
         [currentRace],
@@ -198,12 +219,13 @@ function LiveRacePageContent() {
     }
 
     if (!currentRace) {
+        if (upcomingRace) {
+            return <UpcomingRaceCountdown race={upcomingRace} />;
+        }
         return (
             <div className="container mx-auto px-4 py-12 text-center">
                 <h1 className="text-xl font-bold text-card-foreground mb-2">Live løb</h1>
-                <p className="text-muted-foreground">
-                    Ingen aktive løb lige nu.
-                </p>
+                <p className="text-muted-foreground">Ingen aktive løb lige nu.</p>
             </div>
         );
     }

@@ -4,16 +4,16 @@ import { useQuery } from '@tanstack/react-query';
 import { API_URL } from '@/lib/api';
 import type { CurrentLiveRace } from '@/types/live';
 
-export function useCurrentLiveRaceQuery(refetchInterval: number = 30_000) {
+export function useUpcomingRaceQuery() {
     return useQuery<CurrentLiveRace | null>({
-        queryKey: ['live-race', 'current'],
+        queryKey: ['live-race', 'upcoming'],
         queryFn: async () => {
-            const res = await fetch(`${API_URL}/live-race/current`);
+            const res = await fetch(`${API_URL}/live-race/upcoming`);
             if (res.status === 204) return null;
             if (!res.ok) return null;
             return res.json();
         },
-        refetchInterval,
-        staleTime: 15_000,
+        refetchInterval: 60_000,
+        staleTime: 30_000,
     });
 }
