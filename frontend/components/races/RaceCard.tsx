@@ -5,23 +5,14 @@ import { getZwiftInsiderUrl, API_URL } from '@/lib/api';
 import { formatDateLong, formatTimeWithTz, fromTimestamp } from '@/lib/formatDate';
 import PointsSplitBadge from '@/components/races/PointsSplitBadge';
 import RouteElevationChart from '@/components/races/RouteElevationChart';
+import SprintsByLap, {
+    normalizeSprintDirectionForMatch as normalizeDirectionForMatch,
+    type SprintsByLapProfileData as ProfileData,
+} from '@/components/races/SprintsByLap';
 import type { Race, Sprint, EventCategoryConfig, CategoryConfig } from '@/types/live';
 import type { LeagueSettings, RaceGroup } from '@/types/admin';
 import { useRouteElevationQuery, useRaceSegmentsQuery } from '@/hooks/queries';
 import { useAuth } from '@/lib/auth-context';
-
-interface ProfileSegment {
-    name: string;
-    type: string;
-    fromKm: number;
-    toKm: number;
-    direction?: string;
-}
-
-interface ProfileData {
-    leadInDistance: number;
-    profileSegments: ProfileSegment[];
-}
 
 interface EventSegmentInstance {
     id: string;
@@ -53,142 +44,6 @@ const getZwiftEventUrl = (eventId: string, eventSecret?: string) => {
     const secret = eventSecret ? `?eventSecret=${eventSecret}` : '';
     return `https://www.zwift.com/events/view/${eventId}${secret}`;
 };
-
-function normalizeNameForMatch(name?: string): string {
-    return (name || '')
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .trim()
-        .toLowerCase()
-        .replace(/['’`]/g, ' ')
-        .replace(/\s+\(.*\)\s*$/g, '')
-        .replace(/\s+(reverse|rev\.?)$/g, '')
-        .replace(/[^a-z0-9\s-]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-}
-
-function normalizeDirectionForMatch(direction?: string, name?: string): 'forward' | 'reverse' {
-    const d = (direction || '').trim().toLowerCase();
-    if (d === 'reverse' || d === 'rev' || d === 'r') return 'reverse';
-    if (d === 'forward' || d === 'f') return 'forward';
-    const n = (name || '').toLowerCase();
-    if (n.includes('reverse') || n.includes(' rev')) return 'reverse';
-    return 'forward';
-}
-
-function buildProfileSegmentIndex(profileSegments: ProfileSegment[]): Map<string, ProfileSegment> {
-    const counters = new Map<string, number>();
-    const index = new Map<string, ProfileSegment>();
-    for (const seg of profileSegments) {
-        const base = normalizeNameForMatch(seg.name);
-        const dir = normalizeDirectionForMatch(seg.direction, seg.name);
-        const keyBase = `${base}::${dir}`;
-        const count = (counters.get(keyBase) || 0) + 1;
-        counters.set(keyBase, count);
-        index.set(`${keyBase}::${count}`, seg);
-    }
-    return index;
-}
-
-function SprintsByLap({ sprints, profileData }: { sprints: Sprint[]; profileData: ProfileData | null }) {
-    const sprintLabel = (seg: Sprint) => {
-        const isReverse = normalize(seg.direction) === 'reverse';
-        return isReverse ? `${seg.name} Reverse` : seg.name;
-    };
-
-    const profileIndex = profileData ? buildProfileSegmentIndex(profileData.profileSegments) : null;
-    const leadIn = profileData?.leadInDistance ?? 0;
-
-    // profileSegments are tiled by the API (one entry per lap), so the occurrence count
-    // in the index equals the lap number for segments appearing once per lap.
-    const getKmFromTo = (seg: Sprint): { from: string; to: string } | null => {
-        if (!profileIndex) return null;
-        const base = normalizeNameForMatch(seg.name);
-        const dir = normalizeDirectionForMatch(seg.direction, seg.name);
-        const lap = seg.lap || 1;
-        const match = profileIndex.get(`${base}::${dir}::${lap}`);
-        if (!match) return null;
-        return {
-            from: (Math.min(match.fromKm, match.toKm) + leadIn).toFixed(1),
-            to: (Math.max(match.fromKm, match.toKm) + leadIn).toFixed(1),
-        };
-    };
-
-    const getFromKmValue = (seg: Sprint): number => {
-        if (!profileIndex) return Infinity;
-        const base = normalizeNameForMatch(seg.name);
-        const dir = normalizeDirectionForMatch(seg.direction, seg.name);
-        const lap = seg.lap || 1;
-        const match = profileIndex.get(`${base}::${dir}::${lap}`);
-        if (!match) return Infinity;
-        return Math.min(match.fromKm, match.toKm) + leadIn;
-    };
-
-    const rows = [...sprints]
-        .sort((a, b) => {
-            const aFrom = getFromKmValue(a);
-            const bFrom = getFromKmValue(b);
-            if (aFrom !== bFrom) return aFrom - bFrom;
-            const lapDiff = (a.lap || 1) - (b.lap || 1);
-            if (lapDiff !== 0) return lapDiff;
-            return a.count - b.count;
-        });
-
-    const hasKmData = rows.some((s) => getKmFromTo(s) !== null);
-
-    return (
-        <div>
-            <div className="overflow-x-auto">
-                <table className="w-full text-sm border-collapse">
-                    <thead>
-                        <tr className="border-b border-border">
-                            <th className="text-left py-1.5 pr-4 font-medium text-muted-foreground text-xs uppercase tracking-wide">Sprint</th>
-                            <th className="text-center py-1.5 px-3 font-medium text-muted-foreground text-xs uppercase tracking-wide whitespace-nowrap">Omgang</th>
-                            {hasKmData && (
-                                <>
-                                    <th className="text-right py-1.5 px-3 font-medium text-muted-foreground text-xs uppercase tracking-wide whitespace-nowrap">Fra km</th>
-                                    <th className="text-right py-1.5 pl-3 font-medium text-muted-foreground text-xs uppercase tracking-wide whitespace-nowrap">Til km</th>
-                                </>
-                            )}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {rows.map((seg, idx) => {
-                            const kmFromTo = getKmFromTo(seg);
-                            return (
-                                <tr key={idx} className="border-b border-border/50 last:border-0">
-                                    <td className="py-1.5 pr-4 font-medium text-card-foreground">{sprintLabel(seg)}</td>
-                                    <td className="py-1.5 px-3 text-center text-muted-foreground">{seg.lap || 1}</td>
-                                    {hasKmData && (
-                                        <>
-                                            <td className="py-1.5 px-3 text-right font-mono text-card-foreground">
-                                                {kmFromTo ? `${kmFromTo.from}` : '—'}
-                                            </td>
-                                            <td className="py-1.5 pl-3 text-right font-mono text-card-foreground">
-                                                {kmFromTo ? `${kmFromTo.to}` : '—'}
-                                            </td>
-                                        </>
-                                    )}
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
-            </div>
-            {hasKmData && leadIn > 0 && (
-                <p className="text-xs text-muted-foreground mt-2">
-                    Distancer inkl lead-in ({leadIn.toFixed(1)} km)
-                </p>
-            )}
-            {hasKmData && leadIn === 0 && (
-                <p className="text-xs text-muted-foreground mt-2">
-                    Distancer inkl lead-in
-                </p>
-            )}
-        </div>
-    );
-}
 
 function ExternalLinkIcon({ size }: { size: number }) {
     return (

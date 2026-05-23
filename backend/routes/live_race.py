@@ -316,6 +316,7 @@ def get_live_riders_for_race(race_id: str):
                 'powerOutputInWatts': row.get('powerOutputInWatts'),
                 'heartRateInBpm': row.get('heartRateInBpm'),
                 'speedInMillimetersPerHour': row.get('speedInMillimetersPerHour'),
+                'draftSavings': row.get('draftSavings'),
                 'registered': profile is not None,
             }
         )

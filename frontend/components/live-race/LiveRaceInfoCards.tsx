@@ -2,6 +2,7 @@
 
 import type { CurrentLiveRace } from '@/types/live';
 import type { RiderGroup } from '@/lib/live-race/cluster';
+import { findSelectedGroupIndex } from '@/lib/live-race/group-match';
 import { speedMmPerHourToKmh } from '@/lib/live-race/position';
 import { fromTimestamp } from '@/lib/formatDate';
 
@@ -12,6 +13,7 @@ interface Props {
     groups: RiderGroup[];
     frontGroup: RiderGroup | null;
     selectedGroup: RiderGroup | null;
+    selectedRiderIds: Set<string> | null;
     onSelectGroup: (group: RiderGroup) => void;
 }
 
@@ -38,8 +40,10 @@ export default function LiveRaceInfoCards({
     groups,
     frontGroup,
     selectedGroup,
+    selectedRiderIds,
     onSelectGroup,
 }: Props) {
+    const selectedIdx = findSelectedGroupIndex(groups, selectedRiderIds);
     const selectedKm = selectedGroup?.chartKm ?? 0;
     const raceOnlyDistanceKm = Math.max(0, totalDistanceKm - leadInKm);
     const missingKm = Math.max(0, raceOnlyDistanceKm - selectedKm);
@@ -49,11 +53,25 @@ export default function LiveRaceInfoCards({
             ? Math.max(0, frontGroup.chartKm - selectedGroup.chartKm)
             : 0;
 
-    const speeds = (selectedGroup?.riders ?? [])
+    const groupRiders = selectedGroup?.riders ?? [];
+
+    const speeds = groupRiders
         .map((r) => speedMmPerHourToKmh(r.speedInMillimetersPerHour ?? undefined))
         .filter((v) => v > 0);
     const avgSpeed =
         speeds.length > 0 ? speeds.reduce((a, b) => a + b, 0) / speeds.length : 0;
+
+    const powers = groupRiders
+        .map((r) => (typeof r.powerOutputInWatts === 'number' ? r.powerOutputInWatts : 0))
+        .filter((v) => v > 0);
+    const avgPower =
+        powers.length > 0 ? powers.reduce((a, b) => a + b, 0) / powers.length : 0;
+
+    const drafts = groupRiders
+        .map((r) => (typeof r.draftSavings === 'number' ? r.draftSavings : null))
+        .filter((v): v is number => v !== null && v >= 0);
+    const avgDraft =
+        drafts.length > 0 ? drafts.reduce((a, b) => a + b, 0) / drafts.length : 0;
 
     const selectedRiders = selectedGroup
         ? [...selectedGroup.riders].sort((a, b) => {
@@ -91,6 +109,18 @@ export default function LiveRaceInfoCards({
                             {avgSpeed > 0 ? `${avgSpeed.toFixed(1)} km/t` : '—'}
                         </dd>
                     </div>
+                    <div className="flex justify-between">
+                        <dt className="text-muted-foreground">Gns. Power</dt>
+                        <dd className="font-mono font-semibold text-primary">
+                            {avgPower > 0 ? `${Math.round(avgPower)} W` : '—'}
+                        </dd>
+                    </div>
+                    <div className="flex justify-between">
+                        <dt className="text-muted-foreground">Gns. Draft</dt>
+                        <dd className="font-mono font-semibold text-primary">
+                            {drafts.length > 0 ? `${Math.round(avgDraft)} W` : '—'}
+                        </dd>
+                    </div>
                 </dl>
             </div>
 
@@ -123,8 +153,9 @@ export default function LiveRaceInfoCards({
                 ) : (
                     <ul className="space-y-1 text-sm max-h-32 overflow-auto">
                         {orderedGroups.map((g, i) => {
+                            const origIdx = groups.indexOf(g);
                             const isFront = g === frontGroup;
-                            const isActive = g === selectedGroup;
+                            const isActive = origIdx === selectedIdx;
                             const gapKm = frontGroup ? Math.max(0, frontGroup.chartKm - g.chartKm) : 0;
                             const label = isFront ? 'Hovedgruppe' : `Gruppe ${i}`;
                             const gapLabel = isFront ? '—' : `+${gapKm.toFixed(1)} km`;

@@ -282,7 +282,7 @@ function LiveRacePageContent() {
                             overlay={(ctx) => (
                                 <LiveRiderOverlay
                                     groups={groups}
-                                    selectedGroup={selectedGroup}
+                                    selectedRiderIds={selectedRiderIds}
                                     onGroupClick={handleSelectGroup}
                                     onGroupHover={handleGroupHover}
                                     {...ctx}
@@ -303,6 +303,7 @@ function LiveRacePageContent() {
                 groups={groups}
                 frontGroup={frontGroup}
                 selectedGroup={selectedGroup}
+                selectedRiderIds={selectedRiderIds}
                 onSelectGroup={handleSelectGroup}
             />
 
@@ -310,6 +311,11 @@ function LiveRacePageContent() {
                 race={liveRaceDoc}
                 category={activeCat}
                 loading={resultsLoading}
+                sprints={activeTab?.sprints ?? []}
+                laps={laps}
+                routeId={currentRace.routeId}
+                worldName={currentRace.map}
+                routeName={currentRace.routeName}
             />
         </div>
     );

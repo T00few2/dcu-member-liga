@@ -43,6 +43,7 @@ export interface LiveRider {
     powerOutputInWatts?: number | null;
     heartRateInBpm?: number | null;
     speedInMillimetersPerHour?: number | null;
+    draftSavings?: number | null;
     registered: boolean;
 }
 

@@ -535,6 +535,7 @@ class ZwiftService:
                         "powerOutputInWatts": row.get("powerOutputInWatts"),
                         "heartRateInBpm": row.get("heartRateInBpm"),
                         "speedInMillimetersPerHour": row.get("speedInMillimetersPerHour"),
+                        "draftSavings": row.get("draftSavings"),
                     }
                 )
             if len(rows) < limit:
