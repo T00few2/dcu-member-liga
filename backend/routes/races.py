@@ -397,6 +397,11 @@ def _resolve_signup_subgroup_id(
         return None, f"Could not resolve subgroup for eventId {event_id}"
     return resolved, None
 
+
+# Public alias — external modules should import this name.
+resolve_signup_subgroup_id = _resolve_signup_subgroup_id
+
+
 @races_bp.route('/races', methods=['GET'])
 def get_races():
     if not db:

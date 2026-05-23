@@ -9,6 +9,7 @@ from typing import Any
 from flask import Blueprint, jsonify, request
 
 from extensions import db, get_zwift_service
+from routes.races import resolve_signup_subgroup_id
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,27 @@ live_race_bp = Blueprint('live_race', __name__)
 
 _LIVE_RIDERS_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 _CACHE_TTL_SEC = 2.0
+_CACHE_EVICT_AFTER_SEC = 300.0  # evict live-riders entries idle for 5 minutes
+
+_REGISTERED_RIDERS_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_REGISTERED_RIDERS_TTL_SEC = 7200.0  # 2 hours — map is stable for the full race
+
+
+def _evict_stale_cache_entries() -> None:
+    now = time.time()
+    for key in [k for k, (ts, _) in _LIVE_RIDERS_CACHE.items() if now - ts > _CACHE_EVICT_AFTER_SEC]:
+        _LIVE_RIDERS_CACHE.pop(key, None)
+
+
+def _get_registered_riders(race_id: str) -> dict[str, Any]:
+    """Return the registered-riders map for a race, building it at most once per race."""
+    now = time.time()
+    cached = _REGISTERED_RIDERS_CACHE.get(race_id)
+    if cached and (now - cached[0]) < _REGISTERED_RIDERS_TTL_SEC:
+        return cached[1]
+    result = _build_registered_riders_map()
+    _REGISTERED_RIDERS_CACHE[race_id] = (now, result)
+    return result
 
 
 def _build_registered_riders_map() -> dict[str, dict[str, Any]]:
@@ -161,10 +183,9 @@ def get_live_riders_for_race(race_id: str):
         return jsonify({'message': 'Race not found'}), 404
 
     race_data = race_doc.to_dict() or {}
-    from routes.races import _resolve_signup_subgroup_id
 
     try:
-        subgroup_id, err = _resolve_signup_subgroup_id(
+        subgroup_id, err = resolve_signup_subgroup_id(
             race_data, category, get_zwift_service()
         )
     except Exception as exc:
@@ -174,11 +195,13 @@ def get_live_riders_for_race(race_id: str):
         msg = err or f'No subgroupId for category {category!r}'
         return jsonify({'message': msg}), 404
 
-    cache_key = f'{subgroup_id}:{category}'
+    cache_key = f'{race_id}:{subgroup_id}:{category}'
     now = time.time()
     cached = _LIVE_RIDERS_CACHE.get(cache_key)
     if cached and (now - cached[0]) < _CACHE_TTL_SEC:
         return jsonify(cached[1]), 200
+
+    _evict_stale_cache_entries()
 
     try:
         zwift = get_zwift_service()
@@ -187,7 +210,7 @@ def get_live_riders_for_race(race_id: str):
         logger.exception('live-riders fetch failed for subgroup %s', subgroup_id)
         return jsonify({'message': str(exc)}), 502
 
-    registered = _build_registered_riders_map()
+    registered = _get_registered_riders(race_id)
     riders_out: list[dict[str, Any]] = []
     max_as_of = 0
 
