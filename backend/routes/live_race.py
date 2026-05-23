@@ -89,8 +89,15 @@ def _parse_race_date(date_val: Any) -> datetime | None:
         return None
     if isinstance(date_val, datetime):
         return date_val if date_val.tzinfo else date_val.replace(tzinfo=timezone.utc)
-    if hasattr(date_val, 'seconds'):  # Firestore proto Timestamp
+    # Firestore Timestamp proto or similar object with .seconds
+    if hasattr(date_val, 'seconds') and not isinstance(date_val, str):
         return datetime.fromtimestamp(date_val.seconds, tz=timezone.utc)
+    # Date stored as a plain map {"seconds": ..., "nanoseconds": ...}
+    if isinstance(date_val, dict) and 'seconds' in date_val:
+        try:
+            return datetime.fromtimestamp(float(date_val['seconds']), tz=timezone.utc)
+        except (TypeError, ValueError):
+            return None
     if isinstance(date_val, str):
         try:
             return datetime.fromisoformat(date_val.replace('Z', '+00:00'))
@@ -104,17 +111,24 @@ def _auto_activate_if_due() -> tuple[str, dict[str, Any], str] | None:
     if not db:
         return None
     now = datetime.now(timezone.utc)
-    for doc in db.collection('races').order_by('date').stream():
+    # Avoid order_by: it silently drops documents with incompatible/missing date types.
+    best: tuple[datetime, str, dict[str, Any]] | None = None
+    for doc in db.collection('races').stream():
         race_data = doc.to_dict() or {}
         race_date = _parse_race_date(race_data.get('date'))
         if race_date is None:
             continue
         if race_date <= now <= race_date + timedelta(hours=4):
-            activated_at = now.isoformat()
-            db.collection('liveRaceState').document('active').set(
-                {'raceId': doc.id, 'activatedAt': activated_at, 'activatedBy': 'auto'}
-            )
-            return doc.id, race_data, activated_at
+            # Prefer the most recently started race (highest race_date ≤ now)
+            if best is None or race_date > best[0]:
+                best = (race_date, doc.id, race_data)
+    if best:
+        _, race_id, race_data = best
+        activated_at = now.isoformat()
+        db.collection('liveRaceState').document('active').set(
+            {'raceId': race_id, 'activatedAt': activated_at, 'activatedBy': 'auto'}
+        )
+        return race_id, race_data, activated_at
     return None
 
 
@@ -221,12 +235,18 @@ def get_upcoming_race():
         return jsonify({'error': 'DB not available'}), 500
 
     now = datetime.now(timezone.utc)
-    for doc in db.collection('races').order_by('date').stream():
+    # Avoid order_by: it silently drops documents with incompatible/missing date types.
+    best: tuple[datetime, str, dict[str, Any]] | None = None
+    for doc in db.collection('races').stream():
         race_data = doc.to_dict() or {}
         race_date = _parse_race_date(race_data.get('date'))
         if race_date and race_date > now:
-            return jsonify(_serialize_race_summary(doc.id, race_data)), 200
+            if best is None or race_date < best[0]:
+                best = (race_date, doc.id, race_data)
 
+    if best:
+        _, race_id, race_data = best
+        return jsonify(_serialize_race_summary(race_id, race_data)), 200
     return '', 204
 
 

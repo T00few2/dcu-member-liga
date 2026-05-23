@@ -63,7 +63,7 @@ function LiveRacePageContent() {
     const searchParams = useSearchParams();
     const chartWrapRef = useRef<HTMLDivElement>(null);
 
-    const { data: upcomingRace } = useUpcomingRaceQuery();
+    const { data: upcomingRace, isLoading: upcomingLoading } = useUpcomingRaceQuery();
 
     // Flip to fast polling once the upcoming race's start time arrives so the
     // auto-activation is picked up within a few seconds.
@@ -210,7 +210,7 @@ function LiveRacePageContent() {
         [],
     );
 
-    if (raceLoading) {
+    if (raceLoading || upcomingLoading) {
         return (
             <div className="container mx-auto px-4 py-12 text-center text-muted-foreground">
                 Henter live løb…
