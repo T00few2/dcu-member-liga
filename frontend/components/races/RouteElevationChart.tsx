@@ -52,6 +52,7 @@ interface Props {
     laps?: number;
     pointSegments?: Sprint[];
     overlay?: (ctx: RouteElevationOverlayContext) => ReactNode;
+    height?: number;
 }
 
 interface DataPoint {
@@ -283,6 +284,7 @@ export default function RouteElevationChart({
     laps = 1,
     pointSegments = [],
     overlay,
+    height = CHART_HEIGHT,
 }: Props) {
     const { data: json, isLoading: loading } = useRouteElevationQuery(worldName, routeName, laps);
 
@@ -379,7 +381,7 @@ export default function RouteElevationChart({
 
     return (
         <div>
-            <div style={{ width: '100%', height: CHART_HEIGHT }}>
+            <div style={{ width: '100%', height }}>
                 <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={data} margin={{ top: 8, right: 6, bottom: 4, left: 0 }} baseValue="dataMin">
                         <defs>
