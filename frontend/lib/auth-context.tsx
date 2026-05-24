@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   User,
   onAuthStateChanged,
@@ -76,6 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profileLoaded, setProfileLoaded] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
+  const queryClient = useQueryClient();
 
   const fetchProfile = useCallback(async (currentUser: User) => {
     try {
@@ -241,10 +243,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setRequiredDataPolicyVersion(null);
       setRequiredPublicResultsConsentVersion(null);
       setUserCategory(null);
+      queryClient.removeQueries({ queryKey: ['notification-state'] });
+      queryClient.removeQueries({ queryKey: ['profile-dr-verifications'] });
+      queryClient.removeQueries({ queryKey: ['unread-news-anonymous'] });
     } catch (error) {
       console.error("Error signing out", error);
     }
-  }, []);
+  }, [queryClient]);
 
   const requestNotificationPermission = async () => {
     if (typeof window !== 'undefined' && 'Notification' in window) {

@@ -91,6 +91,29 @@ def _trainer_requires_dual_recording(trainer_name: str) -> bool:
     return False
 
 
+def _latest_published_post_id() -> str | None:
+    """Return the document id of the most recently published post, if any."""
+    if not db:
+        return None
+    docs = list(
+        db.collection("posts")
+        .where("status", "==", "published")
+        .order_by("publishedAt", direction=firestore.Query.DESCENDING)
+        .limit(1)
+        .stream()
+    )
+    if not docs:
+        return None
+    return docs[0].id
+
+
+def _sw_flagged_timestamp(verification: dict) -> str | None:
+    """ISO timestamp for when sticky watts was flagged suspicious."""
+    if (verification.get("stickyWatts") or {}).get("suspicious") is not True:
+        return None
+    return verification.get("swVerifiedAt") or verification.get("verifiedAt")
+
+
 def _connected_zwift_id_from_user_data(data: dict | None) -> str | None:
     if not isinstance(data, dict):
         return None

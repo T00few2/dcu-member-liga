@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, notFound } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { getPostBySlug, getComments, addComment, deleteComment, reportComment } from '@/lib/posts';
+import { getPostBySlug, getLatestPublishedPost, getComments, addComment, deleteComment, reportComment } from '@/lib/posts';
 import { Post, Comment } from '@/types/posts';
 import { useAuth } from '@/lib/auth-context';
 import { useUnreadNews } from '@/hooks/useUnreadNews';
@@ -109,9 +109,14 @@ export default function PostPage() {
         getPostBySlug(slug)
             .then(p => {
                 setPost(p ?? 'not-found');
-                if (p) markNewsAsRead(p.id);
             })
             .finally(() => setPostLoading(false));
+
+        getLatestPublishedPost()
+            .then(latest => {
+                if (latest) markNewsAsRead(latest.id);
+            })
+            .catch((err) => console.error('Failed to update news read state:', err));
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [slug]);
 

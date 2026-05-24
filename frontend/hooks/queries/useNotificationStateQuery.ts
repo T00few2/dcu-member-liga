@@ -9,19 +9,22 @@ export interface NotificationState {
     drReportSeenAt: string | null;
     latestSwFlaggedAt: string | null;
     swReportSeenAt: string | null;
+    latestPublishedPostId: string | null;
+    lastReadNewsPostId: string | null;
+    trainerRequiresDualRecording: boolean;
 }
 
 export function useNotificationStateQuery() {
     const { user } = useAuth();
 
     return useQuery<NotificationState | null>({
-        queryKey: ['notification-state'],
+        queryKey: ['notification-state', user?.uid],
         queryFn: async () => {
             const token = await user!.getIdToken();
             const res = await fetch(`${API_URL}/profile/notification-state`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
-            if (!res.ok) return null;
+            if (!res.ok) throw new Error('Failed to fetch notification state');
             return res.json();
         },
         enabled: !!user,

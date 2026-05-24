@@ -107,6 +107,20 @@ class SelectCategoryRequest(BaseModel):
     model_config = ConfigDict(extra='ignore')
 
 
+class MarkNewsReadRequest(BaseModel):
+    postId: str = ''
+
+    @field_validator('postId')
+    @classmethod
+    def _post_id_non_empty(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError('postId is required')
+        return v
+
+    model_config = ConfigDict(extra='ignore')
+
+
 # ── admin_trainers models ─────────────────────────────────────────────────────
 
 class CreateTrainerRequest(BaseModel):

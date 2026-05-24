@@ -44,9 +44,9 @@ export default function NotificationPermissionBanner() {
         <div className="flex items-start gap-2">
           <span className="text-lg leading-none mt-0.5" aria-hidden>🔔</span>
           <div>
-            <strong>Få besked om nye løb og resultater</strong>
+            <strong>Vis notifikation på app-ikonet</strong>
             <p className="mt-0.5 text-slate-300">
-              Tillad notifikationer og gå aldrig glip af et nyt løb eller opdaterede resultater.
+              Tillad notifikationer for at vise en prik på hjemmeskærmsikonet, når der er nye beskeder på din profil.
             </p>
           </div>
         </div>

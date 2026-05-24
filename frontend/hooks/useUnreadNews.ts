@@ -1,47 +1,68 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getLatestPublishedPost } from '@/lib/posts';
 import { useAuth } from '@/lib/auth-context';
+import { API_URL } from '@/lib/api';
+import { useNotificationStateQuery } from './queries/useNotificationStateQuery';
+
+const ANONYMOUS_NEWS_KEY = ['unread-news-anonymous'] as const;
 
 export function useUnreadNews() {
     const { user } = useAuth();
-    const [hasUnreadNews, setHasUnreadNews] = useState(false);
+    const queryClient = useQueryClient();
+    const { data: ns } = useNotificationStateQuery();
 
-    useEffect(() => {
-        let cancelled = false;
-
-        async function check() {
+    const anonymousQuery = useQuery({
+        queryKey: ANONYMOUS_NEWS_KEY,
+        queryFn: async () => {
             const latest = await getLatestPublishedPost();
-            if (!latest || cancelled) return;
+            const lastReadId =
+                typeof localStorage !== 'undefined'
+                    ? localStorage.getItem('news_last_read')
+                    : null;
+            return {
+                hasUnread: !!latest && latest.id !== lastReadId,
+            };
+        },
+        enabled: !user,
+        staleTime: 60_000,
+    });
 
-            let lastReadId: string | null = null;
+    const hasUnreadNews = user
+        ? !!(
+              ns?.latestPublishedPostId &&
+              ns.latestPublishedPostId !== (ns.lastReadNewsPostId ?? null)
+          )
+        : (anonymousQuery.data?.hasUnread ?? false);
+
+    const markNewsAsRead = useCallback(
+        async (postId: string) => {
             if (user) {
-                const snap = await getDoc(doc(db, 'users', user.uid));
-                lastReadId = (snap.data()?.lastReadNewsPostId as string) ?? null;
+                const token = await user.getIdToken();
+                const res = await fetch(`${API_URL}/profile/news-read`, {
+                    method: 'POST',
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ postId }),
+                });
+                if (!res.ok) {
+                    console.error('Failed to mark news as read:', await res.text());
+                    return;
+                }
+                await queryClient.invalidateQueries({
+                    queryKey: ['notification-state', user.uid],
+                });
             } else if (typeof localStorage !== 'undefined') {
-                lastReadId = localStorage.getItem('news_last_read');
+                localStorage.setItem('news_last_read', postId);
+                await queryClient.invalidateQueries({ queryKey: ANONYMOUS_NEWS_KEY });
             }
-
-            if (!cancelled) {
-                setHasUnreadNews(latest.id !== lastReadId);
-            }
-        }
-
-        check().catch(() => {});
-        return () => { cancelled = true; };
-    }, [user]);
-
-    const markNewsAsRead = useCallback(async (postId: string) => {
-        setHasUnreadNews(false);
-        if (user) {
-            await setDoc(doc(db, 'users', user.uid), { lastReadNewsPostId: postId }, { merge: true });
-        } else if (typeof localStorage !== 'undefined') {
-            localStorage.setItem('news_last_read', postId);
-        }
-    }, [user]);
+        },
+        [user, queryClient],
+    );
 
     return { hasUnreadNews, markNewsAsRead };
 }

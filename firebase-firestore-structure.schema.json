@@ -467,7 +467,37 @@
         },
         "status": {
           "type": "string",
-          "enum": ["passed", "failed", "missing_strava", "missing_activity", "error"]
+          "enum": ["passed", "failed", "missing_strava", "missing_activity", "error", "sw_only"]
+        },
+        "swVerifiedAt": {
+          "$ref": "#/$defs/timestampString"
+        },
+        "trainerName": {
+          "type": "string"
+        },
+        "stickyWatts": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "suspicious": {
+              "type": "boolean"
+            },
+            "identicalPairPct": {
+              "type": "number"
+            },
+            "maxRunLength": {
+              "type": "integer"
+            },
+            "nonZeroSamples": {
+              "type": "integer"
+            },
+            "preZeroEvents": {
+              "type": "integer"
+            },
+            "totalSamples": {
+              "type": "integer"
+            }
+          }
         },
         "passed": {
           "type": "boolean"
@@ -812,6 +842,15 @@
         },
         "welcomeSeen": {
           "type": "boolean"
+        },
+        "drReportSeenAt": {
+          "$ref": "#/$defs/timestampString"
+        },
+        "swReportSeenAt": {
+          "$ref": "#/$defs/timestampString"
+        },
+        "lastReadNewsPostId": {
+          "type": "string"
         },
         "updatedAt": {
           "$ref": "#/$defs/timestampString"

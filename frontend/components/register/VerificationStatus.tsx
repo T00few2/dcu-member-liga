@@ -47,9 +47,13 @@ export default function VerificationStatus({
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
-    const [permissionGranted, setPermissionGranted] = useState(
-        typeof Notification !== 'undefined' ? Notification.permission === 'granted' : false
-    );
+    const [permissionGranted, setPermissionGranted] = useState(false);
+
+    useEffect(() => {
+        if (typeof Notification !== 'undefined') {
+            setPermissionGranted(Notification.permission === 'granted');
+        }
+    }, []);
 
     // Unseen notification flags derived from server state
     const hasUnseenDr = !!(
@@ -61,23 +65,25 @@ export default function VerificationStatus({
         (!notifState.swReportSeenAt || notifState.latestSwFlaggedAt > notifState.swReportSeenAt)
     );
 
-    // Mark the relevant report as seen when the tab is first visited
+    // Mark the relevant report as seen when opening a tab that has an unseen notification
     useEffect(() => {
         if (!user) return;
-        const endpoint =
-            activeTab === 'dual-recording' ? `${API_URL}/profile/dr-report-seen` :
-            activeTab === 'sticky-watts'   ? `${API_URL}/profile/sw-report-seen` :
-            null;
-        if (!endpoint) return;
+        const shouldMarkDr = activeTab === 'dual-recording' && hasUnseenDr;
+        const shouldMarkSw = activeTab === 'sticky-watts' && hasUnseenSw;
+        if (!shouldMarkDr && !shouldMarkSw) return;
+
+        const endpoint = shouldMarkDr
+            ? `${API_URL}/profile/dr-report-seen`
+            : `${API_URL}/profile/sw-report-seen`;
 
         user.getIdToken().then(token =>
             fetch(endpoint, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
         ).then(() => {
-            queryClient.invalidateQueries({ queryKey: ['notification-state'] });
+            queryClient.invalidateQueries({ queryKey: ['notification-state', user.uid] });
+        }).catch((err) => {
+            console.error('Failed to mark report as seen:', err);
         });
-    // Re-run whenever the active tab changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeTab]);
+    }, [activeTab, user, hasUnseenDr, hasUnseenSw, queryClient]);
 
     // If the DR tab is hidden but is somehow selected, fall back to the default tab.
     useEffect(() => {

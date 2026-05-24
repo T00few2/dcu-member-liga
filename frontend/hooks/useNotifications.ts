@@ -13,6 +13,7 @@ export function useNotifications() {
         weightVerificationStatus === 'pending' || weightVerificationStatus === 'rejected';
 
     const dualRecordingFlagged =
+        !!ns?.trainerRequiresDualRecording &&
         !!ns?.latestDrFailedAt &&
         (!ns.drReportSeenAt || ns.latestDrFailedAt > ns.drReportSeenAt);
 

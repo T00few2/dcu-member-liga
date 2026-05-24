@@ -19,7 +19,9 @@ from services.user_service import UserService
 from services.users_profile_core import (
     _connected_zwift_id_from_user_data,
     _enrich_user_with_zwiftracing,
+    _latest_published_post_id,
     _normalize_zwift_id,
+    _sw_flagged_timestamp,
     _trainer_requires_dual_recording,
 )
 from services.zwift_tokens import (
@@ -29,6 +31,7 @@ from services.zwift_tokens import (
     save_token_doc,
 )
 from services.request_models import (
+    MarkNewsReadRequest,
     SelectCategoryRequest,
     SignupRequest,
     UpdateConsentsRequest,
@@ -461,6 +464,64 @@ def set_welcome_seen():
         return jsonify({"message": str(e)}), 500
 
 
+def _serialize_optional_timestamp(value) -> str | None:
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+def _notification_state_payload(user, uid: str) -> dict:
+    """Build notification-state JSON for the authenticated user."""
+    latest_published_post_id = _latest_published_post_id()
+    latest_dr_failed_at = None
+    latest_sw_flagged_at = None
+    dr_report_seen_at = None
+    sw_report_seen_at = None
+    last_read_news_post_id = None
+    trainer_requires_dr = False
+
+    doc_id = str(user.id) if user else uid
+    user_doc = db.collection("users").document(doc_id).get()
+    user_data = user_doc.to_dict() if user_doc.exists else {}
+
+    last_read_news_post_id = user_data.get("lastReadNewsPostId")
+    dr_report_seen_at = _serialize_optional_timestamp(user_data.get("drReportSeenAt"))
+    sw_report_seen_at = _serialize_optional_timestamp(user_data.get("swReportSeenAt"))
+
+    trainer_name = ((user_data.get("equipment") or {}).get("trainer") or "") if user_data else ""
+    if not trainer_name and user:
+        trainer_name = user.trainer or ""
+    trainer_requires_dr = _trainer_requires_dual_recording(trainer_name)
+
+    if user and user.zwift_id:
+        zwift_id = str(user.zwift_id)
+        all_verifications = [
+            d.to_dict() or {}
+            for d in db.collection_group("dr_verifications").where("zwiftId", "==", zwift_id).stream()
+        ]
+
+        failed = [v for v in all_verifications if v.get("status") == "failed" and v.get("verifiedAt")]
+        if failed:
+            latest_dr_failed_at = max(v["verifiedAt"] for v in failed)
+
+        sw_timestamps = [_sw_flagged_timestamp(v) for v in all_verifications]
+        sw_timestamps = [t for t in sw_timestamps if t]
+        if sw_timestamps:
+            latest_sw_flagged_at = max(sw_timestamps)
+
+    return {
+        "latestDrFailedAt": latest_dr_failed_at,
+        "drReportSeenAt": dr_report_seen_at,
+        "latestSwFlaggedAt": latest_sw_flagged_at,
+        "swReportSeenAt": sw_report_seen_at,
+        "latestPublishedPostId": latest_published_post_id,
+        "lastReadNewsPostId": last_read_news_post_id,
+        "trainerRequiresDualRecording": trainer_requires_dr,
+    }
+
+
 @users_bp.route("/profile/notification-state", methods=["GET"])
 def get_notification_state():
     try:
@@ -474,49 +535,36 @@ def get_notification_state():
             return jsonify({"message": "Database not available"}), 500
 
         user = UserService.get_user_by_auth_uid(uid)
-        if not user or not user.zwift_id:
-            return jsonify({
-                "latestDrFailedAt": None,
-                "drReportSeenAt": None,
-                "latestSwFlaggedAt": None,
-                "swReportSeenAt": None,
-            }), 200
-
-        zwift_id = str(user.zwift_id)
-        doc_id = str(user.id)
-
-        all_verifications = [
-            d.to_dict() or {}
-            for d in db.collection_group("dr_verifications").where("zwiftId", "==", zwift_id).stream()
-        ]
-
-        failed = [v for v in all_verifications if v.get("status") == "failed" and v.get("verifiedAt")]
-        latest_dr_failed_at = max((v["verifiedAt"] for v in failed), default=None)
-
-        sw_flagged = [
-            v for v in all_verifications
-            if (v.get("stickyWatts") or {}).get("suspicious") is True and v.get("verifiedAt")
-        ]
-        latest_sw_flagged_at = max((v["verifiedAt"] for v in sw_flagged), default=None)
-
-        user_doc = db.collection("users").document(doc_id).get()
-        user_data = user_doc.to_dict() if user_doc.exists else {}
-
-        dr_report_seen_at = user_data.get("drReportSeenAt")
-        sw_report_seen_at = user_data.get("swReportSeenAt")
-        if dr_report_seen_at is not None and hasattr(dr_report_seen_at, "isoformat"):
-            dr_report_seen_at = dr_report_seen_at.isoformat()
-        if sw_report_seen_at is not None and hasattr(sw_report_seen_at, "isoformat"):
-            sw_report_seen_at = sw_report_seen_at.isoformat()
-
-        return jsonify({
-            "latestDrFailedAt": latest_dr_failed_at,
-            "drReportSeenAt": dr_report_seen_at,
-            "latestSwFlaggedAt": latest_sw_flagged_at,
-            "swReportSeenAt": sw_report_seen_at,
-        }), 200
+        return jsonify(_notification_state_payload(user, uid)), 200
     except Exception as e:
         logger.error("Notification state error: %s", e)
+        return jsonify({"message": str(e)}), 500
+
+
+@users_bp.route("/profile/news-read", methods=["POST"])
+def mark_news_read():
+    try:
+        try:
+            decoded_token = verify_user_token(request)
+        except AuthzError as e:
+            return jsonify({"message": e.message}), e.status_code
+        uid = decoded_token["uid"]
+
+        body, err = parse_body(MarkNewsReadRequest, request.get_json(silent=True) or {})
+        if err:
+            return err
+
+        if not db:
+            return jsonify({"message": "Database not available"}), 500
+
+        user = UserService.get_user_by_auth_uid(uid)
+        doc_id = str(user.id) if user else uid
+        db.collection("users").document(doc_id).set(
+            {"lastReadNewsPostId": body.postId}, merge=True
+        )
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        logger.error("mark_news_read error: %s", e)
         return jsonify({"message": str(e)}), 500
 
 
