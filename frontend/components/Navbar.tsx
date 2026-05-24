@@ -241,10 +241,10 @@ export default function Navbar() {
 
                 {/* Drawer Panel */}
                 <div
-                    className={`fixed top-0 right-0 h-full w-64 bg-slate-900 text-white z-50 transform transition-transform duration-300 ease-in-out shadow-2xl md:hidden ${isDrawerOpen ? 'translate-x-0' : 'translate-x-full'
+                    className={`fixed top-0 right-0 h-full w-64 bg-slate-900 text-white z-50 flex flex-col transform transition-transform duration-300 ease-in-out shadow-2xl md:hidden ${isDrawerOpen ? 'translate-x-0' : 'translate-x-full'
                         }`}
                 >
-                    <div className="p-4 border-b border-slate-800 flex justify-between items-center">
+                    <div className="p-4 border-b border-slate-800 flex justify-between items-center flex-shrink-0">
                         <span className="font-bold text-lg">Menu</span>
                         <button
                             onClick={() => setIsDrawerOpen(false)}
@@ -256,10 +256,10 @@ export default function Navbar() {
                         </button>
                     </div>
 
-                    <div className="flex flex-col p-4 space-y-4">
+                    <div className="flex flex-col p-4 space-y-4 overflow-y-auto flex-1">
 
 
-                        {user && isRegistered && !needsConsentUpdate && authNavLinks.map(link => (
+                        {user && isRegistered && !needsConsentUpdate && authNavLinks.filter(link => link.href !== '/verification').map(link => (
                             <Link
                                 key={link.href}
                                 href={link.href}
@@ -291,6 +291,16 @@ export default function Navbar() {
                                     onClick={() => setIsDrawerOpen(false)}
                                 >
                                     Min Profil
+                                </Link>
+                                <Link
+                                    href="/verification"
+                                    className="flex items-center justify-between px-4 py-3 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg"
+                                    onClick={() => setIsDrawerOpen(false)}
+                                >
+                                    <span>Verifikation</span>
+                                    {profileHasNotification && (
+                                        <span className="h-2 w-2 rounded-full bg-tertiary" />
+                                    )}
                                 </Link>
                                 <button
                                     onClick={() => {
