@@ -328,6 +328,26 @@ def _hydrate_event_config_subgroup_ids(data: dict[str, Any]) -> tuple[dict[str, 
     return data, warnings
 
 
+def _resolve_effective_user_category(liga_category: Any) -> str:
+    """Return the effective liga category for a user document.
+
+    Unlocked riders do not have a top-level ``ligaCategory.category`` field
+    written to Firestore — that field is only populated when a rider is locked
+    (post-race) or set explicitly by an admin. Reading it directly therefore
+    yields an empty string for the vast majority of riders, which breaks
+    category-based signup routing. Mirror the logic used by
+    ``serialize_liga_category`` so signup uses the same effective category that
+    the frontend displays to the user.
+    """
+    lc = liga_category if isinstance(liga_category, dict) else {}
+    if lc.get('locked'):
+        locked_cat = lc.get('category') or (lc.get('autoAssigned') or {}).get('category')
+        return str(locked_cat or '').strip()
+    auto_cat = (lc.get('autoAssigned') or {}).get('category')
+    sel_cat = (lc.get('selfSelected') or {}).get('category')
+    return str(_effective_cat_name(auto_cat, sel_cat) or '').strip()
+
+
 def _pick_mode_config_for_user(race_data: dict[str, Any], user_category: str) -> tuple[str | None, str | None, str | None]:
     event_mode = str(race_data.get("eventMode") or "single").strip().lower()
     wanted = _normalize_liga_category(user_category)
@@ -456,7 +476,7 @@ def signup_race(race_id: str):
             return jsonify({'message': 'Race not found'}), 404
         race_data = race_doc.to_dict() or {}
 
-        user_category = str(((user_data.get('ligaCategory') or {}).get('category') or '')).strip()
+        user_category = _resolve_effective_user_category(user_data.get('ligaCategory'))
         zwift_service = get_zwift_service()
         subgroup_id, subgroup_error = _resolve_signup_subgroup_id(race_data, user_category, zwift_service)
         if subgroup_error:

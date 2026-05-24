@@ -156,3 +156,55 @@ def test_multi_mode_matches_liga_category_by_name() -> None:
     }
     _, event_id, _ = races._pick_mode_config_for_user(race, "Silver")
     assert event_id == "100"
+
+
+def test_effective_user_category_unlocked_uses_auto_assigned() -> None:
+    """Unlocked riders have no top-level ligaCategory.category; signup must
+    fall back to autoAssigned/selfSelected like the frontend does."""
+    liga_category = {
+        "locked": False,
+        "autoAssigned": {"category": "Diamond"},
+    }
+    assert races._resolve_effective_user_category(liga_category) == "Diamond"
+
+
+def test_effective_user_category_locked_uses_top_level_category() -> None:
+    liga_category = {
+        "locked": True,
+        "category": "Ruby",
+        "autoAssigned": {"category": "Diamond"},
+    }
+    assert races._resolve_effective_user_category(liga_category) == "Ruby"
+
+
+def test_effective_user_category_unlocked_self_selected_overrides_auto() -> None:
+    """_effective_cat_name picks the harder of auto vs self-selected."""
+    liga_category = {
+        "locked": False,
+        "autoAssigned": {"category": "Gold"},
+        "selfSelected": {"category": "Platinum"},
+    }
+    assert races._resolve_effective_user_category(liga_category) == "Platinum"
+
+
+def test_effective_user_category_handles_missing_data() -> None:
+    assert races._resolve_effective_user_category(None) == ""
+    assert races._resolve_effective_user_category({}) == ""
+    assert races._resolve_effective_user_category({"locked": False}) == ""
+
+
+def test_unlocked_diamond_rider_resolves_to_high_end_subgroup() -> None:
+    """Regression: previously a Diamond rider with only autoAssigned set got
+    'No event/subgroup configuration found for rider category' on signup."""
+    liga_category = {
+        "locked": False,
+        "autoAssigned": {"category": "Diamond"},
+    }
+    user_category = races._resolve_effective_user_category(liga_category)
+    subgroup_id, error = races._resolve_signup_subgroup_id(
+        THE_CLASSIC_RACE,
+        user_category,
+        FakeZwiftService(),
+    )
+    assert error is None
+    assert subgroup_id == "7158672"
