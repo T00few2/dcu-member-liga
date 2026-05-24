@@ -374,7 +374,7 @@ export default function VerificationStatus({
                         <span className="text-base leading-none mt-0.5">⚗️</span>
                         <p>
                             <strong>Eksperimentel funktion</strong> — Sticky Watts-analysen er under udvikling.
-                            Resultaterne er vejledende og bør ikke alene danne grundlag for en afgørelse.
+                            Resultaterne er til information og ikke grundlag for en afgørelse.
                         </p>
                     </div>
 
