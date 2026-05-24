@@ -11,6 +11,7 @@ import InAppBrowserBanner from "@/components/InAppBrowserBanner";
 import MobileInstallBanner from "@/components/MobileInstallBanner";
 import NotificationPermissionBanner from "@/components/NotificationPermissionBanner";
 import WeightVerificationModal from "@/components/WeightVerificationModal";
+import AppBadgeSync from "@/components/AppBadgeSync";
 import DiscordButton from "@/components/DiscordButton";
 import { Analytics } from "@vercel/analytics/next";
 
@@ -91,6 +92,7 @@ export default function RootLayout({
             <MobileInstallBanner />
             <NotificationPermissionBanner />
             <WeightVerificationModal />
+            <AppBadgeSync />
             <DiscordButton />
             <Navbar />
             <main className="min-h-screen">

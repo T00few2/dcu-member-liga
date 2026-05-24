@@ -56,6 +56,19 @@ function normalizeComment(id: string, data: Record<string, unknown>): Comment {
     };
 }
 
+export async function getLatestPublishedPost(): Promise<Post | null> {
+    const q = query(
+        collection(db, 'posts'),
+        where('status', '==', 'published'),
+        orderBy('publishedAt', 'desc'),
+        limit(1)
+    );
+    const snap = await getDocs(q);
+    if (snap.empty) return null;
+    const d = snap.docs[0];
+    return normalizePost(d.id, d.data() as Record<string, unknown>);
+}
+
 export async function getPublishedPosts(): Promise<Post[]> {
     const q = query(
         collection(db, 'posts'),

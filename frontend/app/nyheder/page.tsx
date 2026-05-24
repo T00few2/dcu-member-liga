@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { getPublishedPosts } from '@/lib/posts';
 import { Post } from '@/types/posts';
+import { useUnreadNews } from '@/hooks/useUnreadNews';
 
 function formatDate(iso: string) {
     return new Date(iso).toLocaleDateString('da-DK', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -12,11 +13,17 @@ function formatDate(iso: string) {
 export default function NyhederPage() {
     const [posts, setPosts] = useState<Post[]>([]);
     const [loading, setLoading] = useState(true);
+    const { markNewsAsRead } = useUnreadNews();
 
     useEffect(() => {
         getPublishedPosts()
-            .then(setPosts)
+            .then(data => {
+                setPosts(data);
+                if (data.length > 0) markNewsAsRead(data[0].id);
+            })
             .finally(() => setLoading(false));
+    // markNewsAsRead is stable (useCallback); intentionally omitting from deps to fire once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     return (

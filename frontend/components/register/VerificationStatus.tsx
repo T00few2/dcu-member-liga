@@ -1,9 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
 import { fromTimestamp } from '@/lib/formatDate';
+import { useProfileDrVerificationsQuery } from '@/hooks/queries/useProfileDrVerificationsQuery';
+import DualRecordingStatusBadge from '@/components/DualRecordingStatusBadge';
+import DualRecordingResultModal from '@/components/DualRecordingResultModal';
+import StickyWattsStatusBadge from '@/components/StickyWattsStatusBadge';
+import type { ProfileDrVerification } from '@/hooks/queries/useProfileDrVerificationsQuery';
 
 interface VerificationRequest {
     requestId: string;
@@ -24,11 +30,29 @@ interface VerificationStatusProps {
 
 export default function VerificationStatus({ status, videoLink, deadline, requests = [], refreshProfile }: VerificationStatusProps) {
     const { user, requestNotificationPermission } = useAuth();
+    const queryClient = useQueryClient();
+    const { data: drVerifications = [] } = useProfileDrVerificationsQuery();
+    const [selectedDr, setSelectedDr] = useState<ProfileDrVerification | null>(null);
     const [linkInput, setLinkInput] = useState(videoLink || '');
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [permissionGranted, setPermissionGranted] = useState(typeof Notification !== 'undefined' ? Notification.permission === 'granted' : false);
+
+    useEffect(() => {
+        if (!user) return;
+        const markSeen = async () => {
+            const token = await user.getIdToken();
+            await Promise.allSettled([
+                fetch(`${API_URL}/profile/dr-report-seen`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }),
+                fetch(`${API_URL}/profile/sw-report-seen`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }),
+            ]);
+            queryClient.invalidateQueries({ queryKey: ['notification-state'] });
+        };
+        markSeen();
+    // Only run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const activeRequest = requests.find(r => r.status === 'pending');
     const displayStatus = status === 'none' && activeRequest ? 'pending' : status;
@@ -228,6 +252,79 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
                         ))}
                     </div>
                 </div>
+            )}
+
+            {/* Dual Recording History */}
+            {drVerifications.length > 0 && (
+                <div className="mt-8 pt-6 border-t border-border">
+                    <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-4">Dual Recording Historik</h4>
+                    <div className="space-y-2">
+                        {drVerifications.map((v, idx) => (
+                            <div key={idx} className="flex justify-between items-center text-sm p-3 bg-muted/30 rounded">
+                                <div className="flex items-center gap-3">
+                                    <DualRecordingStatusBadge
+                                        verification={v}
+                                        onClick={() => setSelectedDr(v)}
+                                    />
+                                    <span className="text-muted-foreground">
+                                        {v.verifiedAt
+                                            ? new Date(v.verifiedAt).toLocaleDateString('da-DK')
+                                            : '—'}
+                                    </span>
+                                    {v.raceId && (
+                                        <span className="text-xs text-muted-foreground">Løb {v.raceId}</span>
+                                    )}
+                                </div>
+                                {v.status === 'failed' && (
+                                    <span className="text-xs text-red-600 font-medium">Underkendtes</span>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Sticky Watts History */}
+            {drVerifications.some(v => v.stickyWatts != null) && (
+                <div className="mt-8 pt-6 border-t border-border">
+                    <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-4">Sticky Watts Historik</h4>
+                    <div className="space-y-2">
+                        {drVerifications
+                            .filter(v => v.stickyWatts != null)
+                            .map((v, idx) => (
+                                <div key={idx} className="flex justify-between items-center text-sm p-3 bg-muted/30 rounded">
+                                    <div className="flex items-center gap-3">
+                                        <StickyWattsStatusBadge
+                                            stickyWatts={v.stickyWatts}
+                                            trainerName={v.trainerName}
+                                        />
+                                        <span className="text-muted-foreground">
+                                            {v.verifiedAt
+                                                ? new Date(v.verifiedAt).toLocaleDateString('da-DK')
+                                                : '—'}
+                                        </span>
+                                        {v.raceId && (
+                                            <span className="text-xs text-muted-foreground">Løb {v.raceId}</span>
+                                        )}
+                                    </div>
+                                    {v.stickyWatts?.suspicious && (
+                                        <span className="text-xs text-amber-600 font-medium">Mistænkelig</span>
+                                    )}
+                                </div>
+                            ))}
+                    </div>
+                </div>
+            )}
+
+            {/* DR Result Modal */}
+            {selectedDr && (
+                <DualRecordingResultModal
+                    open={!!selectedDr}
+                    onClose={() => setSelectedDr(null)}
+                    riderName={user?.displayName || user?.email || ''}
+                    verification={selectedDr}
+                    showRunActions={false}
+                />
             )}
 
         </div>
