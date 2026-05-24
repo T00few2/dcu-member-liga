@@ -67,7 +67,7 @@ function StickyWattsPanelInner() {
             {/* Verdict row */}
             <div className="flex items-center justify-between mb-2">
                 <span className="font-semibold">
-                    {result.suspicious ? '⚠ Mistænkelig' : '✓ OK'}
+                    {result.suspicious ? '⚠ Mærkelig' : '✓ OK'}
                 </span>
                 <span className="text-[10px] font-normal opacity-60">Eksperimentel</span>
             </div>
@@ -107,8 +107,8 @@ function StickyWattsPanelInner() {
                     <ThresholdInput label="Min. watt (aktiv)" unit="W" value={thresholds.minWatts} onChange={set('minWatts')} min={10} max={400} />
                     <ThresholdInput label="Min. run-længde" unit="s" value={thresholds.minRun} onChange={set('minRun')} min={2} max={30} />
                     <ThresholdInput label="Drop-til-nul (<)" unit="W" value={thresholds.zeroThresh} onChange={set('zeroThresh')} min={1} max={100} />
-                    <ThresholdInput label="Mistænkelig par-%" unit="%" value={thresholds.suspiciousPairPct} onChange={set('suspiciousPairPct')} min={5} max={100} />
-                    <ThresholdInput label="Mistænkelige pre-zero" unit="hændelser" value={thresholds.suspiciousPreZero} onChange={set('suspiciousPreZero')} min={1} max={20} />
+                    <ThresholdInput label="Mærkelig par-%" unit="%" value={thresholds.suspiciousPairPct} onChange={set('suspiciousPairPct')} min={5} max={100} />
+                    <ThresholdInput label="Mærkelige pre-zero" unit="hændelser" value={thresholds.suspiciousPreZero} onChange={set('suspiciousPreZero')} min={1} max={20} />
 
                     <div className="flex items-center gap-2 pt-1">
                         <button

@@ -17,7 +17,7 @@ function MetricsGrid({ sw }: { sw: StickyWattsResult }) {
                     : 'border-border bg-muted/20 text-muted-foreground'
             }`}>
                 <div className="font-semibold mb-1">
-                    {sw.suspicious ? '⚠ Mistænkelig' : '✓ OK'}
+                    {sw.suspicious ? '⚠ Mærkelig' : '✓ OK'}
                 </div>
                 <div className="grid grid-cols-2 gap-x-6 gap-y-1">
                     <div>Total samples: <span className="font-mono">{sw.totalSamples}</span></div>
@@ -52,7 +52,7 @@ export default function StickyWattsStatusBadge({ stickyWatts, trainerName }: Pro
     const icon = noData ? '–' : suspicious ? '⚠' : '✓';
     const title = noData
         ? 'Sticky Watts: Ingen streamdata tilgængelig'
-        : suspicious ? 'Sticky Watts: Mistænkelig' : 'Sticky Watts: OK';
+        : suspicious ? 'Sticky Watts: Mærkelig' : 'Sticky Watts: OK';
 
     return (
         <>

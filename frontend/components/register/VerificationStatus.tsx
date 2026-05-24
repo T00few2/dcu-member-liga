@@ -425,7 +425,7 @@ export default function VerificationStatus({
                                             )}
                                         </div>
                                         {v.stickyWatts?.suspicious && (
-                                            <span className="text-xs text-amber-600 font-medium">Mistænkelig</span>
+                                            <span className="text-xs text-amber-600 font-medium">Mærkelig</span>
                                         )}
                                     </div>
                                 ))}
