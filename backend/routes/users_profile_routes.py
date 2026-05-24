@@ -461,26 +461,6 @@ def set_welcome_seen():
         return jsonify({"message": str(e)}), 500
 
 
-def _get_user_dr_verifications(zwift_id: str) -> list[dict]:
-    """Fetch all DR verifications for a user by reading directly from each race doc.
-    Avoids collection group queries which require Firestore composite indexes.
-    """
-    race_docs = list(db.collection("races").stream())
-    results = []
-    for race in race_docs:
-        dr_doc = (
-            db.collection("races")
-            .document(race.id)
-            .collection("dr_verifications")
-            .document(zwift_id)
-            .get()
-        )
-        if dr_doc.exists:
-            v = dr_doc.to_dict() or {}
-            results.append(v)
-    return results
-
-
 @users_bp.route("/profile/notification-state", methods=["GET"])
 def get_notification_state():
     try:
@@ -505,7 +485,10 @@ def get_notification_state():
         zwift_id = str(user.zwift_id)
         doc_id = str(user.id)
 
-        all_verifications = _get_user_dr_verifications(zwift_id)
+        all_verifications = [
+            d.to_dict() or {}
+            for d in db.collection_group("dr_verifications").where("zwiftId", "==", zwift_id).stream()
+        ]
 
         failed = [v for v in all_verifications if v.get("status") == "failed" and v.get("verifiedAt")]
         latest_dr_failed_at = max((v["verifiedAt"] for v in failed), default=None)
@@ -600,8 +583,11 @@ def get_profile_dr_verifications():
             return jsonify({"verifications": []}), 200
 
         zwift_id = str(user.zwift_id)
+        docs = list(
+            db.collection_group("dr_verifications").where("zwiftId", "==", zwift_id).stream()
+        )
         verifications = sorted(
-            _get_user_dr_verifications(zwift_id),
+            [d.to_dict() or {} for d in docs],
             key=lambda v: v.get("verifiedAt") or "",
             reverse=True,
         )[:50]
