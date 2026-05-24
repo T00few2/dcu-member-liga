@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
 import { fromTimestamp } from '@/lib/formatDate';
 import { useProfileDrVerificationsQuery } from '@/hooks/queries/useProfileDrVerificationsQuery';
+import { useNotificationStateQuery } from '@/hooks/queries/useNotificationStateQuery';
+import { useRacesQuery } from '@/hooks/queries/useRacesQuery';
 import DualRecordingStatusBadge from '@/components/DualRecordingStatusBadge';
 import DualRecordingResultModal from '@/components/DualRecordingResultModal';
 import StickyWattsStatusBadge from '@/components/StickyWattsStatusBadge';
@@ -26,68 +28,95 @@ interface VerificationStatusProps {
     deadline?: any;
     requests?: VerificationRequest[];
     refreshProfile: () => void;
+    trainerRequiresDualRecording?: boolean;
 }
 
-export default function VerificationStatus({ status, videoLink, deadline, requests = [], refreshProfile }: VerificationStatusProps) {
+type Tab = 'vægt' | 'dual-recording' | 'sticky-watts';
+
+export default function VerificationStatus({
+    status, videoLink, deadline, requests = [], refreshProfile, trainerRequiresDualRecording = false,
+}: VerificationStatusProps) {
     const { user, requestNotificationPermission } = useAuth();
     const queryClient = useQueryClient();
     const { data: drVerifications = [], isLoading: drLoading } = useProfileDrVerificationsQuery();
+    const { data: notifState } = useNotificationStateQuery();
+    const { data: races = [] } = useRacesQuery();
+    const [activeTab, setActiveTab] = useState<Tab>('vægt');
     const [selectedDr, setSelectedDr] = useState<ProfileDrVerification | null>(null);
     const [linkInput, setLinkInput] = useState(videoLink || '');
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
-    const [permissionGranted, setPermissionGranted] = useState(typeof Notification !== 'undefined' ? Notification.permission === 'granted' : false);
+    const [permissionGranted, setPermissionGranted] = useState(
+        typeof Notification !== 'undefined' ? Notification.permission === 'granted' : false
+    );
 
+    // Unseen notification flags derived from server state
+    const hasUnseenDr = !!(
+        notifState?.latestDrFailedAt &&
+        (!notifState.drReportSeenAt || notifState.latestDrFailedAt > notifState.drReportSeenAt)
+    );
+    const hasUnseenSw = !!(
+        notifState?.latestSwFlaggedAt &&
+        (!notifState.swReportSeenAt || notifState.latestSwFlaggedAt > notifState.swReportSeenAt)
+    );
+
+    // Mark the relevant report as seen when the tab is first visited
     useEffect(() => {
         if (!user) return;
-        const markSeen = async () => {
-            const token = await user.getIdToken();
-            await Promise.allSettled([
-                fetch(`${API_URL}/profile/dr-report-seen`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }),
-                fetch(`${API_URL}/profile/sw-report-seen`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }),
-            ]);
+        const endpoint =
+            activeTab === 'dual-recording' ? `${API_URL}/profile/dr-report-seen` :
+            activeTab === 'sticky-watts'   ? `${API_URL}/profile/sw-report-seen` :
+            null;
+        if (!endpoint) return;
+
+        user.getIdToken().then(token =>
+            fetch(endpoint, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
+        ).then(() => {
             queryClient.invalidateQueries({ queryKey: ['notification-state'] });
-        };
-        markSeen();
-    // Only run once on mount
+        });
+    // Re-run whenever the active tab changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [activeTab]);
+
+    // Lookup map: raceId → race name
+    const raceNameById = useMemo(
+        () => new Map(races.map(r => [r.id, r.name])),
+        [races]
+    );
+
+    const raceName = (raceId?: string) => {
+        if (!raceId) return null;
+        return raceNameById.get(raceId) || raceId;
+    };
 
     const activeRequest = requests.find(r => r.status === 'pending');
     const displayStatus = status === 'none' && activeRequest ? 'pending' : status;
+    const hasWeightVerification = status !== 'none' || !!activeRequest || requests.length > 0;
+    const hasDrVerifications = drVerifications.length > 0;
+    const hasSwVerifications = drVerifications.some(v => v.stickyWatts != null);
+    const showDrTab = trainerRequiresDualRecording || hasDrVerifications;
 
     const handleSubmit = async () => {
         if (!user || !linkInput) return;
-
-        // Basic validation
         if (!linkInput.startsWith('http')) {
             setError('Indtast venligst en gyldig URL (der starter med http:// eller https://)');
             return;
         }
-
         setSubmitting(true);
         setError('');
         setSuccess('');
-
         try {
             const idToken = await user.getIdToken();
-
             const res = await fetch(`${API_URL}/verification/submit`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${idToken}`
-                },
-                body: JSON.stringify({ videoLink: linkInput })
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                body: JSON.stringify({ videoLink: linkInput }),
             });
-
             const data = await res.json();
             if (!res.ok) throw new Error(data.message || 'Kunne ikke indsende verifikation');
-
             setSuccess('Verifikation indsendt med succes! En administrator vil snart gennemgå den.');
             refreshProfile();
-
         } catch (e: any) {
             setError(e.message);
         } finally {
@@ -95,210 +124,226 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
         }
     };
 
-    if (!drLoading && status === 'none' && !activeRequest && requests.length === 0 && drVerifications.length === 0) {
-        return (
-            <div className="p-8 text-center bg-gray-50 dark:bg-gray-900 rounded-lg border border-border">
-                <div className="text-4xl mb-4">✅</div>
-                <h3 className="text-xl font-bold mb-2">Ingen verifikation påkrævet</h3>
-                <p className="text-muted-foreground">
-                    Du er ikke blevet udvalgt til en vægtverifikation på nuværende tidspunkt.
-                    Fortsæt dit løb!
-                </p>
-            </div>
-        );
-    }
+    const tabs: { id: Tab; label: string; unseen?: boolean }[] = [
+        { id: 'vægt', label: 'Vægt' },
+        ...(showDrTab ? [{ id: 'dual-recording' as Tab, label: 'Dual Recording', unseen: hasUnseenDr }] : []),
+        { id: 'sticky-watts', label: 'Sticky Watts', unseen: hasUnseenSw },
+    ];
 
     return (
         <div className="space-y-6">
 
-            {/* Weight Verification Status Banner — only shown when there's a weight verification */}
-            {(status !== 'none' || !!activeRequest || requests.length > 0) && (<>
-            <div className={`p-6 rounded-lg border ${displayStatus === 'pending' ? 'bg-orange-50 border-orange-200 dark:bg-orange-900/20 dark:border-orange-800' :
-                displayStatus === 'submitted' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' :
-                    displayStatus === 'approved' ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' :
-                        'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800'
-                }`}>
-                <h3 className={`text-lg font-bold mb-2 ${displayStatus === 'pending' ? 'text-orange-800 dark:text-orange-200' :
-                    displayStatus === 'submitted' ? 'text-blue-800 dark:text-blue-200' :
-                        displayStatus === 'approved' ? 'text-green-800 dark:text-green-200' :
-                            'text-red-800 dark:text-red-200'
-                    }`}>
-                    Status: {displayStatus === 'pending' ? 'Afventer' : displayStatus === 'submitted' ? 'Indsendt' : displayStatus === 'approved' ? 'Godkendt' : 'Afvist'}
-                </h3>
-
-                {displayStatus === 'pending' && (
-                    <p className="text-orange-700 dark:text-orange-300">
-                        Du er blevet udvalgt til en stikprøve vægtverifikation.
-                        Optag venligst en indvejningsvideo og indsend linket nedenfor.
-                        {deadline && <span className="block font-bold mt-1">Frist: {fromTimestamp(deadline)?.toLocaleDateString()}</span>}
-                    </p>
-                )}
-                {displayStatus === 'submitted' && (
-                    <p className="text-blue-700 dark:text-blue-300">
-                        Din video er indsendt og afventer gennemgang af en administrator.
-                    </p>
-                )}
-                {displayStatus === 'approved' && (
-                    <p className="text-green-700 dark:text-green-300">
-                        Din vægtverifikation er blevet godkendt. Tak for dit samarbejde!
-                    </p>
-                )}
-                {displayStatus === 'rejected' && (
-                    <p className="text-red-700 dark:text-red-300">
-                        Din verifikation blev afvist. Kontakt venligst en administrator eller afvent en ny anmodning.
-                    </p>
-                )}
-
-                {/* Notification Permission Request for PWA Badge */}
-                {typeof window !== 'undefined' && 'Notification' in window && !permissionGranted && (
-                    <div className="mt-4 pt-4 border-t border-black/5 dark:border-white/5">
-                        <p className="text-sm opacity-80 mb-2">
-                            For at vise notifikationsprikken på dit hjemmeskærmsikon, skal du aktivere notifikationer.
-                        </p>
-                        <button
-                            onClick={async () => {
-                                const granted = await requestNotificationPermission();
-                                if (granted) setPermissionGranted(true);
-                            }}
-                            className="text-xs bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 px-3 py-1.5 rounded transition-colors"
-                        >
-                            Aktiver app notifikationer
-                        </button>
-                    </div>
-                )}
-                {permissionGranted && (
-                    <div className="mt-4 pt-4 border-t border-black/5 dark:border-white/5 opacity-60 text-xs italic">
-                        App notifikationer er aktiveret for badges på hjemmeskærmsikoner.
-                    </div>
-                )}
+            {/* Tab navigation */}
+            <div className="flex border-b border-border">
+                {tabs.map(tab => (
+                    <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`relative px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                            activeTab === tab.id
+                                ? 'border-primary text-primary'
+                                : 'border-transparent text-muted-foreground hover:text-foreground'
+                        }`}
+                    >
+                        {tab.label}
+                        {tab.unseen && activeTab !== tab.id && (
+                            <span className="absolute top-1.5 right-1 w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
+                        )}
+                    </button>
+                ))}
             </div>
 
-            {/* Submission Form */}
-            {displayStatus === 'pending' && (
-                <div className="bg-card p-6 border border-border rounded-lg shadow-sm">
-                    <h4 className="font-semibold mb-4 text-card-foreground">Indsend verifikationsvideo</h4>
-
-                    <div className="mb-4 text-sm text-muted-foreground space-y-2">
-                        <p><strong>Instruktioner:</strong></p>
-                        <ol className="list-decimal pl-5 space-y-1">
-                            <li>Optag en video, der viser dit ansigt, at du træder op på vægten, og at vægten tydeligt kan aflæses.</li>
-                            <li>Upload videoen til YouTube (vælg "Skjult" som synlighed).</li>
-                            <li>Indsæt et link, der kan deles, nedenfor.</li>
-                        </ol>
-                        <p className="pt-1">
-                            <a
-                                href="https://youtu.be/9EDuSQwsPSg?is=1gyEg5n_z0MT0d3H"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1.5 text-primary hover:underline font-medium"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
-                                </svg>
-                                Se vejledningsvideo til verifikation
-                            </a>
-                        </p>
-                    </div>
-
-                    <div className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium mb-1">Videolink</label>
-                            <input
-                                type="url"
-                                value={linkInput}
-                                onChange={(e) => setLinkInput(e.target.value)}
-                                placeholder="https://youtube.com/..."
-                                className="w-full p-3 border border-input rounded bg-background text-foreground"
-                            />
+            {/* ── Vægt tab ── */}
+            {activeTab === 'vægt' && (
+                <div className="space-y-6">
+                    {!hasWeightVerification ? (
+                        <div className="p-8 text-center bg-gray-50 dark:bg-gray-900 rounded-lg border border-border">
+                            <div className="text-4xl mb-4">✅</div>
+                            <h3 className="text-xl font-bold mb-2">Ingen vægtverifikation påkrævet</h3>
+                            <p className="text-muted-foreground">
+                                Du er ikke blevet udvalgt til en vægtverifikation på nuværende tidspunkt.
+                                Fortsæt dit løb!
+                            </p>
                         </div>
+                    ) : (
+                        <>
+                            {/* Status banner */}
+                            <div className={`p-6 rounded-lg border ${
+                                displayStatus === 'pending'   ? 'bg-orange-50 border-orange-200 dark:bg-orange-900/20 dark:border-orange-800' :
+                                displayStatus === 'submitted' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' :
+                                displayStatus === 'approved'  ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' :
+                                                                'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800'
+                            }`}>
+                                <h3 className={`text-lg font-bold mb-2 ${
+                                    displayStatus === 'pending'   ? 'text-orange-800 dark:text-orange-200' :
+                                    displayStatus === 'submitted' ? 'text-blue-800 dark:text-blue-200' :
+                                    displayStatus === 'approved'  ? 'text-green-800 dark:text-green-200' :
+                                                                    'text-red-800 dark:text-red-200'
+                                }`}>
+                                    Status: {
+                                        displayStatus === 'pending'   ? 'Afventer' :
+                                        displayStatus === 'submitted' ? 'Indsendt' :
+                                        displayStatus === 'approved'  ? 'Godkendt' : 'Afvist'
+                                    }
+                                </h3>
+                                {displayStatus === 'pending' && (
+                                    <p className="text-orange-700 dark:text-orange-300">
+                                        Du er blevet udvalgt til en stikprøve vægtverifikation.
+                                        Optag venligst en indvejningsvideo og indsend linket nedenfor.
+                                        {deadline && (
+                                            <span className="block font-bold mt-1">
+                                                Frist: {fromTimestamp(deadline)?.toLocaleDateString()}
+                                            </span>
+                                        )}
+                                    </p>
+                                )}
+                                {displayStatus === 'submitted' && (
+                                    <p className="text-blue-700 dark:text-blue-300">
+                                        Din video er indsendt og afventer gennemgang af en administrator.
+                                    </p>
+                                )}
+                                {displayStatus === 'approved' && (
+                                    <p className="text-green-700 dark:text-green-300">
+                                        Din vægtverifikation er blevet godkendt. Tak for dit samarbejde!
+                                    </p>
+                                )}
+                                {displayStatus === 'rejected' && (
+                                    <p className="text-red-700 dark:text-red-300">
+                                        Din verifikation blev afvist. Kontakt venligst en administrator eller afvent en ny anmodning.
+                                    </p>
+                                )}
 
-                        {error && <div className="text-red-600 text-sm">{error}</div>}
-                        {success && <div className="text-green-600 text-sm">{success}</div>}
-
-                        <button
-                            onClick={handleSubmit}
-                            disabled={submitting || !linkInput}
-                            className="w-full py-3 bg-primary text-primary-foreground font-bold rounded hover:bg-primary-dark transition-colors disabled:opacity-50"
-                        >
-                            {submitting ? 'Indsender...' : 'Indsend verifikation'}
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* History Link (optional expansion) */}
-            {requests.length > 0 && (
-                <div className="mt-8 pt-6 border-t border-border">
-                    <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-4">Historik</h4>
-                    <div className="space-y-2">
-                        {requests.map((req, idx) => (
-                            <div key={idx} className="flex justify-between items-center text-sm p-3 bg-muted/30 rounded">
-                                <div>
-                                    <span className={`font-medium ${req.status === 'approved' ? 'text-green-600' :
-                                        req.status === 'rejected' ? 'text-red-600' : 'text-muted-foreground'
-                                        }`}>
-                                        {req.status === 'pending' ? 'AFVENTER' : req.status === 'submitted' ? 'INDSENDT' : req.status === 'approved' ? 'GODKENDT' : 'AFVIST'}
-                                    </span>
-                                    <span className="text-muted-foreground mx-2">•</span>
-                                    <span className="text-muted-foreground">
-                                        {fromTimestamp(req.requestedAt)?.toLocaleDateString()}
-                                    </span>
-                                </div>
-                                {req.status === 'rejected' && req.rejectionReason && (
-                                    <div className="text-red-500 text-xs italic">
-                                        Årsag: {req.rejectionReason}
+                                {/* Notification permission request for PWA badge */}
+                                {typeof window !== 'undefined' && 'Notification' in window && !permissionGranted && (
+                                    <div className="mt-4 pt-4 border-t border-black/5 dark:border-white/5">
+                                        <p className="text-sm opacity-80 mb-2">
+                                            For at vise notifikationsprikken på dit hjemmeskærmsikon, skal du aktivere notifikationer.
+                                        </p>
+                                        <button
+                                            onClick={async () => {
+                                                const granted = await requestNotificationPermission();
+                                                if (granted) setPermissionGranted(true);
+                                            }}
+                                            className="text-xs bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 px-3 py-1.5 rounded transition-colors"
+                                        >
+                                            Aktiver app notifikationer
+                                        </button>
+                                    </div>
+                                )}
+                                {permissionGranted && (
+                                    <div className="mt-4 pt-4 border-t border-black/5 dark:border-white/5 opacity-60 text-xs italic">
+                                        App notifikationer er aktiveret for badges på hjemmeskærmsikoner.
                                     </div>
                                 )}
                             </div>
-                        ))}
-                    </div>
-                </div>
-            )}
-            </>)}
 
-            {/* Dual Recording History */}
-            {drVerifications.length > 0 && (
-                <div className="mt-8 pt-6 border-t border-border">
-                    <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-4">Dual Recording Historik</h4>
-                    <div className="space-y-2">
-                        {drVerifications.map((v, idx) => (
-                            <div key={idx} className="flex justify-between items-center text-sm p-3 bg-muted/30 rounded">
-                                <div className="flex items-center gap-3">
-                                    <DualRecordingStatusBadge
-                                        verification={v}
-                                        onClick={() => setSelectedDr(v)}
-                                    />
-                                    <span className="text-muted-foreground">
-                                        {v.verifiedAt
-                                            ? new Date(v.verifiedAt).toLocaleDateString('da-DK')
-                                            : '—'}
-                                    </span>
-                                    {v.raceId && (
-                                        <span className="text-xs text-muted-foreground">Løb {v.raceId}</span>
-                                    )}
+                            {/* Submission form */}
+                            {displayStatus === 'pending' && (
+                                <div className="bg-card p-6 border border-border rounded-lg shadow-sm">
+                                    <h4 className="font-semibold mb-4 text-card-foreground">Indsend verifikationsvideo</h4>
+                                    <div className="mb-4 text-sm text-muted-foreground space-y-2">
+                                        <p><strong>Instruktioner:</strong></p>
+                                        <ol className="list-decimal pl-5 space-y-1">
+                                            <li>Optag en video, der viser dit ansigt, at du træder op på vægten, og at vægten tydeligt kan aflæses.</li>
+                                            <li>Upload videoen til YouTube (vælg "Skjult" som synlighed).</li>
+                                            <li>Indsæt et link, der kan deles, nedenfor.</li>
+                                        </ol>
+                                        <p className="pt-1">
+                                            <a
+                                                href="https://youtu.be/9EDuSQwsPSg?is=1gyEg5n_z0MT0d3H"
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center gap-1.5 text-primary hover:underline font-medium"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                                    <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                                                </svg>
+                                                Se vejledningsvideo til verifikation
+                                            </a>
+                                        </p>
+                                    </div>
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Videolink</label>
+                                            <input
+                                                type="url"
+                                                value={linkInput}
+                                                onChange={(e) => setLinkInput(e.target.value)}
+                                                placeholder="https://youtube.com/..."
+                                                className="w-full p-3 border border-input rounded bg-background text-foreground"
+                                            />
+                                        </div>
+                                        {error && <div className="text-red-600 text-sm">{error}</div>}
+                                        {success && <div className="text-green-600 text-sm">{success}</div>}
+                                        <button
+                                            onClick={handleSubmit}
+                                            disabled={submitting || !linkInput}
+                                            className="w-full py-3 bg-primary text-primary-foreground font-bold rounded hover:bg-primary-dark transition-colors disabled:opacity-50"
+                                        >
+                                            {submitting ? 'Indsender...' : 'Indsend verifikation'}
+                                        </button>
+                                    </div>
                                 </div>
-                                {v.status === 'failed' && (
-                                    <span className="text-xs text-red-600 font-medium">Underkendtes</span>
-                                )}
-                            </div>
-                        ))}
-                    </div>
+                            )}
+
+                            {/* Weight verification history */}
+                            {requests.length > 0 && (
+                                <div className="pt-2">
+                                    <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-4">Historik</h4>
+                                    <div className="space-y-2">
+                                        {requests.map((req, idx) => (
+                                            <div key={idx} className="flex justify-between items-center text-sm p-3 bg-muted/30 rounded">
+                                                <div>
+                                                    <span className={`font-medium ${
+                                                        req.status === 'approved' ? 'text-green-600' :
+                                                        req.status === 'rejected' ? 'text-red-600' :
+                                                        'text-muted-foreground'
+                                                    }`}>
+                                                        {req.status === 'pending'   ? 'AFVENTER' :
+                                                         req.status === 'submitted' ? 'INDSENDT' :
+                                                         req.status === 'approved'  ? 'GODKENDT' : 'AFVIST'}
+                                                    </span>
+                                                    <span className="text-muted-foreground mx-2">•</span>
+                                                    <span className="text-muted-foreground">
+                                                        {fromTimestamp(req.requestedAt)?.toLocaleDateString()}
+                                                    </span>
+                                                </div>
+                                                {req.status === 'rejected' && req.rejectionReason && (
+                                                    <div className="text-red-500 text-xs italic">
+                                                        Årsag: {req.rejectionReason}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </>
+                    )}
                 </div>
             )}
 
-            {/* Sticky Watts History */}
-            {drVerifications.some(v => v.stickyWatts != null) && (
-                <div className="mt-8 pt-6 border-t border-border">
-                    <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-4">Sticky Watts Historik</h4>
-                    <div className="space-y-2">
-                        {drVerifications
-                            .filter(v => v.stickyWatts != null)
-                            .map((v, idx) => (
+            {/* ── Dual Recording tab ── */}
+            {activeTab === 'dual-recording' && (
+                <div className="space-y-4">
+                    {drLoading ? (
+                        <div className="p-8 text-center text-muted-foreground">Indlæser...</div>
+                    ) : !hasDrVerifications ? (
+                        <div className="p-8 text-center bg-gray-50 dark:bg-gray-900 rounded-lg border border-border">
+                            <div className="text-4xl mb-4">📊</div>
+                            <h3 className="text-xl font-bold mb-2">Ingen dual recording verifikationer endnu</h3>
+                            <p className="text-muted-foreground">
+                                Din hometrainer kræver dual recording. Resultaterne vises her efter hvert løb.
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            {drVerifications.map((v, idx) => (
                                 <div key={idx} className="flex justify-between items-center text-sm p-3 bg-muted/30 rounded">
                                     <div className="flex items-center gap-3">
-                                        <StickyWattsStatusBadge
-                                            stickyWatts={v.stickyWatts}
-                                            trainerName={v.trainerName}
+                                        <DualRecordingStatusBadge
+                                            verification={v}
+                                            onClick={() => setSelectedDr(v)}
                                         />
                                         <span className="text-muted-foreground">
                                             {v.verifiedAt
@@ -306,15 +351,72 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
                                                 : '—'}
                                         </span>
                                         {v.raceId && (
-                                            <span className="text-xs text-muted-foreground">Løb {v.raceId}</span>
+                                            <span className="text-xs text-muted-foreground">
+                                                {raceName(v.raceId)}
+                                            </span>
                                         )}
                                     </div>
-                                    {v.stickyWatts?.suspicious && (
-                                        <span className="text-xs text-amber-600 font-medium">Mistænkelig</span>
+                                    {v.status === 'failed' && (
+                                        <span className="text-xs text-red-600 font-medium">Underkendtes</span>
                                     )}
                                 </div>
                             ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* ── Sticky Watts tab ── */}
+            {activeTab === 'sticky-watts' && (
+                <div className="space-y-4">
+                    {/* Experimental notice */}
+                    <div className="flex items-start gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-200">
+                        <span className="text-base leading-none mt-0.5">⚗️</span>
+                        <p>
+                            <strong>Eksperimentel funktion</strong> — Sticky Watts-analysen er under udvikling.
+                            Resultaterne er vejledende og bør ikke alene danne grundlag for en afgørelse.
+                        </p>
                     </div>
+
+                    {drLoading ? (
+                        <div className="p-8 text-center text-muted-foreground">Indlæser...</div>
+                    ) : !hasSwVerifications ? (
+                        <div className="p-8 text-center bg-gray-50 dark:bg-gray-900 rounded-lg border border-border">
+                            <div className="text-4xl mb-4">📈</div>
+                            <h3 className="text-xl font-bold mb-2">Ingen Sticky Watts-data</h3>
+                            <p className="text-muted-foreground">
+                                Der er ingen Sticky Watts-analyser tilgængelige for dig endnu.
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            {drVerifications
+                                .filter(v => v.stickyWatts != null)
+                                .map((v, idx) => (
+                                    <div key={idx} className="flex justify-between items-center text-sm p-3 bg-muted/30 rounded">
+                                        <div className="flex items-center gap-3">
+                                            <StickyWattsStatusBadge
+                                                stickyWatts={v.stickyWatts}
+                                                trainerName={v.trainerName}
+                                            />
+                                            <span className="text-muted-foreground">
+                                                {v.verifiedAt
+                                                    ? new Date(v.verifiedAt).toLocaleDateString('da-DK')
+                                                    : '—'}
+                                            </span>
+                                            {v.raceId && (
+                                                <span className="text-xs text-muted-foreground">
+                                                    {raceName(v.raceId)}
+                                                </span>
+                                            )}
+                                        </div>
+                                        {v.stickyWatts?.suspicious && (
+                                            <span className="text-xs text-amber-600 font-medium">Mistænkelig</span>
+                                        )}
+                                    </div>
+                                ))}
+                        </div>
+                    )}
                 </div>
             )}
 
