@@ -12,11 +12,15 @@ function VerificationContent() {
         weightVerificationDeadline,
         verificationRequests,
         refreshProfile,
+        trainer,
+        trainers,
     } = useRegistration();
 
     if (authLoading || fetchingProfile) {
         return <div className="p-8 text-center text-muted-foreground">Indlæser...</div>;
     }
+
+    const trainerRequiresDualRecording = !!trainers.find(t => t.name === trainer)?.dualRecordingRequired;
 
     return (
         <div className="max-w-2xl mx-auto mt-10 px-4 pb-16">
@@ -27,6 +31,7 @@ function VerificationContent() {
                 deadline={weightVerificationDeadline}
                 requests={verificationRequests}
                 refreshProfile={refreshProfile}
+                trainerRequiresDualRecording={trainerRequiresDualRecording}
             />
         </div>
     );

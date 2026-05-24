@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
 import { fromTimestamp } from '@/lib/formatDate';
 import { useProfileDrVerificationsQuery } from '@/hooks/queries/useProfileDrVerificationsQuery';
+import { useNotificationStateQuery } from '@/hooks/queries/useNotificationStateQuery';
+import { useRacesQuery } from '@/hooks/queries/useRacesQuery';
 import DualRecordingStatusBadge from '@/components/DualRecordingStatusBadge';
 import DualRecordingResultModal from '@/components/DualRecordingResultModal';
 import StickyWattsStatusBadge from '@/components/StickyWattsStatusBadge';
@@ -26,20 +28,19 @@ interface VerificationStatusProps {
     deadline?: any;
     requests?: VerificationRequest[];
     refreshProfile: () => void;
+    trainerRequiresDualRecording?: boolean;
 }
 
 type Tab = 'vægt' | 'dual-recording' | 'sticky-watts';
 
-const TABS: { id: Tab; label: string }[] = [
-    { id: 'vægt', label: 'Vægt' },
-    { id: 'dual-recording', label: 'Dual Recording' },
-    { id: 'sticky-watts', label: 'Sticky Watts' },
-];
-
-export default function VerificationStatus({ status, videoLink, deadline, requests = [], refreshProfile }: VerificationStatusProps) {
+export default function VerificationStatus({
+    status, videoLink, deadline, requests = [], refreshProfile, trainerRequiresDualRecording = false,
+}: VerificationStatusProps) {
     const { user, requestNotificationPermission } = useAuth();
     const queryClient = useQueryClient();
     const { data: drVerifications = [], isLoading: drLoading } = useProfileDrVerificationsQuery();
+    const { data: notifState } = useNotificationStateQuery();
+    const { data: races = [] } = useRacesQuery();
     const [activeTab, setActiveTab] = useState<Tab>('vægt');
     const [selectedDr, setSelectedDr] = useState<ProfileDrVerification | null>(null);
     const [linkInput, setLinkInput] = useState(videoLink || '');
@@ -50,58 +51,72 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
         typeof Notification !== 'undefined' ? Notification.permission === 'granted' : false
     );
 
-    // Mark DR and SW reports as seen when the page mounts — keeps notification badge wiring intact
+    // Unseen notification flags derived from server state
+    const hasUnseenDr = !!(
+        notifState?.latestDrFailedAt &&
+        (!notifState.drReportSeenAt || notifState.latestDrFailedAt > notifState.drReportSeenAt)
+    );
+    const hasUnseenSw = !!(
+        notifState?.latestSwFlaggedAt &&
+        (!notifState.swReportSeenAt || notifState.latestSwFlaggedAt > notifState.swReportSeenAt)
+    );
+
+    // Mark the relevant report as seen when the tab is first visited
     useEffect(() => {
         if (!user) return;
-        const markSeen = async () => {
-            const token = await user.getIdToken();
-            await Promise.allSettled([
-                fetch(`${API_URL}/profile/dr-report-seen`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }),
-                fetch(`${API_URL}/profile/sw-report-seen`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }),
-            ]);
+        const endpoint =
+            activeTab === 'dual-recording' ? `${API_URL}/profile/dr-report-seen` :
+            activeTab === 'sticky-watts'   ? `${API_URL}/profile/sw-report-seen` :
+            null;
+        if (!endpoint) return;
+
+        user.getIdToken().then(token =>
+            fetch(endpoint, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
+        ).then(() => {
             queryClient.invalidateQueries({ queryKey: ['notification-state'] });
-        };
-        markSeen();
-    // Only run once on mount
+        });
+    // Re-run whenever the active tab changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [activeTab]);
+
+    // Lookup map: raceId → race name
+    const raceNameById = useMemo(
+        () => new Map(races.map(r => [r.id, r.name])),
+        [races]
+    );
+
+    const raceName = (raceId?: string) => {
+        if (!raceId) return null;
+        return raceNameById.get(raceId) || raceId;
+    };
 
     const activeRequest = requests.find(r => r.status === 'pending');
     const displayStatus = status === 'none' && activeRequest ? 'pending' : status;
     const hasWeightVerification = status !== 'none' || !!activeRequest || requests.length > 0;
     const hasDrVerifications = drVerifications.length > 0;
     const hasSwVerifications = drVerifications.some(v => v.stickyWatts != null);
+    const showDrTab = trainerRequiresDualRecording || hasDrVerifications;
 
     const handleSubmit = async () => {
         if (!user || !linkInput) return;
-
         if (!linkInput.startsWith('http')) {
             setError('Indtast venligst en gyldig URL (der starter med http:// eller https://)');
             return;
         }
-
         setSubmitting(true);
         setError('');
         setSuccess('');
-
         try {
             const idToken = await user.getIdToken();
-
             const res = await fetch(`${API_URL}/verification/submit`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${idToken}`
-                },
-                body: JSON.stringify({ videoLink: linkInput })
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                body: JSON.stringify({ videoLink: linkInput }),
             });
-
             const data = await res.json();
             if (!res.ok) throw new Error(data.message || 'Kunne ikke indsende verifikation');
-
             setSuccess('Verifikation indsendt med succes! En administrator vil snart gennemgå den.');
             refreshProfile();
-
         } catch (e: any) {
             setError(e.message);
         } finally {
@@ -109,22 +124,31 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
         }
     };
 
+    const tabs: { id: Tab; label: string; unseen?: boolean }[] = [
+        { id: 'vægt', label: 'Vægt' },
+        ...(showDrTab ? [{ id: 'dual-recording' as Tab, label: 'Dual Recording', unseen: hasUnseenDr }] : []),
+        { id: 'sticky-watts', label: 'Sticky Watts', unseen: hasUnseenSw },
+    ];
+
     return (
         <div className="space-y-6">
 
             {/* Tab navigation */}
             <div className="flex border-b border-border">
-                {TABS.map(tab => (
+                {tabs.map(tab => (
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
-                        className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                        className={`relative px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                             activeTab === tab.id
                                 ? 'border-primary text-primary'
                                 : 'border-transparent text-muted-foreground hover:text-foreground'
                         }`}
                     >
                         {tab.label}
+                        {tab.unseen && activeTab !== tab.id && (
+                            <span className="absolute top-1.5 right-1 w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
+                        )}
                     </button>
                 ))}
             </div>
@@ -159,11 +183,9 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
                                     Status: {
                                         displayStatus === 'pending'   ? 'Afventer' :
                                         displayStatus === 'submitted' ? 'Indsendt' :
-                                        displayStatus === 'approved'  ? 'Godkendt' :
-                                                                        'Afvist'
+                                        displayStatus === 'approved'  ? 'Godkendt' : 'Afvist'
                                     }
                                 </h3>
-
                                 {displayStatus === 'pending' && (
                                     <p className="text-orange-700 dark:text-orange-300">
                                         Du er blevet udvalgt til en stikprøve vægtverifikation.
@@ -219,7 +241,6 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
                             {displayStatus === 'pending' && (
                                 <div className="bg-card p-6 border border-border rounded-lg shadow-sm">
                                     <h4 className="font-semibold mb-4 text-card-foreground">Indsend verifikationsvideo</h4>
-
                                     <div className="mb-4 text-sm text-muted-foreground space-y-2">
                                         <p><strong>Instruktioner:</strong></p>
                                         <ol className="list-decimal pl-5 space-y-1">
@@ -241,7 +262,6 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
                                             </a>
                                         </p>
                                     </div>
-
                                     <div className="space-y-4">
                                         <div>
                                             <label className="block text-sm font-medium mb-1">Videolink</label>
@@ -253,10 +273,8 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
                                                 className="w-full p-3 border border-input rounded bg-background text-foreground"
                                             />
                                         </div>
-
                                         {error && <div className="text-red-600 text-sm">{error}</div>}
                                         {success && <div className="text-green-600 text-sm">{success}</div>}
-
                                         <button
                                             onClick={handleSubmit}
                                             disabled={submitting || !linkInput}
@@ -283,8 +301,7 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
                                                     }`}>
                                                         {req.status === 'pending'   ? 'AFVENTER' :
                                                          req.status === 'submitted' ? 'INDSENDT' :
-                                                         req.status === 'approved'  ? 'GODKENDT' :
-                                                                                      'AFVIST'}
+                                                         req.status === 'approved'  ? 'GODKENDT' : 'AFVIST'}
                                                     </span>
                                                     <span className="text-muted-foreground mx-2">•</span>
                                                     <span className="text-muted-foreground">
@@ -314,9 +331,9 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
                     ) : !hasDrVerifications ? (
                         <div className="p-8 text-center bg-gray-50 dark:bg-gray-900 rounded-lg border border-border">
                             <div className="text-4xl mb-4">📊</div>
-                            <h3 className="text-xl font-bold mb-2">Ingen dual recording verifikationer</h3>
+                            <h3 className="text-xl font-bold mb-2">Ingen dual recording verifikationer endnu</h3>
                             <p className="text-muted-foreground">
-                                Du skal ikke gennemføre dual recording på nuværende tidspunkt.
+                                Din hometrainer kræver dual recording. Resultaterne vises her efter hvert løb.
                             </p>
                         </div>
                     ) : (
@@ -334,7 +351,9 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
                                                 : '—'}
                                         </span>
                                         {v.raceId && (
-                                            <span className="text-xs text-muted-foreground">Løb {v.raceId}</span>
+                                            <span className="text-xs text-muted-foreground">
+                                                {raceName(v.raceId)}
+                                            </span>
                                         )}
                                     </div>
                                     {v.status === 'failed' && (
@@ -386,7 +405,9 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
                                                     : '—'}
                                             </span>
                                             {v.raceId && (
-                                                <span className="text-xs text-muted-foreground">Løb {v.raceId}</span>
+                                                <span className="text-xs text-muted-foreground">
+                                                    {raceName(v.raceId)}
+                                                </span>
                                             )}
                                         </div>
                                         {v.stickyWatts?.suspicious && (
