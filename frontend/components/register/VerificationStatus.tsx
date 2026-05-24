@@ -79,6 +79,13 @@ export default function VerificationStatus({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab]);
 
+    // If the DR tab is hidden but is somehow selected, fall back to the default tab.
+    useEffect(() => {
+        if (activeTab === 'dual-recording' && !trainerRequiresDualRecording) {
+            setActiveTab('vægt');
+        }
+    }, [activeTab, trainerRequiresDualRecording]);
+
     // Lookup map: raceId → race name
     const raceNameById = useMemo(
         () => new Map(races.map(r => [r.id, r.name])),
@@ -95,7 +102,7 @@ export default function VerificationStatus({
     const hasWeightVerification = status !== 'none' || !!activeRequest || requests.length > 0;
     const hasDrVerifications = drVerifications.length > 0;
     const hasSwVerifications = drVerifications.some(v => v.stickyWatts != null);
-    const showDrTab = trainerRequiresDualRecording || hasDrVerifications;
+    const showDrTab = trainerRequiresDualRecording;
 
     const handleSubmit = async () => {
         if (!user || !linkInput) return;
