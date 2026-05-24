@@ -80,6 +80,7 @@ export default function VerificationStatus({
             fetch(endpoint, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
         ).then(() => {
             queryClient.invalidateQueries({ queryKey: ['notification-state', user.uid] });
+            queryClient.invalidateQueries({ queryKey: ['profile-dr-verifications', user.uid] });
         }).catch((err) => {
             console.error('Failed to mark report as seen:', err);
         });

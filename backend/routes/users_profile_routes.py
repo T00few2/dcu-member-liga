@@ -472,6 +472,16 @@ def _serialize_optional_timestamp(value) -> str | None:
     return str(value)
 
 
+def _normalize_verification_doc(data: dict) -> dict:
+    """Ensure verification timestamps are comparable ISO strings in API responses."""
+    out = dict(data)
+    if "verifiedAt" in out:
+        out["verifiedAt"] = _serialize_optional_timestamp(out.get("verifiedAt"))
+    if "swVerifiedAt" in out:
+        out["swVerifiedAt"] = _serialize_optional_timestamp(out.get("swVerifiedAt"))
+    return out
+
+
 def _notification_state_payload(user, uid: str) -> dict:
     """Build notification-state JSON for the authenticated user."""
     latest_published_post_id = _latest_published_post_id()
@@ -502,12 +512,19 @@ def _notification_state_payload(user, uid: str) -> dict:
             for d in db.collection_group("dr_verifications").where("zwiftId", "==", zwift_id).stream()
         ]
 
-        failed = [v for v in all_verifications if v.get("status") == "failed" and v.get("verifiedAt")]
-        if failed:
-            latest_dr_failed_at = max(v["verifiedAt"] for v in failed)
+        failed_at = [
+            _serialize_optional_timestamp(v.get("verifiedAt"))
+            for v in all_verifications
+            if v.get("status") == "failed"
+        ]
+        failed_at = [t for t in failed_at if t]
+        if failed_at:
+            latest_dr_failed_at = max(failed_at)
 
         sw_timestamps = [_sw_flagged_timestamp(v) for v in all_verifications]
-        sw_timestamps = [t for t in sw_timestamps if t]
+        sw_timestamps = [
+            _serialize_optional_timestamp(t) for t in sw_timestamps if t
+        ]
         if sw_timestamps:
             latest_sw_flagged_at = max(sw_timestamps)
 
@@ -559,9 +576,9 @@ def mark_news_read():
 
         user = UserService.get_user_by_auth_uid(uid)
         doc_id = str(user.id) if user else uid
-        db.collection("users").document(doc_id).set(
-            {"lastReadNewsPostId": body.postId}, merge=True
-        )
+        payload = with_schema_version({"lastReadNewsPostId": body.postId})
+        log_schema_issues(logger, f"users/{doc_id} (news-read)", validate_user_doc(payload, partial=True))
+        db.collection("users").document(doc_id).set(payload, merge=True)
         return jsonify({"ok": True}), 200
     except Exception as e:
         logger.error("mark_news_read error: %s", e)
@@ -582,9 +599,9 @@ def mark_dr_report_seen():
 
         user = UserService.get_user_by_auth_uid(uid)
         doc_id = str(user.id) if user else uid
-        db.collection("users").document(doc_id).set(
-            {"drReportSeenAt": firestore.SERVER_TIMESTAMP}, merge=True
-        )
+        payload = with_schema_version({"drReportSeenAt": firestore.SERVER_TIMESTAMP})
+        log_schema_issues(logger, f"users/{doc_id} (dr-report-seen)", validate_user_doc(payload, partial=True))
+        db.collection("users").document(doc_id).set(payload, merge=True)
         return jsonify({"ok": True}), 200
     except Exception as e:
         logger.error("mark_dr_report_seen error: %s", e)
@@ -605,9 +622,9 @@ def mark_sw_report_seen():
 
         user = UserService.get_user_by_auth_uid(uid)
         doc_id = str(user.id) if user else uid
-        db.collection("users").document(doc_id).set(
-            {"swReportSeenAt": firestore.SERVER_TIMESTAMP}, merge=True
-        )
+        payload = with_schema_version({"swReportSeenAt": firestore.SERVER_TIMESTAMP})
+        log_schema_issues(logger, f"users/{doc_id} (sw-report-seen)", validate_user_doc(payload, partial=True))
+        db.collection("users").document(doc_id).set(payload, merge=True)
         return jsonify({"ok": True}), 200
     except Exception as e:
         logger.error("mark_sw_report_seen error: %s", e)
@@ -635,7 +652,7 @@ def get_profile_dr_verifications():
             db.collection_group("dr_verifications").where("zwiftId", "==", zwift_id).stream()
         )
         verifications = sorted(
-            [d.to_dict() or {} for d in docs],
+            [_normalize_verification_doc(d.to_dict() or {}) for d in docs],
             key=lambda v: v.get("verifiedAt") or "",
             reverse=True,
         )[:50]

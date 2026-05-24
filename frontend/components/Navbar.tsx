@@ -11,6 +11,7 @@ export default function Navbar() {
     const { user, signInWithGoogle, logOut, loading, isRegistered, needsConsentUpdate, isImpersonating, toggleImpersonation, isAdmin } = useAuth();
     const { weightNeedsAction, dualRecordingFlagged, stickyWattsFlagged, hasUnreadNews } = useNotifications();
     const profileHasNotification = weightNeedsAction || dualRecordingFlagged || stickyWattsFlagged;
+    const avatarHasNotification = profileHasNotification || hasUnreadNews;
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
     const pathname = usePathname();
@@ -110,7 +111,7 @@ export default function Navbar() {
                                                     </div>
                                                 )}
                                                 {/* Notification Badge */}
-                                                {profileHasNotification && (
+                                                {avatarHasNotification && (
                                                     <span className="absolute -top-1 -right-1 flex h-3 w-3">
                                                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-tertiary opacity-75"></span>
                                                         <span className="relative inline-flex rounded-full h-3 w-3 bg-tertiary"></span>
