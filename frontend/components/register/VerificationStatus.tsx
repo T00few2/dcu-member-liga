@@ -95,7 +95,7 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
         }
     };
 
-    if (status === 'none' && !activeRequest && requests.length === 0) {
+    if (status === 'none' && !activeRequest && requests.length === 0 && drVerifications.length === 0) {
         return (
             <div className="p-8 text-center bg-gray-50 dark:bg-gray-900 rounded-lg border border-border">
                 <div className="text-4xl mb-4">✅</div>
@@ -111,7 +111,8 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
     return (
         <div className="space-y-6">
 
-            {/* Status Banner */}
+            {/* Weight Verification Status Banner — only shown when there's a weight verification */}
+            {(status !== 'none' || !!activeRequest || requests.length > 0) && (<>
             <div className={`p-6 rounded-lg border ${displayStatus === 'pending' ? 'bg-orange-50 border-orange-200 dark:bg-orange-900/20 dark:border-orange-800' :
                 displayStatus === 'submitted' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' :
                     displayStatus === 'approved' ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' :
@@ -253,6 +254,7 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
                     </div>
                 </div>
             )}
+            </>)}
 
             {/* Dual Recording History */}
             {drVerifications.length > 0 && (

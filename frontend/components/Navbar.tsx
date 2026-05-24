@@ -45,6 +45,7 @@ export default function Navbar() {
         { href: '/stats', label: 'Statistik' },
         { href: '/historik', label: 'Historik' },
         { href: '/nyheder', label: 'Nyheder' },
+        { href: '/verification', label: 'Verifikation' },
     ];
 
     if (hideNavbar) return null;
@@ -76,7 +77,7 @@ export default function Navbar() {
                                                         className={`hover:bg-white/10 px-3 py-2 rounded-md text-base transition-colors ${pathname === link.href ? 'text-white font-bold' : 'text-white/90 font-bold'
                                                             }`}
                                                     >
-                                                        {link.href === '/nyheder' && hasUnreadNews ? (
+                                                        {(link.href === '/nyheder' && hasUnreadNews) || (link.href === '/verification' && profileHasNotification) ? (
                                                             <span className="relative inline-flex items-center">
                                                                 {link.label}
                                                                 <span className="absolute -top-1 -right-2.5 h-2 w-2 rounded-full bg-tertiary" />
@@ -150,10 +151,17 @@ export default function Navbar() {
                                                         </Link>
                                                         <Link
                                                             href="/register"
+                                                            className="block px-4 py-2 text-sm hover:bg-slate-50"
+                                                            onClick={() => setIsMenuOpen(false)}
+                                                        >
+                                                            Min Profil
+                                                        </Link>
+                                                        <Link
+                                                            href="/verification"
                                                             className="block px-4 py-2 text-sm hover:bg-slate-50 flex items-center justify-between"
                                                             onClick={() => setIsMenuOpen(false)}
                                                         >
-                                                            <span>Min Profil</span>
+                                                            <span>Verifikation</span>
                                                             {profileHasNotification && (
                                                                 <span className="h-2 w-2 rounded-full bg-tertiary"></span>
                                                             )}
@@ -262,7 +270,7 @@ export default function Navbar() {
                                 onClick={() => setIsDrawerOpen(false)}
                             >
                                 <span>{link.label}</span>
-                                {link.href === '/nyheder' && hasUnreadNews && (
+                                {((link.href === '/nyheder' && hasUnreadNews) || (link.href === '/verification' && profileHasNotification)) && (
                                     <span className="h-2 w-2 rounded-full bg-tertiary" />
                                 )}
                             </Link>
@@ -279,13 +287,10 @@ export default function Navbar() {
                                 </Link>
                                 <Link
                                     href="/register"
-                                    className="flex items-center justify-between px-4 py-3 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg"
+                                    className="block px-4 py-3 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg"
                                     onClick={() => setIsDrawerOpen(false)}
                                 >
-                                    <span>Min Profil</span>
-                                    {profileHasNotification && (
-                                        <span className="h-2 w-2 rounded-full bg-tertiary" />
-                                    )}
+                                    Min Profil
                                 </Link>
                                 <button
                                     onClick={() => {

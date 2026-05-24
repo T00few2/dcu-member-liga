@@ -6,11 +6,10 @@ import { useRegistration } from '@/hooks/useRegistration';
 import RiderInfoForm from '@/components/register/RiderInfoForm';
 import ConnectionsForm from '@/components/register/ConnectionsForm';
 import AgreementsForm from '@/components/register/AgreementsForm';
-import VerificationStatus from '@/components/register/VerificationStatus';
 import CategoryTab from '@/components/register/CategoryTab';
 
-type RegisterTab = 'info' | 'kategori' | 'connections' | 'agreements' | 'verification';
-const REGISTER_TABS: RegisterTab[] = ['info', 'kategori', 'connections', 'agreements', 'verification'];
+type RegisterTab = 'info' | 'kategori' | 'connections' | 'agreements';
+const REGISTER_TABS: RegisterTab[] = ['info', 'kategori', 'connections', 'agreements'];
 
 function parseRegisterTab(value: string | null): RegisterTab {
     return REGISTER_TABS.includes((value || '') as RegisterTab) ? (value as RegisterTab) : 'info';
@@ -34,8 +33,6 @@ function RegisterContent() {
         club, setClub, trainer, setTrainer, stravaConnected, zwiftConnected,
         acceptedCoC, setAcceptedCoC, acceptedDataPolicy, setAcceptedDataPolicy,
         acceptedPublicResults, setAcceptedPublicResults,
-        weightVerificationStatus, weightVerificationVideoLink,
-        weightVerificationDeadline, verificationRequests, refreshProfile,
         clubs, loadingClubs, clubsError,
         trainers, loadingTrainers, trainersError,
         isRegistered, activeTab, setActiveTab, currentStep, setCurrentStep,
@@ -141,12 +138,6 @@ function RegisterContent() {
                         <TabButton id="kategori" label="Kategori" active={activeTab === 'kategori'} />
                         <TabButton id="connections" label="Forbindelser" active={activeTab === 'connections'} />
                         <TabButton id="agreements" label="Aftaler" active={activeTab === 'agreements'} />
-                        <TabButton
-                            id="verification"
-                            label="Verifikation"
-                            active={activeTab === 'verification'}
-                            warning={weightVerificationStatus === 'pending'}
-                        />
                     </div>
                     <div className="min-h-[300px]">
                         {activeTab === 'info' && <RiderInfoForm {...riderInfoProps} />}
@@ -166,15 +157,6 @@ function RegisterContent() {
                                 acceptedCoC={acceptedCoC} setAcceptedCoC={setAcceptedCoC}
                                 acceptedDataPolicy={acceptedDataPolicy} setAcceptedDataPolicy={setAcceptedDataPolicy}
                                 acceptedPublicResults={acceptedPublicResults} setAcceptedPublicResults={setAcceptedPublicResults}
-                            />
-                        )}
-                        {activeTab === 'verification' && (
-                            <VerificationStatus
-                                status={weightVerificationStatus}
-                                videoLink={weightVerificationVideoLink}
-                                deadline={weightVerificationDeadline}
-                                requests={verificationRequests}
-                                refreshProfile={refreshProfile}
                             />
                         )}
                         {activeTab === 'kategori' && <CategoryTab />}
