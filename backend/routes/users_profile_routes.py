@@ -507,6 +507,14 @@ def _notification_state_payload(user, uid: str) -> dict:
 
     if user and user.zwift_id:
         zwift_id = str(user.zwift_id)
+        # TODO(perf): Denormalize latestDrFailedAt / latestSwFlaggedAt onto the
+        # user doc from dual_recording/runner.py + persistence.py when a doc
+        # transitions to status='failed' or stickyWatts.suspicious=true. The
+        # current collection_group scan is bounded by per-user verification
+        # count and is fine while seasons are short, but it grows linearly with
+        # historical races. Revisit if Firestore read cost becomes visible or
+        # this endpoint's p95 latency grows. A one-shot backfill script can
+        # seed the user fields from existing dr_verifications when migrating.
         all_verifications = [
             d.to_dict() or {}
             for d in db.collection_group("dr_verifications").where("zwiftId", "==", zwift_id).stream()
