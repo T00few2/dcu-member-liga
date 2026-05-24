@@ -31,7 +31,7 @@ interface VerificationStatusProps {
 export default function VerificationStatus({ status, videoLink, deadline, requests = [], refreshProfile }: VerificationStatusProps) {
     const { user, requestNotificationPermission } = useAuth();
     const queryClient = useQueryClient();
-    const { data: drVerifications = [] } = useProfileDrVerificationsQuery();
+    const { data: drVerifications = [], isLoading: drLoading } = useProfileDrVerificationsQuery();
     const [selectedDr, setSelectedDr] = useState<ProfileDrVerification | null>(null);
     const [linkInput, setLinkInput] = useState(videoLink || '');
     const [submitting, setSubmitting] = useState(false);
@@ -95,7 +95,7 @@ export default function VerificationStatus({ status, videoLink, deadline, reques
         }
     };
 
-    if (status === 'none' && !activeRequest && requests.length === 0 && drVerifications.length === 0) {
+    if (!drLoading && status === 'none' && !activeRequest && requests.length === 0 && drVerifications.length === 0) {
         return (
             <div className="p-8 text-center bg-gray-50 dark:bg-gray-900 rounded-lg border border-border">
                 <div className="text-4xl mb-4">✅</div>
