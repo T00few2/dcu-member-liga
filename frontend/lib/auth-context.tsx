@@ -191,26 +191,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [loading, user, isRegistered, needsConsentUpdate, authIntent, pathname, router]);
 
-  // App Icon Badging (Notification Dot)
-  useEffect(() => {
-    const updateBadge = async () => {
-      if (typeof navigator !== 'undefined' && 'setAppBadge' in navigator) {
-        try {
-          if (user && (weightVerificationStatus === 'pending' || weightVerificationStatus === 'rejected')) {
-            // @ts-ignore
-            await navigator.setAppBadge(1);
-          } else {
-            // @ts-ignore
-            await navigator.clearAppBadge();
-          }
-        } catch (error) {
-          console.error("Error updating app badge:", error);
-        }
-      }
-    };
-    updateBadge();
-  }, [user, weightVerificationStatus]);
-
   const refreshProfile = async () => {
     if (user) {
       await fetchProfile(user);

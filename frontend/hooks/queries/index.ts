@@ -26,3 +26,7 @@ export type { RouteElevationData } from './useRouteElevationQuery';
 export { useRaceSegmentsQuery } from './useRaceSegmentsQuery';
 export { useProfileQuery } from './useProfileQuery';
 export type { ProfileData } from './useProfileQuery';
+export { useNotificationStateQuery } from './useNotificationStateQuery';
+export type { NotificationState } from './useNotificationStateQuery';
+export { useProfileDrVerificationsQuery } from './useProfileDrVerificationsQuery';
+export type { ProfileDrVerification } from './useProfileDrVerificationsQuery';

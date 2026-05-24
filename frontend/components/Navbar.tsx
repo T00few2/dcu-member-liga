@@ -3,11 +3,14 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useAuth } from "@/lib/auth-context";
+import { useNotifications } from "@/hooks/useNotifications";
 import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 
 export default function Navbar() {
-    const { user, signInWithGoogle, logOut, loading, isRegistered, needsConsentUpdate, isImpersonating, toggleImpersonation, isAdmin, weightVerificationStatus } = useAuth();
+    const { user, signInWithGoogle, logOut, loading, isRegistered, needsConsentUpdate, isImpersonating, toggleImpersonation, isAdmin } = useAuth();
+    const { weightNeedsAction, dualRecordingFlagged, stickyWattsFlagged, hasUnreadNews } = useNotifications();
+    const profileHasNotification = weightNeedsAction || dualRecordingFlagged || stickyWattsFlagged;
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
     const pathname = usePathname();
@@ -73,7 +76,12 @@ export default function Navbar() {
                                                         className={`hover:bg-white/10 px-3 py-2 rounded-md text-base transition-colors ${pathname === link.href ? 'text-white font-bold' : 'text-white/90 font-bold'
                                                             }`}
                                                     >
-                                                        {link.label}
+                                                        {link.href === '/nyheder' && hasUnreadNews ? (
+                                                            <span className="relative inline-flex items-center">
+                                                                {link.label}
+                                                                <span className="absolute -top-1 -right-2.5 h-2 w-2 rounded-full bg-tertiary" />
+                                                            </span>
+                                                        ) : link.label}
                                                     </Link>
                                                 ))}
                                             </div>
@@ -101,7 +109,7 @@ export default function Navbar() {
                                                     </div>
                                                 )}
                                                 {/* Notification Badge */}
-                                                {(weightVerificationStatus === 'pending' || weightVerificationStatus === 'rejected') && (
+                                                {profileHasNotification && (
                                                     <span className="absolute -top-1 -right-1 flex h-3 w-3">
                                                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-tertiary opacity-75"></span>
                                                         <span className="relative inline-flex rounded-full h-3 w-3 bg-tertiary"></span>
@@ -146,7 +154,7 @@ export default function Navbar() {
                                                             onClick={() => setIsMenuOpen(false)}
                                                         >
                                                             <span>Min Profil</span>
-                                                            {(weightVerificationStatus === 'pending' || weightVerificationStatus === 'rejected') && (
+                                                            {profileHasNotification && (
                                                                 <span className="h-2 w-2 rounded-full bg-tertiary"></span>
                                                             )}
                                                         </Link>
@@ -247,13 +255,16 @@ export default function Navbar() {
                             <Link
                                 key={link.href}
                                 href={link.href}
-                                className={`px-4 py-3 rounded-lg transition-colors ${pathname === link.href
+                                className={`px-4 py-3 rounded-lg transition-colors flex items-center justify-between ${pathname === link.href
                                     ? 'bg-primary text-primary-foreground font-medium'
                                     : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                                     }`}
                                 onClick={() => setIsDrawerOpen(false)}
                             >
-                                {link.label}
+                                <span>{link.label}</span>
+                                {link.href === '/nyheder' && hasUnreadNews && (
+                                    <span className="h-2 w-2 rounded-full bg-tertiary" />
+                                )}
                             </Link>
                         ))}
 
@@ -268,10 +279,13 @@ export default function Navbar() {
                                 </Link>
                                 <Link
                                     href="/register"
-                                    className="block px-4 py-3 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg"
+                                    className="flex items-center justify-between px-4 py-3 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg"
                                     onClick={() => setIsDrawerOpen(false)}
                                 >
-                                    Min Profil
+                                    <span>Min Profil</span>
+                                    {profileHasNotification && (
+                                        <span className="h-2 w-2 rounded-full bg-tertiary" />
+                                    )}
                                 </Link>
                                 <button
                                     onClick={() => {

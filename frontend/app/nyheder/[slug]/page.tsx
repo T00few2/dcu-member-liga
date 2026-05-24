@@ -7,6 +7,7 @@ import dynamic from 'next/dynamic';
 import { getPostBySlug, getComments, addComment, deleteComment, reportComment } from '@/lib/posts';
 import { Post, Comment } from '@/types/posts';
 import { useAuth } from '@/lib/auth-context';
+import { useUnreadNews } from '@/hooks/useUnreadNews';
 
 const PostBody = dynamic(() => import('@/components/blog/PostBody'), { ssr: false });
 
@@ -94,6 +95,7 @@ function CommentItem({ comment, replies, onReply, onDelete, onReport, currentUid
 export default function PostPage() {
     const { slug } = useParams<{ slug: string }>();
     const { user, isAdmin, loading: authLoading } = useAuth();
+    const { markNewsAsRead } = useUnreadNews();
 
     const [post, setPost] = useState<Post | null | 'not-found'>('not-found');
     const [postLoading, setPostLoading] = useState(true);
@@ -105,8 +107,12 @@ export default function PostPage() {
 
     useEffect(() => {
         getPostBySlug(slug)
-            .then(p => setPost(p ?? 'not-found'))
+            .then(p => {
+                setPost(p ?? 'not-found');
+                if (p) markNewsAsRead(p.id);
+            })
             .finally(() => setPostLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [slug]);
 
     const loadComments = useCallback(async (postId: string) => {

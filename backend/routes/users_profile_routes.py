@@ -461,6 +461,143 @@ def set_welcome_seen():
         return jsonify({"message": str(e)}), 500
 
 
+@users_bp.route("/profile/notification-state", methods=["GET"])
+def get_notification_state():
+    try:
+        try:
+            decoded_token = verify_user_token(request)
+        except AuthzError as e:
+            return jsonify({"message": e.message}), e.status_code
+        uid = decoded_token["uid"]
+
+        if not db:
+            return jsonify({"message": "Database not available"}), 500
+
+        user = UserService.get_user_by_auth_uid(uid)
+        if not user or not user.zwift_id:
+            return jsonify({
+                "latestDrFailedAt": None,
+                "drReportSeenAt": None,
+                "latestSwFlaggedAt": None,
+                "swReportSeenAt": None,
+            }), 200
+
+        zwift_id = str(user.zwift_id)
+        doc_id = str(user.id)
+
+        all_verifications = [
+            d.to_dict() or {}
+            for d in db.collection_group("dr_verifications").where("zwiftId", "==", zwift_id).stream()
+        ]
+
+        failed = [v for v in all_verifications if v.get("status") == "failed" and v.get("verifiedAt")]
+        latest_dr_failed_at = max((v["verifiedAt"] for v in failed), default=None)
+
+        sw_flagged = [
+            v for v in all_verifications
+            if (v.get("stickyWatts") or {}).get("suspicious") is True and v.get("verifiedAt")
+        ]
+        latest_sw_flagged_at = max((v["verifiedAt"] for v in sw_flagged), default=None)
+
+        user_doc = db.collection("users").document(doc_id).get()
+        user_data = user_doc.to_dict() if user_doc.exists else {}
+
+        dr_report_seen_at = user_data.get("drReportSeenAt")
+        sw_report_seen_at = user_data.get("swReportSeenAt")
+        if dr_report_seen_at is not None and hasattr(dr_report_seen_at, "isoformat"):
+            dr_report_seen_at = dr_report_seen_at.isoformat()
+        if sw_report_seen_at is not None and hasattr(sw_report_seen_at, "isoformat"):
+            sw_report_seen_at = sw_report_seen_at.isoformat()
+
+        return jsonify({
+            "latestDrFailedAt": latest_dr_failed_at,
+            "drReportSeenAt": dr_report_seen_at,
+            "latestSwFlaggedAt": latest_sw_flagged_at,
+            "swReportSeenAt": sw_report_seen_at,
+        }), 200
+    except Exception as e:
+        logger.error("Notification state error: %s", e)
+        return jsonify({"message": str(e)}), 500
+
+
+@users_bp.route("/profile/dr-report-seen", methods=["POST"])
+def mark_dr_report_seen():
+    try:
+        try:
+            decoded_token = verify_user_token(request)
+        except AuthzError as e:
+            return jsonify({"message": e.message}), e.status_code
+        uid = decoded_token["uid"]
+
+        if not db:
+            return jsonify({"message": "Database not available"}), 500
+
+        user = UserService.get_user_by_auth_uid(uid)
+        doc_id = str(user.id) if user else uid
+        db.collection("users").document(doc_id).set(
+            {"drReportSeenAt": firestore.SERVER_TIMESTAMP}, merge=True
+        )
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        logger.error("mark_dr_report_seen error: %s", e)
+        return jsonify({"message": str(e)}), 500
+
+
+@users_bp.route("/profile/sw-report-seen", methods=["POST"])
+def mark_sw_report_seen():
+    try:
+        try:
+            decoded_token = verify_user_token(request)
+        except AuthzError as e:
+            return jsonify({"message": e.message}), e.status_code
+        uid = decoded_token["uid"]
+
+        if not db:
+            return jsonify({"message": "Database not available"}), 500
+
+        user = UserService.get_user_by_auth_uid(uid)
+        doc_id = str(user.id) if user else uid
+        db.collection("users").document(doc_id).set(
+            {"swReportSeenAt": firestore.SERVER_TIMESTAMP}, merge=True
+        )
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        logger.error("mark_sw_report_seen error: %s", e)
+        return jsonify({"message": str(e)}), 500
+
+
+@users_bp.route("/profile/dr-verifications", methods=["GET"])
+def get_profile_dr_verifications():
+    try:
+        try:
+            decoded_token = verify_user_token(request)
+        except AuthzError as e:
+            return jsonify({"message": e.message}), e.status_code
+        uid = decoded_token["uid"]
+
+        if not db:
+            return jsonify({"message": "Database not available"}), 500
+
+        user = UserService.get_user_by_auth_uid(uid)
+        if not user or not user.zwift_id:
+            return jsonify({"verifications": []}), 200
+
+        zwift_id = str(user.zwift_id)
+        docs = list(
+            db.collection_group("dr_verifications").where("zwiftId", "==", zwift_id).stream()
+        )
+        verifications = sorted(
+            [d.to_dict() or {} for d in docs],
+            key=lambda v: v.get("verifiedAt") or "",
+            reverse=True,
+        )[:50]
+
+        return jsonify({"verifications": verifications}), 200
+    except Exception as e:
+        logger.error("get_profile_dr_verifications error: %s", e)
+        return jsonify({"message": str(e)}), 500
+
+
 @users_bp.route("/category/select", methods=["POST"])
 def select_category():
     """Allow fully registered rider to self-select liga category."""
