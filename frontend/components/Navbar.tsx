@@ -46,7 +46,6 @@ export default function Navbar() {
         { href: '/stats', label: 'Statistik' },
         { href: '/historik', label: 'Historik' },
         { href: '/nyheder', label: 'Nyheder' },
-        { href: '/verification', label: 'Verifikation' },
     ];
 
     if (hideNavbar) return null;
@@ -78,7 +77,7 @@ export default function Navbar() {
                                                         className={`hover:bg-white/10 px-3 py-2 rounded-md text-base transition-colors ${pathname === link.href ? 'text-white font-bold' : 'text-white/90 font-bold'
                                                             }`}
                                                     >
-                                                        {(link.href === '/nyheder' && hasUnreadNews) || (link.href === '/verification' && profileHasNotification) ? (
+                                                        {link.href === '/nyheder' && hasUnreadNews ? (
                                                             <span className="relative inline-flex items-center">
                                                                 {link.label}
                                                                 <span className="absolute -top-1 -right-2.5 h-2 w-2 rounded-full bg-tertiary" />
@@ -260,7 +259,7 @@ export default function Navbar() {
                     <div className="flex flex-col p-4 space-y-4 overflow-y-auto flex-1">
 
 
-                        {user && isRegistered && !needsConsentUpdate && authNavLinks.filter(link => link.href !== '/verification').map(link => (
+                        {user && isRegistered && !needsConsentUpdate && authNavLinks.map(link => (
                             <Link
                                 key={link.href}
                                 href={link.href}
@@ -271,7 +270,7 @@ export default function Navbar() {
                                 onClick={() => setIsDrawerOpen(false)}
                             >
                                 <span>{link.label}</span>
-                                {((link.href === '/nyheder' && hasUnreadNews) || (link.href === '/verification' && profileHasNotification)) && (
+                                {link.href === '/nyheder' && hasUnreadNews && (
                                     <span className="h-2 w-2 rounded-full bg-tertiary" />
                                 )}
                             </Link>
