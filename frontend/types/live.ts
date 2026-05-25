@@ -88,6 +88,15 @@ export interface CurrentLiveRace {
     selectedSegments?: string[];
     subgroupId?: string;
     activatedAt?: unknown;
+    resultsPhase?: import('./admin').ResultsPhase;
+    resultsAutomation?: {
+        automationEnabled?: boolean;
+        pollingIntervalSeconds?: number;
+        windowStart?: string;
+        windowEnd?: string;
+        windowDurationMinutes?: number;
+        finalizeDelayMinutes?: number;
+    };
 }
 
 export type DualRecordingStatus = 'passed' | 'failed' | 'missing_strava' | 'missing_activity' | 'error' | 'sw_only';
@@ -186,7 +195,7 @@ export interface Race {
     finalizeRunId?: string;
     resultsAutomation?: {
         automationEnabled?: boolean;
-        pollingIntervalMinutes?: number;
+        pollingIntervalSeconds?: number;
         windowStart?: string;
         windowEnd?: string;
         windowDurationMinutes?: number;

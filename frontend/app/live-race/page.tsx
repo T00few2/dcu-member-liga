@@ -9,6 +9,7 @@ import LiveRaceInfoCards from '@/components/live-race/LiveRaceInfoCards';
 import LiveRaceResultsTable from '@/components/live-race/LiveRaceResultsTable';
 import UpcomingRaceCountdown from '@/components/live-race/UpcomingRaceCountdown';
 import { useCurrentLiveRaceQuery, useLiveRidersQuery, useRouteElevationQuery, useUpcomingRaceQuery } from '@/hooks/queries';
+import { useLiveRaceAutoRefresh } from '@/hooks/queries/useLiveRaceAutoRefresh';
 import { useLiveRaceDoc } from '@/hooks/live-race/useLiveRaceDoc';
 import { clusterRiders, positionRiders, type RiderGroup } from '@/lib/live-race/cluster';
 import { fromTimestamp } from '@/lib/formatDate';
@@ -90,6 +91,12 @@ function LiveRacePageContent() {
     }, [upcomingDate, isRaceDue]);
 
     const { data: currentRace, isLoading: raceLoading } = useCurrentLiveRaceQuery(isRaceDue ? 5_000 : 30_000);
+
+    useLiveRaceAutoRefresh({
+        enabled: !!currentRace && currentRace.resultsPhase !== 'finalized',
+        intervalSeconds: currentRace?.resultsAutomation?.pollingIntervalSeconds ?? 30,
+    });
+
     const tabs = useMemo(
         () => (currentRace ? getCategoryTabs(currentRace) : []),
         [currentRace],

@@ -13,6 +13,16 @@ CATEGORY_FILTER_ALL: Final[str] = "All"
 RESULTS_PHASE_PROVISIONAL: Final[str] = "provisional"
 RESULTS_PHASE_FINALIZED: Final[str] = "finalized"
 
+# Live-race provisional refresh defaults.
+DEFAULT_PROVISIONAL_REFRESH_SECONDS: Final[int] = 30
+# Server-side floor on poll interval to protect the processor from misconfigured
+# (or maliciously edited) Firestore values.
+MIN_PROVISIONAL_REFRESH_SECONDS: Final[int] = 10
+# Hard ceiling on how long after race start we keep auto-refreshing, even if
+# the admin configured a longer windowDurationMinutes. Matches the 4h
+# auto-activation horizon in _auto_activate_if_due.
+MAX_LIVE_RACE_WINDOW_MINUTES: Final[int] = 240
+
 # Race status values persisted on rider results.
 RACE_STATUS_FIN: Final[str] = "FIN"
 RACE_STATUS_DNF: Final[str] = "DNF"

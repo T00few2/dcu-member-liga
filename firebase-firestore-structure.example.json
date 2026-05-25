@@ -137,7 +137,7 @@
       "finalizeRunId": null,
       "resultsAutomation": {
         "automationEnabled": false,
-        "pollingIntervalMinutes": 5,
+        "pollingIntervalSeconds": 30,
         "windowStart": "18:45",
         "windowEnd": "21:00",
         "windowDurationMinutes": 135,

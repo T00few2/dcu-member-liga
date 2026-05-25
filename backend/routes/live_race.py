@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from datetime import datetime, timezone, timedelta
 from typing import Any
@@ -10,8 +11,18 @@ from typing import Any
 import pytz
 from flask import Blueprint, jsonify, request
 
-from extensions import db, get_zwift_service
+from extensions import db, get_zwift_service, get_zwift_game_service
 from routes.races import resolve_signup_subgroup_id
+from services.results.constants import (
+    CATEGORY_FILTER_ALL,
+    DEFAULT_PROVISIONAL_REFRESH_SECONDS,
+    FETCH_MODE_FINISHERS,
+    MAX_LIVE_RACE_WINDOW_MINUTES,
+    MIN_PROVISIONAL_REFRESH_SECONDS,
+    RESULTS_PHASE_FINALIZED,
+    RESULTS_PHASE_PROVISIONAL,
+)
+from services.results_processor import ResultsProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +36,9 @@ _CACHE_EVICT_AFTER_SEC = 300.0  # evict live-riders entries idle for 5 minutes
 
 _REGISTERED_RIDERS_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 _REGISTERED_RIDERS_TTL_SEC = 7200.0  # 2 hours — map is stable for the full race
+
+_REFRESH_LOCKS: dict[str, threading.Lock] = {}
+_REFRESH_LOCKS_GUARD = threading.Lock()
 
 
 def _evict_stale_cache_entries() -> None:
@@ -111,6 +125,82 @@ def _parse_race_date(date_val: Any) -> datetime | None:
         except (ValueError, AttributeError):
             return None
     return None
+
+
+def _get_refresh_lock(race_id: str) -> threading.Lock:
+    with _REFRESH_LOCKS_GUARD:
+        lock = _REFRESH_LOCKS.get(race_id)
+        if lock is None:
+            lock = threading.Lock()
+            _REFRESH_LOCKS[race_id] = lock
+        return lock
+
+
+def _get_active_race_id() -> str | None:
+    if not db:
+        return None
+    state_doc = db.collection('liveRaceState').document('active').get()
+    if not state_doc.exists:
+        return None
+    race_id = str((state_doc.to_dict() or {}).get('raceId') or '').strip()
+    return race_id or None
+
+
+def _live_window_minutes(race_data: dict[str, Any]) -> int:
+    """Effective live-refresh window. Hard-capped at MAX_LIVE_RACE_WINDOW_MINUTES.
+
+    Honors a shorter configured windowDurationMinutes (so a 60-minute crit stops
+    refreshing at 1h), and falls back to the cap when nothing is configured.
+    """
+    automation = race_data.get('resultsAutomation')
+    if not isinstance(automation, dict):
+        automation = {}
+    try:
+        configured = int(automation.get('windowDurationMinutes') or 0)
+    except (TypeError, ValueError):
+        configured = 0
+    if configured <= 0:
+        return MAX_LIVE_RACE_WINDOW_MINUTES
+    return min(configured, MAX_LIVE_RACE_WINDOW_MINUTES)
+
+
+def _polling_interval_seconds(race_data: dict[str, Any]) -> int:
+    """Resolve the provisional refresh interval, clamped to a safe server-side floor."""
+    automation = race_data.get('resultsAutomation')
+    if not isinstance(automation, dict):
+        automation = {}
+    raw = automation.get('pollingIntervalSeconds')
+    value: int = DEFAULT_PROVISIONAL_REFRESH_SECONDS
+    if raw is not None:
+        try:
+            parsed = int(raw)
+            if parsed > 0:
+                value = parsed
+        except (TypeError, ValueError):
+            pass
+    return max(value, MIN_PROVISIONAL_REFRESH_SECONDS)
+
+
+def _is_past_live_window(race_data: dict[str, Any], now: datetime) -> bool:
+    race_date = _parse_race_date(race_data.get('date'))
+    if race_date is None:
+        return False
+    window_end = race_date + timedelta(minutes=_live_window_minutes(race_data))
+    return now > window_end
+
+
+def _cooldown_remaining_seconds(
+    race_data: dict[str, Any],
+    now: datetime,
+) -> tuple[int, datetime | None]:
+    """Return (seconds until eligible, last provisional update)."""
+    interval = _polling_interval_seconds(race_data)
+    last_update = _parse_race_date(race_data.get('provisionalUpdatedAt'))
+    if last_update is None:
+        return 0, None
+    elapsed = (now - last_update).total_seconds()
+    remaining = max(0, int(interval - elapsed))
+    return remaining, last_update
 
 
 def _auto_activate_if_due() -> tuple[str, dict[str, Any], str] | None:
@@ -203,6 +293,10 @@ def _serialize_race_summary(race_id: str, race_data: dict[str, Any], activated_a
         'selectedSegments': race_data.get('selectedSegments'),
         'subgroupId': race_data.get('subgroupId'),
         'activatedAt': activated_at,
+        'resultsPhase': race_data.get('resultsPhase'),
+        'resultsAutomation': race_data.get('resultsAutomation')
+        if isinstance(race_data.get('resultsAutomation'), dict)
+        else None,
     }
 
 
@@ -257,6 +351,79 @@ def get_upcoming_race():
         _, race_id, race_data = best
         return jsonify(_serialize_race_summary(race_id, race_data)), 200
     return '', 204
+
+
+@live_race_bp.route('/live-race/active/results/refresh', methods=['POST'])
+def refresh_active_race_results():
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    race_id = _get_active_race_id()
+    if not race_id:
+        return jsonify({'status': 'noop'}), 200
+
+    race_ref = db.collection('races').document(race_id)
+    race_doc = race_ref.get()
+    if not race_doc.exists:
+        return jsonify({'status': 'noop'}), 200
+
+    race_data = race_doc.to_dict() or {}
+    if str(race_data.get('resultsPhase') or '').strip().lower() == RESULTS_PHASE_FINALIZED:
+        return jsonify({'status': 'noop'}), 200
+
+    now = datetime.now(timezone.utc)
+    if _is_past_live_window(race_data, now):
+        return jsonify({'status': 'noop'}), 200
+
+    interval_seconds = _polling_interval_seconds(race_data)
+    remaining, last_update = _cooldown_remaining_seconds(race_data, now)
+    if remaining > 0 and last_update is not None:
+        next_eligible = last_update + timedelta(seconds=interval_seconds)
+        return jsonify({
+            'status': 'skipped',
+            'nextEligibleAt': next_eligible.isoformat(),
+        }), 200
+
+    lock = _get_refresh_lock(race_id)
+    if not lock.acquire(blocking=False):
+        next_eligible = (last_update or now) + timedelta(seconds=interval_seconds)
+        return jsonify({
+            'status': 'skipped',
+            'nextEligibleAt': next_eligible.isoformat(),
+        }), 200
+
+    try:
+        remaining, last_update = _cooldown_remaining_seconds(race_data, now)
+        if remaining > 0 and last_update is not None:
+            next_eligible = last_update + timedelta(seconds=interval_seconds)
+            return jsonify({
+                'status': 'skipped',
+                'nextEligibleAt': next_eligible.isoformat(),
+            }), 200
+
+        processor = ResultsProcessor(db, get_zwift_service(), get_zwift_game_service())
+        processor.process_race_results(
+            race_id,
+            fetch_mode=FETCH_MODE_FINISHERS,
+            category_filter=CATEGORY_FILTER_ALL,
+            results_phase=RESULTS_PHASE_PROVISIONAL,
+        )
+
+        updated_doc = race_ref.get()
+        updated_data = updated_doc.to_dict() if updated_doc.exists else {}
+        provisional_updated_at = updated_data.get('provisionalUpdatedAt')
+        parsed_update = _parse_race_date(provisional_updated_at) or now
+        next_eligible = parsed_update + timedelta(seconds=interval_seconds)
+        return jsonify({
+            'status': 'updated',
+            'provisionalUpdatedAt': parsed_update.isoformat(),
+            'nextEligibleAt': next_eligible.isoformat(),
+        }), 200
+    except Exception as exc:
+        logger.exception('active live-race results refresh failed for race %s', race_id)
+        return jsonify({'status': 'error', 'message': str(exc)}), 500
+    finally:
+        lock.release()
 
 
 @live_race_bp.route('/races/<race_id>/live-riders', methods=['GET'])

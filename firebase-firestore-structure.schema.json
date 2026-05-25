@@ -428,7 +428,7 @@
             "automationEnabled": {
               "type": "boolean"
             },
-            "pollingIntervalMinutes": {
+            "pollingIntervalSeconds": {
               "type": "integer"
             },
             "windowStart": {

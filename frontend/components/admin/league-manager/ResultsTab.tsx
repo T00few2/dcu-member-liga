@@ -56,7 +56,7 @@ export default function ResultsTab({ user, races, status, setStatus }: ResultsTa
     const [liveRaceActivating, setLiveRaceActivating] = useState(false);
     const [automationConfig, setAutomationConfig] = useState<ResultsAutomationConfig>({
         automationEnabled: false,
-        pollingIntervalMinutes: 5,
+        pollingIntervalSeconds: 30,
         windowStart: '',
         windowEnd: '',
         windowDurationMinutes: 180,
@@ -80,7 +80,7 @@ export default function ResultsTab({ user, races, status, setStatus }: ResultsTa
         const incoming = viewingRace.resultsAutomation || {};
         setAutomationConfig({
             automationEnabled: Boolean(incoming.automationEnabled),
-            pollingIntervalMinutes: Number(incoming.pollingIntervalMinutes ?? 5),
+            pollingIntervalSeconds: Number(incoming.pollingIntervalSeconds ?? 30),
             windowStart: String(incoming.windowStart ?? ''),
             windowEnd: String(incoming.windowEnd ?? ''),
             windowDurationMinutes: Number(incoming.windowDurationMinutes ?? 180),
@@ -509,12 +509,12 @@ export default function ResultsTab({ user, races, status, setStatus }: ResultsTa
                                         Enable automation
                                     </label>
                                     <label className="text-xs">
-                                        Poll interval (minutes)
+                                        Live refresh interval (seconds)
                                         <input
                                             type="number"
-                                            min={1}
-                                            value={automationConfig.pollingIntervalMinutes ?? 5}
-                                            onChange={(e) => setAutomationConfig(prev => ({ ...prev, pollingIntervalMinutes: Number(e.target.value) }))}
+                                            min={5}
+                                            value={automationConfig.pollingIntervalSeconds ?? 30}
+                                            onChange={(e) => setAutomationConfig(prev => ({ ...prev, pollingIntervalSeconds: Number(e.target.value) }))}
                                             className="w-full mt-1 bg-background border border-input rounded px-2 py-1.5"
                                         />
                                     </label>

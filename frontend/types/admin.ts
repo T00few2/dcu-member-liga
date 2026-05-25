@@ -63,7 +63,7 @@ export interface RaceGroup {
 
 export interface ResultsAutomationConfig {
     automationEnabled?: boolean;
-    pollingIntervalMinutes?: number;
+    pollingIntervalSeconds?: number;
     windowStart?: string;
     windowEnd?: string;
     windowDurationMinutes?: number;
