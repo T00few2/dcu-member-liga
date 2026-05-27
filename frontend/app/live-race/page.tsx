@@ -330,6 +330,8 @@ function LiveRacePageContent() {
                 routeId={currentRace.routeId}
                 worldName={currentRace.map}
                 routeName={currentRace.routeName}
+                liveRiders={liveRiders}
+                isLive={currentRace.resultsPhase !== 'finalized'}
             />
         </div>
     );
