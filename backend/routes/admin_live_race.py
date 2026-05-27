@@ -45,6 +45,9 @@ def activate_live_race():
             'raceId': race_id,
             'activatedAt': firestore.SERVER_TIMESTAMP,
             'activatedBy': uid or None,
+            # When admin explicitly deactivates the public live page, keep it off
+            # until an admin activates a specific race again.
+            'manualDisabled': race_id is None,
         },
         merge=False,
     )

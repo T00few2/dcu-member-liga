@@ -317,6 +317,10 @@ def get_live_race_current():
     state = state_doc.to_dict() or {}
     race_id = str(state.get('raceId') or '').strip()
     if not race_id:
+        # Respect explicit admin deactivation. Auto-activation should only kick in
+        # when live mode is not manually disabled.
+        if bool(state.get('manualDisabled')):
+            return '', 204
         result = _auto_activate_if_due()
         if result:
             race_id, race_data, activated_at = result
