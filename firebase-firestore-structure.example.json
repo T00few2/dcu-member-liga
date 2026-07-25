@@ -5,8 +5,13 @@
       "archivedAt": "2026-02-01T12:00:00+00:00",
       "name": "Spring Season Archive",
       "raceCount": 3,
+      "drVerificationCount": 12,
       "settings": {
-        "pointsSystem": "standard"
+        "name": "Example Season",
+        "bestRacesCount": 3,
+        "finishPoints": [130, 125, 122],
+        "sprintPoints": [10, 9, 8],
+        "leagueRankPoints": [100, 94, 90]
       },
       "standings": {
         "Master H50": [

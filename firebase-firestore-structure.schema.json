@@ -141,13 +141,17 @@
         "raceCount": {
           "type": "integer"
         },
+        "drVerificationCount": {
+          "type": "integer",
+          "description": "Number of nested race subcollection docs copied (today: races/{id}/dr_verifications). Archived at archives/{id}/races/{raceId}/dr_verifications/{zwiftId}."
+        },
         "settings": {
           "type": "object",
           "additionalProperties": true
         },
         "standings": {
           "type": "object",
-          "description": "Category-keyed standings map",
+          "description": "Category-keyed standings map (inner map only; not the league/standings wrapper)",
           "additionalProperties": {
             "type": "array",
             "items": {

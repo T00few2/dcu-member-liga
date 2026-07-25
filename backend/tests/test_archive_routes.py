@@ -18,6 +18,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from routes import admin_season, league  # noqa: E402
+from services.schema_validation import CURRENT_SCHEMA_VERSION  # noqa: E402
 
 
 class _Ts:
@@ -33,7 +34,30 @@ def _doc(doc_id: str, data: dict, exists: bool = True) -> MagicMock:
     doc.id = doc_id
     doc.exists = exists
     doc.to_dict.return_value = data
+    doc.reference = MagicMock()
+    doc.reference.collections.return_value = []
     return doc
+
+
+def _race_doc_with_dr(
+    race_id: str,
+    race_data: dict,
+    dr_docs: list[tuple[str, dict]],
+) -> MagicMock:
+    race = _doc(race_id, race_data)
+    race_ref = MagicMock()
+    race.reference = race_ref
+
+    dr_col = MagicMock()
+    nested = []
+    for dr_id, dr_data in dr_docs:
+        nested_doc = _doc(dr_id, dr_data)
+        nested_doc.reference = MagicMock()
+        nested.append(nested_doc)
+    dr_col.id = "dr_verifications"
+    dr_col.stream.return_value = nested
+    race_ref.collections.return_value = [dr_col]
+    return race
 
 
 @pytest.fixture
@@ -52,7 +76,7 @@ def test_archive_season_requires_name(app: Flask, monkeypatch: pytest.MonkeyPatc
     assert response.get_json()["message"] == "name is required"
 
 
-def test_archive_season_snapshots_settings_standings_and_races(
+def test_archive_season_snapshots_settings_standings_races_and_dr(
     app: Flask, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(admin_season, "require_admin", lambda _req: None)
@@ -68,22 +92,61 @@ def test_archive_season_snapshots_settings_standings_and_races(
     settings_ref = MagicMock()
     standings_ref = MagicMock()
     settings_ref.get.return_value = _doc("settings", {"bestRacesCount": 3})
-    standings_ref.get.return_value = _doc("standings", {"standings": {"A": [{"zwiftId": "1"}]}})
-    league_col.document.side_effect = lambda doc_id: settings_ref if doc_id == "settings" else standings_ref
+    standings_ref.get.return_value = _doc(
+        "standings",
+        {"schemaVersion": 1, "standings": {"A": [{"zwiftId": "1"}]}},
+    )
+    league_col.document.side_effect = (
+        lambda doc_id: settings_ref if doc_id == "settings" else standings_ref
+    )
 
-    race1 = _doc("race-1", {"name": "Race 1", "date": "2026-01-01"})
-    race2 = _doc("race-2", {"name": "Race 2", "date": "2026-01-08"})
+    race1 = _race_doc_with_dr(
+        "race-1",
+        {"name": "Race 1", "date": "2026-01-01"},
+        [("z1", {"zwiftId": "z1", "status": "passed"})],
+    )
+    race2 = _race_doc_with_dr(
+        "race-2",
+        {"name": "Race 2", "date": "2026-01-08"},
+        [
+            ("z2", {"zwiftId": "z2", "status": "failed"}),
+            ("z3", {"zwiftId": "z3", "status": "passed"}),
+        ],
+    )
     races_col.stream.return_value = [race1, race2]
 
     archive_ref = MagicMock()
     archives_col.document.return_value = archive_ref
     archive_races_col = MagicMock()
     archive_ref.collection.return_value = archive_races_col
-    archive_race1_ref = MagicMock()
-    archive_race2_ref = MagicMock()
-    archive_races_col.document.side_effect = (
-        lambda doc_id: archive_race1_ref if doc_id == "race-1" else archive_race2_ref
-    )
+
+    archive_race_refs: dict[str, MagicMock] = {}
+    archive_dr_sets: list[tuple[str, dict]] = []
+
+    def _archive_race_document(doc_id: str) -> MagicMock:
+        if doc_id not in archive_race_refs:
+            race_ref = MagicMock()
+            dr_dest = MagicMock()
+            race_ref.collection.return_value = dr_dest
+
+            def _dr_document(dr_id: str) -> MagicMock:
+                dr_ref = MagicMock()
+                dr_ref.id = dr_id
+
+                def _capture_set(data: dict) -> None:
+                    archive_dr_sets.append((dr_id, data))
+
+                dr_ref.set.side_effect = _capture_set
+                return dr_ref
+
+            dr_dest.document.side_effect = _dr_document
+            archive_race_refs[doc_id] = race_ref
+        return archive_race_refs[doc_id]
+
+    archive_races_col.document.side_effect = _archive_race_document
+
+    batch = MagicMock()
+    db.batch.return_value = batch
 
     def _collection(name: str) -> MagicMock:
         return {
@@ -103,19 +166,29 @@ def test_archive_season_snapshots_settings_standings_and_races(
     payload = response.get_json()
     assert payload["archiveId"] == "archive-fixed-id"
     assert payload["raceCount"] == 2
+    assert payload["drVerificationCount"] == 3
 
-    archive_ref.set.assert_called_once()
+    assert archive_ref.set.call_count == 1
     written_archive = archive_ref.set.call_args.args[0]
     assert written_archive["name"] == "Spring League 2026"
     assert written_archive["settings"] == {"bestRacesCount": 3}
     assert written_archive["standings"] == {"A": [{"zwiftId": "1"}]}
     assert written_archive["raceCount"] == 2
+    assert written_archive["drVerificationCount"] == 0
+    archive_ref.update.assert_called_once_with({"drVerificationCount": 3})
 
-    archive_race1_ref.set.assert_called_once_with({"name": "Race 1", "date": "2026-01-01"})
-    archive_race2_ref.set.assert_called_once_with({"name": "Race 2", "date": "2026-01-08"})
+    # Parent races + 3 DR docs queued via batch.set
+    assert batch.set.call_count == 5
+    set_payloads = [call.args[1] for call in batch.set.call_args_list]
+    assert {"name": "Race 1", "date": "2026-01-01"} in set_payloads
+    assert {"name": "Race 2", "date": "2026-01-08"} in set_payloads
+    assert {"zwiftId": "z1", "status": "passed"} in set_payloads
+    assert {"zwiftId": "z2", "status": "failed"} in set_payloads
+    assert {"zwiftId": "z3", "status": "passed"} in set_payloads
+    batch.commit.assert_called()
 
 
-def test_reset_season_deletes_races_and_clears_standings(
+def test_reset_season_deletes_races_dr_clears_standings_and_live_state(
     app: Flask, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(admin_season, "require_admin", lambda _req: None)
@@ -124,14 +197,27 @@ def test_reset_season_deletes_races_and_clears_standings(
 
     races_col = MagicMock()
     league_col = MagicMock()
-    db.collection.side_effect = lambda name: {"races": races_col, "league": league_col}[name]
+    live_col = MagicMock()
 
-    race_ref_1 = MagicMock()
-    race_ref_2 = MagicMock()
-    race_doc_1 = _doc("race-1", {})
-    race_doc_2 = _doc("race-2", {})
-    race_doc_1.reference = race_ref_1
-    race_doc_2.reference = race_ref_2
+    def _collection(name: str) -> MagicMock:
+        return {
+            "races": races_col,
+            "league": league_col,
+            "liveRaceState": live_col,
+        }[name]
+
+    db.collection.side_effect = _collection
+
+    race_doc_1 = _race_doc_with_dr(
+        "race-1",
+        {},
+        [("z1", {"zwiftId": "z1"})],
+    )
+    race_doc_2 = _race_doc_with_dr(
+        "race-2",
+        {},
+        [("z2", {"zwiftId": "z2"}), ("z3", {"zwiftId": "z3"})],
+    )
     races_col.stream.return_value = [race_doc_1, race_doc_2]
 
     batch = MagicMock()
@@ -139,6 +225,8 @@ def test_reset_season_deletes_races_and_clears_standings(
 
     standings_ref = MagicMock()
     league_col.document.return_value = standings_ref
+    live_ref = MagicMock()
+    live_col.document.return_value = live_ref
 
     with app.test_request_context("/admin/reset-season", method="POST"):
         response, status = admin_season.reset_season()
@@ -146,13 +234,24 @@ def test_reset_season_deletes_races_and_clears_standings(
     assert status == 200
     payload = response.get_json()
     assert payload["racesDeleted"] == 2
-    batch.delete.assert_any_call(race_ref_1)
-    batch.delete.assert_any_call(race_ref_2)
-    batch.commit.assert_called_once()
-    standings_ref.set.assert_called_once_with(
-        {"standings": {}, "updatedAt": admin_season.firestore.SERVER_TIMESTAMP},
-        merge=False,
-    )
+    assert payload["nestedDocsDeleted"] == 3
+
+    # 3 DR docs + 2 race parents
+    assert batch.delete.call_count == 5
+    batch.delete.assert_any_call(race_doc_1.reference)
+    batch.delete.assert_any_call(race_doc_2.reference)
+    batch.commit.assert_called()
+
+    standings_payload = standings_ref.set.call_args.args[0]
+    assert standings_payload["standings"] == {}
+    assert standings_payload["schemaVersion"] == CURRENT_SCHEMA_VERSION
+    assert standings_ref.set.call_args.kwargs["merge"] is False
+
+    live_payload = live_ref.set.call_args.args[0]
+    assert live_payload["raceId"] is None
+    assert live_payload["manualDisabled"] is True
+    assert live_payload["activatedBy"] == "season_reset"
+    assert live_ref.set.call_args.kwargs["merge"] is False
 
 
 def test_list_archives_returns_sorted_archive_summaries(

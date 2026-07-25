@@ -277,7 +277,14 @@ export default function RacesTab({
                                         body: JSON.stringify({ name }),
                                     });
                                     const data = await res.json();
-                                    if (res.ok) { alert(`Sæson arkiveret! ${data.raceCount} løb gemt under "${name}".`); setArchiveName(''); }
+                                    if (res.ok) {
+                                        const drCount = typeof data.drVerificationCount === 'number' ? data.drVerificationCount : null;
+                                        alert(
+                                            `Sæson arkiveret! ${data.raceCount} løb gemt under "${name}".` +
+                                            (drCount !== null ? ` (${drCount} dual-recording verifikationer)` : '')
+                                        );
+                                        setArchiveName('');
+                                    }
                                     else alert(`Fejl: ${data.message}`);
                                 } catch {
                                     alert('Arkivering fejlede');
@@ -309,8 +316,13 @@ export default function RacesTab({
                                 const res = await fetch(`${API_URL}/admin/reset-season`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
                                 const data = await res.json();
                                 if (res.ok) {
-                                    alert(`Sæson nulstillet. ${data.racesDeleted} løb slettet.`);
+                                    const nested = typeof data.nestedDocsDeleted === 'number' ? data.nestedDocsDeleted : null;
+                                    alert(
+                                        `Sæson nulstillet. ${data.racesDeleted} løb slettet.` +
+                                        (nested !== null ? ` (${nested} underdokumenter)` : '')
+                                    );
                                     await queryClient.invalidateQueries({ queryKey: ['races'] });
+                                    await queryClient.invalidateQueries({ queryKey: ['leagueStandings'] });
                                 }
                                 else alert(`Fejl: ${data.message}`);
                             } catch {
