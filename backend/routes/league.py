@@ -13,6 +13,9 @@ from services.schema_validation import (
 from services.request_models import LeagueSettingsRequest, parse_body
 from authz import require_admin, verify_user_token, AuthzError
 from routes.verification import _build_race_weight_verifications
+from routes.races import _strip_hr_from_dr_result
+from services.dual_recording_admin_core import DualRecordingError, get_dual_recording_result
+from services.dual_recording_core import _load_dr_stream_blob_result
 
 logger = logging.getLogger(__name__)
 
@@ -220,8 +223,11 @@ def get_archive_race_dr_verifications(archive_id: str, race_id: str):
 )
 def get_archive_race_dr_verification_detail(archive_id: str, race_id: str, rider_id: str):
     """
-    Return archived DR verification doc for Historik detail modal.
-    Stream graphs may be unavailable; summary fields from the archive are returned.
+    Return DR detail for Historik modal.
+
+    Prefer stream blob referenced by the archived verification doc (same as live
+    cache). Fall back to live races/{raceId} cache if still present. If neither
+    has streams, return a summary payload so the modal can show status without graphs.
     """
     try:
         verify_user_token(request)
@@ -240,12 +246,45 @@ def get_archive_race_dr_verification_detail(archive_id: str, race_id: str, rider
         if not doc.exists:
             return jsonify({'message': 'Verification not found'}), 404
 
-        payload = doc.to_dict() or {}
-        payload['zwiftId'] = str(payload.get('zwiftId') or doc.id)
-        payload['raceId'] = str(payload.get('raceId') or race_id)
-        # Shape expected by DualRecordingResultModal when full stream payload is absent.
-        payload.setdefault('status', payload.get('status') or 'unknown')
-        return jsonify(payload), 200
+        verification = doc.to_dict() or {}
+        verification['zwiftId'] = str(verification.get('zwiftId') or doc.id)
+        verification['raceId'] = str(verification.get('raceId') or race_id)
+
+        stream_blob_path = str(verification.get('streamBlobPath') or '').strip()
+        if stream_blob_path:
+            cached_result = _load_dr_stream_blob_result(stream_blob_path)
+            if cached_result:
+                return jsonify(_strip_hr_from_dr_result(cached_result)), 200
+
+        # Transitional: live race/cache may still exist before season reset.
+        try:
+            live_result = get_dual_recording_result(
+                db=db,
+                rider_id=str(rider_id),
+                zwift_activity_id=None,
+                strava_activity_id=None,
+                event_start_iso=None,
+                race_id=str(race_id),
+                logger=logger,
+            )
+            return jsonify(_strip_hr_from_dr_result(live_result)), 200
+        except DualRecordingError:
+            pass
+
+        # No stream cache (e.g. sw_only) — return summary so modal shows status.
+        return jsonify({
+            'status': verification.get('status') or 'unknown',
+            'zwiftId': verification.get('zwiftId'),
+            'raceId': verification.get('raceId'),
+            'activityId': verification.get('activityId'),
+            'stravaActivityId': verification.get('stravaActivityId'),
+            'passed': verification.get('passed'),
+            'failingMetrics': verification.get('failingMetrics') or [],
+            'comparison': verification.get('comparison') or {'cpDiff': [], 'avgPower': {}},
+            'verifiedAt': verification.get('verifiedAt'),
+            'streamUnavailable': True,
+            'message': 'No stream cache available for this archived verification',
+        }), 200
     except Exception as e:
         logger.error(
             "Archive DR detail error archive=%s race=%s rider=%s: %s",

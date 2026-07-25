@@ -83,6 +83,12 @@ export default function RaceResultsTable({
                 setDrDetailError(data?.message || 'Failed to load DR stream graph');
                 return;
             }
+            // Archived summaries without stream blobs still return 200 for status display.
+            if (data?.streamUnavailable && !data?.zwift && !data?.strava) {
+                setDrDetailResult(null);
+                setDrDetailError(null);
+                return;
+            }
             setDrDetailResult(data as DualRecordingResult);
         } catch {
             setDrDetailError('Network error while loading DR stream graph');
