@@ -3,26 +3,28 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth-context';
-import { useRoutesQuery, useRacesQuery, useLeagueSettingsQuery } from '@/hooks/queries';
+import { useRoutesQuery, useRacesQuery, useStageRacesQuery, useLeagueSettingsQuery } from '@/hooks/queries';
 import type { Race, LeagueSettings, LoadingStatus } from '@/types/admin';
 import {
     RacesTab,
+    EventsTab,
     ResultsTab,
     LeagueSettingsForm,
     TestDataPanel,
     RawDataViewer,
 } from './league-manager';
 
-export type LeagueManagerTab = 'races' | 'results' | 'settings' | 'testing' | 'rawdata';
+export type LeagueManagerTab = 'races' | 'events' | 'results' | 'settings' | 'testing' | 'rawdata';
 
 interface LeagueManagerProps {
     initialActiveTab?: LeagueManagerTab;
     onTabChange?: (tab: LeagueManagerTab) => void;
 }
 
-const TABS: LeagueManagerTab[] = ['races', 'results', 'settings', 'testing', 'rawdata'];
+const TABS: LeagueManagerTab[] = ['races', 'events', 'results', 'settings', 'testing', 'rawdata'];
 const TAB_LABELS: Record<LeagueManagerTab, string> = {
     races: 'Races',
+    events: 'Events',
     results: 'Results',
     settings: 'Scoring Settings',
     testing: 'Testing',
@@ -41,10 +43,12 @@ export default function LeagueManager({ initialActiveTab = 'races', onTabChange 
     const queryClient = useQueryClient();
     const routesQuery = useRoutesQuery();
     const racesQuery = useRacesQuery();
+    const stageRacesQuery = useStageRacesQuery();
     const settingsQuery = useLeagueSettingsQuery();
 
     const routes = routesQuery.data ?? [];
     const races = (racesQuery.data ?? []) as unknown as Race[];
+    const stageRaces = stageRacesQuery.data ?? [];
     const leagueSettings = settingsQuery.data ?? DEFAULT_SETTINGS;
 
     const [activeTab, setActiveTab] = useState<LeagueManagerTab>(() =>
@@ -75,7 +79,13 @@ export default function LeagueManager({ initialActiveTab = 'races', onTabChange 
         [queryClient],
     );
 
-    if (authLoading || racesQuery.isLoading || settingsQuery.isLoading || routesQuery.isLoading) {
+    if (
+        authLoading
+        || racesQuery.isLoading
+        || stageRacesQuery.isLoading
+        || settingsQuery.isLoading
+        || routesQuery.isLoading
+    ) {
         return <div className="p-8 text-center">Loading...</div>;
     }
 
@@ -103,6 +113,16 @@ export default function LeagueManager({ initialActiveTab = 'races', onTabChange 
                     races={races}
                     routes={routes}
                     leagueSettings={leagueSettings}
+                    status={status}
+                    setStatus={setStatus}
+                />
+            )}
+
+            {activeTab === 'events' && (
+                <EventsTab
+                    user={user}
+                    races={races}
+                    stageRaces={stageRaces}
                     status={status}
                     setStatus={setStatus}
                 />

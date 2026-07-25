@@ -91,6 +91,8 @@ export interface Race {
     selectedSegments?: string[];
     sprints?: SelectedSegment[];
     segmentType?: SegmentType;
+    stageRaceId?: string;
+    stageIndex?: number;
     results?: Record<string, RaceResult[]>;
     manualDQs?: string[];
     manualDeclassifications?: string[];
@@ -100,6 +102,47 @@ export interface Race {
     finalizedAt?: string;
     finalizeRunId?: string;
     resultsAutomation?: ResultsAutomationConfig;
+}
+
+export type SeasonClass = 'tour' | 'monument' | 'wt_classic';
+
+export interface SeasonRankPointRange {
+    from: number;
+    to: number;
+    points: number;
+}
+
+export interface SeasonRankPointTable {
+    byPlace: number[];
+    ranges?: SeasonRankPointRange[];
+}
+
+export interface SeasonRankPoints {
+    tour_overall?: SeasonRankPointTable;
+    tour_stage?: SeasonRankPointTable;
+    monument?: SeasonRankPointTable;
+    wt_classic?: SeasonRankPointTable;
+}
+
+export interface StageRaceStageSummary {
+    id: string;
+    name?: string;
+    date?: string;
+    stageIndex?: number;
+    resultsPhase?: ResultsPhase;
+    type?: RaceType;
+}
+
+export interface StageRace {
+    id: string;
+    name: string;
+    seasonClass: SeasonClass;
+    bestRacesCount: number;
+    resultsPhase?: ResultsPhase;
+    standings?: Record<string, unknown[]>;
+    finalizedAt?: string;
+    updatedAt?: string;
+    stages?: StageRaceStageSummary[];
 }
 
 export interface SprintDataEntry {
@@ -188,6 +231,8 @@ export interface LeagueSettings {
     sprintPoints: number[];
     leagueRankPoints?: number[];
     bestRacesCount: number;
+    seasonRankPoints?: SeasonRankPoints;
+    seasonBestResultsCount?: number;
 }
 
 // Race form state type

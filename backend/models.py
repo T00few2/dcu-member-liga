@@ -161,6 +161,20 @@ class RaceConfig(TypedDict, total=False):
 # League settings and standings
 # ---------------------------------------------------------------------------
 
+class SeasonRankPointTable(TypedDict, total=False):
+    """One prestige table: exact places + optional place bands."""
+    byPlace: list[int]
+    ranges: list[dict[str, int]]  # {from, to, points}
+
+
+class SeasonRankPoints(TypedDict, total=False):
+    """league/settings.seasonRankPoints — prestige tables by contribution type."""
+    tour_overall: SeasonRankPointTable
+    tour_stage: SeasonRankPointTable
+    monument: SeasonRankPointTable
+    wt_classic: SeasonRankPointTable
+
+
 class LeagueSettings(TypedDict, total=False):
     """Document: league/settings."""
     schemaVersion: int
@@ -170,12 +184,20 @@ class LeagueSettings(TypedDict, total=False):
     finishPoints: list[int]
     sprintPoints: list[int]
     leagueRankPoints: list[int]
-    bestRacesCount: int
+    bestRacesCount: int  # Legacy flat-league best-X only
+    seasonRankPoints: SeasonRankPoints
+    seasonBestResultsCount: int  # Season best-X lines; 0/omit = all
 
 
-class LeagueRaceResult(TypedDict):
-    """One race's contribution to a rider's league entry."""
+SeasonClass = Literal['tour', 'monument', 'wt_classic']
+ResultsPhase = Literal['provisional', 'finalized']
+
+
+class LeagueRaceResult(TypedDict, total=False):
+    """One contribution line on a rider's standings entry."""
     raceId: str | None
+    stageRaceId: str | None
+    source: Literal['stage', 'gc']
     points: int
 
 
@@ -192,6 +214,18 @@ class LeagueEntry(TypedDict, total=False):
 
 # category label → ordered list of league entries
 LeagueStandings = dict[str, list[LeagueEntry]]
+
+
+class StageRaceDoc(TypedDict, total=False):
+    """Document: stageRaces/{id} — season event (1…N stages)."""
+    schemaVersion: int
+    name: str
+    seasonClass: SeasonClass
+    bestRacesCount: int
+    resultsPhase: ResultsPhase
+    standings: LeagueStandings  # Event GC (inner map)
+    updatedAt: Any
+    finalizedAt: Any
 
 
 # ---------------------------------------------------------------------------

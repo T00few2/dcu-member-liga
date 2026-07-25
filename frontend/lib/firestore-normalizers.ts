@@ -63,6 +63,10 @@ export function normalizeRace(raw: unknown, id: string): Race {
         manualDQs,
         manualDeclassifications,
         manualExclusions,
+        stageRaceId: asString(data.stageRaceId) || undefined,
+        stageIndex: data.stageIndex !== undefined && data.stageIndex !== null
+            ? asNumber(data.stageIndex)
+            : undefined,
         resultsPhase: (asString(data.resultsPhase) as Race['resultsPhase']) || undefined,
         provisionalUpdatedAt: asDateString(data.provisionalUpdatedAt) || undefined,
         finalizedAt: asDateString(data.finalizedAt) || undefined,

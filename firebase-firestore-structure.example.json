@@ -91,6 +91,60 @@
   ],
   "league": [
     {
+      "_id": "settings",
+      "schemaVersion": 1,
+      "name": "Example Season",
+      "bestRacesCount": 5,
+      "finishPoints": [20, 17, 15],
+      "sprintPoints": [5, 3, 2],
+      "leagueRankPoints": [20, 17, 15, 13, 11],
+      "seasonBestResultsCount": 8,
+      "seasonRankPoints": {
+        "tour_overall": {
+          "byPlace": [1300, 1040, 880],
+          "ranges": [{ "from": 21, "to": 25, "points": 50 }]
+        },
+        "tour_stage": {
+          "byPlace": [210, 150, 110],
+          "ranges": []
+        },
+        "monument": {
+          "byPlace": [800, 640, 520],
+          "ranges": [{ "from": 21, "to": 25, "points": 30 }]
+        },
+        "wt_classic": {
+          "byPlace": [500, 400, 325],
+          "ranges": [{ "from": 21, "to": 25, "points": 20 }]
+        }
+      },
+      "updatedAt": "2026-07-01T12:00:00+00:00"
+    },
+    {
+      "_id": "standings",
+      "schemaVersion": 1,
+      "updatedAt": "2026-07-01T12:00:00+00:00",
+      "standings": {
+        "Diamond": [
+          {
+            "zwiftId": "1001",
+            "name": "Example Rider",
+            "totalPoints": 210,
+            "raceCount": 1,
+            "lastRacePoints": 210,
+            "lastRaceDate": "2026-05-06T19:00:00+00:00",
+            "results": [
+              {
+                "raceId": "race_doc_example_001",
+                "stageRaceId": "stage_race_example_001",
+                "source": "stage",
+                "points": 210
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "_id": "liveOverlay",
       "schemes": [
         {
@@ -110,6 +164,18 @@
       ]
     }
   ],
+  "stageRaces": [
+    {
+      "_id": "stage_race_example_001",
+      "schemaVersion": 1,
+      "name": "Example Tour",
+      "seasonClass": "tour",
+      "bestRacesCount": 4,
+      "resultsPhase": "provisional",
+      "standings": {},
+      "updatedAt": "2026-07-01T12:00:00+00:00"
+    }
+  ],
   "policies": [
     {
       "_id": "dataPolicy",
@@ -123,6 +189,8 @@
       "name": "The Climb",
       "type": "points",
       "eventMode": "multi",
+      "stageRaceId": "stage_race_example_001",
+      "stageIndex": 1,
       "date": "2026-05-20T19:00",
       "map": "WATOPIA",
       "routeId": "4280627426",

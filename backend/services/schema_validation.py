@@ -50,6 +50,28 @@ def validate_league_settings_doc(payload: Mapping[str, Any], *, partial: bool = 
             issues.append(f"{list_key} should be a list")
     if "bestRacesCount" in payload and not isinstance(payload.get("bestRacesCount"), int):
         issues.append("bestRacesCount should be int")
+    if "seasonBestResultsCount" in payload and not isinstance(payload.get("seasonBestResultsCount"), int):
+        issues.append("seasonBestResultsCount should be int")
+    if "seasonRankPoints" in payload and not isinstance(payload.get("seasonRankPoints"), Mapping):
+        issues.append("seasonRankPoints should be an object")
+    if "schemaVersion" in payload and not isinstance(payload.get("schemaVersion"), int):
+        issues.append("schemaVersion should be int")
+    return issues
+
+
+def validate_stage_race_doc(payload: Mapping[str, Any], *, partial: bool = False) -> list[str]:
+    issues: list[str] = []
+    if not partial:
+        if not payload.get("name"):
+            issues.append("missing stage race name")
+        if payload.get("seasonClass") not in {"tour", "monument", "wt_classic"}:
+            issues.append("seasonClass missing or invalid")
+    if "bestRacesCount" in payload and not isinstance(payload.get("bestRacesCount"), int):
+        issues.append("bestRacesCount should be int")
+    if "resultsPhase" in payload and payload.get("resultsPhase") not in {"provisional", "finalized"}:
+        issues.append("resultsPhase invalid")
+    if "standings" in payload and not isinstance(payload.get("standings"), Mapping):
+        issues.append("standings should be an object keyed by category")
     if "schemaVersion" in payload and not isinstance(payload.get("schemaVersion"), int):
         issues.append("schemaVersion should be int")
     return issues

@@ -186,6 +186,8 @@ export interface Race {
     sprints?: Sprint[];
     sprintData?: Sprint[];
     segmentType?: SegmentType;
+    stageRaceId?: string;
+    stageIndex?: number;
     manualDQs?: string[];
     manualDeclassifications?: string[];
     manualExclusions?: string[];

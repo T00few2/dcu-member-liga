@@ -176,6 +176,41 @@ export default function ResultsTab({ user, races, status, setStatus }: ResultsTa
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [viewingResultsId, liveResultsRunning, finalizeResultsRunning, categoryFilter]);
 
+    const handleUnfinalizeSelectedRace = useCallback(async () => {
+        if (!user || !viewingResultsId || liveResultsRunning || finalizeResultsRunning) return;
+        if (!confirm(
+            'Un-finalize this stage? Season points for the stage will drop. '
+            + 'Blocked if a multi-stage parent event is still finalized.',
+        )) {
+            return;
+        }
+        setResultsCalcStatus(null);
+        setFinalizeResultsRunning(true);
+        try {
+            const token = await user.getIdToken();
+            const res = await fetch(`${API_URL}/races/${viewingResultsId}/results/unfinalize`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok) {
+                await queryClient.invalidateQueries({ queryKey: ['races'] });
+                await queryClient.invalidateQueries({ queryKey: ['stageRaces'] });
+                await queryClient.invalidateQueries({ queryKey: ['league', 'standings'] });
+                setResultsCalcStatus({ type: 'success', text: 'Race un-finalized successfully.' });
+            } else {
+                setResultsCalcStatus({
+                    type: 'error',
+                    text: data.message || 'Failed to un-finalize results.',
+                });
+            }
+        } catch {
+            setResultsCalcStatus({ type: 'error', text: 'Failed to un-finalize results.' });
+        } finally {
+            setFinalizeResultsRunning(false);
+        }
+    }, [user, viewingResultsId, liveResultsRunning, finalizeResultsRunning, queryClient]);
+
     const handleToggleLiveRacePage = useCallback(async () => {
         if (!user || !viewingResultsId) return;
         const isActive = activeLiveRaceId === viewingResultsId;
@@ -490,6 +525,16 @@ export default function ResultsTab({ user, races, status, setStatus }: ResultsTa
                                 >
                                     {finalizeResultsRunning ? 'Finalizing...' : 'Finalize Results'}
                                 </button>
+                                {(viewingRace?.resultsPhase || '').toLowerCase() === 'finalized' && (
+                                    <button
+                                        type="button"
+                                        onClick={handleUnfinalizeSelectedRace}
+                                        disabled={!viewingResultsId || liveResultsRunning || finalizeResultsRunning}
+                                        className="w-full sm:w-auto text-sm border border-amber-600 text-amber-700 dark:text-amber-300 px-4 py-2 rounded hover:bg-amber-50 dark:hover:bg-amber-950/30 font-semibold disabled:opacity-50"
+                                    >
+                                        Un-finalize Stage
+                                    </button>
+                                )}
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">

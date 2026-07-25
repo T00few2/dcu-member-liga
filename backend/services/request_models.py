@@ -32,6 +32,22 @@ def parse_body(
         return None, (jsonify({'error': msgs}), 400)
 
 
+class SeasonRankPointTableRequest(BaseModel):
+    byPlace: list[int] = Field(default_factory=list)
+    ranges: list[dict[str, Any]] = Field(default_factory=list)
+
+    model_config = {'extra': 'ignore'}
+
+
+class SeasonRankPointsRequest(BaseModel):
+    tour_overall: SeasonRankPointTableRequest | None = None
+    tour_stage: SeasonRankPointTableRequest | None = None
+    monument: SeasonRankPointTableRequest | None = None
+    wt_classic: SeasonRankPointTableRequest | None = None
+
+    model_config = {'extra': 'ignore'}
+
+
 class LeagueSettingsRequest(BaseModel):
     name: str | None = None
     finishPoints: list[int] = Field(default_factory=list)
@@ -40,6 +56,53 @@ class LeagueSettingsRequest(BaseModel):
     bestRacesCount: int = 5
     gracePeriod: int | None = None
     seasonStart: str | None = None
+    seasonRankPoints: SeasonRankPointsRequest | None = None
+    seasonBestResultsCount: int | None = None
+
+    model_config = {'extra': 'ignore'}
+
+
+class StageRaceCreateRequest(BaseModel):
+    name: str
+    seasonClass: Literal['tour', 'monument', 'wt_classic']
+    bestRacesCount: int = 1
+
+    @field_validator('name')
+    @classmethod
+    def _name_non_empty(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError('name is required')
+        return v
+
+    @field_validator('bestRacesCount')
+    @classmethod
+    def _best_positive(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError('bestRacesCount must be >= 1')
+        return v
+
+    model_config = {'extra': 'ignore'}
+
+
+class StageRaceUpdateRequest(BaseModel):
+    name: str | None = None
+    seasonClass: Literal['tour', 'monument', 'wt_classic'] | None = None
+    bestRacesCount: int | None = None
+
+    @field_validator('bestRacesCount')
+    @classmethod
+    def _best_positive(cls, v: int | None) -> int | None:
+        if v is not None and v < 1:
+            raise ValueError('bestRacesCount must be >= 1')
+        return v
+
+    model_config = {'extra': 'ignore'}
+
+
+class StageRaceStagesRequest(BaseModel):
+    """Replace stage attachment/order for an event."""
+    stages: list[dict[str, Any]] = Field(default_factory=list)
 
     model_config = {'extra': 'ignore'}
 

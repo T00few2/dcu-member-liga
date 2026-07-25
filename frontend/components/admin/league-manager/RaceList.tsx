@@ -187,7 +187,14 @@ export default function RaceList({
                                             {new Date(race.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                         </span>
                                     </td>
-                                    <td className="px-6 py-4 font-medium text-card-foreground">{race.name}</td>
+                                    <td className="px-6 py-4 font-medium text-card-foreground">
+                                        {race.name}
+                                        {race.stageRaceId && (
+                                            <div className="text-xs text-muted-foreground font-normal mt-0.5">
+                                                Event stage #{race.stageIndex ?? '?'}
+                                            </div>
+                                        )}
+                                    </td>
                                     <td className="px-6 py-4 text-muted-foreground">
                                         <div className="font-medium text-card-foreground">{race.map}</div>
                                         <div className="text-xs">{race.routeName} ({race.laps} laps)</div>

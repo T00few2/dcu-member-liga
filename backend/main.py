@@ -6,6 +6,7 @@ from extensions import db
 from routes.races import races_bp
 from routes.live_race import live_race_bp
 from routes.league import league_bp
+from routes.admin_stage_races import stage_races_bp
 from routes.users import users_bp
 from routes.admin import admin_bp
 from routes.integration import integration_bp
@@ -76,6 +77,7 @@ def create_app():
     app.register_blueprint(races_bp)
     app.register_blueprint(live_race_bp)
     app.register_blueprint(league_bp)
+    app.register_blueprint(stage_races_bp)
     app.register_blueprint(users_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(integration_bp)

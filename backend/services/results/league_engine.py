@@ -141,6 +141,41 @@ class LeagueEngine:
 
         return final_standings
 
+    def get_race_places(
+        self,
+        riders: list[RiderResult],
+        race_data: dict[str, Any],
+        category: str,
+        race_type: str,
+        manual_dqs: set[str],
+        manual_declassifications: set[str],
+        manual_exclusions: set[str],
+    ) -> dict[str, int]:
+        """
+        Return 1-based place for each ranked rider using the same ranking basis
+        as league points (points races: totalPoints; scratch/TT: finish time rules).
+        """
+        points_map = self._calculate_race_league_points(
+            riders,
+            race_data,
+            category,
+            race_type,
+            manual_dqs,
+            manual_declassifications,
+            manual_exclusions,
+        )
+        # Rank by league points desc; DQ (0) still get a place if present in map.
+        ranked = [
+            (zid, pts)
+            for zid, pts in points_map.items()
+            if pts is not None
+        ]
+        ranked.sort(key=lambda item: (-int(item[1]), str(item[0])))
+        places: dict[str, int] = {}
+        for idx, (zid, _pts) in enumerate(ranked):
+            places[zid] = idx + 1
+        return places
+
     def _calculate_race_league_points(
         self,
         riders: list[RiderResult],

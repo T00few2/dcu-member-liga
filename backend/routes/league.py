@@ -64,10 +64,21 @@ def save_settings():
             update_data['gracePeriod'] = body.gracePeriod
         if body.seasonStart is not None:
             update_data['seasonStart'] = body.seasonStart
+        if body.seasonRankPoints is not None:
+            update_data['seasonRankPoints'] = body.seasonRankPoints.model_dump(exclude_none=True)
+        if body.seasonBestResultsCount is not None:
+            update_data['seasonBestResultsCount'] = body.seasonBestResultsCount
 
         update_data = with_schema_version(update_data)
         log_schema_issues(logger, "league/settings (save)", validate_league_settings_doc(update_data, partial=True))
         db.collection('league').document('settings').set(update_data, merge=True)
+
+        # Season tables / best-X affect season standings immediately.
+        try:
+            ResultsProcessor(db, None, None).recalculate_season_standings()
+        except Exception as recalc_err:
+            logger.error(f"Standings recalc after settings save failed: {recalc_err}")
+
         return jsonify({'message': 'Settings saved'}), 200
     except Exception as e:
         logger.error(f"Save settings error: {e}")

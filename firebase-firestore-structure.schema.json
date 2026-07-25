@@ -26,8 +26,20 @@
     },
     "league": {
       "type": "array",
+      "description": "Singleton docs: settings, standings (wrapper), liveOverlay",
       "items": {
-        "$ref": "#/$defs/leagueDoc"
+        "oneOf": [
+          { "$ref": "#/$defs/leagueSettingsDoc" },
+          { "$ref": "#/$defs/leagueStandingsDoc" },
+          { "$ref": "#/$defs/leagueLiveOverlayDoc" }
+        ]
+      }
+    },
+    "stageRaces": {
+      "type": "array",
+      "description": "Season events (tours / monuments / classics). Stages are races linked via stageRaceId.",
+      "items": {
+        "$ref": "#/$defs/stageRaceDoc"
       }
     },
     "liveRaceState": {
@@ -145,6 +157,10 @@
           "type": "integer",
           "description": "Number of nested race subcollection docs copied (today: races/{id}/dr_verifications). Archived at archives/{id}/races/{raceId}/dr_verifications/{zwiftId}."
         },
+        "stageRaceCount": {
+          "type": "integer",
+          "description": "Number of stageRaces docs copied to archives/{id}/stageRaces/{eventId}"
+        },
         "settings": {
           "type": "object",
           "additionalProperties": true
@@ -155,43 +171,7 @@
           "additionalProperties": {
             "type": "array",
             "items": {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {
-                "name": {
-                  "type": "string"
-                },
-                "zwiftId": {
-                  "type": "string"
-                },
-                "totalPoints": {
-                  "type": "number"
-                },
-                "lastRacePoints": {
-                  "type": "number"
-                },
-                "raceCount": {
-                  "type": "integer"
-                },
-                "lastRaceDate": {
-                  "$ref": "#/$defs/timestampString"
-                },
-                "results": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "additionalProperties": true,
-                    "properties": {
-                      "raceId": {
-                        "type": "string"
-                      },
-                      "points": {
-                        "type": "number"
-                      }
-                    }
-                  }
-                }
-              }
+              "$ref": "#/$defs/leagueEntry"
             }
           }
         }
@@ -241,58 +221,159 @@
         }
       }
     },
-    "leagueDoc": {
+    "leagueEntry": {
       "type": "object",
       "additionalProperties": true,
       "properties": {
-        "_id": {
-          "type": "string"
+        "name": { "type": "string" },
+        "zwiftId": { "type": "string" },
+        "totalPoints": { "type": "number" },
+        "lastRacePoints": { "type": "number" },
+        "raceCount": { "type": "integer" },
+        "lastRaceDate": { "$ref": "#/$defs/timestampString" },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "raceId": { "type": ["string", "null"] },
+              "stageRaceId": { "type": ["string", "null"] },
+              "source": { "type": "string", "enum": ["stage", "gc"] },
+              "points": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "seasonRankPointTable": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "byPlace": {
+          "type": "array",
+          "items": { "type": "integer" }
         },
+        "ranges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "from": { "type": "integer" },
+              "to": { "type": "integer" },
+              "points": { "type": "integer" }
+            }
+          }
+        }
+      }
+    },
+    "leagueSettingsDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "_id": { "type": "string", "const": "settings" },
+        "schemaVersion": { "type": "integer" },
+        "name": { "type": "string" },
+        "finishPoints": { "type": "array", "items": { "type": "integer" } },
+        "sprintPoints": { "type": "array", "items": { "type": "integer" } },
+        "leagueRankPoints": { "type": "array", "items": { "type": "integer" } },
+        "bestRacesCount": {
+          "type": "integer",
+          "description": "Legacy flat-league best-X only; event GC uses stageRaces.bestRacesCount"
+        },
+        "seasonRankPoints": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "tour_overall": { "$ref": "#/$defs/seasonRankPointTable" },
+            "tour_stage": { "$ref": "#/$defs/seasonRankPointTable" },
+            "monument": { "$ref": "#/$defs/seasonRankPointTable" },
+            "wt_classic": { "$ref": "#/$defs/seasonRankPointTable" }
+          }
+        },
+        "seasonBestResultsCount": {
+          "type": "integer",
+          "description": "Season prestige best-X lines; 0/omit = count all"
+        },
+        "ligaCategories": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+        "updatedAt": { "$ref": "#/$defs/timestampString" }
+      }
+    },
+    "leagueStandingsDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Wrapper document at league/standings",
+      "properties": {
+        "_id": { "type": "string", "const": "standings" },
+        "schemaVersion": { "type": "integer" },
+        "updatedAt": { "$ref": "#/$defs/timestampString" },
+        "standings": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/leagueEntry" }
+          }
+        }
+      }
+    },
+    "leagueLiveOverlayDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "_id": { "type": "string", "const": "liveOverlay" },
         "schemes": {
           "type": "array",
           "items": {
             "type": "object",
             "additionalProperties": true,
             "properties": {
-              "name": {
-                "type": "string"
-              },
-              "overlayHeaderText": {
-                "type": "string"
-              },
-              "overlayRowBg": {
-                "type": "string"
-              },
-              "overlayAccent": {
-                "type": "string"
-              },
-              "overlayRowAltBg": {
-                "type": "string"
-              },
-              "overlayPositive": {
-                "type": "string"
-              },
-              "overlayRowText": {
-                "type": "string"
-              },
-              "overlayText": {
-                "type": "string"
-              },
-              "overlayBorder": {
-                "type": "string"
-              },
-              "overlayMuted": {
-                "type": "string"
-              },
-              "overlayHeaderBg": {
-                "type": "string"
-              },
-              "overlayBackground": {
-                "type": "string"
-              }
+              "name": { "type": "string" },
+              "overlayHeaderText": { "type": "string" },
+              "overlayRowBg": { "type": "string" },
+              "overlayAccent": { "type": "string" },
+              "overlayRowAltBg": { "type": "string" },
+              "overlayPositive": { "type": "string" },
+              "overlayRowText": { "type": "string" },
+              "overlayText": { "type": "string" },
+              "overlayBorder": { "type": "string" },
+              "overlayMuted": { "type": "string" },
+              "overlayHeaderBg": { "type": "string" },
+              "overlayBackground": { "type": "string" }
             }
           }
         }
+      }
+    },
+    "stageRaceDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "_id": { "type": "string" },
+        "schemaVersion": { "type": "integer" },
+        "name": { "type": "string" },
+        "seasonClass": {
+          "type": "string",
+          "enum": ["tour", "monument", "wt_classic"]
+        },
+        "bestRacesCount": {
+          "type": "integer",
+          "description": "Per-event GC best-X (e.g. 1 of 1, or 4 of 5)"
+        },
+        "resultsPhase": {
+          "type": "string",
+          "enum": ["provisional", "finalized"]
+        },
+        "standings": {
+          "type": "object",
+          "description": "Event GC inner map (LeagueEngine output)",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/leagueEntry" }
+          }
+        },
+        "finalizedAt": { "$ref": "#/$defs/timestampString" },
+        "updatedAt": { "$ref": "#/$defs/timestampString" }
       }
     },
     "policyDoc": {
@@ -411,6 +492,14 @@
               }
             }
           }
+        },
+        "stageRaceId": {
+          "type": "string",
+          "description": "Parent stageRaces/{id} when this race is a stage of a season event"
+        },
+        "stageIndex": {
+          "type": "integer",
+          "description": "1-based order within the parent event"
         },
         "resultsPhase": {
           "type": "string",

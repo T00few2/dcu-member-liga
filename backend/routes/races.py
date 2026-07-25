@@ -841,6 +841,54 @@ def refresh_results(race_id):
         return jsonify({'message': str(e)}), 500
 
 
+@races_bp.route('/races/<race_id>/results/unfinalize', methods=['POST'])
+def unfinalize_results(race_id):
+    """
+    Set stage resultsPhase to provisional and recompute season standings.
+    Blocked while a multi-stage parent event is finalized; one-day events cascade.
+    """
+    try:
+        verify_admin_auth()
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    try:
+        from services.results.stage_race_ops import unfinalize_stage
+
+        race_ref = db.collection('races').document(race_id)
+        race_doc = race_ref.get()
+        if not race_doc.exists:
+            return jsonify({'message': 'Race not found'}), 404
+
+        race_data = race_doc.to_dict() or {}
+        event = None
+        event_id = str(race_data.get('stageRaceId') or '').strip()
+        if event_id:
+            event_doc = db.collection('stageRaces').document(event_id).get()
+            if event_doc.exists:
+                event = {**(event_doc.to_dict() or {}), 'id': event_id}
+
+        race_data = unfinalize_stage(db, race_id, race_data, event)
+        processor = ResultsProcessor(db, get_zwift_service(), get_zwift_game_service())
+        standings = processor.save_league_standings(
+            override_race_id=race_id,
+            override_race_data=race_data,
+        )
+        return jsonify({
+            'message': 'Race un-finalized',
+            'resultsPhase': race_data.get('resultsPhase'),
+            'standings': standings,
+        }), 200
+    except ValueError as e:
+        return jsonify({'message': str(e)}), 409
+    except Exception as e:
+        logger.error(f"Unfinalize results error: {e}")
+        return jsonify({'message': str(e)}), 500
+
+
 @races_bp.route('/races/<race_id>/results/finalize', methods=['POST'])
 def finalize_results(race_id):
     try:

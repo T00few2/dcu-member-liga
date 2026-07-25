@@ -91,8 +91,8 @@ def archive_season():
     """
     Snapshot the current season into the archives collection.
 
-    Copies league settings, standings (inner map), each race parent doc, and all
-    race subcollections (today: dr_verifications).
+    Copies league settings, standings (inner map), each race parent doc and
+    race subcollections (today: dr_verifications), and each stageRaces doc.
 
     Body: { "name": "Forårsliga 2025" }
     """
@@ -117,10 +117,12 @@ def archive_season():
         standings = standings_doc.to_dict() if standings_doc.exists else {}
 
         race_docs = list(db.collection('races').stream())
+        stage_race_docs = list(db.collection('stageRaces').stream())
 
         archive_id = str(uuid.uuid4())
         archive_ref = db.collection('archives').document(archive_id)
         archive_races_col = archive_ref.collection('races')
+        archive_stage_races_col = archive_ref.collection('stageRaces')
 
         # Parent first so the archive is listable even if a later copy fails mid-run.
         archive_ref.set({
@@ -129,6 +131,7 @@ def archive_season():
             'settings': settings,
             'standings': standings.get('standings', {}),
             'raceCount': len(race_docs),
+            'stageRaceCount': len(stage_race_docs),
             'drVerificationCount': 0,
         })
 
@@ -136,22 +139,26 @@ def archive_season():
         nested_doc_count = 0
         for race_doc in race_docs:
             nested_doc_count += _archive_race_tree(archive_races_col, race_doc, writer)
+        for stage_doc in stage_race_docs:
+            writer.set(archive_stage_races_col.document(stage_doc.id), stage_doc.to_dict() or {})
         writer.flush()
 
         if nested_doc_count:
             archive_ref.update({'drVerificationCount': nested_doc_count})
 
         logger.info(
-            "Archived season '%s' as %s (%s races, %s nested race docs)",
+            "Archived season '%s' as %s (%s races, %s stageRaces, %s nested race docs)",
             name,
             archive_id,
             len(race_docs),
+            len(stage_race_docs),
             nested_doc_count,
         )
         return jsonify({
             'message': f"Season '{name}' archived",
             'archiveId': archive_id,
             'raceCount': len(race_docs),
+            'stageRaceCount': len(stage_race_docs),
             'drVerificationCount': nested_doc_count,
         }), 200
 
@@ -163,7 +170,7 @@ def archive_season():
 @admin_bp.route('/admin/reset-season', methods=['POST'])
 def reset_season():
     """
-    Delete all races (including subcollections) and clear current standings.
+    Delete all races (including subcollections) and stageRaces; clear standings.
     Clears liveRaceState/active. League settings (scoring, categories) are preserved.
     """
     try:
@@ -176,6 +183,7 @@ def reset_season():
 
     try:
         race_docs = list(db.collection('races').stream())
+        stage_race_docs = list(db.collection('stageRaces').stream())
         writer = _BatchedWriter(db)
         races_deleted = 0
         nested_deleted = 0
@@ -183,6 +191,10 @@ def reset_season():
             deleted_races, deleted_nested = _delete_race_tree(race_doc, writer)
             races_deleted += deleted_races
             nested_deleted += deleted_nested
+        stage_races_deleted = 0
+        for stage_doc in stage_race_docs:
+            writer.delete(stage_doc.reference)
+            stage_races_deleted += 1
         writer.flush()
 
         db.collection('league').document('standings').set(
@@ -204,13 +216,15 @@ def reset_season():
         )
 
         logger.info(
-            "Season reset: %s races deleted, %s nested race docs deleted, standings cleared",
+            "Season reset: %s races deleted, %s stageRaces deleted, %s nested race docs deleted, standings cleared",
             races_deleted,
+            stage_races_deleted,
             nested_deleted,
         )
         return jsonify({
             'message': 'Season reset',
             'racesDeleted': races_deleted,
+            'stageRacesDeleted': stage_races_deleted,
             'nestedDocsDeleted': nested_deleted,
             'schemaVersion': CURRENT_SCHEMA_VERSION,
         }), 200

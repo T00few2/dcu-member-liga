@@ -27,6 +27,14 @@ from services.results.errors import (
     StartTimeParseError,
 )
 from services.results.league_engine import LeagueEngine
+from services.results.season_engine import SeasonEngine, season_mode_enabled
+from services.results.stage_race_ops import (
+    load_races_by_id,
+    load_stage_races,
+    maybe_auto_finalize_one_day,
+    recompute_and_save_event_gc,
+    stages_for_event,
+)
 from services.results.zwift_fetcher import ZwiftFetcher
 from services.category_config import CategoryConfigResolver
 from services.category_engine import _effective_cat_name
@@ -296,7 +304,9 @@ class ResultsProcessor:
         override_race_data: dict[str, Any] | None = None,
     ) -> LeagueStandings:
         """
-        Aggregates results from all races to produce a league table per category.
+        Season mode: prestige standings via SeasonEngine (finalize-gated).
+        Legacy mode: flat LeagueEngine over all races.
+        Also refreshes event GC for the override race's parent event when present.
         """
         if not self.db:
             return {}
@@ -309,20 +319,51 @@ class ResultsProcessor:
             settings = {}
 
         try:
-            races_ref = self.db.collection('races')
-            docs = races_ref.stream()
-
-            races_data: list[dict[str, Any]] = []
-            for doc in docs:
-                data = doc.to_dict()
-                data['id'] = doc.id
-                races_data.append(data)
+            races_by_id = load_races_by_id(
+                self.db,
+                override_race_id=override_race_id,
+                override_race_data=override_race_data,
+            )
+            stage_races = load_stage_races(self.db)
         except Exception as e:
-            logger.error(f"Error fetching races: {e}")
+            logger.error(f"Error fetching races/stageRaces: {e}")
             return {}
 
+        # When a linked stage updates, refresh that event's GC (+ one-day auto-finalize).
+        if override_race_id:
+            linked = str((races_by_id.get(override_race_id) or {}).get('stageRaceId') or '')
+            if linked:
+                event = next((e for e in stage_races if str(e.get('id')) == linked), None)
+                if event is None:
+                    try:
+                        doc = self.db.collection('stageRaces').document(linked).get()
+                        if doc.exists:
+                            event = {**(doc.to_dict() or {}), 'id': linked}
+                            stage_races.append(event)
+                    except Exception as e:
+                        logger.error(f"Error loading stageRace {linked}: {e}")
+                if event is not None:
+                    try:
+                        recompute_and_save_event_gc(self.db, event, races_by_id, settings)
+                        stages = stages_for_event(races_by_id, linked)
+                        updated = maybe_auto_finalize_one_day(self.db, event, stages)
+                        for i, e in enumerate(stage_races):
+                            if str(e.get('id')) == linked:
+                                stage_races[i] = updated
+                                break
+                    except Exception as e:
+                        logger.error(f"Error updating event GC for {linked}: {e}")
+
+        if season_mode_enabled(settings, len(stage_races)):
+            return SeasonEngine(settings).calculate_standings(stage_races, races_by_id)
+
+        races_data = list(races_by_id.values())
         engine = LeagueEngine(settings)
         return engine.calculate_standings(races_data, override_race_id, override_race_data)
+
+    def recalculate_season_standings(self) -> LeagueStandings:
+        """Full season/legacy recompute without a race override (admin finalize paths)."""
+        return self.save_league_standings()
 
     def _process_event_source(
         self,

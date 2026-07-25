@@ -115,10 +115,22 @@ def test_archive_season_snapshots_settings_standings_races_and_dr(
     )
     races_col.stream.return_value = [race1, race2]
 
+    stage_races_col = MagicMock()
+    stage_event = _doc(
+        "event-1",
+        {"name": "Tour", "seasonClass": "tour", "bestRacesCount": 2, "resultsPhase": "provisional"},
+    )
+    stage_races_col.stream.return_value = [stage_event]
+
     archive_ref = MagicMock()
     archives_col.document.return_value = archive_ref
     archive_races_col = MagicMock()
-    archive_ref.collection.return_value = archive_races_col
+    archive_stage_races_col = MagicMock()
+
+    def _archive_subcol(name: str) -> MagicMock:
+        return archive_races_col if name == "races" else archive_stage_races_col
+
+    archive_ref.collection.side_effect = _archive_subcol
 
     archive_race_refs: dict[str, MagicMock] = {}
     archive_dr_sets: list[tuple[str, dict]] = []
@@ -144,6 +156,7 @@ def test_archive_season_snapshots_settings_standings_races_and_dr(
         return archive_race_refs[doc_id]
 
     archive_races_col.document.side_effect = _archive_race_document
+    archive_stage_races_col.document.side_effect = lambda doc_id: MagicMock(id=doc_id)
 
     batch = MagicMock()
     db.batch.return_value = batch
@@ -152,6 +165,7 @@ def test_archive_season_snapshots_settings_standings_races_and_dr(
         return {
             "league": league_col,
             "races": races_col,
+            "stageRaces": stage_races_col,
             "archives": archives_col,
         }[name]
 
@@ -166,6 +180,7 @@ def test_archive_season_snapshots_settings_standings_races_and_dr(
     payload = response.get_json()
     assert payload["archiveId"] == "archive-fixed-id"
     assert payload["raceCount"] == 2
+    assert payload["stageRaceCount"] == 1
     assert payload["drVerificationCount"] == 3
 
     assert archive_ref.set.call_count == 1
@@ -174,17 +189,24 @@ def test_archive_season_snapshots_settings_standings_races_and_dr(
     assert written_archive["settings"] == {"bestRacesCount": 3}
     assert written_archive["standings"] == {"A": [{"zwiftId": "1"}]}
     assert written_archive["raceCount"] == 2
+    assert written_archive["stageRaceCount"] == 1
     assert written_archive["drVerificationCount"] == 0
     archive_ref.update.assert_called_once_with({"drVerificationCount": 3})
 
-    # Parent races + 3 DR docs queued via batch.set
-    assert batch.set.call_count == 5
+    # Parent races + 3 DR docs + 1 stageRace queued via batch.set
+    assert batch.set.call_count == 6
     set_payloads = [call.args[1] for call in batch.set.call_args_list]
     assert {"name": "Race 1", "date": "2026-01-01"} in set_payloads
     assert {"name": "Race 2", "date": "2026-01-08"} in set_payloads
     assert {"zwiftId": "z1", "status": "passed"} in set_payloads
     assert {"zwiftId": "z2", "status": "failed"} in set_payloads
     assert {"zwiftId": "z3", "status": "passed"} in set_payloads
+    assert {
+        "name": "Tour",
+        "seasonClass": "tour",
+        "bestRacesCount": 2,
+        "resultsPhase": "provisional",
+    } in set_payloads
     batch.commit.assert_called()
 
 
@@ -196,12 +218,14 @@ def test_reset_season_deletes_races_dr_clears_standings_and_live_state(
     monkeypatch.setattr(admin_season, "db", db)
 
     races_col = MagicMock()
+    stage_races_col = MagicMock()
     league_col = MagicMock()
     live_col = MagicMock()
 
     def _collection(name: str) -> MagicMock:
         return {
             "races": races_col,
+            "stageRaces": stage_races_col,
             "league": league_col,
             "liveRaceState": live_col,
         }[name]
@@ -219,6 +243,8 @@ def test_reset_season_deletes_races_dr_clears_standings_and_live_state(
         [("z2", {"zwiftId": "z2"}), ("z3", {"zwiftId": "z3"})],
     )
     races_col.stream.return_value = [race_doc_1, race_doc_2]
+    stage_doc = _doc("event-1", {"name": "Tour"})
+    stage_races_col.stream.return_value = [stage_doc]
 
     batch = MagicMock()
     db.batch.return_value = batch
@@ -234,12 +260,14 @@ def test_reset_season_deletes_races_dr_clears_standings_and_live_state(
     assert status == 200
     payload = response.get_json()
     assert payload["racesDeleted"] == 2
+    assert payload["stageRacesDeleted"] == 1
     assert payload["nestedDocsDeleted"] == 3
 
-    # 3 DR docs + 2 race parents
-    assert batch.delete.call_count == 5
+    # 3 DR docs + 2 race parents + 1 stageRace
+    assert batch.delete.call_count == 6
     batch.delete.assert_any_call(race_doc_1.reference)
     batch.delete.assert_any_call(race_doc_2.reference)
+    batch.delete.assert_any_call(stage_doc.reference)
     batch.commit.assert_called()
 
     standings_payload = standings_ref.set.call_args.args[0]

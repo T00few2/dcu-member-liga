@@ -18,7 +18,7 @@ import PostsManager from '@/components/admin/PostsManager';
 
 type AdminSection = 'league' | 'categories' | 'predictor' | 'verification' | 'weight' | 'trainers' | 'users' | 'stats' | 'policies' | 'nyheder';
 const ADMIN_SECTIONS: AdminSection[] = ['league', 'categories', 'predictor', 'verification', 'weight', 'trainers', 'users', 'stats', 'policies', 'nyheder'];
-const LEAGUE_TABS: LeagueManagerTab[] = ['races', 'results', 'settings', 'testing', 'rawdata'];
+const LEAGUE_TABS: LeagueManagerTab[] = ['races', 'events', 'results', 'settings', 'testing', 'rawdata'];
 type UsersTab = 'overview' | 'details';
 const USERS_TABS: UsersTab[] = ['overview', 'details'];
 
