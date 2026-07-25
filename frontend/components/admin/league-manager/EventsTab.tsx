@@ -4,12 +4,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { User } from 'firebase/auth';
 import { API_URL } from '@/lib/api';
-import type { LoadingStatus, Race, SeasonClass, StageRace } from '@/types/admin';
+import type { LeagueSettings, LoadingStatus, Race, SeasonClass, StageRace } from '@/types/admin';
 
 interface EventsTabProps {
     user: User | null;
     races: Race[];
     stageRaces: StageRace[];
+    leagueSettings: LeagueSettings;
     status: LoadingStatus;
     setStatus: (status: LoadingStatus) => void;
 }
@@ -40,6 +41,7 @@ export default function EventsTab({
     user,
     races,
     stageRaces,
+    leagueSettings,
     status,
     setStatus,
 }: EventsTabProps) {
@@ -53,6 +55,14 @@ export default function EventsTab({
     const [editBest, setEditBest] = useState(1);
     const [stageIds, setStageIds] = useState<string[]>([]);
     const [message, setMessage] = useState<string | null>(null);
+    const [seasonName, setSeasonName] = useState(leagueSettings.name || '');
+    const [archiveName, setArchiveName] = useState('');
+    const [archiving, setArchiving] = useState(false);
+    const [resetting, setResetting] = useState(false);
+
+    useEffect(() => {
+        setSeasonName(leagueSettings.name || '');
+    }, [leagueSettings.name]);
 
     const selected = useMemo(
         () => stageRaces.find(e => e.id === selectedId) || null,
@@ -270,8 +280,60 @@ export default function EventsTab({
         stageIds.length > 0 &&
         stageIds.every(id => (raceById.get(id)?.resultsPhase || '').toLowerCase() === 'finalized');
 
+    const handleSaveSeasonName = async () => {
+        if (!user) return;
+        setStatus('saving');
+        setMessage(null);
+        try {
+            const res = await fetch(`${API_URL}/league/settings`, {
+                method: 'POST',
+                headers: await authHeaders(),
+                body: JSON.stringify({ ...leagueSettings, name: seasonName }),
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                setMessage(data.message || 'Failed to save season name');
+                return;
+            }
+            setMessage('Season name saved');
+            await queryClient.invalidateQueries({ queryKey: ['league', 'settings'] });
+        } catch {
+            setMessage('Error saving season name');
+        } finally {
+            setStatus('idle');
+        }
+    };
+
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="space-y-8">
+            <div className="bg-card p-6 rounded-lg shadow border border-border">
+                <h2 className="text-xl font-semibold mb-1 text-card-foreground">Season</h2>
+                <p className="text-sm text-muted-foreground mb-4">
+                    Name the current season, then create events and attach races from the Races tab.
+                </p>
+                <div className="flex flex-wrap gap-4 items-end">
+                    <div className="flex-1 min-w-[220px]">
+                        <label className="block text-sm font-medium text-muted-foreground mb-1">Season name</label>
+                        <input
+                            type="text"
+                            value={seasonName}
+                            onChange={e => setSeasonName(e.target.value)}
+                            className="w-full p-2 border border-input rounded bg-background text-foreground"
+                            placeholder="e.g. DCU Memberliga forår 2026"
+                        />
+                    </div>
+                    <button
+                        type="button"
+                        onClick={handleSaveSeasonName}
+                        disabled={status === 'saving'}
+                        className="bg-primary text-primary-foreground px-4 py-2 rounded hover:opacity-90 font-medium"
+                    >
+                        {status === 'saving' ? 'Saving...' : 'Save name'}
+                    </button>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="space-y-6">
                 <div className="bg-card p-6 rounded-lg shadow border border-border">
                     <h2 className="text-xl font-semibold mb-4 text-card-foreground">Create event</h2>
@@ -326,9 +388,9 @@ export default function EventsTab({
                 </div>
 
                 <div className="bg-card p-6 rounded-lg shadow border border-border">
-                    <h2 className="text-xl font-semibold mb-4 text-card-foreground">Events</h2>
+                    <h2 className="text-xl font-semibold mb-4 text-card-foreground">Season events</h2>
                     {stageRaces.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">No events yet.</p>
+                        <p className="text-sm text-muted-foreground">No events yet. Create one above.</p>
                     ) : (
                         <ul className="space-y-2">
                             {stageRaces.map(ev => (
@@ -563,6 +625,111 @@ export default function EventsTab({
                         </div>
                     </>
                 )}
+            </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-card p-6 rounded-lg shadow border border-border flex flex-col">
+                    <h2 className="text-lg font-semibold mb-1 text-card-foreground">Arkivér sæson</h2>
+                    <p className="text-sm text-muted-foreground mb-4">
+                        Gem et snapshot af den aktuelle sæsons løb, events, stilling og indstillinger til historikken. De aktuelle data berøres ikke.
+                    </p>
+                    <div className="space-y-3 flex-1 flex flex-col">
+                        <div>
+                            <label className="block text-sm font-medium text-muted-foreground mb-1">Arkivnavn</label>
+                            <input
+                                type="text"
+                                value={archiveName}
+                                onChange={e => setArchiveName(e.target.value)}
+                                placeholder={`${leagueSettings.name || 'Forårsliga'} ${new Date().getFullYear()}`}
+                                className="w-full p-2 border border-input rounded bg-background text-foreground text-sm"
+                            />
+                        </div>
+                        <button
+                            type="button"
+                            disabled={archiving}
+                            onClick={async () => {
+                                const name = archiveName.trim() || `${leagueSettings.name || 'Forårsliga'} ${new Date().getFullYear()}`;
+                                if (!confirm(`Arkivér sæson som "${name}"?\n\nDette kopierer alle løb og stillingen til historikken. Aktuelle data slettes ikke.`)) return;
+                                setArchiving(true);
+                                try {
+                                    const token = await user?.getIdToken();
+                                    const res = await fetch(`${API_URL}/admin/archive-season`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                        body: JSON.stringify({ name }),
+                                    });
+                                    const data = await res.json();
+                                    if (res.ok) {
+                                        const drCount = typeof data.drVerificationCount === 'number' ? data.drVerificationCount : null;
+                                        const stageCount = typeof data.stageRaceCount === 'number' ? data.stageRaceCount : null;
+                                        alert(
+                                            `Sæson arkiveret! ${data.raceCount} løb gemt under "${name}".` +
+                                            (stageCount !== null ? ` (${stageCount} events)` : '') +
+                                            (drCount !== null ? ` (${drCount} dual-recording verifikationer)` : '')
+                                        );
+                                        setArchiveName('');
+                                    } else {
+                                        alert(`Fejl: ${data.message}`);
+                                    }
+                                } catch {
+                                    alert('Arkivering fejlede');
+                                } finally {
+                                    setArchiving(false);
+                                }
+                            }}
+                            className="w-full mt-auto px-4 py-2 bg-primary text-primary-foreground rounded hover:opacity-90 disabled:opacity-50 font-medium text-sm"
+                        >
+                            {archiving ? 'Arkiverer…' : 'Arkivér sæson'}
+                        </button>
+                    </div>
+                </div>
+
+                <div className="bg-card p-6 rounded-lg shadow border border-red-200 dark:border-red-900 flex flex-col">
+                    <h2 className="text-lg font-semibold mb-1 text-red-700 dark:text-red-400">Nulstil sæson</h2>
+                    <p className="text-sm text-muted-foreground mb-4">
+                        Sletter alle løb og events og nulstiller stillingen. Scoring-indstillinger og kategoriopsætning bevares.{' '}
+                        <strong className="text-red-600 dark:text-red-400">Kan ikke fortrydes.</strong>
+                    </p>
+                    <button
+                        type="button"
+                        disabled={resetting}
+                        onClick={async () => {
+                            if (!confirm('ADVARSEL: Dette sletter alle løb/events og nulstiller stillingen permanent.\n\nHar du arkiveret sæsonen først?\n\nFortsæt?')) return;
+                            if (!confirm('Er du helt sikker? Alle løbsdata slettes permanent.')) return;
+                            setResetting(true);
+                            try {
+                                const token = await user?.getIdToken();
+                                const res = await fetch(`${API_URL}/admin/reset-season`, {
+                                    method: 'POST',
+                                    headers: { Authorization: `Bearer ${token}` },
+                                });
+                                const data = await res.json();
+                                if (res.ok) {
+                                    const nested = typeof data.nestedDocsDeleted === 'number' ? data.nestedDocsDeleted : null;
+                                    const stagesDeleted = typeof data.stageRacesDeleted === 'number' ? data.stageRacesDeleted : null;
+                                    alert(
+                                        `Sæson nulstillet. ${data.racesDeleted} løb slettet.` +
+                                        (stagesDeleted !== null ? ` (${stagesDeleted} events)` : '') +
+                                        (nested !== null ? ` (${nested} underdokumenter)` : '')
+                                    );
+                                    await queryClient.invalidateQueries({ queryKey: ['races'] });
+                                    await queryClient.invalidateQueries({ queryKey: ['stageRaces'] });
+                                    await queryClient.invalidateQueries({ queryKey: ['league', 'standings'] });
+                                } else {
+                                    alert(`Fejl: ${data.message}`);
+                                }
+                            } catch {
+                                alert('Nulstilling fejlede');
+                            } finally {
+                                setResetting(false);
+                            }
+                        }}
+                        className="w-full mt-auto px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 font-medium text-sm"
+                    >
+                        {resetting ? 'Nulstiller…' : 'Nulstil sæson'}
+                    </button>
+                </div>
             </div>
         </div>
     );

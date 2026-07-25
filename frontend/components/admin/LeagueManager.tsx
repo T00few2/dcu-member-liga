@@ -14,17 +14,17 @@ import {
     RawDataViewer,
 } from './league-manager';
 
-export type LeagueManagerTab = 'races' | 'events' | 'results' | 'settings' | 'testing' | 'rawdata';
+export type LeagueManagerTab = 'races' | 'season' | 'results' | 'settings' | 'testing' | 'rawdata';
 
 interface LeagueManagerProps {
     initialActiveTab?: LeagueManagerTab;
     onTabChange?: (tab: LeagueManagerTab) => void;
 }
 
-const TABS: LeagueManagerTab[] = ['races', 'events', 'results', 'settings', 'testing', 'rawdata'];
+const TABS: LeagueManagerTab[] = ['races', 'season', 'results', 'settings', 'testing', 'rawdata'];
 const TAB_LABELS: Record<LeagueManagerTab, string> = {
     races: 'Races',
-    events: 'Events',
+    season: 'Season',
     results: 'Results',
     settings: 'Scoring Settings',
     testing: 'Testing',
@@ -118,11 +118,12 @@ export default function LeagueManager({ initialActiveTab = 'races', onTabChange 
                 />
             )}
 
-            {activeTab === 'events' && (
+            {activeTab === 'season' && (
                 <EventsTab
                     user={user}
                     races={races}
                     stageRaces={stageRaces}
+                    leagueSettings={leagueSettings}
                     status={status}
                     setStatus={setStatus}
                 />

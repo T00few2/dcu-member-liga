@@ -18,7 +18,13 @@ import PostsManager from '@/components/admin/PostsManager';
 
 type AdminSection = 'league' | 'categories' | 'predictor' | 'verification' | 'weight' | 'trainers' | 'users' | 'stats' | 'policies' | 'nyheder';
 const ADMIN_SECTIONS: AdminSection[] = ['league', 'categories', 'predictor', 'verification', 'weight', 'trainers', 'users', 'stats', 'policies', 'nyheder'];
-const LEAGUE_TABS: LeagueManagerTab[] = ['races', 'events', 'results', 'settings', 'testing', 'rawdata'];
+const LEAGUE_TABS: LeagueManagerTab[] = ['races', 'season', 'results', 'settings', 'testing', 'rawdata'];
+
+function normalizeLeagueTab(value: string | null): string | null {
+  // Backward-compatible alias from the short-lived "events" tab id.
+  if (value === 'events') return 'season';
+  return value;
+}
 type UsersTab = 'overview' | 'details';
 const USERS_TABS: UsersTab[] = ['overview', 'details'];
 
@@ -27,7 +33,8 @@ function parseSection(value: string | null): AdminSection {
 }
 
 function parseLeagueTab(value: string | null): LeagueManagerTab {
-  return LEAGUE_TABS.includes(value as LeagueManagerTab) ? (value as LeagueManagerTab) : 'races';
+  const normalized = normalizeLeagueTab(value);
+  return LEAGUE_TABS.includes(normalized as LeagueManagerTab) ? (normalized as LeagueManagerTab) : 'races';
 }
 
 function parseUsersTab(value: string | null): UsersTab {
