@@ -36,6 +36,8 @@ interface Props {
     drVerifications?: Map<string, DualRecordingVerification>;
     weightVerifications?: Map<string, PublicWeightVerificationRecord>;
     user?: User | null;
+    /** Base path for DR detail fetch, e.g. `/archives/{id}/races/{raceId}`. Defaults to `/races/{selectedRaceId}`. */
+    drVerificationsApiBase?: string;
 }
 
 export default function RaceResultsTable({
@@ -57,6 +59,7 @@ export default function RaceResultsTable({
     drVerifications,
     weightVerifications,
     user = null,
+    drVerificationsApiBase,
 }: Props) {
     const [drModal, setDrModal] = useState<{ name: string; verification: DualRecordingVerification; zwiftId: string } | null>(null);
     const [drDetailResult, setDrDetailResult] = useState<DualRecordingResult | null>(null);
@@ -70,8 +73,9 @@ export default function RaceResultsTable({
         setDrDetailResult(null);
         try {
             const token = await user.getIdToken();
+            const base = drVerificationsApiBase || `/races/${selectedRaceId}`;
             const res = await fetch(
-                `${API_URL}/races/${selectedRaceId}/dr-verifications/${riderZwiftId}`,
+                `${API_URL}${base}/dr-verifications/${riderZwiftId}`,
                 { headers: { Authorization: `Bearer ${token}` } },
             );
             const data = await res.json();

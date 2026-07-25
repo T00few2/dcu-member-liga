@@ -11,7 +11,8 @@ from services.schema_validation import (
     with_schema_version,
 )
 from services.request_models import LeagueSettingsRequest, parse_body
-from authz import require_admin, AuthzError
+from authz import require_admin, verify_user_token, AuthzError
+from routes.verification import _build_race_weight_verifications
 
 logger = logging.getLogger(__name__)
 
@@ -170,3 +171,123 @@ def get_archive_race(archive_id, race_id):
     except Exception as e:
         logger.error(f"Get archive race error: {e}")
         return jsonify({'message': str(e)}), 500
+
+
+def _archive_race_ref(archive_id: str, race_id: str):
+    return (
+        db.collection('archives')
+        .document(str(archive_id))
+        .collection('races')
+        .document(str(race_id))
+    )
+
+
+@league_bp.route('/archives/<archive_id>/races/<race_id>/dr-verifications', methods=['GET'])
+def get_archive_race_dr_verifications(archive_id: str, race_id: str):
+    """Return archived DR verification summaries for Historik race results."""
+    try:
+        verify_user_token(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    try:
+        race_ref = _archive_race_ref(archive_id, race_id)
+        if not race_ref.get().exists:
+            return jsonify({'message': 'Race not found'}), 404
+
+        out = []
+        for d in race_ref.collection('dr_verifications').stream():
+            payload = d.to_dict() or {}
+            payload['zwiftId'] = str(payload.get('zwiftId') or d.id)
+            out.append(payload)
+        return jsonify({'verifications': out}), 200
+    except Exception as e:
+        logger.error(
+            "Archive DR list error archive=%s race=%s: %s",
+            archive_id,
+            race_id,
+            e,
+        )
+        return jsonify({'message': str(e)}), 500
+
+
+@league_bp.route(
+    '/archives/<archive_id>/races/<race_id>/dr-verifications/<rider_id>',
+    methods=['GET'],
+)
+def get_archive_race_dr_verification_detail(archive_id: str, race_id: str, rider_id: str):
+    """
+    Return archived DR verification doc for Historik detail modal.
+    Stream graphs may be unavailable; summary fields from the archive are returned.
+    """
+    try:
+        verify_user_token(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    try:
+        race_ref = _archive_race_ref(archive_id, race_id)
+        if not race_ref.get().exists:
+            return jsonify({'message': 'Race not found'}), 404
+
+        doc = race_ref.collection('dr_verifications').document(str(rider_id)).get()
+        if not doc.exists:
+            return jsonify({'message': 'Verification not found'}), 404
+
+        payload = doc.to_dict() or {}
+        payload['zwiftId'] = str(payload.get('zwiftId') or doc.id)
+        payload['raceId'] = str(payload.get('raceId') or race_id)
+        # Shape expected by DualRecordingResultModal when full stream payload is absent.
+        payload.setdefault('status', payload.get('status') or 'unknown')
+        return jsonify(payload), 200
+    except Exception as e:
+        logger.error(
+            "Archive DR detail error archive=%s race=%s rider=%s: %s",
+            archive_id,
+            race_id,
+            rider_id,
+            e,
+        )
+        return jsonify({'message': str(e)}), 500
+
+
+@league_bp.route('/archives/<archive_id>/races/<race_id>/weight-verifications', methods=['GET'])
+def get_archive_race_weight_verifications(archive_id: str, race_id: str):
+    """
+    Return weight verification statuses for an archived race.
+    Built from live user verification requests matched by raceId (not stored in archive).
+    """
+    try:
+        verify_user_token(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    try:
+        race_ref = _archive_race_ref(archive_id, race_id)
+        if not race_ref.get().exists:
+            return jsonify({'message': 'Race not found'}), 404
+
+        verifications = _build_race_weight_verifications(str(race_id))
+        public_rows = [{
+            'zwiftId': str(v.get('zwiftId') or ''),
+            'status': str(v.get('status') or ''),
+        } for v in verifications if str(v.get('zwiftId') or '').strip()]
+        return jsonify({'verifications': public_rows}), 200
+    except Exception as e:
+        logger.error(
+            "Archive weight list error archive=%s race=%s: %s",
+            archive_id,
+            race_id,
+            e,
+        )
+        return jsonify({'message': str(e)}), 500
+

@@ -372,3 +372,37 @@ def test_get_archive_race_returns_404_when_missing(
 
     assert status == 404
     assert response.get_json()["message"] == "Race not found"
+
+
+def test_get_archive_race_dr_verifications_returns_nested_docs(
+    app: Flask, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(league, "verify_user_token", lambda _req: {"uid": "u1"})
+    db = MagicMock()
+    monkeypatch.setattr(league, "db", db)
+
+    archives_col = MagicMock()
+    db.collection.return_value = archives_col
+    archive_ref = MagicMock()
+    archives_col.document.return_value = archive_ref
+    races_subcol = MagicMock()
+    archive_ref.collection.return_value = races_subcol
+    race_ref = MagicMock()
+    races_subcol.document.return_value = race_ref
+    race_ref.get.return_value = _doc("r1", {"name": "Sprint"})
+
+    dr_col = MagicMock()
+    race_ref.collection.return_value = dr_col
+    dr_col.stream.return_value = [
+        _doc("z1", {"status": "passed", "zwiftId": "z1"}),
+        _doc("z2", {"status": "failed"}),
+    ]
+
+    with app.test_request_context("/archives/a1/races/r1/dr-verifications", method="GET"):
+        response, status = league.get_archive_race_dr_verifications("a1", "r1")
+
+    assert status == 200
+    payload = response.get_json()
+    assert len(payload["verifications"]) == 2
+    assert payload["verifications"][0]["zwiftId"] == "z1"
+    assert payload["verifications"][1]["zwiftId"] == "z2"

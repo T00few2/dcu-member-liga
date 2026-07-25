@@ -3,8 +3,16 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { API_URL } from '@/lib/api';
+import { useAuth } from '@/lib/auth-context';
 import { sortCategoriesByRank } from '@/lib/categories';
-import type { Race, Sprint, ResultEntry, StandingEntry } from '@/types/live';
+import type {
+    Race,
+    Sprint,
+    ResultEntry,
+    StandingEntry,
+    DualRecordingVerification,
+    PublicWeightVerificationRecord,
+} from '@/types/live';
 import StandingsTable from '@/app/results/_components/StandingsTable';
 import RaceResultsTable from '@/app/results/_components/RaceResultsTable';
 
@@ -38,6 +46,7 @@ const pickFirstNonEmpty = (...lists: (Sprint[] | undefined)[]): Sprint[] => {
 };
 
 export default function HistorikPage() {
+    const { user } = useAuth();
     const [selectedArchiveId, setSelectedArchiveId] = useState<string>('');
     const [activeTab, setActiveTab] = useState<'standings' | 'results'>('standings');
     const [selectedRaceId, setSelectedRaceId] = useState<string>('');
@@ -53,6 +62,52 @@ export default function HistorikPage() {
             return data.archives ?? [];
         },
         staleTime: 5 * 60_000,
+    });
+
+    const archiveDrQuery = useQuery({
+        queryKey: ['archives', selectedArchiveId, 'races', selectedRaceId, 'dr-verifications'],
+        queryFn: async () => {
+            const token = await user!.getIdToken();
+            const res = await fetch(
+                `${API_URL}/archives/${selectedArchiveId}/races/${selectedRaceId}/dr-verifications`,
+                { headers: { Authorization: `Bearer ${token}` } },
+            );
+            if (!res.ok) return new Map<string, DualRecordingVerification>();
+            const body = await res.json();
+            const map = new Map<string, DualRecordingVerification>();
+            (body.verifications ?? []).forEach(
+                (v: DualRecordingVerification & { zwiftId?: string | number }) => {
+                    const key = String(v.zwiftId ?? '');
+                    if (key) map.set(key, v);
+                },
+            );
+            return map;
+        },
+        enabled: !!user && !!selectedArchiveId && !!selectedRaceId && activeTab === 'results',
+        staleTime: 60_000,
+    });
+
+    const archiveWeightQuery = useQuery({
+        queryKey: ['archives', selectedArchiveId, 'races', selectedRaceId, 'weight-verifications'],
+        queryFn: async () => {
+            const token = await user!.getIdToken();
+            const res = await fetch(
+                `${API_URL}/archives/${selectedArchiveId}/races/${selectedRaceId}/weight-verifications`,
+                { headers: { Authorization: `Bearer ${token}` } },
+            );
+            if (!res.ok) return new Map<string, PublicWeightVerificationRecord>();
+            const body = await res.json();
+            const map = new Map<string, PublicWeightVerificationRecord>();
+            (body.verifications ?? []).forEach(
+                (v: PublicWeightVerificationRecord & { zwiftId?: string | number }) => {
+                    const key = String(v.zwiftId ?? '');
+                    if (key) map.set(key, v);
+                },
+            );
+            return map;
+        },
+        enabled: !!user && !!selectedArchiveId && !!selectedRaceId && activeTab === 'results',
+        staleTime: 60_000,
     });
 
     const archiveDetailQuery = useQuery<ArchiveDetail | null>({
@@ -303,6 +358,14 @@ export default function HistorikPage() {
                             bestSplitTimes={bestSplitTimes}
                             getSprintHeader={getSprintHeader}
                             leaguePointsByZwiftId={leaguePointsByZwiftId}
+                            drVerifications={archiveDrQuery.data ?? new Map()}
+                            weightVerifications={archiveWeightQuery.data ?? new Map()}
+                            user={user}
+                            drVerificationsApiBase={
+                                selectedArchiveId && selectedRaceId
+                                    ? `/archives/${selectedArchiveId}/races/${selectedRaceId}`
+                                    : undefined
+                            }
                         />
                     )}
                 </>
