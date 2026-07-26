@@ -71,19 +71,26 @@ export async function GET(req: NextRequest) {
             };
         });
 
-    const upstream = await fetch(`${API_URL}/route-elevation/${match.stravaSegmentId}`, fresh
-        ? { cache: 'no-store' }
-        : { next: { revalidate: 86400 } }
-    );
+    const upstream = await fetch(`${API_URL}/route-elevation/${match.stravaSegmentId}`, {
+        cache: 'no-store',
+    });
 
-    if (!upstream.ok) {
-        return NextResponse.json({ error: 'Failed to fetch elevation data' }, { status: 502 });
+    // Prefer live elevation cache, but still return segment labels if upstream is down.
+    let data: Record<string, unknown> = {};
+    if (upstream.ok) {
+        data = await upstream.json();
+    } else {
+        data = {
+            distance: [],
+            altitude: [],
+            elevationFetchError: `Failed to fetch elevation data (${upstream.status})`,
+        };
     }
-
-    const data = await upstream.json();
     // Treat missing OR empty profileSegments as unset so charts/admin can fall back
     // to zwift-data segmentsOnRoute (same behavior RaceElevationChart already expects).
-    const cachedProfile = Array.isArray(data?.profileSegments) ? data.profileSegments : null;
+    const cachedProfile = Array.isArray(data?.profileSegments)
+        ? (data.profileSegments as ProfileSegment[])
+        : null;
     const singleLapProfileSegments: ProfileSegment[] = (cachedProfile && cachedProfile.length > 0)
         ? cachedProfile
         : routeSegments.map((seg) => ({
@@ -97,8 +104,8 @@ export async function GET(req: NextRequest) {
     // Tile elevation arrays and profileSegments for multi-lap routes.
     // The backend returns data for a single lap (no lead-in); each subsequent lap is appended
     // with distance offset = lapLength * lapIndex.
-    const singleLapDistances: number[] = Array.isArray(data?.distance) ? data.distance : [];
-    const singleLapAltitudes: number[] = Array.isArray(data?.altitude) ? data.altitude : [];
+    const singleLapDistances: number[] = Array.isArray(data?.distance) ? (data.distance as number[]) : [];
+    const singleLapAltitudes: number[] = Array.isArray(data?.altitude) ? (data.altitude as number[]) : [];
     const lapLengthM = singleLapDistances.length > 0
         ? (singleLapDistances[singleLapDistances.length - 1] ?? 0)
         : 0;

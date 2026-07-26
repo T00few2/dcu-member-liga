@@ -1009,6 +1009,19 @@ def finalize_pending_races():
         return jsonify({'message': str(exc)}), 500
 
 
+def _has_elevation_streams(data: dict | None) -> bool:
+    if not isinstance(data, dict):
+        return False
+    distance = data.get('distance')
+    altitude = data.get('altitude')
+    return (
+        isinstance(distance, list)
+        and isinstance(altitude, list)
+        and len(distance) > 0
+        and len(altitude) > 0
+    )
+
+
 @races_bp.route('/route-elevation/<int:segment_id>', methods=['GET'])
 def get_route_elevation(segment_id):
     """Return distance + altitude streams for a Strava segment, cached in Firestore."""
@@ -1017,26 +1030,37 @@ def get_route_elevation(segment_id):
 
     cache_ref = db.collection('elevation_cache').document(str(segment_id))
     cached = cache_ref.get()
-    if cached.exists:
-        return jsonify(cached.to_dict())
+    data = cached.to_dict() if cached.exists else {}
+    if not isinstance(data, dict):
+        data = {}
 
-    streams = strava_service.get_segment_streams(segment_id)
-    if not streams:
-        # Do not hard-fail: profileSegments can still be written/read independently,
-        # and clients may seed route segment labels without elevation streams.
-        logger.warning(
-            "Strava elevation streams unavailable for segment %s; returning empty cache shell",
-            segment_id,
-        )
-        return jsonify({
-            'distance': [],
-            'altitude': [],
-            'profileSegments': [],
-            'elevationFetchError': 'Could not fetch elevation data from Strava',
-        }), 200
+    # profileSegments may be saved before elevation streams exist. Always backfill
+    # missing distance/altitude from Strava so race-card charts can render.
+    if not _has_elevation_streams(data):
+        streams = strava_service.get_segment_streams(segment_id)
+        if streams and _has_elevation_streams(streams):
+            cache_ref.set(streams, merge=True)
+            data = {**data, **streams}
+        elif not data:
+            logger.warning(
+                "Strava elevation streams unavailable for segment %s; returning empty cache shell",
+                segment_id,
+            )
+            return jsonify({
+                'distance': [],
+                'altitude': [],
+                'profileSegments': [],
+                'elevationFetchError': 'Could not fetch elevation data from Strava',
+            }), 200
+        else:
+            data = {
+                **data,
+                'distance': data.get('distance') if isinstance(data.get('distance'), list) else [],
+                'altitude': data.get('altitude') if isinstance(data.get('altitude'), list) else [],
+                'elevationFetchError': 'Could not fetch elevation data from Strava',
+            }
 
-    cache_ref.set(streams)
-    return jsonify(streams)
+    return jsonify(data)
 
 
 @races_bp.route('/route-elevation/<int:segment_id>/profile-segments', methods=['PUT'])
