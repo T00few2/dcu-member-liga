@@ -190,10 +190,16 @@ def unfinalize_stage(
         if event_finalized and season_class in ONE_DAY_CLASSES:
             unfinalize_event(db, event)
 
-    update = {
+    db.collection("races").document(race_id).set(
+        {
+            "resultsPhase": RESULTS_PHASE_PROVISIONAL,
+            "finalizedAt": None,
+            "updatedAt": firestore.SERVER_TIMESTAMP,
+        },
+        merge=True,
+    )
+    return {
+        **race_data,
         "resultsPhase": RESULTS_PHASE_PROVISIONAL,
         "finalizedAt": None,
-        "updatedAt": firestore.SERVER_TIMESTAMP,
     }
-    db.collection("races").document(race_id).set(update, merge=True)
-    return {**race_data, **update}

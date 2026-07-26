@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { routes } from 'zwift-data';
+import { routes, segments } from 'zwift-data';
 
 function slugify(value?: string | null): string {
     return (value || '')
@@ -11,6 +11,14 @@ function slugify(value?: string | null): string {
         .replace(/\s+/g, '-')
         .replace(/-+/g, '-')
         .replace(/^-|-$/g, '');
+}
+
+function inferDirectionFromSegment(segmentSlug?: string | null, segmentName?: string | null): 'forward' | 'reverse' {
+    const slug = (segmentSlug || '').toLowerCase();
+    const name = (segmentName || '').toLowerCase();
+    if (slug.endsWith('-rev') || slug.includes('-reverse')) return 'reverse';
+    if (name.includes(' rev') || name.includes('reverse')) return 'reverse';
+    return 'forward';
 }
 
 export async function GET(req: NextRequest) {
@@ -29,10 +37,30 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'No Strava segment found for this route' }, { status: 404 });
     }
 
+    // Route-relative start/end km come from zwift-data segmentsOnRoute (Strava-linked
+    // Zwift segments placed on the route). Strava's segment API does not provide
+    // distance-along-parent-route by itself.
+    const defaultProfileSegments = (match.segmentsOnRoute || []).map((sor) => {
+        const seg = segments.find((s) => s.slug === sor.segment);
+        const name = seg?.name ?? sor.segment ?? 'Segment';
+        const type = seg?.type === 'sprint' || seg?.type === 'climb' || seg?.type === 'segment'
+            ? seg.type
+            : 'segment';
+        return {
+            name,
+            type,
+            fromKm: Number(sor.from) || 0,
+            toKm: Number(sor.to) || 0,
+            direction: inferDirectionFromSegment(sor.segment, name),
+            stravaSegmentId: seg?.stravaSegmentId ?? null,
+        };
+    });
+
     return NextResponse.json(
         {
             stravaSegmentId: match.stravaSegmentId,
             stravaSegmentUrl: match.stravaSegmentUrl || `https://www.strava.com/segments/${match.stravaSegmentId}`,
+            defaultProfileSegments,
         },
         { headers: { 'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800' } },
     );

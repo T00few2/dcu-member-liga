@@ -81,8 +81,11 @@ export async function GET(req: NextRequest) {
     }
 
     const data = await upstream.json();
-    const singleLapProfileSegments: ProfileSegment[] = Array.isArray(data?.profileSegments)
-        ? data.profileSegments
+    // Treat missing OR empty profileSegments as unset so charts/admin can fall back
+    // to zwift-data segmentsOnRoute (same behavior RaceElevationChart already expects).
+    const cachedProfile = Array.isArray(data?.profileSegments) ? data.profileSegments : null;
+    const singleLapProfileSegments: ProfileSegment[] = (cachedProfile && cachedProfile.length > 0)
+        ? cachedProfile
         : routeSegments.map((seg) => ({
             name: seg.name,
             type: seg.type,

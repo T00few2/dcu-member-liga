@@ -110,10 +110,19 @@ def create_stage_race():
             "updatedAt": firestore.SERVER_TIMESTAMP,
         })
         _, ref = db.collection("stageRaces").add(payload)
+        # Do not echo SERVER_TIMESTAMP sentinels in the JSON response.
         return jsonify({
             "message": "Stage race created",
             "id": ref.id,
-            "stageRace": {**payload, "id": ref.id, "stages": []},
+            "stageRace": {
+                "id": ref.id,
+                "name": body.name,
+                "seasonClass": body.seasonClass,
+                "bestRacesCount": body.bestRacesCount,
+                "resultsPhase": RESULTS_PHASE_PROVISIONAL,
+                "standings": {},
+                "stages": [],
+            },
         }), 201
     except Exception as e:
         logger.error("Create stage race error: %s", e)

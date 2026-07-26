@@ -115,50 +115,121 @@ export default function RaceForm({
             .entries()
     ).map(([name, direction]) => ({ name, direction }));
 
+    const mapProfileSegments = (raw: unknown): RouteProfileSegment[] => {
+        if (!Array.isArray(raw) || raw.length === 0) return [];
+        return raw.map((seg: any) => ({
+            name: String(seg?.name || 'Segment').trim() || 'Segment',
+            type: seg?.type === 'sprint' || seg?.type === 'climb' || seg?.type === 'segment' ? seg.type : 'segment',
+            fromKm: seg?.fromKm != null ? String(seg.fromKm) : (seg?.from != null ? String(seg.from) : ''),
+            toKm: seg?.toKm != null ? String(seg.toKm) : (seg?.to != null ? String(seg.to) : ''),
+            direction: inferDirection(seg?.direction, seg?.name),
+        }));
+    };
+
+    const loadRouteProfileSegments = async (opts?: {
+        signal?: AbortSignal;
+        forceDefaults?: boolean;
+    }) => {
+        if (!selectedRoute) return;
+        setLoadingRouteProfile(true);
+        setRouteProfileError(null);
+        try {
+            // Resolve elevation_cache key + default segment placements (from/to km).
+            const metaParams = new URLSearchParams({
+                world: selectedRoute.map,
+                route: selectedRoute.name,
+            });
+            const metaRes = await fetch(`/api/route-meta?${metaParams}`, {
+                cache: 'no-store',
+                signal: opts?.signal,
+            });
+            if (!metaRes.ok) {
+                throw new Error(`Could not resolve route cache key (${metaRes.status})`);
+            }
+            const meta = await metaRes.json();
+            const sid = Number(meta?.stravaSegmentId);
+            if (!Number.isFinite(sid) || sid <= 0) {
+                throw new Error('Could not resolve Strava segment ID for route');
+            }
+            const defaults = mapProfileSegments(meta?.defaultProfileSegments);
+
+            // Load saved cache doc (elevation + any previously saved profileSegments).
+            const cacheRes = await fetch(`${API_URL}/route-elevation/${sid}`, {
+                cache: 'no-store',
+                signal: opts?.signal,
+            });
+            if (!cacheRes.ok) {
+                throw new Error(`Failed to load elevation cache (${cacheRes.status})`);
+            }
+            const cache = await cacheRes.json();
+            let mapped = opts?.forceDefaults ? [] : mapProfileSegments(cache?.profileSegments);
+            let seededFromDefaults = false;
+
+            // No saved profile segments → seed start/end km from Zwift route placements
+            // (Strava-linked segments on the route). Strava streams alone are elevation only.
+            if (mapped.length === 0) {
+                mapped = defaults;
+                seededFromDefaults = defaults.length > 0;
+            }
+
+            if (opts?.signal?.aborted) return;
+            setRouteProfileSegmentId(sid);
+            setRouteProfileSegments(mapped);
+            setRouteProfileLeadIn(cache?.leadInDistance != null ? String(cache.leadInDistance) : '');
+
+            // Persist first-time seed so race cards use the same profileSegments.
+            if (seededFromDefaults && user && mapped.length > 0) {
+                const token = await user.getIdToken();
+                const payload = mapped.map((seg) => ({
+                    name: (seg.name || '').trim() || 'Segment',
+                    type: seg.type,
+                    fromKm: Math.min(Number(seg.fromKm) || 0, Number(seg.toKm) || 0),
+                    toKm: Math.max(Number(seg.fromKm) || 0, Number(seg.toKm) || 0),
+                    direction: seg.direction === 'reverse' ? 'reverse' : 'forward',
+                }));
+                const saveRes = await fetch(`${API_URL}/route-elevation/${sid}/profile-segments`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({ profileSegments: payload }),
+                    signal: opts?.signal,
+                });
+                if (!saveRes.ok) {
+                    const json = await saveRes.json().catch(() => ({}));
+                    setRouteProfileError(
+                        json?.message
+                        || 'Loaded defaults, but failed to save them to elevation_cache. Click Save to retry.',
+                    );
+                }
+            }
+        } catch (e: any) {
+            if (e?.name === 'AbortError') return;
+            setRouteProfileSegments([]);
+            setRouteProfileLeadIn('');
+            setRouteProfileSegmentId(null);
+            setRouteProfileError(e?.message || 'Could not load route profile segments');
+        } finally {
+            if (!opts?.signal?.aborted) {
+                setLoadingRouteProfile(false);
+            }
+        }
+    };
+
+    // Auto-load profile metadata when the selected route changes.
     useEffect(() => {
         setRouteProfileSegments([]);
         setRouteProfileLeadIn('');
         setRouteProfileSegmentId(null);
         setRouteProfileError(null);
-    }, [formState.selectedMap, formState.selectedRouteId]);
+        if (!formState.selectedRouteId || !selectedRoute) return;
 
-    const loadRouteProfileSegments = async () => {
-        if (!selectedRoute) return;
-        setLoadingRouteProfile(true);
-        setRouteProfileError(null);
-        try {
-            const params = new URLSearchParams({
-                world: selectedRoute.map,
-                route: selectedRoute.name,
-                laps: String(formState.laps || 1),
-                fresh: '1',
-            });
-            const res = await fetch(`/api/route-elevation?${params}`, { cache: 'no-store' });
-            if (!res.ok) throw new Error(`Failed to load route profile (${res.status})`);
-            const json = await res.json();
-
-            const sid = Number(json?.stravaSegmentId);
-            if (!Number.isFinite(sid) || sid <= 0) {
-                throw new Error('Could not resolve Strava segment ID for route');
-            }
-
-            const mapped: RouteProfileSegment[] = (Array.isArray(json?.profileSegments) ? json.profileSegments : [])
-                .map((seg: any) => ({
-                    name: String(seg?.name || 'Segment').trim() || 'Segment',
-                    type: seg?.type === 'sprint' || seg?.type === 'climb' || seg?.type === 'segment' ? seg.type : 'segment',
-                    fromKm: seg?.fromKm != null ? String(seg.fromKm) : '',
-                    toKm: seg?.toKm != null ? String(seg.toKm) : '',
-                    direction: inferDirection(seg?.direction, seg?.name),
-                }));
-            setRouteProfileSegmentId(sid);
-            setRouteProfileSegments(mapped);
-            setRouteProfileLeadIn(json?.leadInDistance != null ? String(json.leadInDistance) : '');
-        } catch (e: any) {
-            setRouteProfileError(e?.message || 'Could not load route profile segments');
-        } finally {
-            setLoadingRouteProfile(false);
-        }
-    };
+        const controller = new AbortController();
+        void loadRouteProfileSegments({ signal: controller.signal });
+        return () => controller.abort();
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: reload on route/map change only
+    }, [formState.selectedMap, formState.selectedRouteId, selectedRoute?.id]);
 
     const updateRouteProfileSegment = (index: number, patch: Partial<RouteProfileSegment>) => {
         setRouteProfileSegments((prev) => prev.map((s, i) => (i === index ? { ...s, ...patch } : s)));
@@ -331,11 +402,28 @@ export default function RaceForm({
                                 <div className="flex gap-2">
                                     <button
                                         type="button"
-                                        onClick={loadRouteProfileSegments}
-                                        disabled={loadingRouteProfile}
-                                        className="px-3 py-1.5 text-xs rounded bg-secondary text-secondary-foreground hover:opacity-90"
+                                        onClick={() => void loadRouteProfileSegments()}
+                                        disabled={loadingRouteProfile || !selectedRoute}
+                                        className="px-3 py-1.5 text-xs rounded bg-secondary text-secondary-foreground hover:opacity-90 disabled:opacity-50"
                                     >
-                                        {loadingRouteProfile ? 'Loading...' : 'Load from elevation cache'}
+                                        {loadingRouteProfile ? 'Loading...' : 'Reload'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if (
+                                                routeProfileSegments.length > 0
+                                                && !confirm('Replace current profile segments with the route’s default Strava-linked segment placements?')
+                                            ) {
+                                                return;
+                                            }
+                                            void loadRouteProfileSegments({ forceDefaults: true });
+                                        }}
+                                        disabled={loadingRouteProfile || !selectedRoute}
+                                        className="px-3 py-1.5 text-xs rounded bg-secondary text-secondary-foreground hover:opacity-90 disabled:opacity-50"
+                                        title="Replace with Zwift route segment placements (start/end km)"
+                                    >
+                                        Reset from route segments
                                     </button>
                                     <button
                                         type="button"
@@ -362,7 +450,9 @@ export default function RaceForm({
                                 </div>
                             </div>
                             <p className="text-xs text-muted-foreground mb-3">
-                                Managed per route in `elevation_cache` (not saved on races).
+                                Labels for the public route elevation chart. Start/end km are taken from the
+                                route’s Strava-linked Zwift segments (not from Strava elevation streams).
+                                Separate from race sprint picks above. Stored in `elevation_cache`.
                                 {routeProfileSegmentId ? ` Cache key: ${routeProfileSegmentId}` : ''}
                             </p>
                             {routeProfileError && (
@@ -381,9 +471,16 @@ export default function RaceForm({
                                 <span className="text-xs text-muted-foreground">Added to from/to km when displaying segments on route cards</span>
                             </div>
                             <div className="space-y-2">
-                                {routeProfileSegments.length === 0 && (
+                                {routeProfileSegments.length === 0 && !loadingRouteProfile && (
                                     <div className="text-xs text-muted-foreground border border-dashed border-border rounded p-3">
-                                        No route profile segments loaded yet.
+                                        {!selectedRoute
+                                            ? 'Select a route to load profile segments.'
+                                            : 'No Strava-linked segments found on this route. Add them manually, or pick another route.'}
+                                    </div>
+                                )}
+                                {loadingRouteProfile && (
+                                    <div className="text-xs text-muted-foreground border border-dashed border-border rounded p-3">
+                                        Loading route profile…
                                     </div>
                                 )}
                                 <datalist id="route-profile-segment-names">
