@@ -4,7 +4,8 @@ import Link from 'next/link';
 import type { Race } from '@/types/live';
 import type { LeagueSettings } from '@/types/admin';
 import RaceCard from '@/components/races/RaceCard';
-import { useCurrentLiveRaceQuery } from '@/hooks/queries';
+import { useCurrentLiveRaceQuery, useStageRacesQuery } from '@/hooks/queries';
+import { seasonClassLabel } from '@/lib/seasonUi';
 
 interface NextRaceCardProps {
     race: Race;
@@ -14,7 +15,15 @@ interface NextRaceCardProps {
 
 export default function NextRaceCard({ race, leagueSettings, userCategory }: NextRaceCardProps) {
     const { data: liveRace } = useCurrentLiveRaceQuery();
+    const stageRacesQuery = useStageRacesQuery();
     const isThisRaceLive = liveRace?.id === race.id;
+    const event = race.stageRaceId
+        ? (stageRacesQuery.data ?? []).find((e) => e.id === race.stageRaceId)
+        : undefined;
+    const stageLabel =
+        event?.seasonClass === 'tour' && race.stageIndex != null
+            ? `Etape ${race.stageIndex}`
+            : null;
 
     return (
         <div>
@@ -40,7 +49,14 @@ export default function NextRaceCard({ race, leagueSettings, userCategory }: Nex
                     </Link>
                 </div>
             </div>
-            <RaceCard race={race} leagueSettings={leagueSettings} userCategory={userCategory} />
+            <RaceCard
+                race={race}
+                leagueSettings={leagueSettings}
+                userCategory={userCategory}
+                eventName={event?.name}
+                seasonClassLabel={seasonClassLabel(event?.seasonClass)}
+                stageLabel={stageLabel}
+            />
         </div>
     );
 }

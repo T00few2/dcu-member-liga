@@ -1,23 +1,151 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { useRacesQuery, useLeagueSettingsQuery } from '@/hooks/queries';
+import { useRacesQuery, useLeagueSettingsQuery, useStageRacesQuery } from '@/hooks/queries';
 import type { Race } from '@/types/live';
+import type { LeagueSettings } from '@/types/admin';
 import { fromTimestamp } from '@/lib/formatDate';
 import RaceCard from '@/components/races/RaceCard';
+import {
+    buildScheduleBlocks,
+    seasonClassLabel,
+    type ScheduleBlock,
+} from '@/lib/seasonUi';
 
-const DEFAULT_SETTINGS = {
-    finishPoints: [] as number[],
-    sprintPoints: [] as number[],
-    leagueRankPoints: [] as number[],
+const DEFAULT_SETTINGS: LeagueSettings = {
+    finishPoints: [],
+    sprintPoints: [],
+    leagueRankPoints: [],
     bestRacesCount: 5,
 };
 
+function raceIsFuture(race: Race, now: number): boolean {
+    const t = fromTimestamp(race.date)?.getTime();
+    return Number.isFinite(t) && (t as number) > now;
+}
+
+function filterBlocksByTime(blocks: ScheduleBlock[], now: number, mode: 'future' | 'past'): ScheduleBlock[] {
+    return blocks
+        .map((block): ScheduleBlock | null => {
+            if (block.kind === 'orphan') {
+                const future = raceIsFuture(block.race, now);
+                if (mode === 'future' ? future : !future) return block;
+                return null;
+            }
+            const stages = block.stages.filter((r) => {
+                const future = raceIsFuture(r, now);
+                return mode === 'future' ? future : !future;
+            });
+            if (stages.length === 0) return null;
+            const ordered = mode === 'past'
+                ? [...stages].sort((a, b) => {
+                    const at = fromTimestamp(a.date)?.getTime() ?? 0;
+                    const bt = fromTimestamp(b.date)?.getTime() ?? 0;
+                    return bt - at;
+                })
+                : stages;
+            return { kind: 'event', event: block.event, stages: ordered };
+        })
+        .filter((b): b is ScheduleBlock => b != null);
+}
+
+function ScheduleRaceCard({
+    race,
+    eventName,
+    seasonClass,
+    leagueSettings,
+    userCategory,
+    isPast,
+}: {
+    race: Race;
+    eventName?: string | null;
+    seasonClass?: string | null;
+    leagueSettings: LeagueSettings | null;
+    userCategory?: string | null;
+    isPast?: boolean;
+}) {
+    const stageLabel =
+        seasonClass === 'tour' && race.stageIndex != null
+            ? `Etape ${race.stageIndex}`
+            : null;
+
+    return (
+        <RaceCard
+            race={race}
+            leagueSettings={leagueSettings}
+            userCategory={userCategory}
+            isPast={isPast}
+            showPointsSplit={!isPast}
+            eventName={eventName}
+            seasonClassLabel={seasonClassLabel(seasonClass)}
+            stageLabel={stageLabel}
+        />
+    );
+}
+
+function ScheduleBlocks({
+    blocks,
+    leagueSettings,
+    userCategory,
+    isPast,
+}: {
+    blocks: ScheduleBlock[];
+    leagueSettings: LeagueSettings | null;
+    userCategory?: string | null;
+    isPast?: boolean;
+}) {
+    return (
+        <>
+            {blocks.map((block) => {
+                if (block.kind === 'orphan') {
+                    return (
+                        <ScheduleRaceCard
+                            key={block.race.id}
+                            race={block.race}
+                            leagueSettings={leagueSettings}
+                            userCategory={userCategory}
+                            isPast={isPast}
+                        />
+                    );
+                }
+                const classLabel = seasonClassLabel(block.event.seasonClass);
+                return (
+                    <div key={block.event.id} className="mb-8">
+                        <div className="flex flex-wrap items-baseline gap-2 mb-3 px-1">
+                            <h3 className="text-lg font-semibold text-card-foreground">{block.event.name}</h3>
+                            {classLabel && (
+                                <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground bg-muted/40 border border-border px-2 py-0.5 rounded">
+                                    {classLabel}
+                                </span>
+                            )}
+                            {block.event.resultsPhase === 'finalized' && (
+                                <span className="text-xs text-muted-foreground">Afsluttet</span>
+                            )}
+                        </div>
+                        {block.stages.map((race) => (
+                            <ScheduleRaceCard
+                                key={race.id}
+                                race={race}
+                                eventName={null}
+                                seasonClass={block.event.seasonClass}
+                                leagueSettings={leagueSettings}
+                                userCategory={userCategory}
+                                isPast={isPast}
+                            />
+                        ))}
+                    </div>
+                );
+            })}
+        </>
+    );
+}
+
 export default function SchedulePage() {
-    const { user, userCategory, loading: authLoading, isRegistered } = useAuth();
+    const { userCategory, loading: authLoading, isRegistered } = useAuth();
     const racesQuery = useRacesQuery();
     const settingsQuery = useLeagueSettingsQuery();
+    const stageRacesQuery = useStageRacesQuery();
     const [debugMode, setDebugMode] = useState(false);
     const [debugLogs, setDebugLogs] = useState<string[]>([]);
 
@@ -64,6 +192,25 @@ export default function SchedulePage() {
         };
     }, [debugMode]);
 
+    const rawRaces = racesQuery.data ?? [];
+    const stageRaces = stageRacesQuery.data ?? [];
+    const leagueSettings = settingsQuery.data ?? DEFAULT_SETTINGS;
+
+    const allBlocks = useMemo(
+        () => buildScheduleBlocks(rawRaces, stageRaces),
+        [rawRaces, stageRaces],
+    );
+
+    const futureBlocks = useMemo(
+        () => filterBlocksByTime(allBlocks, Date.now(), 'future'),
+        [allBlocks],
+    );
+    const pastBlocks = useMemo(() => {
+        const blocks = filterBlocksByTime(allBlocks, Date.now(), 'past');
+        // Newest event groups first for past
+        return [...blocks].reverse();
+    }, [allBlocks]);
+
     const isLoading = authLoading || racesQuery.isLoading || settingsQuery.isLoading;
 
     if (isLoading) {
@@ -72,30 +219,12 @@ export default function SchedulePage() {
 
     if (!isRegistered) return null;
 
-    const rawRaces = racesQuery.data ?? [];
-    const leagueSettings = settingsQuery.data ?? DEFAULT_SETTINGS;
-
-    const now = Date.now();
-    const sorted = [...rawRaces].sort((a: Race, b: Race) => {
-        const aTime = fromTimestamp(a.date)?.getTime() ?? Number.POSITIVE_INFINITY;
-        const bTime = fromTimestamp(b.date)?.getTime() ?? Number.POSITIVE_INFINITY;
-        return aTime - bTime;
-    });
-    const futureRaces = sorted.filter((r) => {
-        const t = fromTimestamp(r.date)?.getTime();
-        return Number.isFinite(t) && (t as number) > now;
-    });
-    const pastRaces = sorted.filter((r) => {
-        const t = fromTimestamp(r.date)?.getTime();
-        return Number.isFinite(t) && (t as number) <= now;
-    }).reverse();
-
     if (debugMode) {
         const invalid = rawRaces.filter((r: Race) => {
             const t = fromTimestamp(r.date)?.getTime();
             return !Number.isFinite(t);
         }).length;
-        console.debug(`[schedule] races=${rawRaces.length}, invalidDates=${invalid}`);
+        console.debug(`[schedule] races=${rawRaces.length}, events=${stageRaces.length}, invalidDates=${invalid}`);
     }
 
     return (
@@ -112,39 +241,32 @@ export default function SchedulePage() {
                 </div>
             )}
 
-            {futureRaces.length > 0 && (
+            {futureBlocks.length > 0 && (
                 <div className="mb-12">
                     <h2 className="text-xl font-semibold mb-6 text-muted-foreground flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-green-500"></span>
                         Kommende løb
                     </h2>
-                    {futureRaces.map(race => (
-                        <RaceCard
-                            key={race.id}
-                            race={race}
-                            leagueSettings={leagueSettings}
-                            userCategory={userCategory}
-                        />
-                    ))}
+                    <ScheduleBlocks
+                        blocks={futureBlocks}
+                        leagueSettings={leagueSettings}
+                        userCategory={userCategory}
+                    />
                 </div>
             )}
 
-            {pastRaces.length > 0 && (
+            {pastBlocks.length > 0 && (
                 <div>
                     <h2 className="text-xl font-semibold mb-6 text-muted-foreground flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-slate-400"></span>
                         Tidligere løb
                     </h2>
-                    {pastRaces.map(race => (
-                        <RaceCard
-                            key={race.id}
-                            race={race}
-                            leagueSettings={leagueSettings}
-                            userCategory={userCategory}
-                            isPast={true}
-                            showPointsSplit={false}
-                        />
-                    ))}
+                    <ScheduleBlocks
+                        blocks={pastBlocks}
+                        leagueSettings={leagueSettings}
+                        userCategory={userCategory}
+                        isPast
+                    />
                 </div>
             )}
 

@@ -44,14 +44,18 @@ export function StandingsTable({ standings, allRaces, category, bestRacesCount, 
         const sortedResults = [...riderResults].sort((a, b) => b.points - a.points);
         const bestResults = sortedResults.slice(0, bestRacesCount);
         const bestTotal = bestResults.reduce((sum, r) => sum + r.points, 0);
-        const bestRaceIds = new Set(bestResults.map(r => r.raceId));
+        const bestRaceIds = new Set(
+            bestResults.map(r => r.raceId).filter((id): id is string => !!id),
+        );
         
         // Create a map of raceId -> points for quick lookup
         const pointsByRace: Record<string, { points: number, isBest: boolean }> = {};
         riderResults.forEach(r => {
-            pointsByRace[r.raceId] = { 
+            const raceId = r.raceId;
+            if (!raceId) return;
+            pointsByRace[raceId] = { 
                 points: r.points, 
-                isBest: bestRaceIds.has(r.raceId) 
+                isBest: bestRaceIds.has(raceId) 
             };
         });
         

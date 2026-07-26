@@ -15,6 +15,10 @@ import type {
 } from '@/types/live';
 import StandingsTable from '@/app/results/_components/StandingsTable';
 import RaceResultsTable from '@/app/results/_components/RaceResultsTable';
+import {
+    buildLegacyStandingColumns,
+    processStandingsForDisplay,
+} from '@/lib/seasonUi';
 
 interface ArchiveSummary {
     id: string;
@@ -30,8 +34,6 @@ interface ArchiveDetail {
     standings: Record<string, StandingEntry[]>;
     races: { id: string; name: string; date: string; hasResults: boolean }[];
 }
-
-type ProcessedRider = StandingEntry & { calculatedTotal: number; countingRaceIds: Set<string> };
 
 const DEFAULT_CATEGORY_RANK = [
     'Diamond', 'Ruby', 'Emerald', 'Sapphire', 'Amethyst', 'Platinum', 'Gold', 'Silver', 'Bronze', 'Copper',
@@ -231,16 +233,19 @@ export default function HistorikPage() {
         setAutoSelectStandingsCategory(false);
     };
 
-    const currentStandings = useMemo<ProcessedRider[]>(() => {
-        return (standings[displayStandingsCategory] || [])
-            .map(rider => {
-                const sorted = [...(rider.results ?? [])].sort((a, b) => b.points - a.points);
-                const countingRaceIds = new Set(sorted.slice(0, bestRacesCount).map(r => r.raceId));
-                const calculatedTotal = sorted.slice(0, bestRacesCount).reduce((sum, r) => sum + r.points, 0);
-                return { ...rider, results: rider.results ?? [], calculatedTotal, countingRaceIds };
-            })
-            .sort((a, b) => b.calculatedTotal - a.calculatedTotal);
-    }, [standings, displayStandingsCategory, bestRacesCount]);
+    const historikColumns = useMemo(
+        () => buildLegacyStandingColumns(racesForTable),
+        [racesForTable],
+    );
+
+    const currentStandings = useMemo(
+        () => processStandingsForDisplay(
+            standings[displayStandingsCategory] || [],
+            historikColumns,
+            bestRacesCount,
+        ),
+        [standings, displayStandingsCategory, historikColumns, bestRacesCount],
+    );
 
     const { sprintColumns, bestSplitTimes } = useMemo(() => {
         const allSprintKeys = new Set<string>();
@@ -334,7 +339,7 @@ export default function HistorikPage() {
                     {activeTab === 'standings' && (
                         <StandingsTable
                             currentStandings={currentStandings}
-                            races={racesForTable}
+                            columns={historikColumns}
                             availableStandingsCategories={availableStandingsCategories}
                             displayStandingsCategory={displayStandingsCategory}
                             standingsCategory={standingsCategory}

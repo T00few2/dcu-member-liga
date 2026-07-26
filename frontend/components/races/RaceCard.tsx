@@ -28,6 +28,10 @@ interface RaceCardProps {
     isPast?: boolean;
     showPointsSplit?: boolean;
     variant?: 'full' | 'public';
+    /** Season event context (Phase C) */
+    eventName?: string | null;
+    seasonClassLabel?: string | null;
+    stageLabel?: string | null;
 }
 
 const normalize = (value?: string | null) => (value || '').trim().toLowerCase();
@@ -114,6 +118,9 @@ export default function RaceCard({
     isPast = false,
     showPointsSplit = true,
     variant = 'full',
+    eventName,
+    seasonClassLabel,
+    stageLabel,
 }: RaceCardProps) {
     const raceDate = fromTimestamp(race.date) || new Date(NaN);
     const isPublicVariant = variant === 'public';
@@ -249,6 +256,21 @@ export default function RaceCard({
                         <div className="text-sm font-medium text-primary mb-1">
                             {formatDateLong(raceDate)}
                         </div>
+                        {(eventName || seasonClassLabel || stageLabel) && (
+                            <div className="flex flex-wrap items-center gap-2 mb-1">
+                                {seasonClassLabel && (
+                                    <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground bg-muted/40 border border-border px-2 py-0.5 rounded">
+                                        {seasonClassLabel}
+                                    </span>
+                                )}
+                                {eventName && (
+                                    <span className="text-sm font-medium text-muted-foreground">{eventName}</span>
+                                )}
+                                {stageLabel && (
+                                    <span className="text-xs text-primary font-semibold">{stageLabel}</span>
+                                )}
+                            </div>
+                        )}
                         <h3 className={isPublicVariant ? 'text-xl font-bold text-card-foreground' : 'text-2xl font-bold text-card-foreground'}>{race.name}</h3>
                         <div className="text-muted-foreground text-sm mt-1">
                             Start: {formatTimeWithTz(raceDate)}

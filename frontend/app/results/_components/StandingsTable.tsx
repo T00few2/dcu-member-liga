@@ -1,30 +1,49 @@
 import type { Race, StandingEntry } from '@/types/live';
+import {
+    buildLegacyStandingColumns,
+    columnMatchesResult,
+    type SeasonStandingColumn,
+} from '@/lib/seasonUi';
 
-type ProcessedRider = StandingEntry & { calculatedTotal: number; countingRaceIds: Set<string> };
+type ProcessedRider = StandingEntry & {
+    calculatedTotal: number;
+    countingKeys: Set<string>;
+};
 
 interface Props {
     currentStandings: ProcessedRider[];
-    races: Race[];
+    /** @deprecated Prefer `columns`. Used as fallback for Historik / legacy. */
+    races?: Race[];
+    columns?: SeasonStandingColumn[];
     availableStandingsCategories: string[];
     displayStandingsCategory: string;
     standingsCategory: string;
     setStandingsCategory: (cat: string) => void;
     clubByZwiftId?: Map<string, string>;
+    title?: string;
+    countingHint?: string;
 }
 
 export default function StandingsTable({
     currentStandings,
-    races,
+    races = [],
+    columns: columnsProp,
     availableStandingsCategories,
     displayStandingsCategory,
     standingsCategory,
     setStandingsCategory,
     clubByZwiftId,
+    title = 'Førertavle',
+    countingHint = 'Tæller ikke (uden for best-X)',
 }: Props) {
+    const columns = columnsProp?.length
+        ? columnsProp
+        : buildLegacyStandingColumns(races);
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-semibold text-card-foreground">Førertavle</h2>
+                <h2 className="text-xl font-semibold text-card-foreground">{title}</h2>
                 <div className="flex gap-2 bg-muted/20 rounded p-1 overflow-x-auto">
                     {availableStandingsCategories.map(cat => (
                         <button
@@ -50,10 +69,13 @@ export default function StandingsTable({
                                     <th className="px-4 py-3 w-12 text-center">Rang</th>
                                     <th className="px-4 py-3">Rytter</th>
                                     <th className="px-4 py-3">Klub</th>
-                                    <th className="px-4 py-3 text-center">Løb</th>
-                                    {races.map((race) => (
-                                        <th key={race.id} className="px-2 py-3 text-center text-xs font-medium text-muted-foreground whitespace-normal min-w-[60px]">
-                                            {race.name}
+                                    <th className="px-4 py-3 text-center">Resultater</th>
+                                    {columns.map((col) => (
+                                        <th
+                                            key={col.key}
+                                            className="px-2 py-3 text-center text-xs font-medium text-muted-foreground whitespace-normal min-w-[60px]"
+                                        >
+                                            {col.label}
                                         </th>
                                     ))}
                                     <th className="px-4 py-3 text-right font-bold text-primary">Samlede point</th>
@@ -68,19 +90,19 @@ export default function StandingsTable({
                                         <td className="px-4 py-3 font-medium text-card-foreground">{rider.name}</td>
                                         <td className="px-4 py-3 text-muted-foreground">{clubByZwiftId?.get(rider.zwiftId) || '-'}</td>
                                         <td className="px-4 py-3 text-center text-muted-foreground">{rider.raceCount}</td>
-                                        {races.map(race => {
-                                            const result = rider.results.find(r => r.raceId === race.id);
-                                            const isCounting = rider.countingRaceIds.has(race.id);
+                                        {columns.map((col) => {
+                                            const result = rider.results.find((r) => columnMatchesResult(col, r));
+                                            const isCounting = result ? rider.countingKeys.has(col.key) : false;
                                             return (
                                                 <td
-                                                    key={race.id}
+                                                    key={col.key}
                                                     className={`px-2 py-3 text-center text-sm ${result
                                                         ? isCounting
                                                             ? 'text-foreground font-medium'
                                                             : 'text-muted-foreground/50 line-through'
                                                         : 'text-muted-foreground'
                                                         }`}
-                                                    title={result && !isCounting ? 'Tæller ikke (uden for top 5)' : undefined}
+                                                    title={result && !isCounting ? countingHint : undefined}
                                                 >
                                                     {result ? result.points : '-'}
                                                 </td>

@@ -38,6 +38,10 @@ interface Props {
     user?: User | null;
     /** Base path for DR detail fetch, e.g. `/archives/{id}/races/{raceId}`. Defaults to `/races/{selectedRaceId}`. */
     drVerificationsApiBase?: string;
+    /** When true, parent owns the race/event selector. */
+    hideRaceSelector?: boolean;
+    getRaceOptionLabel?: (race: Race) => string;
+    eventContextLabel?: string;
 }
 
 export default function RaceResultsTable({
@@ -60,6 +64,9 @@ export default function RaceResultsTable({
     weightVerifications,
     user = null,
     drVerificationsApiBase,
+    hideRaceSelector = false,
+    getRaceOptionLabel,
+    eventContextLabel,
 }: Props) {
     const [drModal, setDrModal] = useState<{ name: string; verification: DualRecordingVerification; zwiftId: string } | null>(null);
     const [drDetailResult, setDrDetailResult] = useState<DualRecordingResult | null>(null);
@@ -113,31 +120,44 @@ export default function RaceResultsTable({
     return (
         <>
         <div className="space-y-6">
-            {/* Race Selector */}
-            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between bg-card border border-border p-4 rounded-lg shadow-sm">
-                <div className="flex flex-col gap-1 w-full sm:w-auto">
-                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Vælg løb</label>
-                    <select
-                        value={selectedRaceId}
-                        onChange={(e) => setSelectedRaceId(e.target.value)}
-                        className="bg-background border border-input rounded px-3 py-2 text-foreground font-medium w-full sm:w-80"
-                    >
-                        {races.map(r => (
-                            <option key={r.id} value={r.id}>
-                                {formatDateShort(r.date)} - {r.name}
-                            </option>
-                        ))}
-                        {races.length === 0 && <option>Ingen løb fundet</option>}
-                    </select>
-                </div>
-
-                {selectedRace && (
-                    <div className="text-right hidden sm:block">
-                        <div className="text-sm font-medium text-card-foreground">{selectedRace.map}</div>
-                        <div className="text-xs text-muted-foreground">{selectedRace.routeName} • {displayLaps} omgange</div>
+            {!hideRaceSelector && (
+                <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between bg-card border border-border p-4 rounded-lg shadow-sm">
+                    <div className="flex flex-col gap-1 w-full sm:w-auto">
+                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Vælg løb</label>
+                        <select
+                            value={selectedRaceId}
+                            onChange={(e) => setSelectedRaceId(e.target.value)}
+                            className="bg-background border border-input rounded px-3 py-2 text-foreground font-medium w-full sm:w-80"
+                        >
+                            {races.map(r => (
+                                <option key={r.id} value={r.id}>
+                                    {getRaceOptionLabel
+                                        ? getRaceOptionLabel(r)
+                                        : `${formatDateShort(r.date)} - ${r.name}`}
+                                </option>
+                            ))}
+                            {races.length === 0 && <option>Ingen løb fundet</option>}
+                        </select>
                     </div>
-                )}
-            </div>
+
+                    {selectedRace && (
+                        <div className="text-right hidden sm:block">
+                            {eventContextLabel && (
+                                <div className="text-xs text-muted-foreground mb-0.5">{eventContextLabel}</div>
+                            )}
+                            <div className="text-sm font-medium text-card-foreground">{selectedRace.map}</div>
+                            <div className="text-xs text-muted-foreground">{selectedRace.routeName} • {displayLaps} omgange</div>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {hideRaceSelector && eventContextLabel && (
+                <div className="text-sm text-muted-foreground px-1">
+                    {eventContextLabel}
+                    {selectedRace?.name ? ` · ${selectedRace.name}` : ''}
+                </div>
+            )}
 
             {/* Category Tabs */}
             <div className="flex gap-2 border-b border-border pb-1 overflow-x-auto">

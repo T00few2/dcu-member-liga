@@ -139,7 +139,14 @@ export interface StageRace {
     seasonClass: SeasonClass;
     bestRacesCount: number;
     resultsPhase?: ResultsPhase;
-    standings?: Record<string, unknown[]>;
+    /** Event GC entries (same shape as league standings entries). */
+    standings?: Record<string, Array<{
+        zwiftId: string;
+        name: string;
+        totalPoints: number;
+        raceCount: number;
+        results: Array<{ raceId?: string | null; points: number }>;
+    }>>;
     finalizedAt?: string;
     updatedAt?: string;
     stages?: StageRaceStageSummary[];

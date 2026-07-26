@@ -205,12 +205,19 @@ export interface Race {
     };
 }
 
+export interface StandingResultLine {
+    raceId?: string | null;
+    stageRaceId?: string;
+    source?: 'stage' | 'gc';
+    points: number;
+}
+
 export interface StandingEntry {
     zwiftId: string;
     name: string;
     totalPoints: number;
     raceCount: number;
-    results: { raceId: string; points: number }[];
+    results: StandingResultLine[];
     calculatedTotal?: number;
     pointsByRace?: Record<string, { points: number; isBest: boolean }>;
 }
