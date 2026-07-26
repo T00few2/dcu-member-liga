@@ -153,10 +153,9 @@ export default function RaceCard({
 
     const hasSprintsAndRoute = resolvedSprintsToShow.length > 0;
 
-    // Elevation/profile is needed for the route chart even when no sprint picks exist.
     const { data: elevationData } = useRouteElevationQuery(
-        race.map && race.routeName ? race.map : undefined,
-        race.map && race.routeName ? race.routeName : undefined,
+        race.map && race.routeName && hasSprintsAndRoute ? race.map : undefined,
+        race.map && race.routeName && hasSprintsAndRoute ? race.routeName : undefined,
         lapsToShow,
     );
 

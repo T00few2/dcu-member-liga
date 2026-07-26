@@ -71,35 +71,18 @@ export async function GET(req: NextRequest) {
             };
         });
 
-    // Pass world/route so the backend can fall back to What's on Zwift when Strava
-    // segment streams are unavailable (e.g. Inactive API application).
-    const upstreamParams = new URLSearchParams({
-        world: match.world,
-        route: match.slug,
-    });
-    const upstream = await fetch(
-        `${API_URL}/route-elevation/${match.stravaSegmentId}?${upstreamParams}`,
-        { cache: 'no-store' },
+    const upstream = await fetch(`${API_URL}/route-elevation/${match.stravaSegmentId}`, fresh
+        ? { cache: 'no-store' }
+        : { next: { revalidate: 86400 } }
     );
 
-    // Prefer live elevation cache, but still return segment labels if upstream is down.
-    let data: Record<string, unknown> = {};
-    if (upstream.ok) {
-        data = await upstream.json();
-    } else {
-        data = {
-            distance: [],
-            altitude: [],
-            elevationFetchError: `Failed to fetch elevation data (${upstream.status})`,
-        };
+    if (!upstream.ok) {
+        return NextResponse.json({ error: 'Failed to fetch elevation data' }, { status: 502 });
     }
-    // Treat missing OR empty profileSegments as unset so charts/admin can fall back
-    // to zwift-data segmentsOnRoute (same behavior RaceElevationChart already expects).
-    const cachedProfile = Array.isArray(data?.profileSegments)
-        ? (data.profileSegments as ProfileSegment[])
-        : null;
-    const singleLapProfileSegments: ProfileSegment[] = (cachedProfile && cachedProfile.length > 0)
-        ? cachedProfile
+
+    const data = await upstream.json();
+    const singleLapProfileSegments: ProfileSegment[] = Array.isArray(data?.profileSegments)
+        ? data.profileSegments
         : routeSegments.map((seg) => ({
             name: seg.name,
             type: seg.type,
@@ -111,8 +94,8 @@ export async function GET(req: NextRequest) {
     // Tile elevation arrays and profileSegments for multi-lap routes.
     // The backend returns data for a single lap (no lead-in); each subsequent lap is appended
     // with distance offset = lapLength * lapIndex.
-    const singleLapDistances: number[] = Array.isArray(data?.distance) ? (data.distance as number[]) : [];
-    const singleLapAltitudes: number[] = Array.isArray(data?.altitude) ? (data.altitude as number[]) : [];
+    const singleLapDistances: number[] = Array.isArray(data?.distance) ? data.distance : [];
+    const singleLapAltitudes: number[] = Array.isArray(data?.altitude) ? data.altitude : [];
     const lapLengthM = singleLapDistances.length > 0
         ? (singleLapDistances[singleLapDistances.length - 1] ?? 0)
         : 0;
