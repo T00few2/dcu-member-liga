@@ -1022,11 +1022,39 @@ def _has_elevation_streams(data: dict | None) -> bool:
     )
 
 
+def _resolve_elevation_streams(segment_id: int, world: str | None = None, route: str | None = None):
+    """
+    Try Strava first, then What's on Zwift (when world/route slugs are provided).
+    Returns (streams_dict | None, error_message | None, source | None).
+    """
+    streams, strava_err = strava_service.get_segment_streams(segment_id)
+    if streams and _has_elevation_streams(streams):
+        return streams, None, 'strava'
+
+    wow_err = None
+    if world and route:
+        try:
+            from services.elevation_sources import fetch_whatsonzwift_elevation_streams
+            wow_streams = fetch_whatsonzwift_elevation_streams(world, route)
+            if wow_streams and _has_elevation_streams(wow_streams):
+                return wow_streams, None, 'whatsonzwift'
+            wow_err = 'What\'s on Zwift elevation profile unavailable'
+        except Exception as e:
+            logger.warning("What's on Zwift elevation fallback failed for %s: %s", segment_id, e)
+            wow_err = f'What\'s on Zwift elevation fallback error: {e}'
+
+    parts = [p for p in (strava_err, wow_err) if p]
+    return None, ('; '.join(parts) if parts else 'Could not fetch elevation data'), None
+
+
 @races_bp.route('/route-elevation/<int:segment_id>', methods=['GET'])
 def get_route_elevation(segment_id):
     """Return distance + altitude streams for a Strava segment, cached in Firestore."""
     if not db:
         return jsonify({'error': 'Database unavailable'}), 503
+
+    world = (request.args.get('world') or '').strip() or None
+    route = (request.args.get('route') or '').strip() or None
 
     cache_ref = db.collection('elevation_cache').document(str(segment_id))
     cached = cache_ref.get()
@@ -1035,29 +1063,36 @@ def get_route_elevation(segment_id):
         data = {}
 
     # profileSegments may be saved before elevation streams exist. Always backfill
-    # missing distance/altitude from Strava so race-card charts can render.
+    # missing distance/altitude so race-card charts can render.
     if not _has_elevation_streams(data):
-        streams = strava_service.get_segment_streams(segment_id)
+        streams, fetch_err, source = _resolve_elevation_streams(segment_id, world, route)
         if streams and _has_elevation_streams(streams):
             cache_ref.set(streams, merge=True)
             data = {**data, **streams}
+            logger.info(
+                "Backfilled elevation streams for segment %s via %s (%s points)",
+                segment_id,
+                source,
+                len(streams.get('distance') or []),
+            )
         elif not data:
             logger.warning(
-                "Strava elevation streams unavailable for segment %s; returning empty cache shell",
+                "Elevation streams unavailable for segment %s: %s",
                 segment_id,
+                fetch_err,
             )
             return jsonify({
                 'distance': [],
                 'altitude': [],
                 'profileSegments': [],
-                'elevationFetchError': 'Could not fetch elevation data from Strava',
+                'elevationFetchError': fetch_err or 'Could not fetch elevation data',
             }), 200
         else:
             data = {
                 **data,
                 'distance': data.get('distance') if isinstance(data.get('distance'), list) else [],
                 'altitude': data.get('altitude') if isinstance(data.get('altitude'), list) else [],
-                'elevationFetchError': 'Could not fetch elevation data from Strava',
+                'elevationFetchError': fetch_err or 'Could not fetch elevation data',
             }
 
     return jsonify(data)
@@ -1086,6 +1121,9 @@ def update_route_profile_segments(segment_id):
                 lead_in_distance = float(raw_lead_in)
             except (TypeError, ValueError):
                 return jsonify({'message': 'leadInDistance must be a number'}), 400
+
+        world = str(req_data.get('world') or '').strip() or None
+        route = str(req_data.get('route') or '').strip() or None
 
         cleaned_segments = []
         for i, seg in enumerate(raw_segments):
@@ -1121,7 +1159,29 @@ def update_route_profile_segments(segment_id):
 
         cache_ref = db.collection('elevation_cache').document(str(segment_id))
         cache_ref.set(update_data, merge=True)
-        return jsonify({'message': 'Route profile segments updated', 'count': len(cleaned_segments)}), 200
+
+        # Ensure race-card charts can render: backfill streams if the cache shell lacks them.
+        cached = cache_ref.get().to_dict() or {}
+        elevation_ready = _has_elevation_streams(cached)
+        elevation_fetch_error = None
+        elevation_source = None
+        if not elevation_ready:
+            streams, fetch_err, source = _resolve_elevation_streams(segment_id, world, route)
+            if streams and _has_elevation_streams(streams):
+                cache_ref.set(streams, merge=True)
+                elevation_ready = True
+                elevation_source = source
+            else:
+                elevation_fetch_error = fetch_err or 'Could not fetch elevation data'
+                elevation_ready = False
+
+        return jsonify({
+            'message': 'Route profile segments updated',
+            'count': len(cleaned_segments),
+            'elevationReady': elevation_ready,
+            'elevationSource': elevation_source,
+            'elevationFetchError': elevation_fetch_error,
+        }), 200
     except Exception as e:
         logger.error(f"Route profile segment update error for {segment_id}: {e}")
         return jsonify({'message': str(e)}), 500

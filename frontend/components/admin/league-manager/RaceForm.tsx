@@ -158,7 +158,11 @@ export default function RaceForm({
             let cache: Record<string, unknown> = {};
             let cacheWarning: string | null = null;
             try {
-                const cacheRes = await fetch(`${API_URL}/route-elevation/${sid}`, {
+                const elevParams = new URLSearchParams({
+                    world: selectedRoute.map,
+                    route: selectedRoute.name,
+                });
+                const cacheRes = await fetch(`${API_URL}/route-elevation/${sid}?${elevParams}`, {
                     cache: 'no-store',
                     signal: opts?.signal,
                 });
@@ -210,15 +214,28 @@ export default function RaceForm({
                         'Content-Type': 'application/json',
                         Authorization: `Bearer ${token}`,
                     },
-                    body: JSON.stringify({ profileSegments: payload }),
+                    body: JSON.stringify({
+                        profileSegments: payload,
+                        world: selectedRoute.map,
+                        route: selectedRoute.name,
+                    }),
                     signal: opts?.signal,
                 });
+                const saveJson = await saveRes.json().catch(() => ({}));
                 if (!saveRes.ok) {
-                    const json = await saveRes.json().catch(() => ({}));
                     setRouteProfileError(
-                        json?.message
+                        saveJson?.message
                         || 'Loaded defaults, but failed to save them to elevation_cache. Click Save to retry.',
                     );
+                } else if (saveJson?.elevationReady === false) {
+                    setRouteProfileError(
+                        saveJson?.elevationFetchError
+                            ? `Profile segments saved, but race-card elevation chart is not ready: ${saveJson.elevationFetchError}`
+                            : 'Profile segments saved, but elevation streams are still missing. Race cards will not show the chart yet.',
+                    );
+                } else if (saveJson?.elevationReady === true && (cacheWarning || elevErr)) {
+                    // Streams were backfilled on save — clear earlier elevation warnings.
+                    setRouteProfileError(null);
                 }
             }
         } catch (e: any) {
@@ -314,13 +331,25 @@ export default function RaceForm({
                 body: JSON.stringify({
                     profileSegments: payload,
                     ...(leadInValue !== null && Number.isFinite(leadInValue) ? { leadInDistance: leadInValue } : {}),
+                    ...(selectedRoute?.map ? { world: selectedRoute.map } : {}),
+                    ...(selectedRoute?.name ? { route: selectedRoute.name } : {}),
                 }),
             });
             const json = await res.json().catch(() => ({}));
             if (!res.ok) {
                 throw new Error(json?.message || `Failed to save (${res.status})`);
             }
-            alert('Route profile segments saved.');
+            if (json?.elevationReady === false) {
+                const detail = json?.elevationFetchError
+                    ? `: ${json.elevationFetchError}`
+                    : '';
+                setRouteProfileError(
+                    `Profile segments saved, but race-card elevation chart is not ready${detail}`,
+                );
+                alert('Profile segments saved, but elevation streams are still missing — race cards will not show the chart yet.');
+            } else {
+                alert('Route profile segments saved.');
+            }
         } catch (e: any) {
             setRouteProfileError(e?.message || 'Could not save route profile segments');
         } finally {

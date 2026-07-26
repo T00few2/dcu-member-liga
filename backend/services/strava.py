@@ -337,26 +337,52 @@ class StravaService:
             return []
 
     def get_segment_streams(self, segment_id: int):
-        """Fetch distance and altitude streams for a public Strava segment."""
+        """
+        Fetch distance and altitude streams for a public Strava segment.
+
+        Returns (streams_dict | None, error_message | None).
+        """
         access_token = self._get_service_token()
         if not access_token:
-            return None
+            return None, 'No Strava token available for segment stream fetch'
 
         try:
             url = (
                 f"https://www.strava.com/api/v3/segments/{segment_id}/streams"
                 f"?keys=distance,altitude&key_by_type=true"
             )
-            res = requests.get(url, headers={'Authorization': f'Bearer {access_token}'})
+            res = requests.get(url, headers={'Authorization': f'Bearer {access_token}'}, timeout=30)
             if res.status_code == 200:
                 data = res.json()
-                return {
+                streams = {
                     'distance': data.get('distance', {}).get('data', []),
                     'altitude': data.get('altitude', {}).get('data', []),
                 }
-            else:
-                logger.error(f"Segment stream fetch failed: {res.status_code} {res.text}")
-                return None
+                if not streams['distance'] or not streams['altitude']:
+                    return None, 'Strava returned empty elevation streams'
+                return streams, None
+
+            err_text = (res.text or '')[:300]
+            try:
+                payload = res.json()
+                errors = payload.get('errors') if isinstance(payload, dict) else None
+                if isinstance(errors, list):
+                    for item in errors:
+                        if not isinstance(item, dict):
+                            continue
+                        if (
+                            str(item.get('resource', '')).lower() == 'application'
+                            and str(item.get('code', '')).lower() == 'inactive'
+                        ):
+                            return None, (
+                                'Strava API application is Inactive — reactivate it at '
+                                'https://www.strava.com/settings/api then retry elevation fetch'
+                            )
+            except Exception:
+                pass
+
+            logger.error(f"Segment stream fetch failed: {res.status_code} {err_text}")
+            return None, f'Strava segment streams failed ({res.status_code})'
         except Exception as e:
             logger.error(f"Error fetching segment streams: {e}")
-            return None
+            return None, f'Error fetching Strava segment streams: {e}'

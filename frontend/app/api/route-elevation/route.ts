@@ -71,9 +71,16 @@ export async function GET(req: NextRequest) {
             };
         });
 
-    const upstream = await fetch(`${API_URL}/route-elevation/${match.stravaSegmentId}`, {
-        cache: 'no-store',
+    // Pass world/route so the backend can fall back to What's on Zwift when Strava
+    // segment streams are unavailable (e.g. Inactive API application).
+    const upstreamParams = new URLSearchParams({
+        world: match.world,
+        route: match.slug,
     });
+    const upstream = await fetch(
+        `${API_URL}/route-elevation/${match.stravaSegmentId}?${upstreamParams}`,
+        { cache: 'no-store' },
+    );
 
     // Prefer live elevation cache, but still return segment labels if upstream is down.
     let data: Record<string, unknown> = {};
