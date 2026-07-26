@@ -1022,7 +1022,18 @@ def get_route_elevation(segment_id):
 
     streams = strava_service.get_segment_streams(segment_id)
     if not streams:
-        return jsonify({'error': 'Could not fetch elevation data'}), 502
+        # Do not hard-fail: profileSegments can still be written/read independently,
+        # and clients may seed route segment labels without elevation streams.
+        logger.warning(
+            "Strava elevation streams unavailable for segment %s; returning empty cache shell",
+            segment_id,
+        )
+        return jsonify({
+            'distance': [],
+            'altitude': [],
+            'profileSegments': [],
+            'elevationFetchError': 'Could not fetch elevation data from Strava',
+        }), 200
 
     cache_ref.set(streams)
     return jsonify(streams)

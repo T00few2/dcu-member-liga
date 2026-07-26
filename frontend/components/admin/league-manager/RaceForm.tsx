@@ -153,15 +153,24 @@ export default function RaceForm({
             }
             const defaults = mapProfileSegments(meta?.defaultProfileSegments);
 
-            // Load saved cache doc (elevation + any previously saved profileSegments).
-            const cacheRes = await fetch(`${API_URL}/route-elevation/${sid}`, {
-                cache: 'no-store',
-                signal: opts?.signal,
-            });
-            if (!cacheRes.ok) {
-                throw new Error(`Failed to load elevation cache (${cacheRes.status})`);
+            // Load saved cache doc when available. A Strava/elevation 502 must not block
+            // seeding profile segment from/to km from route metadata.
+            let cache: Record<string, unknown> = {};
+            let cacheWarning: string | null = null;
+            try {
+                const cacheRes = await fetch(`${API_URL}/route-elevation/${sid}`, {
+                    cache: 'no-store',
+                    signal: opts?.signal,
+                });
+                if (cacheRes.ok) {
+                    cache = await cacheRes.json();
+                } else {
+                    cacheWarning = `Elevation cache unavailable (${cacheRes.status}). Showing route segment defaults.`;
+                }
+            } catch {
+                cacheWarning = 'Elevation cache unavailable. Showing route segment defaults.';
             }
-            const cache = await cacheRes.json();
+
             let mapped = opts?.forceDefaults ? [] : mapProfileSegments(cache?.profileSegments);
             let seededFromDefaults = false;
 
@@ -176,6 +185,14 @@ export default function RaceForm({
             setRouteProfileSegmentId(sid);
             setRouteProfileSegments(mapped);
             setRouteProfileLeadIn(cache?.leadInDistance != null ? String(cache.leadInDistance) : '');
+            const elevErr = typeof cache?.elevationFetchError === 'string' ? cache.elevationFetchError : null;
+            if (cacheWarning) {
+                setRouteProfileError(cacheWarning);
+            } else if (elevErr && mapped.length > 0) {
+                setRouteProfileError(`${elevErr}. Profile segments were still loaded from the route.`);
+            } else if (elevErr) {
+                setRouteProfileError(elevErr);
+            }
 
             // Persist first-time seed so race cards use the same profileSegments.
             if (seededFromDefaults && user && mapped.length > 0) {
