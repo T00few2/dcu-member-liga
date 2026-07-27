@@ -35,6 +35,7 @@ _allowed_origins_env = os.environ.get(
 ALLOWED_ORIGINS = {o.strip() for o in _allowed_origins_env.split(',') if o.strip()}
 
 _ALLOW_LOCALHOST = os.environ.get('ALLOW_LOCALHOST', 'false').lower() == 'true'
+# Production Testing tab needs this (set SEED_ENABLED=true in Cloud Function env / deploy workflow).
 _SEED_ENABLED = os.environ.get('SEED_ENABLED', 'false').lower() == 'true'
 
 
