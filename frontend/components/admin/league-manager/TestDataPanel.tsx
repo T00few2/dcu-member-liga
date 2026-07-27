@@ -92,13 +92,19 @@ export default function TestDataPanel({
                     setRegisteredRiderCount(data.registeredRiderCount);
                 }
                 setTestParticipantCount(data.testParticipantCount || 0);
+            } else if (res.status === 404) {
+                setStatsError(
+                    'Seed API is not enabled on this backend (SEED_ENABLED). Redeploy with SEED_ENABLED=true.',
+                );
             } else {
                 const data = await res.json().catch(() => ({}));
                 setStatsError(data.message || `Stats request failed (${res.status})`);
             }
         } catch (e) {
             console.error('Error fetching test stats:', e);
-            setStatsError('Could not reach /admin/seed/stats');
+            setStatsError(
+                'Could not reach /admin/seed/stats (often means seed routes are disabled: set SEED_ENABLED=true and redeploy).',
+            );
         }
     };
 
