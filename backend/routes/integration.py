@@ -4,7 +4,7 @@ import threading
 
 from flask import Blueprint, request, jsonify, redirect
 from firebase_admin import firestore
-from extensions import db, strava_service, get_zwift_game_service, get_zwift_service
+from extensions import db, strava_service, get_zwift_game_service, get_zwift_service, get_zwift_insider_service
 from config import FRONTEND_URL
 from authz import verify_user_token, AuthzError
 from services.schema_validation import with_schema_version
@@ -672,6 +672,14 @@ def get_segments():
     game_service = get_zwift_game_service()
     segments = game_service.get_event_segments(route_id, laps=int(laps))
     return jsonify({'segments': segments}), 200
+
+@integration_bp.route('/route-time-estimates', methods=['GET'])
+def get_route_time_estimates():
+    route_name = request.args.get('routeName')
+    if not route_name: return jsonify({'message': 'Missing routeName'}), 400
+
+    service = get_zwift_insider_service()
+    return jsonify(service.get_time_estimates(route_name)), 200
 
 # --- CLUBS ---
 

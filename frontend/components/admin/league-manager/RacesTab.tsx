@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRaceForm } from '@/hooks/useRaceForm';
-import { fetchSegments } from '@/hooks/useLeagueData';
+import { fetchSegments, calculateRouteTotals } from '@/hooks/useLeagueData';
 import { API_URL } from '@/lib/api';
 import { User } from 'firebase/auth';
 import type { Race, Route, Segment, LeagueSettings, LoadingStatus } from '@/types/admin';
@@ -79,6 +79,7 @@ export default function RacesTab({
         try {
             const token = await user.getIdToken();
             const { formState } = raceForm;
+            const { totalDistance, totalElevation } = calculateRouteTotals(selectedRoute, formState.laps);
             const raceData: Partial<Race> = {
                 name: formState.name,
                 date: formState.date,
@@ -87,8 +88,8 @@ export default function RacesTab({
                 routeName: selectedRoute.name,
                 map: selectedRoute.map,
                 laps: formState.laps,
-                totalDistance: Number((selectedRoute.distance * formState.laps + selectedRoute.leadinDistance).toFixed(1)),
-                totalElevation: Math.round(selectedRoute.elevation * formState.laps + selectedRoute.leadinElevation),
+                totalDistance,
+                totalElevation,
                 selectedSegments: formState.selectedSprints.map(s => s.key),
                 sprints: formState.selectedSprints,
                 segmentType: formState.segmentType,
