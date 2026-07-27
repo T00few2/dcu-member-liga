@@ -37,6 +37,58 @@ function interpolate(a: RouteTimeEstimate, b: RouteTimeEstimate, targetWkg: numb
     return a.minutes + ratio * (b.minutes - a.minutes);
 }
 
+interface RouteDistances {
+    distance: number;
+    leadinDistance: number;
+}
+
+/** Total ride time for a given lap count: laps * per-lap time, plus the lead-in at the same pace. */
+export function estimateTotalMinutes(route: RouteDistances, perLapMinutes: number, laps: number): number | null {
+    if (route.distance <= 0 || !(perLapMinutes > 0)) return null;
+    const speedKmPerMin = route.distance / perLapMinutes;
+    const leadInMinutes = route.leadinDistance / speedKmPerMin;
+    return perLapMinutes * laps + leadInMinutes;
+}
+
+export interface LapSolveResult {
+    laps: number;
+    totalMinutes: number;
+    withinSpan: boolean;
+}
+
+/**
+ * Finds the lap count whose total time lands inside [minMinutes, maxMinutes], since total
+ * time increases monotonically with lap count. When no integer lap count fits the span
+ * (laps are discrete), returns the closest one instead and flags it via withinSpan: false.
+ */
+export function solveLapsForTimeSpan(
+    route: RouteDistances,
+    perLapMinutes: number,
+    minMinutes: number,
+    maxMinutes: number,
+): LapSolveResult | null {
+    if (route.distance <= 0 || !(perLapMinutes > 0)) return null;
+
+    const [lo, hi] = minMinutes <= maxMinutes ? [minMinutes, maxMinutes] : [maxMinutes, minMinutes];
+    const speedKmPerMin = route.distance / perLapMinutes;
+    const leadInMinutes = route.leadinDistance / speedKmPerMin;
+    const targetMid = (lo + hi) / 2;
+    const approx = Math.max(1, Math.round((targetMid - leadInMinutes) / perLapMinutes));
+
+    let best = 1;
+    let bestDist = Infinity;
+    for (let n = Math.max(1, approx - 3); n <= approx + 3; n++) {
+        const total = perLapMinutes * n + leadInMinutes;
+        const dist = total < lo ? lo - total : total > hi ? total - hi : 0;
+        if (dist < bestDist) {
+            bestDist = dist;
+            best = n;
+        }
+    }
+
+    return { laps: best, totalMinutes: perLapMinutes * best + leadInMinutes, withinSpan: bestDist === 0 };
+}
+
 export function formatMinutes(totalMinutes: number): string {
     const rounded = Math.round(totalMinutes);
     const hours = Math.floor(rounded / 60);

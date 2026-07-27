@@ -5,15 +5,16 @@ import type { Route } from '@/types/admin';
 import { getRouteHelpers, calculateRouteTotals } from '@/hooks/useLeagueData';
 import { useRouteTimeEstimatesQuery } from '@/hooks/queries';
 import { getZwiftInsiderUrl } from '@/lib/api';
-import { estimateMinutesPerLap, formatMinutes } from '@/lib/timeEstimate';
+import { estimateMinutesPerLap, estimateTotalMinutes, solveLapsForTimeSpan, formatMinutes } from '@/lib/timeEstimate';
 
 interface RoutePlanningTabProps {
     routes: Route[];
 }
 
 type Category = 'A' | 'B' | 'C' | 'D';
+type PlanningMode = 'laps' | 'time';
 const CATEGORIES: Category[] = ['A', 'B', 'C', 'D'];
-const DEFAULT_WKG: Record<Category, number> = { A: 4.0, B: 3.2, C: 2.5, D: 2.0 };
+const DEFAULT_WKG: Record<Category, number> = { A: 4.2, B: 3.8, C: 3.4, D: 3.0 };
 const DEFAULT_LAPS: Record<Category, number> = { A: 1, B: 1, C: 1, D: 1 };
 
 export default function RoutePlanningTab({ routes }: RoutePlanningTabProps) {
@@ -21,6 +22,8 @@ export default function RoutePlanningTab({ routes }: RoutePlanningTabProps) {
     const [selectedRouteId, setSelectedRouteId] = useState('');
     const [laps, setLaps] = useState<Record<Category, number>>(DEFAULT_LAPS);
     const [wkg, setWkg] = useState<Record<Category, number>>(DEFAULT_WKG);
+    const [mode, setMode] = useState<PlanningMode>('laps');
+    const [timeSpanHours, setTimeSpanHours] = useState({ min: 1, max: 1.5 });
 
     const { maps, filteredRoutes, selectedRoute } = getRouteHelpers(routes, selectedMap, selectedRouteId);
     const timeEstimatesQuery = useRouteTimeEstimatesQuery(selectedRoute?.name ?? '');
@@ -89,16 +92,82 @@ export default function RoutePlanningTab({ routes }: RoutePlanningTabProps) {
                         </p>
                     )}
 
+                    <div className="mb-6 flex flex-wrap items-end gap-4">
+                        <div>
+                            <span className="block text-sm font-medium text-muted-foreground mb-1">Planning Mode</span>
+                            <div className="inline-flex rounded border border-input overflow-hidden">
+                                <button
+                                    type="button"
+                                    onClick={() => setMode('laps')}
+                                    className={`px-3 py-1 text-sm ${mode === 'laps' ? 'bg-primary text-primary-foreground' : 'bg-background text-foreground'}`}
+                                >
+                                    Manual Laps
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setMode('time')}
+                                    className={`px-3 py-1 text-sm border-l border-input ${mode === 'time' ? 'bg-primary text-primary-foreground' : 'bg-background text-foreground'}`}
+                                >
+                                    Target Time
+                                </button>
+                            </div>
+                        </div>
+
+                        {mode === 'time' && (
+                            <>
+                                <div>
+                                    <label htmlFor="route-planning-min-hours" className="block text-xs text-muted-foreground mb-1">Min Hours</label>
+                                    <input
+                                        id="route-planning-min-hours"
+                                        type="number"
+                                        step="0.25"
+                                        min="0"
+                                        value={timeSpanHours.min}
+                                        onChange={e => setTimeSpanHours(prev => ({ ...prev, min: parseFloat(e.target.value) || 0 }))}
+                                        className="w-28 p-1 border border-input rounded bg-background text-foreground"
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor="route-planning-max-hours" className="block text-xs text-muted-foreground mb-1">Max Hours</label>
+                                    <input
+                                        id="route-planning-max-hours"
+                                        type="number"
+                                        step="0.25"
+                                        min="0"
+                                        value={timeSpanHours.max}
+                                        onChange={e => setTimeSpanHours(prev => ({ ...prev, max: parseFloat(e.target.value) || 0 }))}
+                                        className="w-28 p-1 border border-input rounded bg-background text-foreground"
+                                    />
+                                </div>
+                                {timeUnavailable && (
+                                    <p className="text-sm text-destructive">
+                                        Can&apos;t solve for laps without time estimates for this route.
+                                    </p>
+                                )}
+                            </>
+                        )}
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                         {CATEGORIES.map(cat => {
-                            const totals = calculateRouteTotals(selectedRoute, laps[cat]);
                             const perLapMinutes = timeData ? estimateMinutesPerLap(timeData.estimates, wkg[cat]) : null;
-                            let totalMinutes: number | null = null;
-                            if (perLapMinutes != null && selectedRoute.distance > 0) {
-                                const speedKmPerMin = selectedRoute.distance / perLapMinutes;
-                                const leadInMinutes = selectedRoute.leadinDistance / speedKmPerMin;
-                                totalMinutes = perLapMinutes * laps[cat] + leadInMinutes;
+
+                            let lapsForCat = laps[cat];
+                            let solved: ReturnType<typeof solveLapsForTimeSpan> = null;
+                            if (mode === 'time' && perLapMinutes != null) {
+                                solved = solveLapsForTimeSpan(
+                                    selectedRoute,
+                                    perLapMinutes,
+                                    timeSpanHours.min * 60,
+                                    timeSpanHours.max * 60,
+                                );
+                                if (solved) lapsForCat = solved.laps;
                             }
+
+                            const totals = calculateRouteTotals(selectedRoute, lapsForCat);
+                            const totalMinutes = perLapMinutes != null
+                                ? estimateTotalMinutes(selectedRoute, perLapMinutes, lapsForCat)
+                                : null;
 
                             return (
                                 <div key={cat} className="border border-border rounded p-4 space-y-3">
@@ -106,13 +175,22 @@ export default function RoutePlanningTab({ routes }: RoutePlanningTabProps) {
 
                                     <div>
                                         <label className="block text-xs text-muted-foreground mb-1">Laps</label>
-                                        <input
-                                            type="number"
-                                            min="1"
-                                            value={laps[cat]}
-                                            onChange={e => setLaps(prev => ({ ...prev, [cat]: parseInt(e.target.value) || 1 }))}
-                                            className="w-full p-1 border border-input rounded bg-background text-foreground"
-                                        />
+                                        {mode === 'laps' ? (
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                value={laps[cat]}
+                                                onChange={e => setLaps(prev => ({ ...prev, [cat]: parseInt(e.target.value) || 1 }))}
+                                                className="w-full p-1 border border-input rounded bg-background text-foreground"
+                                            />
+                                        ) : (
+                                            <div className="w-full p-1">
+                                                <span className="font-mono font-medium">{solved ? solved.laps : '—'}</span>
+                                                {solved && !solved.withinSpan && (
+                                                    <span className="ml-2 text-xs text-destructive">outside target span</span>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
 
                                     <div>
