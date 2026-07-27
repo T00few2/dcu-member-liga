@@ -98,6 +98,8 @@ export interface Race {
     manualDeclassifications?: string[];
     manualExclusions?: string[];
     resultsPhase?: ResultsPhase;
+    /** Present when results were written by admin Testing seed. */
+    resultsSource?: 'seed';
     provisionalUpdatedAt?: string;
     finalizedAt?: string;
     finalizeRunId?: string;

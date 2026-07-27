@@ -494,3 +494,132 @@ class TestProcessRaceResultsBranching:
         assert payload.get('resultsPhase') == RESULTS_PHASE_FINALIZED
         assert payload.get('finalizedAt') is not None
         assert payload.get('finalizeRunId') == 'run-123'
+
+
+class TestIngestPrefetchedResults:
+
+    def test_scores_and_persists_finalized_phase(self):
+        from services.results.constants import RACE_STATUS_FIN
+        from services.results_processor import ResultsProcessor
+
+        race_data = make_race_data()
+        race_data['eventMode'] = 'grouped'
+        race_data['raceGroups'] = [{
+            'eventId': 'g1',
+            'categories': [{'category': 'Diamond'}],
+            'sprints': [{'id': 'seg1', 'count': 1, 'key': 'seg1_1'}],
+            'segmentType': 'sprint',
+        }]
+        db = build_process_results_db(race_data, settings={
+            'finishPoints': [10, 8, 6, 4, 2],
+            'sprintPoints': [5, 3, 1],
+        })
+
+        rp = ResultsProcessor(db, MagicMock(), MagicMock())
+        rp.save_league_standings = MagicMock(return_value={})
+
+        finishers = {
+            'Diamond': [
+                {
+                    'zwiftId': '9990001',
+                    'name': 'Test Rider',
+                    'finishTime': 2_000_000,
+                    'raceStatus': RACE_STATUS_FIN,
+                    'flaggedCheating': False,
+                    'flaggedSandbagging': False,
+                    'criticalP': {
+                        'criticalP15Seconds': 500,
+                        'criticalP1Minute': 400,
+                        'criticalP5Minutes': 300,
+                        'criticalP20Minutes': 250,
+                    },
+                    'isTestData': True,
+                },
+            ],
+        }
+        efforts = {
+            'Diamond': {
+                'seg1': [{
+                    'athleteId': '9990001',
+                    'elapsed': 30_000,
+                    'worldTime': 1_700_000_600_000,
+                    'avgPower': 350,
+                }],
+            },
+        }
+
+        scored = rp.ingest_prefetched_results(
+            'race1',
+            finishers,
+            efforts,
+            results_phase=RESULTS_PHASE_FINALIZED,
+            finalize_run_id='seed-abc',
+        )
+
+        assert 'Diamond' in scored
+        rider = scored['Diamond'][0]
+        assert rider['finishRank'] == 1
+        assert rider['finishPoints'] == 10
+        assert rider['totalPoints'] >= 10
+        assert 'sprintData' in rider
+        assert rider['sprintData'].get('seg1_1', {}).get('rank') == 1
+
+        race_ref = db.collection('races').document.return_value
+        payload = race_ref.update.call_args.args[0]
+        assert payload['resultsPhase'] == RESULTS_PHASE_FINALIZED
+        assert payload['finalizeRunId'] == 'seed-abc'
+        assert payload['finalizedAt'] is not None
+        rp.save_league_standings.assert_called_once()
+
+    def test_provisional_allows_dnf_sprint_points_path(self):
+        from services.results.constants import RACE_STATUS_DNF
+        from services.results_processor import ResultsProcessor
+
+        race_data = make_race_data()
+        race_data['sprints'] = [{'id': 'seg1', 'count': 1, 'key': 'seg1_1'}]
+        race_data['segmentType'] = 'sprint'
+        db = build_process_results_db(race_data, settings={
+            'finishPoints': [10],
+            'sprintPoints': [5, 3, 1],
+        })
+
+        rp = ResultsProcessor(db, MagicMock(), MagicMock())
+        rp.save_league_standings = MagicMock(return_value={})
+
+        finishers = {
+            'A': [{
+                'zwiftId': '9990002',
+                'name': 'DNF Rider',
+                'finishTime': 0,
+                'raceStatus': RACE_STATUS_DNF,
+                'flaggedCheating': False,
+                'flaggedSandbagging': False,
+                'criticalP': {},
+                'isTestData': True,
+            }],
+        }
+        efforts = {
+            'A': {
+                'seg1': [{
+                    'athleteId': '9990002',
+                    'elapsed': 40_000,
+                    'worldTime': 1_700_000_600_000,
+                    'avgPower': 300,
+                }],
+            },
+        }
+
+        scored = rp.ingest_prefetched_results(
+            'race1',
+            finishers,
+            efforts,
+            results_phase=RESULTS_PHASE_PROVISIONAL,
+        )
+        rider = scored['A'][0]
+        assert rider['finishTime'] == 0
+        assert rider.get('sprintData')  # kept when provisional
+        assert rider.get('sprintPoints', 0) > 0
+
+        payload = db.collection('races').document.return_value.update.call_args.args[0]
+        assert payload['resultsPhase'] == RESULTS_PHASE_PROVISIONAL
+        assert payload.get('provisionalUpdatedAt') is not None

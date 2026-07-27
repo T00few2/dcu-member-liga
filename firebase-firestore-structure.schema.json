@@ -505,6 +505,11 @@
           "type": "string",
           "enum": ["provisional", "finalized"]
         },
+        "resultsSource": {
+          "type": "string",
+          "enum": ["seed"],
+          "description": "Set to 'seed' when results were written by admin Testing. Cleared with seeded results. Does not mark users as test accounts."
+        },
         "provisionalUpdatedAt": {
           "$ref": "#/$defs/timestampString"
         },

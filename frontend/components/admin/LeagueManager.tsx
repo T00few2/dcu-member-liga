@@ -155,6 +155,10 @@ export default function LeagueManager({ initialActiveTab = 'races', onTabChange 
                     races={races}
                     status={status}
                     setStatus={setStatus}
+                    onRacesChanged={() => {
+                        void queryClient.invalidateQueries({ queryKey: ['races'] });
+                        void queryClient.invalidateQueries({ queryKey: ['stageRaces'] });
+                    }}
                 />
             )}
 

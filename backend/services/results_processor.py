@@ -205,7 +205,78 @@ class ResultsProcessor:
                 context={"race_id": race_id},
             )
 
-        # 6. Save Results to Firestore
+        # 6–7. Persist scored results + standings / event GC
+        return self._persist_scored_results(
+            race_id,
+            race_data,
+            all_results,
+            normalized_phase,
+            finalize_run_id=finalize_run_id,
+        )
+
+    def ingest_prefetched_results(
+        self,
+        race_id: str,
+        finishers_by_category: dict[str, list[dict[str, Any]]],
+        segment_efforts_by_category: dict[str, dict[str | int, Any]] | None = None,
+        results_phase: str = RESULTS_PHASE_FINALIZED,
+        finalize_run_id: str | None = None,
+    ) -> RaceResults:
+        """
+        Score ZwiftFetcher-shaped finishers + normalised segment efforts, then
+        persist resultsPhase and refresh standings/GC via the same path as
+        process_race_results (no Zwift fetch).
+        """
+        if not self.db:
+            raise FatalResultsError("Database not available")
+
+        normalized_phase = self._normalize_results_phase(results_phase)
+        race_doc = self.db.collection('races').document(race_id).get()
+        if not race_doc.exists:
+            raise RaceNotFoundError(f"Race {race_id} not found", context={"race_id": race_id})
+
+        race_data = race_doc.to_dict() or {}
+        settings_doc = self.db.collection('league').document('settings').get()
+        settings = settings_doc.to_dict() if settings_doc.exists else {}
+
+        scorer = RaceScorer(
+            finish_points_scheme=settings.get('finishPoints', []),
+            sprint_points_scheme=settings.get('sprintPoints', []),
+        )
+        efforts_by_cat = segment_efforts_by_category or {}
+        allow_dnf = normalized_phase == RESULTS_PHASE_PROVISIONAL
+        all_results: RaceResults = {}
+
+        for category, finishers in (finishers_by_category or {}).items():
+            if not category:
+                continue
+            category_config = self._get_category_config(race_data, category)
+            processed = scorer.calculate_results(
+                list(finishers or []),
+                category_config,
+                efforts_by_cat.get(category) or {},
+                allow_dnf_sprint_points=allow_dnf,
+            )
+            all_results[str(category)] = processed
+
+        return self._persist_scored_results(
+            race_id,
+            race_data,
+            all_results,
+            normalized_phase,
+            finalize_run_id=finalize_run_id,
+        )
+
+    def _persist_scored_results(
+        self,
+        race_id: str,
+        race_data: dict[str, Any],
+        all_results: RaceResults,
+        results_phase: str,
+        finalize_run_id: str | None = None,
+    ) -> RaceResults:
+        """Write scored results + phase timestamps, then refresh standings/GC."""
+        normalized_phase = self._normalize_results_phase(results_phase)
         now = datetime.now(timezone.utc)
         race_update = with_schema_version({
             'results': all_results,
@@ -222,8 +293,6 @@ class ResultsProcessor:
         self.db.collection('races').document(race_id).update(race_update)
 
         race_data['results'] = all_results
-
-        # 7. Update Global League Standings
         try:
             self.save_league_standings(override_race_id=race_id, override_race_data=race_data)
         except Exception as e:
