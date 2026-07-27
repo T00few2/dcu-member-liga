@@ -30,3 +30,10 @@ export function getRouteHelpers(routes: Route[], selectedMap: string, selectedRo
     const selectedRoute = routes.find(r => r.id === selectedRouteId);
     return { maps, filteredRoutes, selectedRoute };
 }
+
+export function calculateRouteTotals(route: Route, laps: number) {
+    return {
+        totalDistance: Number((route.distance * laps + route.leadinDistance).toFixed(1)),
+        totalElevation: Math.round(route.elevation * laps + route.leadinElevation),
+    };
+}

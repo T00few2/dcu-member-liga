@@ -18,7 +18,7 @@ import PostsManager from '@/components/admin/PostsManager';
 
 type AdminSection = 'league' | 'categories' | 'predictor' | 'verification' | 'weight' | 'trainers' | 'users' | 'stats' | 'policies' | 'nyheder';
 const ADMIN_SECTIONS: AdminSection[] = ['league', 'categories', 'predictor', 'verification', 'weight', 'trainers', 'users', 'stats', 'policies', 'nyheder'];
-const LEAGUE_TABS: LeagueManagerTab[] = ['races', 'season', 'results', 'settings', 'testing', 'rawdata'];
+const LEAGUE_TABS: LeagueManagerTab[] = ['races', 'season', 'results', 'settings', 'testing', 'rawdata', 'planning'];
 
 function normalizeLeagueTab(value: string | null): string | null {
   // Backward-compatible alias from the short-lived "events" tab id.

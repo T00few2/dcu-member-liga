@@ -12,16 +12,17 @@ import {
     LeagueSettingsForm,
     TestDataPanel,
     RawDataViewer,
+    RoutePlanningTab,
 } from './league-manager';
 
-export type LeagueManagerTab = 'races' | 'season' | 'results' | 'settings' | 'testing' | 'rawdata';
+export type LeagueManagerTab = 'races' | 'season' | 'results' | 'settings' | 'testing' | 'rawdata' | 'planning';
 
 interface LeagueManagerProps {
     initialActiveTab?: LeagueManagerTab;
     onTabChange?: (tab: LeagueManagerTab) => void;
 }
 
-const TABS: LeagueManagerTab[] = ['races', 'season', 'results', 'settings', 'testing', 'rawdata'];
+const TABS: LeagueManagerTab[] = ['races', 'season', 'results', 'settings', 'testing', 'rawdata', 'planning'];
 const TAB_LABELS: Record<LeagueManagerTab, string> = {
     races: 'Races',
     season: 'Season',
@@ -29,6 +30,7 @@ const TAB_LABELS: Record<LeagueManagerTab, string> = {
     settings: 'Scoring Settings',
     testing: 'Testing',
     rawdata: 'Results Editor',
+    planning: 'Route Planning',
 };
 
 const DEFAULT_SETTINGS: LeagueSettings = {
@@ -158,6 +160,10 @@ export default function LeagueManager({ initialActiveTab = 'races', onTabChange 
 
             {activeTab === 'rawdata' && (
                 <RawDataViewer races={races} onRaceUpdate={handleRaceUpdate} />
+            )}
+
+            {activeTab === 'planning' && (
+                <RoutePlanningTab routes={routes} />
             )}
         </div>
     );

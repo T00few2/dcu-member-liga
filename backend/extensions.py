@@ -7,6 +7,7 @@ from services.strava import StravaService
 from services.zwiftracing import ZwiftRacingService, RateLimitError
 from services.zwift import ZwiftService
 from services.zwift_game import ZwiftGameService
+from services.zwift_insider import ZwiftInsiderService
 from services.cached_service import CachedService
 from services.schema_validation import with_schema_version
 
@@ -62,6 +63,9 @@ zr_service = ZwiftRacingService()
 # Zwift Game (stateless)
 _zwift_game_service = ZwiftGameService()
 
+# ZwiftInsider route time-estimate scraper (stateless)
+_zwift_insider_service = ZwiftInsiderService()
+
 
 # --- Zwift API (token-based, auto-refreshes but we re-authenticate on TTL) ---
 
@@ -94,6 +98,10 @@ def get_zwift_service() -> ZwiftService:
 
 def get_zwift_game_service() -> ZwiftGameService:
     return _zwift_game_service
+
+
+def get_zwift_insider_service() -> ZwiftInsiderService:
+    return _zwift_insider_service
 
 
 # ---------------------------------------------------------------------------
