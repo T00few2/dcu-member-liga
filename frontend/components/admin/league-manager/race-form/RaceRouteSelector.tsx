@@ -1,7 +1,7 @@
 'use client';
 
 import type { Route } from '@/types/admin';
-import { getRouteHelpers } from '@/hooks/useLeagueData';
+import { getRouteHelpers, calculateRouteTotals } from '@/hooks/useLeagueData';
 import { useRaceFormContext } from '@/lib/race-form-context';
 
 interface RaceRouteSelectorProps {
@@ -16,6 +16,7 @@ export default function RaceRouteSelector({ routes }: RaceRouteSelectorProps) {
         formState.selectedMap,
         formState.selectedRouteId
     );
+    const totals = selectedRoute ? calculateRouteTotals(selectedRoute, formState.laps) : null;
 
     return (
         <>
@@ -73,13 +74,13 @@ export default function RaceRouteSelector({ routes }: RaceRouteSelectorProps) {
                     <div className="text-card-foreground flex flex-col justify-end">
                         <span className="text-sm text-muted-foreground">Total Distance</span>
                         <span className="font-mono font-medium">
-                            {((selectedRoute.distance * formState.laps) + selectedRoute.leadinDistance).toFixed(1)} km
+                            {totals!.totalDistance.toFixed(1)} km
                         </span>
                     </div>
                     <div className="text-card-foreground flex flex-col justify-end">
                         <span className="text-sm text-muted-foreground">Total Elevation</span>
                         <span className="font-mono font-medium">
-                            {Math.round(selectedRoute.elevation * formState.laps + selectedRoute.leadinElevation)} m
+                            {totals!.totalElevation} m
                         </span>
                     </div>
                 </div>

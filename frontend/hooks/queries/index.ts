@@ -4,6 +4,8 @@ export { useLeagueSettingsQuery } from './useLeagueSettingsQuery';
 export { useLeagueStandingsQuery } from './useLeagueStandingsQuery';
 export { useRaceDrVerificationsQuery, useRaceWeightVerificationsQuery } from './useRaceVerificationsQuery';
 export { useRoutesQuery } from './useRoutesQuery';
+export { useRouteTimeEstimatesQuery } from './useRouteTimeEstimatesQuery';
+export type { RouteTimeEstimate, RouteTimeEstimatesData } from './useRouteTimeEstimatesQuery';
 export { useParticipantsQuery } from './useParticipantsQuery';
 export { usePostsQuery } from './usePostsQuery';
 export { useAdminStatsQuery } from './useAdminStatsQuery';
