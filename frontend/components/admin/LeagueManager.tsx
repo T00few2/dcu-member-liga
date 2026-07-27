@@ -93,12 +93,12 @@ export default function LeagueManager({ initialActiveTab = 'races', onTabChange 
 
     return (
         <div>
-            <div className="flex gap-4 mb-8 border-b border-border">
+            <div className="flex gap-2 sm:gap-4 mb-8 border-b border-border overflow-x-auto scrollbar-hide">
                 {TABS.map(tab => (
                     <button
                         key={tab}
                         onClick={() => handleTabChange(tab)}
-                        className={`pb-2 px-4 font-medium transition ${
+                        className={`shrink-0 whitespace-nowrap pb-2 px-2 sm:px-4 text-sm sm:text-base font-medium transition ${
                             activeTab === tab
                                 ? 'text-primary border-b-2 border-primary'
                                 : 'text-muted-foreground hover:text-foreground'
