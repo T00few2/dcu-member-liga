@@ -311,7 +311,17 @@ class ResultsProcessor:
         log_schema_issues(logger, f"races/{race_id} (results processing)", validate_race_doc(race_update, partial=True))
         self.db.collection('races').document(race_id).update(race_update)
 
+        # Keep override race_data in sync with what we just wrote so standings /
+        # one-day auto-finalize see the new resultsPhase (not a stale in-memory doc).
         race_data['results'] = all_results
+        race_data['resultsPhase'] = normalized_phase
+        race_data['resultsUpdatedAt'] = now
+        if normalized_phase == RESULTS_PHASE_PROVISIONAL:
+            race_data['provisionalUpdatedAt'] = now
+        if normalized_phase == RESULTS_PHASE_FINALIZED:
+            race_data['finalizedAt'] = now
+            if finalize_run_id:
+                race_data['finalizeRunId'] = str(finalize_run_id)
         try:
             self.save_league_standings(override_race_id=race_id, override_race_data=race_data)
         except Exception as e:

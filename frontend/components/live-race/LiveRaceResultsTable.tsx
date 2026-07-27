@@ -41,7 +41,8 @@ function getConfiguredSprintsForCategory(race: Race | null | undefined, category
     if (race.eventMode === 'grouped' && race.raceGroups?.length) {
         const group = race.raceGroups.find(g => (g.categories || []).some(c => c.category === category));
         const catCfg = group?.categories?.find(c => c.category === category);
-        return pickFirstNonEmpty(catCfg?.sprints, group?.sprints, race.sprints, race.sprintData);
+        const fallbackGroup = race.raceGroups.find(g => (g.sprints || []).length > 0);
+        return pickFirstNonEmpty(catCfg?.sprints, group?.sprints, fallbackGroup?.sprints, race.sprints, race.sprintData);
     }
     if (race.eventMode === 'multi' && race.eventConfiguration) {
         const catConfig = race.eventConfiguration.find(c => c.customCategory === category);

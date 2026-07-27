@@ -69,7 +69,16 @@ export const getConfiguredSprintsForCategory = (race: Race | undefined, category
     if (race.eventMode === 'grouped' && race.raceGroups?.length) {
         const group = race.raceGroups.find((g) => (g.categories || []).some((c) => c.category === categoryName));
         const catCfg = group?.categories?.find((c) => c.category === categoryName);
-        return pickFirstNonEmptySprints(catCfg?.sprints, group?.sprints, race.sprints, race.sprintData);
+        // When raceGroups have sprints but empty category lists (common while
+        // setting up), still resolve group-level sprints for headers.
+        const fallbackGroup = race.raceGroups.find((g) => (g.sprints || []).length > 0);
+        return pickFirstNonEmptySprints(
+            catCfg?.sprints,
+            group?.sprints,
+            fallbackGroup?.sprints,
+            race.sprints,
+            race.sprintData,
+        );
     }
 
     if (race.eventMode === 'multi' && race.eventConfiguration?.length) {

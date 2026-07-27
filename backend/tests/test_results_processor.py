@@ -570,6 +570,9 @@ class TestIngestPrefetchedResults:
         assert payload['finalizeRunId'] == 'seed-abc'
         assert payload['finalizedAt'] is not None
         rp.save_league_standings.assert_called_once()
+        override = rp.save_league_standings.call_args.kwargs.get('override_race_data') or {}
+        assert override.get('resultsPhase') == RESULTS_PHASE_FINALIZED
+        assert override.get('finalizeRunId') == 'seed-abc'
 
     def test_provisional_allows_dnf_sprint_points_path(self):
         from services.results.constants import RACE_STATUS_DNF
