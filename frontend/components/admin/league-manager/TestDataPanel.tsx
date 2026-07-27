@@ -50,6 +50,7 @@ export default function TestDataPanel({
 }: TestDataPanelProps) {
     const [registeredRiderCount, setRegisteredRiderCount] = useState(0);
     const [testParticipantCount, setTestParticipantCount] = useState(0);
+    const [statsError, setStatsError] = useState<string | null>(null);
     const [participantsToGenerate, setParticipantsToGenerate] = useState(20);
     const [selectedTestRaces, setSelectedTestRaces] = useState<string[]>([]);
     const [testProgress, setTestProgress] = useState(100);
@@ -81,11 +82,23 @@ export default function TestDataPanel({
             });
             if (res.ok) {
                 const data = await res.json();
-                setRegisteredRiderCount(data.registeredRiderCount || 0);
+                if (typeof data.registeredRiderCount !== 'number') {
+                    setStatsError(
+                        'Backend /admin/seed/stats is missing registeredRiderCount — restart/redeploy the API with the latest seed changes.',
+                    );
+                    setRegisteredRiderCount(0);
+                } else {
+                    setStatsError(null);
+                    setRegisteredRiderCount(data.registeredRiderCount);
+                }
                 setTestParticipantCount(data.testParticipantCount || 0);
+            } else {
+                const data = await res.json().catch(() => ({}));
+                setStatsError(data.message || `Stats request failed (${res.status})`);
             }
         } catch (e) {
             console.error('Error fetching test stats:', e);
+            setStatsError('Could not reach /admin/seed/stats');
         }
     };
 
@@ -254,10 +267,13 @@ export default function TestDataPanel({
                     <h3 className="text-lg font-semibold text-card-foreground mb-2">Rider pool</h3>
                     <p className="text-sm text-muted-foreground mb-4">
                         Using <span className="font-bold text-foreground text-lg">{registeredRiderCount}</span> registered riders
-                        {registeredRiderCount === 0 && (
+                        {registeredRiderCount === 0 && !statsError && (
                             <span className="text-destructive"> — generate results will fail until someone has completed registration</span>
                         )}
                     </p>
+                    {statsError && (
+                        <p className="text-sm text-destructive mb-4">{statsError}</p>
+                    )}
 
                     <details className="text-sm">
                         <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
