@@ -21,6 +21,37 @@ export function seasonClassLabel(seasonClass?: string | null): string {
     return SEASON_CLASS_LABELS[seasonClass as SeasonClass] || seasonClass;
 }
 
+export function isOneDaySeasonClass(seasonClass?: string | null): boolean {
+    return seasonClass === 'monument' || seasonClass === 'wt_classic';
+}
+
+export function isTourSeasonClass(seasonClass?: string | null): boolean {
+    return seasonClass === 'tour';
+}
+
+/** One-day event races + orphans (no stageRaceId or unknown parent). */
+export function oneDayRaces(races: Race[], stageRaces: StageRace[]): Race[] {
+    const eventsById = new Map(stageRaces.map((e) => [e.id, e]));
+    return [...races]
+        .filter((race) => {
+            if (!race.stageRaceId) return true;
+            const event = eventsById.get(race.stageRaceId);
+            if (!event) return true;
+            return isOneDaySeasonClass(event.seasonClass);
+        })
+        .sort(raceDateAsc);
+}
+
+export function tourEvents(stageRaces: StageRace[]): StageRace[] {
+    return stageRaces.filter((e) => isTourSeasonClass(e.seasonClass));
+}
+
+export function tourStageRaces(races: Race[], eventId: string): Race[] {
+    return races
+        .filter((r) => r.stageRaceId === eventId)
+        .sort((a, b) => (a.stageIndex ?? 0) - (b.stageIndex ?? 0) || raceDateAsc(a, b));
+}
+
 export function standingResultKey(result: StandingResultLine): string {
     if (result.source === 'gc' && result.stageRaceId) {
         return `gc:${result.stageRaceId}`;

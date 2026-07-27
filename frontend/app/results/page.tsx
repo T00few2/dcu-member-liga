@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { usePathname, useRouter } from 'next/navigation';
 import {
@@ -28,9 +28,12 @@ import {
     buildEventGcColumns,
     buildLegacyStandingColumns,
     buildSeasonStandingColumns,
+    oneDayRaces,
     processStandingsForDisplay,
     raceOptionLabel,
     seasonClassLabel,
+    tourEvents,
+    tourStageRaces,
 } from '@/lib/seasonUi';
 
 const DEFAULT_CATEGORY_RANK = [
@@ -44,6 +47,8 @@ const pickFirstNonEmpty = (...lists: (Sprint[] | undefined)[]): Sprint[] => {
     }
     return [];
 };
+
+type ResultsTab = 'standings' | 'results' | 'tour';
 
 type ResultsView =
     | { mode: 'race'; raceId: string }
@@ -67,17 +72,31 @@ function resultsViewKey(view: ResultsView): string {
     return view.mode === 'eventGc' ? `gc:${view.eventId}` : `race:${view.raceId}`;
 }
 
+function parseTab(value: string | null, hasTour: boolean): ResultsTab {
+    if (value === 'results') return 'results';
+    if (value === 'tour' && hasTour) return 'tour';
+    return 'standings';
+}
+
+function parseTourViewParam(value: string | null): ResultsView | null {
+    if (!value) return null;
+    if (value === 'gc') return null; // needs event id from ?event=
+    if (value.startsWith('stage:')) {
+        const raceId = value.slice(6);
+        return raceId ? { mode: 'race', raceId } : null;
+    }
+    return parseResultsView(value);
+}
+
 export default function ResultsPage() {
     const { user, loading: authLoading, isRegistered } = useAuth();
     const router = useRouter();
     const pathname = usePathname();
 
-    const parseTab = (value: string | null): 'standings' | 'results' => {
-        return value === 'results' ? 'results' : 'standings';
-    };
-
-    const [activeTab, setActiveTab] = useState<'standings' | 'results'>('standings');
-    const [resultsViewKeyState, setResultsViewKeyState] = useState<string>('');
+    const [activeTab, setActiveTab] = useState<ResultsTab>('standings');
+    const [oneDayViewKey, setOneDayViewKey] = useState<string>('');
+    const [tourEventId, setTourEventId] = useState<string>('');
+    const [tourViewKey, setTourViewKey] = useState<string>('');
     const [selectedCategory, setSelectedCategory] = useState<string>('A');
     const [standingsCategory, setStandingsCategory] = useState<string>('');
     const [autoSelectStandingsCategory, setAutoSelectStandingsCategory] = useState(true);
@@ -87,6 +106,11 @@ export default function ResultsPage() {
     const stageRacesQuery = useStageRacesQuery();
     const participantsQuery = useParticipantsQuery();
 
+    const stageRaces = stageRacesQuery.data ?? [];
+    const tours = useMemo(() => tourEvents(stageRaces), [stageRaces]);
+    const hasTour = tours.length > 0;
+
+    const resultsViewKeyState = activeTab === 'tour' ? tourViewKey : oneDayViewKey;
     const resultsView = useMemo(
         () => parseResultsView(resultsViewKeyState),
         [resultsViewKeyState],
@@ -110,7 +134,6 @@ export default function ResultsPage() {
         return base.map(r => (r.id === selectedRaceId ? { ...r, ...updated } : r));
     }, [racesQuery.data, liveRaceDoc.data, selectedRaceId]);
 
-    const stageRaces = stageRacesQuery.data ?? [];
     const eventsById = useMemo(
         () => new Map(stageRaces.map((e) => [e.id, e])),
         [stageRaces],
@@ -125,6 +148,20 @@ export default function ResultsPage() {
                 (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
             ),
         [races],
+    );
+
+    const oneDayRaceList = useMemo(
+        () => (seasonMode ? oneDayRaces(sortedRaces, stageRaces) : sortedRaces),
+        [seasonMode, sortedRaces, stageRaces],
+    );
+
+    const selectedTourEvent = tourEventId
+        ? tours.find((t) => t.id === tourEventId) ?? tours[0]
+        : tours[0];
+
+    const selectedTourStages = useMemo(
+        () => (selectedTourEvent ? tourStageRaces(sortedRaces, selectedTourEvent.id) : []),
+        [sortedRaces, selectedTourEvent],
     );
 
     const seasonColumns = useMemo(
@@ -158,26 +195,117 @@ export default function ResultsPage() {
         return map;
     }, [participantsQuery.data]);
 
-    useEffect(() => {
-        if (resultsViewKeyState) return;
-        if (sortedRaces.length > 0) {
-            setResultsViewKeyState(resultsViewKey({ mode: 'race', raceId: sortedRaces[0].id }));
-        } else if (stageRaces.length > 0) {
-            setResultsViewKeyState(resultsViewKey({ mode: 'eventGc', eventId: stageRaces[0].id }));
-        }
-    }, [sortedRaces, stageRaces, resultsViewKeyState]);
+    const writeUrl = useCallback((opts: {
+        tab?: ResultsTab;
+        eventId?: string;
+        view?: ResultsView | null;
+    }) => {
+        const params = new URLSearchParams(
+            typeof window === 'undefined' ? '' : window.location.search,
+        );
+        const tab = opts.tab ?? activeTab;
+        params.set('tab', tab);
 
+        if (tab === 'tour' && hasTour) {
+            const eventId = opts.eventId ?? tourEventId ?? tours[0]?.id;
+            if (eventId) params.set('event', eventId);
+            const view = opts.view;
+            if (view?.mode === 'eventGc') {
+                params.set('view', 'gc');
+            } else if (view?.mode === 'race') {
+                params.set('view', `stage:${view.raceId}`);
+            } else if (opts.view === null) {
+                params.delete('view');
+            }
+        } else {
+            params.delete('event');
+            params.delete('view');
+        }
+
+        const query = params.toString();
+        router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    }, [activeTab, hasTour, tourEventId, tours, router, pathname]);
+
+    const setResultsTab = (tab: ResultsTab) => {
+        const next = tab === 'tour' && !hasTour ? 'standings' : tab;
+        setActiveTab(next);
+        writeUrl({ tab: next });
+    };
+
+    // Sync tab / tour selection from URL
     useEffect(() => {
         if (typeof window === 'undefined') return;
         const syncFromUrl = () => {
             const params = new URLSearchParams(window.location.search);
-            setActiveTab(parseTab(params.get('tab')));
+            const tab = parseTab(params.get('tab'), hasTour);
+            setActiveTab(tab);
+
+            if (tab === 'tour' && hasTour) {
+                const eventParam = params.get('event');
+                const matched = eventParam && tours.some((t) => t.id === eventParam)
+                    ? eventParam
+                    : tours[0]?.id;
+                if (matched) setTourEventId(matched);
+
+                const viewParam = params.get('view');
+                if (viewParam === 'gc' && matched) {
+                    setTourViewKey(resultsViewKey({ mode: 'eventGc', eventId: matched }));
+                } else {
+                    const parsed = parseTourViewParam(viewParam);
+                    if (parsed?.mode === 'race') {
+                        setTourViewKey(resultsViewKey(parsed));
+                    }
+                }
+            }
         };
         syncFromUrl();
         window.addEventListener('popstate', syncFromUrl);
         return () => window.removeEventListener('popstate', syncFromUrl);
-    }, []);
+    }, [hasTour, tours]);
 
+    // Default one-day race selection
+    useEffect(() => {
+        if (activeTab !== 'results') return;
+        if (oneDayViewKey) {
+            const parsed = parseResultsView(oneDayViewKey);
+            if (parsed?.mode === 'race' && oneDayRaceList.some((r) => r.id === parsed.raceId)) {
+                return;
+            }
+        }
+        if (oneDayRaceList.length > 0) {
+            setOneDayViewKey(resultsViewKey({ mode: 'race', raceId: oneDayRaceList[0].id }));
+        } else {
+            setOneDayViewKey('');
+        }
+    }, [activeTab, oneDayRaceList, oneDayViewKey]);
+
+    // Default tour event + view
+    useEffect(() => {
+        if (!hasTour) {
+            if (activeTab === 'tour') setActiveTab('standings');
+            return;
+        }
+        if (!tourEventId || !tours.some((t) => t.id === tourEventId)) {
+            setTourEventId(tours[0].id);
+        }
+    }, [hasTour, tours, tourEventId, activeTab]);
+
+    useEffect(() => {
+        if (activeTab !== 'tour' || !selectedTourEvent) return;
+        const stages = selectedTourStages;
+        const parsed = parseResultsView(tourViewKey);
+        const validRace = parsed?.mode === 'race'
+            && stages.some((r) => r.id === parsed.raceId);
+        const validGc = parsed?.mode === 'eventGc'
+            && parsed.eventId === selectedTourEvent.id;
+        if (validRace || validGc) return;
+
+        const nextView: ResultsView = stages.length > 0
+            ? { mode: 'race', raceId: stages[0].id }
+            : { mode: 'eventGc', eventId: selectedTourEvent.id };
+        setTourViewKey(resultsViewKey(nextView));
+        writeUrl({ tab: 'tour', eventId: selectedTourEvent.id, view: nextView });
+    }, [activeTab, selectedTourEvent, selectedTourStages, tourViewKey, writeUrl]);
     const selectedRace = races.find(r => r.id === selectedRaceId);
     const selectedEvent = selectedRace?.stageRaceId
         ? eventsById.get(selectedRace.stageRaceId)
@@ -353,38 +481,90 @@ export default function ResultsPage() {
         return key.replace(/_/g, ' ');
     };
 
-    const setResultsTab = (tab: 'standings' | 'results') => {
-        setActiveTab(tab);
-        const params = new URLSearchParams(
-            typeof window === 'undefined' ? '' : window.location.search,
-        );
-        params.set('tab', tab);
-        const query = params.toString();
-        router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-    };
-
     const getRaceLabel = (race: Race) =>
         raceOptionLabel(race, race.stageRaceId ? eventsById.get(race.stageRaceId) : null);
 
-    const eventsForGc = stageRaces;
+    const onOneDayViewChange = (key: string) => {
+        setOneDayViewKey(key);
+    };
+
+    const onTourEventChange = (eventId: string) => {
+        setTourEventId(eventId);
+        const stages = tourStageRaces(sortedRaces, eventId);
+        const nextView: ResultsView = stages.length > 0
+            ? { mode: 'race', raceId: stages[0].id }
+            : { mode: 'eventGc', eventId };
+        setTourViewKey(resultsViewKey(nextView));
+        writeUrl({ tab: 'tour', eventId, view: nextView });
+    };
+
+    const onTourViewChange = (key: string) => {
+        setTourViewKey(key);
+        const view = parseResultsView(key);
+        writeUrl({
+            tab: 'tour',
+            eventId: selectedTourEvent?.id,
+            view,
+        });
+    };
+
+    const raceResultsPanel = (
+        <RaceResultsTable
+            races={activeTab === 'tour' ? selectedTourStages : oneDayRaceList}
+            selectedRaceId={selectedRaceId}
+            setSelectedRaceId={(id) => {
+                const key = resultsViewKey({ mode: 'race', raceId: id });
+                if (activeTab === 'tour') onTourViewChange(key);
+                else onOneDayViewChange(key);
+            }}
+            selectedRace={selectedRace}
+            availableRaceCategories={availableRaceCategories}
+            displayRaceCategory={displayRaceCategory}
+            selectedCategory={selectedCategory}
+            setSelectedCategory={setSelectedCategory}
+            displayLaps={displayLaps}
+            raceResults={raceResults}
+            sprintColumns={sprintColumns}
+            bestSplitTimes={bestSplitTimes}
+            getSprintHeader={getSprintHeader}
+            leaguePointsByZwiftId={leaguePointsByZwiftId}
+            clubByZwiftId={clubByZwiftId}
+            drVerifications={drVerifications}
+            weightVerifications={weightVerifications}
+            user={user}
+            hideRaceSelector
+            getRaceOptionLabel={getRaceLabel}
+            eventContextLabel={selectedEvent
+                ? `${selectedEvent.name}${selectedRace?.stageIndex != null && selectedEvent.seasonClass === 'tour' ? ` · Etape ${selectedRace.stageIndex}` : ''}`
+                : undefined}
+        />
+    );
 
     return (
         <div className="max-w-6xl mx-auto px-4 py-8">
             <h1 className="text-3xl font-bold mb-8 text-foreground">Resultater & Stilling</h1>
 
-            <div className="flex gap-4 mb-8 border-b border-border">
+            <div className="flex gap-4 mb-8 border-b border-border overflow-x-auto">
                 <button
                     onClick={() => setResultsTab('standings')}
-                    className={`pb-2 px-4 font-medium transition ${activeTab === 'standings' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                    className={`shrink-0 pb-2 px-4 font-medium transition ${activeTab === 'standings' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
                 >
                     {seasonMode ? 'Sæsonstilling' : 'Ligastilling'}
                 </button>
                 <button
                     onClick={() => setResultsTab('results')}
-                    className={`pb-2 px-4 font-medium transition ${activeTab === 'results' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                    className={`shrink-0 pb-2 px-4 font-medium transition ${activeTab === 'results' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
                 >
                     Løbsresultater
                 </button>
+                {hasTour && (
+                    <button
+                        onClick={() => setResultsTab('tour')}
+                        className={`shrink-0 pb-2 px-4 font-medium transition ${activeTab === 'tour' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                    >
+                        Tour
+                    </button>
+                )}
             </div>
 
             {activeTab === 'standings' && (
@@ -411,44 +591,29 @@ export default function ResultsPage() {
                         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between bg-card border border-border p-4 rounded-lg shadow-sm">
                             <div className="flex flex-col gap-1 w-full sm:w-auto">
                                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                                    Vælg løb eller event-GC
+                                    Vælg løb
                                 </label>
                                 <select
-                                    value={resultsViewKeyState}
-                                    onChange={(e) => setResultsViewKeyState(e.target.value)}
+                                    value={oneDayViewKey}
+                                    onChange={(e) => onOneDayViewChange(e.target.value)}
                                     className="bg-background border border-input rounded px-3 py-2 text-foreground font-medium w-full sm:w-[28rem]"
                                 >
-                                    <optgroup label="Løb">
-                                        {sortedRaces.map((r) => (
-                                            <option key={r.id} value={resultsViewKey({ mode: 'race', raceId: r.id })}>
-                                                {getRaceLabel(r)}
-                                            </option>
-                                        ))}
-                                        {sortedRaces.length === 0 && (
-                                            <option value="" disabled>Ingen løb fundet</option>
-                                        )}
-                                    </optgroup>
-                                    {eventsForGc.length > 0 && (
-                                        <optgroup label="Event GC">
-                                            {eventsForGc.map((ev) => (
-                                                <option key={ev.id} value={resultsViewKey({ mode: 'eventGc', eventId: ev.id })}>
-                                                    {ev.name} ({seasonClassLabel(ev.seasonClass)})
-                                                    {ev.resultsPhase === 'finalized' ? ' · afsluttet' : ' · foreløbig'}
-                                                </option>
-                                            ))}
-                                        </optgroup>
+                                    {oneDayRaceList.map((r) => (
+                                        <option key={r.id} value={resultsViewKey({ mode: 'race', raceId: r.id })}>
+                                            {getRaceLabel(r)}
+                                        </option>
+                                    ))}
+                                    {oneDayRaceList.length === 0 && (
+                                        <option value="" disabled>Ingen éndagsløb fundet</option>
                                     )}
                                 </select>
                             </div>
 
-                            {resultsView?.mode === 'race' && selectedRace && (
+                            {selectedRace && (
                                 <div className="text-right hidden sm:block">
                                     {selectedEvent && (
                                         <div className="text-xs text-muted-foreground mb-0.5">
                                             {selectedEvent.name}
-                                            {selectedRace.stageIndex != null && selectedEvent.seasonClass === 'tour'
-                                                ? ` · Etape ${selectedRace.stageIndex}`
-                                                : ''}
                                             {' · '}
                                             {seasonClassLabel(selectedEvent.seasonClass)}
                                         </div>
@@ -457,12 +622,74 @@ export default function ResultsPage() {
                                     <div className="text-xs text-muted-foreground">{selectedRace.routeName} • {displayLaps} omgange</div>
                                 </div>
                             )}
-                            {resultsView?.mode === 'eventGc' && selectedGcEvent && (
+                        </div>
+
+                        {oneDayRaceList.length > 0 ? raceResultsPanel : (
+                            <p className="text-muted-foreground text-sm">Ingen éndagsløb i denne sæson.</p>
+                        )}
+                    </div>
+                </ErrorBoundary>
+            )}
+
+            {activeTab === 'tour' && hasTour && selectedTourEvent && (
+                <ErrorBoundary label="Tour">
+                    <div className="space-y-6">
+                        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end justify-between bg-card border border-border p-4 rounded-lg shadow-sm">
+                            <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
+                                {tours.length > 1 && (
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                                            Vælg tour
+                                        </label>
+                                        <select
+                                            value={selectedTourEvent.id}
+                                            onChange={(e) => onTourEventChange(e.target.value)}
+                                            className="bg-background border border-input rounded px-3 py-2 text-foreground font-medium w-full sm:w-64"
+                                        >
+                                            {tours.map((ev) => (
+                                                <option key={ev.id} value={ev.id}>{ev.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+                                <div className="flex flex-col gap-1 w-full sm:w-auto">
+                                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                                        Vælg etape eller GC
+                                    </label>
+                                    <select
+                                        value={tourViewKey}
+                                        onChange={(e) => onTourViewChange(e.target.value)}
+                                        className="bg-background border border-input rounded px-3 py-2 text-foreground font-medium w-full sm:w-[28rem]"
+                                    >
+                                        {selectedTourStages.map((r) => (
+                                            <option key={r.id} value={resultsViewKey({ mode: 'race', raceId: r.id })}>
+                                                {r.stageIndex != null ? `Etape ${r.stageIndex}: ${r.name}` : r.name}
+                                            </option>
+                                        ))}
+                                        <option value={resultsViewKey({ mode: 'eventGc', eventId: selectedTourEvent.id })}>
+                                            Tour GC / Samlet
+                                            {selectedTourEvent.resultsPhase === 'finalized' ? ' · afsluttet' : ' · foreløbig'}
+                                        </option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            {resultsView?.mode === 'race' && selectedRace && (
                                 <div className="text-right hidden sm:block">
-                                    <div className="text-sm font-medium text-card-foreground">{selectedGcEvent.name}</div>
+                                    <div className="text-xs text-muted-foreground mb-0.5">
+                                        {selectedTourEvent.name}
+                                        {selectedRace.stageIndex != null ? ` · Etape ${selectedRace.stageIndex}` : ''}
+                                    </div>
+                                    <div className="text-sm font-medium text-card-foreground">{selectedRace.map}</div>
+                                    <div className="text-xs text-muted-foreground">{selectedRace.routeName} • {displayLaps} omgange</div>
+                                </div>
+                            )}
+                            {resultsView?.mode === 'eventGc' && (
+                                <div className="text-right hidden sm:block">
+                                    <div className="text-sm font-medium text-card-foreground">{selectedTourEvent.name}</div>
                                     <div className="text-xs text-muted-foreground">
-                                        {seasonClassLabel(selectedGcEvent.seasonClass)} · Event GC
-                                        {selectedGcEvent.resultsPhase === 'finalized' ? ' · afsluttet' : ' · foreløbig'}
+                                        Tour GC
+                                        {selectedTourEvent.resultsPhase === 'finalized' ? ' · afsluttet' : ' · foreløbig'}
                                     </div>
                                 </div>
                             )}
@@ -478,33 +705,10 @@ export default function ResultsPage() {
                                 selectedCategory={selectedCategory}
                                 setSelectedCategory={setSelectedCategory}
                                 clubByZwiftId={clubByZwiftId}
+                                title={`${selectedGcEvent.name} — Tour GC`}
                             />
                         ) : (
-                            <RaceResultsTable
-                                races={sortedRaces}
-                                selectedRaceId={selectedRaceId}
-                                setSelectedRaceId={(id) => setResultsViewKeyState(resultsViewKey({ mode: 'race', raceId: id }))}
-                                selectedRace={selectedRace}
-                                availableRaceCategories={availableRaceCategories}
-                                displayRaceCategory={displayRaceCategory}
-                                selectedCategory={selectedCategory}
-                                setSelectedCategory={setSelectedCategory}
-                                displayLaps={displayLaps}
-                                raceResults={raceResults}
-                                sprintColumns={sprintColumns}
-                                bestSplitTimes={bestSplitTimes}
-                                getSprintHeader={getSprintHeader}
-                                leaguePointsByZwiftId={leaguePointsByZwiftId}
-                                clubByZwiftId={clubByZwiftId}
-                                drVerifications={drVerifications}
-                                weightVerifications={weightVerifications}
-                                user={user}
-                                hideRaceSelector
-                                getRaceOptionLabel={getRaceLabel}
-                                eventContextLabel={selectedEvent
-                                    ? `${selectedEvent.name}${selectedRace?.stageIndex != null && selectedEvent.seasonClass === 'tour' ? ` · Etape ${selectedRace.stageIndex}` : ''}`
-                                    : undefined}
-                            />
+                            raceResultsPanel
                         )}
                     </div>
                 </ErrorBoundary>
@@ -522,6 +726,7 @@ function EventGcPanel({
     selectedCategory,
     setSelectedCategory,
     clubByZwiftId,
+    title,
 }: {
     event: StageRace;
     columns: ReturnType<typeof buildEventGcColumns>;
@@ -531,6 +736,7 @@ function EventGcPanel({
     selectedCategory: string;
     setSelectedCategory: (cat: string) => void;
     clubByZwiftId: Map<string, string>;
+    title?: string;
 }) {
     return (
         <StandingsTable
@@ -541,7 +747,7 @@ function EventGcPanel({
             standingsCategory={selectedCategory}
             setStandingsCategory={setSelectedCategory}
             clubByZwiftId={clubByZwiftId}
-            title={`${event.name} — Event GC`}
+            title={title ?? `${event.name} — Event GC`}
             countingHint="Tæller ikke (uden for event best-X)"
         />
     );
