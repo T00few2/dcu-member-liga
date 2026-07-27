@@ -6,6 +6,7 @@ Scoring, resultsPhase, event GC, and season standings run through ResultsProcess
 """
 from __future__ import annotations
 
+import logging
 import random
 import uuid
 from typing import Any
@@ -38,6 +39,7 @@ from services.results.stage_race_ops import (
 from services.results_processor import ResultsProcessor
 
 seed_bp = Blueprint('seed', __name__)
+logger = logging.getLogger(__name__)
 
 
 def verify_admin_auth():
@@ -221,6 +223,7 @@ def _maybe_finalize_complete_tours(db_client, processor: ResultsProcessor) -> li
             # Refresh season standings after event finalize
             processor.recalculate_season_standings()
         except Exception:
+            logger.exception("Failed to finalize/recalculate tour event %s", event.get('id'))
             continue
     return finalized_events
 
@@ -643,8 +646,17 @@ def clear_seed_results():
 
         try:
             processor.save_league_standings()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.exception("Failed to refresh season standings after clearing seed results: %s", e)
+            return jsonify({
+                'message': (
+                    f'Cleared seeded results from {len(cleared)} race(s), '
+                    f'but season standings refresh failed: {e}'
+                ),
+                'cleared': cleared,
+                'skipped': skipped,
+                'standingsError': str(e),
+            }), 500
 
         msg = f'Cleared seeded results from {len(cleared)} race(s)'
         if skipped:

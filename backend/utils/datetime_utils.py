@@ -15,12 +15,24 @@ def normalize_dt(value: datetime | None) -> datetime | None:
 
     If the input already has tzinfo it is first converted to UTC.
     Returns None for None input.
+
+    Always rebuilds a plain ``datetime`` so Firestore round-trips of
+    ``DatetimeWithNanoseconds`` do not blow up on encode (missing ``_nanosecond``).
     """
     if not value:
         return None
     if value.tzinfo:
-        return value.astimezone(timezone.utc).replace(tzinfo=None)
-    return value
+        value = value.astimezone(timezone.utc).replace(tzinfo=None)
+    # Plain datetime — not google.api_core DatetimeWithNanoseconds
+    return datetime(
+        value.year,
+        value.month,
+        value.day,
+        value.hour,
+        value.minute,
+        value.second,
+        value.microsecond,
+    )
 
 
 def parse_dt(value: Any) -> datetime | None:

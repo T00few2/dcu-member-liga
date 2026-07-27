@@ -14,7 +14,7 @@ from services.results.season_points_defaults import (
     DEFAULT_SEASON_RANK_POINTS,
     points_for_place,
 )
-from utils.datetime_utils import normalize_dt
+from utils.datetime_utils import parse_dt
 
 logger = logging.getLogger(__name__)
 
@@ -249,7 +249,7 @@ class SeasonEngine:
         if not raw:
             return None
         try:
-            return normalize_dt(raw)
+            return parse_dt(raw)
         except Exception:
             return None
 
