@@ -1,5 +1,6 @@
 import re
 import time
+import unicodedata
 
 import requests
 from bs4 import BeautifulSoup
@@ -7,7 +8,9 @@ from bs4 import BeautifulSoup
 # Mirrors the frontend slug algorithm in frontend/lib/api.ts::getZwiftInsiderUrl,
 # so both ends resolve the same route name to the same ZwiftInsider URL.
 def slugify(route_name):
-    slug = (route_name or '').lower()
+    slug = unicodedata.normalize('NFD', route_name or '')
+    slug = ''.join(c for c in slug if not unicodedata.combining(c))
+    slug = slug.lower()
     slug = re.sub(r'\s+', '-', slug)
     slug = re.sub(r'[^\w-]+', '', slug)
     slug = re.sub(r'-{2,}', '-', slug)

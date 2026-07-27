@@ -11,6 +11,7 @@ def test_slugify_matches_frontend_algorithm():
     assert slugify("Bon Voyage") == "bon-voyage"
     assert slugify("  Big Foot Hills  ") == "big-foot-hills"
     assert slugify("Muir & The Mountain") == "muir-the-mountain"
+    assert slugify("Crêpe Escape") == "crepe-escape"
     assert slugify("") == ""
     assert slugify(None) == ""
 
