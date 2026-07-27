@@ -251,6 +251,25 @@ class ResultsProcessor:
             if not category:
                 continue
             category_config = self._get_category_config(race_data, category)
+            # Grouped races may leave per-category lists empty while sprints live
+            # on the group — inherit those so seed/ingest can map segment efforts.
+            if (
+                not category_config.get('sprints')
+                and str(race_data.get('eventMode') or '') == 'grouped'
+            ):
+                for group in race_data.get('raceGroups') or []:
+                    group_sprints = group.get('sprints') or []
+                    if group_sprints:
+                        category_config = {
+                            **category_config,
+                            'sprints': group_sprints,
+                            'segmentType': (
+                                group.get('segmentType')
+                                or category_config.get('segmentType')
+                                or race_data.get('segmentType')
+                            ),
+                        }
+                        break
             processed = scorer.calculate_results(
                 list(finishers or []),
                 category_config,

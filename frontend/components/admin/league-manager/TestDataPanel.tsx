@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { User } from 'firebase/auth';
 import type { Race, LoadingStatus } from '@/types/admin';
 
@@ -14,31 +14,21 @@ interface TestDataPanelProps {
     onRacesChanged?: () => void;
 }
 
-function raceCategoryLabels(race: Race): string[] {
-    const cats = new Set<string>();
-    if (race.eventMode === 'grouped' && race.raceGroups?.length) {
-        race.raceGroups.forEach(group => {
-            group.categories?.forEach(cfg => {
-                if (cfg.category) cats.add(cfg.category);
-            });
-        });
-    } else if (race.eventMode === 'multi' && race.eventConfiguration?.length) {
-        race.eventConfiguration.forEach(cfg => {
-            if (cfg.customCategory) cats.add(cfg.customCategory);
-        });
-    } else if (race.singleModeCategories?.length) {
-        race.singleModeCategories.forEach(cfg => {
-            if (cfg.category) cats.add(cfg.category);
-        });
-    } else if (race.eventConfiguration?.length) {
-        race.eventConfiguration.forEach(cfg => {
-            if (cfg.customCategory) cats.add(cfg.customCategory);
-        });
-    }
-    if (cats.size === 0) {
-        return ['A', 'B', 'C', 'D', 'E'];
-    }
-    return Array.from(cats).sort();
+/** Preferred display order for liga gem categories. */
+const GEM_ORDER = [
+    'Diamond', 'Ruby', 'Emerald', 'Sapphire', 'Amethyst',
+    'Platinum', 'Gold', 'Silver', 'Bronze', 'Copper',
+];
+
+function sortCategoryEntries(byCategory: Record<string, number>): [string, number][] {
+    return Object.entries(byCategory).sort(([a], [b]) => {
+        const ia = GEM_ORDER.indexOf(a);
+        const ib = GEM_ORDER.indexOf(b);
+        if (ia === -1 && ib === -1) return a.localeCompare(b);
+        if (ia === -1) return 1;
+        if (ib === -1) return -1;
+        return ia - ib;
+    });
 }
 
 export default function TestDataPanel({
@@ -49,31 +39,16 @@ export default function TestDataPanel({
     onRacesChanged,
 }: TestDataPanelProps) {
     const [registeredRiderCount, setRegisteredRiderCount] = useState(0);
+    const [ridersByCategory, setRidersByCategory] = useState<Record<string, number>>({});
+    const [missingLigaCategoryCount, setMissingLigaCategoryCount] = useState(0);
     const [testParticipantCount, setTestParticipantCount] = useState(0);
     const [statsError, setStatsError] = useState<string | null>(null);
     const [participantsToGenerate, setParticipantsToGenerate] = useState(20);
     const [selectedTestRaces, setSelectedTestRaces] = useState<string[]>([]);
     const [testProgress, setTestProgress] = useState(100);
-    const [testCategoryRiders, setTestCategoryRiders] = useState<Record<string, number>>({});
     const [finalizeAfterGenerate, setFinalizeAfterGenerate] = useState(true);
 
-    useEffect(() => {
-        if (user) {
-            fetchSeedStats();
-        }
-    }, [user]);
-
-    useEffect(() => {
-        initTestCategoryRiders();
-    }, [selectedTestRaces, races]);
-
-    useEffect(() => {
-        if (testProgress < 100) {
-            setFinalizeAfterGenerate(false);
-        }
-    }, [testProgress]);
-
-    const fetchSeedStats = async () => {
+    const fetchSeedStats = useCallback(async () => {
         if (!user) return;
         try {
             const token = await user.getIdToken();
@@ -87,9 +62,12 @@ export default function TestDataPanel({
                         'Backend /admin/seed/stats is missing registeredRiderCount — restart/redeploy the API with the latest seed changes.',
                     );
                     setRegisteredRiderCount(0);
+                    setRidersByCategory({});
                 } else {
                     setStatsError(null);
                     setRegisteredRiderCount(data.registeredRiderCount);
+                    setRidersByCategory(data.ridersByCategory || {});
+                    setMissingLigaCategoryCount(data.missingLigaCategoryCount || 0);
                 }
                 setTestParticipantCount(data.testParticipantCount || 0);
             } else if (res.status === 404) {
@@ -106,28 +84,27 @@ export default function TestDataPanel({
                 'Could not reach /admin/seed/stats (often means seed routes are disabled: set SEED_ENABLED=true and redeploy).',
             );
         }
-    };
+    }, [user]);
 
-    const getTestCategories = useCallback((): string[] => {
-        if (selectedTestRaces.length === 0) return ['A', 'B', 'C', 'D', 'E'];
+    useEffect(() => {
+        void fetchSeedStats();
+    }, [fetchSeedStats]);
 
-        const allCategories = new Set<string>();
-        for (const raceId of selectedTestRaces) {
-            const race = races.find(r => r.id === raceId);
-            if (!race) continue;
-            raceCategoryLabels(race).forEach(c => allCategories.add(c));
+    useEffect(() => {
+        if (testProgress < 100) {
+            setFinalizeAfterGenerate(false);
         }
-        return Array.from(allCategories).sort();
-    }, [selectedTestRaces, races]);
+    }, [testProgress]);
 
-    const initTestCategoryRiders = useCallback(() => {
-        const cats = getTestCategories();
-        const newRiders: Record<string, number> = {};
-        cats.forEach(cat => {
-            newRiders[cat] = testCategoryRiders[cat] ?? 5;
-        });
-        setTestCategoryRiders(newRiders);
-    }, [getTestCategories, testCategoryRiders]);
+    const categoryBreakdown = useMemo(
+        () => sortCategoryEntries(ridersByCategory),
+        [ridersByCategory],
+    );
+
+    const seedableRiderCount = useMemo(
+        () => Object.values(ridersByCategory).reduce((a, b) => a + b, 0),
+        [ridersByCategory],
+    );
 
     const handleGenerateParticipants = async (count: number = 20) => {
         if (!user) return;
@@ -201,7 +178,6 @@ export default function TestDataPanel({
                 body: JSON.stringify({
                     raceIds: selectedTestRaces,
                     progress: testProgress,
-                    categoryRiders: testCategoryRiders,
                     finalize,
                 }),
             });
@@ -263,22 +239,44 @@ export default function TestDataPanel({
             <div className="bg-card p-6 rounded-lg shadow border border-border mb-8">
                 <h2 className="text-xl font-semibold mb-2 text-card-foreground">Test Data Generator</h2>
                 <p className="text-sm text-muted-foreground mb-6">
-                    Builds fake Zwift finishers from your <span className="font-medium text-foreground">registered signups</span>
-                    {' '}(by liga category). Points, ranks, event GC, and season standings use production scoring.
-                    Seeded races are marked <span className="font-medium text-foreground">resultsSource=seed</span> and
-                    each result row has <span className="font-medium text-foreground">isTestData</span> — user profiles are not changed.
+                    Builds fake Zwift finishers for <span className="font-medium text-foreground">all registered signups</span>,
+                    {' '}bucketed by each rider&apos;s liga category (Diamond, Ruby, …).
+                    Points, ranks, event GC, and season standings use production scoring.
+                    Seeded races are marked <span className="font-medium text-foreground">resultsSource=seed</span> —
+                    user profiles are not changed.
                 </p>
 
                 <div className="mb-8 pb-8 border-b border-border">
                     <h3 className="text-lg font-semibold text-card-foreground mb-2">Rider pool</h3>
-                    <p className="text-sm text-muted-foreground mb-4">
-                        Using <span className="font-bold text-foreground text-lg">{registeredRiderCount}</span> registered riders
+                    <p className="text-sm text-muted-foreground mb-3">
+                        <span className="font-bold text-foreground text-lg">{seedableRiderCount}</span> of{' '}
+                        <span className="font-bold text-foreground">{registeredRiderCount}</span> registered riders
+                        have a liga category and will be included
                         {registeredRiderCount === 0 && !statsError && (
                             <span className="text-destructive"> — generate results will fail until someone has completed registration</span>
                         )}
                     </p>
+                    {missingLigaCategoryCount > 0 && (
+                        <p className="text-sm text-amber-700 dark:text-amber-400 mb-3">
+                            {missingLigaCategoryCount} registered rider(s) have no ligaCategory and will be skipped.
+                        </p>
+                    )}
                     {statsError && (
                         <p className="text-sm text-destructive mb-4">{statsError}</p>
+                    )}
+
+                    {categoryBreakdown.length > 0 && (
+                        <div className="mb-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+                            {categoryBreakdown.map(([cat, count]) => (
+                                <div
+                                    key={cat}
+                                    className="rounded border border-border bg-muted/30 px-2 py-1.5 text-center"
+                                >
+                                    <div className="text-xs text-muted-foreground truncate" title={cat}>{cat}</div>
+                                    <div className="text-sm font-semibold text-foreground">{count}</div>
+                                </div>
+                            ))}
+                        </div>
                     )}
 
                     <details className="text-sm">
@@ -387,33 +385,9 @@ export default function TestDataPanel({
 
                     {selectedTestRaces.length > 0 && (
                         <div className="mb-6 p-4 bg-muted/30 rounded-lg border border-border">
-                            <label className="block text-sm font-medium text-card-foreground mb-3">
-                                Riders per Category
-                            </label>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-                                {getTestCategories().map(cat => (
-                                    <div key={cat} className="flex flex-col">
-                                        <label className="text-xs font-medium text-muted-foreground mb-1 truncate" title={cat}>
-                                            {cat}
-                                        </label>
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            max="50"
-                                            value={testCategoryRiders[cat] ?? 5}
-                                            onChange={(e) => setTestCategoryRiders({
-                                                ...testCategoryRiders,
-                                                [cat]: parseInt(e.target.value) || 0,
-                                            })}
-                                            className="w-full p-2 border border-input rounded bg-background text-foreground text-sm text-center"
-                                        />
-                                    </div>
-                                ))}
-                            </div>
-                            <p className="text-sm text-muted-foreground mt-3">
-                                Total: <span className="font-bold text-foreground">
-                                    {Object.values(testCategoryRiders).reduce((a, b) => a + b, 0)}
-                                </span> riders per race
+                            <p className="text-sm text-card-foreground">
+                                Will generate results for <span className="font-bold">{seedableRiderCount}</span> riders
+                                across their liga categories (shown above). No per-category count to set.
                             </p>
                         </div>
                     )}
@@ -468,7 +442,7 @@ export default function TestDataPanel({
                         <button
                             type="button"
                             onClick={handleGenerateResults}
-                            disabled={status === 'seeding' || selectedTestRaces.length === 0 || registeredRiderCount === 0}
+                            disabled={status === 'seeding' || selectedTestRaces.length === 0 || seedableRiderCount === 0}
                             className="bg-green-600 text-white px-5 py-2.5 rounded hover:bg-green-500 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {status === 'seeding' ? 'Generating...' : 'Generate Results'}

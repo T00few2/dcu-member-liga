@@ -39,8 +39,6 @@ from services.results_processor import ResultsProcessor
 
 seed_bp = Blueprint('seed', __name__)
 
-LEGACY_PEN_CATEGORIES = ['A', 'B', 'C', 'D', 'E']
-
 
 def verify_admin_auth():
     return require_admin(request)
@@ -72,7 +70,7 @@ def _rating_in_category(cat_name: str, categories: list[tuple[str, int, int | No
 
 
 def _race_category_labels(race_data: dict[str, Any]) -> list[str]:
-    """Category keys used for results — mirrors race config modes."""
+    """Configured result-category keys from the race doc (may be empty)."""
     cats: list[str] = []
     mode = str(race_data.get('eventMode') or 'single')
 
@@ -94,8 +92,6 @@ def _race_category_labels(race_data: dict[str, Any]) -> list[str]:
             if c and c not in cats:
                 cats.append(c)
 
-    if not cats:
-        return list(LEGACY_PEN_CATEGORIES)
     return cats
 
 
@@ -239,18 +235,29 @@ def get_seed_stats():
     if not db:
         return jsonify({'error': 'DB not available'}), 500
     try:
+        processor = ResultsProcessor(db, None, None)
         registered_count = 0
         test_count = 0
+        riders_by_category: dict[str, int] = {}
+        missing_category = 0
         for doc in db.collection('users').stream():
             data = doc.to_dict() or {}
             if data.get('isTestData') is True:
                 test_count += 1
             reg = data.get('registration') or {}
-            if reg.get('status') == 'complete':
-                registered_count += 1
+            if reg.get('status') != 'complete':
+                continue
+            registered_count += 1
+            effective = processor._effective_registered_category(data)
+            if effective:
+                riders_by_category[str(effective)] = riders_by_category.get(str(effective), 0) + 1
+            else:
+                missing_category += 1
         return jsonify({
             'registeredRiderCount': registered_count,
             'testParticipantCount': test_count,
+            'ridersByCategory': riders_by_category,
+            'missingLigaCategoryCount': missing_category,
         }), 200
     except Exception as e:
         return jsonify({'message': str(e)}), 500
@@ -382,7 +389,6 @@ def seed_results():
         race_ids = req_data.get('raceIds') or []
         progress = int(req_data.get('progress', 100))
         progress = max(0, min(100, progress))
-        category_riders = req_data.get('categoryRiders') or {}
         finalize_requested = bool(req_data.get('finalize', True))
         # Mid-race / empty must stay provisional so production DNF sprint rules apply.
         if progress < 100:
@@ -416,6 +422,12 @@ def seed_results():
                 'message': 'No registered riders found (registration.status=complete).',
             }), 400
 
+        riders_with_category = [r for r in registered_riders if r.get('_effectiveCategory')]
+        if not riders_with_category:
+            return jsonify({
+                'message': 'Registered riders found, but none have a ligaCategory assigned.',
+            }), 400
+
         results_generated: dict[str, Any] = {}
         finalize_run_id = f"seed-{uuid.uuid4().hex[:12]}" if results_phase == RESULTS_PHASE_FINALIZED else None
 
@@ -426,35 +438,29 @@ def seed_results():
                 continue
 
             race_data = race_doc.to_dict() or {}
-            categories = _race_category_labels(race_data)
+            configured_cats = set(_race_category_labels(race_data))
+
+            # Include every registered rider, bucketed by their liga category.
+            # If the race configures specific categories, only those riders are included.
+            riders_for_race = riders_with_category
+            if configured_cats:
+                riders_for_race = [
+                    r for r in riders_with_category
+                    if r.get('_effectiveCategory') in configured_cats
+                ]
+
+            by_category: dict[str, list[dict[str, Any]]] = {}
+            for rider in riders_for_race:
+                cat = str(rider['_effectiveCategory'])
+                by_category.setdefault(cat, []).append(rider)
+
             finishers_by_category: dict[str, list[dict[str, Any]]] = {}
             segment_efforts_by_category: dict[str, dict[str | int, Any]] = {}
-            used_zwift_ids: set[str] = set()
 
-            for category in categories:
-                rider_count = int(category_riders.get(category, 5) or 0)
-                if rider_count <= 0:
-                    continue
-
-                pool = [
-                    p for p in registered_riders
-                    if p.get('_effectiveCategory') == category
-                    and str(p.get('zwiftId')) not in used_zwift_ids
-                ]
-                # If no exact gem match (e.g. legacy A–E race), fall back to unused pool.
-                if not pool:
-                    pool = [
-                        p for p in registered_riders
-                        if str(p.get('zwiftId')) not in used_zwift_ids
-                    ]
-
-                pool.sort(key=lambda x: str(x.get('zwiftId') or ''))
-                riders_list = pool[:rider_count]
+            for category, riders_list in sorted(by_category.items()):
+                riders_list = sorted(riders_list, key=lambda x: str(x.get('zwiftId') or ''))
                 if not riders_list:
                     continue
-
-                for r in riders_list:
-                    used_zwift_ids.add(str(r.get('zwiftId')))
 
                 # Progress: share of riders who finish
                 if progress <= 0:
@@ -488,6 +494,17 @@ def seed_results():
                     )
 
                 sprints = CategoryConfigResolver.get_sprints(race_data, category) or []
+                # Grouped races often keep sprints on the group even when
+                # per-category lists are empty — fall back to first group sprints.
+                if not sprints and race_data.get('eventMode') == 'grouped':
+                    for group in race_data.get('raceGroups') or []:
+                        group_sprints = group.get('sprints') or []
+                        if group_sprints:
+                            sprints = group_sprints
+                            break
+                if not sprints:
+                    sprints = race_data.get('sprints') or []
+
                 segment_efforts_by_category[category] = _build_segment_efforts_for_riders(
                     shuffled,
                     sprints,
@@ -497,7 +514,14 @@ def seed_results():
                 finishers_by_category[category] = cat_finishers
 
             if not finishers_by_category:
-                results_generated[race_id] = {'error': 'No riders generated for race categories'}
+                results_generated[race_id] = {
+                    'error': (
+                        'No riders matched race categories. '
+                        'Race has no riders with ligaCategory'
+                        + (f' in {sorted(configured_cats)}' if configured_cats else '')
+                        + '.'
+                    ),
+                }
                 continue
 
             try:
@@ -523,6 +547,7 @@ def seed_results():
                     'status': 'ok',
                     'resultsPhase': results_phase,
                     'resultsSource': 'seed',
+                    'riderCount': sum(len(v) for v in scored.values()),
                     'categories': {
                         cat: len(riders) for cat, riders in scored.items()
                     },

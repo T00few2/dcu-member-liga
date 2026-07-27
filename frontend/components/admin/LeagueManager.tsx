@@ -58,11 +58,14 @@ export default function LeagueManager({ initialActiveTab = 'races', onTabChange 
     );
     const [status, setStatus] = useState<LoadingStatus>('idle');
 
+    // Sync from URL only when the URL tab changes (refresh, back/forward, deep link).
+    // Do not depend on activeTab — that races with click handlers and briefly
+    // resets the tab to the stale URL value, unmounting panels mid-fetch.
     useEffect(() => {
-        if (TABS.includes(initialActiveTab) && initialActiveTab !== activeTab) {
+        if (TABS.includes(initialActiveTab)) {
             setActiveTab(initialActiveTab);
         }
-    }, [initialActiveTab, activeTab]);
+    }, [initialActiveTab]);
 
     const handleTabChange = useCallback(
         (tab: LeagueManagerTab) => {
