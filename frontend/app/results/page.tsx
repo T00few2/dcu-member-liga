@@ -585,7 +585,7 @@ export default function ResultsPage() {
                     onClick={() => setResultsTab('results')}
                     className={`shrink-0 pb-2 px-4 font-medium transition ${activeTab === 'results' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
                 >
-                    Løbsresultater
+                    Klassikere
                 </button>
                 {hasTour && (
                     <button
