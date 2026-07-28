@@ -48,6 +48,35 @@ class SeasonRankPointsRequest(BaseModel):
     model_config = {'extra': 'ignore'}
 
 
+class DefaultCategoryRowRequest(BaseModel):
+    category: str = ''
+    laps: int | None = None
+
+    model_config = {'extra': 'ignore'}
+
+
+class DefaultEventConfigRowRequest(BaseModel):
+    customCategory: str = ''
+    laps: int | None = None
+
+    model_config = {'extra': 'ignore'}
+
+
+class DefaultRaceGroupCategoryRequest(BaseModel):
+    category: str = ''
+
+    model_config = {'extra': 'ignore'}
+
+
+class DefaultRaceGroupRequest(BaseModel):
+    id: str = ''
+    name: str = ''
+    categories: list[DefaultRaceGroupCategoryRequest] = Field(default_factory=list)
+    laps: int | None = None
+
+    model_config = {'extra': 'ignore'}
+
+
 class LeagueSettingsRequest(BaseModel):
     name: str | None = None
     finishPoints: list[int] = Field(default_factory=list)
@@ -58,6 +87,11 @@ class LeagueSettingsRequest(BaseModel):
     seasonStart: str | None = None
     seasonRankPoints: SeasonRankPointsRequest | None = None
     seasonBestResultsCount: int | None = None
+    # Season race defaults (template only; race docs unchanged)
+    defaultEventMode: Literal['single', 'multi', 'grouped'] | None = None
+    defaultSingleCategories: list[DefaultCategoryRowRequest] | None = None
+    defaultEventConfiguration: list[DefaultEventConfigRowRequest] | None = None
+    defaultRaceGroups: list[DefaultRaceGroupRequest] | None = None
 
     model_config = {'extra': 'ignore'}
 

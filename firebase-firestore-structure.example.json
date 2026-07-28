@@ -117,6 +117,21 @@
           "ranges": [{ "from": 21, "to": 25, "points": 20 }]
         }
       },
+      "defaultEventMode": "grouped",
+      "defaultRaceGroups": [
+        {
+          "id": "default-group-high",
+          "name": "High End",
+          "categories": [{ "category": "Diamond" }, { "category": "Ruby" }]
+        },
+        {
+          "id": "default-group-mid",
+          "name": "Mid",
+          "categories": [{ "category": "Emerald" }, { "category": "Sapphire" }]
+        }
+      ],
+      "defaultSingleCategories": [],
+      "defaultEventConfiguration": [],
       "updatedAt": "2026-07-01T12:00:00+00:00"
     },
     {

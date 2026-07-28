@@ -232,6 +232,26 @@ export interface RaceResult {
     dualRecordingVerification?: DualRecordingVerification;
 }
 
+/** Template category row for season race defaults (no event IDs). */
+export interface DefaultCategoryRow {
+    category: string;
+    laps?: number;
+}
+
+/** Template multi-mode row (maps to EventConfig.customCategory; eventId filled per race). */
+export interface DefaultEventConfigRow {
+    customCategory: string;
+    laps?: number;
+}
+
+/** Template grouped race group (eventId filled per race). */
+export interface DefaultRaceGroup {
+    id: string;
+    name: string;
+    categories: { category: string }[];
+    laps?: number;
+}
+
 export interface LeagueSettings {
     name?: string;
     seasonStart?: string;   // ISO date string, e.g. "2025-03-01"
@@ -242,6 +262,12 @@ export interface LeagueSettings {
     bestRacesCount: number;
     seasonRankPoints?: SeasonRankPoints;
     seasonBestResultsCount?: number;
+    ligaCategories?: { name: string; upper?: number | null }[];
+    /** Season race defaults — cloned into new races; not stored on race docs. */
+    defaultEventMode?: EventMode;
+    defaultSingleCategories?: DefaultCategoryRow[];
+    defaultEventConfiguration?: DefaultEventConfigRow[];
+    defaultRaceGroups?: DefaultRaceGroup[];
 }
 
 // Race form state type

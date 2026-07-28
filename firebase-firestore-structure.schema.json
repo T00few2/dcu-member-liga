@@ -297,6 +297,56 @@
           "description": "Season prestige best-X lines; 0/omit = count all"
         },
         "ligaCategories": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+        "defaultEventMode": {
+          "type": "string",
+          "enum": ["single", "multi", "grouped"],
+          "description": "Season default race eventMode; cloned into new races only"
+        },
+        "defaultSingleCategories": {
+          "type": "array",
+          "description": "Template for single-mode categories (no eventId); cloned into new races",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "category": { "type": "string" },
+              "laps": { "type": "integer" }
+            }
+          }
+        },
+        "defaultEventConfiguration": {
+          "type": "array",
+          "description": "Template for multi-mode category rows (eventId filled per race)",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "customCategory": { "type": "string" },
+              "laps": { "type": "integer" }
+            }
+          }
+        },
+        "defaultRaceGroups": {
+          "type": "array",
+          "description": "Template for grouped mode (eventId filled per race)",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "laps": { "type": "integer" },
+              "categories": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": { "category": { "type": "string" } }
+                }
+              }
+            }
+          }
+        },
         "updatedAt": { "$ref": "#/$defs/timestampString" }
       }
     },

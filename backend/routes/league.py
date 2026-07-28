@@ -68,6 +68,20 @@ def save_settings():
             update_data['seasonRankPoints'] = body.seasonRankPoints.model_dump(exclude_none=True)
         if body.seasonBestResultsCount is not None:
             update_data['seasonBestResultsCount'] = body.seasonBestResultsCount
+        if body.defaultEventMode is not None:
+            update_data['defaultEventMode'] = body.defaultEventMode
+        if body.defaultSingleCategories is not None:
+            update_data['defaultSingleCategories'] = [
+                row.model_dump(exclude_none=True) for row in body.defaultSingleCategories
+            ]
+        if body.defaultEventConfiguration is not None:
+            update_data['defaultEventConfiguration'] = [
+                row.model_dump(exclude_none=True) for row in body.defaultEventConfiguration
+            ]
+        if body.defaultRaceGroups is not None:
+            update_data['defaultRaceGroups'] = [
+                row.model_dump(exclude_none=True) for row in body.defaultRaceGroups
+            ]
 
         update_data = with_schema_version(update_data)
         log_schema_issues(logger, "league/settings (save)", validate_league_settings_doc(update_data, partial=True))

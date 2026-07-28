@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { User } from 'firebase/auth';
 import { API_URL } from '@/lib/api';
 import type { LeagueSettings, LoadingStatus, Race, SeasonClass, StageRace } from '@/types/admin';
+import RaceDefaultsEditor from './RaceDefaultsEditor';
 
 interface EventsTabProps {
     user: User | null;
@@ -332,6 +333,14 @@ export default function EventsTab({
                     </button>
                 </div>
             </div>
+
+            <RaceDefaultsEditor
+                user={user}
+                leagueSettings={leagueSettings}
+                status={status}
+                setStatus={setStatus}
+                onMessage={setMessage}
+            />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="space-y-6">

@@ -10,7 +10,9 @@ import type {
     EventConfig,
     RaceGroup,
     RaceGroupCategoryConfig,
+    LeagueSettings,
 } from '@/types/admin';
+import { formFieldsFromRaceDefaults } from '@/lib/raceDefaults';
 
 const initialFormState: RaceFormState = {
     editingRaceId: null,
@@ -98,9 +100,12 @@ export function useRaceForm() {
         setFormState(newState);
     }, []);
 
-    // Reset form to initial state
-    const resetForm = useCallback(() => {
-        setFormState(initialFormState);
+    // Reset form to initial state, optionally applying season race defaults
+    const resetForm = useCallback((settings?: LeagueSettings | null) => {
+        setFormState({
+            ...initialFormState,
+            ...formFieldsFromRaceDefaults(settings),
+        });
     }, []);
 
     // Toggle segment selection

@@ -67,7 +67,23 @@ export default function RacesTab({
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }, [raceForm]);
 
-    const handleCancel = useCallback(() => raceForm.resetForm(), [raceForm]);
+    const handleCancel = useCallback(
+        () => raceForm.resetForm(leagueSettings),
+        [raceForm, leagueSettings],
+    );
+
+    // Re-apply season defaults when they change, only for a blank (non-editing) form
+    const defaultsKey = JSON.stringify({
+        mode: leagueSettings.defaultEventMode ?? null,
+        single: leagueSettings.defaultSingleCategories ?? null,
+        multi: leagueSettings.defaultEventConfiguration ?? null,
+        groups: leagueSettings.defaultRaceGroups ?? null,
+    });
+    useEffect(() => {
+        if (raceForm.formState.editingRaceId) return;
+        raceForm.resetForm(leagueSettings);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- only when defaults change
+    }, [defaultsKey]);
 
     const handleSaveRace = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -132,7 +148,7 @@ export default function RacesTab({
                 if (Array.isArray(data.warnings) && data.warnings.length > 0) {
                     alert(`Race saved with warnings:\n- ${data.warnings.join('\n- ')}`);
                 }
-                raceForm.resetForm();
+                raceForm.resetForm(leagueSettings);
                 await queryClient.invalidateQueries({ queryKey: ['races'] });
             } else {
                 const err = await res.json();
