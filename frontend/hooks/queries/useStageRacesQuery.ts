@@ -9,17 +9,17 @@ export function useStageRacesQuery() {
     const { user } = useAuth();
 
     return useQuery({
-        queryKey: ['stageRaces'],
+        queryKey: ['stageRaces', user ? 'auth' : 'public'],
         queryFn: async () => {
-            const token = await user!.getIdToken();
-            const res = await fetch(`${API_URL}/stage-races`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
+            const headers: HeadersInit = {};
+            if (user) {
+                headers.Authorization = `Bearer ${await user.getIdToken()}`;
+            }
+            const res = await fetch(`${API_URL}/stage-races`, { headers });
             if (!res.ok) throw new Error('Failed to fetch stage races');
             const data = await res.json();
             return (data.stageRaces ?? []) as StageRace[];
         },
-        enabled: !!user,
         staleTime: 30_000,
     });
 }

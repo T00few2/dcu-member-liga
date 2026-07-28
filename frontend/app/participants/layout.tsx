@@ -1,11 +1,11 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Deltagere",
-  description: "Liste over tilmeldte ryttere i DCU forårsliga med kategori og klubtilhørsforhold.",
+  description: "Liste over tilmeldte ryttere i DCU E-serien med kategori og klubtilhørsforhold.",
   openGraph: {
-    title: "Deltagere – DCU forårsliga",
-    description: "Liste over tilmeldte ryttere i DCU forårsliga med kategori og klubtilhørsforhold.",
+    title: "Deltagere – DCU E-serien",
+    description: "Liste over tilmeldte ryttere i DCU E-serien med kategori og klubtilhørsforhold.",
     url: "/participants",
   },
 };

@@ -1,10 +1,10 @@
-# DCU forårsliga
+﻿# DCU E-serien
 
-> DCU forårsliga er en e-cycling liga for DCU-medlemmer (Danmarks Cykle Union). Deltagerne kører virtuelle løb på Zwift-platformen og konkurrerer i en pointbaseret liga opdelt i kategorier.
+> DCU E-serien er en e-cycling liga for DCU-medlemmer (Danmarks Cykle Union). Deltagerne kører virtuelle løb på Zwift-platformen og konkurrerer i en pointbaseret liga opdelt i kategorier.
 
-## Hvad er DCU forårsliga?
+## Hvad er DCU E-serien?
 
-DCU forårsliga er en organiseret virtuel cykelliga, der afholdes i forårsperioden. Ligaen er forbeholdt aktive DCU-licensindehavere og bruger Zwift som cykelplatform. Løb køres online, og resultater registreres automatisk.
+DCU E-serien er en organiseret virtuel cykelliga, der afholdes i forårsperioden. Ligaen er forbeholdt aktive DCU-licensindehavere og bruger Zwift som cykelplatform. Løb køres online, og resultater registreres automatisk.
 
 ## Nøgleinformation
 

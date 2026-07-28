@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Link from "next/link";
@@ -23,14 +23,14 @@ const socialImagePath = process.env.NEXT_PUBLIC_SOCIAL_IMAGE || "/social-share.p
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "DCU forårsliga",
-    template: "%s | DCU forårsliga",
+    default: "DCU E-serien",
+    template: "%s | DCU E-serien",
   },
-  description: "E-cycling liga for DCU-medlemmer. Kør virtuelle løb på Zwift og konkurrér om ligaen.",
+  description: "E-cycling for DCU-medlemmer. Kør virtuelle løb på Zwift og konkurrér i DCU E-serien.",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "DCU forårsliga",
+    title: "DCU E-serien",
   },
   icons: {
     icon: "/favicon.svg",
@@ -38,24 +38,24 @@ export const metadata: Metadata = {
   },
   openGraph: {
     type: "website",
-    siteName: "DCU forårsliga",
-    title: "DCU forårsliga",
-    description: "E-cycling liga for DCU-medlemmer. Kør virtuelle løb på Zwift og konkurrér om ligaen.",
+    siteName: "DCU E-serien",
+    title: "DCU E-serien",
+    description: "E-cycling for DCU-medlemmer. Kør virtuelle løb på Zwift og konkurrér i DCU E-serien.",
     locale: "da_DK",
     url: siteUrl,
     images: [
       {
         url: socialImagePath,
-        width: 1024,
-        height: 576,
-        alt: "DCU forårsliga",
+        width: 1536,
+        height: 1024,
+        alt: "DCU E-serien",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "DCU forårsliga",
-    description: "E-cycling liga for DCU-medlemmer. Kør virtuelle løb på Zwift og konkurrér om ligaen.",
+    title: "DCU E-serien",
+    description: "E-cycling for DCU-medlemmer. Kør virtuelle løb på Zwift og konkurrér i DCU E-serien.",
     images: [socialImagePath],
   },
 };
@@ -63,9 +63,9 @@ export const metadata: Metadata = {
 const jsonLd = {
   "@context": "https://schema.org",
   "@type": "SportsOrganization",
-  name: "DCU forårsliga",
+  name: "DCU E-serien",
   url: siteUrl,
-  description: "E-cycling liga for DCU-medlemmer. Kør virtuelle løb på Zwift og konkurrér om ligaen.",
+  description: "E-cycling for DCU-medlemmer. Kør virtuelle løb på Zwift og konkurrér i DCU E-serien.",
   sport: "Cycling",
   logo: `${siteUrl}/icon-512.png`,
   sameAs: ["https://www.cycling.dk"],
@@ -106,7 +106,7 @@ export default function RootLayout({
               <div className="relative z-10 flex flex-wrap gap-4 items-center justify-between container mx-auto px-4">
                 <div className="flex items-center text-white font-bold tracking-wide gap-1">
                   <Image src="/DCU_logo_white.svg" alt="DCU Logo" width={20} height={20} />
-                  DCU forårsliga
+                  DCU E-serien
                 </div>
 
                 <div className="flex gap-4 font-semibold text-slate-400 ml-auto">

@@ -1,11 +1,11 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Resultater & Stillinger",
-  description: "Se aktuelle ligastillinger og løbsresultater fra DCU forårsliga. Pointoversigt fordelt på rytterkategorier.",
+  description: "Se aktuelle sæsonstilling og løbsresultater fra DCU E-serien. Pointoversigt fordelt på rytterkategorier.",
   openGraph: {
-    title: "Resultater & Stillinger – DCU forårsliga",
-    description: "Se aktuelle ligastillinger og løbsresultater fra DCU forårsliga. Pointoversigt fordelt på rytterkategorier.",
+    title: "Resultater & Stillinger – DCU E-serien",
+    description: "Se aktuelle sæsonstilling og løbsresultater fra DCU E-serien. Pointoversigt fordelt på rytterkategorier.",
     url: "/results",
   },
 };

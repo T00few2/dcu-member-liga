@@ -4,6 +4,7 @@ import Link from 'next/link';
 import type { Race } from '@/types/live';
 import type { LeagueSettings } from '@/types/admin';
 import RaceCard from '@/components/races/RaceCard';
+import RaceCountdownText from '@/components/home/RaceCountdownText';
 import { useCurrentLiveRaceQuery, useStageRacesQuery } from '@/hooks/queries';
 import { seasonClassLabel } from '@/lib/seasonUi';
 
@@ -45,10 +46,19 @@ export default function NextRaceCard({ race, leagueSettings, userCategory }: Nex
                         </Link>
                     )}
                     <Link href="/schedule" className="text-sm text-primary hover:underline">
-                        Se hele løbskalenderen &rarr;
+                        Se hele sæsonkalenderen &rarr;
                     </Link>
                 </div>
             </div>
+            {!isThisRaceLive && (
+                <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border bg-muted/30 px-4 py-2.5 text-sm">
+                    <span className="text-muted-foreground">Starter om</span>
+                    <RaceCountdownText
+                        date={race.date}
+                        className="font-mono font-bold text-foreground tabular-nums"
+                    />
+                </div>
+            )}
             <RaceCard
                 race={race}
                 leagueSettings={leagueSettings}

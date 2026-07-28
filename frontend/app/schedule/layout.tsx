@@ -1,11 +1,11 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Løbskalender",
-  description: "Oversigt over kommende og afviklede løb i DCU forårsliga. Find datoer, ruter og kategorier for hvert løb.",
+  title: "Sæsonkalender",
+  description: "Oversigt over kommende og afviklede løb i DCU E-serien. Find datoer, ruter og kategorier for hvert løb.",
   openGraph: {
-    title: "Løbskalender – DCU forårsliga",
-    description: "Oversigt over kommende og afviklede løb i DCU forårsliga. Find datoer, ruter og kategorier for hvert løb.",
+    title: "Sæsonkalender – DCU E-serien",
+    description: "Oversigt over kommende og afviklede løb i DCU E-serien. Find datoer, ruter og kategorier for hvert løb.",
     url: "/schedule",
   },
 };

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -650,7 +650,7 @@ export default function EventsTab({
                                 type="text"
                                 value={archiveName}
                                 onChange={e => setArchiveName(e.target.value)}
-                                placeholder={`${leagueSettings.name || 'Forårsliga'} ${new Date().getFullYear()}`}
+                                placeholder={`${leagueSettings.name || 'E-serien'} ${new Date().getFullYear()}`}
                                 className="w-full p-2 border border-input rounded bg-background text-foreground text-sm"
                             />
                         </div>
@@ -658,7 +658,7 @@ export default function EventsTab({
                             type="button"
                             disabled={archiving}
                             onClick={async () => {
-                                const name = archiveName.trim() || `${leagueSettings.name || 'Forårsliga'} ${new Date().getFullYear()}`;
+                                const name = archiveName.trim() || `${leagueSettings.name || 'E-serien'} ${new Date().getFullYear()}`;
                                 if (!confirm(`Arkivér sæson som "${name}"?\n\nDette kopierer alle løb og stillingen til historikken. Aktuelle data slettes ikke.`)) return;
                                 setArchiving(true);
                                 try {

@@ -57,6 +57,7 @@ function ScheduleRaceCard({
     leagueSettings,
     userCategory,
     isPast,
+    publicView,
 }: {
     race: Race;
     eventName?: string | null;
@@ -64,6 +65,7 @@ function ScheduleRaceCard({
     leagueSettings: LeagueSettings | null;
     userCategory?: string | null;
     isPast?: boolean;
+    publicView?: boolean;
 }) {
     const stageLabel =
         seasonClass === 'tour' && race.stageIndex != null
@@ -76,7 +78,8 @@ function ScheduleRaceCard({
             leagueSettings={leagueSettings}
             userCategory={userCategory}
             isPast={isPast}
-            showPointsSplit={!isPast}
+            showPointsSplit={!isPast && !publicView}
+            variant={publicView ? 'public' : 'full'}
             eventName={eventName}
             seasonClassLabel={seasonClassLabel(seasonClass)}
             stageLabel={stageLabel}
@@ -89,11 +92,13 @@ function ScheduleBlocks({
     leagueSettings,
     userCategory,
     isPast,
+    publicView,
 }: {
     blocks: ScheduleBlock[];
     leagueSettings: LeagueSettings | null;
     userCategory?: string | null;
     isPast?: boolean;
+    publicView?: boolean;
 }) {
     return (
         <>
@@ -106,6 +111,7 @@ function ScheduleBlocks({
                             leagueSettings={leagueSettings}
                             userCategory={userCategory}
                             isPast={isPast}
+                            publicView={publicView}
                         />
                     );
                 }
@@ -132,6 +138,7 @@ function ScheduleBlocks({
                                 leagueSettings={leagueSettings}
                                 userCategory={userCategory}
                                 isPast={isPast}
+                                publicView={publicView}
                             />
                         ))}
                     </div>
@@ -142,12 +149,13 @@ function ScheduleBlocks({
 }
 
 export default function SchedulePage() {
-    const { userCategory, loading: authLoading, isRegistered } = useAuth();
+    const { userCategory, isRegistered } = useAuth();
     const racesQuery = useRacesQuery();
     const settingsQuery = useLeagueSettingsQuery();
     const stageRacesQuery = useStageRacesQuery();
     const [debugMode, setDebugMode] = useState(false);
     const [debugLogs, setDebugLogs] = useState<string[]>([]);
+    const publicView = !isRegistered;
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -211,13 +219,11 @@ export default function SchedulePage() {
         return [...blocks].reverse();
     }, [allBlocks]);
 
-    const isLoading = authLoading || racesQuery.isLoading || settingsQuery.isLoading;
+    const isLoading = racesQuery.isLoading || settingsQuery.isLoading || stageRacesQuery.isLoading;
 
     if (isLoading) {
         return <div className="p-8 text-center text-muted-foreground">Indlæser kalender...</div>;
     }
-
-    if (!isRegistered) return null;
 
     if (debugMode) {
         const invalid = rawRaces.filter((r: Race) => {
@@ -229,7 +235,7 @@ export default function SchedulePage() {
 
     return (
         <div className="max-w-4xl mx-auto px-4 py-8">
-            <h1 className="text-3xl font-bold mb-8 text-foreground">Ligakalender</h1>
+            <h1 className="text-3xl font-bold mb-8 text-foreground">Sæsonkalender</h1>
             {debugMode && (
                 <div className="mb-6 rounded-lg border border-amber-500/60 bg-amber-50 dark:bg-amber-950/20 p-3">
                     <div className="text-xs font-semibold text-amber-700 dark:text-amber-300 mb-2">
@@ -251,6 +257,7 @@ export default function SchedulePage() {
                         blocks={futureBlocks}
                         leagueSettings={leagueSettings}
                         userCategory={userCategory}
+                        publicView={publicView}
                     />
                 </div>
             )}
@@ -266,6 +273,7 @@ export default function SchedulePage() {
                         leagueSettings={leagueSettings}
                         userCategory={userCategory}
                         isPast
+                        publicView={publicView}
                     />
                 </div>
             )}

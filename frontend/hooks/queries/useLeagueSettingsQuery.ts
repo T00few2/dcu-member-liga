@@ -9,19 +9,19 @@ export function useLeagueSettingsQuery() {
     const { user } = useAuth();
 
     return useQuery({
-        queryKey: ['league', 'settings'],
+        queryKey: ['league', 'settings', user ? 'auth' : 'public'],
         queryFn: async () => {
-            const token = await user!.getIdToken();
-            const res = await fetch(`${API_URL}/league/settings`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
+            const headers: HeadersInit = {};
+            if (user) {
+                headers.Authorization = `Bearer ${await user.getIdToken()}`;
+            }
+            const res = await fetch(`${API_URL}/league/settings`, { headers });
             if (!res.ok) throw new Error('Failed to fetch league settings');
             const data = await res.json();
             return (data.settings ?? {}) as LeagueSettings & {
                 ligaCategories?: { name: string }[];
             };
         },
-        enabled: !!user,
         staleTime: 5 * 60_000,
     });
 }

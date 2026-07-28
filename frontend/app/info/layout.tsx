@@ -1,11 +1,11 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-    title: 'Ligainfo – Format, Kategorier & Point',
-    description: 'Alt om DCU Ligaens løbsformat, rytterkategorier, pointsystem og ranglistepoint.',
+    title: 'Info – Format, kategorier & point',
+    description: 'Alt om DCU E-seriens sæsonformat, rytterkategorier og pointsystem.',
     openGraph: {
-        title: 'DCU Liga – Ligainfo',
-        description: 'Alt om DCU Ligaens løbsformat, rytterkategorier, pointsystem og ranglistepoint.',
+        title: 'Info – DCU E-serien',
+        description: 'Alt om DCU E-seriens sæsonformat, rytterkategorier og pointsystem.',
         url: '/info',
     },
 };

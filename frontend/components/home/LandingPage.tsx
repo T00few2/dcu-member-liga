@@ -1,13 +1,16 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import ECyclingClubsModal from '@/components/ECyclingClubsModal';
 import CodeOfConductModal from '@/components/CodeOfConductModal';
 import RegistrationIntroModal from '@/components/RegistrationIntroModal';
 import UnregisteredLoginModal from '@/components/UnregisteredLoginModal';
 import CommunitySection from './CommunitySection';
 import LiveRaceBanner from './LiveRaceBanner';
-import { useMemberCountQuery } from '@/hooks/queries';
+import RaceCountdownText from './RaceCountdownText';
+import { useMemberCountQuery, useCurrentLiveRaceQuery } from '@/hooks/queries';
+import type { Race } from '@/types/live';
 
 interface LandingPageProps {
     showUnregisteredModal: boolean;
@@ -15,6 +18,7 @@ interface LandingPageProps {
     onSignInWithGoogle: () => void;
     onCloseUnregisteredModal: () => void;
     onStartRegistration: () => Promise<void>;
+    nextRace?: Race | null;
 }
 
 export default function LandingPage({
@@ -23,12 +27,16 @@ export default function LandingPage({
     onSignInWithGoogle,
     onCloseUnregisteredModal,
     onStartRegistration,
+    nextRace = null,
 }: LandingPageProps) {
     const [showClubsModal, setShowClubsModal] = useState(false);
     const [showCoCModal, setShowCoCModal] = useState(false);
     const [showRegIntroModal, setShowRegIntroModal] = useState(false);
 
     const { data: memberCount = null } = useMemberCountQuery();
+    const { data: liveRace } = useCurrentLiveRaceQuery();
+    const isNextLive = !!(nextRace && liveRace?.id === nextRace.id);
+    const showMeta = memberCount !== null || !!nextRace;
 
     return (
         <div className="w-full relative -mt-4 text-foreground bg-background">
@@ -47,26 +55,51 @@ export default function LandingPage({
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
                             <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary"></span>
                         </span>
-                        Officiel E-Cykling Liga
+                        Officiel E-Cykling Serie
                     </div>
                     <h1 className="text-5xl md:text-7xl font-extrabold mb-6 tracking-tight text-white drop-shadow-lg pb-2 animate-in fade-in zoom-in-95 duration-1000 delay-150 fill-mode-both">
                         Velkommen til <br />
-                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-white">DCU forårsliga</span>
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-white">DCU E-serien</span>
                     </h1>
                     <p className="text-xl md:text-2xl max-w-2xl text-slate-300 drop-shadow animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-300 fill-mode-both font-light">
                         Den førende kompetitive virtuelle cykeloplevelse for alle medlemmer af Danmarks Cykle Union.
                     </p>
 
-                    {memberCount !== null && (
+                    {showMeta && (
                         <div className="mt-8 animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-500 fill-mode-both">
-                            <div className="inline-flex items-center gap-2.5 px-5 py-2.5 rounded-full bg-white/10 border border-white/20 backdrop-blur-sm text-white/80 text-sm font-medium">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-70">
-                                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                                    <circle cx="9" cy="7" r="4" />
-                                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                                </svg>
-                                <span><span className="font-bold text-white">{memberCount}</span> ryttere tilmeldt</span>
+                            <div className="inline-flex flex-wrap items-center justify-center gap-x-3 gap-y-2 px-5 py-2.5 rounded-full bg-white/10 border border-white/20 backdrop-blur-sm text-white/80 text-sm font-medium">
+                                {memberCount !== null && (
+                                    <span className="inline-flex items-center gap-2">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-70">
+                                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                                            <circle cx="9" cy="7" r="4" />
+                                            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                                            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                                        </svg>
+                                        <span><span className="font-bold text-white">{memberCount}</span> ryttere tilmeldt</span>
+                                    </span>
+                                )}
+                                {memberCount !== null && nextRace && (
+                                    <span className="text-white/40" aria-hidden>·</span>
+                                )}
+                                {nextRace && (
+                                    isNextLive ? (
+                                        <Link href="/live-race" className="inline-flex items-center gap-1.5 text-white hover:text-primary transition-colors font-semibold">
+                                            <span className="relative flex h-2 w-2">
+                                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                                                <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+                                            </span>
+                                            Løb i gang &rarr;
+                                        </Link>
+                                    ) : (
+                                        <span className="inline-flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+                                            <span>
+                                                Næste: <span className="font-bold text-white">{nextRace.name}</span>
+                                            </span>
+                                            <RaceCountdownText date={nextRace.date} className="font-mono font-bold text-white tabular-nums" />
+                                        </span>
+                                    )
+                                )}
                             </div>
                         </div>
                     )}

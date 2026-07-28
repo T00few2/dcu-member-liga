@@ -1,9 +1,9 @@
-import { MetadataRoute } from 'next'
+﻿import { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
     return {
-        name: 'DCU forårsliga',
-        short_name: 'DCU forårsliga',
+        name: 'DCU E-serien',
+        short_name: 'DCU E-serien',
         description: 'E-cycling liga for DCU members',
         start_url: '/',
         display: 'standalone',

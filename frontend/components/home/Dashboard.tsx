@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import Link from 'next/link';
 import { User } from 'firebase/auth';
@@ -37,7 +37,7 @@ export default function Dashboard({ user, nextRace, leagueSettings, userCategory
                         </span>
                     </h1>
                     <p className="text-xl mb-8 max-w-2xl text-slate-300 font-light drop-shadow animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-150">
-                        Dit dashboard for DCU forårsliga.
+                        Dit dashboard for DCU E-serien.
                     </p>
                 </div>
             </div>
@@ -55,11 +55,11 @@ export default function Dashboard({ user, nextRace, leagueSettings, userCategory
                         </Link>
                         <Link href="/results" className="p-6 border border-border rounded-lg shadow-sm hover:shadow-md transition bg-card text-card-foreground group text-left">
                             <h2 className="text-2xl font-semibold mb-2 group-hover:text-primary">Resultater &rarr;</h2>
-                            <p className="text-muted-foreground">Se løbsresultater og ligastillingen.</p>
+                            <p className="text-muted-foreground">Se løbsresultater og sæsonstillingen.</p>
                         </Link>
                         <Link href="/register" className="p-6 border border-border rounded-lg shadow-sm hover:shadow-md transition bg-card text-card-foreground group text-left">
                             <h2 className="text-2xl font-semibold mb-2 group-hover:text-primary">Min Profil &rarr;</h2>
-                            <p className="text-muted-foreground">Se og vælg din liga-kategori.</p>
+                            <p className="text-muted-foreground">Se og vælg din kategori.</p>
                         </Link>
                         <Link href="/stats" className="p-6 border border-border rounded-lg shadow-sm hover:shadow-md transition bg-card text-card-foreground group text-left">
                             <h2 className="text-2xl font-semibold mb-2 group-hover:text-primary">Min Statistik &rarr;</h2>

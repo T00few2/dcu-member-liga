@@ -8,9 +8,10 @@ export type PointsPlaceColumn = {
 
 type Props = {
     columns: PointsPlaceColumn[];
-    onChange: (columnKey: string, placeIndex: number, value: number | null) => void;
+    onChange?: (columnKey: string, placeIndex: number, value: number | null) => void;
     onAddPlace?: () => void;
     placeLabel?: string;
+    readOnly?: boolean;
 };
 
 function cellDisplay(values: number[], placeIndex: number): string {
@@ -24,6 +25,7 @@ export default function PointsPlaceTable({
     onChange,
     onAddPlace,
     placeLabel = 'Placering',
+    readOnly = false,
 }: Props) {
     const rowCount = Math.max(0, ...columns.map((c) => c.values.length));
 
@@ -53,7 +55,7 @@ export default function PointsPlaceTable({
                                     colSpan={columns.length + 1}
                                     className="px-3 py-6 text-center text-muted-foreground"
                                 >
-                                    No places yet — add a place or use the Points Generator.
+                                    {readOnly ? 'Ingen pointskalaer endnu.' : 'No places yet — add a place or use the Points Generator.'}
                                 </td>
                             </tr>
                         ) : (
@@ -64,20 +66,26 @@ export default function PointsPlaceTable({
                                     </td>
                                     {columns.map((col) => (
                                         <td key={col.key} className="px-1.5 py-1">
-                                            <input
-                                                type="number"
-                                                value={cellDisplay(col.values, i)}
-                                                onChange={(e) => {
-                                                    const raw = e.target.value.trim();
-                                                    if (raw === '') {
-                                                        onChange(col.key, i, null);
-                                                        return;
-                                                    }
-                                                    const n = parseInt(raw, 10);
-                                                    onChange(col.key, i, Number.isNaN(n) ? null : n);
-                                                }}
-                                                className="w-full min-w-[4.5rem] px-2 py-1 border border-input rounded bg-background text-foreground text-center font-mono text-sm"
-                                            />
+                                            {readOnly ? (
+                                                <div className="w-full min-w-[4.5rem] px-2 py-1 text-center font-mono text-sm text-foreground">
+                                                    {cellDisplay(col.values, i) || '—'}
+                                                </div>
+                                            ) : (
+                                                <input
+                                                    type="number"
+                                                    value={cellDisplay(col.values, i)}
+                                                    onChange={(e) => {
+                                                        const raw = e.target.value.trim();
+                                                        if (raw === '') {
+                                                            onChange?.(col.key, i, null);
+                                                            return;
+                                                        }
+                                                        const n = parseInt(raw, 10);
+                                                        onChange?.(col.key, i, Number.isNaN(n) ? null : n);
+                                                    }}
+                                                    className="w-full min-w-[4.5rem] px-2 py-1 border border-input rounded bg-background text-foreground text-center font-mono text-sm"
+                                                />
+                                            )}
                                         </td>
                                     ))}
                                 </tr>
@@ -86,7 +94,7 @@ export default function PointsPlaceTable({
                     </tbody>
                 </table>
             </div>
-            {onAddPlace && (
+            {!readOnly && onAddPlace && (
                 <button
                     type="button"
                     onClick={onAddPlace}

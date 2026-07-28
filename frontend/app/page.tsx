@@ -2,16 +2,15 @@
 
 import { useAuth } from "@/lib/auth-context";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useRacesQuery, useLeagueSettingsQuery } from '@/hooks/queries';
 import type { Race } from '@/types/live';
 import LandingPage from '@/components/home/LandingPage';
 import Dashboard from '@/components/home/Dashboard';
+import { fromTimestamp } from '@/lib/formatDate';
 
 
 export default function Home() {
     const { user, userCategory, signInWithGoogle, isRegistered, profileLoaded, loading, logOut, authIntent, clearAuthIntent } = useAuth();
-    const router = useRouter();
     const [showUnregisteredModal, setShowUnregisteredModal] = useState(false);
 
     const racesQuery = useRacesQuery();
@@ -30,10 +29,17 @@ export default function Home() {
 
     const nextRace = (() => {
         if (!racesQuery.data) return null;
-        const now = new Date();
+        const now = Date.now();
         const upcoming = racesQuery.data
-            .filter((r: Race) => new Date(r.date) > now)
-            .sort((a: Race, b: Race) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            .filter((r: Race) => {
+                const t = fromTimestamp(r.date)?.getTime();
+                return Number.isFinite(t) && (t as number) > now;
+            })
+            .sort((a: Race, b: Race) => {
+                const at = fromTimestamp(a.date)?.getTime() ?? 0;
+                const bt = fromTimestamp(b.date)?.getTime() ?? 0;
+                return at - bt;
+            });
         return upcoming[0] ?? null;
     })();
 
@@ -63,6 +69,7 @@ export default function Home() {
             <LandingPage
                 showUnregisteredModal={showUnregisteredModal}
                 isRegistered={isRegistered}
+                nextRace={nextRace}
                 onSignInWithGoogle={() => signInWithGoogle('register')}
                 onCloseUnregisteredModal={() => { setShowUnregisteredModal(false); if (!isRegistered) logOut(); }}
                 onStartRegistration={async () => {

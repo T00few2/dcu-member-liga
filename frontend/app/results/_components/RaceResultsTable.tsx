@@ -38,6 +38,7 @@ interface Props {
     user?: User | null;
     /** Base path for DR detail fetch, e.g. `/archives/{id}/races/{raceId}`. Defaults to `/races/{selectedRaceId}`. */
     drVerificationsApiBase?: string;
+    pointsColumnLabel?: string;
     /** When true, parent owns the race/event selector. */
     hideRaceSelector?: boolean;
     getRaceOptionLabel?: (race: Race) => string;
@@ -64,6 +65,7 @@ export default function RaceResultsTable({
     weightVerifications,
     user = null,
     drVerificationsApiBase,
+    pointsColumnLabel = 'Ligapoint',
     hideRaceSelector = false,
     getRaceOptionLabel,
     eventContextLabel,
@@ -201,7 +203,7 @@ export default function RaceResultsTable({
                                         <th className="px-4 py-3 text-right font-bold text-primary">Total point</th>
                                     )}
                                     {showLeaguePointsColumn && (
-                                        <th className="px-4 py-3 text-right font-bold text-primary">Ligapoint</th>
+                                        <th className="px-4 py-3 text-right font-bold text-primary">{pointsColumnLabel}</th>
                                     )}
                                     {showDrColumn && (
                                         <th className="px-4 py-3 text-center whitespace-normal leading-tight" title="Dual Recording">Dual Recording</th>

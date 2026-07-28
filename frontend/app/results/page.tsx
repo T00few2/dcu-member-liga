@@ -563,6 +563,7 @@ export default function ResultsPage() {
             weightVerifications={weightVerifications}
             user={user}
             hideRaceSelector
+            pointsColumnLabel={seasonMode ? 'Sæsonpoint' : 'Ligapoint'}
             getRaceOptionLabel={getRaceLabel}
             eventContextLabel={selectedEvent
                 ? `${selectedEvent.name}${selectedRace?.stageIndex != null && selectedEvent.seasonClass === 'tour' ? ` · Etape ${selectedRace.stageIndex}` : ''}`

@@ -66,7 +66,7 @@ function CategoryExplanation() {
         <div className="bg-muted/30 border border-border rounded-lg p-6 space-y-4 text-sm text-muted-foreground leading-relaxed">
             <h3 className="text-base font-semibold text-foreground">Hvordan fungerer kategorierne?</h3>
             <p>
-                DCU Ligaen bruger <strong className="text-foreground">ZwiftRacing (vELO)</strong>-ratingsystemet til at placere ryttere i fair kategorier.
+                DCU E-serien bruger <strong className="text-foreground">ZwiftRacing (vELO)</strong>-ratingsystemet til at placere ryttere i fair kategorier.
                 Din kategori bestemmes automatisk ud fra dit <strong className="text-foreground">max30-rating</strong> – dit højeste vELO-gennemsnit over de seneste 30 dage.
             </p>
             <div className="space-y-2">
@@ -94,7 +94,7 @@ function CategoryExplanation() {
             <div className="space-y-2">
                 <p className="font-medium text-foreground">Låsning efter løb</p>
                 <p>
-                    Så snart du har gennemført et officielt DCU Liga-løb, låses din kategori for resten af sæsonen.
+                    Så snart du har gennemført et officielt sæsonløb, låses din kategori for resten af sæsonen.
                     En admin kan tvinge en oprykning (aldrig en nedrykning) hvis nødvendigt.
                 </p>
             </div>
@@ -171,7 +171,7 @@ export default function CategoryTab() {
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                     <div>
                         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                            Din liga-kategori
+                            Din kategori
                         </p>
                         {lc && meta ? (
                             <div className="flex items-center gap-3">

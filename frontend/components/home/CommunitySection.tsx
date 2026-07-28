@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 interface CommunitySectionProps {
     loggedIn?: boolean;
@@ -18,12 +18,12 @@ export default function CommunitySection({ loggedIn = false, onShowCoCModal }: C
                     </h2>
                     {loggedIn ? (
                         <p className="text-lg text-muted-foreground mb-6">
-                            Forbind med andre ryttere på tværs af Danmark, følg de officielle nyheder, og deltag i live løbschat under DCU forårsliga.
+                            Forbind med andre ryttere på tværs af Danmark, følg de officielle nyheder, og deltag i live løbschat under DCU E-serien.
                         </p>
                     ) : (
                         <>
                             <p className="text-lg text-muted-foreground mb-6">
-                                Oplev spændingen ved kompetitivt cykelløb fra din stue. DCU forårsligaen forbinder ryttere på tværs af Danmark i organiserede, strukturerede og fair virtuelle løb på Zwift.
+                                Oplev spændingen ved kompetitivt cykelløb fra din stue. DCU E-serien forbinder ryttere på tværs af Danmark i organiserede, strukturerede og fair virtuelle løb på Zwift.
                             </p>
                             <div className="space-y-6 mb-8 text-base">
                                 <div className="flex items-start gap-4">

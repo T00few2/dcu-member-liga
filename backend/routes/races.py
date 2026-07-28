@@ -29,6 +29,28 @@ _DATETIME_LOCAL_RE = re.compile(r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$')
 races_bp = Blueprint('races', __name__)
 
 
+def _strip_event_secrets(value: Any) -> Any:
+    """Remove Zwift eventSecret fields recursively from a race payload."""
+    if isinstance(value, dict):
+        out = {}
+        for k, v in value.items():
+            if k == 'eventSecret':
+                continue
+            out[k] = _strip_event_secrets(v)
+        return out
+    if isinstance(value, list):
+        return [_strip_event_secrets(item) for item in value]
+    return value
+
+
+def _request_has_user_token() -> bool:
+    try:
+        verify_user_token(request)
+        return True
+    except AuthzError:
+        return False
+
+
 def _lock_categories_for_race(race_id):
     """
     After race results are published, lock ligaCategory for every registered rider
@@ -429,10 +451,13 @@ def get_races():
     try:
         races_ref = db.collection('races').order_by('date')
         docs = races_ref.stream()
+        include_secrets = _request_has_user_token()
         races = []
         for doc in docs:
-            r = doc.to_dict()
+            r = doc.to_dict() or {}
             r['id'] = doc.id
+            if not include_secrets:
+                r = _strip_event_secrets(r)
             races.append(r)
         return jsonify({'races': races}), 200
     except Exception as e:

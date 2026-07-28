@@ -1,11 +1,11 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Historik",
-  description: "Arkiverede resultater og stillinger fra tidligere sæsoner af DCU forårsliga.",
+  description: "Arkiverede resultater og stillinger fra tidligere sæsoner af DCU E-serien.",
   openGraph: {
-    title: "Historik – DCU forårsliga",
-    description: "Arkiverede resultater og stillinger fra tidligere sæsoner af DCU forårsliga.",
+    title: "Historik – DCU E-serien",
+    description: "Arkiverede resultater og stillinger fra tidligere sæsoner af DCU E-serien.",
     url: "/historik",
   },
 };

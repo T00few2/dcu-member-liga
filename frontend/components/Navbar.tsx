@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import Link from "next/link";
 import Image from "next/image";
@@ -43,7 +43,17 @@ export default function Navbar() {
         { href: '/participants', label: 'Deltagere' },
         { href: '/schedule', label: 'Kalender' },
         { href: '/results', label: 'Resultater' },
+        { href: '/point', label: 'Point' },
         { href: '/stats', label: 'Statistik' },
+        { href: '/historik', label: 'Historik' },
+        { href: '/nyheder', label: 'Nyheder' },
+    ];
+
+    const publicNavLinks = [
+        liveNavLink,
+        { href: '/schedule', label: 'Kalender' },
+        { href: '/point', label: 'Point' },
+        { href: '/info', label: 'Info' },
         { href: '/historik', label: 'Historik' },
         { href: '/nyheder', label: 'Nyheder' },
     ];
@@ -58,7 +68,7 @@ export default function Navbar() {
                     <div className="flex items-center gap-4">
                         <div className="flex items-center gap-3">
                             <Image src="/DCU_logo_white.svg" alt="DCU Logo" width={36} height={36} priority />
-                            <Link href="/" className="text-xl font-bold">DCU forårsliga</Link>
+                            <Link href="/" className="text-xl font-bold">DCU E-serien</Link>
                         </div>
                     </div>
 
@@ -182,30 +192,15 @@ export default function Navbar() {
                                     </div>
                                 ) : (
                                     <div className="flex items-center gap-4">
-                                        <Link
-                                            href={liveNavLink.href}
-                                            className={`hidden md:inline hover:bg-white/10 px-3 py-2 rounded-md text-base transition-colors ${pathname === liveNavLink.href ? 'text-white font-bold' : 'text-white/90 font-bold'}`}
-                                        >
-                                            {liveNavLink.label}
-                                        </Link>
-                                        <Link
-                                            href="/info"
-                                            className={`hidden md:inline hover:bg-white/10 px-3 py-2 rounded-md text-base transition-colors ${pathname === '/info' ? 'text-white font-bold' : 'text-white/90 font-bold'}`}
-                                        >
-                                            Info
-                                        </Link>
-                                        <Link
-                                            href="/historik"
-                                            className={`hidden md:inline hover:bg-white/10 px-3 py-2 rounded-md text-base transition-colors ${pathname === '/historik' ? 'text-white font-bold' : 'text-white/90 font-bold'}`}
-                                        >
-                                            Historik
-                                        </Link>
-                                        <Link
-                                            href="/nyheder"
-                                            className={`hidden md:inline hover:bg-white/10 px-3 py-2 rounded-md text-base transition-colors ${pathname === '/nyheder' ? 'text-white font-bold' : 'text-white/90 font-bold'}`}
-                                        >
-                                            Nyheder
-                                        </Link>
+                                        {publicNavLinks.map(link => (
+                                            <Link
+                                                key={link.href}
+                                                href={link.href}
+                                                className={`hidden md:inline hover:bg-white/10 px-3 py-2 rounded-md text-base transition-colors ${pathname === link.href ? 'text-white font-bold' : 'text-white/90 font-bold'}`}
+                                            >
+                                                {link.label}
+                                            </Link>
+                                        ))}
                                         <button
                                             onClick={() => signInWithGoogle('login')}
                                             className="hidden md:inline cursor-pointer hover:bg-white/10 px-3 py-2 rounded-md text-base text-white/90 font-bold hover:text-white transition-colors"
@@ -314,34 +309,16 @@ export default function Navbar() {
                             </div>
                         ) : (
                             <div className="border-t border-slate-800 pt-4 mt-4">
-                                <Link
-                                    href={liveNavLink.href}
-                                    className={`block px-4 py-3 rounded-lg ${pathname === liveNavLink.href ? 'bg-primary text-primary-foreground font-medium' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}
-                                    onClick={() => setIsDrawerOpen(false)}
-                                >
-                                    {liveNavLink.label}
-                                </Link>
-                                <Link
-                                    href="/info"
-                                    className="block px-4 py-3 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg"
-                                    onClick={() => setIsDrawerOpen(false)}
-                                >
-                                    Info
-                                </Link>
-                                <Link
-                                    href="/historik"
-                                    className="block px-4 py-3 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg"
-                                    onClick={() => setIsDrawerOpen(false)}
-                                >
-                                    Historik
-                                </Link>
-                                <Link
-                                    href="/nyheder"
-                                    className="block px-4 py-3 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg"
-                                    onClick={() => setIsDrawerOpen(false)}
-                                >
-                                    Nyheder
-                                </Link>
+                                {publicNavLinks.map(link => (
+                                    <Link
+                                        key={link.href}
+                                        href={link.href}
+                                        className={`block px-4 py-3 rounded-lg ${pathname === link.href ? 'bg-primary text-primary-foreground font-medium' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}
+                                        onClick={() => setIsDrawerOpen(false)}
+                                    >
+                                        {link.label}
+                                    </Link>
+                                ))}
                                 <button
                                     onClick={() => {
                                         signInWithGoogle('login');

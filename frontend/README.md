@@ -1,6 +1,6 @@
-# DCU e-Cycling League - Frontend
+﻿# DCU e-Cycling League - Frontend
 
-A Next.js application for managing and displaying live race results and league standings for the DCU forårsliga.
+A Next.js application for managing and displaying live race results and league standings for the DCU E-serien.
 
 ## Tech Stack
 

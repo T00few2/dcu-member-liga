@@ -10,17 +10,17 @@ export function useRacesQuery() {
     const { user } = useAuth();
 
     return useQuery({
-        queryKey: ['races'],
+        queryKey: ['races', user ? 'auth' : 'public'],
         queryFn: async () => {
-            const token = await user!.getIdToken();
-            const res = await fetch(`${API_URL}/races`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
+            const headers: HeadersInit = {};
+            if (user) {
+                headers.Authorization = `Bearer ${await user.getIdToken()}`;
+            }
+            const res = await fetch(`${API_URL}/races`, { headers });
             if (!res.ok) throw new Error('Failed to fetch races');
             const data = await res.json();
             return (data.races ?? []).map((r: Race) => normalizeRace(r, r.id)) as Race[];
         },
-        enabled: !!user,
         staleTime: 30_000,
     });
 }

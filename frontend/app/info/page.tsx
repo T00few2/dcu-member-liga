@@ -3,10 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import CodeOfConductModal from '@/components/CodeOfConductModal';
-import RaceCard from '@/components/races/RaceCard';
 import { API_URL } from '@/lib/api';
-import { fromTimestamp } from '@/lib/formatDate';
-import type { Race } from '@/types/live';
 
 function YderligereRegler() {
     const [open, setOpen] = useState(false);
@@ -241,61 +238,18 @@ function UdstyrSection() {
 }
 
 function RuterSection() {
-    const [races, setRaces] = useState<Race[]>([]);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        const load = async () => {
-            try {
-                const res = await fetch(`${API_URL}/races`);
-                if (!res.ok) return;
-                const data = await res.json();
-                const sorted = (data.races || []).sort((a: Race, b: Race) => {
-                    const aTime = fromTimestamp(a.date)?.getTime() ?? Number.POSITIVE_INFINITY;
-                    const bTime = fromTimestamp(b.date)?.getTime() ?? Number.POSITIVE_INFINITY;
-                    return aTime - bTime;
-                });
-                const now = Date.now();
-                const upcoming = sorted.filter((r: Race) => {
-                    const t = fromTimestamp(r.date)?.getTime();
-                    return Number.isFinite(t) && (t as number) > now;
-                });
-                const selected = (upcoming.length > 0 ? upcoming : sorted).slice(0, 4);
-                setRaces(selected);
-            } finally {
-                setLoading(false);
-            }
-        };
-        load();
-    }, []);
-
     return (
-        <div className="space-y-6">
+        <div className="space-y-4">
             <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
-                Løbsserien består af 4 afdelinger – de 3 bedste resultater tæller. Ruterne er bevidst valgt for at give
-                <strong> variation</strong> og give forskellige rytterprofiler en chance for at brillere.
+                Ruter og datoer for sæsonens løb findes i kalenderen. Der finder du også detaljer om distance,
+                højdemeter og ruteprofil for hvert løb.
             </p>
-
-            {loading ? (
-                <div className="text-sm text-slate-500 dark:text-slate-400">Indlæser ruter...</div>
-            ) : races.length > 0 ? (
-                <div>
-                    {races.map((race) => (
-                        <RaceCard
-                            key={race.id}
-                            race={race}
-                            leagueSettings={null}
-                            showPointsSplit={false}
-                            variant="public"
-                        />
-                    ))}
-                </div>
-            ) : (
-                <div className="text-sm text-slate-500 dark:text-slate-400">
-                    Ingen ruter fundet endnu.
-                </div>
-            )}
-
+            <Link
+                href="/schedule"
+                className="inline-flex items-center gap-2 text-primary font-semibold hover:underline"
+            >
+                Åbn sæsonkalenderen &rarr;
+            </Link>
         </div>
     );
 }
@@ -319,7 +273,7 @@ const chapters = [
                     Det giver dig mulighed for at cykle på virtuelle ruter, træne med venner eller konkurrere i løb mod ryttere fra hele verden – uanset vind og vejr udenfor.
                 </p>
                 <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-lg">
-                    E-cykling er en af de hurtigst voksende cykeldiscipliner og afvikles på platforme som Zwift, TrainingPeaks Virtual, ROUVY og MyWhoosh. DCU Ligaen afvikles på <strong>Zwift</strong>.
+                    E-cykling er en af de hurtigst voksende cykeldiscipliner og afvikles på platforme som Zwift, TrainingPeaks Virtual, ROUVY og MyWhoosh. DCU E-serien afvikles på <strong>Zwift</strong>.
                 </p>
             </div>
         ),
@@ -515,21 +469,19 @@ const chapters = [
             </svg>
         ),
         iconBg: 'bg-red-500/10 text-red-600 dark:text-red-400',
-        title: 'Løbsformat',
-        defaultOpen: false,
+        title: 'Sæsonformat',
+        defaultOpen: true,
         content: (
             <div className="space-y-5">
                 <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-lg">
-                    Løbsserien består af <strong className="text-slate-800 dark:text-white">4 løbsafdelinger</strong>, hvor rytterne optjener point i hver afdeling.
-                    Den samlede rangliste afgøres af rytternes <strong className="text-slate-800 dark:text-white">3 bedste resultater ud af de 4 løb</strong>.
-                    Det betyder, at en enkelt dårlig afdeling eller et fravær ikke nødvendigvis ødelægger muligheden for en god samlet placering.
+                    Sæsonen i <strong className="text-slate-800 dark:text-white">DCU E-serien</strong> bygges op af{' '}
+                    <strong className="text-slate-800 dark:text-white">1 Tour</strong> (flere etaper + samlet GC) og{' '}
+                    <strong className="text-slate-800 dark:text-white">5 Klassikere</strong>.
                 </p>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {[
-                        { num: '4', label: 'Løbsafdelinger', sub: 'i alt i sæsonen' },
-                        { num: '3', label: 'Bedste resultater', sub: 'tæller til ranglisten' },
-                        { num: '1', label: 'Joker', sub: 'et dårligt løb kan droppes' },
+                        { num: '1', label: 'Tour', sub: 'etaper + samlet stilling' },
+                        { num: '5', label: 'Klassikere', sub: 'enkeltdagsløb' },
                     ].map((stat, i) => (
                         <div key={i} className="text-center p-5 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800">
                             <div className="text-4xl font-extrabold text-primary mb-1">{stat.num}</div>
@@ -538,14 +490,12 @@ const chapters = [
                         </div>
                     ))}
                 </div>
-
                 <div className="space-y-3">
-                    <h4 className="font-bold text-slate-800 dark:text-white text-lg">Sådan fungerer det</h4>
+                    <h4 className="font-bold text-slate-800 dark:text-white text-lg">Sådan fungerer point</h4>
                     {[
-                        'I hvert løb optjener rytterne point ved indlagte spurter undervejs og ved målstregen.',
-                        'Spurt- og målpoint lægges sammen til en samlet pointscore for løbet, som bestemmer din plads i afdelingen.',
-                        'Din plads i afdelingen giver ranglistepoint – jo bedre placering, desto flere point.',
-                        'Efter alle 4 afdelinger tæller de 3 bedste resultater. Den rytter med flest ranglistepoint samlet vinder ligaen.',
+                        'I hvert løb optjener du point ved spurter undervejs og ved målstregen.',
+                        'Din samlede pointscore i løbet afgør din placering den dag.',
+                        'Placeringen giver sæsonpoint – Tour-etaper, Tour-samlet (GC) og Klassikere tæller til Sæsonstillingen.',
                     ].map((step, i) => (
                         <div key={i} className="flex gap-3 items-start">
                             <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center mt-0.5">
@@ -554,6 +504,17 @@ const chapters = [
                             <p className="text-slate-600 dark:text-slate-300">{step}</p>
                         </div>
                     ))}
+                </div>
+                <div className="flex flex-wrap gap-3 pt-2">
+                    <Link href="/schedule" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-white font-semibold hover:bg-primary-dark transition">
+                        Sæsonkalender &rarr;
+                    </Link>
+                    <Link href="/point" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border bg-card font-semibold hover:bg-muted transition">
+                        Se pointskalaer &rarr;
+                    </Link>
+                    <Link href="/results" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border bg-card font-semibold hover:bg-muted transition">
+                        Resultater &rarr;
+                    </Link>
                 </div>
             </div>
         ),
@@ -566,210 +527,34 @@ const chapters = [
             </svg>
         ),
         iconBg: 'bg-teal-500/10 text-teal-600 dark:text-teal-400',
-        title: 'Ruter',
+        title: 'Ruter og kalender',
         defaultOpen: false,
         content: <RuterSection />,
     },
     {
-        id: 'point-loeb',
+        id: 'point',
         icon: (
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
             </svg>
         ),
         iconBg: 'bg-orange-500/10 text-orange-600 dark:text-orange-400',
-        title: 'Pointgivning pr. løb',
+        title: 'Point',
         defaultOpen: false,
         content: (
-            <div className="space-y-8">
+            <div className="space-y-4">
                 <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
-                    Alle løb køres som <strong>pointløb</strong> – rytteren med flest point ved afslutningen vinder løbet.
-                    Point optjenes ved to lejligheder: ved <strong>indlagte spurter og bjergspurter</strong> undervejs samt ved <strong>målstregen</strong>.
+                    Alle aktuelle pointskalaer for løbsdag (mål, spurt, løbsplacering) og sæsonprestige
+                    (Tour samlet, Tour-etape, Klassiker) ligger på point-siden — altid synkroniseret med
+                    sæsonindstillingerne.
                 </p>
-
-                {/* Finish points */}
-                <div>
-                    <h4 className="font-bold text-slate-800 dark:text-white text-lg mb-3 flex items-center gap-2">
-                        <span className="inline-block w-3 h-3 rounded-full bg-primary"></span>
-                        Point ved målgang
-                    </h4>
-                    <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200">
-                                    <th className="px-4 py-3 text-left font-bold">Placering</th>
-                                    <th className="px-4 py-3 text-right font-bold">Point</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                {[
-                                    { pos: '1.', pts: 130, medal: '🥇' },
-                                    { pos: '2.', pts: 125, medal: '🥈' },
-                                    { pos: '3.', pts: 122, medal: '🥉' },
-                                    { pos: '4.', pts: 121, medal: '' },
-                                    { pos: '5.', pts: 120, medal: '' },
-                                    { pos: '6.', pts: 119, medal: '' },
-                                ].map((row, i) => (
-                                    <tr key={i} className="bg-white dark:bg-slate-900/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                                        <td className="px-4 py-2.5 font-medium text-slate-700 dark:text-slate-200">{row.medal} {row.pos} plads</td>
-                                        <td className="px-4 py-2.5 text-right font-mono font-bold text-primary">{row.pts}</td>
-                                    </tr>
-                                ))}
-                                <tr className="bg-slate-50 dark:bg-slate-800/50">
-                                    <td className="px-4 py-2.5 text-slate-500 dark:text-slate-400 italic">7. – 123. plads</td>
-                                    <td className="px-4 py-2.5 text-right font-mono text-slate-600 dark:text-slate-300">118 → 2 <span className="text-xs font-normal">(−1 pr. plads)</span></td>
-                                </tr>
-                                <tr className="bg-white dark:bg-slate-900/50">
-                                    <td className="px-4 py-2.5 text-slate-500 dark:text-slate-400 italic">124. plads og derunder</td>
-                                    <td className="px-4 py-2.5 text-right font-mono text-slate-600 dark:text-slate-300">1 <span className="text-xs font-normal">(alle gennemfører)</span></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">Der er point til alle der gennemfører løbet.</p>
-                </div>
-
-                {/* Sprint/KOM points */}
-                <div>
-                    <h4 className="font-bold text-slate-800 dark:text-white text-lg mb-3 flex items-center gap-2">
-                        <span className="inline-block w-3 h-3 rounded-full bg-orange-500"></span>
-                        Point ved indlagte spurter og bjergspurter
-                    </h4>
-                    <p className="text-slate-600 dark:text-slate-300 text-sm mb-3">
-                        Placering af spurter fremgår i beskrivelsen af den enkelte afdeling på Facebook, Zwiftpower og hjemmesiden.
-                    </p>
-                    <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200">
-                                    <th className="px-4 py-3 text-left font-bold">Placering</th>
-                                    <th className="px-4 py-3 text-right font-bold">Point</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                {[10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map((pts, i) => (
-                                    <tr key={i} className="bg-white dark:bg-slate-900/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                                        <td className="px-4 py-2 font-medium text-slate-700 dark:text-slate-200">{i + 1}. plads</td>
-                                        <td className="px-4 py-2 text-right font-mono font-bold text-orange-600 dark:text-orange-400">{pts}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+                <Link href="/point" className="inline-flex items-center gap-2 text-primary font-semibold hover:underline">
+                    Se alle pointskalaer &rarr;
+                </Link>
             </div>
         ),
     },
-    {
-        id: 'point-liga',
-        icon: (
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-            </svg>
-        ),
-        iconBg: 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400',
-        title: 'Liga Ranglistepoint',
-        defaultOpen: false,
-        content: (
-            <div className="space-y-6">
-                <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
-                    Når løbet er afsluttet omregnes din samlede løbsplacering til ranglistepoint.
-                    Disse point tæller til ligaens samlede stilling. Systemet er designet så podieplaceringer virkelig betyder noget,
-                    men stabil deltagelse stadig belønnes.
-                </p>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Top 20 */}
-                    <div>
-                        <h4 className="font-bold text-slate-800 dark:text-white mb-2 flex items-center gap-2">
-                            <span className="text-yellow-500">★</span> Top 20 – store udsving
-                        </h4>
-                        <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
-                            <table className="w-full text-sm">
-                                <thead>
-                                    <tr className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200">
-                                        <th className="px-3 py-2 text-left font-bold">Plads</th>
-                                        <th className="px-3 py-2 text-right font-bold">Point</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                    {[
-                                        [1, 100], [2, 94], [3, 90], [4, 87], [5, 85],
-                                        [6, 83], [7, 81], [8, 79], [9, 77], [10, 75],
-                                        [11, 73], [12, 71], [13, 69], [14, 67], [15, 65],
-                                        [16, 63], [17, 61], [18, 59], [19, 57], [20, 55],
-                                    ].map(([pos, pts], i) => (
-                                        <tr key={i} className={`transition-colors ${i < 3 ? 'bg-yellow-50 dark:bg-yellow-900/10' : 'bg-white dark:bg-slate-900/50 hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>
-                                            <td className="px-3 py-1.5 font-medium text-slate-700 dark:text-slate-200">
-                                                {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : ''} {pos}.
-                                            </td>
-                                            <td className="px-3 py-1.5 text-right font-mono font-bold text-yellow-700 dark:text-yellow-400">{pts}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    {/* 21-130 */}
-                    <div className="space-y-4">
-                        <div>
-                            <h4 className="font-bold text-slate-800 dark:text-white mb-2">Midterfelt (21–50)</h4>
-                            <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">Falder med 1 point pr. placering</p>
-                            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
-                                <table className="w-full text-sm">
-                                    <thead>
-                                        <tr className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200">
-                                            <th className="px-3 py-2 text-left font-bold">Plads</th>
-                                            <th className="px-3 py-2 text-right font-bold">Point</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                        {[[21, 54], [25, 50], [30, 45], [35, 40], [40, 35], [45, 30], [50, 25]].map(([pos, pts], i) => (
-                                            <tr key={i} className="bg-white dark:bg-slate-900/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                                                <td className="px-3 py-1.5 text-slate-600 dark:text-slate-300">{pos}.</td>
-                                                <td className="px-3 py-1.5 text-right font-mono font-bold text-slate-700 dark:text-slate-200">{pts}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        <div>
-                            <h4 className="font-bold text-slate-800 dark:text-white mb-2">Bredden (51–130)</h4>
-                            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
-                                <table className="w-full text-sm">
-                                    <thead>
-                                        <tr className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200">
-                                            <th className="px-3 py-2 text-left font-bold">Plads</th>
-                                            <th className="px-3 py-2 text-right font-bold">Point</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                        {[
-                                            ['51.', 24], ['55.', 20], ['60.', 15],
-                                            ['65.', 10], ['70.', 7], ['75.', 5],
-                                            ['80.', 3], ['81–100.', 2], ['101–130.', 1],
-                                        ].map(([pos, pts], i) => (
-                                            <tr key={i} className="bg-white dark:bg-slate-900/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                                                <td className="px-3 py-1.5 text-slate-600 dark:text-slate-300">{pos}</td>
-                                                <td className="px-3 py-1.5 text-right font-mono font-bold text-slate-700 dark:text-slate-200">{pts}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-sm text-slate-500 dark:text-slate-400 italic">
-                    Alle der gennemfører et løb modtager minimum 1 ranglistepoint – der er altid noget at kæmpe for.
-                </div>
-            </div>
-        ),
-    },
 ];
 
 function ChapterAccordion({ chapter, isOpen, onToggle }: {
@@ -832,7 +617,7 @@ export default function InfoPage() {
 
                 <div className="relative z-10 flex flex-col items-center text-center px-4 mt-8 max-w-5xl mx-auto">
                     <h1 className="text-5xl md:text-6xl font-extrabold mb-4 tracking-tight text-white drop-shadow-lg pb-2 animate-in fade-in zoom-in-95 duration-1000">
-                        Liga<span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-white">info</span>
+                        Sæson<span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-white">info</span>
                     </h1>
                     <p className="text-xl mb-8 max-w-2xl text-slate-300 font-light drop-shadow animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-150">
                         Alt du skal vide om format, kategorier og pointsystem
