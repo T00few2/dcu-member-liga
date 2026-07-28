@@ -43,7 +43,6 @@ export default function Navbar() {
         { href: '/participants', label: 'Deltagere' },
         { href: '/schedule', label: 'Kalender' },
         { href: '/results', label: 'Resultater' },
-        { href: '/point', label: 'Point' },
         { href: '/stats', label: 'Statistik' },
         { href: '/historik', label: 'Historik' },
         { href: '/nyheder', label: 'Nyheder' },
@@ -51,9 +50,9 @@ export default function Navbar() {
 
     const publicNavLinks = [
         liveNavLink,
-        { href: '/schedule', label: 'Kalender' },
-        { href: '/point', label: 'Point' },
         { href: '/info', label: 'Info' },
+        { href: '/point', label: 'Point' },
+        { href: '/schedule', label: 'Kalender' },
         { href: '/historik', label: 'Historik' },
         { href: '/nyheder', label: 'Nyheder' },
     ];
@@ -158,6 +157,13 @@ export default function Navbar() {
                                                             onClick={() => setIsMenuOpen(false)}
                                                         >
                                                             <span>Info</span>
+                                                        </Link>
+                                                        <Link
+                                                            href="/point"
+                                                            className="block px-4 py-2 text-sm hover:bg-slate-50"
+                                                            onClick={() => setIsMenuOpen(false)}
+                                                        >
+                                                            Point
                                                         </Link>
                                                         <Link
                                                             href="/register"
@@ -279,6 +285,13 @@ export default function Navbar() {
                                     onClick={() => setIsDrawerOpen(false)}
                                 >
                                     Info
+                                </Link>
+                                <Link
+                                    href="/point"
+                                    className="block px-4 py-3 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg"
+                                    onClick={() => setIsDrawerOpen(false)}
+                                >
+                                    Point
                                 </Link>
                                 <Link
                                     href="/register"

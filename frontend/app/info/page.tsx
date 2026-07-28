@@ -545,8 +545,7 @@ const chapters = [
             <div className="space-y-4">
                 <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
                     Alle aktuelle pointskalaer for løbsdag (mål, spurt, løbsplacering) og sæsonprestige
-                    (Tour samlet, Tour-etape, Klassiker) ligger på point-siden — altid synkroniseret med
-                    sæsonindstillingerne.
+                    (Tour samlet, Tour-etape, Klassiker) ligger på point-siden.
                 </p>
                 <Link href="/point" className="inline-flex items-center gap-2 text-primary font-semibold hover:underline">
                     Se alle pointskalaer &rarr;

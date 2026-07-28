@@ -54,9 +54,6 @@ export default function PointPage() {
         }));
     }, [settings]);
 
-    const bestRaces = settings?.bestRacesCount ?? 5;
-    const seasonBest = settings?.seasonBestResultsCount;
-
     if (settingsQuery.isLoading) {
         return <div className="p-8 text-center text-muted-foreground">Indlæser pointskalaer...</div>;
     }
@@ -74,19 +71,8 @@ export default function PointPage() {
             <h1 className="text-3xl font-bold mb-2 text-foreground">Point</h1>
             <p className="text-muted-foreground mb-6 max-w-2xl">
                 På løbsdagen giver mål- og spurtpoint din placering i løbet. Placeringen giver point til
-                sæsonen sammen med prestige for Tour og Klassikere. Tallene kommer direkte fra
-                sæsonindstillingerne.
+                sæsonen sammen med prestige for Tour og Klassikere.
             </p>
-            {(bestRaces != null || seasonBest != null) && (
-                <p className="text-sm text-muted-foreground mb-6">
-                    {seasonBest != null && (
-                        <span>Sæsonstilling: bedste {seasonBest} resultater tæller. </span>
-                    )}
-                    {bestRaces != null && (
-                        <span>Løbsplacering / best-of: bedste {bestRaces} tæller hvor det gælder.</span>
-                    )}
-                </p>
-            )}
 
             <div className="flex gap-2 mb-6 border-b border-border">
                 {(
