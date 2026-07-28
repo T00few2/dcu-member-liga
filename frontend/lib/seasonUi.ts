@@ -5,7 +5,7 @@ import { fromTimestamp } from '@/lib/formatDate';
 export const SEASON_CLASS_LABELS: Record<SeasonClass, string> = {
     tour: 'Tour',
     monument: 'Monument',
-    wt_classic: 'WT-klassiker',
+    wt_classic: 'Klassiker',
 };
 
 export type SeasonStandingColumn = {

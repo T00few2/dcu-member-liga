@@ -54,7 +54,7 @@ export const SEASON_POINT_TABLE_LABELS: Record<SeasonPointTableKey, string> = {
     tour_overall: 'Tour samlet (GC)',
     tour_stage: 'Tour-etape',
     monument: 'Monument',
-    wt_classic: 'Stor WT-klassiker',
+    wt_classic: 'Klassiker',
 };
 
 /** Resolve prestige points for a 1-based place (mirrors backend points_for_place). */

@@ -37,7 +37,7 @@ const GEN_TARGETS: { key: GenTarget; label: string; group: 'race' | 'season' }[]
     { key: 'tour_overall', label: 'Tour samlet', group: 'season' },
     { key: 'tour_stage', label: 'Tour-etape', group: 'season' },
     { key: 'monument', label: 'Monument', group: 'season' },
-    { key: 'wt_classic', label: 'WT-klassiker', group: 'season' },
+    { key: 'wt_classic', label: 'Klassiker', group: 'season' },
 ];
 
 function emptySeasonColumns(): Record<SeasonPointTableKey, number[]> {

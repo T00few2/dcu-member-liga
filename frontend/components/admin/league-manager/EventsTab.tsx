@@ -19,7 +19,7 @@ interface EventsTabProps {
 const CLASS_LABELS: Record<SeasonClass, string> = {
     tour: 'Tour (etaper + samlet)',
     monument: 'Monument (1-dags)',
-    wt_classic: 'Stor WT-klassiker (1-dags)',
+    wt_classic: 'Klassiker (1-dags)',
 };
 
 function phaseBadge(phase?: string) {
