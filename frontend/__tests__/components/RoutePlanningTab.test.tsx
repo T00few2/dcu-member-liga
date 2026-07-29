@@ -147,4 +147,39 @@ describe('RoutePlanningTab', () => {
         expect(within(categoryA).getByText('(1 segment)')).toBeInTheDocument();
         expect(within(categoryA).getByText('30')).toBeInTheDocument(); // combined total
     });
+
+    it('applies a default sprint segment to every category, and removes it from every category on toggle-off', async () => {
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.includes('/segments')) {
+                return {
+                    ok: true,
+                    json: async () => ({
+                        segments: [{ id: 'seg1', name: 'Sprint 1', count: 1, direction: 'forward', lap: 1 }],
+                    }),
+                };
+            }
+            return { ok: true, json: async () => ({ rating: 14.4, estimates: [] }) };
+        }));
+
+        const user = userEvent.setup();
+        renderWithClient(<RoutePlanningTab routes={ROUTES} />);
+        await selectRoute(user);
+
+        const defaultSection = screen
+            .getByText('Default Sprint Segments (applies to all categories)')
+            .closest('div') as HTMLElement;
+
+        await user.click(within(defaultSection).getByRole('checkbox', { name: /Sprint 1/ }));
+
+        for (const name of ['Category A', 'Category B', 'Category C', 'Category D']) {
+            expect(within(getCategoryCard(name)).getByText('(1 segment)')).toBeInTheDocument();
+        }
+
+        await user.click(within(defaultSection).getByRole('checkbox', { name: /Sprint 1/ }));
+
+        for (const name of ['Category A', 'Category B', 'Category C', 'Category D']) {
+            expect(within(getCategoryCard(name)).getByText('(0 segments)')).toBeInTheDocument();
+        }
+    });
 });

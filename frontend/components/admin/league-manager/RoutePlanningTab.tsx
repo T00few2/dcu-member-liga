@@ -6,7 +6,7 @@ import { getRouteHelpers, calculateRouteTotals, fetchSegments } from '@/hooks/us
 import { useRouteTimeEstimatesQuery, useLeagueSettingsQuery } from '@/hooks/queries';
 import { getZwiftInsiderUrl } from '@/lib/api';
 import { estimateMinutesPerLap, estimateTotalMinutes, solveLapsForTimeSpan, formatMinutes } from '@/lib/timeEstimate';
-import { CollapsibleSegmentPicker } from './SegmentPicker';
+import SegmentPicker, { CollapsibleSegmentPicker } from './SegmentPicker';
 
 interface RoutePlanningTabProps {
     routes: Route[];
@@ -80,6 +80,31 @@ export default function RoutePlanningTab({ routes }: RoutePlanningTabProps) {
         });
     };
 
+    const isSegmentSelectedForAll = (key: string) =>
+        CATEGORIES.every(cat => (selectedSprints[cat] || []).some(s => s.key === key));
+
+    const toggleDefaultSprint = (seg: Segment) => {
+        const key = `${seg.id}_${seg.count}`;
+        const turnOn = !isSegmentSelectedForAll(key);
+        setSelectedSprints(prev => {
+            const next = { ...prev };
+            for (const cat of CATEGORIES) {
+                const current = prev[cat] || [];
+                const exists = current.some(s => s.key === key);
+                if (turnOn && !exists) {
+                    next[cat] = [...current, { ...seg, key, type: 'sprint' as const }];
+                } else if (!turnOn && exists) {
+                    next[cat] = current.filter(s => s.key !== key);
+                }
+            }
+            return next;
+        });
+    };
+
+    const defaultSelectedSprints: SelectedSegment[] = segments
+        .filter(seg => isSegmentSelectedForAll(`${seg.id}_${seg.count}`))
+        .map(seg => ({ ...seg, key: `${seg.id}_${seg.count}`, type: 'sprint' as const }));
+
     return (
         <div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
@@ -114,6 +139,23 @@ export default function RoutePlanningTab({ routes }: RoutePlanningTabProps) {
 
             {selectedRoute && (
                 <>
+                    <div className="mb-6">
+                        <label className="block text-sm font-medium text-muted-foreground mb-1">
+                            Default Sprint Segments (applies to all categories)
+                        </label>
+                        <p className="text-xs text-muted-foreground mb-2">
+                            Selecting a segment here adds it to every category below; you can still fine-tune each category&apos;s sprints individually.
+                        </p>
+                        <SegmentPicker
+                            segments={segments}
+                            selectedSprints={defaultSelectedSprints}
+                            onToggle={toggleDefaultSprint}
+                            segmentType="sprint"
+                            maxLaps={maxLapsForSegments}
+                            compact
+                        />
+                    </div>
+
                     <div className="mb-6 text-sm text-muted-foreground flex items-center gap-2">
                         <a
                             href={getZwiftInsiderUrl(selectedRoute.name)}
@@ -243,6 +285,11 @@ export default function RoutePlanningTab({ routes }: RoutePlanningTabProps) {
                             const sprintPerSegment = sum((leagueSettings?.sprintPoints || []).slice(0, riders));
                             const sprintTotal = sprintPerSegment * sprintSegmentCount;
                             const combinedTotal = finishTotal + sprintTotal;
+                            const finishPct = combinedTotal > 0 ? (finishTotal / combinedTotal) * 100 : 0;
+                            const sprintPct = combinedTotal > 0 ? (sprintTotal / combinedTotal) * 100 : 0;
+                            const pieHoverText = combinedTotal > 0
+                                ? `Finish: ${finishPct.toFixed(1)}% (${finishTotal} pts)\nSprint: ${sprintPct.toFixed(1)}% (${sprintTotal} pts)\nTotal: ${combinedTotal} pts`
+                                : 'No points to preview (check points settings and sprint segments)';
 
                             return (
                                 <div key={cat} className="border border-border rounded p-4 space-y-3">
@@ -307,17 +354,29 @@ export default function RoutePlanningTab({ routes }: RoutePlanningTabProps) {
                                     </div>
 
                                     <div>
-                                        <span className="block text-xs text-muted-foreground">Points Preview</span>
-                                        <div className="text-xs leading-5">
-                                            <div className="text-muted-foreground">
-                                                Finish: <span className="font-medium text-foreground">{finishTotal}</span>
-                                            </div>
-                                            <div className="text-muted-foreground">
-                                                Sprint: <span className="font-medium text-foreground">{sprintTotal}</span>{' '}
-                                                <span className="text-[11px]">({sprintSegmentCount} segment{sprintSegmentCount === 1 ? '' : 's'})</span>
-                                            </div>
-                                            <div className="text-muted-foreground">
-                                                Total: <span className="font-medium text-foreground">{combinedTotal}</span>
+                                        <span className="block text-xs text-muted-foreground mb-1">Points Preview</span>
+                                        <div className="flex items-center gap-3">
+                                            <div
+                                                className="w-12 h-12 rounded-full border border-border shrink-0"
+                                                style={{
+                                                    background: combinedTotal > 0
+                                                        ? `conic-gradient(#2563eb 0 ${finishPct}%, #16a34a ${finishPct}% 100%)`
+                                                        : 'var(--muted)',
+                                                }}
+                                                aria-label="Points split pie chart"
+                                                title={pieHoverText}
+                                            />
+                                            <div className="text-xs leading-5">
+                                                <div className="text-muted-foreground">
+                                                    Finish: <span className="font-medium text-foreground">{finishTotal}</span>
+                                                </div>
+                                                <div className="text-muted-foreground">
+                                                    Sprint: <span className="font-medium text-foreground">{sprintTotal}</span>{' '}
+                                                    <span className="text-[11px]">({sprintSegmentCount} segment{sprintSegmentCount === 1 ? '' : 's'})</span>
+                                                </div>
+                                                <div className="text-muted-foreground">
+                                                    Total: <span className="font-medium text-foreground">{combinedTotal}</span>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>

@@ -12,6 +12,8 @@ export default function RoutePlannerPage() {
             <h1 className="text-3xl font-bold mb-2 text-foreground">Route Planner</h1>
             <p className="text-muted-foreground mb-8">
                 Pick a map and route, set a target W/kg per category, and estimate lap counts and finish times.
+                Select sprint segments per category to preview the finish and sprint points riders would earn,
+                based on a configurable number of scoring riders per category.
             </p>
 
             {routesQuery.isLoading ? (
