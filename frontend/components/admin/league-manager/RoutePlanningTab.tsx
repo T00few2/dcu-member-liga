@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
-import type { Route } from '@/types/admin';
-import { getRouteHelpers, calculateRouteTotals } from '@/hooks/useLeagueData';
-import { useRouteTimeEstimatesQuery } from '@/hooks/queries';
+import { useEffect, useMemo, useState } from 'react';
+import type { Route, Segment, SelectedSegment } from '@/types/admin';
+import { getRouteHelpers, calculateRouteTotals, fetchSegments } from '@/hooks/useLeagueData';
+import { useRouteTimeEstimatesQuery, useLeagueSettingsQuery } from '@/hooks/queries';
 import { getZwiftInsiderUrl } from '@/lib/api';
 import { estimateMinutesPerLap, estimateTotalMinutes, solveLapsForTimeSpan, formatMinutes } from '@/lib/timeEstimate';
+import { CollapsibleSegmentPicker } from './SegmentPicker';
 
 interface RoutePlanningTabProps {
     routes: Route[];
@@ -16,6 +17,8 @@ type PlanningMode = 'laps' | 'time';
 const CATEGORIES: Category[] = ['A', 'B', 'C', 'D'];
 const DEFAULT_WKG: Record<Category, number> = { A: 4.2, B: 3.8, C: 3.4, D: 3.0 };
 const DEFAULT_LAPS: Record<Category, number> = { A: 1, B: 1, C: 1, D: 1 };
+const EMPTY_SPRINTS: Record<Category, SelectedSegment[]> = { A: [], B: [], C: [], D: [] };
+const sum = (vals: number[]) => vals.reduce((acc, n) => acc + n, 0);
 
 export default function RoutePlanningTab({ routes }: RoutePlanningTabProps) {
     const [selectedMap, setSelectedMap] = useState('');
@@ -24,11 +27,58 @@ export default function RoutePlanningTab({ routes }: RoutePlanningTabProps) {
     const [wkg, setWkg] = useState<Record<Category, number>>(DEFAULT_WKG);
     const [mode, setMode] = useState<PlanningMode>('laps');
     const [timeSpanHours, setTimeSpanHours] = useState({ min: 1, max: 1.5 });
+    const [segments, setSegments] = useState<Segment[]>([]);
+    const [selectedSprints, setSelectedSprints] = useState<Record<Category, SelectedSegment[]>>(EMPTY_SPRINTS);
+    const [pointsPreviewRiders, setPointsPreviewRiders] = useState(30);
 
     const { maps, filteredRoutes, selectedRoute } = getRouteHelpers(routes, selectedMap, selectedRouteId);
     const timeEstimatesQuery = useRouteTimeEstimatesQuery(selectedRoute?.name ?? '');
     const timeData = timeEstimatesQuery.data;
     const timeUnavailable = !!timeData?.error || (timeEstimatesQuery.isSuccess && (timeData?.estimates.length ?? 0) === 0);
+    const leagueSettingsQuery = useLeagueSettingsQuery();
+    const leagueSettings = leagueSettingsQuery.data;
+
+    const getCatLaps = (cat: Category): number => {
+        if (mode === 'time' && timeData && selectedRoute) {
+            const perLapMinutes = estimateMinutesPerLap(timeData.estimates, wkg[cat]);
+            if (perLapMinutes != null) {
+                const solved = solveLapsForTimeSpan(selectedRoute, perLapMinutes, timeSpanHours.min * 60, timeSpanHours.max * 60);
+                if (solved) return solved.laps;
+            }
+        }
+        return laps[cat];
+    };
+
+    const maxLapsForSegments = useMemo(
+        () => Math.max(1, ...CATEGORIES.map(cat => getCatLaps(cat))),
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- getCatLaps closes over these
+        [mode, timeData, wkg, laps, timeSpanHours, selectedRoute],
+    );
+
+    useEffect(() => {
+        setSelectedSprints(EMPTY_SPRINTS);
+    }, [selectedRouteId]);
+
+    useEffect(() => {
+        let cancelled = false;
+        if (!selectedRouteId) { setSegments([]); return; }
+        fetchSegments(selectedRouteId, maxLapsForSegments).then(data => {
+            if (!cancelled) setSegments(data);
+        });
+        return () => { cancelled = true; };
+    }, [selectedRouteId, maxLapsForSegments]);
+
+    const toggleSprint = (cat: Category, seg: Segment) => {
+        const key = `${seg.id}_${seg.count}`;
+        setSelectedSprints(prev => {
+            const current = prev[cat] || [];
+            const exists = current.some(s => s.key === key);
+            const next = exists
+                ? current.filter(s => s.key !== key)
+                : [...current, { ...seg, key, type: 'sprint' as const }];
+            return { ...prev, [cat]: next };
+        });
+    };
 
     return (
         <div>
@@ -148,6 +198,20 @@ export default function RoutePlanningTab({ routes }: RoutePlanningTabProps) {
                         )}
                     </div>
 
+                    <div className="mb-6 flex items-center gap-2">
+                        <label htmlFor="route-planning-preview-riders" className="text-sm text-muted-foreground font-medium">
+                            Riders per category (points preview):
+                        </label>
+                        <input
+                            id="route-planning-preview-riders"
+                            type="number"
+                            min="1"
+                            value={pointsPreviewRiders}
+                            onChange={e => setPointsPreviewRiders(Math.max(1, parseInt(e.target.value) || 1))}
+                            className="w-24 p-1.5 border border-input rounded bg-background text-foreground text-sm"
+                        />
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                         {CATEGORIES.map(cat => {
                             const perLapMinutes = timeData ? estimateMinutesPerLap(timeData.estimates, wkg[cat]) : null;
@@ -168,6 +232,17 @@ export default function RoutePlanningTab({ routes }: RoutePlanningTabProps) {
                             const totalMinutes = perLapMinutes != null
                                 ? estimateTotalMinutes(selectedRoute, perLapMinutes, lapsForCat)
                                 : null;
+
+                            const catSegments = segments.filter(s => (s.lap || 1) <= lapsForCat);
+                            const validKeys = new Set(catSegments.map(s => `${s.id}_${s.count}`));
+                            const catSprints = selectedSprints[cat] || [];
+                            const sprintSegmentCount = catSprints.filter(s => validKeys.has(s.key)).length;
+
+                            const riders = Math.max(1, pointsPreviewRiders);
+                            const finishTotal = sum((leagueSettings?.finishPoints || []).slice(0, riders));
+                            const sprintPerSegment = sum((leagueSettings?.sprintPoints || []).slice(0, riders));
+                            const sprintTotal = sprintPerSegment * sprintSegmentCount;
+                            const combinedTotal = finishTotal + sprintTotal;
 
                             return (
                                 <div key={cat} className="border border-border rounded p-4 space-y-3">
@@ -218,6 +293,33 @@ export default function RoutePlanningTab({ routes }: RoutePlanningTabProps) {
                                         <span className="font-mono font-medium">
                                             {totalMinutes != null ? formatMinutes(totalMinutes) : '—'}
                                         </span>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs text-muted-foreground mb-1">Sprints</label>
+                                        <CollapsibleSegmentPicker
+                                            segments={catSegments}
+                                            selectedSprints={catSprints}
+                                            onToggle={seg => toggleSprint(cat, seg)}
+                                            segmentType="sprint"
+                                            maxLaps={lapsForCat}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <span className="block text-xs text-muted-foreground">Points Preview</span>
+                                        <div className="text-xs leading-5">
+                                            <div className="text-muted-foreground">
+                                                Finish: <span className="font-medium text-foreground">{finishTotal}</span>
+                                            </div>
+                                            <div className="text-muted-foreground">
+                                                Sprint: <span className="font-medium text-foreground">{sprintTotal}</span>{' '}
+                                                <span className="text-[11px]">({sprintSegmentCount} segment{sprintSegmentCount === 1 ? '' : 's'})</span>
+                                            </div>
+                                            <div className="text-muted-foreground">
+                                                Total: <span className="font-medium text-foreground">{combinedTotal}</span>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             );

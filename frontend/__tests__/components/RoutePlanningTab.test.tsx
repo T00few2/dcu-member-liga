@@ -107,4 +107,44 @@ describe('RoutePlanningTab', () => {
         expect(screen.getByRole('button', { name: 'Manual Laps' })).toHaveClass('bg-primary');
         expect(screen.queryByLabelText('Min Hours')).not.toBeInTheDocument();
     });
+
+    it('previews finish/sprint points for a category from its selected sprint segments', async () => {
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.includes('/segments')) {
+                return {
+                    ok: true,
+                    json: async () => ({
+                        segments: [{ id: 'seg1', name: 'Sprint 1', count: 1, direction: 'forward', lap: 1 }],
+                    }),
+                };
+            }
+            if (url.includes('/league/settings')) {
+                return {
+                    ok: true,
+                    json: async () => ({
+                        settings: { finishPoints: [10, 8, 6], sprintPoints: [3, 2, 1] },
+                    }),
+                };
+            }
+            return {
+                ok: true,
+                json: async () => ({ rating: 14.4, estimates: [] }),
+            };
+        }));
+
+        const user = userEvent.setup();
+        renderWithClient(<RoutePlanningTab routes={ROUTES} />);
+        await selectRoute(user);
+
+        const categoryA = getCategoryCard('Category A');
+        await user.click(within(categoryA).getByText(/Sprint Segments/));
+        const sprintCheckbox = await within(categoryA).findByRole('checkbox', { name: /Sprint 1/ });
+        await user.click(sprintCheckbox);
+
+        expect(within(categoryA).getByText('24')).toBeInTheDocument(); // finish: 10+8+6
+        expect(within(categoryA).getByText('6')).toBeInTheDocument(); // sprint: (3+2+1) * 1 segment
+        expect(within(categoryA).getByText('(1 segment)')).toBeInTheDocument();
+        expect(within(categoryA).getByText('30')).toBeInTheDocument(); // combined total
+    });
 });
