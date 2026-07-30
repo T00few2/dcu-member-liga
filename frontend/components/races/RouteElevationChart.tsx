@@ -356,11 +356,14 @@ export default function RouteElevationChart({
 
     const maxDist = data[data.length - 1]?.distance ?? 0;
     const distStep = getNiceStep(maxDist / 4);
-    const maxDistTick = distStep * Math.ceil(maxDist / distStep);
-    const xTicks = Array.from(
-        { length: Math.max(2, Math.round(maxDistTick / distStep) + 1) },
-        (_, i) => i * distStep,
-    );
+    // Domain ends at the real route length — don't pad to the next nice tick.
+    const xTicks: number[] = [];
+    for (let t = 0; t < maxDist - distStep * 0.35; t += distStep) {
+        xTicks.push(Number(t.toFixed(6)));
+    }
+    if (xTicks.length === 0 || Math.abs(xTicks[xTicks.length - 1] - maxDist) > 1e-6) {
+        xTicks.push(maxDist);
+    }
 
     const altitudes = data.map((d) => d.altitude);
     const minAlt = Math.min(...altitudes);
@@ -403,9 +406,15 @@ export default function RouteElevationChart({
                         <XAxis
                             dataKey="distance"
                             type="number"
-                            domain={[0, maxDistTick]}
+                            domain={[0, 'dataMax']}
                             ticks={xTicks}
-                            tickFormatter={(v, i) => i === xTicks.length - 1 ? `${v.toFixed(0)} km` : `${v.toFixed(0)}`}
+                            tickFormatter={(v, i) => {
+                                const isLast = i === xTicks.length - 1;
+                                const label = Number.isInteger(v) || Math.abs(v - Math.round(v)) < 0.05
+                                    ? `${Math.round(v)}`
+                                    : v.toFixed(1);
+                                return isLast ? `${label} km` : label;
+                            }}
                             tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
                             tickLine={false}
                             axisLine={false}
