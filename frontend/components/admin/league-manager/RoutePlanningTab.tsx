@@ -275,7 +275,7 @@ export default function RoutePlanningTab({ routes }: RoutePlanningTabProps) {
                                 ? estimateTotalMinutes(selectedRoute, perLapMinutes, lapsForCat)
                                 : null;
 
-                            const catSegments = segments.filter(s => (s.lap || 1) <= lapsForCat);
+                            const catSegments = segments.filter(s => (s.lap ?? 1) <= lapsForCat);
                             const validKeys = new Set(catSegments.map(s => `${s.id}_${s.count}`));
                             const catSprints = selectedSprints[cat] || [];
                             const sprintSegmentCount = catSprints.filter(s => validKeys.has(s.key)).length;

@@ -64,6 +64,20 @@ class PenExitRoutingTests(unittest.TestCase):
         self.assertEqual(lead_in["direction"], "reverse")
         self.assertEqual(lap_one["direction"], "reverse")
 
+    def test_queens_highway_labels_finish_on_race_lap(self):
+        """Loop sprint armed in lead-in must still appear under the race lap it finishes on."""
+        game = ZwiftGameService()
+        route = _load_route("Queen's Highway")
+        rid = route["id"]
+
+        one = game.get_event_segments(rid, laps=1)
+        self.assertTrue(one, "Expected at least one segment for 1 lap")
+        self.assertTrue(all(s.get("lap") == 1 for s in one), one)
+
+        two = game.get_event_segments(rid, laps=2)
+        laps_seen = sorted({s.get("lap") for s in two})
+        self.assertEqual(laps_seen, [1, 2], two)
+
 
 if __name__ == "__main__":
     unittest.main()

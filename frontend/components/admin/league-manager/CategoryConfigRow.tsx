@@ -20,7 +20,7 @@ export default function CategoryConfigRow({
     onToggleSprint,
 }: CategoryConfigRowProps) {
     const maxLaps = config.laps || defaultLaps;
-    const filteredSegments = segments.filter(s => (s.lap || 1) <= maxLaps);
+    const filteredSegments = segments.filter(s => (s.lap ?? 1) <= maxLaps);
 
     return (
         <div className="flex flex-col gap-2 p-3 bg-muted/20 rounded border border-border">

@@ -21,7 +21,7 @@ export default function GroupedModeConfig() {
         <div className="space-y-4">
             {formState.raceGroups.map((group, groupIdx) => {
                 const groupMaxLaps = group.laps || formState.laps;
-                const filteredSegments = segments.filter(s => (s.lap || 1) <= groupMaxLaps);
+                const filteredSegments = segments.filter(s => (s.lap ?? 1) <= groupMaxLaps);
 
                 return (
                     <div key={group.id} className="p-4 bg-muted/20 rounded-lg border border-border space-y-3">
@@ -68,7 +68,7 @@ export default function GroupedModeConfig() {
                             <label className="text-[10px] text-muted-foreground font-bold uppercase block">Categories in this group</label>
                             {group.categories.map((cat, catIdx) => {
                                 const catMaxLaps = cat.laps || groupMaxLaps;
-                                const catSegments = segments.filter(s => (s.lap || 1) <= catMaxLaps);
+                                const catSegments = segments.filter(s => (s.lap ?? 1) <= catMaxLaps);
                                 return (
                                     <div key={catIdx} className="p-2 bg-background rounded border border-border space-y-2">
                                         <div className="flex gap-2 items-center">

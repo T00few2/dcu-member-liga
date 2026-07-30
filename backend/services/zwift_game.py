@@ -161,11 +161,11 @@ class ZwiftGameService:
             if key in active_segments:
                 start_info = active_segments.pop(key)
                 
-                # Construct the found segment object.
-                # Label by start lap so segments that begin in lead-in are shown
-                # under "Lead in" even if they finish after crossing into lap 1.
+                # Label by finish lap: a banner crossed at the end of lap N belongs
+                # to lap N even if its start was armed during lead-in / lap N-1.
+                # (Using start lap hid the last race lap on many loop routes.)
                 seg_copy = seg_data.copy()
-                seg_copy["lap"] = start_info.get("lap", current_lap)
+                seg_copy["lap"] = current_lap
                 seg_copy["direction"] = direction
                 seg_copy["id"] = seg_id
                 # Use finish order with a within-entry ratio to keep chronological ordering
