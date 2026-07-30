@@ -24,6 +24,20 @@ export function groupSegmentsByLap(segments: Segment[]): Record<number, Segment[
     }, {} as Record<number, Segment[]>);
 }
 
+/** Key of the calculated finish banner: last race-lap segment (lap >= 1). */
+export function getFinishSegmentKey(segments: Segment[], maxLaps?: number): string | null {
+    const raceLapSegments = segments.filter((seg) => {
+        const lap = seg.lap ?? 1;
+        if (lap < 1) return false;
+        if (maxLaps != null && lap > maxLaps) return false;
+        return true;
+    });
+    const finish = raceLapSegments[raceLapSegments.length - 1];
+    if (!finish?.id) return null;
+    return `${finish.id}_${finish.count}`;
+}
+
+
 export function getRouteHelpers(routes: Route[], selectedMap: string, selectedRouteId: string) {
     const maps = Array.from(new Set(routes.map(r => r.map))).sort();
     const filteredRoutes = selectedMap ? routes.filter(r => r.map === selectedMap) : [];

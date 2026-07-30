@@ -543,7 +543,7 @@ class ResultsProcessor:
             )
 
             # Build ordered route segment list for finish-line identification.
-            # The finish segment = last non-sprint segment in route chronology.
+            # The finish segment = last race-lap banner on the route.
             route_segments = self._resolve_route_segments(race_data, subgroup)
             all_crossings_raw = self._prefetch_subgroup_crossings_if_needed(
                 subgroup_id=subgroup_id,

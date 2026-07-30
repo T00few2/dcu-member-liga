@@ -1,7 +1,7 @@
 'use client';
 
 import type { Segment, SelectedSegment } from '@/types/admin';
-import { groupSegmentsByLap } from '@/hooks/useLeagueData';
+import { getFinishSegmentKey, groupSegmentsByLap } from '@/hooks/useLeagueData';
 
 interface SegmentPickerProps {
     segments: Segment[];
@@ -10,6 +10,21 @@ interface SegmentPickerProps {
     segmentType: 'sprint' | 'split';
     maxLaps?: number;
     compact?: boolean;
+}
+
+function segmentBaseLabel(name: string, direction: string): string {
+    const label = name || '';
+    if (String(direction || '').toLowerCase() !== 'reverse') return label;
+    return /\breverse\b/i.test(label) ? label : `${label} Reverse`;
+}
+
+function segmentDisplayLabel(
+    seg: Segment,
+    finishKey: string | null,
+): string {
+    const base = segmentBaseLabel(seg.name, seg.direction);
+    const key = `${seg.id}_${seg.count}`;
+    return finishKey && key === finishKey ? `${base} (finish)` : base;
 }
 
 export default function SegmentPicker({
@@ -21,13 +36,9 @@ export default function SegmentPicker({
     compact = false,
 }: SegmentPickerProps) {
     const segmentsByLap = groupSegmentsByLap(segments);
+    const finishKey = getFinishSegmentKey(segments, maxLaps);
     const label = segmentType === 'split' ? 'Split Segments' : 'Sprint Segments';
     const lapLabel = (lapNum: number) => (lapNum === 0 ? 'Lead in' : `Lap ${lapNum}`);
-    const segmentLabel = (name: string, direction: string) => {
-        const label = name || '';
-        if (String(direction || '').toLowerCase() !== 'reverse') return label;
-        return /\breverse\b/i.test(label) ? label : `${label} Reverse`;
-    };
 
     if (segments.length === 0) {
         return (
@@ -54,7 +65,8 @@ export default function SegmentPicker({
                                 {segmentsByLap[lapNum].map(seg => {
                                     const uniqueKey = `${seg.id}_${seg.count}`;
                                     const isSelected = selectedSprints.some(s => s.key === uniqueKey);
-                                    
+                                    const display = segmentDisplayLabel(seg, finishKey);
+
                                     return (
                                         <label
                                             key={uniqueKey}
@@ -66,8 +78,8 @@ export default function SegmentPicker({
                                                 onChange={() => onToggle(seg)}
                                                 className="w-3 h-3 rounded border-input text-primary focus:ring-primary"
                                             />
-                                            <div className="text-xs truncate" title={segmentLabel(seg.name, seg.direction)}>
-                                                {segmentLabel(seg.name, seg.direction)}
+                                            <div className="text-xs truncate" title={display}>
+                                                {display}
                                             </div>
                                         </label>
                                     );
@@ -96,7 +108,8 @@ export default function SegmentPicker({
                                 {segmentsByLap[lapNum].map(seg => {
                                     const uniqueKey = `${seg.id}_${seg.count}`;
                                     const isSelected = selectedSprints.some(s => s.key === uniqueKey);
-                                    
+                                    const display = segmentDisplayLabel(seg, finishKey);
+
                                     return (
                                         <label
                                             key={uniqueKey}
@@ -109,7 +122,7 @@ export default function SegmentPicker({
                                                 className="w-4 h-4 rounded border-input text-primary focus:ring-primary"
                                             />
                                             <div className="text-sm">
-                                                <div className="font-medium text-foreground">{segmentLabel(seg.name, seg.direction)}</div>
+                                                <div className="font-medium text-foreground">{display}</div>
                                                 <div className="text-xs text-muted-foreground">
                                                     {seg.direction} • Occurrence #{seg.count}
                                                 </div>
@@ -140,12 +153,8 @@ export function CollapsibleSegmentPicker({
 }: CollapsibleSegmentPickerProps) {
     const label = title || (segmentType === 'split' ? 'Split Segments' : 'Sprint Segments');
     const segmentsByLap = groupSegmentsByLap(segments);
+    const finishKey = getFinishSegmentKey(segments, maxLaps);
     const lapLabel = (lapNum: number) => (lapNum === 0 ? 'Lead in' : `Lap ${lapNum}`);
-    const segmentLabel = (name: string, direction: string) => {
-        const label = name || '';
-        if (String(direction || '').toLowerCase() !== 'reverse') return label;
-        return /\breverse\b/i.test(label) ? label : `${label} Reverse`;
-    };
 
     return (
         <details className="group border border-input rounded bg-background">
@@ -157,7 +166,7 @@ export function CollapsibleSegmentPicker({
                     ▼
                 </span>
             </summary>
-            
+
             <div className="p-2 border-t border-input max-h-60 overflow-y-auto bg-muted/10">
                 {Object.keys(segmentsByLap)
                     .sort((a, b) => parseInt(a) - parseInt(b))
@@ -173,7 +182,8 @@ export function CollapsibleSegmentPicker({
                                 {segmentsByLap[lapNum].map(seg => {
                                     const uniqueKey = `${seg.id}_${seg.count}`;
                                     const isSelected = selectedSprints.some(s => s.key === uniqueKey);
-                                    
+                                    const display = segmentDisplayLabel(seg, finishKey);
+
                                     return (
                                         <label
                                             key={uniqueKey}
@@ -185,8 +195,8 @@ export function CollapsibleSegmentPicker({
                                                 onChange={() => onToggle(seg)}
                                                 className="w-3 h-3 rounded border-input text-primary focus:ring-primary"
                                             />
-                                            <div className="text-xs truncate" title={segmentLabel(seg.name, seg.direction)}>
-                                                {segmentLabel(seg.name, seg.direction)}
+                                            <div className="text-xs truncate" title={display}>
+                                                {display}
                                             </div>
                                         </label>
                                     );

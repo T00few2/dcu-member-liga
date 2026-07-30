@@ -54,6 +54,40 @@ def test_filter_finish_entries_all_sprints_uses_last_route_crossing_instance():
     assert {e["_officialSegmentResult"]["endWorldTime"] for e in filtered} == {250, 260}
 
 
+def test_filter_finish_entries_uses_last_banner_even_when_it_is_a_configured_sprint():
+    """Finish must not jump earlier past later selected sprints."""
+    fetcher = ZwiftFetcher(zwift_service=None)
+    early = "early-unticked"
+    late_sprint = "late-sprint"
+
+    entries = [
+        _entry("r1", early, 100, 1000),
+        _entry("r1", late_sprint, 200, 2000),
+        _entry("r2", early, 110, 1100),
+        _entry("r2", late_sprint, 210, 2100),
+    ]
+
+    filtered = fetcher._filter_finish_entries(
+        entries=entries,
+        route_segments=[
+            {"id": early, "count": 1, "lap": 1, "direction": "forward"},
+            {"id": late_sprint, "count": 1, "lap": 1, "direction": "forward"},
+        ],
+        configured_sprints=[
+            {"id": late_sprint, "count": 1, "lap": 1, "direction": "forward"},
+        ],
+    )
+
+    selected = {
+        str((e.get("profileData") or {}).get("id")): int(
+            (e.get("_officialSegmentResult") or {}).get("endWorldTime", 0)
+        )
+        for e in filtered
+    }
+    assert selected == {"r1": 200, "r2": 210}
+
+
+
 def test_resolve_finish_time_prefers_end_date_delta_over_segment_duration():
     subgroup_start = datetime(2026, 5, 13, 17, 0, 0, tzinfo=timezone.utc)
     entry = {
