@@ -85,19 +85,19 @@ class ZwiftGameService:
             print(f"Route with id {route_id} not found.")
             return []
 
-        # Determine the course/world ID.
-        course_id = route.get("courseId") or route.get("worldId")
-        if course_id is None:
-            print("Unable to determine courseId from route data.")
+        # Prefer worldId for filesystem paths (Sauce courseId differs, e.g. Watopia 1 vs 6).
+        world_id = route.get("worldId") or route.get("courseId")
+        if world_id is None:
+            print("Unable to determine worldId from route data.")
             return []
 
-        # Load the segments file for this course
-        segments_file = os.path.join(base_dir, f"data/worlds/{course_id}/segments.json")
+        # Load the segments file for this world
+        segments_file = os.path.join(base_dir, f"data/worlds/{world_id}/segments.json")
         try:
             with open(segments_file, "r", encoding="utf-8") as f:
                 segments_data = json.load(f)
         except Exception as e:
-            print(f"Error loading segments file for course {course_id}: {e}")
+            print(f"Error loading segments file for world {world_id}: {e}")
             return []
 
         # Mirror Sauce behavior: a small set of segment IDs should only be matched
