@@ -71,7 +71,7 @@ describe('RoutePlanningTab', () => {
         await user.clear(maxInput);
         await user.type(maxInput, '1.5');
 
-        // 43min/lap: 1 lap ~= 45.15min, 2 laps ~= 88.15min -> only 2 laps fits [78, 90]
+        // 43min covers lead-in + first lap (~21km); 2 laps ~= 84min -> only 2 fits [78, 90]
         expect(within(categoryA).getByText('2')).toBeInTheDocument();
         expect(within(categoryA).queryByText('outside target span')).not.toBeInTheDocument();
     });
@@ -95,7 +95,7 @@ describe('RoutePlanningTab', () => {
         await user.clear(maxInput);
         await user.type(maxInput, '1.02');
 
-        // 43min/lap: 1 lap ~= 45.15min, 2 laps ~= 88.15min, span is [60, 61.2] -> neither fits
+        // 43min for lead-in+lap: 1 lap = 43min, 2 laps ~= 84min, span is [60, 61.2] -> neither fits
         expect(within(categoryA).getByText('outside target span')).toBeInTheDocument();
     });
 

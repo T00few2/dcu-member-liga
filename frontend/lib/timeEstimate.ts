@@ -42,12 +42,18 @@ interface RouteDistances {
     leadinDistance: number;
 }
 
-/** Total ride time for a given lap count: laps * per-lap time, plus the lead-in at the same pace. */
-export function estimateTotalMinutes(route: RouteDistances, perLapMinutes: number, laps: number): number | null {
-    if (route.distance <= 0 || !(perLapMinutes > 0)) return null;
-    const speedKmPerMin = route.distance / perLapMinutes;
-    const leadInMinutes = route.leadinDistance / speedKmPerMin;
-    return perLapMinutes * laps + leadInMinutes;
+/**
+ * ZwiftInsider tier times are for one full completion including lead-in
+ * (often labelled "lead-in + first lap"). Scale that pace across N laps
+ * without charging lead-in again.
+ */
+export function estimateTotalMinutes(route: RouteDistances, ziMinutes: number, laps: number): number | null {
+    if (route.distance <= 0 || !(ziMinutes > 0)) return null;
+    const leadIn = Math.max(0, route.leadinDistance || 0);
+    const ziKm = route.distance + leadIn;
+    if (ziKm <= 0) return null;
+    const totalKm = route.distance * Math.max(1, laps) + leadIn;
+    return ziMinutes * (totalKm / ziKm);
 }
 
 export interface LapSolveResult {
@@ -63,22 +69,25 @@ export interface LapSolveResult {
  */
 export function solveLapsForTimeSpan(
     route: RouteDistances,
-    perLapMinutes: number,
+    ziMinutes: number,
     minMinutes: number,
     maxMinutes: number,
 ): LapSolveResult | null {
-    if (route.distance <= 0 || !(perLapMinutes > 0)) return null;
+    if (route.distance <= 0 || !(ziMinutes > 0)) return null;
 
     const [lo, hi] = minMinutes <= maxMinutes ? [minMinutes, maxMinutes] : [maxMinutes, minMinutes];
-    const speedKmPerMin = route.distance / perLapMinutes;
-    const leadInMinutes = route.leadinDistance / speedKmPerMin;
+    const leadIn = Math.max(0, route.leadinDistance || 0);
+    const ziKm = route.distance + leadIn;
+    if (ziKm <= 0) return null;
+
+    const totalForLaps = (n: number) => ziMinutes * ((route.distance * n + leadIn) / ziKm);
     const targetMid = (lo + hi) / 2;
-    const approx = Math.max(1, Math.round((targetMid - leadInMinutes) / perLapMinutes));
+    const approx = Math.max(1, Math.round(((targetMid * ziKm) / ziMinutes - leadIn) / route.distance));
 
     let best = 1;
     let bestDist = Infinity;
     for (let n = Math.max(1, approx - 3); n <= approx + 3; n++) {
-        const total = perLapMinutes * n + leadInMinutes;
+        const total = totalForLaps(n);
         const dist = total < lo ? lo - total : total > hi ? total - hi : 0;
         if (dist < bestDist) {
             bestDist = dist;
@@ -86,7 +95,7 @@ export function solveLapsForTimeSpan(
         }
     }
 
-    return { laps: best, totalMinutes: perLapMinutes * best + leadInMinutes, withinSpan: bestDist === 0 };
+    return { laps: best, totalMinutes: totalForLaps(best), withinSpan: bestDist === 0 };
 }
 
 export function formatMinutes(totalMinutes: number): string {

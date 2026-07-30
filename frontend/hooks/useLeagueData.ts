@@ -46,8 +46,36 @@ export function getRouteHelpers(routes: Route[], selectedMap: string, selectedRo
 }
 
 export function calculateRouteTotals(route: Route, laps: number) {
+    // Match Sauce/Zwift: lead-in once, then lap distance per lap.
+    // total = leadin + distance * laps  (weld correction is ~0 for almost all routes)
+    const lapsSafe = Math.max(1, laps || 1);
+    const lapKm = Number(route.distance) || 0;
+    const leadInKm = Number(route.leadinDistance) || 0;
+    const lapElev = Number(route.elevation) || 0;
+    const leadInElev = Number(route.leadinElevation) || 0;
     return {
-        totalDistance: Number((route.distance * laps + route.leadinDistance).toFixed(1)),
-        totalElevation: Math.round(route.elevation * laps + route.leadinElevation),
+        totalDistance: Number((lapKm * lapsSafe + leadInKm).toFixed(1)),
+        totalElevation: Math.round(lapElev * lapsSafe + leadInElev),
+        lapDistance: Number(lapKm.toFixed(1)),
+        leadinDistance: Number(leadInKm.toFixed(1)),
     };
 }
+
+/**
+ * Scale a saved race totalDistance to a different lap count without
+ * multiplying lead-in. `totalDistanceKm` must be lead-in + raceLaps * lap.
+ */
+export function scaleRaceDistanceKm(
+    totalDistanceKm: number,
+    raceLaps: number,
+    targetLaps: number,
+    leadInKm = 0,
+): number {
+    const raceLapsSafe = Math.max(1, raceLaps);
+    const targetLapsSafe = Math.max(1, targetLaps);
+    const leadIn = Math.max(0, leadInKm);
+    const raceOnlyKm = Math.max(0, totalDistanceKm - leadIn);
+    const lapKm = raceOnlyKm / raceLapsSafe;
+    return Number((lapKm * targetLapsSafe + leadIn).toFixed(1));
+}
+

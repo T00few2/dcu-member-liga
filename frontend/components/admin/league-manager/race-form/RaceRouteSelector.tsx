@@ -76,6 +76,12 @@ export default function RaceRouteSelector({ routes }: RaceRouteSelectorProps) {
                         <span className="font-mono font-medium">
                             {totals!.totalDistance.toFixed(1)} km
                         </span>
+                        <span className="text-xs text-muted-foreground">
+                            {formState.laps} × {totals!.lapDistance.toFixed(1)} km
+                            {totals!.leadinDistance > 0
+                                ? ` + ${totals!.leadinDistance.toFixed(1)} km lead-in`
+                                : ''}
+                        </span>
                     </div>
                     <div className="text-card-foreground flex flex-col justify-end">
                         <span className="text-sm text-muted-foreground">Total Elevation</span>

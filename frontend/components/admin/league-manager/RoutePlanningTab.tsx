@@ -330,6 +330,12 @@ export default function RoutePlanningTab({ routes }: RoutePlanningTabProps) {
                                     <div>
                                         <span className="block text-xs text-muted-foreground">Total Distance</span>
                                         <span className="font-mono font-medium">{totals.totalDistance.toFixed(1)} km</span>
+                                        <span className="block text-[11px] text-muted-foreground">
+                                            {lapsForCat} × {totals.lapDistance.toFixed(1)} km
+                                            {totals.leadinDistance > 0
+                                                ? ` + ${totals.leadinDistance.toFixed(1)} km lead-in`
+                                                : ''}
+                                        </span>
                                     </div>
                                     <div>
                                         <span className="block text-xs text-muted-foreground">Total Elevation</span>

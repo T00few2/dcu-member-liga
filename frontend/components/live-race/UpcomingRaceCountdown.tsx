@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import RouteElevationChart from '@/components/races/RouteElevationChart';
 import LiveRaceResultsTable from '@/components/live-race/LiveRaceResultsTable';
 import { fromTimestamp, formatDateLong, formatTimeWithTz } from '@/lib/formatDate';
+import { useRouteElevationQuery } from '@/hooks/queries';
+import { scaleRaceDistanceKm } from '@/hooks/useLeagueData';
 import type { CurrentLiveRace, Sprint } from '@/types/live';
 
 interface Props {
@@ -70,13 +72,16 @@ export default function UpcomingRaceCountdown({ race }: Props) {
     const minutes = Math.floor((secondsLeft % 3600) / 60);
     const seconds = secondsLeft % 60;
 
-    // totalDistance is in km; compute per-category distance the same way the live page does
+    const { data: elevationData } = useRouteElevationQuery(race.map, race.routeName, laps);
+    const leadInKm = Number(elevationData?.leadInDistance) || 0;
+
+    // totalDistance includes lead-in once; scale laps without multiplying lead-in.
     const totalKm = useMemo(() => {
         const raceLaps = Math.max(1, race.laps ?? 1);
-        const lapKm = (race.totalDistance ?? 0) / raceLaps;
-        const tabKm = lapKm * Math.max(1, laps);
-        return tabKm > 0 ? tabKm : null;
-    }, [race.totalDistance, race.laps, laps]);
+        const tabLaps = Math.max(1, laps);
+        const scaled = scaleRaceDistanceKm(race.totalDistance ?? 0, raceLaps, tabLaps, leadInKm);
+        return scaled > 0 ? scaled : null;
+    }, [race.totalDistance, race.laps, laps, leadInKm]);
 
     const dateLabel = raceDate
         ? `${formatDateLong(raceDate)} · ${formatTimeWithTz(raceDate)}`

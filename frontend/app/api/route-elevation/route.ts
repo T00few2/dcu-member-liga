@@ -92,21 +92,56 @@ export async function GET(req: NextRequest) {
         }));
 
     // Tile elevation arrays and profileSegments for multi-lap routes.
-    // The backend returns data for a single lap (no lead-in); each subsequent lap is appended
-    // with distance offset = lapLength * lapIndex.
+    // Strava streams often include lead-in; strip it before tiling so lead-in
+    // is not repeated on every lap. profileSegments are race-relative (0 = race start).
     const singleLapDistances: number[] = Array.isArray(data?.distance) ? data.distance : [];
     const singleLapAltitudes: number[] = Array.isArray(data?.altitude) ? data.altitude : [];
-    const lapLengthM = singleLapDistances.length > 0
+
+    const cachedLeadInKm = Number(data?.leadInDistance);
+    const catalogLeadInKm = Number(match.leadInDistance) || 0;
+    const leadInKm =
+        Number.isFinite(cachedLeadInKm) && cachedLeadInKm > 0
+            ? cachedLeadInKm
+            : catalogLeadInKm;
+    const leadInM = leadInKm > 0 ? leadInKm * 1000 : 0;
+    const catalogLapM = (Number(match.distance) || 0) * 1000;
+    const endM = singleLapDistances.length > 0
         ? (singleLapDistances[singleLapDistances.length - 1] ?? 0)
+        : 0;
+
+    let raceDistances = singleLapDistances;
+    let raceAltitudes = singleLapAltitudes;
+    if (leadInM > 0 && singleLapDistances.length > 1 && catalogLapM > 0) {
+        const withLeadInM = catalogLapM + leadInM;
+        const closerToWithLeadIn =
+            Math.abs(endM - withLeadInM) <= Math.abs(endM - catalogLapM);
+        if (closerToWithLeadIn) {
+            let startIdx = singleLapDistances.findIndex((d) => d >= leadInM);
+            if (startIdx < 0) startIdx = 0;
+            if (startIdx > 0) {
+                raceDistances = singleLapDistances
+                    .slice(startIdx)
+                    .map((d) => Math.max(0, d - leadInM));
+                raceAltitudes = singleLapAltitudes.slice(startIdx);
+                if (raceDistances.length && raceDistances[0] > 0) {
+                    raceDistances = [0, ...raceDistances];
+                    raceAltitudes = [raceAltitudes[0] ?? 0, ...raceAltitudes];
+                }
+            }
+        }
+    }
+
+    const lapLengthM = raceDistances.length > 0
+        ? (raceDistances[raceDistances.length - 1] ?? 0)
         : 0;
 
     const tiledDistance: number[] = [];
     const tiledAltitude: number[] = [];
     for (let lap = 0; lap < laps; lap++) {
         const offsetM = lapLengthM * lap;
-        for (let i = 0; i < singleLapDistances.length; i++) {
-            tiledDistance.push((singleLapDistances[i] ?? 0) + offsetM);
-            tiledAltitude.push(singleLapAltitudes[i] ?? 0);
+        for (let i = 0; i < raceDistances.length; i++) {
+            tiledDistance.push((raceDistances[i] ?? 0) + offsetM);
+            tiledAltitude.push(raceAltitudes[i] ?? 0);
         }
     }
 
@@ -130,6 +165,7 @@ export async function GET(req: NextRequest) {
             altitude: tiledAltitude.length > 0 ? tiledAltitude : data?.altitude,
             segments: routeSegments,
             profileSegments,
+            leadInDistance: leadInKm > 0 ? leadInKm : (data?.leadInDistance ?? undefined),
             stravaSegmentId: match.stravaSegmentId,
             stravaSegmentUrl: match.stravaSegmentUrl || `https://www.strava.com/segments/${match.stravaSegmentId}`,
         },

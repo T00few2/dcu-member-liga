@@ -14,6 +14,7 @@ import { useLiveRaceDoc } from '@/hooks/live-race/useLiveRaceDoc';
 import { clusterRiders, positionRiders, type RiderGroup } from '@/lib/live-race/cluster';
 import { fromTimestamp } from '@/lib/formatDate';
 import type { CurrentLiveRace, Sprint } from '@/types/live';
+import { scaleRaceDistanceKm } from '@/hooks/useLeagueData';
 
 interface CategoryTab {
     cat: string;
@@ -158,25 +159,37 @@ function LiveRacePageContent() {
         return Number.isFinite(n) && n > 0 ? n : 50;
     }, [searchParams]);
 
-    const tabTotalDistanceKm = useMemo(() => {
-        if (!currentRace) return 0;
+    // Chart / positioning use race-only km (lead-in stripped). Info cards use full ride km.
+    const { tabTotalWithLeadInKm, tabRaceOnlyKm, lapLengthKm } = useMemo(() => {
+        if (!currentRace) {
+            return { tabTotalWithLeadInKm: 0, tabRaceOnlyKm: 0, lapLengthKm: 1 };
+        }
         const raceLaps = Math.max(1, currentRace.laps ?? 1);
-        const lapLengthKm = (currentRace.totalDistance ?? 0) / raceLaps;
         const tabLaps = Math.max(1, activeTab?.laps ?? raceLaps);
-        return lapLengthKm > 0 ? lapLengthKm * tabLaps : currentRace.totalDistance ?? 0;
-    }, [currentRace, activeTab]);
+        const withLeadIn = scaleRaceDistanceKm(
+            currentRace.totalDistance ?? 0,
+            raceLaps,
+            tabLaps,
+            leadInKm,
+        );
+        const raceOnly = Math.max(0, withLeadIn - leadInKm);
+        const perLap = raceOnly / tabLaps;
+        return {
+            tabTotalWithLeadInKm: withLeadIn,
+            tabRaceOnlyKm: raceOnly,
+            lapLengthKm: perLap > 0 ? perLap : 1,
+        };
+    }, [currentRace, activeTab, leadInKm]);
 
     const groups = useMemo(() => {
         if (!currentRace || !liveRiders.length) return [];
-        const raceLaps = Math.max(1, currentRace.laps ?? 1);
-        const lapLengthKm = (currentRace.totalDistance ?? 0) / raceLaps;
         const positioned = positionRiders(liveRiders, {
             leadInKm,
-            totalDistanceKm: tabTotalDistanceKm,
-            lapLengthKm: lapLengthKm || 1,
+            totalDistanceKm: tabRaceOnlyKm,
+            lapLengthKm,
         });
         return clusterRiders(positioned, gapMeters);
-    }, [currentRace, liveRiders, gapMeters, leadInKm, tabTotalDistanceKm]);
+    }, [currentRace, liveRiders, gapMeters, leadInKm, tabRaceOnlyKm, lapLengthKm]);
 
     const frontGroup = groups.length ? groups[groups.length - 1] : null;
 
@@ -252,7 +265,7 @@ function LiveRacePageContent() {
                 <h1 className="text-2xl font-bold text-card-foreground">{currentRace.name}</h1>
                 <p className="text-sm text-muted-foreground mt-1">
                     {currentRace.map} · {currentRace.routeName} · {laps} omgang{laps !== 1 ? 'e' : ''}
-                    {tabTotalDistanceKm > 0 && ` · ${tabTotalDistanceKm.toFixed(1)} km`}
+                    {tabTotalWithLeadInKm > 0 && ` · ${tabTotalWithLeadInKm.toFixed(1)} km`}
                 </p>
             </header>
 
@@ -312,7 +325,7 @@ function LiveRacePageContent() {
 
             <LiveRaceInfoCards
                 race={currentRace}
-                totalDistanceKm={tabTotalDistanceKm}
+                totalDistanceKm={tabTotalWithLeadInKm}
                 leadInKm={leadInKm}
                 groups={groups}
                 frontGroup={frontGroup}

@@ -13,6 +13,7 @@ import type { Race, Sprint, EventCategoryConfig, CategoryConfig } from '@/types/
 import type { LeagueSettings, RaceGroup } from '@/types/admin';
 import { useRouteElevationQuery, useRaceSegmentsQuery } from '@/hooks/queries';
 import { useAuth } from '@/lib/auth-context';
+import { scaleRaceDistanceKm } from '@/hooks/useLeagueData';
 
 interface EventSegmentInstance {
     id: string;
@@ -161,9 +162,17 @@ export default function RaceCard({
     const hasSprintsAndRoute = resolvedSprintsToShow.length > 0;
 
     const { data: elevationData } = useRouteElevationQuery(
-        race.map && race.routeName && hasSprintsAndRoute ? race.map : undefined,
-        race.map && race.routeName && hasSprintsAndRoute ? race.routeName : undefined,
+        race.map && race.routeName ? race.map : undefined,
+        race.map && race.routeName ? race.routeName : undefined,
         lapsToShow,
+    );
+
+    const leadInKm = Number(elevationData?.leadInDistance) || 0;
+    const displayDistanceKm = scaleRaceDistanceKm(
+        race.totalDistance ?? 0,
+        Math.max(1, race.laps ?? 1),
+        Math.max(1, lapsToShow),
+        leadInKm,
     );
 
     const profileData: ProfileData | null = elevationData
@@ -296,7 +305,7 @@ export default function RaceCard({
                 <div className={`grid grid-cols-3 gap-4 ${isPublicVariant ? 'mb-4' : 'mb-6'} text-sm`}>
                     <div className="bg-muted/20 p-3 rounded text-center">
                         <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Distance</div>
-                        <div className="font-semibold text-card-foreground">{race.totalDistance} km</div>
+                        <div className="font-semibold text-card-foreground">{displayDistanceKm} km</div>
                     </div>
                     <div className="bg-muted/20 p-3 rounded text-center">
                         <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Højdemeter</div>
