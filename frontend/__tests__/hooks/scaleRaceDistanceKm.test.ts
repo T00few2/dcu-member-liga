@@ -1,3 +1,4 @@
+import { describe, it, expect } from 'vitest';
 import { calculateRouteTotals, scaleRaceDistanceKm } from '@/hooks/useLeagueData';
 
 describe('calculateRouteTotals', () => {
