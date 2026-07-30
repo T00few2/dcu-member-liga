@@ -141,15 +141,11 @@ class ZwiftGameService:
                 occurrences.append((entry.copy(), lap, order_counter))
                 order_counter += 1
 
-        # Pre-index segments by roadId for faster lookup
+        # Pre-index segments by roadId for faster lookup.
+        # Include lap/loop banners (archId null / requiresAllCheckpoints) so finish-line
+        # arches like Paris Champs-Élysées remain selectable for race scoring.
         segments_by_road = defaultdict(list)
         for seg in segments_data:
-            if seg.get("archId") is None:
-                continue
-            # Mirror official/Sauce-style filtering for scoring segment pickers:
-            # exclude loop/lap-style checkpoint segments (e.g. Volcano lap arch).
-            if seg.get("requiresAllCheckpoints"):
-                continue
             road_id = seg.get("roadId")
             if road_id is not None:
                 segments_by_road[road_id].append(seg)
@@ -274,54 +270,54 @@ class ZwiftGameService:
                 
                 if has_start and has_finish:
                     # Both points in this single entry.
-                    
-                    # Check segment direction vs traversal direction
-                    # Forward Entry (Low->High): Segment must be Low->High (Start < Finish)
-                    # Reverse Entry (High->Low): Segment must be High->Low (Start > Finish)?
-                    # Or does 'reverse' segment mean defined such that Start < Finish but we hit it?
-                    # Usually:
-                    # Forward Segment: Start=0.2, Finish=0.5. Traversed 0->1. OK.
-                    # Reverse Segment: Start=0.8, Finish=0.5. Traversed 1->0. OK.
-                    
-                    if not is_reverse_entry:
+                    #
+                    # Point/lap banners (start == finish), e.g. Champs-Élysées:
+                    # count only when the route arrives at the banner (end of travel
+                    # through this entry), not when it departs from it.
+                    if s_start == s_finish:
+                        if is_reverse_entry:
+                            travel_start = max(entry_start, entry_end)
+                            travel_end = min(entry_start, entry_end)
+                        else:
+                            travel_start = min(entry_start, entry_end)
+                            travel_end = max(entry_start, entry_end)
+                        if abs(s_finish - travel_end) <= abs(s_finish - travel_start):
+                            start_segment(seg_id, direction, order, lap)
+                            finish_segment(seg_id, direction, order, lap, seg, finish_ratio)
+                    elif not is_reverse_entry:
                         # Moving Low -> High
                         if s_start < s_finish:
-                            # Start then Finish -> Complete
-                            # But wait, if we were already active (from previous lap?), we finish then start?
-                            # No, if we are active, we are waiting for finish.
-                            # If s_start < s_finish, we hit Start first.
-                            # If we were active, it means we missed a finish somewhere? Or loop?
-                            # Let's assume standard behavior:
-                            # If Start < Finish: Start -> Finish.
                             start_segment(seg_id, direction, order, lap)
                             finish_segment(seg_id, direction, order, lap, seg, finish_ratio)
                         else:
-                            # Start > Finish (e.g. 0.6 -> 0.4).
-                            # Moving Low -> High (0.3 -> 0.7).
-                            # We hit Finish (0.4) then Start (0.6).
+                            # Start > Finish: hit Finish then Start while riding forward.
                             finish_segment(seg_id, direction, order, lap, seg, finish_ratio)
                             start_segment(seg_id, direction, order, lap)
                     else:
                         # Moving High -> Low
                         if s_start > s_finish:
-                            # Start (0.8) -> Finish (0.5).
-                            # Moving 0.9 -> 0.4.
-                            # We hit Start first.
                             start_segment(seg_id, direction, order, lap)
                             finish_segment(seg_id, direction, order, lap, seg, finish_ratio)
                         else:
-                            # Start (0.4) < Finish (0.6).
-                            # Moving 0.9 -> 0.3.
-                            # We hit Finish (0.6) then Start (0.4).
                             finish_segment(seg_id, direction, order, lap, seg, finish_ratio)
                             start_segment(seg_id, direction, order, lap)
-                            
+
                 elif has_start:
                     # Only Start is in range.
                     start_segment(seg_id, direction, order, lap)
-                    
+
                 elif has_finish:
-                    # Only Finish is in range.
+                    # Only Finish is in range. Routes sometimes join a road slightly
+                    # after the official start (e.g. La Boucle / Montmartre KOM). Still
+                    # count the segment when travel direction matches the banner.
+                    key = (seg_id, direction)
+                    if key not in active_segments:
+                        compatible = (
+                            (not is_reverse_entry and s_start <= s_finish)
+                            or (is_reverse_entry and s_start >= s_finish)
+                        )
+                        if compatible:
+                            start_segment(seg_id, direction, order, lap)
                     finish_segment(seg_id, direction, order, lap, seg, finish_ratio)
 
             # Add segmentIds to the entry for debugging/frontend use
