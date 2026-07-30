@@ -76,7 +76,10 @@ For all race types:
 *   `services/zwift.py`: Official Zwift Developer API client (OAuth, Profile, Events, Subscriptions, Activity feed).
 *   `services/zwiftracing.py`: Fetches ZP/ZR rating and phenotype data.
 *   `services/strava.py`: Strava API integration (Activities, Streams, OAuth).
-*   `services/zwift_game.py`: Static game data (Routes, Segments).
+*   `services/zwift_game.py`: Static game data (Routes, Segments) from `data/`.
+    *   Refresh route/road/segment JSON from Sauce for Zwift with:
+        `conda run -n py311 python backend/scripts/sync_sauce_data.py`
+    *   See root `AGENTS.md` (“Zwift Route / Segment Data”) for details.
 
 ## Key Workflows
 

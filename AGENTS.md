@@ -12,6 +12,25 @@
 - `conda run -n py311 python backend/scripts/inspect_data.py --list-collections`
 - `conda run -n py311 python backend/scripts/inspect_data.py --collection users --limit 20`
 - `conda run -n py311 python backend/scripts/zwift_event_participants.py register --zwift-id <ID> --subgroup-id <SUBGROUP_ID>`
+- `conda run -n py311 python backend/scripts/sync_sauce_data.py`
+
+## Zwift Route / Segment Data
+
+Static game data used for segment detection lives in `backend/data/` (`routes.json`, `worlds/*/roads.json`, `worlds/*/segments.json`, etc.).
+
+When Zwift adds routes, refresh from an installed **Sauce for Zwift** app:
+
+```text
+conda run -n py311 python backend/scripts/sync_sauce_data.py
+```
+
+- Default source: `%LOCALAPPDATA%\Programs\sauce4zwift\resources\app.asar`
+- Optional: `--sauce-data-dir PATH` if Sauce `shared/deps/data` is already extracted
+- Copies routes/roads/worldlist/portal/countries; transforms Sauce segments into this repo’s dual forward/reverse schema
+- Does **not** overwrite local-only files: `paddocks.json`, `segRequireStartEnd.json`, `worlds/*/roadIntersections.json`
+- After sync, bump frontend `zwift-data` if elevation/Strava mapping for new routes is needed
+
+Segment file paths are keyed by `worldId` (not Sauce `courseId`).
 
 ## Firestore Credentials
 
