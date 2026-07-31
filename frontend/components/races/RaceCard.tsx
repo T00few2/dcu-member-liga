@@ -276,7 +276,9 @@ export default function RaceCard({
                                     <span className="text-sm font-medium text-muted-foreground">{eventName}</span>
                                 )}
                                 {stageLabel && (
-                                    <span className="text-xs text-primary font-semibold">{stageLabel}</span>
+                                    <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground bg-muted/40 border border-border px-2 py-0.5 rounded">
+                                        {stageLabel}
+                                    </span>
                                 )}
                             </div>
                         )}
