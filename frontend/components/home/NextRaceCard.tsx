@@ -24,10 +24,11 @@ export default function NextRaceCard({ race, leagueSettings, userCategory }: Nex
     const isTour = event?.seasonClass === 'tour';
     const stageLabel =
         isTour && race.stageIndex != null
-            ? (event?.name
-                ? `${event.name} etape ${race.stageIndex}`
-                : `Etape ${race.stageIndex}`)
+            ? `Etape ${race.stageIndex}`
             : null;
+    const badgeLabel = isTour
+        ? (event?.name || null)
+        : seasonClassLabel(event?.seasonClass);
 
     return (
         <div>
@@ -67,7 +68,7 @@ export default function NextRaceCard({ race, leagueSettings, userCategory }: Nex
                 leagueSettings={leagueSettings}
                 userCategory={userCategory}
                 eventName={isTour ? null : event?.name}
-                seasonClassLabel={isTour ? null : seasonClassLabel(event?.seasonClass)}
+                seasonClassLabel={badgeLabel}
                 stageLabel={stageLabel}
             />
         </div>

@@ -70,10 +70,12 @@ function ScheduleRaceCard({
     const isTour = seasonClass === 'tour';
     const stageLabel =
         isTour && race.stageIndex != null
-            ? (eventName
-                ? `${eventName} etape ${race.stageIndex}`
-                : `Etape ${race.stageIndex}`)
+            ? `Etape ${race.stageIndex}`
             : null;
+    // Same badge slot as before — tour name from the event, not the generic "TOUR" label.
+    const badgeLabel = isTour
+        ? (eventName || null)
+        : seasonClassLabel(seasonClass);
 
     return (
         <RaceCard
@@ -83,9 +85,8 @@ function ScheduleRaceCard({
             isPast={isPast}
             showPointsSplit={!isPast && !publicView}
             variant={publicView ? 'public' : 'full'}
-            // Tour name is folded into stageLabel; keep class badge for non-tours.
             eventName={isTour ? null : eventName}
-            seasonClassLabel={isTour ? null : seasonClassLabel(seasonClass)}
+            seasonClassLabel={badgeLabel}
             stageLabel={stageLabel}
         />
     );
