@@ -30,6 +30,7 @@ from services.results.constants import (
 )
 from services.results.critical_power import resolve_critical_power
 from services.results.stage_race_ops import (
+    all_stages_finalized,
     finalize_event,
     load_races_by_id,
     load_stage_races,
@@ -636,16 +637,28 @@ def clear_seed_results():
 
         races_by_id = load_races_by_id(db)
         stage_races = {str(e.get('id')): e for e in load_stage_races(db)}
-        for event_id in affected_event_ids:
+
+        # Events linked to races we just cleared.
+        events_to_reset = set(affected_event_ids)
+        # Repair: events still marked finalized after a prior clear left no
+        # finalized stages (second clear skips races once resultsSource is gone).
+        for event_id, event in stage_races.items():
+            if str(event.get('resultsPhase') or '').lower() != RESULTS_PHASE_FINALIZED:
+                continue
+            stages = stages_for_event(races_by_id, event_id)
+            if not all_stages_finalized(stages):
+                events_to_reset.add(event_id)
+
+        unfinalized_events: list[str] = []
+        for event_id in events_to_reset:
             event = stage_races.get(event_id)
             if not event:
                 continue
             try:
-                # Seed finalize (and one-day auto-finalize) sets the event to
-                # finalized; clearing stages must drop that so UI leaves "Afsluttet".
                 if str(event.get('resultsPhase') or '').lower() == RESULTS_PHASE_FINALIZED:
                     event = unfinalize_event(db, event)
                     stage_races[event_id] = event
+                    unfinalized_events.append(event_id)
                 recompute_and_save_event_gc(db, event, races_by_id, settings)
             except Exception:
                 logger.exception("Failed to reset event %s after clearing seed results", event_id)
@@ -661,16 +674,20 @@ def clear_seed_results():
                 ),
                 'cleared': cleared,
                 'skipped': skipped,
+                'unfinalizedEvents': unfinalized_events,
                 'standingsError': str(e),
             }), 500
 
         msg = f'Cleared seeded results from {len(cleared)} race(s)'
+        if unfinalized_events:
+            msg += f', unfinalized {len(unfinalized_events)} event(s)'
         if skipped:
             msg += f' (skipped {len(skipped)} non-seed or missing)'
         return jsonify({
             'message': msg,
             'cleared': cleared,
             'skipped': skipped,
+            'unfinalizedEvents': unfinalized_events,
         }), 200
     except Exception as e:
         return jsonify({'message': str(e)}), 500

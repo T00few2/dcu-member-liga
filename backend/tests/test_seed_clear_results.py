@@ -107,4 +107,81 @@ def test_clear_seed_results_unfinalizes_parent_event(
     body = response.get_json()
     assert body["cleared"] == ["r1"]
     assert unfinalize_calls == ["e1"]
+    assert body["unfinalizedEvents"] == ["e1"]
     processor.save_league_standings.assert_called_once()
+
+
+def test_clear_repairs_finalized_event_when_races_already_cleared(
+    app: Flask, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Second clear: races no longer have resultsSource=seed, but event is stuck."""
+    db = MagicMock()
+    race_ref = MagicMock()
+    race_ref.get.return_value = _race_snap(
+        "r1",
+        {
+            # Already cleared — no seed marker, no resultsPhase.
+            "stageRaceId": "e1",
+            "name": "eCKD",
+        },
+    )
+
+    monkeypatch.setattr(seed, "verify_admin_auth", lambda: None)
+    monkeypatch.setattr(seed, "db", db)
+    monkeypatch.setattr(
+        seed,
+        "load_races_by_id",
+        lambda _db: {"r1": {"id": "r1", "stageRaceId": "e1", "name": "eCKD"}},
+    )
+    monkeypatch.setattr(
+        seed,
+        "load_stage_races",
+        lambda _db: [
+            {
+                "id": "e1",
+                "name": "eCDK",
+                "seasonClass": "wt_classic",
+                "resultsPhase": "finalized",
+                "bestRacesCount": 1,
+            }
+        ],
+    )
+
+    unfinalize_calls: list[str] = []
+
+    def _unfinalize(_db, event):
+        unfinalize_calls.append(str(event.get("id")))
+        return {**event, "resultsPhase": "provisional", "finalizedAt": None}
+
+    monkeypatch.setattr(seed, "unfinalize_event", _unfinalize)
+    monkeypatch.setattr(seed, "recompute_and_save_event_gc", lambda *a, **k: {})
+    monkeypatch.setattr(seed, "all_stages_finalized", lambda _stages: False)
+
+    processor = MagicMock()
+    monkeypatch.setattr(seed, "ResultsProcessor", lambda *a, **k: processor)
+
+    settings_doc = MagicMock()
+    settings_doc.exists = True
+    settings_doc.to_dict.return_value = {}
+
+    def _collection(name: str):
+        col = MagicMock()
+        if name == "races":
+            col.document.return_value = race_ref
+            col.stream.return_value = []
+            return col
+        if name == "league":
+            col.document.return_value.get.return_value = settings_doc
+            return col
+        return MagicMock()
+
+    db.collection.side_effect = _collection
+
+    with app.test_request_context("/admin/seed/results", method="DELETE", json={}):
+        response, status = seed.clear_seed_results()
+
+    assert status == 200
+    body = response.get_json()
+    assert body["cleared"] == []
+    assert unfinalize_calls == ["e1"]
+    assert body["unfinalizedEvents"] == ["e1"]
