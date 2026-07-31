@@ -35,6 +35,7 @@ from services.results.stage_race_ops import (
     load_stage_races,
     recompute_and_save_event_gc,
     stages_for_event,
+    unfinalize_event,
 )
 from services.results_processor import ResultsProcessor
 
@@ -640,9 +641,14 @@ def clear_seed_results():
             if not event:
                 continue
             try:
+                # Seed finalize (and one-day auto-finalize) sets the event to
+                # finalized; clearing stages must drop that so UI leaves "Afsluttet".
+                if str(event.get('resultsPhase') or '').lower() == RESULTS_PHASE_FINALIZED:
+                    event = unfinalize_event(db, event)
+                    stage_races[event_id] = event
                 recompute_and_save_event_gc(db, event, races_by_id, settings)
             except Exception:
-                pass
+                logger.exception("Failed to reset event %s after clearing seed results", event_id)
 
         try:
             processor.save_league_standings()
