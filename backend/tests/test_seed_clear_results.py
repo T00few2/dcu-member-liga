@@ -82,6 +82,7 @@ def test_clear_seed_results_unfinalizes_parent_event(
     settings_doc = MagicMock()
     settings_doc.exists = True
     settings_doc.to_dict.return_value = {}
+
     # league/settings get() used after race updates
     def _collection(name: str):
         col = MagicMock()
