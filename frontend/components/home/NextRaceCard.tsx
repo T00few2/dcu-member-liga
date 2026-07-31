@@ -21,9 +21,12 @@ export default function NextRaceCard({ race, leagueSettings, userCategory }: Nex
     const event = race.stageRaceId
         ? (stageRacesQuery.data ?? []).find((e) => e.id === race.stageRaceId)
         : undefined;
+    const isTour = event?.seasonClass === 'tour';
     const stageLabel =
-        event?.seasonClass === 'tour' && race.stageIndex != null
-            ? `Etape ${race.stageIndex}`
+        isTour && race.stageIndex != null
+            ? (event?.name
+                ? `${event.name} etape ${race.stageIndex}`
+                : `Etape ${race.stageIndex}`)
             : null;
 
     return (
@@ -63,8 +66,8 @@ export default function NextRaceCard({ race, leagueSettings, userCategory }: Nex
                 race={race}
                 leagueSettings={leagueSettings}
                 userCategory={userCategory}
-                eventName={event?.name}
-                seasonClassLabel={seasonClassLabel(event?.seasonClass)}
+                eventName={isTour ? null : event?.name}
+                seasonClassLabel={isTour ? null : seasonClassLabel(event?.seasonClass)}
                 stageLabel={stageLabel}
             />
         </div>

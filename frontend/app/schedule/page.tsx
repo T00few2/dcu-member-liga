@@ -67,9 +67,12 @@ function ScheduleRaceCard({
     isPast?: boolean;
     publicView?: boolean;
 }) {
+    const isTour = seasonClass === 'tour';
     const stageLabel =
-        seasonClass === 'tour' && race.stageIndex != null
-            ? `Etape ${race.stageIndex}`
+        isTour && race.stageIndex != null
+            ? (eventName
+                ? `${eventName} etape ${race.stageIndex}`
+                : `Etape ${race.stageIndex}`)
             : null;
 
     return (
@@ -80,8 +83,9 @@ function ScheduleRaceCard({
             isPast={isPast}
             showPointsSplit={!isPast && !publicView}
             variant={publicView ? 'public' : 'full'}
-            eventName={eventName}
-            seasonClassLabel={seasonClassLabel(seasonClass)}
+            // Tour name is folded into stageLabel; keep class badge for non-tours.
+            eventName={isTour ? null : eventName}
+            seasonClassLabel={isTour ? null : seasonClassLabel(seasonClass)}
             stageLabel={stageLabel}
         />
     );
@@ -133,7 +137,7 @@ function ScheduleBlocks({
                             <ScheduleRaceCard
                                 key={race.id}
                                 race={race}
-                                eventName={null}
+                                eventName={block.event.name}
                                 seasonClass={block.event.seasonClass}
                                 leagueSettings={leagueSettings}
                                 userCategory={userCategory}
