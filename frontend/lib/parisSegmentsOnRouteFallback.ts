@@ -1,7 +1,9 @@
 /**
  * Local Paris segmentsOnRoute fallbacks when npm zwift-data has an empty list.
  * Used only when catalog.segmentsOnRoute is empty; safe to delete once upstream ships data.
- * Distances are km from route/Strava start (lead-in inclusive), matching zwift-data.
+ *
+ * Distances are km from the Strava route segment start. Paris Strava routes typically omit
+ * the pens→banner lead-in (0 ≈ race/lap start), matching What's on Zwift on-route km.
  */
 export type SegmentsOnRoutePlacement = {
     from: number;

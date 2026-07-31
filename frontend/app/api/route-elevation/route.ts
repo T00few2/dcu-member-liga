@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { resolveRaceRelativeProfileSegments } from '@/lib/routeProfileSegments';
+import { resolveRaceRelativeProfileSegments, roundKm } from '@/lib/routeProfileSegments';
 import { resolveZwiftRoute, zwiftCatalogSegments } from '@/lib/zwiftRouteCatalog';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -20,11 +20,18 @@ type ProfileSegment = {
     direction?: 'forward' | 'reverse';
 };
 
-function inferDirectionFromSegment(segmentSlug?: string | null, segmentName?: string | null): 'forward' | 'reverse' {
+function inferDirectionFromSegment(
+    segmentSlug?: string | null,
+    segmentName?: string | null,
+    whatsOnZwiftUrl?: string | null,
+): 'forward' | 'reverse' {
     const slug = (segmentSlug || '').toLowerCase();
     const name = (segmentName || '').toLowerCase();
+    const url = (whatsOnZwiftUrl || '').toLowerCase();
     if (slug.endsWith('-rev') || slug.includes('-reverse')) return 'reverse';
     if (name.includes(' rev') || name.includes('reverse')) return 'reverse';
+    // e.g. tchou-tchou-sprint slug is forward-named but WoZ path ends with /reverse
+    if (url.includes('/reverse')) return 'reverse';
     return 'forward';
 }
 
@@ -53,7 +60,11 @@ export async function GET(req: NextRequest) {
                 to: sor.to,
                 type: seg?.type ?? 'segment',
                 name: seg?.name ?? sor.segment ?? 'Segment',
-                direction: inferDirectionFromSegment(sor.segment, seg?.name ?? sor.segment),
+                direction: inferDirectionFromSegment(
+                    sor.segment,
+                    seg?.name ?? sor.segment,
+                    seg?.whatsOnZwiftUrl,
+                ),
             };
         });
 
@@ -81,10 +92,21 @@ export async function GET(req: NextRequest) {
             ? cachedLeadInKm
             : catalogLeadInKm;
 
-    // zwift-data segmentsOnRoute includes lead-in; convert to race-relative.
-    // Cached profileSegments are usually already race-relative; convert only when
-    // they still match the lead-in-inclusive catalog copy.
-    const catalogInclusive: ProfileSegment[] = routeSegments.map((seg) => ({
+    const leadInM = leadInKm > 0 ? leadInKm * 1000 : 0;
+    const catalogLapM = (Number(match.distance) || 0) * 1000;
+    const endM = singleLapDistances.length > 0
+        ? (singleLapDistances[singleLapDistances.length - 1] ?? 0)
+        : 0;
+
+    // Paris (and some other) Strava route segments omit lead-in; only shift/strip when
+    // the elevation stream is clearly lead-in + lap.
+    const streamIncludesLeadIn =
+        leadInM > 0 &&
+        catalogLapM > 0 &&
+        singleLapDistances.length > 1 &&
+        Math.abs(endM - (catalogLapM + leadInM)) <= Math.abs(endM - catalogLapM);
+
+    const catalogSegments: ProfileSegment[] = routeSegments.map((seg) => ({
         name: seg.name,
         type: seg.type,
         fromKm: seg.from,
@@ -96,33 +118,24 @@ export async function GET(req: NextRequest) {
         : null;
     const singleLapProfileSegments = resolveRaceRelativeProfileSegments(
         cachedProfileSegments,
-        catalogInclusive,
+        catalogSegments,
         leadInKm,
+        streamIncludesLeadIn,
     );
-    const leadInM = leadInKm > 0 ? leadInKm * 1000 : 0;
-    const catalogLapM = (Number(match.distance) || 0) * 1000;
-    const endM = singleLapDistances.length > 0
-        ? (singleLapDistances[singleLapDistances.length - 1] ?? 0)
-        : 0;
 
     let raceDistances = singleLapDistances;
     let raceAltitudes = singleLapAltitudes;
-    if (leadInM > 0 && singleLapDistances.length > 1 && catalogLapM > 0) {
-        const withLeadInM = catalogLapM + leadInM;
-        const closerToWithLeadIn =
-            Math.abs(endM - withLeadInM) <= Math.abs(endM - catalogLapM);
-        if (closerToWithLeadIn) {
-            let startIdx = singleLapDistances.findIndex((d) => d >= leadInM);
-            if (startIdx < 0) startIdx = 0;
-            if (startIdx > 0) {
-                raceDistances = singleLapDistances
-                    .slice(startIdx)
-                    .map((d) => Math.max(0, d - leadInM));
-                raceAltitudes = singleLapAltitudes.slice(startIdx);
-                if (raceDistances.length && raceDistances[0] > 0) {
-                    raceDistances = [0, ...raceDistances];
-                    raceAltitudes = [raceAltitudes[0] ?? 0, ...raceAltitudes];
-                }
+    if (streamIncludesLeadIn) {
+        let startIdx = singleLapDistances.findIndex((d) => d >= leadInM);
+        if (startIdx < 0) startIdx = 0;
+        if (startIdx > 0) {
+            raceDistances = singleLapDistances
+                .slice(startIdx)
+                .map((d) => Math.max(0, d - leadInM));
+            raceAltitudes = singleLapAltitudes.slice(startIdx);
+            if (raceDistances.length && raceDistances[0] > 0) {
+                raceDistances = [0, ...raceDistances];
+                raceAltitudes = [raceAltitudes[0] ?? 0, ...raceAltitudes];
             }
         }
     }
@@ -148,8 +161,8 @@ export async function GET(req: NextRequest) {
         for (const seg of singleLapProfileSegments) {
             profileSegments.push({
                 ...seg,
-                fromKm: seg.fromKm + offsetKm,
-                toKm: seg.toKm + offsetKm,
+                fromKm: roundKm(seg.fromKm + offsetKm),
+                toKm: roundKm(seg.toKm + offsetKm),
             });
         }
     }

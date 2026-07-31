@@ -37,6 +37,7 @@ Race-card elevation overlays use `zwift-data` `segmentsOnRoute`. Some Paris rout
 - Fallback data: `frontend/lib/parisSegmentsOnRouteFallback.ts`
 - Applied in `frontend/lib/zwiftRouteCatalog.ts` **only when** catalog `segmentsOnRoute` is empty
 - When a newer `zwift-data` version fills those routes, the fallback is ignored automatically; delete the map (and this note) once obsolete
+- Paris Strava route segments usually **omit** pens→banner lead-in (0 ≈ race start). Elevation API must not subtract `leadInDistance` from those coords (see `catalogSegmentsIncludeLeadIn` / stream length check in `route-elevation`)
 
 Segment file paths are keyed by `worldId` (not Sauce `courseId`).
 

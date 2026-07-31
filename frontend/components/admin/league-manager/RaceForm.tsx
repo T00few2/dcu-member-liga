@@ -127,10 +127,12 @@ export default function RaceForm({
         setLoadingRouteProfile(true);
         setRouteProfileError(null);
         try {
+            // Always load 1 lap: elevation_cache stores single-lap race-relative coords.
+            // Multi-lap tiling is applied by the elevation API when race cards request laps > 1.
             const params = new URLSearchParams({
                 world: selectedRoute.map,
                 route: selectedRoute.name,
-                laps: String(formState.laps || 1),
+                laps: '1',
                 fresh: '1',
             });
             const res = await fetch(`/api/route-elevation?${params}`, { cache: 'no-store' });
@@ -142,12 +144,18 @@ export default function RaceForm({
                 throw new Error('Could not resolve Strava segment ID for route');
             }
 
+            const formatKm = (value: unknown): string => {
+                const n = Number(value);
+                if (!Number.isFinite(n)) return '';
+                return String(Math.round(n * 1000) / 1000);
+            };
+
             const mapped: RouteProfileSegment[] = (Array.isArray(json?.profileSegments) ? json.profileSegments : [])
                 .map((seg: any) => ({
                     name: String(seg?.name || 'Segment').trim() || 'Segment',
                     type: seg?.type === 'sprint' || seg?.type === 'climb' || seg?.type === 'segment' ? seg.type : 'segment',
-                    fromKm: seg?.fromKm != null ? String(seg.fromKm) : '',
-                    toKm: seg?.toKm != null ? String(seg.toKm) : '',
+                    fromKm: formatKm(seg?.fromKm),
+                    toKm: formatKm(seg?.toKm),
                     direction: inferDirection(seg?.direction, seg?.name),
                 }));
             setRouteProfileSegmentId(sid);
@@ -362,7 +370,8 @@ export default function RaceForm({
                                 </div>
                             </div>
                             <p className="text-xs text-muted-foreground mb-3">
-                                Managed per route in `elevation_cache` (not saved on races).
+                                Managed per route in `elevation_cache` (not saved on races). Load always uses 1 lap
+                                (race-relative km from race start). Multi-lap races tile these automatically on race cards.
                                 {routeProfileSegmentId ? ` Cache key: ${routeProfileSegmentId}` : ''}
                             </p>
                             {routeProfileError && (
