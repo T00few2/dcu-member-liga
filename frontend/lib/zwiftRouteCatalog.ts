@@ -1,4 +1,5 @@
 import { routes as zwiftRoutes, segments as zwiftSegments } from 'zwift-data';
+import { PARIS_SEGMENTS_ON_ROUTE_FALLBACK } from '@/lib/parisSegmentsOnRouteFallback';
 
 /** Local fills for routes where zwift-data has no stravaSegmentId yet. */
 const STRAVA_SEGMENT_OVERRIDES: Record<string, number> = {
@@ -46,8 +47,16 @@ export function resolveZwiftRoute(
     const stravaSegmentId = match.stravaSegmentId ?? STRAVA_SEGMENT_OVERRIDES[match.slug];
     if (!stravaSegmentId) return null;
 
+    // Prefer npm zwift-data; fill Paris segmentsOnRoute only when the catalog list is empty.
+    const catalogSegments = match.segmentsOnRoute ?? [];
+    const segmentsOnRoute =
+        catalogSegments.length > 0
+            ? catalogSegments
+            : (PARIS_SEGMENTS_ON_ROUTE_FALLBACK[match.slug] ?? catalogSegments);
+
     return {
         ...match,
+        segmentsOnRoute,
         stravaSegmentId,
         stravaSegmentUrl:
             match.stravaSegmentUrl || `https://www.strava.com/segments/${stravaSegmentId}`,

@@ -346,7 +346,16 @@ npm start
 
 ---
 
+## Zwift route catalog
+
+Route elevation overlays resolve routes via `lib/zwiftRouteCatalog.ts` (npm `zwift-data`).
+
+For Paris routes that still have an empty `segmentsOnRoute` in the published package, `lib/parisSegmentsOnRouteFallback.ts` supplies placements as a **fallback only** (used when the catalog list is empty). Bumping `zwift-data` once upstream includes those placements makes the fallback inert; the map can then be removed.
+
+---
+
 ## Related
 
 - [Backend README](../backend/README.md) - API documentation
 - [Zwift Racing API](https://www.zwift.com) - Data source
+- [AGENTS.md](../AGENTS.md) - Agent notes (incl. Paris fallback)
