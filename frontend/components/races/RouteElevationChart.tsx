@@ -468,7 +468,13 @@ export default function RouteElevationChart({
     const altRange = maxAlt - minAlt || 1;
     const altStep = Math.ceil(altRange / 4 / 10) * 10 || 10;
     const altBase = Math.floor(minAlt / altStep) * altStep;
-    const yTicks = [0, 1, 2, 3, 4].map((i) => altBase + i * altStep);
+    // Nice ticks can undershoot maxAlt (e.g. peak 130m with top tick 120m);
+    // grow the domain so the profile and overlays share the same top.
+    const altTop = Math.max(altBase + altStep * 4, Math.ceil(maxAlt / altStep) * altStep);
+    const yTicks: number[] = [];
+    for (let t = altBase; t <= altTop + 1e-9; t += altStep) {
+        yTicks.push(t);
+    }
     const pointSegmentOccurrenceKeys = new Set(
         (pointSegments || []).map((s) => {
             const base = normalizeNameForMatch(s.name);
@@ -535,7 +541,7 @@ export default function RouteElevationChart({
                         />
                         <YAxis
                             type="number"
-                            domain={[altBase, altBase + altStep * 4]}
+                            domain={[altBase, altTop]}
                             ticks={yTicks}
                             tickFormatter={(v, i) => i === 0 ? `${v} m` : `${v}`}
                             tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
@@ -557,15 +563,12 @@ export default function RouteElevationChart({
 
                         {visibleRouteSegments.map(({ seg, i, from, to }) => {
                                 const isPointSegment = pointSegmentOccurrenceKeys.has(routeOccurrenceKeys[i]);
-                                // Match full Y domain so climbs aren't cut off above the overlay.
-                                const segmentBoxTop = altBase + altStep * 4;
                                 return (
                             <ReferenceArea
                                 key={i}
                                 x1={from}
                                 x2={to}
-                                y1={altBase}
-                                y2={segmentBoxTop}
+                                // Omit y1/y2 so the band fills the full plot height.
                                 fill={SEGMENT_COLORS[normalizeSegmentType(seg.type)]}
                                 fillOpacity={0.25}
                                 stroke={SEGMENT_COLORS[normalizeSegmentType(seg.type)]}
