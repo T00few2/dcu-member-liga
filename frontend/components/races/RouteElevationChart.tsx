@@ -237,6 +237,103 @@ function isNumericDomain(d: unknown): d is readonly [number, number] {
     return Array.isArray(d) && d.length === 2 && typeof d[0] === 'number' && typeof d[1] === 'number';
 }
 
+/** Min lap band width (px) before showing L1/L2 labels. */
+const LAP_LABEL_MIN_WIDTH_PX = 40;
+
+function LapDivisionLayer({
+    data,
+    laps,
+    layer,
+}: {
+    data: DataPoint[];
+    laps: number;
+    layer: 'bands' | 'guides';
+}): ReactNode {
+    const plotArea = usePlotArea();
+    const xDomain = useXAxisDomain(0);
+
+    if (!plotArea || !isNumericDomain(xDomain) || laps <= 1 || !data.length) {
+        return null;
+    }
+
+    const [xMin, xMax] = xDomain;
+    const xSpan = xMax - xMin || 1;
+    const totalDistanceKm = data[data.length - 1]?.distance ?? 0;
+    if (!(totalDistanceKm > 0)) return null;
+
+    const lapLengthKm = totalDistanceKm / laps;
+    const xScale = (km: number) => plotArea.x + ((km - xMin) / xSpan) * plotArea.width;
+    const lapWidthPx = (lapLengthKm / xSpan) * plotArea.width;
+    const showLabels = layer === 'guides' && lapWidthPx >= LAP_LABEL_MIN_WIDTH_PX;
+
+    const nodes: ReactNode[] = [];
+
+    if (layer === 'bands') {
+        for (let lap = 0; lap < laps; lap++) {
+            if (lap % 2 === 0) continue; // tint L2, L4, …
+            const x1 = xScale(lap * lapLengthKm);
+            const x2 = xScale(Math.min((lap + 1) * lapLengthKm, totalDistanceKm));
+            const width = Math.max(0, x2 - x1);
+            if (width <= 0) continue;
+            nodes.push(
+                <rect
+                    key={`lap-band-${lap}`}
+                    x={x1}
+                    y={plotArea.y}
+                    width={width}
+                    height={plotArea.height}
+                    fill="hsl(var(--muted-foreground))"
+                    fillOpacity={0.055}
+                    pointerEvents="none"
+                />,
+            );
+        }
+        return <g className="lap-bands">{nodes}</g>;
+    }
+
+    for (let lap = 1; lap < laps; lap++) {
+        const x = xScale(lap * lapLengthKm);
+        nodes.push(
+            <line
+                key={`lap-line-${lap}`}
+                x1={x}
+                x2={x}
+                y1={plotArea.y}
+                y2={plotArea.y + plotArea.height}
+                stroke="hsl(var(--muted-foreground))"
+                strokeOpacity={0.28}
+                strokeWidth={1}
+                pointerEvents="none"
+            />,
+        );
+    }
+
+    if (showLabels) {
+        for (let lap = 0; lap < laps; lap++) {
+            const x1 = xScale(lap * lapLengthKm);
+            const x2 = xScale(Math.min((lap + 1) * lapLengthKm, totalDistanceKm));
+            nodes.push(
+                <text
+                    key={`lap-label-${lap}`}
+                    x={(x1 + x2) / 2}
+                    y={plotArea.y + 11}
+                    textAnchor="middle"
+                    dominantBaseline="hanging"
+                    fontSize={9}
+                    fontWeight={600}
+                    fill="hsl(var(--muted-foreground))"
+                    fillOpacity={0.65}
+                    pointerEvents="none"
+                >
+                    {`L${lap + 1}`}
+                </text>,
+            );
+        }
+    }
+
+    return <g className="lap-guides">{nodes}</g>;
+}
+
 function ElevationOverlayHost({
     overlay,
     data,
@@ -390,6 +487,18 @@ export default function RouteElevationChart({
         return `${keyBase}::${next}`;
     });
 
+    // Clamp to chart domain. Catalog finish segments often overshoot route length
+    // slightly (e.g. Itza KOM 46.1 km on a 45.8 km route); with domain=[0,dataMax]
+    // Recharts drops ReferenceAreas that extend past the axis.
+    const visibleRouteSegments = routeSegments
+        .map((seg, i) => {
+            const from = Math.max(0, Math.min(seg.from, maxDist));
+            const to = Math.max(0, Math.min(seg.to, maxDist));
+            if (!(to > from)) return null;
+            return { seg, i, from, to };
+        })
+        .filter((v): v is { seg: RouteSegment; i: number; from: number; to: number } => v != null);
+
     return (
         <div>
             <div style={{ width: '100%', height }}>
@@ -403,6 +512,11 @@ export default function RouteElevationChart({
                             </linearGradient>
                         </defs>
                         <CartesianGrid vertical={false} strokeOpacity={0.15} />
+                        {laps > 1 && (
+                            <Customized
+                                component={<LapDivisionLayer data={data} laps={laps} layer="bands" />}
+                            />
+                        )}
                         <XAxis
                             dataKey="distance"
                             type="number"
@@ -441,15 +555,14 @@ export default function RouteElevationChart({
                             isAnimationActive={false}
                         />
 
-                        {routeSegments.map((seg, i) => (
-                            (() => {
+                        {visibleRouteSegments.map(({ seg, i, from, to }) => {
                                 const isPointSegment = pointSegmentOccurrenceKeys.has(routeOccurrenceKeys[i]);
                                 const segmentBoxTop = altBase + altStep * 3.7;
                                 return (
                             <ReferenceArea
                                 key={i}
-                                x1={seg.from}
-                                x2={seg.to}
+                                x1={from}
+                                x2={to}
                                 y1={altBase}
                                 y2={segmentBoxTop}
                                 fill={SEGMENT_COLORS[normalizeSegmentType(seg.type)]}
@@ -467,8 +580,7 @@ export default function RouteElevationChart({
                                 }
                             />
                                 );
-                            })()
-                        ))}
+                        })}
 
                         <Area
                             type="monotone"
@@ -479,6 +591,12 @@ export default function RouteElevationChart({
                             dot={false}
                             isAnimationActive={false}
                         />
+
+                        {laps > 1 && (
+                            <Customized
+                                component={<LapDivisionLayer data={data} laps={laps} layer="guides" />}
+                            />
+                        )}
 
                         {overlay && data && (
                             <Customized

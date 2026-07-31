@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { routes, segments } from 'zwift-data';
+import { resolveZwiftRoute, zwiftCatalogSegments } from '@/lib/zwiftRouteCatalog';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -27,18 +27,6 @@ function inferDirectionFromSegment(segmentSlug?: string | null, segmentName?: st
     return 'forward';
 }
 
-function slugify(value?: string | null): string {
-    return (value || '')
-        .trim()
-        .toLowerCase()
-        .replace(/&/g, ' and ')
-        .replace(/['"]/g, '')
-        .replace(/[^\w\s-]/g, ' ')
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-')
-        .replace(/^-|-$/g, '');
-}
-
 export async function GET(req: NextRequest) {
     const world = req.nextUrl.searchParams.get('world');
     const route = req.nextUrl.searchParams.get('route');
@@ -49,11 +37,8 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'Missing world or route param' }, { status: 400 });
     }
 
-    const worldSlug = slugify(world);
-    const routeSlug = slugify(route);
-
-    const match = routes.find((r) => r.world === worldSlug && r.slug === routeSlug);
-    if (!match?.stravaSegmentId) {
+    const match = resolveZwiftRoute(world, route);
+    if (!match) {
         return NextResponse.json({ error: 'No Strava segment found for this route' }, { status: 404 });
     }
 
@@ -61,7 +46,7 @@ export async function GET(req: NextRequest) {
     // Segment-level Strava fields are not required for rendering.
     const routeSegments: RouteSegment[] = match.segmentsOnRoute
         .map((sor) => {
-            const seg = segments.find((s) => s.slug === sor.segment);
+            const seg = zwiftCatalogSegments.find((s) => s.slug === sor.segment);
             return {
                 from: sor.from,
                 to: sor.to,
