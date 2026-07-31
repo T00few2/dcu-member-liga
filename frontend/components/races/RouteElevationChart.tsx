@@ -152,7 +152,7 @@ function renderCenteredSegmentLabel(props: any, value: string, color: string, sh
             {showPointIcon && (
                 <text
                     x={cx}
-                    y={Math.max(2, viewBox.y - 14)}
+                    y={viewBox.y + 2}
                     fill="#d97706"
                     fontSize={10}
                     fontWeight={700}
@@ -557,7 +557,8 @@ export default function RouteElevationChart({
 
                         {visibleRouteSegments.map(({ seg, i, from, to }) => {
                                 const isPointSegment = pointSegmentOccurrenceKeys.has(routeOccurrenceKeys[i]);
-                                const segmentBoxTop = altBase + altStep * 3.7;
+                                // Match full Y domain so climbs aren't cut off above the overlay.
+                                const segmentBoxTop = altBase + altStep * 4;
                                 return (
                             <ReferenceArea
                                 key={i}

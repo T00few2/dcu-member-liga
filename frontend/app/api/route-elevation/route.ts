@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { resolveRaceRelativeProfileSegments } from '@/lib/routeProfileSegments';
 import { resolveZwiftRoute, zwiftCatalogSegments } from '@/lib/zwiftRouteCatalog';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -66,15 +67,6 @@ export async function GET(req: NextRequest) {
     }
 
     const data = await upstream.json();
-    const singleLapProfileSegments: ProfileSegment[] = Array.isArray(data?.profileSegments)
-        ? data.profileSegments
-        : routeSegments.map((seg) => ({
-            name: seg.name,
-            type: seg.type,
-            fromKm: seg.from,
-            toKm: seg.to,
-            direction: seg.direction,
-        }));
 
     // Tile elevation arrays and profileSegments for multi-lap routes.
     // Strava streams often include lead-in; strip it before tiling so lead-in
@@ -88,6 +80,25 @@ export async function GET(req: NextRequest) {
         Number.isFinite(cachedLeadInKm) && cachedLeadInKm > 0
             ? cachedLeadInKm
             : catalogLeadInKm;
+
+    // zwift-data segmentsOnRoute includes lead-in; convert to race-relative.
+    // Cached profileSegments are usually already race-relative; convert only when
+    // they still match the lead-in-inclusive catalog copy.
+    const catalogInclusive: ProfileSegment[] = routeSegments.map((seg) => ({
+        name: seg.name,
+        type: seg.type,
+        fromKm: seg.from,
+        toKm: seg.to,
+        direction: seg.direction,
+    }));
+    const cachedProfileSegments: ProfileSegment[] | null = Array.isArray(data?.profileSegments)
+        ? data.profileSegments
+        : null;
+    const singleLapProfileSegments = resolveRaceRelativeProfileSegments(
+        cachedProfileSegments,
+        catalogInclusive,
+        leadInKm,
+    );
     const leadInM = leadInKm > 0 ? leadInKm * 1000 : 0;
     const catalogLapM = (Number(match.distance) || 0) * 1000;
     const endM = singleLapDistances.length > 0
@@ -143,12 +154,20 @@ export async function GET(req: NextRequest) {
         }
     }
 
+    const raceRelativeRouteSegments: RouteSegment[] = singleLapProfileSegments.map((seg) => ({
+        from: seg.fromKm,
+        to: seg.toKm,
+        type: seg.type,
+        name: seg.name,
+        direction: seg.direction,
+    }));
+
     return NextResponse.json(
         {
             ...data,
             distance: tiledDistance.length > 0 ? tiledDistance : data?.distance,
             altitude: tiledAltitude.length > 0 ? tiledAltitude : data?.altitude,
-            segments: routeSegments,
+            segments: raceRelativeRouteSegments,
             profileSegments,
             leadInDistance: leadInKm > 0 ? leadInKm : (data?.leadInDistance ?? undefined),
             stravaSegmentId: match.stravaSegmentId,
