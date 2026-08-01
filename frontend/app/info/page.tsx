@@ -363,21 +363,13 @@ function RuterSection() {
                 const event = race.stageRaceId ? eventsById.get(race.stageRaceId) : undefined;
                 return {
                     id: race.id,
-                                    dateLabel: (() => {
-                                        const d = fromTimestamp(race.date);
-                                        return d ? formatDateShort(d) : '—';
-                                    })(),
+                    dateLabel: (() => {
+                        const d = fromTimestamp(race.date);
+                        return d ? formatDateShort(d) : '—';
+                    })(),
                     eventLabel: calendarEventLabel(race, event),
                     world: race.map || '—',
                     route: race.routeName || '—',
-                    distanceKm:
-                        race.totalDistance != null && Number.isFinite(race.totalDistance)
-                            ? `${Number(race.totalDistance).toFixed(1)} km`
-                            : '—',
-                    elevationM:
-                        race.totalElevation != null && Number.isFinite(race.totalElevation)
-                            ? `${Math.round(race.totalElevation)} m`
-                            : '—',
                     routeUrl: race.routeName ? getZwiftInsiderUrl(race.routeName) : null,
                 };
             });
@@ -388,8 +380,8 @@ function RuterSection() {
     return (
         <div className="space-y-4">
             <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
-                Oversigt over sæsonens løb med rute, distance og højdemeter. Åbn sæsonkalenderen for
-                race cards med ruteprofil og tilmelding.
+                Oversigt over sæsonens løb og ruter. Åbn sæsonkalenderen for race cards med ruteprofil
+                og tilmelding.
             </p>
 
             {loading ? (
@@ -397,62 +389,92 @@ function RuterSection() {
             ) : rows.length === 0 ? (
                 <p className="text-sm text-slate-500 dark:text-slate-400">Ingen løb planlagt endnu.</p>
             ) : (
-                <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
-                    <table className="w-full text-sm text-left border-collapse min-w-[640px]">
-                        <thead>
-                            <tr className="bg-slate-50 dark:bg-slate-900/60 text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                                <th className="px-3 py-2.5 font-semibold">Dato</th>
-                                <th className="px-3 py-2.5 font-semibold">Event</th>
-                                <th className="px-3 py-2.5 font-semibold">Rute</th>
-                                <th className="px-3 py-2.5 font-semibold text-right">Distance</th>
-                                <th className="px-3 py-2.5 font-semibold text-right">HM</th>
-                                <th className="px-3 py-2.5 font-semibold text-right">Link</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                            {rows.map((row) => (
-                                <tr key={row.id} className="bg-white dark:bg-slate-900">
-                                    <th
-                                        scope="row"
-                                        className="px-3 py-2.5 font-medium text-slate-800 dark:text-slate-100 whitespace-nowrap"
-                                    >
-                                        {row.dateLabel}
-                                    </th>
-                                    <td className="px-3 py-2.5 text-slate-700 dark:text-slate-200">
-                                        {row.eventLabel}
-                                    </td>
-                                    <td className="px-3 py-2.5 text-slate-600 dark:text-slate-300">
-                                        <span className="font-medium text-slate-800 dark:text-slate-100">
-                                            {row.world}
-                                        </span>
-                                        <span className="text-slate-400 dark:text-slate-500"> · </span>
-                                        {row.route}
-                                    </td>
-                                    <td className="px-3 py-2.5 text-right tabular-nums text-slate-700 dark:text-slate-200 whitespace-nowrap">
-                                        {row.distanceKm}
-                                    </td>
-                                    <td className="px-3 py-2.5 text-right tabular-nums text-slate-700 dark:text-slate-200 whitespace-nowrap">
-                                        {row.elevationM}
-                                    </td>
-                                    <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                                        {row.routeUrl ? (
-                                            <a
-                                                href={row.routeUrl}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-primary font-semibold hover:underline"
-                                            >
-                                                ZI ↗
-                                            </a>
-                                        ) : (
-                                            <span className="text-slate-400">—</span>
-                                        )}
-                                    </td>
+                <>
+                    {/* Mobile: stacked rows — no horizontal scroll */}
+                    <ul className="sm:hidden divide-y divide-slate-100 dark:divide-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                        {rows.map((row) => (
+                            <li key={row.id} className="bg-white dark:bg-slate-900 px-3 py-3">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                            {row.dateLabel}
+                                        </div>
+                                        <div className="font-semibold text-slate-800 dark:text-slate-100 mt-0.5 break-words">
+                                            {row.eventLabel}
+                                        </div>
+                                        <div className="text-sm text-slate-600 dark:text-slate-300 mt-0.5 break-words">
+                                            <span className="font-medium text-slate-800 dark:text-slate-100">
+                                                {row.world}
+                                            </span>
+                                            <span className="text-slate-400 dark:text-slate-500"> · </span>
+                                            {row.route}
+                                        </div>
+                                    </div>
+                                    {row.routeUrl ? (
+                                        <a
+                                            href={row.routeUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="shrink-0 text-primary font-semibold text-sm hover:underline pt-0.5"
+                                        >
+                                            ZI ↗
+                                        </a>
+                                    ) : null}
+                                </div>
+                            </li>
+                        ))}
+                    </ul>
+
+                    {/* sm+: compact table; text wraps so it fits narrow tablets too */}
+                    <div className="hidden sm:block rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                        <table className="w-full text-sm text-left border-collapse table-fixed">
+                            <thead>
+                                <tr className="bg-slate-50 dark:bg-slate-900/60 text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                    <th className="px-3 py-2.5 font-semibold w-[7.5rem]">Dato</th>
+                                    <th className="px-3 py-2.5 font-semibold w-[30%]">Event</th>
+                                    <th className="px-3 py-2.5 font-semibold">Rute</th>
+                                    <th className="px-3 py-2.5 font-semibold text-right w-14">Link</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                {rows.map((row) => (
+                                    <tr key={row.id} className="bg-white dark:bg-slate-900">
+                                        <th
+                                            scope="row"
+                                            className="px-3 py-2.5 font-medium text-slate-800 dark:text-slate-100 whitespace-nowrap align-top"
+                                        >
+                                            {row.dateLabel}
+                                        </th>
+                                        <td className="px-3 py-2.5 text-slate-700 dark:text-slate-200 break-words align-top">
+                                            {row.eventLabel}
+                                        </td>
+                                        <td className="px-3 py-2.5 text-slate-600 dark:text-slate-300 break-words align-top">
+                                            <span className="font-medium text-slate-800 dark:text-slate-100">
+                                                {row.world}
+                                            </span>
+                                            <span className="text-slate-400 dark:text-slate-500"> · </span>
+                                            {row.route}
+                                        </td>
+                                        <td className="px-3 py-2.5 text-right whitespace-nowrap align-top">
+                                            {row.routeUrl ? (
+                                                <a
+                                                    href={row.routeUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-primary font-semibold hover:underline"
+                                                >
+                                                    ZI ↗
+                                                </a>
+                                            ) : (
+                                                <span className="text-slate-400">—</span>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </>
             )}
 
             <Link
