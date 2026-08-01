@@ -14,6 +14,7 @@ import type { LeagueSettings, RaceGroup } from '@/types/admin';
 import { useRouteElevationQuery, useRaceSegmentsQuery } from '@/hooks/queries';
 import { useAuth } from '@/lib/auth-context';
 import { scaleRaceDistanceKm } from '@/hooks/useLeagueData';
+import { formatOmgangeDisplay } from '@/lib/raceLaps';
 
 interface EventSegmentInstance {
     id: string;
@@ -99,28 +100,6 @@ function fallbackSprintsFromSelectedKeys(selectedSegments?: string[]): Sprint[] 
         });
 }
 
-function getAllLapsValues(race: Race): number[] {
-    const laps = new Set<number>();
-    if (race.eventMode === 'multi') {
-        (race.eventConfiguration || []).forEach((c) => {
-            if (c.laps) laps.add(c.laps);
-        });
-    } else if (race.eventMode === 'grouped') {
-        (race.raceGroups || []).forEach((g) => {
-            g.categories.forEach((c) => {
-                const l = c.laps || g.laps;
-                if (l) laps.add(l);
-            });
-        });
-    } else {
-        (race.singleModeCategories || []).forEach((c) => {
-            if (c.laps) laps.add(c.laps);
-        });
-    }
-    if (laps.size === 0) laps.add(race.laps || 1);
-    return Array.from(laps).sort((a, b) => b - a);
-}
-
 function getPublicSprints(race: Race): Sprint[] {
     if (race.eventMode === 'grouped' && race.raceGroups?.length) {
         return race.raceGroups[0]?.sprints || [];
@@ -163,11 +142,13 @@ export default function RaceCard({
         ? (userGroupCatConfig?.laps || userGroupConfig?.laps || race.laps || 1)
         : (userSingleConfig?.laps || race.laps || 1);
 
-    // "Omgange" shown on the card: a logged-in rider with a known category sees
-    // that category's laps; everyone else sees every distinct lap count in the race.
-    const omgangeDisplay = userCategory
-        ? String(lapsToShow)
-        : getAllLapsValues(race).join('/');
+    // Public cards always show the union of lap counts (e.g. "3/2").
+    // Full cards: category riders see their own laps; others see the union.
+    const omgangeDisplay = formatOmgangeDisplay(race, {
+        userCategory,
+        categoryLaps: lapsToShow,
+        forceUnion: isPublicVariant,
+    });
 
     const sprintsToShow = isPublicVariant
         ? getPublicSprints(race)

@@ -30,14 +30,11 @@ conda run -n py311 python backend/scripts/sync_sauce_data.py
 - Does **not** overwrite local-only files: `paddocks.json`, `segRequireStartEnd.json`, `worlds/*/roadIntersections.json`
 - After sync, bump frontend `zwift-data` if elevation/Strava mapping for new routes is needed
 
-### Frontend `zwift-data` Paris fallback
+### Frontend route elevation / `zwift-data`
 
-Race-card elevation overlays use `zwift-data` `segmentsOnRoute`. Some Paris routes ship with an empty list in published npm packages.
+Race-card elevation overlays use `zwift-data` `segmentsOnRoute` (via `frontend/lib/zwiftRouteCatalog.ts`).
 
-- Fallback data: `frontend/lib/parisSegmentsOnRouteFallback.ts`
-- Applied in `frontend/lib/zwiftRouteCatalog.ts` **only when** catalog `segmentsOnRoute` is empty
-- When a newer `zwift-data` version fills those routes, the fallback is ignored automatically; delete the map (and this note) once obsolete
-- Paris Strava route segments usually **omit** pens→banner lead-in (0 ≈ race start). Elevation API must not subtract `leadInDistance` from those coords (see `catalogSegmentsIncludeLeadIn` / stream length check in `route-elevation`)
+- Paris Strava route segments usually **omit** pens→banner lead-in (0 ≈ race start). Elevation API must not subtract `leadInDistance` from those coords (see `catalogSegmentsIncludeLeadIn` / stream length check in `route-elevation`).
 
 Segment file paths are keyed by `worldId` (not Sauce `courseId`).
 
