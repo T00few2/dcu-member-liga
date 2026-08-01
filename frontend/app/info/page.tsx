@@ -1,9 +1,32 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import CodeOfConductModal from '@/components/CodeOfConductModal';
-import { API_URL } from '@/lib/api';
+import { API_URL, getZwiftInsiderUrl } from '@/lib/api';
+import { useRacesQuery, useStageRacesQuery } from '@/hooks/queries';
+import { formatDateShort, fromTimestamp } from '@/lib/formatDate';
+import {
+    isOneDaySeasonClass,
+    tourEvents,
+} from '@/lib/seasonUi';
+import type { Race } from '@/types/live';
+import type { StageRace } from '@/types/admin';
+
+function joinDanishNames(names: string[]): string {
+    if (names.length === 0) return '';
+    if (names.length === 1) return names[0]!;
+    if (names.length === 2) return `${names[0]} og ${names[1]}`;
+    return `${names.slice(0, -1).join(', ')} og ${names[names.length - 1]}`;
+}
+
+function calendarEventLabel(race: Race, event?: StageRace | null): string {
+    if (!event) return race.name;
+    if (event.seasonClass === 'tour' && race.stageIndex != null) {
+        return `${event.name} · Etape ${race.stageIndex}`;
+    }
+    return event.name || race.name;
+}
 
 function YderligereRegler() {
     const [open, setOpen] = useState(false);
@@ -237,13 +260,201 @@ function UdstyrSection() {
     );
 }
 
+function SaesonformatSection() {
+    const stageRacesQuery = useStageRacesQuery();
+    const stageRaces = stageRacesQuery.data ?? [];
+    const tours = useMemo(() => tourEvents(stageRaces), [stageRaces]);
+    const klassikerCount = useMemo(
+        () => stageRaces.filter((e) => isOneDaySeasonClass(e.seasonClass)).length,
+        [stageRaces],
+    );
+
+    const tourPhrase =
+        tours.length > 0
+            ? joinDanishNames(tours.map((t) => t.name))
+            : '1 Tour';
+    const klassikerLabel = klassikerCount === 1 ? '1 Klassiker' : `${klassikerCount || 5} Klassikere`;
+
+    return (
+        <div className="space-y-5">
+            <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-lg">
+                Sæsonen i <strong className="text-slate-800 dark:text-white">DCU E-serien</strong> bygges op af{' '}
+                <strong className="text-slate-800 dark:text-white">{tourPhrase}</strong>
+                {' '}(flere etaper + samlet GC) og{' '}
+                <strong className="text-slate-800 dark:text-white">{klassikerLabel}</strong>.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {(tours.length > 0
+                    ? tours.map((tour) => ({
+                        key: tour.id,
+                        title: tour.name,
+                        sub: 'etaper + samlet stilling',
+                        kind: 'tour' as const,
+                    }))
+                    : [{ key: 'tour-fallback', title: 'Tour', sub: 'etaper + samlet stilling', kind: 'tour' as const }]
+                ).map((card) => (
+                    <div
+                        key={card.key}
+                        className="text-center p-5 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800"
+                    >
+                        <div className="text-xl sm:text-2xl font-extrabold text-primary mb-1 leading-snug">
+                            {card.title}
+                        </div>
+                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">
+                            Tour
+                        </div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400">{card.sub}</div>
+                    </div>
+                ))}
+                <div className="text-center p-5 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800">
+                    <div className="text-4xl font-extrabold text-primary mb-1">{klassikerCount || 5}</div>
+                    <div className="font-semibold text-slate-800 dark:text-slate-100">Klassikere</div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">enkeltdagsløb</div>
+                </div>
+            </div>
+            <div className="space-y-3">
+                <h4 className="font-bold text-slate-800 dark:text-white text-lg">Sådan fungerer point</h4>
+                {[
+                    'I hvert løb optjener du point ved spurter undervejs og ved målstregen.',
+                    'Din samlede pointscore i løbet afgør din placering den dag.',
+                    'Placeringen giver sæsonpoint – Tour-etaper, Tour-samlet (GC) og Klassikere tæller til Sæsonstillingen.',
+                ].map((step, i) => (
+                    <div key={i} className="flex gap-3 items-start">
+                        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center mt-0.5">
+                            {i + 1}
+                        </div>
+                        <p className="text-slate-600 dark:text-slate-300">{step}</p>
+                    </div>
+                ))}
+            </div>
+            <div className="flex flex-wrap gap-3 pt-2">
+                <Link href="/schedule" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-white font-semibold hover:bg-primary-dark transition">
+                    Sæsonkalender &rarr;
+                </Link>
+                <Link href="/point" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border bg-card font-semibold hover:bg-muted transition">
+                    Se pointskalaer &rarr;
+                </Link>
+                <Link href="/results" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border bg-card font-semibold hover:bg-muted transition">
+                    Resultater &rarr;
+                </Link>
+            </div>
+        </div>
+    );
+}
+
 function RuterSection() {
+    const racesQuery = useRacesQuery();
+    const stageRacesQuery = useStageRacesQuery();
+    const races = racesQuery.data ?? [];
+    const stageRaces = stageRacesQuery.data ?? [];
+    const eventsById = useMemo(
+        () => new Map(stageRaces.map((e) => [e.id, e])),
+        [stageRaces],
+    );
+
+    const rows = useMemo(() => {
+        return [...races]
+            .sort((a, b) => {
+                const ta = fromTimestamp(a.date)?.getTime() ?? Number.POSITIVE_INFINITY;
+                const tb = fromTimestamp(b.date)?.getTime() ?? Number.POSITIVE_INFINITY;
+                return ta - tb;
+            })
+            .map((race) => {
+                const event = race.stageRaceId ? eventsById.get(race.stageRaceId) : undefined;
+                return {
+                    id: race.id,
+                                    dateLabel: (() => {
+                                        const d = fromTimestamp(race.date);
+                                        return d ? formatDateShort(d) : '—';
+                                    })(),
+                    eventLabel: calendarEventLabel(race, event),
+                    world: race.map || '—',
+                    route: race.routeName || '—',
+                    distanceKm:
+                        race.totalDistance != null && Number.isFinite(race.totalDistance)
+                            ? `${Number(race.totalDistance).toFixed(1)} km`
+                            : '—',
+                    elevationM:
+                        race.totalElevation != null && Number.isFinite(race.totalElevation)
+                            ? `${Math.round(race.totalElevation)} m`
+                            : '—',
+                    routeUrl: race.routeName ? getZwiftInsiderUrl(race.routeName) : null,
+                };
+            });
+    }, [races, eventsById]);
+
+    const loading = racesQuery.isLoading || stageRacesQuery.isLoading;
+
     return (
         <div className="space-y-4">
             <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
-                Ruter og datoer for sæsonens løb findes i kalenderen. Der finder du også detaljer om distance,
-                højdemeter og ruteprofil for hvert løb.
+                Oversigt over sæsonens løb med rute, distance og højdemeter. Åbn sæsonkalenderen for
+                race cards med ruteprofil og tilmelding.
             </p>
+
+            {loading ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400">Indlæser kalender…</p>
+            ) : rows.length === 0 ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400">Ingen løb planlagt endnu.</p>
+            ) : (
+                <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+                    <table className="w-full text-sm text-left border-collapse min-w-[640px]">
+                        <thead>
+                            <tr className="bg-slate-50 dark:bg-slate-900/60 text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                <th className="px-3 py-2.5 font-semibold">Dato</th>
+                                <th className="px-3 py-2.5 font-semibold">Event</th>
+                                <th className="px-3 py-2.5 font-semibold">Rute</th>
+                                <th className="px-3 py-2.5 font-semibold text-right">Distance</th>
+                                <th className="px-3 py-2.5 font-semibold text-right">HM</th>
+                                <th className="px-3 py-2.5 font-semibold text-right">Link</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                            {rows.map((row) => (
+                                <tr key={row.id} className="bg-white dark:bg-slate-900">
+                                    <th
+                                        scope="row"
+                                        className="px-3 py-2.5 font-medium text-slate-800 dark:text-slate-100 whitespace-nowrap"
+                                    >
+                                        {row.dateLabel}
+                                    </th>
+                                    <td className="px-3 py-2.5 text-slate-700 dark:text-slate-200">
+                                        {row.eventLabel}
+                                    </td>
+                                    <td className="px-3 py-2.5 text-slate-600 dark:text-slate-300">
+                                        <span className="font-medium text-slate-800 dark:text-slate-100">
+                                            {row.world}
+                                        </span>
+                                        <span className="text-slate-400 dark:text-slate-500"> · </span>
+                                        {row.route}
+                                    </td>
+                                    <td className="px-3 py-2.5 text-right tabular-nums text-slate-700 dark:text-slate-200 whitespace-nowrap">
+                                        {row.distanceKm}
+                                    </td>
+                                    <td className="px-3 py-2.5 text-right tabular-nums text-slate-700 dark:text-slate-200 whitespace-nowrap">
+                                        {row.elevationM}
+                                    </td>
+                                    <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                                        {row.routeUrl ? (
+                                            <a
+                                                href={row.routeUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-primary font-semibold hover:underline"
+                                            >
+                                                ZI ↗
+                                            </a>
+                                        ) : (
+                                            <span className="text-slate-400">—</span>
+                                        )}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
             <Link
                 href="/schedule"
                 className="inline-flex items-center gap-2 text-primary font-semibold hover:underline"
@@ -471,53 +682,7 @@ const chapters = [
         iconBg: 'bg-red-500/10 text-red-600 dark:text-red-400',
         title: 'Sæsonformat',
         defaultOpen: true,
-        content: (
-            <div className="space-y-5">
-                <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-lg">
-                    Sæsonen i <strong className="text-slate-800 dark:text-white">DCU E-serien</strong> bygges op af{' '}
-                    <strong className="text-slate-800 dark:text-white">1 Tour</strong> (flere etaper + samlet GC) og{' '}
-                    <strong className="text-slate-800 dark:text-white">5 Klassikere</strong>.
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {[
-                        { num: '1', label: 'Tour', sub: 'etaper + samlet stilling' },
-                        { num: '5', label: 'Klassikere', sub: 'enkeltdagsløb' },
-                    ].map((stat, i) => (
-                        <div key={i} className="text-center p-5 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800">
-                            <div className="text-4xl font-extrabold text-primary mb-1">{stat.num}</div>
-                            <div className="font-semibold text-slate-800 dark:text-slate-100">{stat.label}</div>
-                            <div className="text-xs text-slate-500 dark:text-slate-400">{stat.sub}</div>
-                        </div>
-                    ))}
-                </div>
-                <div className="space-y-3">
-                    <h4 className="font-bold text-slate-800 dark:text-white text-lg">Sådan fungerer point</h4>
-                    {[
-                        'I hvert løb optjener du point ved spurter undervejs og ved målstregen.',
-                        'Din samlede pointscore i løbet afgør din placering den dag.',
-                        'Placeringen giver sæsonpoint – Tour-etaper, Tour-samlet (GC) og Klassikere tæller til Sæsonstillingen.',
-                    ].map((step, i) => (
-                        <div key={i} className="flex gap-3 items-start">
-                            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center mt-0.5">
-                                {i + 1}
-                            </div>
-                            <p className="text-slate-600 dark:text-slate-300">{step}</p>
-                        </div>
-                    ))}
-                </div>
-                <div className="flex flex-wrap gap-3 pt-2">
-                    <Link href="/schedule" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-white font-semibold hover:bg-primary-dark transition">
-                        Sæsonkalender &rarr;
-                    </Link>
-                    <Link href="/point" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border bg-card font-semibold hover:bg-muted transition">
-                        Se pointskalaer &rarr;
-                    </Link>
-                    <Link href="/results" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border bg-card font-semibold hover:bg-muted transition">
-                        Resultater &rarr;
-                    </Link>
-                </div>
-            </div>
-        ),
+        content: <SaesonformatSection />,
     },
     {
         id: 'ruter',
