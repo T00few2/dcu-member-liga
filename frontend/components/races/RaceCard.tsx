@@ -99,6 +99,28 @@ function fallbackSprintsFromSelectedKeys(selectedSegments?: string[]): Sprint[] 
         });
 }
 
+function getAllLapsValues(race: Race): number[] {
+    const laps = new Set<number>();
+    if (race.eventMode === 'multi') {
+        (race.eventConfiguration || []).forEach((c) => {
+            if (c.laps) laps.add(c.laps);
+        });
+    } else if (race.eventMode === 'grouped') {
+        (race.raceGroups || []).forEach((g) => {
+            g.categories.forEach((c) => {
+                const l = c.laps || g.laps;
+                if (l) laps.add(l);
+            });
+        });
+    } else {
+        (race.singleModeCategories || []).forEach((c) => {
+            if (c.laps) laps.add(c.laps);
+        });
+    }
+    if (laps.size === 0) laps.add(race.laps || 1);
+    return Array.from(laps).sort((a, b) => b - a);
+}
+
 function getPublicSprints(race: Race): Sprint[] {
     if (race.eventMode === 'grouped' && race.raceGroups?.length) {
         return race.raceGroups[0]?.sprints || [];
@@ -140,6 +162,12 @@ export default function RaceCard({
         : race.eventMode === 'grouped'
         ? (userGroupCatConfig?.laps || userGroupConfig?.laps || race.laps || 1)
         : (userSingleConfig?.laps || race.laps || 1);
+
+    // "Omgange" shown on the card: a logged-in rider with a known category sees
+    // that category's laps; everyone else sees every distinct lap count in the race.
+    const omgangeDisplay = userCategory
+        ? String(lapsToShow)
+        : getAllLapsValues(race).join('/');
 
     const sprintsToShow = isPublicVariant
         ? getPublicSprints(race)
@@ -316,7 +344,7 @@ export default function RaceCard({
                     <div className="bg-muted/20 p-3 rounded text-center flex flex-col justify-center">
                         <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Omgange</div>
                         <div className="font-semibold text-card-foreground flex justify-center items-center h-full">
-                            {lapsToShow}
+                            {omgangeDisplay}
                         </div>
                     </div>
                 </div>
@@ -335,7 +363,7 @@ export default function RaceCard({
                         <RouteElevationChart
                             worldName={race.map}
                             routeName={race.routeName}
-                            laps={lapsToShow}
+                            laps={1}
                             pointSegments={resolvedProfileSprintsToShow}
                         />
                     </div>
