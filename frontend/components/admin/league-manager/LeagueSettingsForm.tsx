@@ -306,7 +306,7 @@ export default function LeagueSettingsForm({
                         <div className="space-y-4">
                             <div className="flex flex-wrap items-start justify-between gap-3">
                                 <div>
-                                    <h2 className="text-lg font-semibold text-card-foreground">Season prestige points</h2>
+                                    <h2 className="text-lg font-semibold text-card-foreground">Season points</h2>
                                     <p className="text-xs text-muted-foreground mt-1">
                                         One row per place. Ranges from settings are expanded into individual places for editing.
                                     </p>
@@ -329,7 +329,7 @@ export default function LeagueSettingsForm({
                                     Season best results count
                                 </label>
                                 <p className="text-xs text-muted-foreground mb-2">
-                                    How many best prestige lines count in season standings. Use 0 to count all.
+                                    How many best season-point lines count in season standings. Use 0 to count all.
                                 </p>
                                 <input
                                     type="number"

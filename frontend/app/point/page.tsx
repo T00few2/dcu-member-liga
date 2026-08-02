@@ -70,14 +70,14 @@ export default function PointPage() {
         <div className="max-w-4xl mx-auto px-4 py-8">
             <h1 className="text-3xl font-bold mb-2 text-foreground">Point</h1>
             <p className="text-muted-foreground mb-6 max-w-2xl">
-                På løbsdagen giver mål- og spurtpoint din placering i løbet. Placeringen giver point til
-                sæsonen sammen med prestige for Tour og Klassikere.
+                I hvert løb giver mål- og spurtpoint din placering. Placeringen giver sæsonpoint til
+                Tour og Klassikere.
             </p>
 
             <div className="flex gap-2 mb-6 border-b border-border">
                 {(
                     [
-                        { id: 'race-day' as const, label: 'Løbsdag' },
+                        { id: 'race-day' as const, label: 'Løbspoint' },
                         { id: 'season' as const, label: 'Sæson' },
                     ] as const
                 ).map((t) => (
@@ -106,7 +106,7 @@ export default function PointPage() {
             ) : (
                 <div className="space-y-3">
                     <p className="text-sm text-muted-foreground">
-                        Sæsonprestige for Tour (samlet + etape) og Klassikere — tæller til Sæsonstillingen.
+                        Sæsonpoint for Tour (samlet + etape) og Klassikere — tæller til Sæsonstillingen.
                     </p>
                     <PointsPlaceTable columns={seasonColumns} readOnly />
                 </div>
