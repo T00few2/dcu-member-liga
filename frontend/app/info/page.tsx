@@ -703,7 +703,7 @@ const chapters = [
         ),
         iconBg: 'bg-red-500/10 text-red-600 dark:text-red-400',
         title: 'Sæsonformat',
-        defaultOpen: true,
+        defaultOpen: false,
         content: <SaesonformatSection />,
     },
     {
@@ -731,7 +731,7 @@ const chapters = [
         content: (
             <div className="space-y-4">
                 <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
-                    Alle aktuelle pointskalaer for løbsdag (mål, spurt, løbsplacering) og sæsonprestige
+                    Alle pointskalaer for løb (mål, spurt, løbsplacering) og sæsonpoint
                     (Tour samlet, Tour-etape, Klassiker) ligger på point-siden.
                 </p>
                 <Link href="/point" className="inline-flex items-center gap-2 text-primary font-semibold hover:underline">
