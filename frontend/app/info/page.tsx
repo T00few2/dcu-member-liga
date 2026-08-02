@@ -703,7 +703,7 @@ const chapters = [
         ),
         iconBg: 'bg-red-500/10 text-red-600 dark:text-red-400',
         title: 'Sæsonformat',
-        defaultOpen: true,
+        defaultOpen: false,
         content: <SaesonformatSection />,
     },
     {
