@@ -196,8 +196,12 @@ export default function RaceList({
                                         )}
                                     </td>
                                     <td className="px-6 py-4 text-muted-foreground">
-                                        <div className="font-medium text-card-foreground">{race.map}</div>
-                                        <div className="text-xs">{race.routeName} ({race.laps} laps)</div>
+                                        <div className="font-medium text-card-foreground">{race.map || 'TBD'}</div>
+                                        <div className="text-xs">
+                                            {race.routeName
+                                                ? `${race.routeName} (${race.laps} laps)`
+                                                : 'TBD'}
+                                        </div>
                                         {race.eventMode === 'multi' ? (
                                             <div className="text-xs text-primary/70">
                                                 {race.eventConfiguration?.length} Linked Events

@@ -480,13 +480,16 @@
           "type": "string"
         },
         "map": {
-          "type": "string"
+          "type": "string",
+          "description": "Zwift world name. Empty or omitted when world is TBD."
         },
         "routeId": {
-          "type": "string"
+          "type": "string",
+          "description": "Zwift route signature. Empty or omitted when route is TBD."
         },
         "routeName": {
-          "type": "string"
+          "type": "string",
+          "description": "Display route name. Empty or omitted when route is TBD."
         },
         "segmentType": {
           "type": "string"

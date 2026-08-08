@@ -264,8 +264,10 @@ function LiveRacePageContent() {
             <header className="mb-4">
                 <h1 className="text-2xl font-bold text-card-foreground">{currentRace.name}</h1>
                 <p className="text-sm text-muted-foreground mt-1">
-                    {currentRace.map} · {currentRace.routeName} · {laps} omgang{laps !== 1 ? 'e' : ''}
-                    {tabTotalWithLeadInKm > 0 && ` · ${tabTotalWithLeadInKm.toFixed(1)} km`}
+                    {currentRace.map || 'TBD'} · {currentRace.routeName || 'TBD'}
+                    {currentRace.routeName
+                        ? ` · ${laps} omgang${laps !== 1 ? 'e' : ''}${tabTotalWithLeadInKm > 0 ? ` · ${tabTotalWithLeadInKm.toFixed(1)} km` : ''}`
+                        : ''}
                 </p>
             </header>
 

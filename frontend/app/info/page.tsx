@@ -387,8 +387,8 @@ function RuterSection() {
                         return d ? formatDateShort(d) : '—';
                     })(),
                     eventLabel: calendarEventLabel(race, event),
-                    world: race.map || '—',
-                    route: race.routeName || '—',
+                    world: race.map || 'TBD',
+                    route: race.routeName || 'TBD',
                     routeUrl: race.routeName ? getZwiftInsiderUrl(race.routeName) : null,
                 };
             });

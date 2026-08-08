@@ -17,6 +17,8 @@ export default function RaceRouteSelector({ routes }: RaceRouteSelectorProps) {
         formState.selectedRouteId
     );
     const totals = selectedRoute ? calculateRouteTotals(selectedRoute, formState.laps) : null;
+    const isMapTbd = !formState.selectedMap;
+    const isRouteTbd = !formState.selectedRouteId;
 
     return (
         <>
@@ -31,9 +33,8 @@ export default function RaceRouteSelector({ routes }: RaceRouteSelectorProps) {
                             onFieldChange('selectedRouteId', '');
                         }}
                         className="w-full p-2 border border-input rounded bg-background text-foreground"
-                        required
                     >
-                        <option value="">-- Choose a Map --</option>
+                        <option value="">To Be Decided</option>
                         {maps.map(m => <option key={m} value={m}>{m}</option>)}
                     </select>
                 </div>
@@ -43,11 +44,10 @@ export default function RaceRouteSelector({ routes }: RaceRouteSelectorProps) {
                         value={formState.selectedRouteId}
                         onChange={e => onFieldChange('selectedRouteId', e.target.value)}
                         className="w-full p-2 border border-input rounded bg-background text-foreground"
-                        required
-                        disabled={!formState.selectedMap}
+                        disabled={isMapTbd}
                     >
                         <option value="">
-                            {formState.selectedMap ? '-- Choose a Route --' : '-- Select Map First --'}
+                            {isMapTbd ? 'To Be Decided (select map first)' : 'To Be Decided'}
                         </option>
                         {filteredRoutes.map(r => (
                             <option key={r.id} value={r.id}>
@@ -57,6 +57,13 @@ export default function RaceRouteSelector({ routes }: RaceRouteSelectorProps) {
                     </select>
                 </div>
             </div>
+
+            {(isMapTbd || isRouteTbd) && (
+                <p className="text-xs text-muted-foreground">
+                    World/route can stay TBD so the race appears on the calendar. Route profile, distance,
+                    and sprint segments become available once a route is selected.
+                </p>
+            )}
 
             {/* Laps + Distance + Elevation */}
             {selectedRoute && (

@@ -88,10 +88,10 @@ export default function UpcomingRaceCountdown({ race }: Props) {
         : null;
 
     const meta = [
-        race.map,
-        race.routeName,
-        laps ? `${laps} omgang${laps !== 1 ? 'e' : ''}` : null,
-        totalKm ? `${totalKm.toFixed(1)} km` : null,
+        race.map || 'TBD',
+        race.routeName || 'TBD',
+        race.routeName && laps ? `${laps} omgang${laps !== 1 ? 'e' : ''}` : null,
+        race.routeName && totalKm ? `${totalKm.toFixed(1)} km` : null,
         dateLabel,
     ]
         .filter(Boolean)

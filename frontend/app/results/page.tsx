@@ -650,7 +650,7 @@ export default function ResultsPage() {
                                         </div>
                                     )}
                                     <div className="text-sm font-medium text-card-foreground">{selectedRace.map}</div>
-                                    <div className="text-xs text-muted-foreground">{selectedRace.routeName} • {displayLaps} omgange</div>
+                                    <div className="text-xs text-muted-foreground">{selectedRace.routeName || 'TBD'}{selectedRace.routeName ? ` • ${displayLaps} omgange` : ''}</div>
                                 </div>
                             )}
                         </div>
@@ -750,7 +750,7 @@ export default function ResultsPage() {
                                                 {selectedRace.stageIndex != null ? ` · Etape ${selectedRace.stageIndex}` : ''}
                                             </div>
                                             <div className="text-sm font-medium text-card-foreground">{selectedRace.map}</div>
-                                            <div className="text-xs text-muted-foreground">{selectedRace.routeName} • {displayLaps} omgange</div>
+                                            <div className="text-xs text-muted-foreground">{selectedRace.routeName || 'TBD'}{selectedRace.routeName ? ` • ${displayLaps} omgange` : ''}</div>
                                         </div>
                                     )}
                                 </div>

@@ -276,61 +276,60 @@ export default function RaceForm({
                 {/* Route Selection */}
                 <RaceRouteSelector routes={routes} />
 
-                {/* Route Details & Configuration */}
-                {selectedRoute && (
-                    <div className="p-4 bg-muted/50 rounded-lg border border-border">
-                        {/* Event Mode */}
-                        <div className="mb-4">
-                            <label className="block text-sm font-medium text-muted-foreground mb-2">
-                                Result Source Configuration
+                {/* Event / result source config — available even when world/route are TBD */}
+                <div className="p-4 bg-muted/50 rounded-lg border border-border">
+                    <div className="mb-4">
+                        <label className="block text-sm font-medium text-muted-foreground mb-2">
+                            Result Source Configuration
+                        </label>
+                        <div className="flex flex-wrap gap-4 mb-4">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                    type="radio"
+                                    name="eventMode"
+                                    checked={formState.eventMode === 'single'}
+                                    onChange={() => onFieldChange('eventMode', 'single')}
+                                    className="text-primary focus:ring-primary"
+                                />
+                                <span className="text-sm">Standard (Single Zwift Event)</span>
                             </label>
-                            <div className="flex flex-wrap gap-4 mb-4">
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                        type="radio"
-                                        name="eventMode"
-                                        checked={formState.eventMode === 'single'}
-                                        onChange={() => onFieldChange('eventMode', 'single')}
-                                        className="text-primary focus:ring-primary"
-                                    />
-                                    <span className="text-sm">Standard (Single Zwift Event)</span>
-                                </label>
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                        type="radio"
-                                        name="eventMode"
-                                        checked={formState.eventMode === 'multi'}
-                                        onChange={() => onFieldChange('eventMode', 'multi')}
-                                        className="text-primary focus:ring-primary"
-                                    />
-                                    <span className="text-sm">Multi-Category (One Event per Category)</span>
-                                </label>
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                        type="radio"
-                                        name="eventMode"
-                                        checked={formState.eventMode === 'grouped'}
-                                        onChange={() => onFieldChange('eventMode', 'grouped')}
-                                        className="text-primary focus:ring-primary"
-                                    />
-                                    <span className="text-sm">Grouped (Multiple Events, Each Covering Multiple Categories)</span>
-                                </label>
-                            </div>
-
-                            {formState.eventMode === 'single' && <SingleModeConfig />}
-                            {formState.eventMode === 'multi' && <MultiModeConfig />}
-                            {formState.eventMode === 'grouped' && <GroupedModeConfig />}
-
-                            <p className="text-xs text-muted-foreground mt-2">
-                                {formState.eventMode === 'single'
-                                    ? 'Used to fetch race results automatically from a single event.'
-                                    : formState.eventMode === 'multi'
-                                    ? 'Map one Zwift Event per category (e.g. Event 101 → Elite Men, Event 102 → H40).'
-                                    : 'Group multiple categories under each Zwift Event (e.g. "High end" event covers Diamond + Ruby).'}
-                            </p>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                    type="radio"
+                                    name="eventMode"
+                                    checked={formState.eventMode === 'multi'}
+                                    onChange={() => onFieldChange('eventMode', 'multi')}
+                                    className="text-primary focus:ring-primary"
+                                />
+                                <span className="text-sm">Multi-Category (One Event per Category)</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                    type="radio"
+                                    name="eventMode"
+                                    checked={formState.eventMode === 'grouped'}
+                                    onChange={() => onFieldChange('eventMode', 'grouped')}
+                                    className="text-primary focus:ring-primary"
+                                />
+                                <span className="text-sm">Grouped (Multiple Events, Each Covering Multiple Categories)</span>
+                            </label>
                         </div>
 
-                        {/* Route profile ownership note */}
+                        {formState.eventMode === 'single' && <SingleModeConfig />}
+                        {formState.eventMode === 'multi' && <MultiModeConfig />}
+                        {formState.eventMode === 'grouped' && <GroupedModeConfig />}
+
+                        <p className="text-xs text-muted-foreground mt-2">
+                            {formState.eventMode === 'single'
+                                ? 'Used to fetch race results automatically from a single event.'
+                                : formState.eventMode === 'multi'
+                                ? 'Map one Zwift Event per category (e.g. Event 101 → Elite Men, Event 102 → H40).'
+                                : 'Group multiple categories under each Zwift Event (e.g. "High end" event covers Diamond + Ruby).'}
+                        </p>
+                    </div>
+
+                    {/* Route profile editor — only when a concrete route is selected */}
+                    {selectedRoute && (
                         <div className="border-t border-border pt-4 mt-4">
                             <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                                 <label className="block font-medium text-card-foreground">
@@ -496,8 +495,8 @@ export default function RaceForm({
                                 ))}
                             </div>
                         </div>
-                    </div>
-                )}
+                    )}
+                </div>
 
                 {/* Submit */}
                 <div className="flex gap-3 pt-2">

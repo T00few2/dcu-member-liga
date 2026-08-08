@@ -297,18 +297,20 @@ export default function RaceCard({
                         </div>
                     </div>
                     <div className="bg-muted/30 px-4 py-2 rounded-lg text-right">
-                        <div className="font-semibold text-card-foreground">{race.map}</div>
+                        <div className="font-semibold text-card-foreground">{race.map || 'TBD'}</div>
                         <div className="text-sm text-muted-foreground flex items-center justify-end gap-1">
-                            {race.routeName}
-                            <a
-                                href={getZwiftInsiderUrl(race.routeName ?? '')}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs text-primary hover:underline"
-                                title="View on ZwiftInsider"
-                            >
-                                (ZI ↗)
-                            </a>
+                            {race.routeName || 'TBD'}
+                            {race.routeName && (
+                                <a
+                                    href={getZwiftInsiderUrl(race.routeName)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs text-primary hover:underline"
+                                    title="View on ZwiftInsider"
+                                >
+                                    (ZI ↗)
+                                </a>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -316,16 +318,20 @@ export default function RaceCard({
                 <div className={`grid grid-cols-3 gap-4 ${isPublicVariant ? 'mb-4' : 'mb-6'} text-sm`}>
                     <div className="bg-muted/20 p-3 rounded text-center">
                         <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Distance</div>
-                        <div className="font-semibold text-card-foreground">{displayDistanceKm} km</div>
+                        <div className="font-semibold text-card-foreground">
+                            {race.routeName ? `${displayDistanceKm} km` : 'TBD'}
+                        </div>
                     </div>
                     <div className="bg-muted/20 p-3 rounded text-center">
                         <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Højdemeter</div>
-                        <div className="font-semibold text-card-foreground">{race.totalElevation} m</div>
+                        <div className="font-semibold text-card-foreground">
+                            {race.routeName ? `${race.totalElevation ?? 0} m` : 'TBD'}
+                        </div>
                     </div>
                     <div className="bg-muted/20 p-3 rounded text-center flex flex-col justify-center">
                         <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Omgange</div>
                         <div className="font-semibold text-card-foreground flex justify-center items-center h-full">
-                            {omgangeDisplay}
+                            {race.routeName ? omgangeDisplay : 'TBD'}
                         </div>
                     </div>
                 </div>

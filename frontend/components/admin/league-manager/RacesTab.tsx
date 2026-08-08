@@ -88,26 +88,32 @@ export default function RacesTab({
     const handleSaveRace = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user) return;
-        const selectedRoute = routes.find(r => r.id === raceForm.formState.selectedRouteId);
-        if (!selectedRoute) return;
+        const { formState } = raceForm;
+        const selectedRoute = routes.find(r => r.id === formState.selectedRouteId) ?? null;
+        // Map may be set without a route (world known, route TBD). Route without map is invalid.
+        if (formState.selectedRouteId && !selectedRoute) return;
+        if (selectedRoute && formState.selectedMap && selectedRoute.map !== formState.selectedMap) return;
 
         setStatus('saving');
         try {
             const token = await user.getIdToken();
-            const { formState } = raceForm;
-            const { totalDistance, totalElevation } = calculateRouteTotals(selectedRoute, formState.laps);
+            const totals = selectedRoute
+                ? calculateRouteTotals(selectedRoute, formState.laps)
+                : { totalDistance: 0, totalElevation: 0 };
+            const clearRouteSprints = !selectedRoute;
             const raceData: Partial<Race> = {
                 name: formState.name,
                 date: formState.date,
                 type: formState.raceType,
-                routeId: selectedRoute.id,
-                routeName: selectedRoute.name,
-                map: selectedRoute.map,
-                laps: formState.laps,
-                totalDistance,
-                totalElevation,
-                selectedSegments: formState.selectedSprints.map(s => s.key),
-                sprints: formState.selectedSprints,
+                // Always send route fields so edits can clear a previously saved route (TBD).
+                routeId: selectedRoute?.id ?? '',
+                routeName: selectedRoute?.name ?? '',
+                map: selectedRoute?.map ?? formState.selectedMap ?? '',
+                laps: selectedRoute ? formState.laps : formState.laps || 1,
+                totalDistance: totals.totalDistance,
+                totalElevation: totals.totalElevation,
+                selectedSegments: clearRouteSprints ? [] : formState.selectedSprints.map(s => s.key),
+                sprints: clearRouteSprints ? [] : formState.selectedSprints,
                 segmentType: formState.segmentType,
                 eventMode: formState.eventMode,
             };
@@ -116,18 +122,28 @@ export default function RacesTab({
                 raceData.eventId = formState.eventId;
                 raceData.eventSecret = formState.eventSecret;
                 raceData.eventConfiguration = [];
-                raceData.singleModeCategories = formState.singleModeCategories;
+                raceData.singleModeCategories = clearRouteSprints
+                    ? formState.singleModeCategories.map(c => ({ ...c, sprints: [] }))
+                    : formState.singleModeCategories;
                 raceData.raceGroups = [];
                 raceData.linkedEventIds = formState.eventId ? [formState.eventId] : [];
             } else if (formState.eventMode === 'grouped') {
-                raceData.raceGroups = formState.raceGroups;
+                raceData.raceGroups = clearRouteSprints
+                    ? formState.raceGroups.map(g => ({
+                        ...g,
+                        sprints: [],
+                        categories: (g.categories || []).map(c => ({ ...c, sprints: [] })),
+                    }))
+                    : formState.raceGroups;
                 raceData.eventConfiguration = [];
                 raceData.singleModeCategories = [];
                 raceData.eventId = '';
                 raceData.eventSecret = '';
                 raceData.linkedEventIds = [...new Set(formState.raceGroups.map(g => g.eventId).filter(Boolean))];
             } else {
-                raceData.eventConfiguration = formState.eventConfiguration;
+                raceData.eventConfiguration = clearRouteSprints
+                    ? formState.eventConfiguration.map(c => ({ ...c, sprints: [] }))
+                    : formState.eventConfiguration;
                 raceData.singleModeCategories = [];
                 raceData.raceGroups = [];
                 raceData.eventId = '';

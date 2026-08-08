@@ -148,7 +148,7 @@ export default function RaceResultsTable({
                                 <div className="text-xs text-muted-foreground mb-0.5">{eventContextLabel}</div>
                             )}
                             <div className="text-sm font-medium text-card-foreground">{selectedRace.map}</div>
-                            <div className="text-xs text-muted-foreground">{selectedRace.routeName} • {displayLaps} omgange</div>
+                            <div className="text-xs text-muted-foreground">{selectedRace.routeName || 'TBD'}{selectedRace.routeName ? ` • ${displayLaps} omgange` : ''}</div>
                         </div>
                     )}
                 </div>
