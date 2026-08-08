@@ -1,9 +1,10 @@
 export type ProfileSegmentLike = {
     name: string;
-    type: 'sprint' | 'climb' | 'segment';
+    /** API/cache may send a plain string; synthetics use sprint|climb|segment. */
+    type: string;
     fromKm: number;
     toKm: number;
-    direction?: 'forward' | 'reverse';
+    direction?: string;
 };
 
 export type EventSegmentLike = {
