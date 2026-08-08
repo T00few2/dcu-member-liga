@@ -15,6 +15,7 @@ import { useRouteElevationQuery, useRaceSegmentsQuery } from '@/hooks/queries';
 import { useAuth } from '@/lib/auth-context';
 import { scaleRaceDistanceKm } from '@/hooks/useLeagueData';
 import { formatOmgangeDisplay } from '@/lib/raceLaps';
+import { mergeLapBannerProfileSegments } from '@/lib/routeProfileSegments';
 
 interface EventSegmentInstance {
     id: string;
@@ -184,13 +185,6 @@ export default function RaceCard({
         leadInKm,
     );
 
-    const profileData: ProfileData | null = elevationData
-        ? {
-              leadInDistance: Number(elevationData.leadInDistance) || 0,
-              profileSegments: Array.isArray(elevationData.profileSegments) ? elevationData.profileSegments : [],
-          }
-        : null;
-
     const { data: eventSegmentsData } = useRaceSegmentsQuery(
         race.routeId,
         lapsToShow,
@@ -223,6 +217,38 @@ export default function RaceCard({
         if (onRouteOccurrence < 1) return seg;
         return { ...seg, count: onRouteOccurrence };
     });
+
+    const elevationDistances = elevationData?.distance;
+    const tiledRaceKm =
+        Array.isArray(elevationDistances) && elevationDistances.length > 0
+            ? (elevationDistances[elevationDistances.length - 1] ?? 0) / 1000
+            : 0;
+    const fallbackLapKm =
+        lapsToShow > 0 ? Math.max(0, displayDistanceKm - leadInKm) / lapsToShow : 0;
+    const lapLengthKm =
+        lapsToShow > 0 && tiledRaceKm > 0 ? tiledRaceKm / lapsToShow : fallbackLapKm;
+
+    const mergedProfileSegments = mergeLapBannerProfileSegments(
+        Array.isArray(elevationData?.profileSegments) ? elevationData.profileSegments : [],
+        resolvedSprintsToShow,
+        eventSegments,
+        lapLengthKm,
+    );
+
+    const profileData: ProfileData | null = elevationData
+        ? {
+              leadInDistance: Number(elevationData.leadInDistance) || 0,
+              profileSegments: mergedProfileSegments,
+          }
+        : null;
+
+    // Single-lap chart: only end-of-lap-1 banner markers (chart fetches laps=1 itself).
+    const singleLapBannerSegments = mergeLapBannerProfileSegments(
+        [],
+        resolvedSprintsToShow.filter((s) => (s.lap || 1) === 1),
+        eventSegments.filter((e) => (Number(e.lap) || 0) === 1),
+        lapLengthKm,
+    );
 
     const racePassHref = race.eventMode === 'multi'
         ? (userConfig?.eventId ? getZwiftEventUrl(userConfig.eventId, userConfig.eventSecret) : null)
@@ -352,6 +378,7 @@ export default function RaceCard({
                             routeName={race.routeName}
                             laps={1}
                             pointSegments={resolvedProfileSprintsToShow}
+                            extraProfileSegments={singleLapBannerSegments}
                         />
                     </div>
                 )}

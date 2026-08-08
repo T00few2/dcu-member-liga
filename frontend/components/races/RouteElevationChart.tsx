@@ -7,6 +7,7 @@ import {
     CartesianGrid,
     Customized,
     ReferenceArea,
+    ReferenceLine,
     ResponsiveContainer,
     Tooltip,
     XAxis,
@@ -34,6 +35,9 @@ interface ProfileSegment {
     direction?: 'forward' | 'reverse';
 }
 
+/** Minimum band width (km) before a segment is treated as a point banner. */
+const POINT_BANNER_EPSILON_KM = 0.05;
+
 export interface RouteElevationOverlayContext {
     lapLengthKm: number;
     totalDistanceKm: number;
@@ -55,6 +59,8 @@ interface Props {
     routeName: string;
     laps?: number;
     pointSegments?: Sprint[];
+    /** Merged into route profile overlays (e.g. synthetic lap-banner markers). */
+    extraProfileSegments?: ProfileSegment[];
     overlay?: (ctx: RouteElevationOverlayContext) => ReactNode;
     height?: number;
 }
@@ -114,7 +120,8 @@ function normalizeNameForMatch(name?: string): string {
         .replace(/['’`]/g, ' ')
         .replace(/\s+\(.*\)\s*$/g, '')
         .replace(/\s+(reverse|rev\.?)$/g, '')
-        .replace(/[^a-z0-9\s-]/g, ' ')
+        .replace(/[-_]+/g, ' ')
+        .replace(/[^a-z0-9\s]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
 }
@@ -178,15 +185,22 @@ function renderCenteredSegmentLabel(props: any, value: string, color: string, sh
     );
 }
 
+function segmentContainsKm(seg: RouteSegment, dist: number): boolean {
+    const lo = Math.min(seg.from, seg.to);
+    const hi = Math.max(seg.from, seg.to);
+    if (hi - lo <= POINT_BANNER_EPSILON_KM) {
+        return Math.abs(dist - lo) <= POINT_BANNER_EPSILON_KM;
+    }
+    return dist >= lo && dist <= hi;
+}
+
 function ElevationTooltip({
     active, payload, label, routeSegments, pointSegmentOccurrenceKeys, routeOccurrenceKeys,
 }: any) {
     if (!active || !payload?.length) return null;
     const pt: DataPoint = payload[0].payload;
     const dist = Number(label);
-    const segIndex: number = routeSegments?.findIndex(
-        (s: RouteSegment) => dist >= s.from && dist <= s.to,
-    );
+    const segIndex: number = routeSegments?.findIndex((s: RouteSegment) => segmentContainsKm(s, dist));
     const seg: RouteSegment | undefined = segIndex >= 0 ? routeSegments?.[segIndex] : undefined;
     const occKey = segIndex >= 0 ? routeOccurrenceKeys?.[segIndex] : '';
     const isPointSegment = !!seg && pointSegmentOccurrenceKeys?.has(occKey);
@@ -383,11 +397,32 @@ function ElevationOverlayHost({
     });
 }
 
+function toRouteSegment(seg: {
+    name?: string;
+    type?: unknown;
+    fromKm?: number;
+    toKm?: number;
+    from?: number;
+    to?: number;
+    direction?: string;
+}): RouteSegment {
+    const rawFrom = Number(seg.fromKm ?? seg.from) || 0;
+    const rawTo = Number(seg.toKm ?? seg.to) || 0;
+    return {
+        from: Math.min(rawFrom, rawTo),
+        to: Math.max(rawFrom, rawTo),
+        type: normalizeSegmentType(seg.type),
+        name: getSegmentName(seg.name),
+        direction: normalizeDirection(seg.direction),
+    };
+}
+
 export default function RouteElevationChart({
     worldName,
     routeName,
     laps = 1,
     pointSegments = [],
+    extraProfileSegments = [],
     overlay,
     height = CHART_HEIGHT,
 }: Props) {
@@ -416,29 +451,14 @@ export default function RouteElevationChart({
     })();
 
     const routeSegments: RouteSegment[] = (() => {
-        if (!json) return [];
-        const fromRouteProfile: RouteSegment[] = (json.profileSegments ?? [])
-            .map((seg): RouteSegment => {
-                const rawFrom = Number(seg.fromKm) || 0;
-                const rawTo = Number(seg.toKm) || 0;
-                return {
-                    // Normalize bounds so segments always render even if entered in reverse order.
-                    from: Math.min(rawFrom, rawTo),
-                    to: Math.max(rawFrom, rawTo),
-                    type: normalizeSegmentType(seg.type),
-                    name: getSegmentName(seg.name),
-                    direction: normalizeDirection(seg.direction),
-                };
-            })
-            .sort((a, b) => a.from - b.from || a.to - b.to);
-        if (fromRouteProfile.length > 0) return fromRouteProfile;
-        return (json.segments ?? []).map((seg) => ({
-            from: Number.isFinite(seg?.from) ? seg.from : 0,
-            to: Number.isFinite(seg?.to) ? seg.to : 0,
-            type: normalizeSegmentType(seg?.type),
-            name: getSegmentName(seg?.name),
-            direction: normalizeDirection(seg?.direction),
-        }));
+        if (!json && extraProfileSegments.length === 0) return [];
+        const fromRouteProfile: RouteSegment[] = (json?.profileSegments ?? []).map(toRouteSegment);
+        const extras = (extraProfileSegments ?? []).map(toRouteSegment);
+        const combined = [...fromRouteProfile, ...extras].sort(
+            (a, b) => a.from - b.from || a.to - b.to,
+        );
+        if (combined.length > 0) return combined;
+        return (json?.segments ?? []).map((seg) => toRouteSegment(seg));
     })();
 
     if (loading) {
@@ -496,14 +516,21 @@ export default function RouteElevationChart({
     // Clamp to chart domain. Catalog finish segments often overshoot route length
     // slightly (e.g. Itza KOM 46.1 km on a 45.8 km route); with domain=[0,dataMax]
     // Recharts drops ReferenceAreas that extend past the axis.
+    // Zero-width / near-zero lap banners render as ReferenceLine instead.
     const visibleRouteSegments = routeSegments
         .map((seg, i) => {
             const from = Math.max(0, Math.min(seg.from, maxDist));
             const to = Math.max(0, Math.min(seg.to, maxDist));
-            if (!(to > from)) return null;
-            return { seg, i, from, to };
+            const width = to - from;
+            if (width < 0) return null;
+            const isPointBanner = width <= POINT_BANNER_EPSILON_KM;
+            if (!isPointBanner && !(to > from)) return null;
+            return { seg, i, from, to, isPointBanner };
         })
-        .filter((v): v is { seg: RouteSegment; i: number; from: number; to: number } => v != null);
+        .filter(
+            (v): v is { seg: RouteSegment; i: number; from: number; to: number; isPointBanner: boolean } =>
+                v != null,
+        );
 
     return (
         <div>
@@ -561,24 +588,55 @@ export default function RouteElevationChart({
                             isAnimationActive={false}
                         />
 
-                        {visibleRouteSegments.map(({ seg, i, from, to }) => {
+                        {visibleRouteSegments.map(({ seg, i, from, to, isPointBanner }) => {
                                 const isPointSegment = pointSegmentOccurrenceKeys.has(routeOccurrenceKeys[i]);
+                                const color = SEGMENT_COLORS[normalizeSegmentType(seg.type)];
+                                const label = compactSegmentLabel(seg.name, seg.direction);
+                                if (isPointBanner) {
+                                    const x = from;
+                                    return (
+                                        <ReferenceLine
+                                            key={i}
+                                            x={x}
+                                            stroke={color}
+                                            strokeOpacity={0.85}
+                                            strokeWidth={2}
+                                            label={(labelProps) =>
+                                                renderCenteredSegmentLabel(
+                                                    {
+                                                        ...labelProps,
+                                                        viewBox: labelProps?.viewBox
+                                                            ? {
+                                                                  ...labelProps.viewBox,
+                                                                  width: Math.max(labelProps.viewBox.width || 0, 12),
+                                                                  x: (labelProps.viewBox.x ?? 0) - 6,
+                                                              }
+                                                            : labelProps?.viewBox,
+                                                    },
+                                                    label,
+                                                    color,
+                                                    isPointSegment || isPointBanner,
+                                                )
+                                            }
+                                        />
+                                    );
+                                }
                                 return (
                             <ReferenceArea
                                 key={i}
                                 x1={from}
                                 x2={to}
                                 // Omit y1/y2 so the band fills the full plot height.
-                                fill={SEGMENT_COLORS[normalizeSegmentType(seg.type)]}
+                                fill={color}
                                 fillOpacity={0.25}
-                                stroke={SEGMENT_COLORS[normalizeSegmentType(seg.type)]}
+                                stroke={color}
                                 strokeOpacity={0.6}
                                 strokeWidth={1}
                                 label={(labelProps) =>
                                     renderCenteredSegmentLabel(
                                         labelProps,
-                                        compactSegmentLabel(seg.name, seg.direction),
-                                        SEGMENT_COLORS[normalizeSegmentType(seg.type)],
+                                        label,
+                                        color,
                                         isPointSegment,
                                     )
                                 }

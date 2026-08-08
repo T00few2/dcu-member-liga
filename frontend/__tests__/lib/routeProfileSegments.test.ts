@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     catalogSegmentsIncludeLeadIn,
+    mergeLapBannerProfileSegments,
     resolveRaceRelativeProfileSegments,
     shiftSegmentsByLeadIn,
 } from '@/lib/routeProfileSegments';
@@ -46,6 +47,105 @@ describe('shiftSegmentsByLeadIn', () => {
         expect(out).toEqual([
             { name: 'Montmartre KOM', type: 'climb', fromKm: 1.697, toKm: 2.925, direction: 'forward' },
         ]);
+    });
+
+    it('keeps zero-width on-course point banners after lead-in shift', () => {
+        const out = shiftSegmentsByLeadIn(
+            [{ name: 'Champs-Élysées', type: 'sprint', fromKm: 19.185, toKm: 19.185, direction: 'forward' }],
+            3.185,
+        );
+        expect(out).toEqual([
+            { name: 'Champs-Élysées', type: 'sprint', fromKm: 16, toKm: 16, direction: 'forward' },
+        ]);
+    });
+});
+
+describe('mergeLapBannerProfileSegments', () => {
+    const lapLengthKm = 16;
+    const catalog = [
+        { name: 'Lutece Sprint', type: 'sprint' as const, fromKm: 1.178, toKm: 1.33, direction: 'forward' as const },
+        { name: 'Monceau Sprint', type: 'sprint' as const, fromKm: 2.732, toKm: 3.026, direction: 'forward' as const },
+        { name: 'Montmartre KOM', type: 'climb' as const, fromKm: 4.882, toKm: 6.11, direction: 'forward' as const },
+        { name: 'Tchou Tchou Sprint', type: 'sprint' as const, fromKm: 8.664, toKm: 8.817, direction: 'reverse' as const },
+    ];
+
+    const eventSegments = [
+        { id: 'lutece', count: 1, lap: 1, direction: 'forward', name: 'Lutece Sprint' },
+        { id: 'monceau', count: 1, lap: 1, direction: 'forward', name: 'Monceau Sprint' },
+        { id: 'montmartre', count: 1, lap: 1, direction: 'forward', name: 'Montmartre KOM' },
+        { id: 'tchou', count: 1, lap: 1, direction: 'reverse', name: 'Tchou Tchou Sprint' },
+        { id: '1056322864', count: 1, lap: 1, direction: 'forward', name: 'Champs-Élysées' },
+        { id: 'lutece', count: 2, lap: 2, direction: 'forward', name: 'Lutece Sprint' },
+        { id: 'monceau', count: 2, lap: 2, direction: 'forward', name: 'Monceau Sprint' },
+        { id: 'montmartre', count: 2, lap: 2, direction: 'forward', name: 'Montmartre KOM' },
+        { id: 'tchou', count: 2, lap: 2, direction: 'reverse', name: 'Tchou Tchou Sprint' },
+        { id: '1056322864', count: 2, lap: 2, direction: 'forward', name: 'Champs-Élysées' },
+        { id: 'lutece', count: 3, lap: 3, direction: 'forward', name: 'Lutece Sprint' },
+        { id: 'monceau', count: 3, lap: 3, direction: 'forward', name: 'Monceau Sprint' },
+        { id: 'montmartre', count: 3, lap: 3, direction: 'forward', name: 'Montmartre KOM' },
+        { id: 'tchou', count: 3, lap: 3, direction: 'reverse', name: 'Tchou Tchou Sprint' },
+        { id: '1056322864', count: 3, lap: 3, direction: 'forward', name: 'Champs-Élysées' },
+    ];
+
+    const champsSprints = [
+        { id: '1056322864', name: 'Champs-Élysées', count: 1, lap: 1, direction: 'forward' },
+        { id: '1056322864', name: 'Champs-Élysées', count: 2, lap: 2, direction: 'forward' },
+        { id: '1056322864', name: 'Champs-Élysées', count: 3, lap: 3, direction: 'forward' },
+    ];
+
+    it('synthesizes end-of-lap markers for Champs-Élysées when missing from catalog', () => {
+        const tiled = [
+            ...catalog,
+            ...catalog.map((s) => ({ ...s, fromKm: s.fromKm + lapLengthKm, toKm: s.toKm + lapLengthKm })),
+            ...catalog.map((s) => ({ ...s, fromKm: s.fromKm + 2 * lapLengthKm, toKm: s.toKm + 2 * lapLengthKm })),
+        ];
+        const out = mergeLapBannerProfileSegments(tiled, champsSprints, eventSegments, lapLengthKm);
+        const champs = out.filter((s) => s.name === 'Champs-Élysées');
+        expect(champs).toHaveLength(3);
+        expect(champs.map((s) => s.fromKm)).toEqual([16, 32, 48]);
+        expect(champs.every((s) => s.fromKm === s.toKm && s.type === 'sprint')).toBe(true);
+        // Existing catalog segments unchanged
+        expect(out.filter((s) => s.name !== 'Champs-Élysées')).toHaveLength(tiled.length);
+        expect(out.slice(0, tiled.length)).toEqual(tiled);
+    });
+
+    it('does not duplicate when Champs already has profile coords', () => {
+        const withChamps = [
+            ...catalog,
+            { name: 'Champs-Élysées', type: 'sprint' as const, fromKm: 15.95, toKm: 16, direction: 'forward' as const },
+        ];
+        const out = mergeLapBannerProfileSegments(
+            withChamps,
+            [champsSprints[0]],
+            eventSegments.filter((e) => e.lap === 1),
+            lapLengthKm,
+        );
+        expect(out.filter((s) => s.name === 'Champs-Élysées')).toHaveLength(1);
+        expect(out).toEqual(withChamps);
+    });
+
+    it('ignores configured sprints that are not the last segment of their lap', () => {
+        const out = mergeLapBannerProfileSegments(
+            catalog,
+            [{ id: 'montmartre', name: 'Montmartre KOM', count: 1, lap: 1, direction: 'forward' }],
+            eventSegments.filter((e) => e.lap === 1),
+            lapLengthKm,
+        );
+        expect(out).toEqual(catalog);
+    });
+
+    it('normalizes accented banner names for profile matching', () => {
+        const withAscii = [
+            ...catalog,
+            { name: 'Champs Elysees', type: 'sprint' as const, fromKm: 16, toKm: 16, direction: 'forward' as const },
+        ];
+        const out = mergeLapBannerProfileSegments(
+            withAscii,
+            [champsSprints[0]],
+            eventSegments.filter((e) => e.lap === 1),
+            lapLengthKm,
+        );
+        expect(out.filter((s) => /champs/i.test(s.name))).toHaveLength(1);
     });
 });
 

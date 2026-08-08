@@ -26,7 +26,8 @@ export function normalizeSprintNameForMatch(name?: string): string {
         .replace(/['’`]/g, ' ')
         .replace(/\s+\(.*\)\s*$/g, '')
         .replace(/\s+(reverse|rev\.?)$/g, '')
-        .replace(/[^a-z0-9\s-]/g, ' ')
+        .replace(/[-_]+/g, ' ')
+        .replace(/[^a-z0-9\s]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
 }

@@ -8,6 +8,7 @@ import SprintsByLap, {
     normalizeSprintDirectionForMatch,
     type SprintsByLapProfileData,
 } from '@/components/races/SprintsByLap';
+import { mergeLapBannerProfileSegments } from '@/lib/routeProfileSegments';
 import { formatTime, formatGap } from '@/app/results/_components/formatTime';
 
 interface Props {
@@ -312,13 +313,6 @@ function InfoView({
     );
     const { data: eventSegments = [] } = useRaceSegmentsQuery(routeId, laps, hasSprints && !!routeId);
 
-    const profileData: SprintsByLapProfileData | null = elevationData
-        ? {
-              leadInDistance: Number(elevationData.leadInDistance) || 0,
-              profileSegments: Array.isArray(elevationData.profileSegments) ? elevationData.profileSegments : [],
-          }
-        : null;
-
     const resolvedSprints = useMemo(() => {
         if (!sprints.length || !eventSegments.length) return sprints;
         return sprints.map((seg) => {
@@ -342,6 +336,28 @@ function InfoView({
             return { ...seg, count: onRouteOccurrence };
         });
     }, [sprints, eventSegments]);
+
+    const profileData: SprintsByLapProfileData | null = useMemo(() => {
+        if (!elevationData) return null;
+        const elevationDistances = elevationData.distance;
+        const tiledRaceKm =
+            Array.isArray(elevationDistances) && elevationDistances.length > 0
+                ? (elevationDistances[elevationDistances.length - 1] ?? 0) / 1000
+                : 0;
+        const lapLengthKm = laps > 0 && tiledRaceKm > 0 ? tiledRaceKm / laps : 0;
+        const baseSegments = Array.isArray(elevationData.profileSegments)
+            ? elevationData.profileSegments
+            : [];
+        return {
+            leadInDistance: Number(elevationData.leadInDistance) || 0,
+            profileSegments: mergeLapBannerProfileSegments(
+                baseSegments,
+                sprints,
+                eventSegments,
+                lapLengthKm,
+            ),
+        };
+    }, [elevationData, eventSegments, laps, sprints]);
 
     if (!hasSprints) {
         return (
