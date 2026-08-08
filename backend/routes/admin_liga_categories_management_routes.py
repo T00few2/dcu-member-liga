@@ -217,6 +217,7 @@ def reset_liga_category_assignments():
         docs = db.collection("users").where("registration.status", "==", "complete").stream()
 
         reset_count = 0
+        unlocked_without_rating = 0
         skipped = 0
         batch = db.batch()
         batch_count = 0
@@ -230,28 +231,36 @@ def reset_liga_category_assignments():
                 zr.get("max90Rating", "N/A"),
             )
 
-            if eff_rating is None:
-                skipped += 1
-                continue
-
             try:
-                new_auto = build_liga_category(eff_rating, grace_period, categories)
-                new_auto["assignedAt"] = firestore.SERVER_TIMESTAMP
-                new_auto["lastCheckedAt"] = firestore.SERVER_TIMESTAMP
-                # Use dotted paths so DELETE_FIELD clears leftovers left by merge-assign.
-                user_update = with_schema_version(
-                    {
-                        "ligaCategory.autoAssigned": new_auto,
-                        "ligaCategory.locked": False,
-                        "ligaCategory.selfSelected": firestore.DELETE_FIELD,
-                        "ligaCategory.category": firestore.DELETE_FIELD,
-                        "ligaCategory.lockedAt": firestore.DELETE_FIELD,
-                    }
-                )
-                batch.update(doc.reference, user_update)
-                reset_count += 1
-                batch_count += 1
+                # Always clear season lock / self-select leftovers, even when rating
+                # is missing (those riders were previously skipped and stayed locked).
+                clear_fields = {
+                    "ligaCategory.locked": False,
+                    "ligaCategory.selfSelected": firestore.DELETE_FIELD,
+                    "ligaCategory.category": firestore.DELETE_FIELD,
+                    "ligaCategory.lockedAt": firestore.DELETE_FIELD,
+                }
 
+                if eff_rating is None:
+                    # No vELO to rebuild from — unlock and drop stale autoAssigned.
+                    clear_fields["ligaCategory.autoAssigned"] = firestore.DELETE_FIELD
+                    user_update = with_schema_version(clear_fields)
+                    batch.update(doc.reference, user_update)
+                    unlocked_without_rating += 1
+                else:
+                    new_auto = build_liga_category(eff_rating, grace_period, categories)
+                    new_auto["assignedAt"] = firestore.SERVER_TIMESTAMP
+                    new_auto["lastCheckedAt"] = firestore.SERVER_TIMESTAMP
+                    user_update = with_schema_version(
+                        {
+                            **clear_fields,
+                            "ligaCategory.autoAssigned": new_auto,
+                        }
+                    )
+                    batch.update(doc.reference, user_update)
+                    reset_count += 1
+
+                batch_count += 1
                 if batch_count >= _FIRESTORE_BATCH_SIZE:
                     batch.commit()
                     batch = db.batch()
@@ -264,8 +273,9 @@ def reset_liga_category_assignments():
             batch.commit()
 
         logger.info(
-            "Liga category reset-assignments: %s reset, %s skipped",
+            "Liga category reset-assignments: %s reset, %s unlocked_without_rating, %s skipped",
             reset_count,
+            unlocked_without_rating,
             skipped,
         )
         return (
@@ -274,6 +284,7 @@ def reset_liga_category_assignments():
                     "message": "Liga category assignments reset",
                     "gracePeriod": grace_period,
                     "reset": reset_count,
+                    "unlockedWithoutRating": unlocked_without_rating,
                     "skipped": skipped,
                 }
             ),
