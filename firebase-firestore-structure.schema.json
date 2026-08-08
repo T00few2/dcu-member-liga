@@ -296,7 +296,26 @@
           "type": "integer",
           "description": "Season prestige best-X lines; 0/omit = count all"
         },
-        "ligaCategories": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+        "gracePeriod": {
+          "type": "integer",
+          "description": "Points above category upper boundary before status becomes over"
+        },
+        "ligaCategories": {
+          "type": "array",
+          "description": "Ordered liga category definitions (top category first, upper=null)",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "name": { "type": "string" },
+              "upper": { "type": ["integer", "null"] },
+              "requiresVerification": {
+                "type": "boolean",
+                "description": "When true, riders in this category are in scope for weight verification sampling and dual-recording reports"
+              }
+            }
+          }
+        },
         "defaultEventMode": {
           "type": "string",
           "enum": ["single", "multi", "grouped"],

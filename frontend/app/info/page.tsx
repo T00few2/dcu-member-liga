@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import CodeOfConductModal from '@/components/CodeOfConductModal';
 import { API_URL, getZwiftInsiderUrl } from '@/lib/api';
-import { useRacesQuery, useStageRacesQuery } from '@/hooks/queries';
+import { useLeagueSettingsQuery, useRacesQuery, useStageRacesQuery } from '@/hooks/queries';
 import { formatDateShort, fromTimestamp } from '@/lib/formatDate';
 import {
     isOneDaySeasonClass,
@@ -12,6 +12,18 @@ import {
 } from '@/lib/seasonUi';
 import type { Race } from '@/types/live';
 import type { StageRace } from '@/types/admin';
+
+function useVerificationCategoryNames(): string[] {
+    const { data: leagueSettings } = useLeagueSettingsQuery();
+    return useMemo(
+        () =>
+            (leagueSettings?.ligaCategories || [])
+                .filter((c) => c.requiresVerification === true)
+                .map((c) => c.name)
+                .filter(Boolean),
+        [leagueSettings?.ligaCategories],
+    );
+}
 
 function joinDanishNames(names: string[]): string {
     if (names.length === 0) return '';
@@ -86,6 +98,8 @@ function TrainerStatusBadge({ trainer }: { trainer: Trainer }) {
 }
 
 function UdstyrSection() {
+    const verificationNames = useVerificationCategoryNames();
+    const verificationLabel = joinDanishNames(verificationNames);
     const [trainers, setTrainers] = useState<Trainer[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
@@ -131,7 +145,12 @@ function UdstyrSection() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {[
                     { label: 'Cykel', desc: 'Racer, mountainbike eller gravel – så længe den passer på hometraineren.' },
-                    { label: 'Smart hometrainer', desc: 'Godkendt direct drive med automatisk modstandsstyring – eller dual recording med separat wattmåler og Strava-forbindelse.' },
+                    {
+                        label: 'Smart hometrainer',
+                        desc: verificationLabel
+                            ? `I ${verificationLabel} kræves godkendt direct drive med automatisk modstandsstyring – eller dual recording med separat wattmåler og Strava-forbindelse.`
+                            : 'Godkendt direct drive med automatisk modstandsstyring. Dual recording kræves ikke for nogen kategorier i øjeblikket.',
+                    },
                 ].map((item, i) => (
                     <div key={i} className="flex items-start gap-3 p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800">
                         <div className="mt-0.5 flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">
@@ -487,6 +506,60 @@ function RuterSection() {
     );
 }
 
+function ReglerSection() {
+    const verificationNames = useVerificationCategoryNames();
+    const verificationLabel = joinDanishNames(verificationNames);
+
+    return (
+        <div className="space-y-5">
+            <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-lg">
+                For at sikre fair play og god konkurrence er der visse retningslinjer du skal overholde:
+            </p>
+            <div className="space-y-4">
+                <div className="pl-4 border-l-4 border-primary">
+                    <h4 className="font-bold text-slate-900 dark:text-white mb-1">Registrering af højde og vægt</h4>
+                    <p className="text-slate-600 dark:text-slate-400">Deltagere skal være registreret med korrekt højde og vægt på deres profil samt i Zwift, så Watt/kg udregnes korrekt i spillet.</p>
+                </div>
+                <div className="pl-4 border-l-4 border-tertiary">
+                    <h4 className="font-bold text-slate-900 dark:text-white mb-1">Stikprøvekontrol (Weight Verification)</h4>
+                    <p className="text-slate-600 dark:text-slate-400">
+                        {verificationLabel
+                            ? `For ryttere i ${verificationLabel} vil der fra tid til anden blive krævet videodokumentation af den aktuelle vægt.`
+                            : 'Der kræves i øjeblikket ikke vægtverifikation for nogen kategorier.'}
+                    </p>
+                </div>
+                <div className="pl-4 border-l-4 border-blue-500">
+                    <h4 className="font-bold text-slate-900 dark:text-white mb-1">Tilslutning af profil</h4>
+                    <p className="text-slate-600 dark:text-slate-400">
+                        Husk at forbinde din Zwift- og Strava-konto (begge er påkrævet) i dine brugerindstillinger her på siden, før du tilmelder dig et løb.
+                    </p>
+                </div>
+                <div className="pl-4 border-l-4 border-orange-400">
+                    <h4 className="font-bold text-slate-900 dark:text-white mb-1">Godkendt hometrainer eller dual recording</h4>
+                    {verificationLabel ? (
+                        <>
+                            <p className="text-slate-600 dark:text-slate-400 mb-2">
+                                Ryttere i <strong>{verificationLabel}</strong> skal enten benytte en <strong>godkendt smart hometrainer</strong> (direct drive med automatisk modstandsstyring) eller foretage <strong>dual recording</strong> med en separat wattmåler.
+                            </p>
+                            <p className="text-slate-600 dark:text-slate-400">
+                                Ved dual recording skal aktiviteten uploades til <strong>Strava</strong>, og din Strava-konto skal være forbundet med din profil her på siden. Strava-data bruges kun til admin kontrol af wattdata.
+                            </p>
+                        </>
+                    ) : (
+                        <p className="text-slate-600 dark:text-slate-400">
+                            Dual recording kræves i øjeblikket ikke for nogen kategorier.
+                        </p>
+                    )}
+                </div>
+                <div className="pl-4 border-l-4 border-slate-400">
+                    <h4 className="font-bold text-slate-900 dark:text-white mb-1">Yderligere regler</h4>
+                    <YderligereRegler />
+                </div>
+            </div>
+        </div>
+    );
+}
+
 const chapters = [
     {
         id: 'ecycling',
@@ -534,40 +607,7 @@ const chapters = [
         iconBg: 'bg-green-500/10 text-green-600 dark:text-green-400',
         title: 'Deltagelse og Regler',
         defaultOpen: false,
-        content: (
-            <div className="space-y-5">
-                <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-lg">
-                    For at sikre fair play og god konkurrence er der visse retningslinjer du skal overholde:
-                </p>
-                <div className="space-y-4">
-                    <div className="pl-4 border-l-4 border-primary">
-                        <h4 className="font-bold text-slate-900 dark:text-white mb-1">Registrering af højde og vægt</h4>
-                        <p className="text-slate-600 dark:text-slate-400">Deltagere skal være registreret med korrekt højde og vægt på deres profil samt i Zwift, så Watt/kg udregnes korrekt i spillet.</p>
-                    </div>
-                    <div className="pl-4 border-l-4 border-tertiary">
-                        <h4 className="font-bold text-slate-900 dark:text-white mb-1">Stikprøvekontrol (Weight Verification)</h4>
-                        <p className="text-slate-600 dark:text-slate-400">For at sikre integritet vil der fra tid til anden blive krævet videodokumentation af din aktuelle vægt.</p>
-                    </div>
-                    <div className="pl-4 border-l-4 border-blue-500">
-                        <h4 className="font-bold text-slate-900 dark:text-white mb-1">Tilslutning af profil</h4>
-                        <p className="text-slate-600 dark:text-slate-400">Husk at forbinde din Zwift ID og andre nødvendige detaljer i dine brugerindstillinger her på siden, før du tilmelder dig et løb.</p>
-                    </div>
-                    <div className="pl-4 border-l-4 border-orange-400">
-                        <h4 className="font-bold text-slate-900 dark:text-white mb-1">Godkendt hometrainer eller dual recording</h4>
-                        <p className="text-slate-600 dark:text-slate-400 mb-2">
-                            Alle deltagere skal enten benytte en <strong>godkendt smart hometrainer</strong> (direct drive med automatisk modstandsstyring) eller foretage <strong>dual recording</strong> med en separat wattmåler.
-                        </p>
-                        <p className="text-slate-600 dark:text-slate-400">
-                            Ved dual recording skal aktiviteten uploades til <strong>Strava</strong>, og din Strava-konto skal være forbundet med din profil her på siden. Strava-data bruges kun til admin kontrol af wattdata.
-                        </p>
-                    </div>
-                    <div className="pl-4 border-l-4 border-slate-400">
-                        <h4 className="font-bold text-slate-900 dark:text-white mb-1">Yderligere regler</h4>
-                        <YderligereRegler />
-                    </div>
-                </div>
-            </div>
-        ),
+        content: <ReglerSection />,
     },
     {
         id: 'kategorier',

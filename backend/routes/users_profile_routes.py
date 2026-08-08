@@ -221,17 +221,16 @@ def signup():
                     400,
                 )
 
-            if trainer and _trainer_requires_dual_recording(trainer):
-                strava_connected = bool((source_data.get("connections") or {}).get("strava"))
-                if not strava_connected:
-                    return (
-                        jsonify(
-                            {
-                                "message": "Selected trainer requires Strava connection for dual recording. Connect Strava before completing profile."
-                            }
-                        ),
-                        400,
-                    )
+            strava_connected = bool((source_data.get("connections") or {}).get("strava"))
+            if not strava_connected:
+                return (
+                    jsonify(
+                        {
+                            "message": "Strava connection is required. Connect Strava before completing profile."
+                        }
+                    ),
+                    400,
+                )
 
         if db:
             user_data = {

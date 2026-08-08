@@ -29,7 +29,15 @@ interface RiderInfoFormProps {
     loadingTrainers: boolean;
     trainersError: string;
     onRequestTrainer: (name: string) => void;
+    verificationCategoryNames?: string[];
     readOnly?: boolean;
+}
+
+function joinDanishNames(names: string[]): string {
+    if (names.length === 0) return '';
+    if (names.length === 1) return names[0]!;
+    if (names.length === 2) return `${names[0]} og ${names[1]}`;
+    return `${names.slice(0, -1).join(', ')} og ${names[names.length - 1]}`;
 }
 
 export default function RiderInfoForm({
@@ -39,8 +47,10 @@ export default function RiderInfoForm({
     clubs, loadingClubs, clubsError,
     trainers, loadingTrainers, trainersError,
     onRequestTrainer,
+    verificationCategoryNames = [],
     readOnly = false
 }: RiderInfoFormProps) {
+    const verificationLabel = joinDanishNames(verificationCategoryNames);
     // Club State
     const [clubSearch, setClubSearch] = useState('');
     const [showClubList, setShowClubList] = useState(false);
@@ -241,7 +251,9 @@ export default function RiderInfoForm({
                             {trainer && trainers.find(t => t.name === trainer)?.dualRecordingRequired && (
                                 <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
                                     <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                                        ⚠️ <strong>Dual Recording påkrævet</strong>: Strava skal forbindes og bruges til automatisk upload af dual recording.
+                                        ⚠️ <strong>Dual Recording påkrævet</strong>
+                                        {verificationLabel ? ` i ${verificationLabel}` : ''}
+                                        : Strava bruges til automatisk upload ved kontrol.
                                     </p>
                                 </div>
                             )}

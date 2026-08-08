@@ -175,6 +175,13 @@ class SeasonRankPoints(TypedDict, total=False):
     wt_classic: SeasonRankPointTable
 
 
+class LigaCategoryDef(TypedDict, total=False):
+    """One entry in league/settings.ligaCategories."""
+    name: str
+    upper: int | None
+    requiresVerification: bool
+
+
 class LeagueSettings(TypedDict, total=False):
     """Document: league/settings."""
     schemaVersion: int
@@ -187,6 +194,7 @@ class LeagueSettings(TypedDict, total=False):
     bestRacesCount: int  # Legacy flat-league best-X only
     seasonRankPoints: SeasonRankPoints
     seasonBestResultsCount: int  # Season best-X lines; 0/omit = all
+    ligaCategories: list[LigaCategoryDef]
 
 
 SeasonClass = Literal['tour', 'monument', 'wt_classic']

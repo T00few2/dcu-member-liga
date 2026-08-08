@@ -9,6 +9,7 @@ interface CategoryBoundaryEditorProps {
   ridersWithRating: RiderEntry[];
   onUpdateName: (i: number, name: string) => void;
   onUpdateUpper: (i: number, raw: string) => void;
+  onToggleVerification: (i: number, value: boolean) => void;
   onSplit: (i: number) => void;
   onMergeUp: (i: number) => void;
 }
@@ -19,6 +20,7 @@ export default function CategoryBoundaryEditor({
   ridersWithRating,
   onUpdateName,
   onUpdateUpper,
+  onToggleVerification,
   onSplit,
   onMergeUp,
 }: CategoryBoundaryEditorProps) {
@@ -37,6 +39,7 @@ export default function CategoryBoundaryEditor({
             <th className="pb-2 text-left pr-3">Name</th>
             <th className="pb-2 text-left pr-3">vELO range</th>
             <th className="pb-2 text-right pr-3 w-28">Upper boundary</th>
+            <th className="pb-2 text-center pr-3" title="Weight verification + dual-recording reports">Verification</th>
             <th className="pb-2 text-left">Riders ({ridersWithRating.length} with rating)</th>
             <th className="pb-2 text-right">Actions</th>
           </tr>
@@ -77,6 +80,16 @@ export default function CategoryBoundaryEditor({
                       className="w-24 px-2 py-1 border border-input rounded bg-background text-foreground text-sm text-right"
                     />
                   )}
+                </td>
+                <td className="py-2 pr-3 text-center">
+                  <input
+                    type="checkbox"
+                    checked={cat.requiresVerification === true}
+                    onChange={e => onToggleVerification(i, e.target.checked)}
+                    className="h-4 w-4 accent-primary"
+                    title="Include in weight verification and dual-recording reports"
+                    aria-label={`Requires verification: ${cat.name}`}
+                  />
                 </td>
                 <td className="py-2">
                   <div className="flex items-center gap-2">

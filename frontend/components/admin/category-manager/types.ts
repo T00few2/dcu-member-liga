@@ -1,6 +1,8 @@
 export interface CategoryDef {
   name: string;
   upper: number | null; // null = no upper limit (top category, must be first)
+  /** Weight verification sampling + dual-recording reports when true. */
+  requiresVerification?: boolean;
 }
 
 export interface LigaCategory {
@@ -44,14 +46,14 @@ export const ZR_CATEGORY_STYLES: Record<string, string> = {
 };
 
 export const ZR_CATEGORY_DEFAULTS: CategoryDef[] = [
-  { name: 'Diamond',  upper: null },
-  { name: 'Ruby',     upper: 2200 },
-  { name: 'Emerald',  upper: 1900 },
-  { name: 'Sapphire', upper: 1650 },
-  { name: 'Amethyst', upper: 1450 },
-  { name: 'Platinum', upper: 1300 },
-  { name: 'Gold',     upper: 1150 },
-  { name: 'Silver',   upper: 1000 },
-  { name: 'Bronze',   upper:  850 },
-  { name: 'Copper',   upper:  650 },
+  { name: 'Diamond',  upper: null, requiresVerification: true },
+  { name: 'Ruby',     upper: 2200, requiresVerification: true },
+  { name: 'Emerald',  upper: 1900, requiresVerification: false },
+  { name: 'Sapphire', upper: 1650, requiresVerification: false },
+  { name: 'Amethyst', upper: 1450, requiresVerification: false },
+  { name: 'Platinum', upper: 1300, requiresVerification: false },
+  { name: 'Gold',     upper: 1150, requiresVerification: false },
+  { name: 'Silver',   upper: 1000, requiresVerification: false },
+  { name: 'Bronze',   upper:  850, requiresVerification: false },
+  { name: 'Copper',   upper:  650, requiresVerification: false },
 ];

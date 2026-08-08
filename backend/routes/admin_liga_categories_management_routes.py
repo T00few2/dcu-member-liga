@@ -77,7 +77,11 @@ def save_liga_categories_config():
                 return jsonify({"message": "Upper boundaries must be strictly decreasing"}), 400
 
         normalised = [
-            {"name": c["name"].strip(), "upper": int(c["upper"]) if c.get("upper") is not None else None}
+            {
+                "name": c["name"].strip(),
+                "upper": int(c["upper"]) if c.get("upper") is not None else None,
+                "requiresVerification": bool(c.get("requiresVerification")),
+            }
             for c in categories
         ]
 
@@ -179,6 +183,104 @@ def assign_liga_categories():
         )
     except Exception as e:
         logger.error("Liga category assignment error: %s", e)
+        return jsonify({"message": str(e)}), 500
+
+
+@admin_bp.route("/admin/liga-categories/reset-assignments", methods=["POST"])
+def reset_liga_category_assignments():
+    """Clear last-season locks/self-select/grace and rebuild unlocked autoAssigned."""
+    try:
+        require_admin(request)
+    except AuthzError as e:
+        return jsonify({"message": e.message}), e.status_code
+
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+
+    try:
+        body = request.get_json(silent=True) or {}
+        settings_doc = db.collection("league").document("settings").get()
+        settings = settings_doc.to_dict() if settings_doc.exists else {}
+
+        grace_period = int(body.get("gracePeriod", settings.get("gracePeriod", 35)))
+        cat_defs = body.get("categories") or settings.get("ligaCategories")
+        categories = cats_from_defs(cat_defs) if cat_defs else None
+
+        settings_update = with_schema_version({"gracePeriod": grace_period})
+        log_schema_issues(
+            logger,
+            "league/settings (gracePeriod via reset)",
+            validate_league_settings_doc(settings_update, partial=True),
+        )
+        db.collection("league").document("settings").set(settings_update, merge=True)
+
+        docs = db.collection("users").where("registration.status", "==", "complete").stream()
+
+        reset_count = 0
+        skipped = 0
+        batch = db.batch()
+        batch_count = 0
+
+        for doc in docs:
+            data = doc.to_dict() or {}
+            zr = data.get("zwiftRacing", {})
+            eff_rating = effective_rating(
+                zr.get("currentRating", "N/A"),
+                zr.get("max30Rating", "N/A"),
+                zr.get("max90Rating", "N/A"),
+            )
+
+            if eff_rating is None:
+                skipped += 1
+                continue
+
+            try:
+                new_auto = build_liga_category(eff_rating, grace_period, categories)
+                new_auto["assignedAt"] = firestore.SERVER_TIMESTAMP
+                new_auto["lastCheckedAt"] = firestore.SERVER_TIMESTAMP
+                # Use dotted paths so DELETE_FIELD clears leftovers left by merge-assign.
+                user_update = with_schema_version(
+                    {
+                        "ligaCategory.autoAssigned": new_auto,
+                        "ligaCategory.locked": False,
+                        "ligaCategory.selfSelected": firestore.DELETE_FIELD,
+                        "ligaCategory.category": firestore.DELETE_FIELD,
+                        "ligaCategory.lockedAt": firestore.DELETE_FIELD,
+                    }
+                )
+                batch.update(doc.reference, user_update)
+                reset_count += 1
+                batch_count += 1
+
+                if batch_count >= _FIRESTORE_BATCH_SIZE:
+                    batch.commit()
+                    batch = db.batch()
+                    batch_count = 0
+            except Exception as ex:
+                logger.warning("Could not reset category for %s: %s", doc.id, ex)
+                skipped += 1
+
+        if batch_count > 0:
+            batch.commit()
+
+        logger.info(
+            "Liga category reset-assignments: %s reset, %s skipped",
+            reset_count,
+            skipped,
+        )
+        return (
+            jsonify(
+                {
+                    "message": "Liga category assignments reset",
+                    "gracePeriod": grace_period,
+                    "reset": reset_count,
+                    "skipped": skipped,
+                }
+            ),
+            200,
+        )
+    except Exception as e:
+        logger.error("Liga category reset-assignments error: %s", e)
         return jsonify({"message": str(e)}), 500
 
 

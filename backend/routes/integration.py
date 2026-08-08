@@ -498,16 +498,37 @@ def _try_link_and_verify_activity(
             'likelyRaceId': matched_race_id,
         }, merge=True)
 
-        # Check if this rider requires dual recording
+        # Check if this rider requires dual recording (trainer flag)
         if not _is_dual_recording_required(db_ref, user_doc_id):
             return
 
+        # Category gate: only verification categories get DR reports
+        from services.dual_recording_admin_core import (  # noqa: PLC0415
+            _load_verification_categories,
+            resolve_rider_category_row,
+        )
+        from services.liga_categories_core import effective_user_category  # noqa: PLC0415
+
+        verification_cats = _load_verification_categories(db_ref)
+        if not verification_cats:
+            return
+
+        race_doc = db_ref.collection('races').document(matched_race_id).get()
+        race_data = race_doc.to_dict() if race_doc.exists else {}
+
         # Resolve canonical zwift ID (user doc ID is canonical zwiftId in this system)
         user_doc = db_ref.collection('users').document(user_doc_id).get()
-        canonical_zwift_id = (
-            (user_doc.to_dict() or {}).get('zwiftId') or user_doc_id
-            if user_doc.exists else user_doc_id
-        )
+        user_data = user_doc.to_dict() or {} if user_doc.exists else {}
+        canonical_zwift_id = user_data.get('zwiftId') or user_doc_id
+
+        result_category, _ = resolve_rider_category_row(race_data or {}, str(canonical_zwift_id))
+        if not result_category and str(user_doc_id) != str(canonical_zwift_id):
+            result_category, _ = resolve_rider_category_row(race_data or {}, str(user_doc_id))
+        category_for_gate = str(result_category or '').strip()
+        if not category_for_gate:
+            category_for_gate = effective_user_category(user_data.get('ligaCategory'))
+        if not category_for_gate or category_for_gate not in verification_cats:
+            return
 
         threading.Thread(
             target=_run_dr_verification_background,

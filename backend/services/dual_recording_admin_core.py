@@ -14,9 +14,19 @@ from services.dual_recording_core import (
     _resolve_activity_id_for_rider,
     _run_dr_verification_background,
 )
+from services.liga_categories_core import verification_category_names
 from services.user_service import UserService
 from services.zwift_tokens import get_token_doc, get_valid_access_token
 from extensions import get_zwift_service
+
+
+def _load_verification_categories(db: Any) -> set[str]:
+    try:
+        snap = db.collection("league").document("settings").get()
+        settings = snap.to_dict() if snap.exists else {}
+    except Exception:
+        settings = {}
+    return verification_category_names((settings or {}).get("ligaCategories"))
 
 
 def resolve_category_event_start(race_data: dict, category: str) -> str:
@@ -41,12 +51,22 @@ def resolve_category_event_start(race_data: dict, category: str) -> str:
 
 
 def collect_dr_candidates_for_race(db: Any, race_data: dict) -> list[dict]:
-    """Collect DR-required rider candidates from race results."""
+    """Collect DR-required rider candidates from race results.
+
+    A rider is included only when:
+    1. Their registered trainer has dualRecordingRequired, and
+    2. Their race results category is marked requiresVerification in league settings.
+    """
     candidates: list[dict] = []
     seen: set[str] = set()
     results_map = race_data.get("results") or {}
+    verification_cats = _load_verification_categories(db)
+    if not verification_cats:
+        return candidates
 
     for category, riders in results_map.items():
+        if str(category) not in verification_cats:
+            continue
         for rider in (riders or []):
             zwift_id = str(rider.get("zwiftId") or "").strip()
             if not zwift_id or zwift_id in seen:

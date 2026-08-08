@@ -1,8 +1,9 @@
 'use client';
 
-import { Suspense, useEffect } from 'react';
+import { Suspense, useEffect, useMemo } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useRegistration } from '@/hooks/useRegistration';
+import { useLeagueSettingsQuery } from '@/hooks/queries/useLeagueSettingsQuery';
 import RiderInfoForm from '@/components/register/RiderInfoForm';
 import ConnectionsForm from '@/components/register/ConnectionsForm';
 import AgreementsForm from '@/components/register/AgreementsForm';
@@ -44,6 +45,16 @@ function RegisterContent() {
         handleConnectStrava, handleDisconnectStrava, handleConnectZwift, handleDisconnectZwift, handleRequestTrainer, saveData,
     } = useRegistration();
 
+    const { data: leagueSettings } = useLeagueSettingsQuery();
+    const verificationCategoryNames = useMemo(
+        () =>
+            (leagueSettings?.ligaCategories || [])
+                .filter((c) => c.requiresVerification === true)
+                .map((c) => c.name)
+                .filter(Boolean),
+        [leagueSettings?.ligaCategories],
+    );
+
     useEffect(() => {
         if (typeof window === 'undefined' || !isRegistered) return;
         const syncFromUrl = () => {
@@ -73,6 +84,7 @@ function RegisterContent() {
         clubs, loadingClubs, clubsError,
         trainers, loadingTrainers, trainersError,
         onRequestTrainer: handleRequestTrainer,
+        verificationCategoryNames,
     };
 
     const setRegisterTab = (nextTab: RegisterTab) => {
@@ -146,6 +158,7 @@ function RegisterContent() {
                                 stravaConnected={stravaConnected}
                                 zwiftConnected={zwiftConnected}
                                 dualRecordingRequiresStrava={trainerRequiresDualRecording}
+                                verificationCategoryNames={verificationCategoryNames}
                                 handleConnectStrava={handleConnectStrava}
                                 handleDisconnectStrava={handleDisconnectStrava}
                                 handleConnectZwift={handleConnectZwift}
@@ -199,6 +212,7 @@ function RegisterContent() {
                                     stravaConnected={stravaConnected}
                                     zwiftConnected={zwiftConnected}
                                     dualRecordingRequiresStrava={trainerRequiresDualRecording}
+                                    verificationCategoryNames={verificationCategoryNames}
                                     handleConnectStrava={handleConnectStrava}
                                     handleDisconnectStrava={handleDisconnectStrava}
                                     handleConnectZwift={handleConnectZwift}

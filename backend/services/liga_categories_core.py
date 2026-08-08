@@ -1,13 +1,46 @@
 from __future__ import annotations
 
+from typing import Any, Iterable
+
 from firebase_admin import firestore
 
 from services.category_engine import (
+    _effective_cat_name,
     build_liga_category,
     cats_from_defs,
     compute_category_status,
     ZR_CATEGORIES,
 )
+
+
+def verification_category_names(liga_categories: Iterable[Any] | None) -> set[str]:
+    """Return category names with requiresVerification === true.
+
+    Missing or false flags are out of scope — no silent name-based fallbacks.
+    """
+    names: set[str] = set()
+    if not liga_categories:
+        return names
+    for entry in liga_categories:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("requiresVerification") is not True:
+            continue
+        name = str(entry.get("name") or "").strip()
+        if name:
+            names.add(name)
+    return names
+
+
+def effective_user_category(liga_category: Any) -> str:
+    """Effective liga category for a user doc (locked / self-selected / auto)."""
+    lc = liga_category if isinstance(liga_category, dict) else {}
+    if lc.get("locked"):
+        locked_cat = lc.get("category") or (lc.get("autoAssigned") or {}).get("category")
+        return str(locked_cat or "").strip()
+    auto_cat = (lc.get("autoAssigned") or {}).get("category")
+    sel_cat = (lc.get("selfSelected") or {}).get("category")
+    return str(_effective_cat_name(auto_cat, sel_cat) or "").strip()
 
 
 def _load_liga_settings(db_client) -> dict:
@@ -20,6 +53,7 @@ def _load_liga_settings(db_client) -> dict:
     return {
         "gracePeriod": int(s.get("gracePeriod", 35)),
         "categories": s.get("ligaCategories"),
+        "verificationCategories": verification_category_names(s.get("ligaCategories")),
     }
 
 

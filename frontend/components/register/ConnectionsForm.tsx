@@ -7,16 +7,33 @@ interface ConnectionsFormProps {
     stravaConnected: boolean;
     zwiftConnected: boolean;
     dualRecordingRequiresStrava?: boolean;
+    /** Category names where dual-recording reports apply (from league settings). */
+    verificationCategoryNames?: string[];
     handleConnectStrava: () => void;
     handleDisconnectStrava: () => void;
     handleConnectZwift: () => void;
     handleDisconnectZwift: () => void;
 }
 
+function joinDanishNames(names: string[]): string {
+    if (names.length === 0) return '';
+    if (names.length === 1) return names[0]!;
+    if (names.length === 2) return `${names[0]} og ${names[1]}`;
+    return `${names.slice(0, -1).join(', ')} og ${names[names.length - 1]}`;
+}
+
 export default function ConnectionsForm({
-    stravaConnected, zwiftConnected, dualRecordingRequiresStrava = false, handleConnectStrava, handleDisconnectStrava, handleConnectZwift, handleDisconnectZwift
+    stravaConnected,
+    zwiftConnected,
+    dualRecordingRequiresStrava = false,
+    verificationCategoryNames = [],
+    handleConnectStrava,
+    handleDisconnectStrava,
+    handleConnectZwift,
+    handleDisconnectZwift,
 }: ConnectionsFormProps) {
     const [zwiftLogoFailed, setZwiftLogoFailed] = useState(false);
+    const verificationLabel = joinDanishNames(verificationCategoryNames);
 
     return (
         <div className="space-y-8">
@@ -80,12 +97,19 @@ export default function ConnectionsForm({
 
                     <div className="mb-4">
                         <p className="text-sm text-muted-foreground">
-                            Forbind Strava, så admins kan validere dual recording ved behov.
+                            Strava-forbindelse er påkrævet for alle ryttere, så admins kan validere dual recording ved behov.
                         </p>
                     </div>
-                    {dualRecordingRequiresStrava && !stravaConnected && (
+                    {!stravaConnected && (
                         <div className="mb-4 rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800 dark:border-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200">
-                            ⚠️ Din valgte hometrainer kræver dual recording. Strava-forbindelse er påkrævet for at gennemføre din profil.
+                            ⚠️ Strava-forbindelse er påkrævet for at gennemføre din profil.
+                        </div>
+                    )}
+                    {dualRecordingRequiresStrava && (
+                        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-100">
+                            Din valgte hometrainer kræver dual recording
+                            {verificationLabel ? ` i ${verificationLabel}` : ''}
+                            . Strava bruges til automatisk upload ved kontrol.
                         </div>
                     )}
 

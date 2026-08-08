@@ -25,6 +25,7 @@ export default function CategoryManager() {
   const { data: leagueSettings } = useLeagueSettingsQuery();
 
   const [assigning, setAssigning] = useState(false);
+  const [resettingAssignments, setResettingAssignments] = useState(false);
   const [filter, setFilter] = useState<FilterMode>('all');
   const [search, setSearch] = useState('');
 
@@ -60,6 +61,13 @@ export default function CategoryManager() {
     setConfigDirty(true);
   }
 
+  function toggleCatVerification(i: number, value: boolean) {
+    const next = [...effectiveLigaCategories];
+    next[i] = { ...next[i], requiresVerification: value };
+    setLigaCategories(next);
+    setConfigDirty(true);
+  }
+
   /** Split category i at the midpoint (or lower + 100 for unbounded top). */
   function splitCat(i: number) {
     const cat = effectiveLigaCategories[i];
@@ -69,8 +77,16 @@ export default function CategoryManager() {
       ? Math.floor((lower + upper) / 2)
       : lower + 100;
     const next = [...effectiveLigaCategories];
-    next[i] = { name: `${cat.name} A`, upper: cat.upper };
-    next.splice(i + 1, 0, { name: `${cat.name} B`, upper: mid });
+    next[i] = {
+      name: `${cat.name} A`,
+      upper: cat.upper,
+      requiresVerification: cat.requiresVerification === true,
+    };
+    next.splice(i + 1, 0, {
+      name: `${cat.name} B`,
+      upper: mid,
+      requiresVerification: false,
+    });
     setLigaCategories(next);
     setConfigDirty(true);
   }
@@ -79,7 +95,12 @@ export default function CategoryManager() {
   function mergeCatUp(i: number) {
     if (i === 0 || effectiveLigaCategories.length <= 2) return;
     const next = [...effectiveLigaCategories];
+    const removed = next[i];
     next.splice(i, 1);
+    // Keep verification if either merged row required it.
+    if (removed?.requiresVerification) {
+      next[i - 1] = { ...next[i - 1], requiresVerification: true };
+    }
     setLigaCategories(next);
     setConfigDirty(true);
   }
@@ -134,6 +155,45 @@ export default function CategoryManager() {
       }
     } finally {
       setAssigning(false);
+    }
+  };
+
+  const handleResetAssignments = async () => {
+    if (!user) return;
+    const confirmed = confirm(
+      `Nulstil kategori-tildelinger for alle registrerede ryttere?\n\n` +
+      `Dette sletter låsning, selvvalg og grace-status fra sidste sæson, ` +
+      `og tildeler nye ulåste kategorier ud fra nuværende vELO.\n\n` +
+      `Grace buffer: ${effectiveGracePeriod} points\n` +
+      `Kategorier: ${effectiveLigaCategories.length}\n\n` +
+      `Dette kan ikke fortrydes automatisk.`
+    );
+    if (!confirmed) return;
+    const typed = window.prompt('Skriv RESET for at bekræfte:');
+    if (typed !== 'RESET') {
+      alert('Nulstilling annulleret.');
+      return;
+    }
+
+    setResettingAssignments(true);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch(`${API_URL}/admin/liga-categories/reset-assignments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ gracePeriod: effectiveGracePeriod, categories: effectiveLigaCategories }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(`Nulstillet: ${data.reset}, Sprunget over (ingen rating): ${data.skipped}`);
+        queryClient.invalidateQueries({ queryKey: ['admin', 'liga-categories'] });
+      } else {
+        alert(`Error: ${data.message}`);
+      }
+    } catch {
+      alert('Failed to reset category assignments');
+    } finally {
+      setResettingAssignments(false);
     }
   };
 
@@ -197,16 +257,25 @@ export default function CategoryManager() {
             </button>
             <button
               onClick={handleAssign}
-              disabled={assigning}
+              disabled={assigning || resettingAssignments}
               className="px-3 py-1.5 rounded text-sm bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 font-medium"
             >
               {assigning ? 'Assigning…' : 'Assign Liga Categories'}
+            </button>
+            <button
+              onClick={handleResetAssignments}
+              disabled={assigning || resettingAssignments}
+              className="px-3 py-1.5 rounded text-sm bg-destructive text-destructive-foreground hover:opacity-90 disabled:opacity-50 font-medium border border-border"
+              title="Clear lock, self-select and grace; rebuild unlocked autoAssigned"
+            >
+              {resettingAssignments ? 'Nulstiller…' : 'Nulstil kategori-tildelinger'}
             </button>
           </div>
         </div>
         <p className="text-sm text-muted-foreground mb-5">
           Define vELO split points and category names. Defaults to the 10 standard ZR categories.
           The distribution preview shows how effective ratings (max of current and 30-day max) map to these categories.
+          Use <strong>Verification</strong> to include a category in weight verification sampling and dual-recording reports.
           Use <strong>Assign Liga Categories</strong> to apply this configuration to all riders based on effective vELO.
         </p>
 
@@ -216,6 +285,7 @@ export default function CategoryManager() {
           ridersWithRating={ridersWithRating as RiderEntry[]}
           onUpdateName={updateCatName}
           onUpdateUpper={updateCatUpper}
+          onToggleVerification={toggleCatVerification}
           onSplit={splitCat}
           onMergeUp={mergeCatUp}
         />

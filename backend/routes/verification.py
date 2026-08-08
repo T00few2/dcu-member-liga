@@ -7,6 +7,7 @@ import random
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from services.user_service import UserService
+from services.liga_categories_core import verification_category_names
 from services.request_models import (
     ReviewVerificationRequest,
     SubmitVerificationRequest,
@@ -183,12 +184,22 @@ def _build_race_weight_verifications(race_id: str) -> list[dict[str, Any]]:
     )
 
 
-def _collect_finisher_ids_from_results(results: dict[str, Any] | None) -> set[str]:
+def _collect_finisher_ids_from_results(
+    results: dict[str, Any] | None,
+    allowed_categories: set[str] | None = None,
+) -> set[str]:
+    """Collect finisher zwiftIds from race results.
+
+    When ``allowed_categories`` is provided, only result buckets whose key is in
+    that set are considered. An empty set yields no finishers.
+    """
     finishers: set[str] = set()
     if not isinstance(results, dict):
         return finishers
 
-    for riders in results.values():
+    for category, riders in results.items():
+        if allowed_categories is not None and str(category) not in allowed_categories:
+            continue
         if not isinstance(riders, list):
             continue
         for rider in riders:
@@ -201,7 +212,21 @@ def _collect_finisher_ids_from_results(results: dict[str, Any] | None) -> set[st
     return finishers
 
 
-def _resolve_target_race(race_id: str | None) -> tuple[str | None, dict[str, Any], set[str]]:
+def _load_verification_categories() -> set[str]:
+    if not db:
+        return set()
+    try:
+        settings_doc = db.collection('league').document('settings').get()
+        settings = settings_doc.to_dict() if settings_doc.exists else {}
+    except Exception:
+        settings = {}
+    return verification_category_names((settings or {}).get('ligaCategories'))
+
+
+def _resolve_target_race(
+    race_id: str | None,
+    allowed_categories: set[str],
+) -> tuple[str | None, dict[str, Any], set[str]]:
     if not db:
         return None, {}, set()
 
@@ -210,7 +235,10 @@ def _resolve_target_race(race_id: str | None) -> tuple[str | None, dict[str, Any
         if not race_doc.exists:
             return None, {}, set()
         race_data = race_doc.to_dict() or {}
-        finishers = _collect_finisher_ids_from_results(race_data.get('results'))
+        finishers = _collect_finisher_ids_from_results(
+            race_data.get('results'),
+            allowed_categories,
+        )
         return race_doc.id, race_data, finishers
 
     now_utc = datetime.now(timezone.utc)
@@ -221,7 +249,10 @@ def _resolve_target_race(race_id: str | None) -> tuple[str | None, dict[str, Any
 
     for race_doc in db.collection('races').stream():
         race_data = race_doc.to_dict() or {}
-        finishers = _collect_finisher_ids_from_results(race_data.get('results'))
+        finishers = _collect_finisher_ids_from_results(
+            race_data.get('results'),
+            allowed_categories,
+        )
         if not finishers:
             continue
         race_dt = _parse_race_datetime(race_data.get('date')) or _parse_race_datetime(race_data.get('resultsUpdatedAt'))
@@ -349,19 +380,39 @@ def trigger_verification():
         deadline_days = body.deadlineDays
         requested_race_id = body.raceId
 
-        target_race_id, target_race, finisher_ids = _resolve_target_race(requested_race_id)
+        verification_cats = _load_verification_categories()
+        if not verification_cats:
+            return jsonify({
+                'message': (
+                    'No categories are marked for verification in league settings '
+                    '(ligaCategories.requiresVerification).'
+                ),
+                'selectedCount': 0,
+                'totalEligible': 0,
+                'verificationCategories': [],
+            }), 400
+
+        target_race_id, target_race, finisher_ids = _resolve_target_race(
+            requested_race_id,
+            verification_cats,
+        )
         if not target_race_id:
             return jsonify({
                 'message': 'No finished race with results found.',
                 'selectedCount': 0,
-                'totalEligible': 0
+                'totalEligible': 0,
+                'verificationCategories': sorted(verification_cats),
             }), 400
         if not finisher_ids:
             return jsonify({
-                'message': f'Race {target_race_id} has no finishers in stored results.',
+                'message': (
+                    f'Race {target_race_id} has no finishers in verification categories '
+                    f'({", ".join(sorted(verification_cats))}).'
+                ),
                 'selectedCount': 0,
                 'totalEligible': 0,
-                'raceId': target_race_id
+                'raceId': target_race_id,
+                'verificationCategories': sorted(verification_cats),
             }), 400
 
         # 1. Get all eligible users from selected race finishers (registered, not pending/submitted)
@@ -441,6 +492,7 @@ def trigger_verification():
             'raceId': target_race_id,
             'raceName': target_race.get('name', ''),
             'totalFinishers': len(finisher_ids),
+            'verificationCategories': sorted(verification_cats),
         }), 200
 
     except Exception as e:

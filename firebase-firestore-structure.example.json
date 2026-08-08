@@ -117,6 +117,19 @@
           "ranges": [{ "from": 21, "to": 25, "points": 20 }]
         }
       },
+      "gracePeriod": 35,
+      "ligaCategories": [
+        { "name": "Diamond", "upper": null, "requiresVerification": true },
+        { "name": "Ruby", "upper": 2200, "requiresVerification": true },
+        { "name": "Emerald", "upper": 1900, "requiresVerification": false },
+        { "name": "Sapphire", "upper": 1650, "requiresVerification": false },
+        { "name": "Amethyst", "upper": 1450, "requiresVerification": false },
+        { "name": "Platinum", "upper": 1300, "requiresVerification": false },
+        { "name": "Gold", "upper": 1150, "requiresVerification": false },
+        { "name": "Silver", "upper": 1000, "requiresVerification": false },
+        { "name": "Bronze", "upper": 850, "requiresVerification": false },
+        { "name": "Copper", "upper": 650, "requiresVerification": false }
+      ],
       "defaultEventMode": "grouped",
       "defaultRaceGroups": [
         {

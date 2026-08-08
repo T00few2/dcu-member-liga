@@ -289,7 +289,7 @@ export function useRegistration() {
     // so that drafts loaded from the server don't flash a false error.
     const clubValid = loadingClubs ? !!club : clubs.some(c => c.name === club);
     const step0Valid = !!name && clubValid && !!trainer;
-    const step1Valid = !!zwiftConnected && (!trainerRequiresDualRecording || !!stravaConnected);
+    const step1Valid = !!zwiftConnected && !!stravaConnected;
     const step2Valid = acceptedCoC && acceptedDataPolicy && acceptedPublicResults;
     const step3Valid = step0Valid && step1Valid && step2Valid;
 
@@ -300,7 +300,7 @@ export function useRegistration() {
     ];
     const step1MissingItems = [
         ...(!zwiftConnected ? ['Forbind din Zwift-konto'] : []),
-        ...(trainerRequiresDualRecording && !stravaConnected ? ['Forbind Strava (påkrævet for dual recording)'] : []),
+        ...(!stravaConnected ? ['Forbind din Strava-konto'] : []),
     ];
     const step2MissingItems = [
         ...(!acceptedCoC ? ['Accepter adfærdskodekset'] : []),

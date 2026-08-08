@@ -7,6 +7,7 @@ import { useToast } from '@/components/ToastProvider';
 import { API_URL } from '@/lib/api';
 import { useWeightVerificationsListQuery } from '@/hooks/queries/useWeightVerificationsListQuery';
 import { useRacesQuery } from '@/hooks/queries/useRacesQuery';
+import { useLeagueSettingsQuery } from '@/hooks/queries/useLeagueSettingsQuery';
 import ComposeEmailModal from '@/components/admin/ComposeEmailModal';
 import { defaultDcuSignatureHtml, withDcuSignature } from '@/lib/email-signature';
 import WeightVerificationList, {
@@ -81,11 +82,17 @@ export default function WeightVerificationManager() {
     } = useWeightVerificationsListQuery();
 
     const { data: racesData } = useRacesQuery();
+    const { data: leagueSettings } = useLeagueSettingsQuery();
 
     const pendingReviews = verificationsData?.pending ?? [];
     const activeRequests = verificationsData?.requests ?? [];
     const approvedList = verificationsData?.approved ?? [];
     const rejectedList = verificationsData?.rejected ?? [];
+
+    const verificationCategories = (leagueSettings?.ligaCategories || [])
+        .filter((c) => c.requiresVerification === true)
+        .map((c) => c.name)
+        .filter(Boolean);
 
     const raceOptions: RaceOption[] = racesData ? getFinishedRaces(racesData as any[]) : [];
 
@@ -384,7 +391,13 @@ export default function WeightVerificationManager() {
                     </button>
                 </div>
                 <p className="text-sm text-muted-foreground mt-2">
-                    Selected riders will be sampled from finishers in the chosen race and must submit a weight verification video within {deadlineDays} day{deadlineDays === 1 ? '' : 's'}.
+                    Sampling is limited to verification categories
+                    {verificationCategories.length > 0 ? (
+                        <> ({verificationCategories.join(', ')})</>
+                    ) : (
+                        <> (none configured in Category Configuration)</>
+                    )}
+                    . Selected riders must submit a weight verification video within {deadlineDays} day{deadlineDays === 1 ? '' : 's'}.
                 </p>
             </div>
 
