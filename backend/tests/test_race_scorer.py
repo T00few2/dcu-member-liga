@@ -234,3 +234,48 @@ class TestEdgeCases:
         assert by_id['2']['finishPoints'] == 0
         assert by_id['1']['sprintPoints'] == SPRINT_POINTS[0]
         assert by_id['2']['sprintPoints'] == SPRINT_POINTS[1]
+
+    def test_multiple_passings_of_same_segment_map_to_distinct_counts(self, scorer):
+        """CvC / Innsbruck-style: same segment id crossed 3 times on lap 1."""
+        riders = [
+            make_rider(1, finish_time=3600000),
+            make_rider(2, finish_time=3700000),
+        ]
+        sprints = [
+            {'id': '18245132094', 'count': 1, 'key': '18245132094_1', 'name': 'Leg Snapper KOM', 'lap': 1},
+            {'id': '18245132094', 'count': 2, 'key': '18245132094_2', 'name': 'Leg Snapper KOM', 'lap': 1},
+            {'id': '18245132094', 'count': 3, 'key': '18245132094_3', 'name': 'Leg Snapper KOM', 'lap': 1},
+        ]
+        # Chronological crossings: rider 1 wins pass 1 & 3; rider 2 wins pass 2.
+        segment_efforts = {
+            '18245132094': [
+                {'athleteId': '1', 'elapsed': 1000, 'worldTime': 1000, 'avgPower': 400},
+                {'athleteId': '2', 'elapsed': 1100, 'worldTime': 1100, 'avgPower': 390},
+                {'athleteId': '2', 'elapsed': 1000, 'worldTime': 5000, 'avgPower': 410},
+                {'athleteId': '1', 'elapsed': 1200, 'worldTime': 5200, 'avgPower': 380},
+                {'athleteId': '1', 'elapsed': 1000, 'worldTime': 9000, 'avgPower': 420},
+                {'athleteId': '2', 'elapsed': 1300, 'worldTime': 9300, 'avgPower': 370},
+            ]
+        }
+        result = scorer.calculate_results(
+            riders,
+            make_config(sprints=sprints, segment_type='sprint'),
+            segment_efforts_map=segment_efforts,
+        )
+        by_id = {r['zwiftId']: r for r in result}
+
+        assert set(by_id['1']['sprintData'].keys()) == {
+            '18245132094_1', '18245132094_2', '18245132094_3',
+        }
+        assert by_id['1']['sprintData']['18245132094_1']['worldTime'] == 1000
+        assert by_id['1']['sprintData']['18245132094_2']['worldTime'] == 5200
+        assert by_id['1']['sprintData']['18245132094_3']['worldTime'] == 9000
+
+        # Ranked per occurrence by worldTime (first across); sprintDetails holds points.
+        assert by_id['1']['sprintData']['18245132094_1']['rank'] == 1
+        assert by_id['2']['sprintData']['18245132094_2']['rank'] == 1
+        assert by_id['1']['sprintData']['18245132094_3']['rank'] == 1
+        assert by_id['1']['sprintDetails']['18245132094_1'] == SPRINT_POINTS[0]
+        assert by_id['2']['sprintDetails']['18245132094_2'] == SPRINT_POINTS[0]
+        assert by_id['1']['sprintPoints'] == SPRINT_POINTS[0] * 2 + SPRINT_POINTS[1]
+        assert by_id['2']['sprintPoints'] == SPRINT_POINTS[0] + SPRINT_POINTS[1] * 2

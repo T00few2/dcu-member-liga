@@ -41,7 +41,7 @@ export function normalizeSprintDirectionForMatch(direction?: string, name?: stri
     return 'forward';
 }
 
-function buildProfileSegmentIndex(
+export function buildProfileSegmentIndex(
     profileSegments: SprintsByLapProfileSegment[],
 ): Map<string, SprintsByLapProfileSegment> {
     const counters = new Map<string, number>();
@@ -55,6 +55,23 @@ function buildProfileSegmentIndex(
         index.set(`${keyBase}::${count}`, seg);
     }
     return index;
+}
+
+/** Prefer sprint occurrence `count` (Nth crossing); fall back to lap for legacy rows. */
+export function sprintProfileOccurrence(seg: Pick<Sprint, 'count' | 'lap'>): number {
+    if (Number.isFinite(seg.count) && seg.count > 0) return Number(seg.count);
+    const lap = Number(seg.lap);
+    return Number.isFinite(lap) && lap > 0 ? lap : 1;
+}
+
+export function matchSprintProfileSegment(
+    profileIndex: Map<string, SprintsByLapProfileSegment>,
+    seg: Pick<Sprint, 'name' | 'direction' | 'count' | 'lap'>,
+): SprintsByLapProfileSegment | null {
+    const base = normalizeSprintNameForMatch(seg.name);
+    const dir = normalizeSprintDirectionForMatch(seg.direction, seg.name);
+    const occurrence = sprintProfileOccurrence(seg);
+    return profileIndex.get(`${base}::${dir}::${occurrence}`) ?? null;
 }
 
 interface Props {
@@ -71,14 +88,11 @@ export default function SprintsByLap({ sprints, profileData }: Props) {
     const profileIndex = profileData ? buildProfileSegmentIndex(profileData.profileSegments) : null;
     const leadIn = profileData?.leadInDistance ?? 0;
 
-    // profileSegments are tiled by the API (one entry per lap), so the occurrence count
-    // in the index equals the lap number for segments appearing once per lap.
+    // Match by occurrence count (Nth crossing of that name/direction), not lap.
+    // Routes like Innsbruck KOM After Party pass the same segment multiple times on lap 1.
     const getKmFromTo = (seg: Sprint): { from: string; to: string } | null => {
         if (!profileIndex) return null;
-        const base = normalizeSprintNameForMatch(seg.name);
-        const dir = normalizeSprintDirectionForMatch(seg.direction, seg.name);
-        const lap = seg.lap || 1;
-        const match = profileIndex.get(`${base}::${dir}::${lap}`);
+        const match = matchSprintProfileSegment(profileIndex, seg);
         if (!match) return null;
         return {
             from: (Math.min(match.fromKm, match.toKm) + leadIn).toFixed(1),
@@ -88,10 +102,7 @@ export default function SprintsByLap({ sprints, profileData }: Props) {
 
     const getFromKmValue = (seg: Sprint): number => {
         if (!profileIndex) return Infinity;
-        const base = normalizeSprintNameForMatch(seg.name);
-        const dir = normalizeSprintDirectionForMatch(seg.direction, seg.name);
-        const lap = seg.lap || 1;
-        const match = profileIndex.get(`${base}::${dir}::${lap}`);
+        const match = matchSprintProfileSegment(profileIndex, seg);
         if (!match) return Infinity;
         return Math.min(match.fromKm, match.toKm) + leadIn;
     };
