@@ -148,8 +148,8 @@ function UdstyrSection() {
                     {
                         label: 'Smart hometrainer',
                         desc: verificationLabel
-                            ? `I ${verificationLabel} kræves godkendt direct drive med automatisk modstandsstyring – eller dual recording med separat wattmåler og Strava-forbindelse.`
-                            : 'Godkendt direct drive med automatisk modstandsstyring. Dual recording kræves ikke for nogen kategorier i øjeblikket.',
+                            ? `I ${verificationLabel} kræves godkendt hometrainer – eller dual recording med separat wattmåler og Strava-forbindelse.`
+                            : 'Godkendt hometrainer. Dual recording kræves ikke for nogen kategorier i øjeblikket.',
                     },
                 ].map((item, i) => (
                     <div key={i} className="flex items-start gap-3 p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800">
@@ -539,7 +539,7 @@ function ReglerSection() {
                     {verificationLabel ? (
                         <>
                             <p className="text-slate-600 dark:text-slate-400 mb-2">
-                                Ryttere i <strong>{verificationLabel}</strong> skal enten benytte en <strong>godkendt smart hometrainer</strong> (direct drive med automatisk modstandsstyring) eller foretage <strong>dual recording</strong> med en separat wattmåler.
+                                Ryttere i <strong>{verificationLabel}</strong> skal enten benytte en <strong>godkendt hometrainer</strong> eller foretage <strong>dual recording</strong> med en separat wattmåler.
                             </p>
                             <p className="text-slate-600 dark:text-slate-400">
                                 Ved dual recording skal aktiviteten uploades til <strong>Strava</strong>, og din Strava-konto skal være forbundet med din profil her på siden. Strava-data bruges kun til admin kontrol af wattdata.
