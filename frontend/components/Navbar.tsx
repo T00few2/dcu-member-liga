@@ -40,6 +40,7 @@ export default function Navbar() {
 
     const authNavLinks = [
         liveNavLink,
+        { href: '/info', label: 'Info' },
         { href: '/participants', label: 'Deltagere' },
         { href: '/schedule', label: 'Kalender' },
         { href: '/results', label: 'Resultater' },
@@ -151,13 +152,6 @@ export default function Navbar() {
                                                                 {isImpersonating ? 'Afslut brugervisning' : 'Vis som bruger'}
                                                             </button>
                                                         )}
-                                                        <Link
-                                                            href="/info"
-                                                            className="block px-4 py-2 text-sm hover:bg-slate-50 flex items-center justify-between"
-                                                            onClick={() => setIsMenuOpen(false)}
-                                                        >
-                                                            <span>Info</span>
-                                                        </Link>
                                                         <Link
                                                             href="/point"
                                                             className="block px-4 py-2 text-sm hover:bg-slate-50"
@@ -279,13 +273,6 @@ export default function Navbar() {
 
                         {user ? (
                             <div className="border-t border-slate-800 pt-4 mt-4">
-                                <Link
-                                    href="/info"
-                                    className="block px-4 py-3 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg"
-                                    onClick={() => setIsDrawerOpen(false)}
-                                >
-                                    Info
-                                </Link>
                                 <Link
                                     href="/point"
                                     className="block px-4 py-3 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg"
