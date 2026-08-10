@@ -30,7 +30,7 @@ interface SendResult {
 
 export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId: string) => void }) {
     const { user } = useAuth();
-    const { data: rows = [], isLoading: loading, error: queryError, refetch: refetchUsers } = useUsersOverviewQuery();
+    const { data: rows = [], isLoading: loading, isFetching, error: queryError, refetch: refetchUsers } = useUsersOverviewQuery();
     const error = queryError ? (queryError instanceof Error ? queryError.message : 'Failed to load users') : null;
 
     const [search, setSearch] = useState('');
@@ -265,7 +265,10 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
         <div className="flex items-center justify-center py-20 text-muted-foreground">Loading users…</div>
     );
 
-    if (error) return (
+    // Only replace the whole view with a blocking error screen when we have
+    // no data to show at all. Once rows have loaded, a failed refresh should
+    // surface inline rather than tearing down the table and toolbar.
+    if (error && rows.length === 0) return (
         <div className="flex flex-col items-center gap-4 py-20">
             <p className="text-red-600 font-medium">Error: {error}</p>
             <button onClick={() => refetchUsers()} className="bg-primary text-primary-foreground px-4 py-2 rounded hover:opacity-90 text-sm font-medium">Retry</button>
@@ -274,6 +277,18 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
 
     return (
         <div className="space-y-4 pb-12">
+            {error && (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+                    <span>Refresh failed: {error}</span>
+                    <button
+                        onClick={() => refetchUsers()}
+                        className="font-medium underline underline-offset-2 hover:text-red-800"
+                    >
+                        Retry
+                    </button>
+                </div>
+            )}
+
             {/* Toolbar / Filters */}
             <UsersFilters
                 search={search}
@@ -288,6 +303,7 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
                 onClearFilteredSelection={clearFilteredSelection}
                 onComposeEmail={openComposeModal}
                 onRefresh={() => refetchUsers()}
+                refreshing={isFetching}
             />
 
             {lastSendSummary && (() => {

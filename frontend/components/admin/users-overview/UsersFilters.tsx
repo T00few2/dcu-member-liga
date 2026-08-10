@@ -13,6 +13,7 @@ interface UsersFiltersProps {
   onClearFilteredSelection: () => void;
   onComposeEmail: () => void;
   onRefresh: () => void;
+  refreshing?: boolean;
 }
 
 export default function UsersFilters({
@@ -28,6 +29,7 @@ export default function UsersFilters({
   onClearFilteredSelection,
   onComposeEmail,
   onRefresh,
+  refreshing = false,
 }: UsersFiltersProps) {
   return (
     <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -66,9 +68,10 @@ export default function UsersFilters({
       <div className="flex items-center gap-2">
         <button
           onClick={onRefresh}
-          className="text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg px-3 py-1.5 transition"
+          disabled={refreshing}
+          className="text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg px-3 py-1.5 transition disabled:opacity-50"
         >
-          Refresh
+          {refreshing ? 'Refreshing…' : 'Refresh'}
         </button>
       </div>
     </div>
