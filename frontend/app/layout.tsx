@@ -108,10 +108,15 @@ export default function RootLayout({
               <div className="absolute bottom-0 left-0 translate-y-1/3 -translate-x-1/4 w-[200px] h-[150px] bg-[#142d3a] rounded-full pointer-events-none z-0 rotate-12"></div>
 
               <div className="relative z-10 flex flex-wrap gap-4 items-center justify-between container mx-auto px-4">
-                <div className="flex items-center text-white font-bold tracking-wide gap-1">
-                  <Image src="/DCU_logo_white.svg" alt="DCU Logo" width={20} height={20} />
-                  DCU E-serien
-                </div>
+                <Link href="/" className="flex items-center" aria-label="DCU E-serien">
+                  <Image
+                    src="/brand/dcu-e-serien-logo-white.png"
+                    alt="DCU E-serien"
+                    width={48}
+                    height={36}
+                    className="h-9 w-auto"
+                  />
+                </Link>
 
                 <div className="flex gap-4 font-semibold text-slate-400 ml-auto">
                   <Link href="/datapolitik" className="hover:text-white transition-colors">
