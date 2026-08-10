@@ -24,7 +24,7 @@ export default function InAppBrowserBanner() {
       role="alert"
       className="w-full bg-amber-50 border-b border-amber-300 text-amber-900 px-4 py-3 text-sm text-center"
     >
-      <strong>Tilmelding virker ikke i Messengers browser.</strong>{' '}
+      <strong>Tilmelding virker ikke i Facebook / Messengers browser.</strong>{' '}
       Tryk på menu-ikonet (
       <span aria-hidden>&#8942;</span> eller{' '}
       <span aria-hidden>&#8729;&#8729;&#8729;</span>) og vælg{' '}

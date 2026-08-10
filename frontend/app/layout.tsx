@@ -90,8 +90,8 @@ export default function RootLayout({
       </head>
       <body className={`${inter.className} overflow-x-hidden`}>
         <ReactQueryProvider>
-        <AuthProvider>
-          <ToastProvider>
+        <ToastProvider>
+          <AuthProvider>
             <InAppBrowserBanner />
             <MobileInstallBanner />
             <NotificationPermissionBanner />
@@ -124,8 +124,8 @@ export default function RootLayout({
 
               </div>
             </footer>
-          </ToastProvider>
-        </AuthProvider>
+          </AuthProvider>
+        </ToastProvider>
         </ReactQueryProvider>
         <Analytics />
       </body>

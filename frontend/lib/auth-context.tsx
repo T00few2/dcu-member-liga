@@ -11,6 +11,7 @@ import {
 } from 'firebase/auth';
 import { auth } from './firebase';
 import { isInAppBrowser } from './browser-detection';
+import { useToast } from '@/components/ToastProvider';
 import { usePathname, useRouter } from 'next/navigation';
 import { API_URL } from './api';
 
@@ -77,6 +78,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profileLoaded, setProfileLoaded] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
+  const { showToast } = useToast();
   const queryClient = useQueryClient();
 
   const fetchProfile = useCallback(async (currentUser: User) => {
@@ -217,7 +219,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithGoogle = (intent?: 'login' | 'register') => {
     if (isInAppBrowser()) {
       // Google OAuth is blocked in WebViews (error 403 disallowed_useragent).
-      // The InAppBrowserBanner already instructs the user to open in a real browser.
+      showToast(
+        'Login virker ikke i Facebook / Messengers browser. Åbn siden i Safari eller Chrome via menuen (⋮).',
+        'error'
+      );
       return;
     }
     // Call signInWithPopup synchronously (no await before it) so that the
