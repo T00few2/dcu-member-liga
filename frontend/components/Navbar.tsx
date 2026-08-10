@@ -66,16 +66,10 @@ export default function Navbar() {
                 <div className="container mx-auto flex justify-between items-center">
 
                     <div className="flex items-center gap-4">
-                        <Link href="/" className="flex items-center" aria-label="DCU E-serien">
-                            <Image
-                                src="/brand/dcu-e-serien-logo-white.png"
-                                alt="DCU E-serien"
-                                width={65}
-                                height={48}
-                                className="h-12 w-auto"
-                                priority
-                            />
-                        </Link>
+                        <div className="flex items-center gap-3">
+                            <Image src="/DCU_logo_white.svg" alt="DCU Logo" width={36} height={36} priority />
+                            <Link href="/" className="text-xl font-bold">DCU E-serien</Link>
+                        </div>
                     </div>
 
                     <div className="flex items-center gap-4">
