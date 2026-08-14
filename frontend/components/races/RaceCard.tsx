@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
 import { getZwiftInsiderUrl, API_URL } from '@/lib/api';
 import { formatDateLong, formatTimeWithTz, fromTimestamp } from '@/lib/formatDate';
@@ -461,6 +462,13 @@ export default function RaceCard({
                                                 Du tilmeldes automatisk på Zwift når løbspas er klar.
                                             </p>
                                         )}
+                                        <p className="text-sm text-center text-muted-foreground">
+                                            Se tilmeldte ryttere under{' '}
+                                            <Link href="/participants" className="text-primary underline hover:no-underline">
+                                                Deltagere
+                                            </Link>
+                                            .
+                                        </p>
                                     </>
                                 ) : (
                                     <button

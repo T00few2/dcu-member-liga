@@ -140,7 +140,7 @@ def _batch_register(zwift_service, subgroup_id: str, public_ids: list[str]) -> t
     last_status = 200
     last_payload: dict[str, Any] = {}
     for i in range(0, len(public_ids), _BATCH_SIZE):
-        chunk = public_ids[i : i + _BATCH_SIZE]
+        chunk = public_ids[i:i + _BATCH_SIZE]
         last_status, last_payload = zwift_service.batch_register_participants(
             event_subgroup_id=subgroup_id,
             public_ids=chunk,
@@ -157,7 +157,7 @@ def _batch_unregister(zwift_service, subgroup_id: str, public_ids: list[str]) ->
     last_status = 200
     last_payload: dict[str, Any] = {}
     for i in range(0, len(public_ids), _BATCH_SIZE):
-        chunk = public_ids[i : i + _BATCH_SIZE]
+        chunk = public_ids[i:i + _BATCH_SIZE]
         last_status, last_payload = zwift_service.batch_unregister_participants(
             event_subgroup_id=subgroup_id,
             public_ids=chunk,

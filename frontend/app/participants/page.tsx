@@ -270,10 +270,10 @@ export default function ParticipantsPage() {
         <p className="text-muted-foreground">
           {raceFilter
             ? `${filtered.length} tilmeldt til ${selectedRace?.name || 'løb'}`
-            : `Alle tilmeldte ryttere i ligaen (${participants.length}).`}
+            : `${filtered.length} ryttere i ligaen.`}
         </p>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <div className="flex flex-row gap-2 items-center">
+          <div className="flex flex-row gap-2 items-center flex-wrap">
             <div className="inline-flex rounded-lg border border-input overflow-hidden">
               <button
                 type="button"
@@ -290,26 +290,32 @@ export default function ParticipantsPage() {
                 W/kg
               </button>
             </div>
-            <select
-              value={ligaKatFilter}
-              onChange={e => setLigaKatFilter(e.target.value)}
-              className="w-fit px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-            >
-              <option value="">-</option>
-              {ligaKatOptions.map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
-            <select
-              value={raceFilter}
-              onChange={e => setRaceFilter(e.target.value)}
-              className="w-fit max-w-[14rem] px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-            >
-              <option value="">Alle løb</option>
-              {raceOptions.map(r => (
-                <option key={r.id} value={r.id}>{r.name}</option>
-              ))}
-            </select>
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="whitespace-nowrap">Liga kat</span>
+              <select
+                value={ligaKatFilter}
+                onChange={e => setLigaKatFilter(e.target.value)}
+                className="w-fit px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="">Alle</option>
+                {ligaKatOptions.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="whitespace-nowrap">Tilmeldte til</span>
+              <select
+                value={raceFilter}
+                onChange={e => setRaceFilter(e.target.value)}
+                className="w-fit max-w-[14rem] px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="">Hele ligaen</option>
+                {raceOptions.map(r => (
+                  <option key={r.id} value={r.id}>{r.name}</option>
+                ))}
+              </select>
+            </label>
           </div>
           <input
             type="search"
