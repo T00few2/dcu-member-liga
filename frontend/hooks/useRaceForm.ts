@@ -30,6 +30,7 @@ const initialFormState: RaceFormState = {
     laps: 1,
     selectedSprints: [],
     segmentType: 'sprint',
+    preRegisterAllowed: false,
 };
 
 export function useRaceForm() {
@@ -70,6 +71,7 @@ export function useRaceForm() {
             eventConfiguration: [],
             singleModeCategories: [],
             raceGroups: [],
+            preRegisterAllowed: !!race.preRegisterAllowed,
         };
 
         if (race.eventMode === 'grouped' && race.raceGroups) {

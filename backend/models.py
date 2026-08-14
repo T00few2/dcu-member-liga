@@ -51,6 +51,22 @@ class SprintDataEntry(TypedDict, total=False):
 # Race results
 # ---------------------------------------------------------------------------
 
+class RaceSignupDoc(TypedDict, total=False):
+    """Stored in races/{raceId}/signups/{zwiftId}."""
+    zwiftId: str
+    raceId: str
+    zwiftUserId: str
+    name: str
+    club: str
+    ligaCategory: str
+    status: str  # 'pending' | 'registered' | 'failed'
+    signedUpAt: str
+    zwiftRegisteredAt: str
+    subgroupId: str
+    eventId: str
+    lastError: str
+
+
 class DualRecordingVerification(TypedDict, total=False):
     """Stored in races/{raceId}/dr_verifications/{zwiftId}."""
     status: str           # 'passed' | 'failed' | 'missing_strava' | 'missing_activity' | 'error'

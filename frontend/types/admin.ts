@@ -104,6 +104,7 @@ export interface Race {
     finalizedAt?: string;
     finalizeRunId?: string;
     resultsAutomation?: ResultsAutomationConfig;
+    preRegisterAllowed?: boolean;
 }
 
 export type SeasonClass = 'tour' | 'monument' | 'wt_classic';
@@ -287,6 +288,7 @@ export interface RaceFormState {
     laps: number;
     selectedSprints: SelectedSegment[];
     segmentType: 'sprint' | 'split';
+    preRegisterAllowed: boolean;
 }
 
 // Status type for loading states

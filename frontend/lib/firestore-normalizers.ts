@@ -72,6 +72,7 @@ export function normalizeRace(raw: unknown, id: string): Race {
         finalizedAt: asDateString(data.finalizedAt) || undefined,
         finalizeRunId: asString(data.finalizeRunId) || undefined,
         resultsAutomation: asObject(data.resultsAutomation) as Race['resultsAutomation'],
+        preRegisterAllowed: Boolean(data.preRegisterAllowed),
     };
 }
 

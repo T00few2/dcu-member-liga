@@ -116,6 +116,7 @@ export default function RacesTab({
                 sprints: clearRouteSprints ? [] : formState.selectedSprints,
                 segmentType: formState.segmentType,
                 eventMode: formState.eventMode,
+                preRegisterAllowed: !!formState.preRegisterAllowed,
             };
 
             if (formState.eventMode === 'single') {
@@ -161,8 +162,14 @@ export default function RacesTab({
 
             if (res.ok) {
                 const data = await res.json();
-                if (Array.isArray(data.warnings) && data.warnings.length > 0) {
-                    alert(`Race saved with warnings:\n- ${data.warnings.join('\n- ')}`);
+                const warnings = Array.isArray(data.warnings) ? [...data.warnings] : [];
+                if (data.signupSync && (data.signupSync.registered || data.signupSync.failed || data.signupSync.moved)) {
+                    warnings.push(
+                        `Zwift signup sync: ${data.signupSync.registered ?? 0} registered, ${data.signupSync.moved ?? 0} moved, ${data.signupSync.failed ?? 0} failed`
+                    );
+                }
+                if (warnings.length > 0) {
+                    alert(`Race saved with warnings:\n- ${warnings.join('\n- ')}`);
                 }
                 raceForm.resetForm(leagueSettings);
                 await queryClient.invalidateQueries({ queryKey: ['races'] });

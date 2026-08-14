@@ -127,6 +127,13 @@
       "items": {
         "$ref": "#/$defs/weightHistoryDoc"
       }
+    },
+    "signups": {
+      "type": "array",
+      "description": "Collection-group view of races/{raceId}/signups documents.",
+      "items": {
+        "$ref": "#/$defs/raceSignupDoc"
+      }
     }
   },
   "$defs": {
@@ -500,6 +507,10 @@
         "eventSecret": {
           "type": "string"
         },
+        "preRegisterAllowed": {
+          "type": "boolean",
+          "description": "When true, riders may Tilmeld before a Zwift eventId exists. Omitted or false means wait for løbspas unless an event is already configured."
+        },
         "laps": {
           "type": "integer"
         },
@@ -614,6 +625,56 @@
               "type": "integer"
             }
           }
+        }
+      }
+    },
+    "raceSignupDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Stored at races/{raceId}/signups/{zwiftId}",
+      "properties": {
+        "_id": {
+          "type": "string",
+          "description": "canonicalZwiftId"
+        },
+        "zwiftId": {
+          "type": "string"
+        },
+        "raceId": {
+          "type": "string"
+        },
+        "zwiftUserId": {
+          "type": "string",
+          "description": "Zwift public UUID used by batch-register"
+        },
+        "name": {
+          "type": "string"
+        },
+        "club": {
+          "type": "string"
+        },
+        "ligaCategory": {
+          "type": "string",
+          "description": "Snapshot of effective liga category at last write/sync"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "registered", "failed"]
+        },
+        "signedUpAt": {
+          "$ref": "#/$defs/timestampString"
+        },
+        "zwiftRegisteredAt": {
+          "$ref": "#/$defs/timestampString"
+        },
+        "subgroupId": {
+          "type": "string"
+        },
+        "eventId": {
+          "type": "string"
+        },
+        "lastError": {
+          "type": "string"
         }
       }
     },

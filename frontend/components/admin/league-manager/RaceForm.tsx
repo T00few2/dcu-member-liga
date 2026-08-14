@@ -84,6 +84,8 @@ export default function RaceForm({
 }: RaceFormProps) {
     const [loadingRouteProfile, setLoadingRouteProfile] = useState(false);
     const [savingRouteProfile, setSavingRouteProfile] = useState(false);
+    const [syncingSignups, setSyncingSignups] = useState(false);
+    const [syncMessage, setSyncMessage] = useState('');
     const [routeProfileSegments, setRouteProfileSegments] = useState<RouteProfileSegment[]>([]);
     const [routeProfileLeadIn, setRouteProfileLeadIn] = useState<string>('');
     const [routeProfileSegmentId, setRouteProfileSegmentId] = useState<number | null>(null);
@@ -96,6 +98,36 @@ export default function RaceForm({
     );
 
     const isEditing = formState.editingRaceId !== null;
+
+    const handleSyncSignups = async () => {
+        if (!user || !formState.editingRaceId || syncingSignups) return;
+        setSyncingSignups(true);
+        setSyncMessage('');
+        try {
+            const token = await user.getIdToken();
+            const res = await fetch(`${API_URL}/races/${formState.editingRaceId}/sync-signups`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                setSyncMessage(data.message || 'Sync failed');
+                return;
+            }
+            const parts = [
+                `${data.registered ?? 0} registered`,
+                `${data.moved ?? 0} moved`,
+                `${data.failed ?? 0} failed`,
+                `${data.skipped ?? 0} skipped`,
+            ];
+            const errN = Array.isArray(data.errors) ? data.errors.length : 0;
+            setSyncMessage(errN ? `${parts.join(', ')}. ${data.errors.slice(0, 3).join('; ')}` : parts.join(', '));
+        } catch {
+            setSyncMessage('Network error — try again');
+        } finally {
+            setSyncingSignups(false);
+        }
+    };
 
     const segmentsByLap = segments.reduce((acc, seg) => {
         const lap = seg.lap || 1;
@@ -499,7 +531,8 @@ export default function RaceForm({
                 </div>
 
                 {/* Submit */}
-                <div className="flex gap-3 pt-2">
+                <div className="flex flex-col gap-2 pt-2">
+                    <div className="flex flex-wrap gap-3">
                     <button
                         type="submit"
                         disabled={status === 'saving'}
@@ -510,11 +543,25 @@ export default function RaceForm({
                     {isEditing && (
                         <button
                             type="button"
+                            onClick={handleSyncSignups}
+                            disabled={syncingSignups}
+                            className="bg-secondary text-secondary-foreground px-4 py-2 rounded hover:opacity-90 disabled:opacity-60"
+                        >
+                            {syncingSignups ? 'Syncing...' : 'Sync signups to Zwift'}
+                        </button>
+                    )}
+                    {isEditing && (
+                        <button
+                            type="button"
                             onClick={onCancel}
                             className="bg-secondary text-secondary-foreground px-4 py-2 rounded hover:opacity-90"
                         >
                             Cancel
                         </button>
+                    )}
+                    </div>
+                    {syncMessage && (
+                        <p className="text-sm text-muted-foreground">{syncMessage}</p>
                     )}
                 </div>
             </form>

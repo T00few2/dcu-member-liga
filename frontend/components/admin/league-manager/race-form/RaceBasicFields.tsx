@@ -40,6 +40,20 @@ export default function RaceBasicFields() {
                     <option value="time-trial">Time Trial</option>
                 </select>
             </div>
+            <label className="flex items-start gap-2 md:col-span-3 cursor-pointer">
+                <input
+                    type="checkbox"
+                    checked={!!formState.preRegisterAllowed}
+                    onChange={e => onFieldChange('preRegisterAllowed', e.target.checked)}
+                    className="mt-1 text-primary focus:ring-primary"
+                />
+                <span>
+                    <span className="block text-sm font-medium text-card-foreground">Allow pre-registration</span>
+                    <span className="block text-xs text-muted-foreground">
+                        Riders can Tilmeld before the Zwift event link/secret is entered. They are registered on Zwift automatically once the event is saved.
+                    </span>
+                </span>
+            </label>
         </div>
     );
 }

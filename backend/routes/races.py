@@ -15,6 +15,15 @@ from datetime import datetime, timedelta, timezone
 from authz import require_admin, require_scheduler, verify_user_token, AuthzError
 from services.dual_recording_admin_core import get_dual_recording_result, DualRecordingError
 from services.zwift_tokens import resolve_user_doc_id_from_auth_uid
+from services.race_signups import (
+    SignupError,
+    list_my_signups,
+    list_race_signups,
+    maybe_sync_after_race_save,
+    signup_rider,
+    sync_race_signups,
+    unsignup_rider,
+)
 import re
 from typing import Any
 import uuid
@@ -465,94 +474,104 @@ def get_races():
         return jsonify({'message': str(e)}), 500
 
 
+def _load_auth_user() -> tuple[str, dict[str, Any]]:
+    decoded = verify_user_token(request)
+    uid = str(decoded.get("uid") or "").strip()
+    if not uid:
+        raise SignupError("Invalid auth token (missing uid)", 401)
+    if not db:
+        raise SignupError("DB not available", 500)
+    user_doc_id = resolve_user_doc_id_from_auth_uid(uid) or uid
+    user_doc = db.collection("users").document(str(user_doc_id)).get()
+    if not user_doc.exists:
+        raise SignupError("User profile not found", 404)
+    return str(user_doc_id), user_doc.to_dict() or {}
+
+
+@races_bp.route('/races/signups/mine', methods=['GET'])
+def get_my_race_signups():
+    try:
+        user_doc_id, user_data = _load_auth_user()
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+    except SignupError as e:
+        return jsonify({'message': e.message}), e.status_code
+    try:
+        zwift_id = str(user_data.get("zwiftId") or user_doc_id or "").strip()
+        return jsonify({"signups": list_my_signups(zwift_id)}), 200
+    except SignupError as e:
+        return jsonify({'message': e.message}), e.status_code
+    except Exception as e:
+        logger.error("List my signups error: %s", e)
+        return jsonify({'message': str(e)}), 500
+
+
+@races_bp.route('/races/<race_id>/signups', methods=['GET'])
+def get_race_signups(race_id: str):
+    try:
+        verify_user_token(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+    try:
+        return jsonify({"signups": list_race_signups(race_id)}), 200
+    except SignupError as e:
+        return jsonify({'message': e.message}), e.status_code
+    except Exception as e:
+        logger.error("List race signups error race=%s: %s", race_id, e)
+        return jsonify({'message': str(e)}), 500
+
+
 @races_bp.route('/races/<race_id>/signup', methods=['POST'])
 def signup_race(race_id: str):
     try:
-        decoded = verify_user_token(request)
+        user_doc_id, user_data = _load_auth_user()
     except AuthzError as e:
         return jsonify({'message': e.message}), e.status_code
-
-    if not db:
-        return jsonify({'error': 'DB not available'}), 500
-
-    uid = str(decoded.get("uid") or "").strip()
-    if not uid:
-        return jsonify({'message': 'Invalid auth token (missing uid)'}), 401
+    except SignupError as e:
+        return jsonify({'message': e.message}), e.status_code
 
     try:
-        user_doc_id = resolve_user_doc_id_from_auth_uid(uid) or uid
-        user_doc = db.collection('users').document(str(user_doc_id)).get()
-        if not user_doc.exists:
-            return jsonify({'message': 'User profile not found'}), 404
-        user_data = user_doc.to_dict() or {}
-        if str(((user_data.get('registration') or {}).get('status') or '')).strip().lower() != 'complete':
-            return jsonify({'message': 'User is not fully registered'}), 403
-
-        zwift_user_id = str(
-            user_data.get('zwiftUserId')
-            or ((user_data.get('connections') or {}).get('zwift') or {}).get('userId')
-            or ''
-        ).strip()
-        if not zwift_user_id:
-            return jsonify({'message': 'Missing zwiftUserId. Reconnect Zwift first.'}), 400
-
-        race_doc = db.collection('races').document(str(race_id)).get()
-        if not race_doc.exists:
-            return jsonify({'message': 'Race not found'}), 404
-        race_data = race_doc.to_dict() or {}
-
-        user_category = _resolve_effective_user_category(user_data.get('ligaCategory'))
-        zwift_service = get_zwift_service()
-        subgroup_id, subgroup_error = _resolve_signup_subgroup_id(race_data, user_category, zwift_service)
-        if subgroup_error:
-            return jsonify({'message': subgroup_error}), 400
-        if not subgroup_id:
-            return jsonify({'message': 'Could not determine event subgroup for signup'}), 400
-
-        status_code, payload = zwift_service.batch_register_participants(
-            event_subgroup_id=subgroup_id,
-            public_ids=[zwift_user_id],
-        )
-
-        if status_code == 200:
-            unknown_ids = payload.get("unknownPublicIds") if isinstance(payload, dict) else None
-            unknown_ids = unknown_ids if isinstance(unknown_ids, list) else []
-            if zwift_user_id in unknown_ids:
-                return jsonify({
-                    'message': 'Signup request accepted, but your Zwift public ID was not recognized by Zwift.',
-                    'subgroupId': subgroup_id,
-                    'unknownPublicIds': unknown_ids,
-                }), 200
-            return jsonify({
-                'message': 'Signup completed in Zwift.',
-                'subgroupId': subgroup_id,
-                'unknownPublicIds': unknown_ids,
-            }), 200
-
-        zwift_message = None
-        if isinstance(payload, dict):
-            for key in ("message", "error", "detail", "description"):
-                value = payload.get(key)
-                if isinstance(value, str) and value.strip():
-                    zwift_message = value.strip()
-                    break
-
-        logger.warning(
-            "Zwift signup failed race=%s user=%s subgroup=%s status=%s payload=%s",
-            race_id,
-            user_doc_id,
-            subgroup_id,
-            status_code,
-            payload,
-        )
-        return jsonify({
-            'message': zwift_message or f'Zwift signup failed ({status_code})',
-            'subgroupId': subgroup_id,
-            'zwiftStatus': status_code,
-            'zwiftError': payload,
-        }), status_code if status_code in {400, 401, 403, 404, 409, 422, 500} else 502
+        result = signup_rider(race_id, user_doc_id, user_data)
+        return jsonify(result), 200
+    except SignupError as e:
+        return jsonify({'message': e.message}), e.status_code
     except Exception as e:
         logger.error(f"Race signup error race={race_id}: {e}")
+        return jsonify({'message': str(e)}), 500
+
+
+@races_bp.route('/races/<race_id>/signup', methods=['DELETE'])
+def unsignup_race(race_id: str):
+    try:
+        user_doc_id, user_data = _load_auth_user()
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+    except SignupError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    try:
+        result = unsignup_rider(race_id, user_doc_id, user_data)
+        return jsonify(result), 200
+    except SignupError as e:
+        return jsonify({'message': e.message}), e.status_code
+    except Exception as e:
+        logger.error(f"Race unsignup error race={race_id}: {e}")
+        return jsonify({'message': str(e)}), 500
+
+
+@races_bp.route('/races/<race_id>/sync-signups', methods=['POST'])
+def sync_signups_route(race_id: str):
+    try:
+        verify_admin_auth()
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+    try:
+        summary = sync_race_signups(race_id, include_reroutes=True)
+        return jsonify(summary), 200
+    except SignupError as e:
+        return jsonify({'message': e.message}), e.status_code
+    except Exception as e:
+        logger.error(f"Sync signups error race={race_id}: {e}")
         return jsonify({'message': str(e)}), 500
 
 
@@ -661,6 +680,7 @@ def create_race():
         
     try:
         data = request.get_json(silent=True) or {}
+        data['preRegisterAllowed'] = bool(data.get('preRegisterAllowed'))
         data, hydrate_warnings = _hydrate_event_config_subgroup_ids(data)
         err = _validate_race_fields(data)
         if err:
@@ -670,8 +690,14 @@ def create_race():
         log_schema_issues(logger, "races/<new> (create)", validate_race_doc(payload))
         _, doc_ref = db.collection('races').add(payload)
         body: dict[str, Any] = {'message': 'Race created', 'id': doc_ref.id, 'race': {**payload, 'id': doc_ref.id}}
-        if hydrate_warnings:
-            body['warnings'] = hydrate_warnings
+        warnings = list(hydrate_warnings or [])
+        sync_summary = maybe_sync_after_race_save(doc_ref.id, payload)
+        if sync_summary and sync_summary.get('errors'):
+            warnings.extend(sync_summary['errors'])
+        if sync_summary:
+            body['signupSync'] = sync_summary
+        if warnings:
+            body['warnings'] = warnings
         return jsonify(body), 201
     except Exception as e:
         return jsonify({'message': str(e)}), 500
@@ -704,6 +730,7 @@ def update_race(race_id):
     
     try:
         data = request.get_json(silent=True) or {}
+        data['preRegisterAllowed'] = bool(data.get('preRegisterAllowed'))
         data, hydrate_warnings = _hydrate_event_config_subgroup_ids(data)
         err = _validate_race_fields(data)
         if err:
@@ -713,8 +740,14 @@ def update_race(race_id):
         log_schema_issues(logger, f"races/{race_id} (update)", validate_race_doc(payload))
         db.collection('races').document(race_id).update(payload)
         body: dict[str, Any] = {'message': 'Race updated', 'race': {**payload, 'id': race_id}}
-        if hydrate_warnings:
-            body['warnings'] = hydrate_warnings
+        warnings = list(hydrate_warnings or [])
+        sync_summary = maybe_sync_after_race_save(race_id, payload)
+        if sync_summary and sync_summary.get('errors'):
+            warnings.extend(sync_summary['errors'])
+        if sync_summary:
+            body['signupSync'] = sync_summary
+        if warnings:
+            body['warnings'] = warnings
         return jsonify(body), 200
     except Exception as e:
         return jsonify({'message': str(e)}), 500

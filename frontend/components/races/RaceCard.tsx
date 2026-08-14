@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { getZwiftInsiderUrl, API_URL } from '@/lib/api';
 import { formatDateLong, formatTimeWithTz, fromTimestamp } from '@/lib/formatDate';
 import PointsSplitBadge from '@/components/races/PointsSplitBadge';
@@ -11,7 +12,7 @@ import SprintsByLap, {
 } from '@/components/races/SprintsByLap';
 import type { Race, Sprint, EventCategoryConfig, CategoryConfig } from '@/types/live';
 import type { LeagueSettings, RaceGroup } from '@/types/admin';
-import { useRouteElevationQuery, useRaceSegmentsQuery } from '@/hooks/queries';
+import { useRouteElevationQuery, useRaceSegmentsQuery, useMyRaceSignupsQuery } from '@/hooks/queries';
 import { useAuth } from '@/lib/auth-context';
 import { scaleRaceDistanceKm } from '@/hooks/useLeagueData';
 import { formatOmgangeDisplay } from '@/lib/raceLaps';
@@ -128,6 +129,9 @@ export default function RaceCard({
     const raceDate = fromTimestamp(race.date) || new Date(NaN);
     const isPublicVariant = variant === 'public';
     const { user, isRegistered } = useAuth();
+    const queryClient = useQueryClient();
+    const mySignupsQuery = useMyRaceSignupsQuery();
+    const persistedStatus = mySignupsQuery.data?.[race.id]?.status;
     const [signupState, setSignupState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [signupMessage, setSignupMessage] = useState('');
     const userConfig = race.eventMode === 'multi' ? getUserEventConfig(race, userCategory) : null;
@@ -279,12 +283,38 @@ export default function RaceCard({
                 headers: { Authorization: `Bearer ${token}` },
             });
             const data = await res.json();
+            await queryClient.invalidateQueries({ queryKey: ['race-signups'] });
             if (res.ok) {
-                setSignupState('success');
+                setSignupState(data.status === 'failed' ? 'error' : 'success');
                 setSignupMessage(data.message || 'Tilmeldt!');
             } else {
                 setSignupState('error');
                 setSignupMessage(data.message || 'Tilmelding fejlede');
+            }
+        } catch {
+            setSignupState('error');
+            setSignupMessage('Netværksfejl – prøv igen');
+        }
+    };
+
+    const handleZwiftUnsignup = async () => {
+        if (!user || signupState === 'loading') return;
+        setSignupState('loading');
+        setSignupMessage('');
+        try {
+            const token = await user.getIdToken();
+            const res = await fetch(`${API_URL}/races/${race.id}/signup`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const data = await res.json();
+            await queryClient.invalidateQueries({ queryKey: ['race-signups'] });
+            if (res.ok) {
+                setSignupState('idle');
+                setSignupMessage(data.message || 'Afmeldt');
+            } else {
+                setSignupState('error');
+                setSignupMessage(data.message || 'Afmelding fejlede');
             }
         } catch {
             setSignupState('error');
@@ -401,7 +431,7 @@ export default function RaceCard({
                     </div>
                 )}
 
-                {!isPublicVariant && racePassHref ? (
+                {!isPublicVariant && (race.preRegisterAllowed || racePassHref) ? (
                     <div className="flex flex-col gap-2">
                         {categoryHint && (
                             <div className="flex items-center justify-center gap-2 text-sm bg-muted/40 border border-border rounded-lg px-4 py-2">
@@ -411,16 +441,39 @@ export default function RaceCard({
                         )}
                         {isRegistered && !isPast ? (
                             <div className="flex flex-col gap-1">
-                                <button
-                                    onClick={handleZwiftSignup}
-                                    disabled={signupState === 'loading' || signupState === 'success'}
-                                    className="block w-full bg-primary hover:bg-primary-dark text-white font-bold py-3 px-4 rounded-lg text-center transition shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
-                                >
-                                    {signupState === 'loading' ? 'Tilmelder...' : 'Tilmeld'}
-                                </button>
-                                {signupMessage && (
-                                    <p className={`text-sm text-center ${signupState === 'success' ? 'text-green-600' : 'text-red-500'}`}>
-                                        {signupMessage}
+                                {persistedStatus === 'pending' || persistedStatus === 'registered' ? (
+                                    <>
+                                        <div className="flex gap-2">
+                                            <div className="flex-1 bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-center shadow-md">
+                                                {persistedStatus === 'pending' ? 'Tilmeldt' : 'Tilmeldt på Zwift'}
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={handleZwiftUnsignup}
+                                                disabled={signupState === 'loading'}
+                                                className="bg-secondary text-secondary-foreground font-bold py-3 px-4 rounded-lg text-center shadow-sm disabled:opacity-60"
+                                            >
+                                                {signupState === 'loading' ? '...' : 'Afmeld'}
+                                            </button>
+                                        </div>
+                                        {persistedStatus === 'pending' && !racePassHref && (
+                                            <p className="text-sm text-center text-muted-foreground">
+                                                Du tilmeldes automatisk på Zwift når løbspas er klar.
+                                            </p>
+                                        )}
+                                    </>
+                                ) : (
+                                    <button
+                                        onClick={handleZwiftSignup}
+                                        disabled={signupState === 'loading'}
+                                        className="block w-full bg-primary hover:bg-primary-dark text-white font-bold py-3 px-4 rounded-lg text-center transition shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
+                                    >
+                                        {signupState === 'loading' ? 'Tilmelder...' : persistedStatus === 'failed' ? 'Prøv igen' : 'Tilmeld'}
+                                    </button>
+                                )}
+                                {(signupMessage || persistedStatus === 'failed') && (
+                                    <p className={`text-sm text-center ${signupState === 'error' || persistedStatus === 'failed' ? 'text-red-500' : 'text-green-600'}`}>
+                                        {signupMessage || (persistedStatus === 'failed' ? 'Tilmelding på Zwift fejlede — prøv igen.' : '')}
                                     </p>
                                 )}
                             </div>

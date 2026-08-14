@@ -2,7 +2,9 @@
 
 import { useState, useMemo } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { useParticipantsQuery } from '@/hooks/queries';
+import { useParticipantsQuery, useRacesQuery, useRaceSignupsQuery } from '@/hooks/queries';
+import { fromTimestamp } from '@/lib/formatDate';
+import type { Race } from '@/types/live';
 
 function getZRCategory(rating: number | string): string {
   const r = Number(rating);
@@ -160,15 +162,50 @@ function SortIcon({ active, direction }: { active: boolean; direction: SortDirec
   );
 }
 
+function raceHasEventId(race: Race): boolean {
+  if (race.eventId) return true;
+  if ((race.eventConfiguration || []).some(c => !!c.eventId)) return true;
+  if ((race.raceGroups || []).some(g => !!g.eventId)) return true;
+  return false;
+}
+
 export default function ParticipantsPage() {
   const { loading: authLoading } = useAuth();
   const participantsQuery = useParticipantsQuery();
+  const racesQuery = useRacesQuery();
   const participants = (participantsQuery.data ?? []) as Participant[];
+  const races = (racesQuery.data ?? []) as Race[];
   const [search, setSearch] = useState('');
   const [ligaKatFilter, setLigaKatFilter] = useState('');
+  const [raceFilter, setRaceFilter] = useState('');
   const [sortCol, setSortCol] = useState<SortColumn>('name');
   const [sortDir, setSortDir] = useState<SortDirection>('asc');
   const [powerUnit, setPowerUnit] = useState<PowerUnit>('watts');
+
+  const raceSignupsQuery = useRaceSignupsQuery(raceFilter || null);
+  const signupZwiftIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const row of raceSignupsQuery.data ?? []) {
+      if (row.zwiftId) ids.add(String(row.zwiftId));
+    }
+    return ids;
+  }, [raceSignupsQuery.data]);
+
+  const raceOptions = useMemo(() => {
+    const now = Date.now();
+    return [...races]
+      .filter(r => r.preRegisterAllowed || raceHasEventId(r))
+      .sort((a, b) => {
+        const at = fromTimestamp(a.date)?.getTime() ?? 0;
+        const bt = fromTimestamp(b.date)?.getTime() ?? 0;
+        const aFuture = at > now;
+        const bFuture = bt > now;
+        if (aFuture !== bFuture) return aFuture ? -1 : 1;
+        return at - bt;
+      });
+  }, [races]);
+
+  const selectedRace = races.find(r => r.id === raceFilter);
 
   const ligaKatOptions = useMemo(() => {
     const cats = new Set<string>();
@@ -189,7 +226,8 @@ export default function ParticipantsPage() {
     let result = participants.filter(p => {
       const matchesSearch = !q || p.name.toLowerCase().includes(q) || (p.club && p.club.toLowerCase().includes(q));
       const matchesLigaKat = !ligaKatFilter || p.ligaCategory?.category === ligaKatFilter;
-      return matchesSearch && matchesLigaKat;
+      const matchesRace = !raceFilter || (p.zwiftId != null && signupZwiftIds.has(String(p.zwiftId)));
+      return matchesSearch && matchesLigaKat && matchesRace;
     });
 
     result = [...result].sort((a, b) => {
@@ -203,7 +241,7 @@ export default function ParticipantsPage() {
     });
 
     return result;
-  }, [participants, search, ligaKatFilter, sortCol, sortDir, powerUnit]);
+  }, [participants, search, ligaKatFilter, raceFilter, signupZwiftIds, sortCol, sortDir, powerUnit]);
 
   function handleSort(col: SortColumn) {
     if (sortCol === col) {
@@ -229,7 +267,11 @@ export default function ParticipantsPage() {
     <div className="max-w-7xl mx-auto mt-8 px-4">
       <h1 className="text-3xl font-bold mb-2 text-foreground">Deltagere</h1>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-        <p className="text-muted-foreground">Alle tilmeldte ryttere i ligaen ({participants.length}).</p>
+        <p className="text-muted-foreground">
+          {raceFilter
+            ? `${filtered.length} tilmeldt til ${selectedRace?.name || 'løb'}`
+            : `Alle tilmeldte ryttere i ligaen (${participants.length}).`}
+        </p>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <div className="flex flex-row gap-2 items-center">
             <div className="inline-flex rounded-lg border border-input overflow-hidden">
@@ -256,6 +298,16 @@ export default function ParticipantsPage() {
               <option value="">-</option>
               {ligaKatOptions.map(cat => (
                 <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+            <select
+              value={raceFilter}
+              onChange={e => setRaceFilter(e.target.value)}
+              className="w-fit max-w-[14rem] px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="">Alle løb</option>
+              {raceOptions.map(r => (
+                <option key={r.id} value={r.id}>{r.name}</option>
               ))}
             </select>
           </div>
@@ -332,7 +384,7 @@ export default function ParticipantsPage() {
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={18} className="px-6 py-8 text-center text-muted-foreground">
-                    {search || ligaKatFilter ? 'Ingen deltagere matcher søgningen.' : 'Ingen deltagere fundet endnu.'}
+                    {search || ligaKatFilter || raceFilter ? 'Ingen deltagere matcher søgningen.' : 'Ingen deltagere fundet endnu.'}
                   </td>
                 </tr>
               ) : (

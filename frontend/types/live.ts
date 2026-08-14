@@ -203,6 +203,7 @@ export interface Race {
         windowDurationMinutes?: number;
         finalizeDelayMinutes?: number;
     };
+    preRegisterAllowed?: boolean;
 }
 
 export interface StandingResultLine {

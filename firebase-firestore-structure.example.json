@@ -226,6 +226,7 @@
       "segmentType": "sprint",
       "eventId": "",
       "eventSecret": "",
+      "preRegisterAllowed": true,
       "laps": 1,
       "totalDistance": 37.7,
       "totalElevation": 763,
@@ -512,6 +513,23 @@
           "acceptedAt": "2026-03-04T22:21:43+00:00"
         }
       }
+    }
+  ],
+  "signups": [
+    {
+      "_id": "100001",
+      "zwiftId": "100001",
+      "raceId": "race_doc_example_001",
+      "zwiftUserId": "zwift-public-uuid-example",
+      "name": "User Example",
+      "club": "Example Club",
+      "ligaCategory": "Ruby",
+      "status": "pending",
+      "signedUpAt": "2026-05-19T18:30:00+00:00",
+      "zwiftRegisteredAt": null,
+      "subgroupId": "",
+      "eventId": "",
+      "lastError": ""
     }
   ],
   "weight_history": [
