@@ -452,7 +452,7 @@ export default function RaceCard({
                                                 type="button"
                                                 onClick={handleZwiftUnsignup}
                                                 disabled={signupState === 'loading'}
-                                                className="bg-secondary text-secondary-foreground font-bold py-3 px-4 rounded-lg text-center shadow-sm disabled:opacity-60"
+                                                className="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg text-center shadow-sm disabled:opacity-60"
                                             >
                                                 {signupState === 'loading' ? '...' : 'Afmeld'}
                                             </button>
@@ -474,7 +474,7 @@ export default function RaceCard({
                                     <button
                                         onClick={handleZwiftSignup}
                                         disabled={signupState === 'loading'}
-                                        className="block w-full bg-primary hover:bg-primary-dark text-white font-bold py-3 px-4 rounded-lg text-center transition shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
+                                        className="block w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg text-center transition shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
                                     >
                                         {signupState === 'loading' ? 'Tilmelder...' : persistedStatus === 'failed' ? 'Prøv igen' : 'Tilmeld'}
                                     </button>
