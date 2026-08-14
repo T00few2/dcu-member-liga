@@ -266,12 +266,25 @@ export default function ParticipantsPage() {
   return (
     <div className="max-w-7xl mx-auto mt-8 px-4">
       <h1 className="text-3xl font-bold mb-2 text-foreground">Deltagere</h1>
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-        <p className="text-muted-foreground">
-          {raceFilter
-            ? `${filtered.length} tilmeldt til ${selectedRace?.name || 'løb'}`
-            : `${filtered.length} ryttere i ligaen.`}
-        </p>
+      <p className="text-muted-foreground mb-4">
+        {raceFilter
+          ? `${filtered.length} tilmeldt til ${selectedRace?.name || 'løb'}`
+          : `${filtered.length} ryttere i DCU E-Serien.`}
+      </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+        <label className="flex items-center gap-2 text-sm text-foreground">
+          <span className="whitespace-nowrap font-medium">Tilmeldte til</span>
+          <select
+            value={raceFilter}
+            onChange={e => setRaceFilter(e.target.value)}
+            className="w-fit min-w-[12rem] px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="">DCU E-Serien</option>
+            {raceOptions.map(r => (
+              <option key={r.id} value={r.id}>{r.name}</option>
+            ))}
+          </select>
+        </label>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <div className="flex flex-row gap-2 items-center flex-wrap">
             <div className="inline-flex rounded-lg border border-input overflow-hidden">
@@ -300,19 +313,6 @@ export default function ParticipantsPage() {
                 <option value="">Alle</option>
                 {ligaKatOptions.map(cat => (
                   <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-            </label>
-            <label className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span className="whitespace-nowrap">Tilmeldte til</span>
-              <select
-                value={raceFilter}
-                onChange={e => setRaceFilter(e.target.value)}
-                className="w-fit max-w-[14rem] px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                <option value="">Hele ligaen</option>
-                {raceOptions.map(r => (
-                  <option key={r.id} value={r.id}>{r.name}</option>
                 ))}
               </select>
             </label>
