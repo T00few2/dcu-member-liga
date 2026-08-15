@@ -20,7 +20,8 @@ Use this first. Pick endpoint by task.
 | Event -> subgroup bridge | `GET /api/public/events/{eventId}` | None observed (public) | `eventSubgroups[].id` |
 | Rider profile/category | `GET /api/link/racing-profile` | User token (`profile:read`, `fitness_metrics:read`) | `competitionMetrics` (ftp, zftp, zmap, racingScore, powerCompoundScore, vo2max, category, categoryWomen, weightInGrams), rider identity |
 | Live race telemetry | `GET /api/link/events/subgroups/{subgroupId}/live-data` | App/User token | active riders + power/cadence/position |
-| Race segment/finish data | `GET /api/link/events/subgroups/{subgroupId}/segment-results` | App/User token | `durationInMilliseconds`, `segmentId` |
+| Official race finish results | `GET /api/link/race-results/subgroups/{subgroupId}` | App token (Client Credentials) | `rank`, `rankingValue`, `activityData`, `criticalP`, `sensorData` |
+| Race segment/sprint crossings | `GET /api/link/events/subgroups/{subgroupId}/segment-results` | App/User token | `durationInMilliseconds`, `segmentId` |
 | Register event participants | `POST /api/link/events/subgroups/{eventSubgroupId}/participants/batch-register` | App token (partner-owned event) | registers valid `publicIds[]`, returns `unknownPublicIds[]` |
 | Unregister event participants | `POST /api/link/events/subgroups/{eventSubgroupId}/participants/batch-unregister` | App token (partner-owned event) | removes valid `publicIds[]` (non-registered IDs ignored) |
 | Activity details | `GET /api/thirdparty/activity/{activityId}` | User token (`activity`) | summary stats + `fitFileURL` |
@@ -36,10 +37,12 @@ Use this first. Pick endpoint by task.
 
 ### If task is race results/scoring
 1. Resolve subgroup IDs from `GET /api/public/events/{eventId}` -> `eventSubgroups[].id`
-2. Fetch `segment-results` for each subgroup
-3. Group by `segmentId`
-4. Use `durationInMilliseconds` for timing/ranking
-5. Use `eventSubgroupId` as subgroup integrity check
+2. Fetch `race-results` for the official finish list, rank, and activity duration (finishers only)
+3. Fetch `segment-results` for sprint/KOM/FAL crossings
+4. Group segment-results by `segmentId`
+5. Use `race-results.rank` for official subgroup placing; keep local ranking after DQ/declass
+6. Use `eventSubgroupId` as subgroup integrity check
+7. Current league scoring still finishes from `segment-results`; do not drop that path for DNF or sprints
 
 ### If task is live broadcast/overlay
 1. Poll `live-data` with `page`/`limit`
@@ -59,7 +62,7 @@ Use this first. Pick endpoint by task.
 ### If task starts with only eventId
 1. Call `GET /api/public/events/{eventId}`
 2. Read `eventSubgroups[].id`
-3. Call subgroup endpoints (`live-data`, `segment-results`) with those IDs
+3. Call subgroup endpoints (`live-data`, `segment-results`, `race-results`) with those IDs
 4. Keep a fallback path if endpoint behavior changes (this public path is not listed in developer docs)
 
 ---
@@ -70,8 +73,13 @@ Use this first. Pick endpoint by task.
   - Canonical rider ID: `userId` (UUID string)
   - Legacy numeric profile IDs may still appear in some payloads
 - Timing:
-  - Race/segment duration: `durationInMilliseconds`
-  - Activity duration: `totalDurationInMilliSec`
+  - Segment effort duration (`segment-results`): `durationInMilliseconds`
+  - Race/activity duration (`race-results.activityData`): `durationInMilliseconds`
+  - Activity duration (`/api/thirdparty/activity`): `totalDurationInMilliSec`
+- Ranking:
+  - Official finish place (`race-results`): `rank` (place inside the Zwift subgroup, not league category rank)
+  - Finish timestamp ms (`race-results`): `rankingValue` (same instant as `activityData.endDate`, not a racing score)
+  - Gap to winner ms (`race-results`): `rankingValueWinnerDifference` (likely; do not treat as league points)
 - Grouping:
   - Race subgroup key: `eventSubgroupId`
   - Segment key: `segmentId`
@@ -170,7 +178,7 @@ curl --request GET \
 ## 3) GET `/api/link/events/subgroups/{subgroupId}/segment-results`
 
 **Purpose**
-- Cumulative segment results (finish/sprint/KOM segments) for subgroup.
+- Cumulative segment crossings (finish/sprint/KOM/FAL) for a subgroup. Not the official finish-results list.
 
 **Auth**
 - App token or user token
@@ -188,6 +196,8 @@ curl --request GET \
 **Common pitfalls**
 - Cursor pagination required for full dataset.
 - Must group by `segmentId`; one subgroup can contain many segments.
+- `durationInMilliseconds` is segment effort duration, not race elapsed time.
+- For official finish list and placing, use `race-results` instead.
 
 ---
 
@@ -267,6 +277,41 @@ curl --request POST \
 **Common pitfalls**
 - Same TTT `rowId` rule as batch-register.
 - Endpoint is intended for restricted/partner-owned events.
+
+---
+
+## 3c) GET `/api/link/race-results/subgroups/{subgroupId}`
+
+**Purpose**
+- Final completed-race results for participants who finished a race in the specified event subgroup.
+
+**Auth**
+- App token (Client Credentials Flow)
+
+**Query**
+- `start` (optional): zero-based result offset. Default: `0`. Min: `0`
+- `limit` (optional): max results per page. Default: `25`. Min: `1`. Max: `200`
+
+**Request**
+```bash
+curl --request GET \
+  --url 'https://us-or-rly101.zwift.com/api/link/race-results/subgroups/:subgroupId?start=0&limit=200' \
+  --header 'Authorization: Bearer <token>'
+```
+
+**Response essentials**
+- Top-level: `entries[]`, `totalEntryCount`
+- Entry fields: `userId`, `rank`, `rankingValue`, `rankingValueWinnerDifference`, `eventId`, `eventSubgroupId`, `weightInGrams`, `heightInCentimeters`, `lateJoin`, `activityData`, `criticalP`, `sensorData`
+
+**Common pitfalls**
+- Offset pagination (`start`/`limit`), not cursor pagination.
+- Max 200 results per page; use `totalEntryCount` to page through the rest.
+- Finishers only — riders who DNF or never completed are absent (confirmed on archived DCU events).
+- No sprint/KOM/FAL crossings; keep using `segment-results` for those.
+- `activityData.durationInMilliseconds` is race elapsed time (matched `endDate − subgroupStart` / stored `finishTime` on The Classic, 2026-05-27).
+- `rank` is place inside the Zwift subgroup, not league category rank after DQ/declass.
+- Restricted events need `eventSecret` to resolve subgroup IDs from the public event API. This endpoint itself only needs the app token + `subgroupId`.
+- Historic/archived partner-owned DCU subgroups remain available.
 
 ---
 
@@ -412,7 +457,7 @@ curl --request GET \
 
 When implementing integration logic here:
 - Prefer `userId` over numeric IDs where available.
-- For race scoring, treat `segment-results` as canonical source.
+- For official finish list and placing, use `race-results` (`ZwiftService.get_subgroup_race_results()`). For sprint/KOM/FAL scoring, treat `segment-results` as the canonical crossing source. League scoring still finishes from `segment-results`. On Live Results and finalize, `ResultsProcessor` compares derived `finishTime` to official race-results and stores `races.finishAudit` (`aligned` / `mismatch` / `unavailable`) without changing scored times. `POST /races/{id}/results/audit-finish` runs the same check against stored results before finalize.
 - For live overlays, use `live-data` only for currently active riders.
 - Keep this file official-only; do not mix unofficial endpoint guidance here.
 # Zwift API Documentation
@@ -578,6 +623,10 @@ Representative response shape:
   - **Method:** `GET`
   - **Endpoint:** `/api/link/events/subgroups/{subgroupId}/segment-results`
   - **Description:** Cumulative results for race segments within an event.
+- **Get Race Results for an Event Subgroup**
+  - **Method:** `GET`
+  - **Endpoint:** `/api/link/race-results/subgroups/{subgroupId}`
+  - **Description:** Final results for participants who finished/completed a race in the specified event subgroup.
 - **Batch Register Participants**
   - **Method:** `POST`
   - **Endpoint:** `/api/link/events/subgroups/{eventSubgroupId}/participants/batch-register`
@@ -670,7 +719,7 @@ Representative response shape:
 
 - Poll with pagination (`page`, `limit`) for large fields/subgroups.
 - If response has empty `data`, the subgroup may be inactive or finished.
-- For final standings and finish times, pair this endpoint with `segment-results`.
+- For official finish standings, pair this endpoint with `race-results`. For sprint/KOM/FAL crossings, pair it with `segment-results`.
 
 #### Segment Results Example (Official API)
 
@@ -710,7 +759,7 @@ Representative response shape:
 
 #### Segment Results Field Notes (Integration-Focused)
 
-- **Primary timing field:** `durationInMilliseconds` is the key value for ranking and finish-time comparisons.
+- **Primary timing field:** `durationInMilliseconds` is the segment effort duration, not full race elapsed time. Use it for sprint/KOM/FAL ranking, not as a drop-in race finish time.
 - **Join keys:** `userId` links rider identity; `eventSubgroupId` confirms subgroup context.
 - **Segment context:** `segmentId` tells which segment the row belongs to (finish segment vs intermediate sprint/KOM).
 - **Chronology:** `endDate` and `endWorldTime` are useful for tie-breakers and sequence validation.
@@ -721,7 +770,87 @@ Representative response shape:
 
 - This endpoint is cursor-paginated; keep requesting while `cursor` is present.
 - A subgroup can contain multiple segment IDs; you often need to group rows by `segmentId`.
-- For live-in-race position, combine with `live-data`; for final result logic, this is typically the canonical source.
+- For live-in-race position, combine with `live-data`.
+- For official finish list and placing, use `race-results`. This endpoint remains the source for per-segment crossings (sprint/KOM/FAL).
+
+#### Race Results Example (Official API)
+
+Request:
+
+```bash
+curl --request GET \
+  --url 'https://us-or-rly101.zwift.com/api/link/race-results/subgroups/:subgroupId?start=0&limit=200' \
+  --header 'Authorization: Bearer <token>'
+```
+
+Representative response shape:
+
+```json
+{
+  "entries": [
+    {
+      "userId": "00000000-0000-0000-0000-000000000000",
+      "weightInGrams": 0,
+      "heightInCentimeters": 0,
+      "eventSubgroupId": 0,
+      "rank": 0,
+      "rankingValue": 0,
+      "rankingValueWinnerDifference": 0,
+      "eventId": 0,
+      "activityData": {
+        "activityId": "activityId",
+        "sport": "CYCLING",
+        "segmentDistanceInCentimeters": 0,
+        "durationInMilliseconds": 0,
+        "mapId": 0,
+        "endDate": "2024-08-25T15:00:00Z",
+        "clubId": "00000000-0000-0000-0000-000000000000",
+        "elevationInMeters": 0,
+        "calories": 0
+      },
+      "criticalP": {
+        "criticalP15Seconds": 0,
+        "criticalP1Minute": 0,
+        "criticalP5Minutes": 0,
+        "criticalP20Minutes": 0
+      },
+      "sensorData": {
+        "heartRateData": {
+          "heartRateMonitor": true,
+          "maxHeartRate": 0,
+          "avgHeartRate": 0
+        },
+        "avgWatts": 0,
+        "powerType": "POWER_METER"
+      },
+      "lateJoin": true
+    }
+  ],
+  "totalEntryCount": 0
+}
+```
+
+#### Race Results Field Notes (Integration-Focused)
+
+- **Identity join key:** `userId` (UUID) is the canonical rider ID.
+- **Official placing:** `rank` is place inside the Zwift subgroup, not league category rank. Use it for audit; keep local `finishRank` after DQ/declass.
+- **Finish timestamp:** `rankingValue` is the finish instant in milliseconds (same value as `activityData.endDate`). It is not a racing score.
+- **Gap to winner:** `rankingValueWinnerDifference` is a related delta (likely milliseconds behind the winner). Do not treat it as league points.
+- **Activity:** `activityData.activityId`, `durationInMilliseconds`, `segmentDistanceInCentimeters`, `endDate`, `elevationInMeters`, `calories`, `sport`, `mapId`, and `clubId`.
+- **Body snapshot:** `weightInGrams` and `heightInCentimeters` are race-time values. Do not persist them unless a product need exists.
+- **Power:** `criticalP.*` uses the same field names as our finalize hydrate, but values are close rather than bit-identical (often 1–7 W off on 15s/1min). Do not replace the current hydrate from this payload yet. Also `sensorData.avgWatts` and `sensorData.powerType`.
+- **Heart rate:** `sensorData.heartRateData` is present when a heart-rate monitor was used (`heartRateMonitor`, `maxHeartRate`, `avgHeartRate`).
+- **Flags:** `lateJoin` indicates the rider joined after the event start.
+- **Join keys:** `eventId` and `eventSubgroupId` confirm event and subgroup context. `userId` is a UUID; rider names are not returned.
+
+#### Practical Notes
+
+- Offset-paginated with `start` and `limit` (max 200). Use `totalEntryCount` to request remaining pages.
+- Returns finishers/completers only. DNF and non-finishers are absent (confirmed on The Classic: 18 API finishers matched stored finishers; the stored DNF was missing).
+- Does not include sprint/KOM/FAL crossings. Keep using `segment-results` for those.
+- `activityData.durationInMilliseconds` is race elapsed time, not a `segment-results` segment effort duration. On The Classic it matched stored `finishTime` for all 18 finishers.
+- Historic/archived partner-owned DCU events work. Restricted events need `eventSecret` to resolve subgroup IDs from `/api/public/events/{eventId}`; race-results itself only needs the app token + `subgroupId`.
+- League scoring still uses `segment-results` for finish + sprints. `ZwiftService.get_subgroup_race_results()` is the client for this endpoint; do not switch `ZwiftFetcher` / `RaceScorer` yet.
 
 #### Batch Register Participants Example (Official API)
 

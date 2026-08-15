@@ -238,6 +238,16 @@
       "provisionalUpdatedAt": "2026-05-20T19:35:00+00:00",
       "finalizedAt": null,
       "finalizeRunId": null,
+      "finishAudit": {
+        "status": "aligned",
+        "summary": "Finish audit aligned: official race-results match derived finish times for 2 finisher(s) across 1 subgroup(s).",
+        "checkedAt": "2026-05-20T19:40:00+00:00",
+        "comparedCount": 2,
+        "alignedCount": 2,
+        "officialEntryCount": 2,
+        "subgroupCount": 1,
+        "issues": []
+      },
       "resultsAutomation": {
         "automationEnabled": false,
         "pollingIntervalSeconds": 30,

@@ -71,6 +71,9 @@ export function normalizeRace(raw: unknown, id: string): Race {
         provisionalUpdatedAt: asDateString(data.provisionalUpdatedAt) || undefined,
         finalizedAt: asDateString(data.finalizedAt) || undefined,
         finalizeRunId: asString(data.finalizeRunId) || undefined,
+        finishAudit: Object.keys(asObject(data.finishAudit)).length
+            ? (asObject(data.finishAudit) as Race['finishAudit'])
+            : undefined,
         resultsAutomation: asObject(data.resultsAutomation) as Race['resultsAutomation'],
         preRegisterAllowed: Boolean(data.preRegisterAllowed),
     };

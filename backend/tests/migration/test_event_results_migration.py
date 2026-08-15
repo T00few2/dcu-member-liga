@@ -203,6 +203,65 @@ class TestOfficialSegmentResults:
         assert results == []
 
 
+class TestOfficialRaceResults:
+    """ZwiftService.get_subgroup_race_results offset pagination."""
+
+    def test_single_page_returns_entries_and_total(self):
+        svc = _make_service()
+        page = {
+            "entries": [
+                {"userId": "u1", "rank": 1, "activityData": {"durationInMilliseconds": 1000}},
+                {"userId": "u2", "rank": 2, "activityData": {"durationInMilliseconds": 2000}},
+            ],
+            "totalEntryCount": 2,
+        }
+        with patch("requests.request", return_value=_mock_response(200, page)) as req:
+            result = svc.get_subgroup_race_results("7158678")
+        assert result["totalEntryCount"] == 2
+        assert len(result["entries"]) == 2
+        assert result["entries"][0]["userId"] == "u1"
+        params = req.call_args.kwargs.get("params") or req.call_args[1].get("params")
+        assert params["start"] == 0
+        assert params["limit"] == 200
+
+    def test_offset_pagination_concatenates_pages(self):
+        page1 = {
+            "entries": [{"userId": "u1"}, {"userId": "u2"}],
+            "totalEntryCount": 3,
+        }
+        page2 = {
+            "entries": [{"userId": "u3"}],
+            "totalEntryCount": 3,
+        }
+        svc = _make_service()
+        with patch(
+            "requests.request",
+            side_effect=[_mock_response(200, page1), _mock_response(200, page2)],
+        ):
+            result = svc.get_subgroup_race_results("7158678", limit=2)
+        assert result["totalEntryCount"] == 3
+        assert [e["userId"] for e in result["entries"]] == ["u1", "u2", "u3"]
+
+    def test_empty_results_returns_empty_entries(self):
+        svc = _make_service()
+        with patch(
+            "requests.request",
+            return_value=_mock_response(200, {"entries": [], "totalEntryCount": 0}),
+        ):
+            result = svc.get_subgroup_race_results("7158680")
+        assert result == {"entries": [], "totalEntryCount": 0}
+
+    def test_clamps_limit_to_200(self):
+        svc = _make_service()
+        with patch(
+            "requests.request",
+            return_value=_mock_response(200, {"entries": [], "totalEntryCount": 0}),
+        ) as req:
+            svc.get_subgroup_race_results("7158678", limit=500)
+        params = req.call_args.kwargs.get("params") or req.call_args[1].get("params")
+        assert params["limit"] == 200
+
+
 # ---------------------------------------------------------------------------
 # Tests: scorer-field equivalence via ZwiftFetcher
 # ---------------------------------------------------------------------------

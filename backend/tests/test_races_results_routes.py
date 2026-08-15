@@ -100,6 +100,10 @@ def test_finalize_results_uses_finalize_phase_and_run_id(
             "provisionalUpdatedAt": "2026-05-14T18:00:00Z",
             "finalizedAt": "2026-05-14T19:00:00Z",
             "finalizeRunId": "manual-run",
+            "finishAudit": {
+                "status": "aligned",
+                "summary": "Finish audit aligned: official race-results match derived finish times for 1 finisher(s) across 1 subgroup(s).",
+            },
         },
     )
     races_col = MagicMock()
@@ -129,6 +133,34 @@ def test_finalize_results_uses_finalize_phase_and_run_id(
     body = response.get_json()
     assert body["resultsPhase"] == "finalized"
     assert body["finalizeRunId"] == "manual-run"
+    assert body["finishAudit"]["status"] == "aligned"
+
+
+def test_audit_finish_returns_stored_audit(
+    app: Flask,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(races, "verify_admin_auth", lambda: None)
+    monkeypatch.setattr(races, "db", MagicMock())
+    monkeypatch.setattr(races, "get_zwift_service", lambda: MagicMock())
+    monkeypatch.setattr(races, "get_zwift_game_service", lambda: MagicMock())
+
+    class _Processor:
+        def __init__(self, _db, _zwift, _game) -> None:
+            pass
+
+        def audit_stored_finish_times(self, race_id: str):
+            assert race_id == "race-1"
+            return {"status": "aligned", "summary": "Finish audit aligned."}
+
+    monkeypatch.setattr(races, "ResultsProcessor", _Processor)
+
+    with app.test_request_context("/races/race-1/results/audit-finish", method="POST"):
+        response, status = races.audit_finish_results("race-1")
+
+    assert status == 200
+    body = response.get_json()
+    assert body["finishAudit"]["status"] == "aligned"
 
 
 def test_finalize_pending_races_runs_only_eligible_races(

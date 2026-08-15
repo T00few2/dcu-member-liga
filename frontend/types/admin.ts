@@ -103,8 +103,35 @@ export interface Race {
     provisionalUpdatedAt?: string;
     finalizedAt?: string;
     finalizeRunId?: string;
+    finishAudit?: FinishAudit;
     resultsAutomation?: ResultsAutomationConfig;
     preRegisterAllowed?: boolean;
+}
+
+export type FinishAuditStatus = 'aligned' | 'mismatch' | 'unavailable';
+
+export interface FinishAuditIssue {
+    type?: string;
+    name?: string;
+    zwiftId?: string;
+    activityId?: string;
+    category?: string;
+    derivedFinishTime?: number;
+    officialDuration?: number;
+    deltaMs?: number;
+    officialRank?: number;
+    detail?: string;
+}
+
+export interface FinishAudit {
+    status?: FinishAuditStatus;
+    summary?: string;
+    checkedAt?: string;
+    comparedCount?: number;
+    alignedCount?: number;
+    officialEntryCount?: number;
+    subgroupCount?: number;
+    issues?: FinishAuditIssue[];
 }
 
 export type SeasonClass = 'tour' | 'monument' | 'wt_classic';

@@ -8,7 +8,7 @@ Delete this file (and the migration/ directory) once the migration is confirmed.
 
 Usage
 -----
-# Minimum — app-credential endpoints only:
+# Minimum — app-credential endpoints only (segment-results, race-results, live-data):
 python explore_zwift_api.py --event-id 12345 --subgroup-id 67890
 
 # Or let the script resolve subgroup IDs from event info:
@@ -260,6 +260,46 @@ def explore_segment_results(token: str, subgroup_id: str) -> tuple[int, dict]:
     return status, checks
 
 
+def explore_race_results(token: str, subgroup_id: str) -> tuple[int, dict]:
+    section(f"OFFICIAL — GET /api/link/race-results/subgroups/{{subgroupId}}  (subgroup_id={subgroup_id})")
+    status, body = zwift_get(
+        f"/api/link/race-results/subgroups/{subgroup_id}",
+        token,
+        params={"start": 0, "limit": 25},
+    )
+    show("Race results (first page, first 5 entries)", status, body, max_entries=5)
+    checks = {
+        "has_entries": False,
+        "has_required_fields": False,
+        "duration_is_numeric": False,
+        "total_entry_count_present": False,
+    }
+    if isinstance(body, dict):
+        checks["total_entry_count_present"] = body.get("totalEntryCount") is not None
+        entries = body.get("entries") or []
+        if entries:
+            checks["has_entries"] = True
+            first = entries[0]
+            required = {
+                "userId",
+                "rank",
+                "eventId",
+                "eventSubgroupId",
+                "activityData",
+            }
+            checks["has_required_fields"] = required.issubset(set(first.keys()))
+            duration = (first.get("activityData") or {}).get("durationInMilliseconds")
+            checks["duration_is_numeric"] = isinstance(duration, (int, float))
+            print("\n  Schema checks:")
+            print(f"  - required fields present: {checks['has_required_fields']}")
+            print(f"  - activityData.durationInMilliseconds numeric: {checks['duration_is_numeric']}")
+            print(f"  - totalEntryCount present: {checks['total_entry_count_present']}")
+            print(f"  - totalEntryCount={body.get('totalEntryCount')} pageEntries={len(entries)}")
+            print("\n  --- First full entry ---")
+            print(json.dumps(first, indent=4, default=str))
+    return status, checks
+
+
 def explore_live_data(
     token: str,
     subgroup_id: str,
@@ -469,6 +509,12 @@ def main() -> None:
         checks["segment_required_fields"] = segment_checks.get("has_required_fields", False)
         checks["segment_duration_numeric"] = segment_checks.get("duration_is_numeric", False)
         checks["segment_event_subgroup_present"] = segment_checks.get("event_subgroup_present", False)
+        race_status, race_checks = explore_race_results(app_token, selected_subgroup_id)
+        checks["official_race_results_200"] = race_status == 200
+        checks["race_results_has_entries"] = race_checks.get("has_entries", False)
+        checks["race_results_required_fields"] = race_checks.get("has_required_fields", False)
+        checks["race_results_duration_numeric"] = race_checks.get("duration_is_numeric", False)
+        checks["race_results_total_present"] = race_checks.get("total_entry_count_present", False)
         live_status = explore_live_data(
             app_token,
             selected_subgroup_id,
@@ -478,7 +524,7 @@ def main() -> None:
         checks["official_live_data_200"] = live_status == 200
     else:
         section("OFFICIAL — subgroup endpoints (SKIPPED — pass --subgroup-id or --resolve-subgroups)")
-        print("  Skipped: segment-results, live-data")
+        print("  Skipped: segment-results, race-results, live-data")
         checks["subgroup_resolved"] = False
 
     # --- Official Zwift endpoints (user token) ---

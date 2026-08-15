@@ -105,6 +105,32 @@ class RiderResult(TypedDict, total=False):
     raceStatus: str                          # FIN | DNF | WC | ...
 
 
+class FinishAuditIssue(TypedDict, total=False):
+    """One derived-vs-official finish discrepancy."""
+    type: str
+    name: str
+    zwiftId: str
+    activityId: str
+    category: str
+    derivedFinishTime: int
+    officialDuration: int
+    deltaMs: int
+    officialRank: int
+    detail: str
+
+
+class FinishAudit(TypedDict, total=False):
+    """Audit of derived finish times against official race-results. Not scored."""
+    status: str  # aligned | mismatch | unavailable
+    summary: str
+    checkedAt: str
+    comparedCount: int
+    alignedCount: int
+    officialEntryCount: int
+    subgroupCount: int
+    issues: list[FinishAuditIssue]
+
+
 # category label → ordered list of rider results
 RaceResults = dict[str, list[RiderResult]]
 

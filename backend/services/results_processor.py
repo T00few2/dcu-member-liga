@@ -35,6 +35,11 @@ from services.results.stage_race_ops import (
     recompute_and_save_event_gc,
     stages_for_event,
 )
+from services.results.finish_audit import (
+    STATUS_UNAVAILABLE,
+    collect_derived_finishers,
+    compare_derived_to_official,
+)
 from services.results.zwift_fetcher import ZwiftFetcher
 from services.category_config import CategoryConfigResolver
 from services.category_engine import _effective_cat_name
@@ -182,6 +187,7 @@ class ResultsProcessor:
 
         processed_sources = 0
         failed_sources = 0
+        collected_subgroup_ids: list[str] = []
         for source in event_sources:
             ok = self._process_event_source(
                 source,
@@ -192,6 +198,7 @@ class ResultsProcessor:
                 fetch_mode,
                 category_filter,
                 normalized_phase,
+                collected_subgroup_ids=collected_subgroup_ids,
             )
             if ok:
                 processed_sources += 1
@@ -205,6 +212,14 @@ class ResultsProcessor:
                 context={"race_id": race_id},
             )
 
+        finish_audit = None
+        if fetch_mode == FETCH_MODE_FINISHERS:
+            finish_audit = self._run_finish_audit(
+                all_results,
+                registered_riders,
+                collected_subgroup_ids,
+            )
+
         # 6–7. Persist scored results + standings / event GC
         return self._persist_scored_results(
             race_id,
@@ -212,6 +227,7 @@ class ResultsProcessor:
             all_results,
             normalized_phase,
             finalize_run_id=finalize_run_id,
+            finish_audit=finish_audit,
         )
 
     def ingest_prefetched_results(
@@ -293,6 +309,7 @@ class ResultsProcessor:
         all_results: RaceResults,
         results_phase: str,
         finalize_run_id: str | None = None,
+        finish_audit: dict[str, Any] | None = None,
     ) -> RaceResults:
         """Write scored results + phase timestamps, then refresh standings/GC."""
         normalized_phase = self._normalize_results_phase(results_phase)
@@ -302,6 +319,8 @@ class ResultsProcessor:
             'resultsUpdatedAt': now,
             'resultsPhase': normalized_phase,
         })
+        if finish_audit is not None:
+            race_update['finishAudit'] = finish_audit
         if normalized_phase == RESULTS_PHASE_PROVISIONAL:
             race_update['provisionalUpdatedAt'] = now
         if normalized_phase == RESULTS_PHASE_FINALIZED:
@@ -316,6 +335,8 @@ class ResultsProcessor:
         race_data['results'] = all_results
         race_data['resultsPhase'] = normalized_phase
         race_data['resultsUpdatedAt'] = now
+        if finish_audit is not None:
+            race_data['finishAudit'] = finish_audit
         if normalized_phase == RESULTS_PHASE_PROVISIONAL:
             race_data['provisionalUpdatedAt'] = now
         if normalized_phase == RESULTS_PHASE_FINALIZED:
@@ -463,6 +484,151 @@ class ResultsProcessor:
         """Full season/legacy recompute without a race override (admin finalize paths)."""
         return self.save_league_standings()
 
+    def _run_finish_audit(
+        self,
+        all_results: RaceResults,
+        registered_riders: dict[str, Any],
+        subgroup_ids: list[str],
+    ) -> dict[str, Any]:
+        """Compare derived finish times to official race-results. Never fails scoring."""
+        official_entries: list[dict[str, Any]] = []
+        fetch_errors: list[str] = []
+        zwift = getattr(self.zwift_fetcher, "zwift", None)
+        for subgroup_id in subgroup_ids:
+            if zwift is None or not hasattr(zwift, "get_subgroup_race_results"):
+                fetch_errors.append(f"{subgroup_id}: race-results client unavailable")
+                continue
+            try:
+                payload = zwift.get_subgroup_race_results(subgroup_id)
+                page = payload.get("entries") if isinstance(payload, dict) else None
+                if isinstance(page, list):
+                    official_entries.extend(page)
+                else:
+                    fetch_errors.append(f"{subgroup_id}: unexpected race-results payload")
+            except Exception as exc:
+                logger.warning(
+                    "Finish audit could not fetch official race-results for subgroup %s: %s",
+                    subgroup_id,
+                    exc,
+                )
+                fetch_errors.append(f"{subgroup_id}: {exc}")
+
+        audit = compare_derived_to_official(
+            collect_derived_finishers(all_results),
+            official_entries,
+            registered_riders=registered_riders,
+            fetch_errors=fetch_errors,
+            subgroup_count=len(subgroup_ids),
+        )
+        audit["checkedAt"] = datetime.now(timezone.utc).isoformat()
+        if audit.get("status") == STATUS_UNAVAILABLE:
+            logger.warning("Finish audit unavailable: %s", audit.get("summary"))
+        elif audit.get("status") == "mismatch":
+            logger.warning("Finish audit mismatch: %s", audit.get("summary"))
+        else:
+            logger.info("Finish audit aligned: %s", audit.get("summary"))
+        return audit
+
+    def audit_stored_finish_times(self, race_id: str) -> dict[str, Any]:
+        """Compare stored derived finish times to official race-results without rescoring."""
+        if not self.db:
+            raise FatalResultsError("Database not available")
+
+        race_doc = self.db.collection('races').document(race_id).get()
+        if not race_doc.exists:
+            raise RaceNotFoundError(f"Race {race_id} not found", context={"race_id": race_id})
+
+        race_data = race_doc.to_dict() or {}
+        event_sources = self._event_sources_from_race(race_data)
+        if not event_sources:
+            raise ConfigurationError(
+                "No Zwift Event ID(s) linked to this race",
+                context={"race_id": race_id, "event_mode": race_data.get("eventMode")},
+            )
+
+        subgroup_ids: list[str] = []
+        for source in event_sources:
+            try:
+                subgroups = self._resolve_subgroups_for_source(
+                    source=source,
+                    race_data=race_data,
+                    event_id=source.get('id'),
+                    event_secret=source.get('secret'),
+                    direct_subgroup_id=source.get('subgroupId'),
+                    custom_category=source.get('customCategory'),
+                )
+            except ResultsProcessingError as exc:
+                logger.warning("Finish audit could not resolve subgroups for %s: %s", source.get('id'), exc)
+                continue
+            for subgroup in subgroups:
+                sid = str(subgroup.get('id') or '').strip()
+                if sid and sid not in subgroup_ids:
+                    subgroup_ids.append(sid)
+
+        registered_riders = self._load_registered_riders()
+        finish_audit = self._run_finish_audit(
+            race_data.get('results') or {},
+            registered_riders,
+            subgroup_ids,
+        )
+        self.db.collection('races').document(race_id).update({'finishAudit': finish_audit})
+        return finish_audit
+
+    def _event_sources_from_race(self, race_data: dict[str, Any]) -> list[dict[str, Any]]:
+        event_sources: list[dict[str, Any]] = []
+        event_mode = race_data.get('eventMode', 'single')
+        if event_mode == 'grouped':
+            for group in race_data.get('raceGroups', []) or []:
+                category_config_map = {
+                    str(c.get('category')).strip(): c
+                    for c in group.get('categories', [])
+                    if str(c.get('category', '')).strip()
+                }
+                event_sources.append({
+                    'id': group.get('eventId'),
+                    'secret': group.get('eventSecret', ''),
+                    'customCategory': None,
+                    'groupedMode': True,
+                    'categoryConfigMap': category_config_map,
+                    'sprints': group.get('sprints', []),
+                    'segmentType': group.get('segmentType') or race_data.get('segmentType'),
+                    'startTime': group.get('startTime') or race_data.get('date'),
+                })
+            return event_sources
+
+        event_config = race_data.get('eventConfiguration', [])
+        if event_config and len(event_config) > 0:
+            for cfg in event_config:
+                event_sources.append({
+                    'id': cfg.get('eventId'),
+                    'subgroupId': cfg.get('subgroupId'),
+                    'secret': cfg.get('eventSecret'),
+                    'customCategory': cfg.get('customCategory'),
+                    'sprints': cfg.get('sprints', []),
+                    'segmentType': cfg.get('segmentType') or race_data.get('segmentType'),
+                    'startTime': cfg.get('startTime') or race_data.get('date'),
+                })
+        return event_sources
+
+    def _load_registered_riders(self) -> dict[str, Any]:
+        registered_riders: dict[str, Any] = {}
+        for doc in self.db.collection('users').stream():
+            data = doc.to_dict() or {}
+            data['_docId'] = doc.id
+            zid = data.get('zwiftId')
+            zuid = data.get('zwiftUserId')
+            conn_zwift = (data.get('connections') or {}).get('zwift') if isinstance(data.get('connections'), dict) else {}
+            conn_user_id = (conn_zwift or {}).get('userId')
+            reg = data.get('registration', {})
+            is_registered = reg.get('status') == 'complete'
+            if zid and is_registered:
+                registered_riders[str(zid)] = data
+            if zuid and is_registered:
+                registered_riders[str(zuid)] = data
+            if conn_user_id and is_registered:
+                registered_riders[str(conn_user_id)] = data
+        return registered_riders
+
     def _process_event_source(
         self,
         source: dict[str, Any],
@@ -473,6 +639,7 @@ class ResultsProcessor:
         fetch_mode: str,
         category_filter: str | None,
         results_phase: str,
+        collected_subgroup_ids: list[str] | None = None,
     ) -> bool:
         event_id = source.get('id')
         direct_subgroup_id = source.get('subgroupId')
@@ -522,6 +689,10 @@ class ResultsProcessor:
                 continue
 
             subgroup_id = subgroup['id']
+            if collected_subgroup_ids is not None:
+                sid = str(subgroup_id or "").strip()
+                if sid and sid not in collected_subgroup_ids:
+                    collected_subgroup_ids.append(sid)
             start_time_str = subgroup['eventSubgroupStart']
             subgroup_expected_category = grouped_subgroup_category_map.get(str(subgroup_id))
 

@@ -8,8 +8,9 @@ import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { useCurrentLiveRaceQuery } from '@/hooks/queries';
 import { API_URL } from '@/lib/api';
 import { User } from 'firebase/auth';
-import type { Race, LoadingStatus, ResultsAutomationConfig } from '@/types/admin';
+import type { FinishAudit, Race, LoadingStatus, ResultsAutomationConfig } from '@/types/admin';
 import ResultsModal from './ResultsModal';
+import FinishAuditPanel from './FinishAuditPanel';
 
 interface ResultsTabProps {
     user: User | null;
@@ -39,7 +40,8 @@ export default function ResultsTab({ user, races, status, setStatus }: ResultsTa
     const [viewingResultsId, setViewingResultsId] = useState<string | null>(null);
     const [liveResultsRunning, setLiveResultsRunning] = useState(false);
     const [finalizeResultsRunning, setFinalizeResultsRunning] = useState(false);
-    const [resultsCalcStatus, setResultsCalcStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [finishAuditRunning, setFinishAuditRunning] = useState(false);
+    const [resultsCalcStatus, setResultsCalcStatus] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
     const [drBatchRunning, setDrBatchRunning] = useState(false);
     const [drBatchStatus, setDrBatchStatus] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
     const [drBatchProgress, setDrBatchProgress] = useState<{
@@ -125,13 +127,16 @@ export default function ResultsTab({ user, races, status, setStatus }: ResultsTa
             });
 
             if (res.ok) {
+                const data = await res.json().catch(() => ({}));
                 await queryClient.invalidateQueries({ queryKey: ['races'] });
-                return {
-                    ok: true,
-                    message: isFinalize
-                        ? 'Race finalized successfully.'
-                        : 'Live results updated successfully.',
-                };
+                const audit = data?.finishAudit as FinishAudit | undefined;
+                const base = isFinalize
+                    ? 'Race finalized successfully.'
+                    : 'Live results updated successfully.';
+                if (audit?.summary) {
+                    return { ok: true, message: `${base} ${audit.summary}` };
+                }
+                return { ok: true, message: base };
             } else {
                 const data = await res.json();
                 const prefix = res.status === 422
@@ -152,7 +157,10 @@ export default function ResultsTab({ user, races, status, setStatus }: ResultsTa
         setLiveResultsRunning(true);
         try {
             const result = await handleRefreshResults(viewingResultsId, 'provisional');
-            setResultsCalcStatus({ type: result.ok ? 'success' : 'error', text: result.message });
+            setResultsCalcStatus({
+                type: result.ok ? (result.message.includes('mismatch') || result.message.includes('unavailable') ? 'warning' : 'success') : 'error',
+                text: result.message,
+            });
         } catch {
             setResultsCalcStatus({ type: 'error', text: 'Failed to run live results.' });
         } finally {
@@ -161,13 +169,48 @@ export default function ResultsTab({ user, races, status, setStatus }: ResultsTa
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [viewingResultsId, liveResultsRunning, finalizeResultsRunning, categoryFilter]);
 
+    const handleAuditFinish = useCallback(async () => {
+        if (!user || !viewingResultsId || liveResultsRunning || finalizeResultsRunning || finishAuditRunning) return;
+        setResultsCalcStatus(null);
+        setFinishAuditRunning(true);
+        try {
+            const token = await user.getIdToken();
+            const res = await fetch(`${API_URL}/races/${viewingResultsId}/results/audit-finish`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            });
+            const data = await res.json().catch(() => ({}));
+            await queryClient.invalidateQueries({ queryKey: ['races'] });
+            if (!res.ok) {
+                setResultsCalcStatus({
+                    type: 'error',
+                    text: data.message || 'Finish audit failed.',
+                });
+                return;
+            }
+            const summary = data.finishAudit?.summary || data.message || 'Finish audit complete.';
+            const status = data.finishAudit?.status;
+            setResultsCalcStatus({
+                type: status === 'aligned' ? 'success' : 'warning',
+                text: summary,
+            });
+        } catch {
+            setResultsCalcStatus({ type: 'error', text: 'Finish audit failed.' });
+        } finally {
+            setFinishAuditRunning(false);
+        }
+    }, [user, viewingResultsId, liveResultsRunning, finalizeResultsRunning, finishAuditRunning, queryClient]);
+
     const handleFinalizeSelectedRace = useCallback(async () => {
         if (!viewingResultsId || liveResultsRunning || finalizeResultsRunning) return;
         setResultsCalcStatus(null);
         setFinalizeResultsRunning(true);
         try {
             const result = await handleRefreshResults(viewingResultsId, 'finalized');
-            setResultsCalcStatus({ type: result.ok ? 'success' : 'error', text: result.message });
+            setResultsCalcStatus({
+                type: result.ok ? (result.message.includes('mismatch') || result.message.includes('unavailable') ? 'warning' : 'success') : 'error',
+                text: result.message,
+            });
         } catch {
             setResultsCalcStatus({ type: 'error', text: 'Failed to finalize results.' });
         } finally {
@@ -513,14 +556,21 @@ export default function ResultsTab({ user, races, status, setStatus }: ResultsTa
                                 </button>
                                 <button
                                     onClick={handleRunLiveResults}
-                                    disabled={!viewingResultsId || liveResultsRunning || finalizeResultsRunning}
+                                    disabled={!viewingResultsId || liveResultsRunning || finalizeResultsRunning || finishAuditRunning}
                                     className="w-full sm:w-auto text-sm bg-blue-600 text-white px-4 py-2 rounded hover:opacity-90 font-semibold disabled:opacity-50"
                                 >
                                     {liveResultsRunning ? 'Running Live Results...' : 'Live Results'}
                                 </button>
                                 <button
+                                    onClick={handleAuditFinish}
+                                    disabled={!viewingResultsId || liveResultsRunning || finalizeResultsRunning || finishAuditRunning}
+                                    className="w-full sm:w-auto text-sm bg-slate-600 text-white px-4 py-2 rounded hover:opacity-90 font-semibold disabled:opacity-50"
+                                >
+                                    {finishAuditRunning ? 'Checking official finish...' : 'Check official finish'}
+                                </button>
+                                <button
                                     onClick={handleFinalizeSelectedRace}
-                                    disabled={!viewingResultsId || liveResultsRunning || finalizeResultsRunning}
+                                    disabled={!viewingResultsId || liveResultsRunning || finalizeResultsRunning || finishAuditRunning}
                                     className="w-full sm:w-auto text-sm bg-emerald-600 text-white px-4 py-2 rounded hover:opacity-90 font-semibold disabled:opacity-50"
                                 >
                                     {finalizeResultsRunning ? 'Finalizing...' : 'Finalize Results'}
@@ -541,6 +591,8 @@ export default function ResultsTab({ user, races, status, setStatus }: ResultsTa
                                 <div>Last provisional update: <span className="font-medium">{formatTimestamp(viewingRace?.provisionalUpdatedAt)}</span></div>
                                 <div>Finalized at: <span className="font-medium">{formatTimestamp(viewingRace?.finalizedAt)}</span></div>
                             </div>
+
+                            <FinishAuditPanel audit={viewingRace?.finishAudit} />
 
                             <div className="space-y-2 pt-2 border-t border-border/40">
                                 <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Automation</p>
@@ -617,7 +669,13 @@ export default function ResultsTab({ user, races, status, setStatus }: ResultsTa
                             {(resultsCalcStatus || liveRaceActivateStatus) && (
                                 <div className="space-y-1">
                                     {resultsCalcStatus && (
-                                        <p className={`text-xs ${resultsCalcStatus.type === 'success' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                        <p className={`text-xs ${
+                                            resultsCalcStatus.type === 'success'
+                                                ? 'text-green-600 dark:text-green-400'
+                                                : resultsCalcStatus.type === 'warning'
+                                                  ? 'text-amber-700 dark:text-amber-300'
+                                                  : 'text-red-600 dark:text-red-400'
+                                        }`}>
                                             {resultsCalcStatus.text}
                                         </p>
                                     )}

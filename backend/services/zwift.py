@@ -411,6 +411,59 @@ class ZwiftService:
 
         return by_segment
 
+    def get_subgroup_race_results(
+        self,
+        subgroup_id: str,
+        start: int = 0,
+        limit: int = 200,
+    ) -> dict[str, Any]:
+        """
+        Fetch official finish results for a subgroup.
+
+        GET /api/link/race-results/subgroups/{subgroupId}
+
+        Returns finishers only. Does not include sprint/KOM/FAL crossings.
+        activityData.durationInMilliseconds is race elapsed time, not a
+        segment effort duration. Pagination uses start/limit (max 200).
+
+        This is not yet the league scoring source — keep segment-results
+        for finish-segment inference, DNF handling, and sprint scoring.
+
+        Returns: {"entries": [...], "totalEntryCount": int}
+        """
+        page_size = min(max(int(limit), 1), 200)
+        offset = max(int(start), 0)
+        entries: list[dict[str, Any]] = []
+        total: int | None = None
+
+        while True:
+            response = self._api_get(
+                f"/api/link/race-results/subgroups/{subgroup_id}",
+                params={"start": offset, "limit": page_size},
+            )
+            response.raise_for_status()
+            data = self._safe_json(response)
+            page = data.get("entries") or []
+            if not isinstance(page, list):
+                page = []
+            if total is None and data.get("totalEntryCount") is not None:
+                total = int(data.get("totalEntryCount") or 0)
+            entries.extend(page)
+            if not page:
+                break
+            if total is not None and len(entries) >= total:
+                break
+            if len(page) < page_size:
+                break
+            offset += page_size
+
+        if total is not None:
+            entries = entries[:total]
+        return {
+            "entries": entries,
+            "totalEntryCount": total if total is not None else len(entries),
+        }
+
     def get_event_results(
         self,
         event_sub_id: str,

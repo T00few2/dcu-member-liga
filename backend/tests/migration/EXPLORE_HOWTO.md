@@ -34,6 +34,9 @@ python tests/migration/explore_zwift_api.py \
     --official-only
 ```
 
+This also probes `GET /api/link/race-results/subgroups/{subgroupId}` for the
+first resolved subgroup (finishers only, first page).
+
 ### Resolve subgroup IDs from legacy event info
 
 ```bash
@@ -45,6 +48,9 @@ python tests/migration/explore_zwift_api.py \
 
 The script resolves subgroup IDs from the legacy event endpoint and then uses
 the first subgroup ID for subgroup-based endpoint calls.
+
+Official-only and subgroup runs also call
+`GET /api/link/race-results/subgroups/{subgroupId}` (finishers only; first page).
 
 ### Official power-curve checks (extended)
 

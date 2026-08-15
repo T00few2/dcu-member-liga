@@ -887,6 +887,7 @@ def refresh_results(race_id):
             'provisionalUpdatedAt': race_data.get('provisionalUpdatedAt'),
             'finalizedAt': race_data.get('finalizedAt'),
             'finalizeRunId': race_data.get('finalizeRunId'),
+            'finishAudit': race_data.get('finishAudit'),
         }), 200
     except FatalResultsError as e:
         logger.error(f"Results Processing fatal error: {e}")
@@ -983,6 +984,7 @@ def finalize_results(race_id):
             'provisionalUpdatedAt': race_data.get('provisionalUpdatedAt'),
             'finalizedAt': race_data.get('finalizedAt'),
             'finalizeRunId': race_data.get('finalizeRunId'),
+            'finishAudit': race_data.get('finishAudit'),
         }), 200
     except FatalResultsError as e:
         logger.error(f"Finalize results fatal error: {e}")
@@ -992,6 +994,34 @@ def finalize_results(race_id):
         return jsonify({'message': str(e)}), 500
     except Exception as e:
         logger.error(f"Finalize results unexpected error: {e}")
+        return jsonify({'message': str(e)}), 500
+
+
+@races_bp.route('/races/<race_id>/results/audit-finish', methods=['POST'])
+def audit_finish_results(race_id):
+    try:
+        verify_admin_auth()
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    try:
+        processor = ResultsProcessor(db, get_zwift_service(), get_zwift_game_service())
+        finish_audit = processor.audit_stored_finish_times(race_id)
+        return jsonify({
+            'message': finish_audit.get('summary') or 'Finish audit complete',
+            'finishAudit': finish_audit,
+        }), 200
+    except FatalResultsError as e:
+        logger.error(f"Finish audit fatal error: {e}")
+        return jsonify({'message': str(e)}), 422
+    except ResultsProcessingError as e:
+        logger.error(f"Finish audit domain error: {e}")
+        return jsonify({'message': str(e)}), 500
+    except Exception as e:
+        logger.error(f"Finish audit unexpected error: {e}")
         return jsonify({'message': str(e)}), 500
 
 

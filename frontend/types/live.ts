@@ -195,6 +195,7 @@ export interface Race {
     provisionalUpdatedAt?: string;
     finalizedAt?: string;
     finalizeRunId?: string;
+    finishAudit?: import('./admin').FinishAudit;
     resultsAutomation?: {
         automationEnabled?: boolean;
         pollingIntervalSeconds?: number;

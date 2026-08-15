@@ -602,6 +602,30 @@
         "finalizeRunId": {
           "type": "string"
         },
+        "finishAudit": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Derived finish vs official GET /api/link/race-results/subgroups/{subgroupId}. Audit only; does not change scored finishTime.",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": ["aligned", "mismatch", "unavailable"]
+            },
+            "summary": { "type": "string" },
+            "checkedAt": { "type": "string" },
+            "comparedCount": { "type": "integer" },
+            "alignedCount": { "type": "integer" },
+            "officialEntryCount": { "type": "integer" },
+            "subgroupCount": { "type": "integer" },
+            "issues": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
         "resultsAutomation": {
           "type": "object",
           "additionalProperties": true,

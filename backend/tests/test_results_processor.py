@@ -494,6 +494,65 @@ class TestProcessRaceResultsBranching:
         assert payload.get('resultsPhase') == RESULTS_PHASE_FINALIZED
         assert payload.get('finalizedAt') is not None
         assert payload.get('finalizeRunId') == 'run-123'
+        assert payload.get('finishAudit', {}).get('status') == 'unavailable'
+
+    def test_provisional_refresh_writes_finish_audit(self):
+        from services.results_processor import ResultsProcessor
+
+        race_data = make_race_data()
+        race_data.update({
+            'eventMode': 'multi',
+            'eventConfiguration': [
+                {'eventId': 'm-1', 'subgroupId': 'sg-1', 'customCategory': 'A', 'eventSecret': 's1'},
+            ],
+        })
+        db = build_process_results_db(race_data)
+
+        rp = ResultsProcessor(db, MagicMock(), MagicMock())
+        rp._process_event_source = MagicMock(side_effect=lambda *args, **kwargs: args[4].update({'A': []}) or True)
+        rp.save_league_standings = MagicMock(return_value={})
+
+        rp.process_race_results(
+            race_data['id'],
+            fetch_mode=FETCH_MODE_FINISHERS,
+            category_filter=CATEGORY_FILTER_ALL,
+            results_phase=RESULTS_PHASE_PROVISIONAL,
+        )
+
+        payload = db.collection('races').document.return_value.update.call_args.args[0]
+        assert payload.get('finishAudit', {}).get('status') == 'unavailable'
+
+    def test_audit_stored_finish_times_updates_only_audit(self):
+        from services.results_processor import ResultsProcessor
+
+        race_data = make_race_data()
+        race_data.update({
+            'eventMode': 'multi',
+            'eventConfiguration': [
+                {'eventId': 'm-1', 'subgroupId': 'sg-1', 'customCategory': 'A', 'eventSecret': 's1'},
+            ],
+            'results': {
+                'A': [{'zwiftId': '1', 'name': 'Fin', 'raceStatus': 'FIN', 'finishTime': 1000, 'activityId': 'act-1'}],
+            },
+        })
+        db = build_process_results_db(race_data)
+        zwift = MagicMock()
+        zwift.get_subgroup_race_results.return_value = {
+            'entries': [{
+                'userId': 'uuid-1',
+                'activityData': {'activityId': 'act-1', 'durationInMilliseconds': 1000},
+            }],
+            'totalEntryCount': 1,
+        }
+        rp = ResultsProcessor(db, zwift, MagicMock())
+        rp._load_registered_riders = MagicMock(return_value={})
+
+        audit = rp.audit_stored_finish_times(race_data['id'])
+        assert audit['status'] == 'aligned'
+        race_ref = db.collection('races').document.return_value
+        payload = race_ref.update.call_args.args[0]
+        assert list(payload.keys()) == ['finishAudit']
+        assert payload['finishAudit']['status'] == 'aligned'
 
 
 class TestIngestPrefetchedResults:
