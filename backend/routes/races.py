@@ -17,6 +17,7 @@ from services.dual_recording_admin_core import get_dual_recording_result, DualRe
 from services.zwift_tokens import resolve_user_doc_id_from_auth_uid
 from services.race_signups import (
     SignupError,
+    count_signups_by_race,
     list_my_signups,
     list_race_signups,
     maybe_sync_after_race_save,
@@ -486,6 +487,17 @@ def _load_auth_user() -> tuple[str, dict[str, Any]]:
     if not user_doc.exists:
         raise SignupError("User profile not found", 404)
     return str(user_doc_id), user_doc.to_dict() or {}
+
+
+@races_bp.route('/races/signup-counts', methods=['GET'])
+def get_race_signup_counts():
+    try:
+        return jsonify({"counts": count_signups_by_race()}), 200
+    except SignupError as e:
+        return jsonify({'message': e.message}), e.status_code
+    except Exception as e:
+        logger.error("List race signup counts error: %s", e)
+        return jsonify({'message': str(e)}), 500
 
 
 @races_bp.route('/races/signups/mine', methods=['GET'])

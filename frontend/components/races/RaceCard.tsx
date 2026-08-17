@@ -13,7 +13,7 @@ import SprintsByLap, {
 } from '@/components/races/SprintsByLap';
 import type { Race, Sprint, EventCategoryConfig, CategoryConfig } from '@/types/live';
 import type { LeagueSettings, RaceGroup } from '@/types/admin';
-import { useRouteElevationQuery, useRaceSegmentsQuery, useMyRaceSignupsQuery } from '@/hooks/queries';
+import { useRouteElevationQuery, useRaceSegmentsQuery, useMyRaceSignupsQuery, useRaceSignupCountsQuery } from '@/hooks/queries';
 import { useAuth } from '@/lib/auth-context';
 import { scaleRaceDistanceKm } from '@/hooks/useLeagueData';
 import { formatOmgangeDisplay } from '@/lib/raceLaps';
@@ -60,6 +60,14 @@ function ExternalLinkIcon({ size }: { size: number }) {
             <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
             <polyline points="15 3 21 3 21 9"></polyline>
             <line x1="10" y1="14" x2="21" y2="3"></line>
+        </svg>
+    );
+}
+
+function CheckIcon({ size }: { size: number }) {
+    return (
+        <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <polyline points="20 6 9 17 4 12"></polyline>
         </svg>
     );
 }
@@ -132,7 +140,9 @@ export default function RaceCard({
     const { user, isRegistered } = useAuth();
     const queryClient = useQueryClient();
     const mySignupsQuery = useMyRaceSignupsQuery();
+    const signupCountsQuery = useRaceSignupCountsQuery();
     const persistedStatus = mySignupsQuery.data?.[race.id]?.status;
+    const signupCount = signupCountsQuery.data?.[race.id] ?? 0;
     const [signupState, setSignupState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [signupMessage, setSignupMessage] = useState('');
     const userConfig = race.eventMode === 'multi' ? getUserEventConfig(race, userCategory) : null;
@@ -372,7 +382,7 @@ export default function RaceCard({
                     </div>
                 </div>
 
-                <div className={`grid grid-cols-3 gap-4 ${isPublicVariant ? 'mb-4' : 'mb-6'} text-sm`}>
+                <div className={`grid grid-cols-2 sm:grid-cols-4 gap-4 ${isPublicVariant ? 'mb-4' : 'mb-6'} text-sm`}>
                     <div className="bg-muted/20 p-3 rounded text-center">
                         <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Distance</div>
                         <div className="font-semibold text-card-foreground">
@@ -389,6 +399,12 @@ export default function RaceCard({
                         <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Omgange</div>
                         <div className="font-semibold text-card-foreground flex justify-center items-center h-full">
                             {race.routeName ? omgangeDisplay : 'TBD'}
+                        </div>
+                    </div>
+                    <div className="bg-muted/20 p-3 rounded text-center">
+                        <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Tilmeldte</div>
+                        <div className="font-semibold text-card-foreground tabular-nums">
+                            {signupCountsQuery.isLoading ? '–' : signupCount}
                         </div>
                     </div>
                 </div>
@@ -444,15 +460,19 @@ export default function RaceCard({
                             <div className="flex flex-col gap-1">
                                 {persistedStatus === 'pending' || persistedStatus === 'registered' ? (
                                     <>
-                                        <div className="flex gap-2">
-                                            <div className="flex-1 bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-center shadow-md">
+                                        <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/30 px-4 py-3">
+                                            <span
+                                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300 text-sm font-semibold"
+                                                role="status"
+                                            >
+                                                <CheckIcon size={14} />
                                                 {persistedStatus === 'pending' ? 'Tilmeldt' : 'Tilmeldt på Zwift'}
-                                            </div>
+                                            </span>
                                             <button
                                                 type="button"
                                                 onClick={handleZwiftUnsignup}
                                                 disabled={signupState === 'loading'}
-                                                className="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg text-center shadow-sm disabled:opacity-60"
+                                                className="text-sm font-semibold text-red-700 dark:text-red-400 border border-red-300 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-950/40 px-3 py-1.5 rounded-lg transition disabled:opacity-60"
                                             >
                                                 {signupState === 'loading' ? '...' : 'Afmeld'}
                                             </button>

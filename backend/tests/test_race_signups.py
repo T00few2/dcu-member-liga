@@ -377,6 +377,30 @@ def test_sync_without_event_is_400(fake_db: FakeDB, zwift: FakeZwiftService) -> 
     assert exc.value.status_code == 400
 
 
+def test_count_signups_by_race_skips_failed(fake_db: FakeDB) -> None:
+    fake_db.add_race("r1", {"name": "Race 1", "date": _future_date()})
+    fake_db.add_race("r2", {"name": "Race 2", "date": _future_date()})
+    fake_db.add_signup("r1", "1", {"status": "pending"})
+    fake_db.add_signup("r1", "2", {"status": "registered"})
+    fake_db.add_signup("r1", "3", {"status": "failed"})
+    fake_db.add_signup("r2", "1", {"status": "registered"})
+    assert rs.count_signups_by_race() == {"r1": 2, "r2": 1}
+
+
+def test_signup_counts_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    db = FakeDB()
+    db.add_race("r1", {"name": "Race", "date": _future_date()})
+    db.add_signup("r1", "1", {"status": "pending"})
+    monkeypatch.setattr(races, "db", db)
+    monkeypatch.setattr(rs, "db", db)
+
+    app = Flask(__name__)
+    with app.test_request_context("/races/signup-counts", method="GET"):
+        response, status = races.get_race_signup_counts()
+    assert status == 200
+    assert response.get_json()["counts"] == {"r1": 1}
+
+
 def test_signup_route_returns_pending(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(races, "verify_user_token", lambda _req: {"uid": "auth1"})
     monkeypatch.setattr(races, "resolve_user_doc_id_from_auth_uid", lambda _uid: "100001")

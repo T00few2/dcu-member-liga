@@ -409,6 +409,32 @@ def list_my_signups(zwift_id: str) -> dict[str, dict[str, str]]:
     return result
 
 
+def _signup_race_id(doc, data: dict[str, Any]) -> str:
+    race_id = str(data.get("raceId") or "").strip()
+    if race_id:
+        return race_id
+    try:
+        return str(doc.reference.parent.parent.id)
+    except Exception:
+        return ""
+
+
+def count_signups_by_race() -> dict[str, int]:
+    """Active (pending + registered) signup counts keyed by race id."""
+    if not db:
+        raise SignupError("DB not available", 500)
+    counts: dict[str, int] = {}
+    for doc in db.collection_group("signups").stream():
+        data = doc.to_dict() or {}
+        if str(data.get("status") or "") not in {SIGNUP_PENDING, SIGNUP_REGISTERED}:
+            continue
+        race_id = _signup_race_id(doc, data)
+        if not race_id:
+            continue
+        counts[race_id] = counts.get(race_id, 0) + 1
+    return counts
+
+
 def _has_pending_or_failed(race_id: str) -> bool:
     for doc in _signups_col(race_id).stream():
         status = str((doc.to_dict() or {}).get("status") or "")

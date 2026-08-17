@@ -25,6 +25,19 @@ export function useMyRaceSignupsQuery() {
     });
 }
 
+export function useRaceSignupCountsQuery() {
+    return useQuery<Record<string, number>>({
+        queryKey: ['race-signups', 'counts'],
+        queryFn: async () => {
+            const res = await fetch(`${API_URL}/races/signup-counts`);
+            if (!res.ok) throw new Error('Failed to fetch race signup counts');
+            const data = await res.json();
+            return data.counts ?? {};
+        },
+        staleTime: 30_000,
+    });
+}
+
 export interface RaceSignupRow {
     zwiftId: string;
     name: string;

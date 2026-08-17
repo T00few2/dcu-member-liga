@@ -7,7 +7,7 @@ export { useRoutesQuery } from './useRoutesQuery';
 export { useRouteTimeEstimatesQuery } from './useRouteTimeEstimatesQuery';
 export type { RouteTimeEstimate, RouteTimeEstimatesData } from './useRouteTimeEstimatesQuery';
 export { useParticipantsQuery } from './useParticipantsQuery';
-export { useMyRaceSignupsQuery, useRaceSignupsQuery } from './useRaceSignupsQuery';
+export { useMyRaceSignupsQuery, useRaceSignupsQuery, useRaceSignupCountsQuery } from './useRaceSignupsQuery';
 export type { RaceSignupRow, MyRaceSignupStatus } from './useRaceSignupsQuery';
 export { usePostsQuery } from './usePostsQuery';
 export { useAdminStatsQuery } from './useAdminStatsQuery';
