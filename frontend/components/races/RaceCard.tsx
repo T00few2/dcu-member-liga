@@ -412,12 +412,17 @@ export default function RaceCard({
                             {race.routeName ? omgangeDisplay : 'TBD'}
                         </div>
                     </div>
-                    <div className="bg-muted/20 p-3 rounded text-center">
+                    <Link
+                        href={`/participants?race=${encodeURIComponent(race.id)}`}
+                        className="group block bg-muted/20 hover:bg-muted/40 p-3 rounded text-center transition-colors"
+                        title={`Se tilmeldte til ${race.name}`}
+                    >
                         <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Tilmeldte</div>
-                        <div className="font-semibold text-card-foreground tabular-nums">
+                        <div className="font-semibold text-card-foreground tabular-nums inline-flex items-center gap-1 group-hover:text-primary transition-colors">
                             {signupCountsQuery.isLoading ? '–' : signupCount}
+                            <span aria-hidden className="text-primary opacity-50 group-hover:opacity-100 transition-opacity">→</span>
                         </div>
-                    </div>
+                    </Link>
                 </div>
 
                 {race.map && race.routeName && (
@@ -502,7 +507,10 @@ export default function RaceCard({
                                                 ? 'Du er tilmeldt på Zwift. '
                                                 : ''}
                                             Se tilmeldte under{' '}
-                                            <Link href="/participants" className="text-primary underline hover:no-underline">
+                                            <Link
+                                                href={`/participants?race=${encodeURIComponent(race.id)}`}
+                                                className="text-primary underline hover:no-underline"
+                                            >
                                                 Deltagere
                                             </Link>
                                             .
