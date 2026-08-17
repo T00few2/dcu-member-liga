@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
 import { getZwiftInsiderUrl, API_URL } from '@/lib/api';
-import { formatDateLong, formatTimeWithTz, fromTimestamp } from '@/lib/formatDate';
+import { formatDateLong, formatDateShort, formatTimeWithTz, fromTimestamp } from '@/lib/formatDate';
+import ConfirmUnsignupModal from '@/components/races/ConfirmUnsignupModal';
 import PointsSplitBadge from '@/components/races/PointsSplitBadge';
 import RouteElevationChart from '@/components/races/RouteElevationChart';
 import SprintsByLap, {
@@ -145,7 +146,7 @@ export default function RaceCard({
     const signupCount = signupCountsQuery.data?.[race.id] ?? 0;
     const [signupState, setSignupState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [signupMessage, setSignupMessage] = useState('');
-    const [confirmUnsignup, setConfirmUnsignup] = useState(false);
+    const [showUnsignupConfirm, setShowUnsignupConfirm] = useState(false);
     const isSignedUp = persistedStatus === 'pending' || persistedStatus === 'registered';
     const userConfig = race.eventMode === 'multi' ? getUserEventConfig(race, userCategory) : null;
     const userSingleConfig = (race.eventMode !== 'multi' && race.eventMode !== 'grouped') ? getUserSingleConfig(race, userCategory) : null;
@@ -285,14 +286,6 @@ export default function RaceCard({
         return null;
     })();
 
-    // "Afmeld" is a quiet text button, so it asks for a second click before acting.
-    // The confirm state falls back to idle so a stray tap doesn't stay armed.
-    useEffect(() => {
-        if (!confirmUnsignup) return;
-        const timer = setTimeout(() => setConfirmUnsignup(false), 4000);
-        return () => clearTimeout(timer);
-    }, [confirmUnsignup]);
-
     const handleZwiftSignup = async () => {
         if (!user || signupState === 'loading') return;
         setSignupState('loading');
@@ -322,7 +315,6 @@ export default function RaceCard({
         if (!user || signupState === 'loading') return;
         setSignupState('loading');
         setSignupMessage('');
-        setConfirmUnsignup(false);
         try {
             const token = await user.getIdToken();
             const res = await fetch(`${API_URL}/races/${race.id}/signup`, {
@@ -341,6 +333,10 @@ export default function RaceCard({
         } catch {
             setSignupState('error');
             setSignupMessage('Netværksfejl – prøv igen');
+        } finally {
+            // Close the dialog either way — success flips the card back to "Tilmeld",
+            // failure surfaces the message under the card.
+            setShowUnsignupConfirm(false);
         }
     };
 
@@ -492,19 +488,11 @@ export default function RaceCard({
                                             </span>
                                             <button
                                                 type="button"
-                                                onClick={() => (confirmUnsignup ? handleZwiftUnsignup() : setConfirmUnsignup(true))}
+                                                onClick={() => setShowUnsignupConfirm(true)}
                                                 disabled={signupState === 'loading'}
-                                                className={`shrink-0 text-xs font-semibold underline underline-offset-2 transition disabled:opacity-60 ${
-                                                    confirmUnsignup
-                                                        ? 'text-red-700 dark:text-red-400'
-                                                        : 'text-green-800/70 dark:text-green-300/70 hover:text-red-700 dark:hover:text-red-400'
-                                                }`}
+                                                className="shrink-0 text-xs font-semibold underline underline-offset-2 transition disabled:opacity-60 text-green-800/70 dark:text-green-300/70 hover:text-red-700 dark:hover:text-red-400"
                                             >
-                                                {signupState === 'loading'
-                                                    ? 'Afmelder...'
-                                                    : confirmUnsignup
-                                                    ? 'Bekræft afmelding?'
-                                                    : 'Afmeld'}
+                                                {signupState === 'loading' ? 'Afmelder...' : 'Afmeld'}
                                             </button>
                                         </div>
                                         <p className="text-xs text-center text-muted-foreground">
@@ -513,7 +501,7 @@ export default function RaceCard({
                                                 : persistedStatus === 'registered'
                                                 ? 'Du er tilmeldt på Zwift. '
                                                 : ''}
-                                            Se alle under{' '}
+                                            Se tilmeldte under{' '}
                                             <Link href="/participants" className="text-primary underline hover:no-underline">
                                                 Deltagere
                                             </Link>
@@ -552,6 +540,16 @@ export default function RaceCard({
                     </div>
                 ) : null}
             </div>
+
+            <ConfirmUnsignupModal
+                isOpen={showUnsignupConfirm}
+                raceName={race.name}
+                raceDateLabel={`den ${formatDateShort(raceDate)}`}
+                categoryHint={categoryHint}
+                isLoading={signupState === 'loading'}
+                onConfirm={handleZwiftUnsignup}
+                onClose={() => setShowUnsignupConfirm(false)}
+            />
         </div>
     );
 }
