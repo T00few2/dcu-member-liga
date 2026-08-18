@@ -1,6 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import { useAdminStatsQuery } from '@/hooks/queries';
+import type { DualRecordingBucket, StatsData } from '@/hooks/queries';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     PieChart, Pie, Cell, Legend,
@@ -27,6 +29,33 @@ const CHART_PALETTE = [
     '#7c3aed', '#0891b2', '#dc2626', '#059669',
     '#d97706', '#6366f1', '#db2777', '#0d9488',
 ];
+
+// ── Dual recording ────────────────────────────────────────────────────────────
+const DR_BUCKETS: DualRecordingBucket[] = ['required', 'notRequired', 'unknown'];
+
+const DR_LABELS: Record<DualRecordingBucket, string> = {
+    required: 'Dual recording required',
+    notRequired: 'No dual recording',
+    unknown: 'Unknown trainer',
+};
+
+const DR_SHORT_LABELS: Record<DualRecordingBucket, string> = {
+    required: 'Dual',
+    notRequired: 'No dual',
+    unknown: 'Unknown',
+};
+
+const DR_COLORS: Record<DualRecordingBucket, string> = {
+    required: '#c00418',
+    notRequired: '#059669',
+    unknown: '#6b7280',
+};
+
+const ALL_CATEGORIES = '__all__';
+
+function pct(value: number, total: number) {
+    return total > 0 ? Math.round((value / total) * 100) : 0;
+}
 
 // ── Small helpers ─────────────────────────────────────────────────────────────
 
@@ -312,29 +341,11 @@ export default function StatsDashboard() {
                 </div>
             </div>
 
-            {/* ── Trainer + Phenotype + Verification ── */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* ── Trainer types & dual recording ── */}
+            <TrainerAnalysis stats={stats} />
 
-                {/* Trainer types */}
-                <div className="bg-card rounded-xl border border-border p-6 shadow-sm">
-                    <SectionTitle>Trainer Types</SectionTitle>
-                    {stats.trainerDistribution.length === 0 ? (
-                        <p className="text-muted-foreground text-sm">No data yet.</p>
-                    ) : (
-                        <ul className="space-y-2">
-                            {stats.trainerDistribution.map(({ trainer, count }, i) => (
-                                <li key={trainer} className="flex items-center gap-2">
-                                    <div
-                                        className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                                        style={{ background: CHART_PALETTE[i % CHART_PALETTE.length] }}
-                                    />
-                                    <span className="text-sm text-muted-foreground flex-1 truncate" title={trainer}>{trainer}</span>
-                                    <span className="text-sm font-semibold text-foreground">{count}</span>
-                                </li>
-                            ))}
-                        </ul>
-                    )}
-                </div>
+            {/* ── Phenotype + Verification ── */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
                 {/* Phenotype distribution */}
                 <div className="bg-card rounded-xl border border-border p-6 shadow-sm">
@@ -389,6 +400,256 @@ export default function StatsDashboard() {
                 </div>
             </div>
 
+        </div>
+    );
+}
+
+// ── Trainer analysis (per kategori + dual recording) ──────────────────────────
+
+function DualTip({ active, payload, label }: any) {
+    if (!active || !payload?.length) return null;
+    const row = payload[0].payload;
+    return (
+        <div className="bg-card border border-border rounded-lg px-3 py-2 shadow text-sm">
+            <p className="font-medium text-foreground mb-1">{label}</p>
+            {DR_BUCKETS.map(bucket => (
+                <p key={bucket} style={{ color: DR_COLORS[bucket] }}>
+                    {DR_LABELS[bucket]}: <strong>{row[bucket]}</strong> ({pct(row[bucket], row.total)}%)
+                </p>
+            ))}
+            <p className="text-muted-foreground mt-1">Riders: {row.total}</p>
+        </div>
+    );
+}
+
+function TrainerAnalysis({ stats }: { stats: StatsData }) {
+    const [category, setCategory] = useState<string>(ALL_CATEGORIES);
+    const [mode, setMode] = useState<'count' | 'percent'>('count');
+
+    const trainerByCategory = stats.trainerByCategory ?? [];
+    const dualByCategory = stats.dualRecordingByCategory ?? [];
+    const categories = stats.categoryDistribution.map(c => c.category);
+    const isAll = category === ALL_CATEGORIES;
+    const scopeLabel = isAll ? 'all kategorier' : category;
+
+    const trainers = isAll
+        ? (stats.trainerDistribution ?? [])
+        : (trainerByCategory.find(c => c.category === category)?.trainers ?? []);
+    const maxTrainerCount = trainers.reduce((max, t) => Math.max(max, t.count), 0);
+
+    // Dual-recording counts for the selected scope
+    const scopeRow = dualByCategory.find(d => d.category === category);
+    const scopeCounts: Record<DualRecordingBucket, number> = isAll
+        ? {
+            required: (stats.dualRecordingDistribution ?? []).find(d => d.bucket === 'required')?.count ?? 0,
+            notRequired: (stats.dualRecordingDistribution ?? []).find(d => d.bucket === 'notRequired')?.count ?? 0,
+            unknown: (stats.dualRecordingDistribution ?? []).find(d => d.bucket === 'unknown')?.count ?? 0,
+        }
+        : {
+            required: scopeRow?.required ?? 0,
+            notRequired: scopeRow?.notRequired ?? 0,
+            unknown: scopeRow?.unknown ?? 0,
+        };
+    const scopeTotal = DR_BUCKETS.reduce((sum, bucket) => sum + scopeCounts[bucket], 0);
+    const donutData = DR_BUCKETS
+        .map(bucket => ({ bucket, name: DR_LABELS[bucket], count: scopeCounts[bucket] }))
+        .filter(d => d.count > 0);
+
+    // Percentages are kept unrounded for the bars so stacks always reach 100%;
+    // the tooltip rounds off the raw counts instead.
+    const chartData = dualByCategory.map(row => ({
+        category: row.category,
+        total: row.total,
+        required: row.required,
+        notRequired: row.notRequired,
+        unknown: row.unknown,
+        requiredPct: row.total > 0 ? (row.required / row.total) * 100 : 0,
+        notRequiredPct: row.total > 0 ? (row.notRequired / row.total) * 100 : 0,
+        unknownPct: row.total > 0 ? (row.unknown / row.total) * 100 : 0,
+    }));
+    const percentMode = mode === 'percent';
+
+    return (
+        <div className="space-y-6">
+
+            {/* Scope selector */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold text-foreground">Trainer Analysis</h2>
+                <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                    Kategori
+                    <select
+                        value={category}
+                        onChange={(e) => setCategory(e.target.value)}
+                        className="bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground"
+                    >
+                        <option value={ALL_CATEGORIES}>All kategorier</option>
+                        {categories.map(c => (
+                            <option key={c} value={c}>{c}</option>
+                        ))}
+                    </select>
+                </label>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+
+                {/* Trainer types for the selected kategori */}
+                <div className="lg:col-span-3 bg-card rounded-xl border border-border p-6 shadow-sm">
+                    <div className="flex items-baseline justify-between mb-4">
+                        <h3 className="text-lg font-semibold text-foreground">Trainer Types</h3>
+                        <span className="text-sm text-muted-foreground">
+                            {scopeLabel} · {trainers.length} models
+                        </span>
+                    </div>
+                    {trainers.length === 0 ? (
+                        <p className="text-muted-foreground text-sm">No trainer data for this kategori.</p>
+                    ) : (
+                        <>
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 mb-3">
+                                {DR_BUCKETS.map(bucket => (
+                                    <span key={bucket} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                        <span
+                                            className="inline-block w-2.5 h-2.5 rounded-full"
+                                            style={{ background: DR_COLORS[bucket] }}
+                                        />
+                                        {DR_LABELS[bucket]}
+                                    </span>
+                                ))}
+                            </div>
+                            <ul className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
+                                {trainers.map(({ trainer, count, dualRecording }) => {
+                                    const bucket: DualRecordingBucket = dualRecording ?? 'unknown';
+                                    return (
+                                        <li key={trainer} className="flex items-center gap-2">
+                                            <div
+                                                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                                style={{ background: DR_COLORS[bucket] }}
+                                                title={DR_LABELS[bucket]}
+                                            />
+                                            <span className="text-sm text-muted-foreground flex-1 truncate" title={trainer}>
+                                                {trainer}
+                                            </span>
+                                            <span className="hidden sm:block w-32 h-1.5 rounded-full bg-border overflow-hidden">
+                                                <span
+                                                    className="block h-full rounded-full"
+                                                    style={{
+                                                        width: `${maxTrainerCount > 0 ? (count / maxTrainerCount) * 100 : 0}%`,
+                                                        background: DR_COLORS[bucket],
+                                                    }}
+                                                />
+                                            </span>
+                                            <span className="text-sm font-semibold text-foreground w-8 text-right">{count}</span>
+                                            <span className="text-xs text-muted-foreground w-10 text-right">
+                                                {pct(count, scopeTotal)}%
+                                            </span>
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+                        </>
+                    )}
+                </div>
+
+                {/* Dual recording split for the selected kategori */}
+                <div className="lg:col-span-2 bg-card rounded-xl border border-border p-6 shadow-sm flex flex-col">
+                    <div className="flex items-baseline justify-between mb-4">
+                        <h3 className="text-lg font-semibold text-foreground">Dual Recording</h3>
+                        <span className="text-sm text-muted-foreground">{scopeLabel}</span>
+                    </div>
+                    {scopeTotal === 0 ? (
+                        <p className="text-muted-foreground text-sm">No trainer data for this kategori.</p>
+                    ) : (
+                        <>
+                            <ResponsiveContainer width="100%" height={180}>
+                                <PieChart>
+                                    <Pie
+                                        data={donutData}
+                                        dataKey="count"
+                                        nameKey="name"
+                                        cx="50%"
+                                        cy="50%"
+                                        outerRadius={70}
+                                        innerRadius={34}
+                                        paddingAngle={2}
+                                    >
+                                        {donutData.map(entry => (
+                                            <Cell key={entry.bucket} fill={DR_COLORS[entry.bucket]} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip formatter={(value, name) => [`${value} (${pct(Number(value), scopeTotal)}%)`, name]} />
+                                </PieChart>
+                            </ResponsiveContainer>
+                            <ul className="mt-3 space-y-1.5">
+                                {DR_BUCKETS.map(bucket => (
+                                    <li key={bucket} className="flex items-center gap-2 text-sm">
+                                        <span
+                                            className="inline-block w-3 h-3 rounded-full flex-shrink-0"
+                                            style={{ background: DR_COLORS[bucket] }}
+                                        />
+                                        <span className="text-muted-foreground flex-1">{DR_LABELS[bucket]}</span>
+                                        <span className="font-semibold text-foreground">{scopeCounts[bucket]}</span>
+                                        <span className="text-xs text-muted-foreground w-10 text-right">
+                                            {pct(scopeCounts[bucket], scopeTotal)}%
+                                        </span>
+                                    </li>
+                                ))}
+                            </ul>
+                            <p className="text-xs text-muted-foreground mt-3">
+                                Riders with no registered trainer — or a trainer that is no longer in the
+                                trainer catalog — are counted as unknown.
+                            </p>
+                        </>
+                    )}
+                </div>
+            </div>
+
+            {/* Dual recording split across all kategorier */}
+            <div className="bg-card rounded-xl border border-border p-6 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                    <h3 className="text-lg font-semibold text-foreground">Dual Recording by Kategori</h3>
+                    <div className="flex rounded-lg border border-border overflow-hidden text-sm">
+                        {(['count', 'percent'] as const).map(m => (
+                            <button
+                                key={m}
+                                onClick={() => setMode(m)}
+                                className={`px-3 py-1.5 transition ${
+                                    mode === m
+                                        ? 'bg-primary text-primary-foreground'
+                                        : 'text-muted-foreground hover:text-foreground'
+                                }`}
+                            >
+                                {m === 'count' ? 'Riders' : 'Share'}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                {chartData.length === 0 ? (
+                    <p className="text-muted-foreground text-sm">No trainer data yet.</p>
+                ) : (
+                    <ResponsiveContainer width="100%" height={320}>
+                        <BarChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+                            <XAxis dataKey="category" tick={{ fill: 'var(--color-muted-foreground)', fontSize: 12 }} />
+                            <YAxis
+                                allowDecimals={false}
+                                domain={percentMode ? [0, 100] : undefined}
+                                tickFormatter={percentMode ? (v) => `${v}%` : undefined}
+                                tick={{ fill: 'var(--color-muted-foreground)', fontSize: 12 }}
+                            />
+                            <Tooltip content={<DualTip />} cursor={{ fill: 'var(--color-border)', opacity: 0.3 }} />
+                            <Legend wrapperStyle={{ fontSize: 12 }} />
+                            {DR_BUCKETS.map(bucket => (
+                                <Bar
+                                    key={bucket}
+                                    dataKey={percentMode ? `${bucket}Pct` : bucket}
+                                    name={DR_SHORT_LABELS[bucket]}
+                                    stackId="dr"
+                                    fill={DR_COLORS[bucket]}
+                                />
+                            ))}
+                        </BarChart>
+                    </ResponsiveContainer>
+                )}
+            </div>
         </div>
     );
 }
