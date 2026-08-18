@@ -86,6 +86,26 @@ describe('StatsDashboard trainer analysis', () => {
         expectDualRow('Unknown trainer', 2, 33);
     });
 
+    it('keeps trainer shares correct when the API omits the dual-recording fields', () => {
+        // An older /admin/stats deployment returns trainer counts only. Trainer
+        // percentages must come from the trainer counts, not the dual totals.
+        const { trainerByCategory, dualRecordingDistribution, dualRecordingByCategory, ...legacy } = STATS;
+        const legacyStats = {
+            ...legacy,
+            trainerDistribution: STATS.trainerDistribution.map(({ trainer, count }) => ({ trainer, count })),
+        };
+        useAdminStatsQuery.mockReturnValue({ isLoading: false, isError: false, data: legacyStats });
+        render(<StatsDashboard />);
+
+        // 3 of the 6 riders ride a Wahoo Kickr Core.
+        const row = within(card('Trainer Types')).getByText('Wahoo Kickr Core').closest('li');
+        expect(row).toHaveTextContent('50%');
+
+        expect(
+            within(card('Dual Recording')).getByText(/Dual recording data is not in this stats response yet/)
+        ).toBeInTheDocument();
+    });
+
     it('conditions both trainer types and dual recording on the selected kategori', async () => {
         const user = userEvent.setup();
         useAdminStatsQuery.mockReturnValue({ isLoading: false, isError: false, data: STATS });
