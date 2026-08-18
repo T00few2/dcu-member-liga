@@ -436,6 +436,7 @@ function TrainerAnalysis({ stats }: { stats: StatsData }) {
         ? (stats.trainerDistribution ?? [])
         : (trainerByCategory.find(c => c.category === category)?.trainers ?? []);
     const maxTrainerCount = trainers.reduce((max, t) => Math.max(max, t.count), 0);
+    const trainerTotal = trainers.reduce((sum, t) => sum + t.count, 0);
 
     // Dual-recording counts for the selected scope
     const scopeRow = dualByCategory.find(d => d.category === category);
@@ -468,6 +469,13 @@ function TrainerAnalysis({ stats }: { stats: StatsData }) {
         unknownPct: row.total > 0 ? (row.unknown / row.total) * 100 : 0,
     }));
     const percentMode = mode === 'percent';
+
+    // An older /admin/stats deployment returns trainer counts without the
+    // dual-recording breakdown; say so instead of claiming there is no data.
+    const dualDataMissing = trainerTotal > 0 && scopeTotal === 0;
+    const emptyDualMessage = dualDataMissing
+        ? 'Dual recording data is not in this stats response yet — hit Refresh to reload it.'
+        : 'No trainer data for this kategori.';
 
     return (
         <div className="space-y-6">
@@ -539,7 +547,7 @@ function TrainerAnalysis({ stats }: { stats: StatsData }) {
                                             </span>
                                             <span className="text-sm font-semibold text-foreground w-8 text-right">{count}</span>
                                             <span className="text-xs text-muted-foreground w-10 text-right">
-                                                {pct(count, scopeTotal)}%
+                                                {pct(count, trainerTotal)}%
                                             </span>
                                         </li>
                                     );
@@ -556,7 +564,7 @@ function TrainerAnalysis({ stats }: { stats: StatsData }) {
                         <span className="text-sm text-muted-foreground">{scopeLabel}</span>
                     </div>
                     {scopeTotal === 0 ? (
-                        <p className="text-muted-foreground text-sm">No trainer data for this kategori.</p>
+                        <p className="text-muted-foreground text-sm">{emptyDualMessage}</p>
                     ) : (
                         <>
                             <ResponsiveContainer width="100%" height={180}>
@@ -623,7 +631,7 @@ function TrainerAnalysis({ stats }: { stats: StatsData }) {
                     </div>
                 </div>
                 {chartData.length === 0 ? (
-                    <p className="text-muted-foreground text-sm">No trainer data yet.</p>
+                    <p className="text-muted-foreground text-sm">{emptyDualMessage}</p>
                 ) : (
                     <ResponsiveContainer width="100%" height={320}>
                         <BarChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
