@@ -11,6 +11,7 @@ export { useMyRaceSignupsQuery, useRaceSignupsQuery, useRaceSignupCountsQuery } 
 export type { RaceSignupRow, MyRaceSignupStatus } from './useRaceSignupsQuery';
 export { usePostsQuery } from './usePostsQuery';
 export { useAdminStatsQuery } from './useAdminStatsQuery';
+export type { StatsData, TrainerStat, DualRecordingBucket } from './useAdminStatsQuery';
 export { useTrainersQuery } from './useTrainersQuery';
 export { useWeightVerificationsListQuery } from './useWeightVerificationsListQuery';
 export { useUsersOverviewQuery } from './useUsersOverviewQuery';
