@@ -75,7 +75,6 @@ def get_participants():
                         "max90Rating": zr.get("max90Rating", "N/A"),
                         "phenotype": zr.get("phenotype", "N/A"),
                         "racingScore": zpro.get("racingScore", "N/A"),
-                        "weightVerificationStatus": user.verification_status,
                         "ligaCategory": lc,
                     }
                 )

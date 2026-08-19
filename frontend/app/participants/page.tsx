@@ -61,7 +61,6 @@ interface Participant {
   cp1min?: number | null;
   cp5min?: number | null;
   cp20min?: number | null;
-  weightVerificationStatus?: 'none' | 'pending' | 'submitted' | 'approved' | 'rejected';
   ligaCategory?: LigaCategory;
 }
 
@@ -396,23 +395,7 @@ export default function ParticipantsPage() {
               ) : (
                 filtered.map((p, idx) => (
                   <tr key={`${p.zwiftId || 'no-zwift'}-${idx}`} className="hover:bg-muted/50 transition">
-                    <td className="px-6 py-4 font-medium text-card-foreground">
-                      <div className="flex items-center gap-2">
-                        {p.name}
-                        {p.weightVerificationStatus === 'pending' && (
-                          <span title="Vægtbekræftelse: Afventer handling" className="cursor-help text-lg">⚠️</span>
-                        )}
-                        {p.weightVerificationStatus === 'submitted' && (
-                          <span title="Vægtbekræftelse: Til gennemsyn" className="cursor-help text-lg">⚠️</span>
-                        )}
-                        {p.weightVerificationStatus === 'approved' && (
-                          <span title="Vægtbekræftelse: Godkendt" className="cursor-help text-lg">✅</span>
-                        )}
-                        {p.weightVerificationStatus === 'rejected' && (
-                          <span title="Vægtbekræftelse: Afvist" className="cursor-help text-lg">❌</span>
-                        )}
-                      </div>
-                    </td>
+                    <td className="px-6 py-4 font-medium text-card-foreground">{p.name}</td>
                     <td className="px-6 py-4 text-card-foreground">{p.club || '-'}</td>
                     <td className="px-6 py-4">
                       {(() => { const cat = getZRCategory(p.rating); return cat !== '-' ? (
