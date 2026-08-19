@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { Suspense, useCallback, useState, useMemo } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { useParticipantsQuery, useRacesQuery, useRaceSignupsQuery } from '@/hooks/queries';
 import { fromTimestamp } from '@/lib/formatDate';
@@ -168,15 +169,36 @@ function raceHasEventId(race: Race): boolean {
   return false;
 }
 
-export default function ParticipantsPage() {
+function ParticipantsPageContent() {
   const { loading: authLoading } = useAuth();
   const participantsQuery = useParticipantsQuery();
   const racesQuery = useRacesQuery();
   const participants = (participantsQuery.data ?? []) as Participant[];
   const races = (racesQuery.data ?? []) as Race[];
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [search, setSearch] = useState('');
   const [ligaKatFilter, setLigaKatFilter] = useState('');
-  const [raceFilter, setRaceFilter] = useState('');
+
+  // The race filter lives in the URL so race cards can deep-link here, and so
+  // back/forward restores the selection. An id that matches no known race falls
+  // back to the unfiltered list rather than showing an empty table.
+  const raceParam = searchParams.get('race') ?? '';
+  const raceFilter =
+    raceParam && (racesQuery.isLoading || races.some(r => r.id === raceParam)) ? raceParam : '';
+
+  const setRaceFilter = useCallback((nextRaceId: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (nextRaceId) {
+      params.set('race', nextRaceId);
+    } else {
+      params.delete('race');
+    }
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
+
   const [sortCol, setSortCol] = useState<SortColumn>('name');
   const [sortDir, setSortDir] = useState<SortDirection>('asc');
   const [powerUnit, setPowerUnit] = useState<PowerUnit>('watts');
@@ -504,5 +526,13 @@ export default function ParticipantsPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ParticipantsPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-muted-foreground">Indlæser deltagere...</div>}>
+      <ParticipantsPageContent />
+    </Suspense>
   );
 }

@@ -4,7 +4,8 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
 import { getZwiftInsiderUrl, API_URL } from '@/lib/api';
-import { formatDateLong, formatTimeWithTz, fromTimestamp } from '@/lib/formatDate';
+import { formatDateLong, formatDateShort, formatTimeWithTz, fromTimestamp } from '@/lib/formatDate';
+import ConfirmUnsignupModal from '@/components/races/ConfirmUnsignupModal';
 import PointsSplitBadge from '@/components/races/PointsSplitBadge';
 import RouteElevationChart from '@/components/races/RouteElevationChart';
 import SprintsByLap, {
@@ -145,6 +146,8 @@ export default function RaceCard({
     const signupCount = signupCountsQuery.data?.[race.id] ?? 0;
     const [signupState, setSignupState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [signupMessage, setSignupMessage] = useState('');
+    const [showUnsignupConfirm, setShowUnsignupConfirm] = useState(false);
+    const isSignedUp = persistedStatus === 'pending' || persistedStatus === 'registered';
     const userConfig = race.eventMode === 'multi' ? getUserEventConfig(race, userCategory) : null;
     const userSingleConfig = (race.eventMode !== 'multi' && race.eventMode !== 'grouped') ? getUserSingleConfig(race, userCategory) : null;
     const userGroupConfig = race.eventMode === 'grouped' ? getUserGroupConfig(race, userCategory) : null;
@@ -330,11 +333,19 @@ export default function RaceCard({
         } catch {
             setSignupState('error');
             setSignupMessage('Netværksfejl – prøv igen');
+        } finally {
+            // Close the dialog either way — success flips the card back to "Tilmeld",
+            // failure surfaces the message under the card.
+            setShowUnsignupConfirm(false);
         }
     };
 
     return (
-        <div className={`bg-card border border-border rounded-lg shadow-sm overflow-hidden mb-6 ${isPast ? 'opacity-75' : ''}`}>
+        <div
+            className={`bg-card border border-border rounded-lg shadow-sm overflow-hidden mb-6 ${isPast ? 'opacity-75' : ''} ${
+                !isPublicVariant && isRegistered && !isPast && isSignedUp ? 'border-l-4 border-l-green-500' : ''
+            }`}
+        >
             <div className={isPublicVariant ? 'p-4 md:p-5' : 'p-6'}>
                 <div className={`flex flex-col md:flex-row justify-between md:items-start gap-4 ${isPublicVariant ? 'mb-3' : 'mb-4'}`}>
                     <div>
@@ -401,12 +412,17 @@ export default function RaceCard({
                             {race.routeName ? omgangeDisplay : 'TBD'}
                         </div>
                     </div>
-                    <div className="bg-muted/20 p-3 rounded text-center">
+                    <Link
+                        href={`/participants?race=${encodeURIComponent(race.id)}`}
+                        className="group block bg-muted/20 hover:bg-muted/40 p-3 rounded text-center transition-colors"
+                        title={`Se tilmeldte til ${race.name}`}
+                    >
                         <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Tilmeldte</div>
-                        <div className="font-semibold text-card-foreground tabular-nums">
+                        <div className="font-semibold text-card-foreground tabular-nums inline-flex items-center gap-1 group-hover:text-primary transition-colors">
                             {signupCountsQuery.isLoading ? '–' : signupCount}
+                            <span aria-hidden className="text-primary opacity-50 group-hover:opacity-100 transition-opacity">→</span>
                         </div>
-                    </div>
+                    </Link>
                 </div>
 
                 {race.map && race.routeName && (
@@ -450,7 +466,7 @@ export default function RaceCard({
 
                 {!isPublicVariant && (race.preRegisterAllowed || racePassHref) ? (
                     <div className="flex flex-col gap-2">
-                        {categoryHint && (
+                        {categoryHint && !(isRegistered && !isPast && isSignedUp) && (
                             <div className="flex items-center justify-center gap-2 text-sm bg-muted/40 border border-border rounded-lg px-4 py-2">
                                 <span className="text-muted-foreground">Kategori:</span>
                                 <span className="font-semibold text-card-foreground">{categoryHint}</span>
@@ -458,33 +474,43 @@ export default function RaceCard({
                         )}
                         {isRegistered && !isPast ? (
                             <div className="flex flex-col gap-1">
-                                {persistedStatus === 'pending' || persistedStatus === 'registered' ? (
+                                {isSignedUp ? (
                                     <>
-                                        <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/30 px-4 py-3">
+                                        <div className="flex items-center justify-between gap-3 rounded-lg border border-green-500/40 bg-green-50 dark:bg-green-950/30 px-4 py-3">
                                             <span
-                                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300 text-sm font-semibold"
+                                                className="inline-flex items-center gap-2 text-green-800 dark:text-green-300 font-bold"
                                                 role="status"
                                             >
-                                                <CheckIcon size={14} />
-                                                {persistedStatus === 'pending' ? 'Tilmeldt' : 'Tilmeldt på Zwift'}
+                                                <CheckIcon size={18} />
+                                                <span>
+                                                    Tilmeldt
+                                                    {categoryHint && (
+                                                        <span className="font-medium text-green-700/80 dark:text-green-400/80">
+                                                            {' · '}{categoryHint}
+                                                        </span>
+                                                    )}
+                                                </span>
                                             </span>
                                             <button
                                                 type="button"
-                                                onClick={handleZwiftUnsignup}
+                                                onClick={() => setShowUnsignupConfirm(true)}
                                                 disabled={signupState === 'loading'}
-                                                className="text-sm font-semibold text-red-700 dark:text-red-400 border border-red-300 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-950/40 px-3 py-1.5 rounded-lg transition disabled:opacity-60"
+                                                className="shrink-0 text-xs font-semibold underline underline-offset-2 transition disabled:opacity-60 text-green-800/70 dark:text-green-300/70 hover:text-red-700 dark:hover:text-red-400"
                                             >
-                                                {signupState === 'loading' ? '...' : 'Afmeld'}
+                                                {signupState === 'loading' ? 'Afmelder...' : 'Afmeld'}
                                             </button>
                                         </div>
-                                        {persistedStatus === 'pending' && !racePassHref && (
-                                            <p className="text-sm text-center text-muted-foreground">
-                                                Du tilmeldes automatisk på Zwift når løbspas er klar.
-                                            </p>
-                                        )}
-                                        <p className="text-sm text-center text-muted-foreground">
-                                            Se tilmeldte ryttere under{' '}
-                                            <Link href="/participants" className="text-primary underline hover:no-underline">
+                                        <p className="text-xs text-center text-muted-foreground">
+                                            {persistedStatus === 'pending' && !racePassHref
+                                                ? 'Du tilmeldes automatisk på Zwift når løbspas er klar. '
+                                                : persistedStatus === 'registered'
+                                                ? 'Du er tilmeldt på Zwift. '
+                                                : ''}
+                                            Se tilmeldte under{' '}
+                                            <Link
+                                                href={`/participants?race=${encodeURIComponent(race.id)}`}
+                                                className="text-primary underline hover:no-underline"
+                                            >
                                                 Deltagere
                                             </Link>
                                             .
@@ -522,6 +548,16 @@ export default function RaceCard({
                     </div>
                 ) : null}
             </div>
+
+            <ConfirmUnsignupModal
+                isOpen={showUnsignupConfirm}
+                raceName={race.name}
+                raceDateLabel={`den ${formatDateShort(raceDate)}`}
+                categoryHint={categoryHint}
+                isLoading={signupState === 'loading'}
+                onConfirm={handleZwiftUnsignup}
+                onClose={() => setShowUnsignupConfirm(false)}
+            />
         </div>
     );
 }
