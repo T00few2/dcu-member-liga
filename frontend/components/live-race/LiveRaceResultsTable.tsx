@@ -8,7 +8,7 @@ import SprintsByLap, {
     normalizeSprintDirectionForMatch,
     type SprintsByLapProfileData,
 } from '@/components/races/SprintsByLap';
-import { mergeLapBannerProfileSegments } from '@/lib/routeProfileSegments';
+import { mergeElevationProfileWithLapBanners } from '@/lib/routeProfileSegments';
 import { formatTime, formatGap } from '@/app/results/_components/formatTime';
 
 interface Props {
@@ -339,22 +339,13 @@ function InfoView({
 
     const profileData: SprintsByLapProfileData | null = useMemo(() => {
         if (!elevationData) return null;
-        const elevationDistances = elevationData.distance;
-        const tiledRaceKm =
-            Array.isArray(elevationDistances) && elevationDistances.length > 0
-                ? (elevationDistances[elevationDistances.length - 1] ?? 0) / 1000
-                : 0;
-        const lapLengthKm = laps > 0 && tiledRaceKm > 0 ? tiledRaceKm / laps : 0;
-        const baseSegments = Array.isArray(elevationData.profileSegments)
-            ? elevationData.profileSegments
-            : [];
         return {
             leadInDistance: Number(elevationData.leadInDistance) || 0,
-            profileSegments: mergeLapBannerProfileSegments(
-                baseSegments,
+            profileSegments: mergeElevationProfileWithLapBanners(
+                elevationData,
                 sprints,
                 eventSegments,
-                lapLengthKm,
+                laps,
             ),
         };
     }, [elevationData, eventSegments, laps, sprints]);

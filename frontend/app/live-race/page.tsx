@@ -307,6 +307,7 @@ function LiveRacePageContent() {
                             worldName={currentRace.map}
                             routeName={currentRace.routeName}
                             laps={laps}
+                            routeId={currentRace.routeId}
                             pointSegments={activeTab?.sprints}
                             overlay={(ctx) => (
                                 <LiveRiderOverlay

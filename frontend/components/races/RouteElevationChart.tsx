@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import {
     Area,
     AreaChart,
@@ -17,7 +17,8 @@ import {
     useYAxisDomain,
 } from 'recharts';
 import type { Sprint } from '@/types/live';
-import { useRouteElevationQuery } from '@/hooks/queries';
+import { useRaceSegmentsQuery, useRouteElevationQuery } from '@/hooks/queries';
+import { mergeElevationProfileWithLapBanners } from '@/lib/routeProfileSegments';
 
 interface RouteSegment {
     from: number;
@@ -58,8 +59,10 @@ interface Props {
     worldName: string;
     routeName: string;
     laps?: number;
+    /** Route id used to load event segments and synthesize missing lap banners. */
+    routeId?: string | number;
     pointSegments?: Sprint[];
-    /** Merged into route profile overlays (e.g. synthetic lap-banner markers). */
+    /** Merged into route profile overlays after lap-banner synthesis. */
     extraProfileSegments?: ProfileSegment[];
     overlay?: (ctx: RouteElevationOverlayContext) => ReactNode;
     height?: number;
@@ -421,12 +424,18 @@ export default function RouteElevationChart({
     worldName,
     routeName,
     laps = 1,
+    routeId,
     pointSegments = [],
     extraProfileSegments = [],
     overlay,
     height = CHART_HEIGHT,
 }: Props) {
     const { data: json, isLoading: loading } = useRouteElevationQuery(worldName, routeName, laps);
+    const { data: eventSegments = [] } = useRaceSegmentsQuery(
+        routeId,
+        laps,
+        !!routeId && pointSegments.length > 0,
+    );
 
     const data: DataPoint[] | null = (() => {
         if (!json?.distance?.length || !json?.altitude?.length) return null;
@@ -450,16 +459,22 @@ export default function RouteElevationChart({
         }));
     })();
 
-    const routeSegments: RouteSegment[] = (() => {
+    const routeSegments: RouteSegment[] = useMemo(() => {
         if (!json && extraProfileSegments.length === 0) return [];
-        const fromRouteProfile: RouteSegment[] = (json?.profileSegments ?? []).map(toRouteSegment);
-        const extras = (extraProfileSegments ?? []).map(toRouteSegment);
+        const mergedProfile = mergeElevationProfileWithLapBanners(
+            json,
+            pointSegments,
+            eventSegments,
+            laps,
+        );
+        const fromRouteProfile: RouteSegment[] = mergedProfile.map(toRouteSegment);
+        const extras = extraProfileSegments.map(toRouteSegment);
         const combined = [...fromRouteProfile, ...extras].sort(
             (a, b) => a.from - b.from || a.to - b.to,
         );
         if (combined.length > 0) return combined;
         return (json?.segments ?? []).map((seg) => toRouteSegment(seg));
-    })();
+    }, [json, extraProfileSegments, pointSegments, eventSegments, laps]);
 
     if (loading) {
         return (

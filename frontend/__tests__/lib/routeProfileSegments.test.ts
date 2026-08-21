@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     catalogSegmentsIncludeLeadIn,
+    mergeElevationProfileWithLapBanners,
     mergeLapBannerProfileSegments,
     resolveRaceRelativeProfileSegments,
     shiftSegmentsByLeadIn,
@@ -146,6 +147,45 @@ describe('mergeLapBannerProfileSegments', () => {
             lapLengthKm,
         );
         expect(out.filter((s) => /champs/i.test(s.name))).toHaveLength(1);
+    });
+});
+
+describe('mergeElevationProfileWithLapBanners', () => {
+    const lapLengthKm = 16;
+    const catalog = [
+        { name: 'Lutece Sprint', type: 'sprint' as const, fromKm: 1.178, toKm: 1.33, direction: 'forward' as const },
+        { name: 'Montmartre KOM', type: 'climb' as const, fromKm: 4.882, toKm: 6.11, direction: 'forward' as const },
+    ];
+    const eventSegments = [
+        { id: 'lutece', count: 1, lap: 1, direction: 'forward' },
+        { id: 'montmartre', count: 1, lap: 1, direction: 'forward' },
+        { id: '1056322864', count: 1, lap: 1, direction: 'forward' },
+        { id: 'lutece', count: 2, lap: 2, direction: 'forward' },
+        { id: 'montmartre', count: 2, lap: 2, direction: 'forward' },
+        { id: '1056322864', count: 2, lap: 2, direction: 'forward' },
+        { id: 'lutece', count: 3, lap: 3, direction: 'forward' },
+        { id: 'montmartre', count: 3, lap: 3, direction: 'forward' },
+        { id: '1056322864', count: 3, lap: 3, direction: 'forward' },
+    ];
+    const champsSprints = [
+        { id: '1056322864', name: 'Champs-Élysées', count: 1, lap: 1, direction: 'forward' },
+        { id: '1056322864', name: 'Champs-Élysées', count: 2, lap: 2, direction: 'forward' },
+        { id: '1056322864', name: 'Champs-Élysées', count: 3, lap: 3, direction: 'forward' },
+    ];
+
+    it('derives lap length from tiled elevation and synthesizes missing banners', () => {
+        const tiled = [
+            ...catalog,
+            ...catalog.map((s) => ({ ...s, fromKm: s.fromKm + lapLengthKm, toKm: s.toKm + lapLengthKm })),
+            ...catalog.map((s) => ({ ...s, fromKm: s.fromKm + 2 * lapLengthKm, toKm: s.toKm + 2 * lapLengthKm })),
+        ];
+        const out = mergeElevationProfileWithLapBanners(
+            { distance: [0, 16_000, 32_000, 48_000], profileSegments: tiled },
+            champsSprints,
+            eventSegments,
+            3,
+        );
+        expect(out.filter((s) => s.name === 'Champs-Élysées').map((s) => s.fromKm)).toEqual([16, 32, 48]);
     });
 });
 

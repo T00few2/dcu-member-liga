@@ -114,6 +114,7 @@ export default function UpcomingRaceCountdown({ race }: Props) {
                             worldName={race.map}
                             routeName={race.routeName}
                             laps={laps}
+                            routeId={race.routeId}
                             pointSegments={sprints}
                             height={260}
                         />

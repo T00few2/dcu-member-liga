@@ -146,6 +146,49 @@ export function mergeLapBannerProfileSegments<T extends ProfileSegmentLike>(
     return [...profileSegments, ...synthetic];
 }
 
+export type ElevationProfileLike = {
+    distance?: number[];
+    profileSegments?: ProfileSegmentLike[];
+};
+
+/** Race-only lap length from a tiled elevation stream (metres → km). */
+export function lapLengthKmFromElevation(
+    elevationData: ElevationProfileLike | null | undefined,
+    laps: number,
+    fallbackLapKm = 0,
+): number {
+    const distances = elevationData?.distance;
+    const tiledRaceKm =
+        Array.isArray(distances) && distances.length > 0
+            ? (distances[distances.length - 1] ?? 0) / 1000
+            : 0;
+    if (laps > 0 && tiledRaceKm > 0) return tiledRaceKm / laps;
+    return fallbackLapKm;
+}
+
+/**
+ * Single entry point for race profile overlays: elevation profileSegments plus
+ * synthesized end-of-lap banners (e.g. Champs-Élysées) when they are missing
+ * from zwift-data. Used by RouteElevationChart and SprintsByLap tables.
+ */
+export function mergeElevationProfileWithLapBanners<T extends ProfileSegmentLike>(
+    elevationData: (ElevationProfileLike & { profileSegments?: T[] }) | null | undefined,
+    sprints: SprintLike[],
+    eventSegments: EventSegmentLike[],
+    laps: number,
+    fallbackLapKm = 0,
+): T[] {
+    const base = Array.isArray(elevationData?.profileSegments)
+        ? elevationData.profileSegments
+        : [];
+    return mergeLapBannerProfileSegments(
+        base,
+        sprints,
+        eventSegments,
+        lapLengthKmFromElevation(elevationData, laps, fallbackLapKm),
+    );
+}
+
 /**
  * zwift-data segmentsOnRoute distances are from route/Strava start (lead-in included).
  * Race-card profiles use 0 = race start after lead-in.
