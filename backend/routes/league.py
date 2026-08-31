@@ -14,6 +14,7 @@ from services.request_models import LeagueSettingsRequest, parse_body
 from authz import require_admin, verify_user_token, AuthzError
 from routes.verification import _build_race_weight_verifications
 from routes.races import _strip_hr_from_dr_result
+from services.dual_recording.scope import public_dr_row_visible
 from services.dual_recording_admin_core import DualRecordingError, get_dual_recording_result
 from services.dual_recording_core import _load_dr_stream_blob_result
 
@@ -68,6 +69,8 @@ def save_settings():
             update_data['seasonRankPoints'] = body.seasonRankPoints.model_dump(exclude_none=True)
         if body.seasonBestResultsCount is not None:
             update_data['seasonBestResultsCount'] = body.seasonBestResultsCount
+        if body.weightVerificationValidDays is not None:
+            update_data['weightVerificationValidDays'] = body.weightVerificationValidDays
         if body.defaultEventMode is not None:
             update_data['defaultEventMode'] = body.defaultEventMode
         if body.defaultSingleCategories is not None:
@@ -230,6 +233,8 @@ def get_archive_race_dr_verifications(archive_id: str, race_id: str):
         for d in race_ref.collection('dr_verifications').stream():
             payload = d.to_dict() or {}
             payload['zwiftId'] = str(payload.get('zwiftId') or d.id)
+            if not public_dr_row_visible(payload):
+                continue
             out.append(payload)
         return jsonify({'verifications': out}), 200
     except Exception as e:
@@ -274,6 +279,8 @@ def get_archive_race_dr_verification_detail(archive_id: str, race_id: str, rider
         verification = doc.to_dict() or {}
         verification['zwiftId'] = str(verification.get('zwiftId') or doc.id)
         verification['raceId'] = str(verification.get('raceId') or race_id)
+        if not public_dr_row_visible(verification):
+            return jsonify({'message': 'Verification not found'}), 404
 
         stream_blob_path = str(verification.get('streamBlobPath') or '').strip()
         if stream_blob_path:

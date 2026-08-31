@@ -3,25 +3,26 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import Link from 'next/link';
-import { API_URL } from '@/lib/api';
+import WeightVideoSubmitForm from '@/components/WeightVideoSubmitForm';
+import { useLeagueSettingsQuery } from '@/hooks/queries/useLeagueSettingsQuery';
 
 export default function WeightVerificationModal() {
     const { user, weightVerificationStatus, refreshProfile, loading } = useAuth();
+    const { data: leagueSettings } = useLeagueSettingsQuery();
     const [isOpen, setIsOpen] = useState(false);
-    const [linkInput, setLinkInput] = useState('');
-    const [submitting, setSubmitting] = useState(false);
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
+    const [success, setSuccess] = useState(false);
 
-    // Check if we should show the modal
+    const validDays = Number(leagueSettings?.weightVerificationValidDays) > 0
+        ? Number(leagueSettings?.weightVerificationValidDays)
+        : 30;
+
     useEffect(() => {
         if (loading) return;
 
-        // Show if status is pending or rejected
-        const shouldShow = user && (weightVerificationStatus === 'pending' || weightVerificationStatus === 'rejected');
+        // Sampled pending only — do not auto-open for voluntary or rejected uploads.
+        const shouldShow = user && weightVerificationStatus === 'pending';
 
         if (shouldShow) {
-            // Check if dismissed for this session
             const dismissed = sessionStorage.getItem('weightVerificationDismissed');
             if (!dismissed) {
                 setIsOpen(true);
@@ -36,122 +37,44 @@ export default function WeightVerificationModal() {
         sessionStorage.setItem('weightVerificationDismissed', 'true');
     };
 
-    const handleSubmit = async () => {
-        if (!user || !linkInput) return;
-
-        if (!linkInput.startsWith('http')) {
-            setError('Indtast venligst en gyldig URL (skal starte med http:// eller https://)');
-            return;
-        }
-
-        setSubmitting(true);
-        setError('');
-
-        try {
-            const idToken = await user.getIdToken();
-
-            const res = await fetch(`${API_URL}/verification/submit`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${idToken}`
-                },
-                body: JSON.stringify({ videoLink: linkInput })
-            });
-
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'Kunne ikke indsende bekræftelsen');
-
-            setSuccess('Bekræftelsen blev indsendt med succes!');
-
-            // Refresh profile to update status context
-            await refreshProfile();
-
-            // Close modal after short delay
-            setTimeout(() => {
-                setIsOpen(false);
-            }, 2000);
-
-        } catch (e: any) {
-            setError(e.message);
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
     if (!isOpen) return null;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="bg-white dark:bg-slate-900 rounded-lg shadow-xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-200 dark:border-slate-700">
-
-                {/* Header */}
-                <div className={`p-4 border-b ${weightVerificationStatus === 'rejected' ? 'bg-red-50 border-red-100 dark:bg-red-900/20 dark:border-red-900' : 'bg-orange-50 border-orange-100 dark:bg-orange-900/20 dark:border-orange-900'}`}>
-                    <h2 className={`text-lg font-bold flex items-center gap-2 ${weightVerificationStatus === 'rejected' ? 'text-red-700 dark:text-red-400' : 'text-orange-700 dark:text-orange-400'}`}>
-                        {weightVerificationStatus === 'rejected' ? (
-                            <>
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                </svg>
-                                Bekræftelse Afvist
-                            </>
-                        ) : (
-                            <>
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
-                                </svg>
-                                Vægtbekræftelse Påkrævet
-                            </>
-                        )}
+                <div className="p-4 border-b bg-orange-50 border-orange-100 dark:bg-orange-900/20 dark:border-orange-900">
+                    <h2 className="text-lg font-bold flex items-center gap-2 text-orange-700 dark:text-orange-400">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
+                        </svg>
+                        Vægtbekræftelse Påkrævet
                     </h2>
                 </div>
 
-                {/* Body */}
                 <div className="p-6 space-y-4">
                     <p className="text-slate-600 dark:text-slate-300 text-sm">
-                        {weightVerificationStatus === 'rejected'
-                            ? "Din tidligere bekræftelse blev afvist. Gennemgå venligst kravene og indsend en ny video."
-                            : "Du er blevet udtrukket til en stikprøve af din vægt. Indsend venligst en video af din indvejning for at fortsætte med at køre race."
-                        }
+                        Du er blevet udtrukket til en stikprøve af din vægt. Indsend venligst en video af din indvejning for at fortsætte med at køre race.
                     </p>
 
                     {!success ? (
                         <div className="space-y-4">
-                            <div>
-                                <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                                    Videolink (YouTube/Drive/osv.)
-                                </label>
-                                <input
-                                    type="url"
-                                    value={linkInput}
-                                    onChange={(e) => setLinkInput(e.target.value)}
-                                    placeholder="https://..."
-                                    className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-primary"
-                                    autoFocus
-                                />
-                            </div>
-
-                            {error && (
-                                <div className="text-red-500 text-xs bg-red-50 dark:bg-red-900/10 p-2 rounded border border-red-100 dark:border-red-900/30">
-                                    {error}
-                                </div>
-                            )}
-
-                            <div className="flex gap-3 pt-2">
-                                <button
-                                    onClick={handleSubmit}
-                                    disabled={submitting || !linkInput}
-                                    className="flex-1 bg-primary hover:bg-primary-dark text-primary-foreground py-2 px-4 rounded font-medium disabled:opacity-50 transition-colors"
-                                >
-                                    {submitting ? 'Indsender...' : 'Indsend Bekræftelse'}
-                                </button>
-                                <button
-                                    onClick={handleDismiss}
-                                    className="px-4 py-2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 font-medium transition-colors"
-                                >
-                                    Senere
-                                </button>
-                            </div>
+                            <WeightVideoSubmitForm
+                                compact
+                                validDays={validDays}
+                                submitLabel="Indsend Bekræftelse"
+                                onSubmitted={() => {
+                                    setSuccess(true);
+                                    void refreshProfile();
+                                    setTimeout(() => setIsOpen(false), 2000);
+                                }}
+                            />
+                            <button
+                                type="button"
+                                onClick={handleDismiss}
+                                className="w-full px-4 py-2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 font-medium transition-colors"
+                            >
+                                Senere
+                            </button>
                         </div>
                     ) : (
                         <div className="text-center py-4 space-y-4">
@@ -170,10 +93,9 @@ export default function WeightVerificationModal() {
                     )}
                 </div>
 
-                {/* Footer instructions link */}
                 {!success && (
                     <div className="bg-slate-50 dark:bg-slate-800/50 p-3 text-center border-t border-slate-100 dark:border-slate-800">
-                        <Link href="/register" className="text-xs text-primary hover:underline" onClick={() => setIsOpen(false)}>
+                        <Link href="/verification" className="text-xs text-primary hover:underline" onClick={() => setIsOpen(false)}>
                             Se vejledning til bekræftelse
                         </Link>
                     </div>

@@ -8,10 +8,22 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from services.user_service import UserService
 from services.liga_categories_core import verification_category_names
+from services.weight_verification import (
+    WeightSubmitError,
+    apply_review_weigh_in_date,
+    choose_weight_verification_for_race,
+    copenhagen_today,
+    load_weight_verification_valid_days,
+    parse_calendar_date,
+    parse_weigh_in_date,
+    prepare_weight_submit,
+    should_skip_weight_sampling,
+)
 from services.request_models import (
     ReviewVerificationRequest,
     SubmitVerificationRequest,
     TriggerVerificationRequest,
+    WeightValidDaysRequest,
     parse_body,
 )
 
@@ -134,6 +146,14 @@ def _request_sort_key(req: dict[str, Any]) -> datetime:
 def _build_race_weight_verifications(race_id: str) -> list[dict[str, Any]]:
     rider_races = _collect_finish_race_map()
     by_zwift_id: dict[str, dict[str, Any]] = {}
+    valid_days = load_weight_verification_valid_days(db)
+
+    race_doc = db.collection('races').document(str(race_id)).get()
+    race_data = race_doc.to_dict() if race_doc.exists else {}
+    race_date = parse_calendar_date((race_data or {}).get('date')) or parse_calendar_date(
+        (race_data or {}).get('resultsUpdatedAt')
+    )
+    finisher_ids = _collect_finisher_ids_from_results((race_data or {}).get('results'))
 
     for user_doc in db.collection('users').stream():
         user_data = user_doc.to_dict() or {}
@@ -147,6 +167,7 @@ def _build_race_weight_verifications(race_id: str) -> list[dict[str, Any]]:
         if not requests:
             continue
 
+        mapped: list[dict[str, Any]] = []
         for req in requests:
             explicit_race_id = str(req.get('raceId') or '').strip() or None
             matched_race_id = explicit_race_id or _infer_request_race_id(
@@ -154,10 +175,7 @@ def _build_race_weight_verifications(race_id: str) -> list[dict[str, Any]]:
                 requested_at=req.get('requestedAt'),
                 rider_races=rider_races,
             )
-            if matched_race_id != str(race_id):
-                continue
-
-            candidate = {
+            mapped.append({
                 'userId': str(user_doc.id or ''),
                 'zwiftId': zwift_id,
                 'name': str(user_data.get('name') or ''),
@@ -171,11 +189,20 @@ def _build_race_weight_verifications(race_id: str) -> list[dict[str, Any]]:
                 'raceId': matched_race_id,
                 'raceName': str(req.get('raceName') or ''),
                 'matchSource': 'explicit' if explicit_race_id else 'inferred',
-            }
+                'source': str(req.get('source') or 'sampled'),
+                'weighInDate': req.get('weighInDate'),
+            })
 
-            existing = by_zwift_id.get(zwift_id)
-            if not existing or _request_sort_key(candidate) >= _request_sort_key(existing):
-                by_zwift_id[zwift_id] = candidate
+        chosen = choose_weight_verification_for_race(
+            mapped,
+            race_id=str(race_id),
+            race_date=race_date,
+            is_finisher=zwift_id in finisher_ids,
+            valid_days=valid_days,
+            sort_key=_request_sort_key,
+        )
+        if chosen:
+            by_zwift_id[zwift_id] = chosen
 
     return sorted(
         by_zwift_id.values(),
@@ -418,6 +445,8 @@ def trigger_verification():
         # 1. Get all eligible users from selected race finishers (registered, not pending/submitted)
         all_users = UserService.get_all_participants(limit=2000) # Fetch all active
         
+        valid_days = load_weight_verification_valid_days(db)
+        today = copenhagen_today()
         eligible_riders = []
         for user in all_users:
             if not user.is_registered:
@@ -427,8 +456,13 @@ def trigger_verification():
             if user_id not in finisher_ids and user_zwift_id not in finisher_ids:
                 continue
 
-            # Skip if already pending or submitted
-            if user.verification_status in ['pending', 'submitted']:
+            weight_requests = _pick_weight_requests(user.to_dict() if hasattr(user, 'to_dict') else {})
+            if should_skip_weight_sampling(
+                user.verification_status,
+                weight_requests,
+                as_of=today,
+                valid_days=valid_days,
+            ):
                 continue
             eligible_riders.append(user.id)
 
@@ -464,6 +498,7 @@ def trigger_verification():
                 'requestedAt': now,
                 'type': 'weight',
                 'status': 'pending',
+                'source': 'sampled',
                 'deadline': deadline,
                 'raceId': target_race_id,
                 'raceName': str(target_race.get('name') or ''),
@@ -523,44 +558,32 @@ def submit_verification():
         if err:
             return err
         video_link = body.videoLink
+        weigh_in_date = body.weighInDate
 
         # Resolve user
         user = UserService.get_user_by_auth_uid(uid)
         if not user:
              return jsonify({'message': 'User profile not found'}), 404
-             
-        # Check if they actually have a pending request
-        if user.verification_status != 'pending':
-             return jsonify({'message': 'No pending verification request found.'}), 400
-             
-        # Find the pending request in history to update it
-        requests = user.verification_history
-        
-        updated_requests = []
-        found = False
-        current_req = user.current_verification_request
-        
-        # Update current request object as well if it matches
-        if current_req.get('status') == 'pending':
-            current_req['status'] = 'submitted'
-            current_req['videoLink'] = video_link
-            current_req['submittedAt'] = datetime.now(timezone.utc).isoformat()
-            found = True
-            
-        # Also update history entry
-        for req in requests:
-            if req.get('status') == 'pending' and req.get('type') == 'weight':
-                req['status'] = 'submitted'
-                req['videoLink'] = video_link
-                req['submittedAt'] = datetime.now(timezone.utc).isoformat()
-            updated_requests.append(req)
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        try:
+            new_status, current_req, updated_requests = prepare_weight_submit(
+                status=user.verification_status,
+                current_request=user.current_verification_request,
+                history=user.verification_history,
+                video_link=video_link,
+                weigh_in_date=weigh_in_date,
+                now_iso=now_iso,
+                today=copenhagen_today(),
+            )
+        except WeightSubmitError as exc:
+            return jsonify({'message': str(exc)}), 400
 
         user.update({
-            'verification.status': 'submitted',
+            'verification.status': new_status,
             'verification.currentRequest': current_req,
-            'verification.history': updated_requests
+            'verification.history': updated_requests,
         })
-
         return jsonify({'message': 'Verification submitted successfully.'}), 200
 
     except Exception as e:
@@ -589,6 +612,13 @@ def review_verification():
         target_user_id = body.userId
         action = body.action
         reason = body.reason
+        weigh_in_override = body.weighInDate
+        if weigh_in_override:
+            parsed_override = parse_weigh_in_date(weigh_in_override)
+            if not parsed_override:
+                return jsonify({'message': 'weighInDate must be YYYY-MM-DD'}), 400
+            if parsed_override > copenhagen_today():
+                return jsonify({'message': 'Weigh-in date cannot be in the future.'}), 400
 
         user = UserService.get_user_by_id(target_user_id)
         if not user:
@@ -653,6 +683,7 @@ def review_verification():
             current_req['status'] = new_status
             current_req['reviewedAt'] = now_iso
             current_req['reviewerId'] = reviewer_id
+            apply_review_weigh_in_date(current_req, weigh_in_override)
             if action == 'reject':
                 current_req['rejectionReason'] = reason
             else:
@@ -670,6 +701,7 @@ def review_verification():
                 req['status'] = new_status
                 req['reviewedAt'] = now_iso
                 req['reviewerId'] = reviewer_id
+                apply_review_weigh_in_date(req, weigh_in_override)
                 if action == 'reject':
                     req['rejectionReason'] = reason
                 else:
@@ -731,6 +763,8 @@ def get_pending_verifications():
                 'club': user.club,
                 'videoLink': active_req.get('videoLink'),
                 'submittedAt': active_req.get('submittedAt'),
+                'weighInDate': active_req.get('weighInDate'),
+                'source': str(active_req.get('source') or 'sampled'),
                 'lastRaceWeightKg': last_weight_kg,
                 'lastRaceName': last_race_name,
                 'lastRaceDate': last_race_date,
@@ -767,7 +801,9 @@ def get_active_requests():
                 'name': user.name,
                 'email': str((user_dict or {}).get('email') or ''),
                 'club': user.club,
-                'deadline': current.get('deadline')
+                'deadline': current.get('deadline'),
+                'source': str(current.get('source') or 'sampled'),
+                'weighInDate': current.get('weighInDate'),
             })
             
         return jsonify({'requests': active}), 200
@@ -909,6 +945,8 @@ def get_approved_verifications():
                 'approvedAt': approved_req.get('reviewedAt'),
                 'approvedBy': approved_req.get('reviewerId', 'Admin'),
                 'videoLink': approved_req.get('videoLink'),
+                'weighInDate': approved_req.get('weighInDate'),
+                'source': str(approved_req.get('source') or 'sampled'),
                 'lastRaceWeightKg': last_weight_kg,
                 'lastRaceName': last_race_name,
                 'lastRaceDate': last_race_date,
@@ -958,6 +996,8 @@ def get_rejected_verifications():
                 'rejectedBy': rejected_req.get('reviewerId', 'Admin'),
                 'rejectionReason': rejected_req.get('rejectionReason', ''),
                 'videoLink': rejected_req.get('videoLink'),
+                'weighInDate': rejected_req.get('weighInDate'),
+                'source': str(rejected_req.get('source') or 'sampled'),
                 'lastRaceWeightKg': last_weight_kg,
                 'lastRaceName': last_race_name,
                 'lastRaceDate': last_race_date,
@@ -967,3 +1007,24 @@ def get_rejected_verifications():
         return jsonify({'rejected': rejected}), 200
     except Exception as e:
         return jsonify({'message': str(e)}), 500
+
+
+@verification_bp.route('/admin/verification/weight-valid-days', methods=['POST'])
+def set_weight_valid_days():
+    try:
+        require_admin(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    body, err = parse_body(WeightValidDaysRequest, request.get_json(silent=True) or {})
+    if err:
+        return err
+
+    db.collection('league').document('settings').set(
+        {'weightVerificationValidDays': body.days},
+        merge=True,
+    )
+    return jsonify({'ok': True, 'weightVerificationValidDays': body.days}), 200

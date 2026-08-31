@@ -8,6 +8,10 @@ import type { DualRecordingVerification } from '@/types/admin';
 export interface ProfileDrVerification extends DualRecordingVerification {
     zwiftId?: string;
     raceId?: string;
+    raceName?: string;
+    archiveId?: string;
+    archiveName?: string;
+    source?: string;
 }
 
 export function useProfileDrVerificationsQuery() {

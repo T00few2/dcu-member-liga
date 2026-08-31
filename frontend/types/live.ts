@@ -110,6 +110,7 @@ export interface DualRecordingVerification {
     zwiftActivityId?: string;
     stravaActivityId?: number | null;
     failingMetrics?: string[];
+    source?: 'mandatory' | 'opt_in' | string;
     comparison?: {
         cpDiff: Array<{
             label: string; key: string;

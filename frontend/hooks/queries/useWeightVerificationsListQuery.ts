@@ -15,6 +15,8 @@ interface PendingVerification {
     lastRaceName?: string | null;
     lastRaceDate?: string | null;
     latestProfileUpdatedAt?: string | null;
+    weighInDate?: string | null;
+    source?: string;
 }
 
 interface ActiveRequest {
@@ -23,6 +25,8 @@ interface ActiveRequest {
     email?: string;
     club: string;
     deadline: string | any;
+    weighInDate?: string | null;
+    source?: string;
 }
 
 interface ApprovedVerification {
@@ -36,6 +40,8 @@ interface ApprovedVerification {
     lastRaceName?: string | null;
     lastRaceDate?: string | null;
     latestProfileUpdatedAt?: string | null;
+    weighInDate?: string | null;
+    source?: string;
 }
 
 interface RejectedVerification {
@@ -50,6 +56,8 @@ interface RejectedVerification {
     lastRaceName?: string | null;
     lastRaceDate?: string | null;
     latestProfileUpdatedAt?: string | null;
+    weighInDate?: string | null;
+    source?: string;
 }
 
 export interface WeightVerificationsList {

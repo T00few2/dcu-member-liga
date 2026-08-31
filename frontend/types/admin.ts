@@ -209,6 +209,11 @@ export interface DualRecordingVerification {
     zwiftActivityId?: string;
     stravaActivityId?: number | null;
     failingMetrics?: string[];
+    source?: 'mandatory' | 'opt_in' | string;
+    raceId?: string;
+    raceName?: string;
+    archiveId?: string;
+    archiveName?: string;
     comparison?: {
         cpDiff: CpDiffRow[];
         avgPower: {
@@ -242,6 +247,8 @@ export interface WeightVerificationRecord {
     raceId?: string;
     raceName?: string;
     matchSource?: 'explicit' | 'inferred' | string;
+    weighInDate?: string;
+    source?: string;
 }
 
 export interface RaceResult {
@@ -291,6 +298,7 @@ export interface LeagueSettings {
     seasonRankPoints?: SeasonRankPoints;
     seasonBestResultsCount?: number;
     ligaCategories?: { name: string; upper?: number | null; requiresVerification?: boolean }[];
+    weightVerificationValidDays?: number;
     /** Season race defaults — cloned into new races; not stored on race docs. */
     defaultEventMode?: EventMode;
     defaultSingleCategories?: DefaultCategoryRow[];

@@ -26,16 +26,20 @@ def _run_dr_verification_background(
 ) -> None:
     """Compute full DR comparison and persist to races/{race_id}/dr_verifications/{zwift_id}."""
     try:
+        from services.dual_recording.scope import resolve_dr_source  # noqa: PLC0415
+
         result = _compute_dual_recording_for_rider(
             db, user_doc_id, activity_id, event_start_iso,
             sw_thresholds=sw_thresholds,
         )
+        source = resolve_dr_source(db, zwift_id_canonical, race_id=race_id)
         doc_payload = _persist_dr_verification_result(
             db=db,
             result=result,
             zwift_id_canonical=zwift_id_canonical,
             activity_id=activity_id,
             race_id=race_id,
+            source=source,
         )
         logger.info(
             "DR verification stored: race=%s rider=%s status=%s",

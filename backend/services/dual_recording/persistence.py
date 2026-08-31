@@ -51,6 +51,7 @@ def _persist_dr_verification_result(
     zwift_id_canonical: str,
     activity_id: str,
     race_id: str,
+    source: str | None = None,
 ) -> dict:
     comparison = result.get("comparison")
     strava_data = result.get("strava")
@@ -91,6 +92,12 @@ def _persist_dr_verification_result(
 
     if trainer_name:
         doc_payload["trainerName"] = trainer_name
+
+    if not source:
+        from services.dual_recording.scope import resolve_dr_source  # noqa: PLC0415
+
+        source = resolve_dr_source(db, zwift_id_canonical, race_id=race_id)
+    doc_payload["source"] = source if source in {"mandatory", "opt_in"} else "opt_in"
 
     sticky_watts = (result.get("zwift") or {}).get("stickyWatts")
     if sticky_watts:

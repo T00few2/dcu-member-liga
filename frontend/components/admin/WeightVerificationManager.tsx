@@ -96,6 +96,21 @@ export default function WeightVerificationManager() {
 
     const raceOptions: RaceOption[] = racesData ? getFinishedRaces(racesData as any[]) : [];
 
+    useEffect(() => {
+        const days = Number(leagueSettings?.weightVerificationValidDays);
+        if (days >= 1) setValidDays(days);
+    }, [leagueSettings?.weightVerificationValidDays]);
+
+    useEffect(() => {
+        setWeighInDates((prev) => {
+            const next = { ...prev };
+            for (const row of pendingReviews) {
+                if (!next[row.id] && row.weighInDate) next[row.id] = row.weighInDate;
+            }
+            return next;
+        });
+    }, [pendingReviews]);
+
     // Trigger State
     const [triggerPercent, setTriggerPercent] = useState(5);
     const [deadlineDays, setDeadlineDays] = useState(2);
@@ -125,6 +140,10 @@ export default function WeightVerificationManager() {
     const [revisitState, setRevisitState] = useState<RevisitState | null>(null);
     const [revisitDecision, setRevisitDecision] = useState<RevisitDecision>('approve');
     const [revisitReason, setRevisitReason] = useState('');
+    const [revisitWeighInDate, setRevisitWeighInDate] = useState('');
+    const [weighInDates, setWeighInDates] = useState<Record<string, string>>({});
+    const [validDays, setValidDays] = useState(30);
+    const [savingValidDays, setSavingValidDays] = useState(false);
 
     // Revoke State
     const [revokingId, setRevokingId] = useState<string | null>(null);
@@ -165,6 +184,30 @@ export default function WeightVerificationManager() {
         }
     };
 
+    const saveValidDays = async () => {
+        if (!user || validDays < 1) return;
+        setSavingValidDays(true);
+        try {
+            const token = await user.getIdToken();
+            const res = await fetch(`${API_URL}/admin/verification/weight-valid-days`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ days: validDays }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                showToast(data.message || 'Failed to save validity days', 'error');
+                return;
+            }
+            showToast(`Weight verification valid for ${validDays} days`, 'success');
+            await queryClient.invalidateQueries({ queryKey: ['league', 'settings'] });
+        } catch {
+            showToast('Network error saving validity days', 'error');
+        } finally {
+            setSavingValidDays(false);
+        }
+    };
+
     const handleRevoke = async (id: string) => {
         if (!user) return;
         if (!confirm('Are you sure you want to revoke this verification request? The rider will no longer be required to submit.')) return;
@@ -191,9 +234,15 @@ export default function WeightVerificationManager() {
         }
     };
 
-    const handleReview = async (id: string, action: 'approve' | 'reject', reasonOverride?: string): Promise<boolean> => {
+    const handleReview = async (
+        id: string,
+        action: 'approve' | 'reject',
+        reasonOverride?: string,
+        weighInDateOverride?: string,
+    ): Promise<boolean> => {
         if (!user) return false;
         const reviewReason = reasonOverride ?? rejectionReasons[id] ?? '';
+        const weighInDate = weighInDateOverride ?? weighInDates[id];
         if (action === 'reject' && !reviewReason && !confirm('Reject without a reason?')) return false;
 
         setReviewingId(id);
@@ -205,7 +254,8 @@ export default function WeightVerificationManager() {
                 body: JSON.stringify({
                     userId: id,
                     action,
-                    reason: reviewReason
+                    reason: reviewReason,
+                    ...(weighInDate ? { weighInDate } : {}),
                 })
             });
 
@@ -232,15 +282,18 @@ export default function WeightVerificationManager() {
         name: string,
         currentDecision: RevisitDecision,
         currentReason?: string,
+        weighInDate?: string,
     ) => {
         setRevisitState({
             id,
             name,
             currentDecision,
             currentReason: currentReason || '',
+            weighInDate,
         });
         setRevisitDecision(currentDecision);
         setRevisitReason(currentReason || '');
+        setRevisitWeighInDate(weighInDate || '');
     };
 
     const closeRevisitModal = () => {
@@ -248,11 +301,17 @@ export default function WeightVerificationManager() {
         setRevisitState(null);
         setRevisitDecision('approve');
         setRevisitReason('');
+        setRevisitWeighInDate('');
     };
 
     const submitRevisit = async () => {
         if (!revisitState || reviewingId) return;
-        const ok = await handleReview(revisitState.id, revisitDecision, revisitReason);
+        const ok = await handleReview(
+            revisitState.id,
+            revisitDecision,
+            revisitReason,
+            revisitWeighInDate || undefined,
+        );
         if (ok) {
             closeRevisitModal();
         }
@@ -399,6 +458,27 @@ export default function WeightVerificationManager() {
                     )}
                     . Selected riders must submit a weight verification video within {deadlineDays} day{deadlineDays === 1 ? '' : 's'}.
                 </p>
+                <div className="flex items-end gap-3 mt-4 pt-4 border-t border-border">
+                    <div>
+                        <label className="block text-sm font-medium text-muted-foreground mb-1">Validity (days from weigh-in)</label>
+                        <input
+                            type="number"
+                            min="1"
+                            max="365"
+                            value={validDays}
+                            onChange={(e) => setValidDays(Number(e.target.value))}
+                            className="w-24 p-2 bg-background border border-input rounded text-foreground"
+                        />
+                    </div>
+                    <button
+                        type="button"
+                        onClick={saveValidDays}
+                        disabled={savingValidDays || validDays < 1}
+                        className="px-4 py-2 bg-secondary text-foreground rounded font-semibold hover:bg-secondary/80 disabled:opacity-50"
+                    >
+                        {savingValidDays ? 'Saving...' : 'Save validity'}
+                    </button>
+                </div>
             </div>
 
             <WeightVerificationList
@@ -418,15 +498,19 @@ export default function WeightVerificationManager() {
                 onOpenCompose={openComposeModal}
                 onOpenRevisit={openRevisitModal}
                 onRefetch={refetchVerifications}
+                weighInDates={weighInDates}
+                onWeighInDateChange={(id, date) => setWeighInDates(prev => ({ ...prev, [id]: date }))}
             />
 
             <WeightVerificationDetail
                 revisitState={revisitState}
                 revisitDecision={revisitDecision}
                 revisitReason={revisitReason}
+                revisitWeighInDate={revisitWeighInDate}
                 reviewingId={reviewingId}
                 onDecisionChange={setRevisitDecision}
                 onReasonChange={setRevisitReason}
+                onWeighInDateChange={setRevisitWeighInDate}
                 onClose={closeRevisitModal}
                 onSubmit={submitRevisit}
             />

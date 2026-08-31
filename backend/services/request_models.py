@@ -7,6 +7,7 @@ silently ignored rather than causing validation errors.
 """
 from __future__ import annotations
 
+from datetime import date
 from typing import Any, Literal
 
 from flask import Response, jsonify
@@ -87,6 +88,7 @@ class LeagueSettingsRequest(BaseModel):
     seasonStart: str | None = None
     seasonRankPoints: SeasonRankPointsRequest | None = None
     seasonBestResultsCount: int | None = None
+    weightVerificationValidDays: int | None = None
     # Season race defaults (template only; race docs unchanged)
     defaultEventMode: Literal['single', 'multi', 'grouped'] | None = None
     defaultSingleCategories: list[DefaultCategoryRowRequest] | None = None
@@ -198,6 +200,25 @@ class UpdateConsentsRequest(BaseModel):
     model_config = ConfigDict(extra='ignore')
 
 
+class DualRecordingOptInRequest(BaseModel):
+    enabled: bool
+
+    model_config = ConfigDict(extra='ignore')
+
+
+class WeightValidDaysRequest(BaseModel):
+    days: int = 30
+
+    @field_validator('days')
+    @classmethod
+    def _days_positive(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError('days must be >= 1')
+        return v
+
+    model_config = ConfigDict(extra='ignore')
+
+
 class SelectCategoryRequest(BaseModel):
     category: str = ''
 
@@ -261,6 +282,19 @@ class TriggerVerificationRequest(BaseModel):
 
 class SubmitVerificationRequest(BaseModel):
     videoLink: str
+    weighInDate: str
+
+    @field_validator('weighInDate')
+    @classmethod
+    def _weigh_in_date_iso(cls, v: str) -> str:
+        v = (v or '').strip()
+        if len(v) < 10:
+            raise ValueError('weighInDate is required (YYYY-MM-DD)')
+        try:
+            date.fromisoformat(v[:10])
+        except ValueError as exc:
+            raise ValueError('weighInDate must be YYYY-MM-DD') from exc
+        return v[:10]
 
     model_config = ConfigDict(extra='ignore')
 
@@ -269,5 +303,20 @@ class ReviewVerificationRequest(BaseModel):
     userId: str
     action: Literal['approve', 'reject']
     reason: str = ''
+    weighInDate: str | None = None
+
+    @field_validator('weighInDate')
+    @classmethod
+    def _optional_weigh_in_date(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        if not v:
+            return None
+        try:
+            date.fromisoformat(v[:10])
+        except ValueError as exc:
+            raise ValueError('weighInDate must be YYYY-MM-DD') from exc
+        return v[:10]
 
     model_config = ConfigDict(extra='ignore')

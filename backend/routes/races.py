@@ -13,6 +13,7 @@ from services.category_engine import _effective_cat_name, build_liga_category, e
 from services.schema_validation import log_schema_issues, validate_race_doc, with_schema_version
 from datetime import datetime, timedelta, timezone
 from authz import require_admin, require_scheduler, verify_user_token, AuthzError
+from services.dual_recording.scope import public_dr_row_visible
 from services.dual_recording_admin_core import get_dual_recording_result, DualRecordingError
 from services.zwift_tokens import resolve_user_doc_id_from_auth_uid
 from services.race_signups import (
@@ -640,6 +641,16 @@ def get_public_dr_verification_detail(race_id: str, rider_id: str):
             race_id=str(race_id),
             logger=logger,
         )
+        vdoc = (
+            db.collection('races')
+            .document(str(race_id))
+            .collection('dr_verifications')
+            .document(str(rider_id))
+            .get()
+        )
+        stored = vdoc.to_dict() if vdoc.exists else {}
+        if stored and not public_dr_row_visible(stored):
+            return jsonify({'message': 'Verification not found'}), 404
         return jsonify(_strip_hr_from_dr_result(result)), 200
     except DualRecordingError as exc:
         return jsonify({'message': exc.message}), exc.status_code
@@ -674,6 +685,8 @@ def get_public_race_dr_verifications(race_id: str):
         for d in docs:
             payload = d.to_dict() or {}
             payload['zwiftId'] = str(payload.get('zwiftId') or d.id)
+            if not public_dr_row_visible(payload):
+                continue
             out.append(payload)
         return jsonify({'verifications': out}), 200
     except Exception as e:

@@ -7,26 +7,24 @@ from services.dual_recording_core import (
     _compute_dual_recording_for_rider,
     _extract_zwift_activity_fields,
     _iter_activities_for_user_ids,
-    _is_dual_recording_required,
     _load_dr_stream_blob_result,
     _parse_iso_utc,
     _persist_dr_verification_result,
     _resolve_activity_id_for_rider,
     _run_dr_verification_background,
 )
-from services.liga_categories_core import verification_category_names
+from services.dual_recording.scope import (
+    is_dr_candidate,
+    load_verification_categories,
+    resolve_dr_source,
+)
 from services.user_service import UserService
 from services.zwift_tokens import get_token_doc, get_valid_access_token
 from extensions import get_zwift_service
 
 
 def _load_verification_categories(db: Any) -> set[str]:
-    try:
-        snap = db.collection("league").document("settings").get()
-        settings = snap.to_dict() if snap.exists else {}
-    except Exception:
-        settings = {}
-    return verification_category_names((settings or {}).get("ligaCategories"))
+    return load_verification_categories(db)
 
 
 def resolve_category_event_start(race_data: dict, category: str) -> str:
@@ -51,22 +49,19 @@ def resolve_category_event_start(race_data: dict, category: str) -> str:
 
 
 def collect_dr_candidates_for_race(db: Any, race_data: dict) -> list[dict]:
-    """Collect DR-required rider candidates from race results.
+    """Collect DR rider candidates from race results.
 
-    A rider is included only when:
-    1. Their registered trainer has dualRecordingRequired, and
-    2. Their race results category is marked requiresVerification in league settings.
+    A rider is included when either:
+    1. Their trainer has dualRecordingRequired and the result category has
+       requiresVerification (mandatory), or
+    2. They have dualRecordingOptIn set (any category / trainer).
     """
     candidates: list[dict] = []
     seen: set[str] = set()
     results_map = race_data.get("results") or {}
     verification_cats = _load_verification_categories(db)
-    if not verification_cats:
-        return candidates
 
     for category, riders in results_map.items():
-        if str(category) not in verification_cats:
-            continue
         for rider in (riders or []):
             zwift_id = str(rider.get("zwiftId") or "").strip()
             if not zwift_id or zwift_id in seen:
@@ -75,7 +70,15 @@ def collect_dr_candidates_for_race(db: Any, race_data: dict) -> list[dict]:
             user_doc = db.collection("users").document(zwift_id).get()
             if not user_doc.exists:
                 continue
-            if not _is_dual_recording_required(db, zwift_id):
+            user_data = user_doc.to_dict() or {}
+            included, source = is_dr_candidate(
+                db,
+                zwift_id,
+                category=str(category),
+                user_data=user_data,
+                verification_cats=verification_cats,
+            )
+            if not included:
                 continue
 
             seen.add(zwift_id)
@@ -85,25 +88,28 @@ def collect_dr_candidates_for_race(db: Any, race_data: dict) -> list[dict]:
                     "name": str(rider.get("name") or ""),
                     "category": str(category),
                     "activityId": str(rider.get("activityId") or "").strip() or None,
+                    "source": source,
                 }
             )
 
     return candidates
 
 
-def build_missing_activity_payload(race_id: str, zwift_id: str) -> dict:
+def build_missing_activity_payload(race_id: str, zwift_id: str, source: str = "mandatory") -> dict:
     return {
         "zwiftId": zwift_id,
         "raceId": race_id,
         "status": "missing_activity",
+        "source": source,
         "verifiedAt": datetime.now(timezone.utc).isoformat(),
         "failingMetrics": [],
         "comparison": {"cpDiff": [], "avgPower": {}},
     }
 
 
-def save_missing_activity_payload(db: Any, race_id: str, zwift_id: str) -> dict:
-    payload = build_missing_activity_payload(race_id, zwift_id)
+def save_missing_activity_payload(db: Any, race_id: str, zwift_id: str, race_data: dict | None = None) -> dict:
+    source = resolve_dr_source(db, str(zwift_id), race_id=race_id, race_data=race_data)
+    payload = build_missing_activity_payload(race_id, zwift_id, source=source)
     (
         db.collection("races")
         .document(race_id)
@@ -236,6 +242,7 @@ def get_dual_recording_result(
                 zwift_id_canonical=canonical_zwift_id,
                 activity_id=str(zwift_activity_id),
                 race_id=str(race_id),
+                source=resolve_dr_source(db, canonical_zwift_id, race_id=str(race_id)),
             )
         except Exception as exc:
             logger.warning("dual_recording cache persist failed: %s", exc)

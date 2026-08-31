@@ -9,8 +9,10 @@ from flask import jsonify, request
 from authz import AuthzError, require_admin
 from extensions import db
 from routes.admin import admin_bp
+from services.dual_recording.scope import (
+    is_dr_candidate,
+)
 from services.dual_recording_core import (
-    _is_dual_recording_required,
     _load_sw_thresholds,
     _run_sw_only_background,
 )
@@ -166,7 +168,7 @@ def batch_verify_dual_recording(race_id):
                 )
 
             if not activity_id:
-                save_missing_activity_payload(db, race_id, zwift_id)
+                save_missing_activity_payload(db, race_id, zwift_id, race_data=race_data)
                 summary.append({"zwiftId": zwift_id, "status": "missing_activity"})
                 continue
 
@@ -238,8 +240,14 @@ def verify_dual_recording_for_rider(race_id: str, zwift_id: str):
         user_doc = db.collection("users").document(str(zwift_id)).get()
         if not user_doc.exists:
             return jsonify({"message": "Rider not found"}), 404
-        if not _is_dual_recording_required(db, str(zwift_id)):
-            return jsonify({"message": "Dual recording not required for this rider"}), 400
+        included, _source = is_dr_candidate(
+            db,
+            str(zwift_id),
+            category=target_category,
+            user_data=user_doc.to_dict() or {},
+        )
+        if not included:
+            return jsonify({"message": "Dual recording is not required or opted in for this rider"}), 400
 
         payload = request.get_json(silent=True) or {}
         preferred_activity_value = payload.get("activityId")
@@ -255,7 +263,7 @@ def verify_dual_recording_for_rider(race_id: str, zwift_id: str):
         )
 
         if not activity_id:
-            missing_payload = save_missing_activity_payload(db, race_id, str(zwift_id))
+            missing_payload = save_missing_activity_payload(db, race_id, str(zwift_id), race_data=race_data)
             return jsonify({
                 "ok": True,
                 "message": "No matching Zwift activity found for this race.",
@@ -372,7 +380,7 @@ def verify_sticky_watts_for_rider(race_id: str, zwift_id: str):
             )
 
         if not activity_id:
-            missing_payload = save_missing_activity_payload(db, race_id, str(zwift_id))
+            missing_payload = save_missing_activity_payload(db, race_id, str(zwift_id), race_data=race_data)
             return jsonify({
                 "ok": True,
                 "message": "No Zwift activity found for this rider.",

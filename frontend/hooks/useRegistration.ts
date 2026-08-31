@@ -30,7 +30,19 @@ export function useRegistration() {
     const [weightVerificationStatus, setWeightVerificationStatus] = useState<'none' | 'pending' | 'submitted' | 'approved' | 'rejected'>('none');
     const [weightVerificationVideoLink, setWeightVerificationVideoLink] = useState('');
     const [weightVerificationDeadline, setWeightVerificationDeadline] = useState<{ seconds: number; nanoseconds: number } | string | null>(null);
-    const [verificationRequests, setVerificationRequests] = useState<{ requestId: string; status: 'pending' | 'submitted' | 'approved' | 'rejected'; requestedAt?: { seconds: number } | string | null; videoLink?: string; rejectionReason?: string; deadline?: { seconds: number } | string | null }[]>([]);
+    const [verificationRequests, setVerificationRequests] = useState<{
+        requestId: string;
+        status: 'pending' | 'submitted' | 'approved' | 'rejected';
+        requestedAt?: { seconds: number } | string | null;
+        submittedAt?: { seconds: number } | string | null;
+        videoLink?: string;
+        rejectionReason?: string;
+        deadline?: { seconds: number } | string | null;
+        weighInDate?: string;
+        source?: string;
+    }[]>([]);
+    const [dualRecordingOptIn, setDualRecordingOptIn] = useState(false);
+    const [ligaCategory, setLigaCategory] = useState<string | null>(null);
 
     // Policy Versions
     const [requiredDataPolicyVersion, setRequiredDataPolicyVersion] = useState<string | null>(null);
@@ -56,6 +68,7 @@ export function useRegistration() {
     const [savingProgress, setSavingProgress] = useState(false);
     const [message, setMessage] = useState('');
     const [error, setError] = useState('');
+    const [profileTick, setProfileTick] = useState(0);
 
     // --- Effects ---
 
@@ -112,6 +125,8 @@ export function useRegistration() {
                         setWeightVerificationVideoLink(data.weightVerificationVideoLink || '');
                         setWeightVerificationDeadline(data.weightVerificationDeadline || null);
                         setVerificationRequests(data.verificationRequests || []);
+                        setDualRecordingOptIn(!!data.dualRecordingOptIn);
+                        setLigaCategory(data.ligaCategory?.category || null);
                         setInitialData({ zwiftId: data.zwiftId });
                         setIsRegistered(data.registered);
                         if (data.hasDraft && !data.registered) setMessage('Velkommen tilbage! Kladde indlæst.');
@@ -126,7 +141,7 @@ export function useRegistration() {
             }
         };
         if (user && !authLoading) fetchProfile();
-    }, [user, authLoading]);
+    }, [user, authLoading, profileTick]);
 
     useEffect(() => {
         if (stravaStatusParam === 'connected') {
@@ -327,7 +342,12 @@ export function useRegistration() {
         weightVerificationVideoLink,
         weightVerificationDeadline,
         verificationRequests,
-        refreshProfile,
+        dualRecordingOptIn,
+        ligaCategory,
+        refreshProfile: async () => {
+            await refreshProfile();
+            setProfileTick((tick) => tick + 1);
+        },
         // Lists
         clubs, loadingClubs, clubsError,
         trainers, loadingTrainers, trainersError,

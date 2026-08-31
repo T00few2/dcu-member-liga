@@ -118,6 +118,7 @@
         }
       },
       "gracePeriod": 35,
+      "weightVerificationValidDays": 30,
       "ligaCategories": [
         { "name": "Diamond", "upper": null, "requiresVerification": true },
         { "name": "Ruby", "upper": 2200, "requiresVerification": true },
@@ -382,6 +383,7 @@
       "email": "user@example.com",
       "club": "Danish Zwift Racers",
       "welcomeSeen": true,
+      "dualRecordingOptIn": false,
       "drReportSeenAt": "2026-05-24T14:54:08+00:00",
       "swReportSeenAt": "2026-05-24T14:54:08+00:00",
       "lastReadNewsPostId": "post_example_latest",
@@ -489,6 +491,8 @@
           "raceId": "race_doc_example_001",
           "raceName": "The Climb",
           "videoLink": "https://youtube.com/watch?v=example",
+          "weighInDate": "2026-05-21",
+          "source": "sampled",
           "submittedAt": "2026-05-22T07:45:00+00:00",
           "reviewedAt": "2026-05-22T16:20:00+00:00",
           "reviewerId": "Admin",
@@ -504,6 +508,8 @@
             "raceId": "race_doc_example_001",
             "raceName": "The Climb",
             "videoLink": "https://youtube.com/watch?v=example",
+            "weighInDate": "2026-05-21",
+            "source": "sampled",
             "submittedAt": "2026-05-22T07:45:00+00:00",
             "reviewedAt": "2026-05-22T16:20:00+00:00",
             "reviewerId": "Admin",

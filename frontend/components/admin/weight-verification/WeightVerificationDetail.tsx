@@ -7,15 +7,18 @@ export interface RevisitState {
     name: string;
     currentDecision: RevisitDecision;
     currentReason: string;
+    weighInDate?: string;
 }
 
 export interface WeightVerificationDetailProps {
     revisitState: RevisitState | null;
     revisitDecision: RevisitDecision;
     revisitReason: string;
+    revisitWeighInDate: string;
     reviewingId: string | null;
     onDecisionChange: (decision: RevisitDecision) => void;
     onReasonChange: (reason: string) => void;
+    onWeighInDateChange: (date: string) => void;
     onClose: () => void;
     onSubmit: () => void;
 }
@@ -24,9 +27,11 @@ export default function WeightVerificationDetail({
     revisitState,
     revisitDecision,
     revisitReason,
+    revisitWeighInDate,
     reviewingId,
     onDecisionChange,
     onReasonChange,
+    onWeighInDateChange,
     onClose,
     onSubmit,
 }: WeightVerificationDetailProps) {
@@ -54,6 +59,17 @@ export default function WeightVerificationDetail({
                             <option value="approve">Approve</option>
                             <option value="reject">Reject</option>
                         </select>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-muted-foreground mb-1">Weigh-in date</label>
+                        <input
+                            type="date"
+                            value={revisitWeighInDate}
+                            max={new Date().toISOString().slice(0, 10)}
+                            onChange={(e) => onWeighInDateChange(e.target.value)}
+                            className="w-full p-2 bg-background border border-input rounded text-foreground"
+                        />
                     </div>
 
                     <div>

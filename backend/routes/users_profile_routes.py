@@ -31,6 +31,7 @@ from services.zwift_tokens import (
     save_token_doc,
 )
 from services.request_models import (
+    DualRecordingOptInRequest,
     MarkNewsReadRequest,
     SelectCategoryRequest,
     SignupRequest,
@@ -129,6 +130,7 @@ def get_profile():
                     "weightVerificationVideoLink": user.weight_verification_video_link,
                     "weightVerificationDeadline": user.weight_verification_deadline,
                     "verificationRequests": user.verification_history,
+                    "dualRecordingOptIn": bool(user._data.get("dualRecordingOptIn")),
                     "ligaCategory": lc,
                 }
             ),
@@ -638,6 +640,126 @@ def mark_sw_report_seen():
         return jsonify({"message": str(e)}), 500
 
 
+@users_bp.route("/profile/dual-recording-opt-in", methods=["POST"])
+def set_dual_recording_opt_in():
+    try:
+        decoded_token = verify_user_token(request)
+    except AuthzError as e:
+        return jsonify({"message": e.message}), e.status_code
+
+    uid = decoded_token["uid"]
+    if not db:
+        return jsonify({"message": "Database not available"}), 500
+
+    body, err = parse_body(DualRecordingOptInRequest, request.get_json(silent=True) or {})
+    if err:
+        return err
+
+    user = UserService.get_user_by_auth_uid(uid)
+    if not user or not user.is_registered:
+        return jsonify({"message": "User not registered"}), 403
+
+    payload = with_schema_version({"dualRecordingOptIn": bool(body.enabled)})
+    log_schema_issues(logger, f"users/{user.id} (dual-recording-opt-in)", validate_user_doc(payload, partial=True))
+    db.collection("users").document(str(user.id)).set(payload, merge=True)
+    return jsonify({"ok": True, "dualRecordingOptIn": bool(body.enabled)}), 200
+
+
+_DR_SUMMARY_KEEP = (
+    "zwiftId",
+    "raceId",
+    "status",
+    "passed",
+    "verifiedAt",
+    "swVerifiedAt",
+    "failingMetrics",
+    "stickyWatts",
+    "trainerName",
+    "source",
+    "activityId",
+    "stravaActivityId",
+    "comparison",
+)
+
+
+def _parse_dr_doc_path(path: str) -> tuple[str | None, str | None]:
+    parts = [p for p in str(path or "").split("/") if p]
+    if len(parts) >= 6 and parts[0] == "archives" and parts[2] == "races":
+        return parts[1], parts[3]
+    if len(parts) >= 4 and parts[0] == "races":
+        return None, parts[1]
+    return None, None
+
+
+def _dedupe_profile_dr_rows(rows: list[dict]) -> dict[tuple[str, str], dict]:
+    deduped: dict[tuple[str, str], dict] = {}
+    for row in rows:
+        race_id = str(row.get("raceId") or "").strip()
+        if not race_id:
+            continue
+        archive_id = str(row.get("archiveId") or "").strip()
+        key = (archive_id, race_id)
+        existing = deduped.get(key)
+        if existing is None:
+            deduped[key] = row
+            continue
+        if not archive_id and existing.get("archiveId"):
+            deduped[key] = row
+        elif (row.get("verifiedAt") or "") > (existing.get("verifiedAt") or ""):
+            deduped[key] = row
+    return deduped
+
+
+def _assemble_profile_dr_verifications(docs, db) -> list[dict]:
+    rows = [_profile_dr_summary(d) for d in docs]
+    rows.sort(key=lambda v: v.get("verifiedAt") or "", reverse=True)
+    deduped = _dedupe_profile_dr_rows(rows)
+
+    live_ids = {rid for aid, rid in deduped if not aid}
+    archive_pairs = {(aid, rid) for aid, rid in deduped if aid}
+    live_names: dict[str, str] = {}
+    for rid in live_ids:
+        race_doc = db.collection("races").document(rid).get()
+        if race_doc.exists:
+            live_names[rid] = str((race_doc.to_dict() or {}).get("name") or rid)
+    archive_names: dict[tuple[str, str], str] = {}
+    season_names: dict[str, str] = {}
+    for aid, rid in archive_pairs:
+        if aid not in season_names:
+            adoc = db.collection("archives").document(aid).get()
+            season_names[aid] = str((adoc.to_dict() or {}).get("name") or "") if adoc.exists else ""
+        rdoc = db.collection("archives").document(aid).collection("races").document(rid).get()
+        if rdoc.exists:
+            archive_names[(aid, rid)] = str((rdoc.to_dict() or {}).get("name") or rid)
+
+    verifications = []
+    for (aid, rid), row in deduped.items():
+        if aid:
+            row["raceName"] = archive_names.get((aid, rid), rid)
+            if season_names.get(aid):
+                row["archiveName"] = season_names[aid]
+        else:
+            row["raceName"] = live_names.get(rid, rid)
+        verifications.append(row)
+    verifications.sort(key=lambda v: v.get("verifiedAt") or "", reverse=True)
+    return verifications
+
+
+def _profile_dr_summary(snap) -> dict:
+    data = snap.to_dict() or {}
+    out = {key: data.get(key) for key in _DR_SUMMARY_KEEP if key in data}
+    out = _normalize_verification_doc(out)
+    ref = getattr(snap, "reference", None)
+    path = str(getattr(ref, "path", "") or "")
+    archive_id, path_race_id = _parse_dr_doc_path(path)
+    if path_race_id:
+        out["raceId"] = str(out.get("raceId") or path_race_id)
+    if archive_id:
+        out["archiveId"] = archive_id
+    out["zwiftId"] = str(out.get("zwiftId") or getattr(snap, "id", "") or "")
+    return out
+
+
 @users_bp.route("/profile/dr-verifications", methods=["GET"])
 def get_profile_dr_verifications():
     try:
@@ -658,12 +780,7 @@ def get_profile_dr_verifications():
         docs = list(
             db.collection_group("dr_verifications").where("zwiftId", "==", zwift_id).stream()
         )
-        verifications = sorted(
-            [_normalize_verification_doc(d.to_dict() or {}) for d in docs],
-            key=lambda v: v.get("verifiedAt") or "",
-            reverse=True,
-        )[:50]
-
+        verifications = _assemble_profile_dr_verifications(docs, db)
         return jsonify({"verifications": verifications}), 200
     except Exception as e:
         logger.error("get_profile_dr_verifications error: %s", e)

@@ -509,6 +509,10 @@ function RuterSection() {
 function ReglerSection() {
     const verificationNames = useVerificationCategoryNames();
     const verificationLabel = joinDanishNames(verificationNames);
+    const { data: leagueSettings } = useLeagueSettingsQuery();
+    const weightValidDays = Number(leagueSettings?.weightVerificationValidDays) > 0
+        ? Number(leagueSettings?.weightVerificationValidDays)
+        : 30;
 
     return (
         <div className="space-y-5">
@@ -522,10 +526,14 @@ function ReglerSection() {
                 </div>
                 <div className="pl-4 border-l-4 border-tertiary">
                     <h4 className="font-bold text-slate-900 dark:text-white mb-1">Stikprøvekontrol (Weight Verification)</h4>
-                    <p className="text-slate-600 dark:text-slate-400">
+                    <p className="text-slate-600 dark:text-slate-400 mb-2">
                         {verificationLabel
                             ? `For ryttere i ${verificationLabel} vil der fra tid til anden blive krævet videodokumentation af den aktuelle vægt.`
                             : 'Der kræves i øjeblikket ikke vægtverifikation for nogen kategorier.'}
+                    </p>
+                    <p className="text-slate-600 dark:text-slate-400">
+                        Alle ryttere kan også indsende en vægtvideo frivilligt under <Link href="/verification" className="text-primary underline hover:no-underline">Verifikation</Link>.
+                        En godkendt indvejning tæller i {weightValidDays} dage fra indvejningsdatoen (ikke upload- eller godkendelsesdagen).
                     </p>
                 </div>
                 <div className="pl-4 border-l-4 border-blue-500">
@@ -541,13 +549,21 @@ function ReglerSection() {
                             <p className="text-slate-600 dark:text-slate-400 mb-2">
                                 Ryttere i <strong>{verificationLabel}</strong> skal enten benytte en <strong>godkendt hometrainer</strong> eller foretage <strong>dual recording</strong> med en separat wattmåler.
                             </p>
-                            <p className="text-slate-600 dark:text-slate-400">
+                            <p className="text-slate-600 dark:text-slate-400 mb-2">
                                 Ved dual recording skal aktiviteten uploades til <strong>Strava</strong>, og din Strava-konto skal være forbundet med din profil her på siden. Strava-data bruges kun til admin kontrol af wattdata.
+                            </p>
+                            <p className="text-slate-600 dark:text-slate-400">
+                                Ryttere med godkendt hometrainer — og ryttere uden for verifikationskategorierne — kan tilmelde sig dual recording-tjek under{' '}
+                                <Link href="/verification" className="text-primary underline hover:no-underline">Verifikation</Link>.
+                                Et godkendt tjek kan vises på resultater. Et underkendt tjek ses kun af rytteren og administratorer og deklassificerer ikke automatisk.
                             </p>
                         </>
                     ) : (
                         <p className="text-slate-600 dark:text-slate-400">
                             Dual recording kræves i øjeblikket ikke for nogen kategorier.
+                            Alle ryttere kan stadig tilmelde sig tjekket frivilligt under{' '}
+                            <Link href="/verification" className="text-primary underline hover:no-underline">Verifikation</Link>.
+                            Et underkendt tjek er ikke offentligt og deklassificerer ikke automatisk.
                         </p>
                     )}
                 </div>

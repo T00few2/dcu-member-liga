@@ -2,6 +2,10 @@
 
 import { formatCopenhagenDateTime } from './utils';
 
+function sourceLabel(source?: string | null) {
+    return source === 'voluntary' ? 'Frivillig' : 'Stikprøve';
+}
+
 export interface PendingVerification {
     id: string;
     name: string;
@@ -13,6 +17,8 @@ export interface PendingVerification {
     lastRaceName?: string | null;
     lastRaceDate?: string | null;
     latestProfileUpdatedAt?: string | null;
+    weighInDate?: string | null;
+    source?: string;
 }
 
 export interface ActiveRequest {
@@ -21,6 +27,8 @@ export interface ActiveRequest {
     email?: string;
     club: string;
     deadline: string | any;
+    weighInDate?: string | null;
+    source?: string;
 }
 
 export interface ApprovedVerification {
@@ -34,6 +42,8 @@ export interface ApprovedVerification {
     lastRaceName?: string | null;
     lastRaceDate?: string | null;
     latestProfileUpdatedAt?: string | null;
+    weighInDate?: string | null;
+    source?: string;
 }
 
 export interface RejectedVerification {
@@ -48,6 +58,8 @@ export interface RejectedVerification {
     lastRaceName?: string | null;
     lastRaceDate?: string | null;
     latestProfileUpdatedAt?: string | null;
+    weighInDate?: string | null;
+    source?: string;
 }
 
 export type RevisitDecision = 'approve' | 'reject';
@@ -65,8 +77,10 @@ export interface WeightVerificationListProps {
     onRevoke: (id: string) => void;
     onReview: (id: string, action: 'approve' | 'reject') => void;
     onOpenCompose: (target: Pick<PendingVerification, 'id' | 'name' | 'email'>, template?: 'default' | 'awaitingSubmission') => void;
-    onOpenRevisit: (id: string, name: string, currentDecision: RevisitDecision, currentReason?: string) => void;
+    onOpenRevisit: (id: string, name: string, currentDecision: RevisitDecision, currentReason?: string, weighInDate?: string) => void;
     onRefetch: () => void;
+    weighInDates: Record<string, string>;
+    onWeighInDateChange: (id: string, date: string) => void;
 }
 
 export default function WeightVerificationList({
@@ -84,6 +98,8 @@ export default function WeightVerificationList({
     onOpenCompose,
     onOpenRevisit,
     onRefetch,
+    weighInDates,
+    onWeighInDateChange,
 }: WeightVerificationListProps) {
     return (
         <>
@@ -108,7 +124,7 @@ export default function WeightVerificationList({
                                     <div>
                                         <div className="font-bold text-foreground">{req.name}</div>
                                         <div className="text-xs text-muted-foreground">
-                                            {req.club || 'No Club'}
+                                            {req.club || 'No Club'} · {sourceLabel(req.source)}
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-3">
@@ -158,11 +174,16 @@ export default function WeightVerificationList({
                                         <div>
                                             <div className="font-bold text-lg text-foreground">{req.name}</div>
                                             <div className="text-sm text-muted-foreground">
-                                                Club: {req.club || 'None'}
+                                                Club: {req.club || 'None'} · {sourceLabel(req.source)}
                                             </div>
                                             <div className="text-xs text-muted-foreground mt-1">
                                                 Submitted: {new Date(req.submittedAt).toLocaleDateString()}
                                             </div>
+                                            {req.weighInDate && (
+                                                <div className="text-xs text-muted-foreground mt-1">
+                                                    Weigh-in: {req.weighInDate}
+                                                </div>
+                                            )}
                                             {req.lastRaceWeightKg != null && (
                                                 <div className="text-xs text-muted-foreground mt-1">
                                                     Last race weight: <span className="font-semibold text-foreground">{req.lastRaceWeightKg.toFixed(1)} kg</span>
@@ -198,6 +219,16 @@ export default function WeightVerificationList({
                                             </div>
                                         ) : (
                                             <>
+                                                <div>
+                                                    <label className="block text-xs text-muted-foreground mb-1">Weigh-in date</label>
+                                                    <input
+                                                        type="date"
+                                                        value={weighInDates[req.id] ?? req.weighInDate ?? ''}
+                                                        max={new Date().toISOString().slice(0, 10)}
+                                                        onChange={(e) => onWeighInDateChange(req.id, e.target.value)}
+                                                        className="text-sm bg-background border border-input rounded px-2 py-1 w-full"
+                                                    />
+                                                </div>
                                                 <div className="flex gap-2">
                                                     <button
                                                         onClick={() => onReview(req.id, 'approve')}
@@ -248,8 +279,13 @@ export default function WeightVerificationList({
                                 <div>
                                     <div className="font-bold text-foreground">{req.name}</div>
                                     <div className="text-xs text-muted-foreground">
-                                        {req.club || 'No Club'}
+                                        {req.club || 'No Club'} · {sourceLabel(req.source)}
                                     </div>
+                                    {req.weighInDate && (
+                                        <div className="text-xs text-muted-foreground">
+                                            Weigh-in: {req.weighInDate}
+                                        </div>
+                                    )}
                                     <div className="text-xs text-green-600 dark:text-green-400 font-medium">
                                         Approved: {new Date(req.approvedAt).toLocaleDateString()} by {req.approvedBy}
                                     </div>
@@ -273,7 +309,7 @@ export default function WeightVerificationList({
                                     )}
                                 </div>
                                 <button
-                                    onClick={() => onOpenRevisit(req.id, req.name, 'approve')}
+                                    onClick={() => onOpenRevisit(req.id, req.name, 'approve', undefined, req.weighInDate || undefined)}
                                     disabled={reviewingId === req.id}
                                     className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 font-medium"
                                 >
@@ -304,8 +340,13 @@ export default function WeightVerificationList({
                                 <div>
                                     <div className="font-bold text-foreground">{req.name}</div>
                                     <div className="text-xs text-muted-foreground">
-                                        {req.club || 'No Club'}
+                                        {req.club || 'No Club'} · {sourceLabel(req.source)}
                                     </div>
+                                    {req.weighInDate && (
+                                        <div className="text-xs text-muted-foreground">
+                                            Weigh-in: {req.weighInDate}
+                                        </div>
+                                    )}
                                     <div className="text-xs text-red-600 dark:text-red-400 font-medium">
                                         Rejected: {req.rejectedAt ? new Date(req.rejectedAt).toLocaleDateString() : 'Unknown'} by {req.rejectedBy}
                                     </div>
@@ -334,7 +375,7 @@ export default function WeightVerificationList({
                                     )}
                                 </div>
                                 <button
-                                    onClick={() => onOpenRevisit(req.id, req.name, 'reject', req.rejectionReason)}
+                                    onClick={() => onOpenRevisit(req.id, req.name, 'reject', req.rejectionReason, req.weighInDate || undefined)}
                                     disabled={reviewingId === req.id}
                                     className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 font-medium"
                                 >

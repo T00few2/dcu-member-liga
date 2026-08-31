@@ -8,9 +8,10 @@ function VerificationContent() {
     const {
         authLoading, fetchingProfile,
         weightVerificationStatus,
-        weightVerificationVideoLink,
         weightVerificationDeadline,
         verificationRequests,
+        dualRecordingOptIn,
+        ligaCategory,
         refreshProfile,
         trainer,
         trainers,
@@ -27,11 +28,12 @@ function VerificationContent() {
             <h1 className="text-3xl font-bold mb-8 text-foreground">Verifikation</h1>
             <VerificationStatus
                 status={weightVerificationStatus}
-                videoLink={weightVerificationVideoLink}
                 deadline={weightVerificationDeadline}
                 requests={verificationRequests}
                 refreshProfile={refreshProfile}
                 trainerRequiresDualRecording={trainerRequiresDualRecording}
+                dualRecordingOptIn={dualRecordingOptIn}
+                ligaCategory={ligaCategory}
             />
         </div>
     );

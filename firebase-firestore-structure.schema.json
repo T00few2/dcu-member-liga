@@ -307,6 +307,10 @@
           "type": "integer",
           "description": "Points above category upper boundary before status becomes over"
         },
+        "weightVerificationValidDays": {
+          "type": "integer",
+          "description": "Approved weigh-in remains valid this many days from weighInDate; default 30"
+        },
         "ligaCategories": {
           "type": "array",
           "description": "Ordered liga category definitions (top category first, upper=null)",
@@ -769,6 +773,11 @@
             "type": "string"
           }
         },
+        "source": {
+          "type": "string",
+          "enum": ["mandatory", "opt_in"],
+          "description": "mandatory if verification category and trainer requires DR; otherwise opt_in"
+        },
         "comparison": {
           "type": "object",
           "additionalProperties": true
@@ -1098,6 +1107,10 @@
         "welcomeSeen": {
           "type": "boolean"
         },
+        "dualRecordingOptIn": {
+          "type": "boolean",
+          "description": "When true, rider is included in dual-recording checks even without a mandatory trainer/category"
+        },
         "drReportSeenAt": {
           "$ref": "#/$defs/timestampString"
         },
@@ -1377,6 +1390,15 @@
                 "videoLink": {
                   "type": "string"
                 },
+                "weighInDate": {
+                  "type": "string",
+                  "description": "Calendar date YYYY-MM-DD of the weigh-in"
+                },
+                "source": {
+                  "type": "string",
+                  "enum": ["sampled", "voluntary"],
+                  "description": "sampled if admin-triggered; voluntary if rider-initiated. Missing source = sampled"
+                },
                 "submittedAt": {
                   "$ref": "#/$defs/timestampString"
                 },
@@ -1420,6 +1442,15 @@
                   },
                   "videoLink": {
                     "type": "string"
+                  },
+                  "weighInDate": {
+                    "type": "string",
+                    "description": "Calendar date YYYY-MM-DD of the weigh-in"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": ["sampled", "voluntary"],
+                    "description": "sampled if admin-triggered; voluntary if rider-initiated. Missing source = sampled"
                   },
                   "submittedAt": {
                     "$ref": "#/$defs/timestampString"
