@@ -106,6 +106,7 @@ export interface DualRecordingVerification {
     status: DualRecordingStatus;
     passed?: boolean;
     verifiedAt?: string;
+    swVerifiedAt?: string;
     activityId?: string;
     zwiftActivityId?: string;
     stravaActivityId?: number | null;
