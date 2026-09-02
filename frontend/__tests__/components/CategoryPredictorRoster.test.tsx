@@ -25,6 +25,7 @@ const ada: Participant = {
   racingScore: 500,
   max30Rating: 1100,
   ligaCategory: null,
+  zwiftActivityCount: 12,
 };
 
 function renderRoster(overrides: Partial<ComponentProps<typeof CategoryPredictorRoster>> = {}) {
@@ -61,7 +62,10 @@ describe('CategoryPredictorRoster', () => {
     expect(screen.getAllByText('Platinum').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Amethyst').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole('button', { name: 'Load' })).toBeInTheDocument();
-    expect(within(screen.getByLabelText('Assign Ada')).getByRole('option', { name: 'Zwift (Platinum)' })).toBeInTheDocument();
+    expect(screen.getAllByRole('columnheader', { name: 'Rides' })).toHaveLength(2);
+    expect(screen.getByText('12')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Assign as' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Assign' })).toBeInTheDocument();
   });
 
   it('populates Strava bounds only after a load', () => {
@@ -72,6 +76,7 @@ describe('CategoryPredictorRoster', () => {
     });
 
     expect(screen.queryByRole('button', { name: 'Load' })).not.toBeInTheDocument();
+    expect(screen.getByText('8')).toBeInTheDocument();
     const assign = screen.getByLabelText('Assign Ada');
     expect(within(assign).getByRole('option', { name: /Strava \(Amethyst\)/ })).toBeInTheDocument();
   });

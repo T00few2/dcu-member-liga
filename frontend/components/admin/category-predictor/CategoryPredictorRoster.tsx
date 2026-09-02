@@ -40,6 +40,11 @@ function Dash({ title }: { title?: string }) {
   );
 }
 
+function rideCountTitle(count: number | null | undefined): string | undefined {
+  if (count == null) return undefined;
+  return count === 1 ? '1 ride' : `${count} rides`;
+}
+
 export default function CategoryPredictorRoster({
   riders,
   model,
@@ -119,21 +124,24 @@ export default function CategoryPredictorRoster({
             <tr className="text-xs uppercase text-muted-foreground border-b border-border">
               <th rowSpan={2} className="px-3 py-2 font-medium text-foreground normal-case text-sm whitespace-nowrap">Rider</th>
               <th rowSpan={2} className="px-3 py-2 font-medium text-center whitespace-nowrap">vELO</th>
-              <th colSpan={2} className="px-3 py-2 font-medium text-center border-l border-border">Zwift predicted</th>
-              <th colSpan={2} className="px-3 py-2 font-medium text-center border-l border-border">Strava predicted</th>
-              <th rowSpan={2} className="px-3 py-2 font-medium text-foreground normal-case text-sm whitespace-nowrap border-l border-border">Assign</th>
+              <th colSpan={3} className="px-3 py-2 font-medium text-center border-l border-border">Zwift predicted</th>
+              <th colSpan={3} className="px-3 py-2 font-medium text-center border-l border-border">Strava predicted</th>
+              <th rowSpan={2} className="px-3 py-2 font-medium text-foreground normal-case text-sm whitespace-nowrap border-l border-border">Assign as</th>
+              <th rowSpan={2} className="px-3 py-2 font-medium text-foreground normal-case text-sm whitespace-nowrap">Assign</th>
             </tr>
             <tr className="text-xs text-muted-foreground border-b border-border">
               <th className="px-3 py-1 font-medium text-center border-l border-border whitespace-nowrap">Lower</th>
               <th className="px-3 py-1 font-medium text-center whitespace-nowrap">Upper</th>
+              <th className="px-3 py-1 font-medium text-center whitespace-nowrap">Rides</th>
               <th className="px-3 py-1 font-medium text-center border-l border-border whitespace-nowrap">Lower</th>
               <th className="px-3 py-1 font-medium text-center whitespace-nowrap">Upper</th>
+              <th className="px-3 py-1 font-medium text-center whitespace-nowrap">Rides</th>
             </tr>
           </thead>
           <tbody>
             {riders.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-muted-foreground">
+                <td colSpan={10} className="px-3 py-6 text-center text-muted-foreground">
                   No riders match the current filters.
                 </td>
               </tr>
@@ -185,6 +193,12 @@ export default function CategoryPredictorRoster({
                   <td className="px-3 py-2 text-center">
                     {zwiftPred.catHigh ? <CategoryBadge name={zwiftPred.catHigh} compact /> : <Dash />}
                   </td>
+                  <td
+                    className="px-3 py-2 text-center text-xs text-muted-foreground tabular-nums whitespace-nowrap"
+                    title={rideCountTitle(p.zwiftActivityCount)}
+                  >
+                    {p.zwiftActivityCount == null ? <Dash /> : p.zwiftActivityCount}
+                  </td>
                   <td className="px-3 py-2 text-center border-l border-border">
                     {stravaLoading ? (
                       <span className="text-xs text-muted-foreground">…</span>
@@ -199,6 +213,13 @@ export default function CategoryPredictorRoster({
                       <span className="text-xs text-muted-foreground">…</span>
                     ) : stravaPred.catHigh ? (
                       <CategoryBadge name={stravaPred.catHigh} compact />
+                    ) : (
+                      <Dash title={stravaEntry?.error} />
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-center text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                    {stravaLoading ? (
+                      <span>…</span>
                     ) : stravaEntry?.error ? (
                       <button
                         type="button"
@@ -208,7 +229,9 @@ export default function CategoryPredictorRoster({
                         Retry
                       </button>
                     ) : stravaEntry ? (
-                      <Dash title={stravaEntry.error} />
+                      <span title={rideCountTitle(stravaEntry.activityCount)}>
+                        {stravaEntry.activityCount == null ? <Dash /> : stravaEntry.activityCount}
+                      </span>
                     ) : (
                       <button
                         type="button"
@@ -219,37 +242,39 @@ export default function CategoryPredictorRoster({
                       </button>
                     )}
                   </td>
-                  <td className="px-3 py-2 border-l border-border">
+                  <td className="px-3 py-2 border-l border-border whitespace-nowrap">
                     {locked ? (
                       <span className="text-xs text-muted-foreground">Locked after racing</span>
                     ) : (
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <select
-                          aria-label={`Assign ${p.name}`}
-                          value={choice}
-                          onChange={e => setChoices(prev => ({ ...prev, [p.zwiftId]: e.target.value }))}
-                          className="border border-border rounded px-1.5 py-1 text-xs bg-background text-foreground max-w-[11rem]"
-                        >
-                          <option value="zwift">Zwift ({zwiftPred.category ?? '—'})</option>
-                          <option value="strava" disabled={!stravaReady}>
-                            Strava ({stravaPred.category ?? '—'})
-                          </option>
-                          {ZR_CATEGORY_DEFAULTS.map(c => (
-                            <option key={c.name} value={c.name}>{c.name}</option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => onAssign(p.zwiftId, choice)}
-                          disabled={!assignReady || assigningZwiftId === p.zwiftId}
-                          className="px-2 py-1 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                        >
-                          {assigningZwiftId === p.zwiftId ? '…' : 'Assign'}
-                        </button>
-                      </div>
+                      <select
+                        aria-label={`Assign ${p.name}`}
+                        value={choice}
+                        onChange={e => setChoices(prev => ({ ...prev, [p.zwiftId]: e.target.value }))}
+                        className="border border-border rounded px-1.5 py-1 text-xs bg-background text-foreground w-full min-w-[9.5rem]"
+                      >
+                        <option value="zwift">Zwift ({zwiftPred.category ?? '—'})</option>
+                        <option value="strava" disabled={!stravaReady}>
+                          Strava ({stravaPred.category ?? '—'})
+                        </option>
+                        {ZR_CATEGORY_DEFAULTS.map(c => (
+                          <option key={c.name} value={c.name}>{c.name}</option>
+                        ))}
+                      </select>
                     )}
                     {rowError && (
                       <p className="text-xs text-red-600 mt-0.5 max-w-[16rem]">{rowError}</p>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {!locked && (
+                      <button
+                        type="button"
+                        onClick={() => onAssign(p.zwiftId, choice)}
+                        disabled={!assignReady || assigningZwiftId === p.zwiftId}
+                        className="px-2.5 py-1 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                      >
+                        {assigningZwiftId === p.zwiftId ? '…' : 'Assign'}
+                      </button>
                     )}
                   </td>
                 </tr>
