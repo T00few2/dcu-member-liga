@@ -186,19 +186,27 @@ export const POWER_ROW_DEFS: {
   label: string;
   step: string;
   featureKeys: FeatureKey[];
+  wattsKey: FeatureKey;
+  wattsLabel: string;
   compoundKey: FeatureKey;
   compoundLabel: string;
 }[] = [
-  { field: 'wkg5s',  label: '5s W/kg',    step: '0.01', featureKeys: ['wkg5s', 'watts5s', 'compound5s'],     compoundKey: 'compound5s',  compoundLabel: '5s²/kg (auto)' },
-  { field: 'wkg1m',  label: '1min W/kg',  step: '0.01', featureKeys: ['wkg1m', 'watts1m', 'compound1m'],     compoundKey: 'compound1m',  compoundLabel: '1m²/kg (auto)' },
-  { field: 'wkg5m',  label: '5min W/kg',  step: '0.01', featureKeys: ['wkg5m', 'watts5m', 'compound5m'],     compoundKey: 'compound5m',  compoundLabel: '5m²/kg (auto)' },
-  { field: 'wkg20m', label: '20min W/kg', step: '0.01', featureKeys: ['wkg20m', 'watts20m', 'compound20m'], compoundKey: 'compound20m', compoundLabel: '20m²/kg (auto)' },
+  { field: 'wkg5s',  label: '5s W/kg',    step: '0.01', featureKeys: ['wkg5s', 'watts5s', 'compound5s'],     wattsKey: 'watts5s',  wattsLabel: '5s watts (auto)',    compoundKey: 'compound5s',  compoundLabel: '5s²/kg (auto)' },
+  { field: 'wkg1m',  label: '1min W/kg',  step: '0.01', featureKeys: ['wkg1m', 'watts1m', 'compound1m'],     wattsKey: 'watts1m',  wattsLabel: '1min watts (auto)',  compoundKey: 'compound1m',  compoundLabel: '1m²/kg (auto)' },
+  { field: 'wkg5m',  label: '5min W/kg',  step: '0.01', featureKeys: ['wkg5m', 'watts5m', 'compound5m'],     wattsKey: 'watts5m',  wattsLabel: '5min watts (auto)',  compoundKey: 'compound5m',  compoundLabel: '5m²/kg (auto)' },
+  { field: 'wkg20m', label: '20min W/kg', step: '0.01', featureKeys: ['wkg20m', 'watts20m', 'compound20m'], wattsKey: 'watts20m', wattsLabel: '20min watts (auto)', compoundKey: 'compound20m', compoundLabel: '20m²/kg (auto)' },
 ];
 
 export interface PredictorFormLayout {
   showWeight: boolean;
   showZrs: boolean;
-  powerRows: { field: PowerField; label: string; step: string; compoundLabel: string | null }[];
+  powerRows: {
+    field: PowerField;
+    label: string;
+    step: string;
+    wattsLabel: string | null;
+    compoundLabel: string | null;
+  }[];
   usesPower: boolean;
 }
 
@@ -211,6 +219,7 @@ export function predictorFormLayout(activeKeys: FeatureKey[]): PredictorFormLayo
       field: row.field,
       label: row.label,
       step: row.step,
+      wattsLabel: enabled.has(row.wattsKey) ? row.wattsLabel : null,
       compoundLabel: enabled.has(row.compoundKey) ? row.compoundLabel : null,
     }));
   return {
@@ -375,6 +384,31 @@ export function predictionFromInputs(model: ModelResult | null, inputs: Inputs):
     catLow: categoryFromVelo(low, ZR_CATEGORY_DEFAULTS),
     catHigh: categoryFromVelo(high, ZR_CATEGORY_DEFAULTS),
   };
+}
+
+export function actualVeloFromParticipant(p: Participant): number | null {
+  if (typeof p.max30Rating === 'number') {
+    return p.max30Rating > 0 ? p.max30Rating : null;
+  }
+  if (p.max30Rating == null || p.max30Rating === 'N/A') return null;
+  const n = parseFloat(String(p.max30Rating));
+  return isNaN(n) || n <= 0 ? null : n;
+}
+
+export function impliedCategoryFromParticipant(p: Participant): string | null {
+  const velo = actualVeloFromParticipant(p);
+  return velo == null ? null : categoryFromVelo(velo, ZR_CATEGORY_DEFAULTS);
+}
+
+export function predictedCategoryFromParticipant(model: ModelResult | null, p: Participant): string | null {
+  return predictionFromInputs(model, inputsFromParticipant(p)).category;
+}
+
+/** True when Zwift-power predicted category differs from the category implied by actual vELO. */
+export function hasPredictedVsImpliedMismatch(model: ModelResult | null, p: Participant): boolean {
+  const predicted = predictedCategoryFromParticipant(model, p);
+  const implied = impliedCategoryFromParticipant(p);
+  return predicted != null && implied != null && predicted !== implied;
 }
 
 // ---------------------------------------------------------------------------

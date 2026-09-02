@@ -47,6 +47,8 @@ function renderForm(overrides: Partial<ComponentProps<typeof CategoryPredictorFo
     onSelectRider: vi.fn(),
     showUnassignedOnly: false,
     onSetShowUnassignedOnly: vi.fn(),
+    showMismatchOnly: false,
+    onSetShowMismatchOnly: vi.fn(),
     loadingStrava: false,
     onLoadStrava: vi.fn(),
     stravaError: '',
@@ -111,11 +113,57 @@ describe('CategoryPredictorForm dual-source columns', () => {
     expect(screen.getByText(/Using current model: Weight \(kg\), 1min W\/kg, 20min W\/kg, 5m²\/kg/)).toBeInTheDocument();
   });
 
+  it('shows derived watts rows when those regressors are checked', () => {
+    renderForm({
+      activeFeatureKeys: ['weight_kg', 'wkg5s', 'watts5s', 'compound5s'],
+    });
+
+    expect(screen.getByText('5s W/kg')).toBeInTheDocument();
+    expect(screen.getByText('5s watts (auto)')).toBeInTheDocument();
+    expect(screen.getByText('5s²/kg (auto)')).toBeInTheDocument();
+    expect(screen.queryByText('20min W/kg')).not.toBeInTheDocument();
+  });
+
   it('shows ZRS when that regressor is checked', () => {
     renderForm({ activeFeatureKeys: ['zrs'] });
 
     expect(screen.getByText('ZRS')).toBeInTheDocument();
     expect(screen.queryByText('20min W/kg')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Load' })).not.toBeInTheDocument();
+  });
+
+  it('can filter the rider list to predicted vs vELO category mismatches', () => {
+    const mismatchModel = {
+      coeffs: [0, 300],
+      r2: 1,
+      rmse: 10,
+      n: 10,
+      activeFeatureKeys: ['wkg20m'] as const,
+      trainingPoints: [],
+    };
+    const base = {
+      weightInGrams: 70000,
+      cp5s: 1000,
+      cp1min: 400,
+      cp5min: 300,
+      cp20min: 280,
+      racingScore: 500,
+      ligaCategory: null,
+    };
+    renderForm({
+      model: mismatchModel,
+      activeFeatureKeys: ['wkg20m'],
+      selectedZwiftId: '',
+      showMismatchOnly: true,
+      participants: [
+        { ...base, name: 'Match', zwiftId: '1', max30Rating: 1200 },
+        { ...base, name: 'Mismatch', zwiftId: '2', max30Rating: 900 },
+      ],
+    });
+
+    const riderSelect = screen.getByLabelText('Rider');
+    expect(riderSelect).toHaveTextContent('Mismatch');
+    expect(riderSelect).toHaveTextContent('vELO Silver ≠ Platinum');
+    expect(riderSelect).not.toHaveTextContent('Match');
   });
 });

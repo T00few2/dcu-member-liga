@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment } from 'react';
+import { Fragment, useMemo } from 'react';
 import {
   SharedField,
   PowerField,
@@ -12,6 +12,9 @@ import {
   FeatureKey,
   FEATURE_DEFS,
   predictorFormLayout,
+  hasPredictedVsImpliedMismatch,
+  impliedCategoryFromParticipant,
+  predictedCategoryFromParticipant,
   ZR_CATEGORY_DEFAULTS,
   ZR_CATEGORY_STYLES,
 } from './shared';
@@ -30,6 +33,9 @@ export interface CategoryPredictorFormProps {
   /** Whether to show only riders without an assigned category. */
   showUnassignedOnly: boolean;
   onSetShowUnassignedOnly: (v: boolean) => void;
+  /** Whether to show only riders whose predicted category differs from their vELO category. */
+  showMismatchOnly: boolean;
+  onSetShowMismatchOnly: (v: boolean) => void;
   /** Whether the Strava fetch is in progress. */
   loadingStrava: boolean;
   /** Called when the user clicks "Load" in the Strava column. */
@@ -70,6 +76,18 @@ export interface CategoryPredictorFormProps {
 
 function compoundScore(weightKg: number, wkg: number): number {
   return weightKg > 0 ? (wkg * weightKg) ** 2 / weightKg : 0;
+}
+
+function wattsFromWkg(weightKg: number, wkg: number): number {
+  return weightKg > 0 && wkg > 0 ? wkg * weightKg : 0;
+}
+
+function DerivedCell({ value, active }: { value: number; active: boolean }) {
+  return (
+    <td className={`${columnCellClass(active)} font-mono text-muted-foreground`}>
+      {value > 0 ? value.toFixed(1) : '—'}
+    </td>
+  );
 }
 
 function CategoryBadge({ name }: { name: string }) {
@@ -142,6 +160,8 @@ export default function CategoryPredictorForm({
   onSelectRider,
   showUnassignedOnly,
   onSetShowUnassignedOnly,
+  showMismatchOnly,
+  onSetShowMismatchOnly,
   loadingStrava,
   onLoadStrava,
   stravaError,
@@ -178,6 +198,25 @@ export default function CategoryPredictorForm({
     .map(k => FEATURE_DEFS.find(f => f.key === k)?.label)
     .filter((label): label is string => Boolean(label));
 
+  const riderOptions = useMemo(() => {
+    return participants
+      .filter(p => {
+        if (showUnassignedOnly && p.ligaCategory?.category) return false;
+        if (showMismatchOnly && !hasPredictedVsImpliedMismatch(model, p)) return false;
+        return true;
+      })
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(p => {
+        const implied = impliedCategoryFromParticipant(p);
+        const predicted = predictedCategoryFromParticipant(model, p);
+        const mismatch = implied != null && predicted != null && implied !== predicted;
+        let label = p.name;
+        if (p.ligaCategory?.category) label += ` (${p.ligaCategory.category})`;
+        if (mismatch) label += ` · vELO ${implied} ≠ ${predicted}`;
+        return { zwiftId: p.zwiftId, label };
+      });
+  }, [participants, showUnassignedOnly, showMismatchOnly, model]);
+
   return (
     <div className="bg-card border border-border rounded-lg p-6">
       <h2 className="text-xl font-semibold text-foreground mb-1">Predict &amp; Assign</h2>
@@ -188,15 +227,16 @@ export default function CategoryPredictorForm({
         Fields follow the regressors currently checked above; predictions update live.
         <br />
         <span className="text-xs">
-          5min watts is the raw absolute figure (not W/kg) — the compound score is derived from it automatically.
+          W/kg is the editable input. Watts and compound scores (watts² ÷ kg) are derived from W/kg and weight —
+          they are the same numbers the coefficients table uses, not extra independent inputs.
           If the rider&apos;s weight is wrong, correct it here before assigning.
         </span>
       </p>
 
       {/* Rider dropdown */}
       <div className="mb-4">
-        <div className="flex items-center gap-4 mb-1">
-          <label className="text-sm font-medium text-foreground">Rider</label>
+        <div className="flex items-center gap-4 mb-1 flex-wrap">
+          <label htmlFor="predictor-rider" className="text-sm font-medium text-foreground">Rider</label>
           <label className="flex items-center gap-1.5 text-sm text-muted-foreground cursor-pointer">
             <input
               type="checkbox"
@@ -205,24 +245,30 @@ export default function CategoryPredictorForm({
             />
             Unassigned only
           </label>
+          <label
+            className="flex items-center gap-1.5 text-sm text-muted-foreground cursor-pointer"
+            title="Riders whose current-model predicted category (from Zwift power) differs from the category implied by their ZwiftRacing vELO"
+          >
+            <input
+              type="checkbox"
+              checked={showMismatchOnly}
+              onChange={e => onSetShowMismatchOnly(e.target.checked)}
+            />
+            Predicted ≠ vELO category
+          </label>
         </div>
         <select
+          id="predictor-rider"
           value={selectedZwiftId}
           onChange={e => onSelectRider(e.target.value)}
           className="border border-border rounded px-3 py-2 text-sm bg-background text-foreground w-full max-w-sm"
         >
           <option value="">— select a rider —</option>
-          {participants
-            .filter(p => {
-              if (showUnassignedOnly && p.ligaCategory?.category) return false;
-              return true;
-            })
-            .sort((a, b) => a.name.localeCompare(b.name))
-            .map(p => (
-              <option key={p.zwiftId} value={p.zwiftId}>
-                {p.name}{p.ligaCategory?.category ? ` (${p.ligaCategory.category})` : ''}
-              </option>
-            ))}
+          {riderOptions.map(p => (
+            <option key={p.zwiftId} value={p.zwiftId}>
+              {p.label}
+            </option>
+          ))}
         </select>
       </div>
 
@@ -321,19 +367,18 @@ export default function CategoryPredictorForm({
                     />
                   </td>
                 </tr>
+                {row.wattsLabel && (
+                  <tr>
+                    <td className="text-sm text-muted-foreground pr-4 py-1.5 whitespace-nowrap">{row.wattsLabel}</td>
+                    <DerivedCell value={wattsFromWkg(shared.weightKg, zwiftPower[row.field])} active={zwiftActive} />
+                    <DerivedCell value={wattsFromWkg(shared.weightKg, stravaPower[row.field])} active={stravaActive} />
+                  </tr>
+                )}
                 {row.compoundLabel && (
                   <tr>
                     <td className="text-sm text-muted-foreground pr-4 py-1.5 whitespace-nowrap">{row.compoundLabel}</td>
-                    <td className={`${columnCellClass(zwiftActive)} font-mono text-muted-foreground`}>
-                      {compoundScore(shared.weightKg, zwiftPower[row.field]) > 0
-                        ? compoundScore(shared.weightKg, zwiftPower[row.field]).toFixed(1)
-                        : '—'}
-                    </td>
-                    <td className={`${columnCellClass(stravaActive)} font-mono text-muted-foreground`}>
-                      {compoundScore(shared.weightKg, stravaPower[row.field]) > 0
-                        ? compoundScore(shared.weightKg, stravaPower[row.field]).toFixed(1)
-                        : '—'}
-                    </td>
+                    <DerivedCell value={compoundScore(shared.weightKg, zwiftPower[row.field])} active={zwiftActive} />
+                    <DerivedCell value={compoundScore(shared.weightKg, stravaPower[row.field])} active={stravaActive} />
                   </tr>
                 )}
               </Fragment>

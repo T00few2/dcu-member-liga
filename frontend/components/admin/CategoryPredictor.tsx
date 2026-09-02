@@ -12,6 +12,7 @@ import {
   inputsFromParticipant,
   combineInputs,
   predictionFromInputs,
+  actualVeloFromParticipant,
   FEATURE_DEFS,
   EMPTY_POWER,
   EMPTY_SHARED,
@@ -68,6 +69,7 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   // ── Rider / form state ───────────────────────────────────────────────────
   const [selectedZwiftId, setSelectedZwiftId] = useState('');
   const [showUnassignedOnly, setShowUnassignedOnly] = useState(false);
+  const [showMismatchOnly, setShowMismatchOnly] = useState(false);
   const [loadingStrava, setLoadingStrava] = useState(false);
   const [stravaError, setStravaError] = useState('');
   const [shared, setShared] = useState<SharedInputs>(EMPTY_SHARED);
@@ -89,12 +91,7 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   );
 
   const selectedParticipant = participants.find(p => p.zwiftId === selectedZwiftId) ?? null;
-  const actualVelo =
-    selectedParticipant && typeof selectedParticipant.max30Rating === 'number'
-      ? selectedParticipant.max30Rating
-      : selectedParticipant?.max30Rating != null && selectedParticipant.max30Rating !== 'N/A'
-      ? parseFloat(String(selectedParticipant.max30Rating))
-      : null;
+  const actualVelo = selectedParticipant ? actualVeloFromParticipant(selectedParticipant) : null;
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
@@ -261,6 +258,8 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
         onSelectRider={handleSelectRider}
         showUnassignedOnly={showUnassignedOnly}
         onSetShowUnassignedOnly={setShowUnassignedOnly}
+        showMismatchOnly={showMismatchOnly}
+        onSetShowMismatchOnly={setShowMismatchOnly}
         loadingStrava={loadingStrava}
         onLoadStrava={handleLoadStrava}
         stravaError={stravaError}
