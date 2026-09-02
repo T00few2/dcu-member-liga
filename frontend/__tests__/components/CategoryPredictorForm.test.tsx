@@ -6,6 +6,7 @@ import CategoryPredictorForm from '@/components/admin/category-predictor/Categor
 import {
   EMPTY_POWER,
   EMPTY_PREDICTION,
+  type ModelResult,
   type PredictionSnapshot,
 } from '@/components/admin/category-predictor/shared';
 
@@ -133,12 +134,12 @@ describe('CategoryPredictorForm dual-source columns', () => {
   });
 
   it('can filter the rider list to predicted vs vELO category mismatches', () => {
-    const mismatchModel = {
+    const mismatchModel: ModelResult = {
       coeffs: [0, 300],
       r2: 1,
       rmse: 10,
       n: 10,
-      activeFeatureKeys: ['wkg20m'] as const,
+      activeFeatureKeys: ['wkg20m'],
       trainingPoints: [],
     };
     const base = {
