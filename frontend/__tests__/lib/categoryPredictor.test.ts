@@ -5,6 +5,8 @@ import {
   predictionFromInputs,
   predictorFormLayout,
   hasPredictedVsImpliedMismatch,
+  filterPredictorRiders,
+  powerFromStravaCurve,
   EMPTY_POWER,
   EMPTY_PREDICTION,
   type ModelResult,
@@ -84,6 +86,67 @@ describe('predictorFormLayout', () => {
   it('shows ZRS only when that regressor is active', () => {
     expect(predictorFormLayout(['zrs']).showZrs).toBe(true);
     expect(predictorFormLayout(['zrs']).usesPower).toBe(false);
+  });
+});
+
+describe('powerFromStravaCurve', () => {
+  it('converts watts to W/kg using rider weight', () => {
+    expect(powerFromStravaCurve({ w5: 1050, w60: 490, w300: 350, w1200: 280 }, 70)).toEqual({
+      wkg5s: 15,
+      wkg1m: 7,
+      wkg5m: 5,
+      wkg20m: 4,
+    });
+  });
+
+  it('keeps previous values when a duration is missing', () => {
+    expect(powerFromStravaCurve({ w1200: 280 }, 70, { ...EMPTY_POWER, wkg1m: 6 })).toEqual({
+      wkg5s: 0,
+      wkg1m: 6,
+      wkg5m: 0,
+      wkg20m: 4,
+    });
+  });
+});
+
+describe('filterPredictorRiders', () => {
+  const model: ModelResult = {
+    coeffs: [0, 300],
+    r2: 1,
+    rmse: 10,
+    n: 10,
+    activeFeatureKeys: ['wkg20m'],
+    trainingPoints: [],
+  };
+  const base = {
+    weightInGrams: 70000,
+    cp5s: 1000,
+    cp1min: 400,
+    cp5min: 300,
+    cp20min: 280,
+    racingScore: 500,
+  };
+
+  it('returns riders sorted by name and honors unassigned / mismatch filters', () => {
+    const riders: Participant[] = [
+      { ...base, name: 'Zoe', zwiftId: '3', max30Rating: 1200, ligaCategory: { category: 'Gold' } },
+      { ...base, name: 'Ada', zwiftId: '1', max30Rating: 900, ligaCategory: null },
+      { ...base, name: 'Bea', zwiftId: '2', max30Rating: 1200, ligaCategory: null },
+    ];
+    expect(filterPredictorRiders(riders, model, { unassignedOnly: false, mismatchOnly: false }).map(p => p.name))
+      .toEqual(['Ada', 'Bea', 'Zoe']);
+    expect(filterPredictorRiders(riders, model, { unassignedOnly: true, mismatchOnly: false }).map(p => p.zwiftId))
+      .toEqual(['1', '2']);
+    expect(filterPredictorRiders(riders, model, { unassignedOnly: false, mismatchOnly: true }).map(p => p.zwiftId))
+      .toEqual(['1']);
+  });
+
+  it('treats session overlay assigns as assigned', () => {
+    const riders: Participant[] = [
+      { ...base, name: 'Ada', zwiftId: '1', max30Rating: 900, ligaCategory: null },
+    ];
+    expect(filterPredictorRiders(riders, model, { unassignedOnly: true, mismatchOnly: false, assignedOverlay: { '1': 'Platinum' } }))
+      .toEqual([]);
   });
 });
 

@@ -67,8 +67,30 @@ export type SharedInputs = Pick<Inputs, SharedField>;
 export const EMPTY_POWER: PowerInputs = { wkg5s: 0, wkg1m: 0, wkg5m: 0, wkg20m: 0 };
 export const EMPTY_SHARED: SharedInputs = { weightKg: 0, racingScore: 0 };
 
+export interface StravaRiderCache {
+  power: PowerInputs;
+  activityCount: number | null;
+  error?: string;
+}
+
 export function combineInputs(shared: SharedInputs, power: PowerInputs): Inputs {
   return { ...shared, ...power };
+}
+
+/** Convert a Strava 90d peak-power curve (watts keyed w5/w60/w300/w1200) to W/kg inputs. */
+export function powerFromStravaCurve(
+  curve: Record<string, number>,
+  weightKg: number,
+  prev: PowerInputs = EMPTY_POWER,
+): PowerInputs {
+  const wkg = (watts: number, fallback: number) =>
+    weightKg > 0 && watts > 0 ? parseFloat((watts / weightKg).toFixed(2)) : fallback;
+  return {
+    wkg5s: wkg(curve['w5'] ?? 0, prev.wkg5s),
+    wkg1m: wkg(curve['w60'] ?? 0, prev.wkg1m),
+    wkg5m: wkg(curve['w300'] ?? 0, prev.wkg5m),
+    wkg20m: wkg(curve['w1200'] ?? 0, prev.wkg20m),
+  };
 }
 
 export function inputsFromParticipant(p: Participant): Inputs {
@@ -411,6 +433,45 @@ export function hasPredictedVsImpliedMismatch(model: ModelResult | null, p: Part
   const predicted = predictedCategoryFromParticipant(model, p);
   const implied = impliedCategoryFromParticipant(p);
   return predicted != null && implied != null && predicted !== implied;
+}
+
+export function riderAssignedCategory(
+  p: Participant,
+  assignedOverlay?: Record<string, string>,
+): string | undefined {
+  return assignedOverlay?.[p.zwiftId] || p.ligaCategory?.category || undefined;
+}
+
+/** Riders shown in Predict & Assign — dropdown and overview table share this list. */
+export function filterPredictorRiders(
+  participants: Participant[],
+  model: ModelResult | null,
+  opts: {
+    unassignedOnly: boolean;
+    mismatchOnly: boolean;
+    assignedOverlay?: Record<string, string>;
+  },
+): Participant[] {
+  return participants
+    .filter(p => {
+      if (opts.unassignedOnly && riderAssignedCategory(p, opts.assignedOverlay)) return false;
+      if (opts.mismatchOnly && !hasPredictedVsImpliedMismatch(model, p)) return false;
+      return true;
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function predictionFromStravaCache(
+  model: ModelResult | null,
+  p: Participant,
+  cached: StravaRiderCache | undefined,
+): PredictionSnapshot {
+  if (!cached || cached.error) return EMPTY_PREDICTION;
+  const filled = inputsFromParticipant(p);
+  return predictionFromInputs(
+    model,
+    combineInputs({ weightKg: filled.weightKg, racingScore: filled.racingScore }, cached.power),
+  );
 }
 
 // ---------------------------------------------------------------------------

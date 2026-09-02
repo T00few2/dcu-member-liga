@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useMemo } from 'react';
+import CategoryBadge from './CategoryBadge';
 import {
   SharedField,
   PowerField,
@@ -12,11 +13,10 @@ import {
   FeatureKey,
   FEATURE_DEFS,
   predictorFormLayout,
-  hasPredictedVsImpliedMismatch,
   impliedCategoryFromParticipant,
   predictedCategoryFromParticipant,
   ZR_CATEGORY_DEFAULTS,
-  ZR_CATEGORY_STYLES,
+  filterPredictorRiders,
 } from './shared';
 
 // ---------------------------------------------------------------------------
@@ -76,6 +76,8 @@ export interface CategoryPredictorFormProps {
   assignResult: { category: string } | null;
   /** Error message from the last assign attempt, or empty string. */
   assignError: string;
+  /** Categories assigned this session, keyed by Zwift ID — keeps Unassigned filter in sync. */
+  assignedOverlay?: Record<string, string>;
 }
 
 function rideCountSuffix(count: number | null | undefined): string {
@@ -96,14 +98,6 @@ function DerivedCell({ value, active }: { value: number; active: boolean }) {
     <td className={`${columnCellClass(active)} font-mono text-muted-foreground`}>
       {value > 0 ? value.toFixed(1) : '—'}
     </td>
-  );
-}
-
-function CategoryBadge({ name }: { name: string }) {
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${ZR_CATEGORY_STYLES[name] ?? 'bg-slate-100 text-slate-800'}`}>
-      {name}
-    </span>
   );
 }
 
@@ -129,11 +123,11 @@ function PredictionCell({ pred, model }: { pred: PredictionSnapshot; model: Mode
           {pred.catLow && pred.catHigh && (
             <>
               <span>(</span>
-              <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full font-medium ${ZR_CATEGORY_STYLES[pred.catLow] ?? 'bg-slate-100 text-slate-800'}`}>{pred.catLow}</span>
+              <CategoryBadge name={pred.catLow} compact />
               {pred.catLow !== pred.catHigh && (
                 <>
                   <span>–</span>
-                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full font-medium ${ZR_CATEGORY_STYLES[pred.catHigh] ?? 'bg-slate-100 text-slate-800'}`}>{pred.catHigh}</span>
+                  <CategoryBadge name={pred.catHigh} compact />
                 </>
               )}
               <span>)</span>
@@ -192,6 +186,7 @@ export default function CategoryPredictorForm({
   onAssign,
   assignResult,
   assignError,
+  assignedOverlay,
 }: CategoryPredictorFormProps) {
   const zwiftActive = assignChoice === 'zwift';
   const stravaActive = assignChoice === 'strava';
@@ -210,26 +205,27 @@ export default function CategoryPredictorForm({
     .filter((label): label is string => Boolean(label));
 
   const riderOptions = useMemo(() => {
-    return participants
-      .filter(p => {
-        if (showUnassignedOnly && p.ligaCategory?.category) return false;
-        if (showMismatchOnly && !hasPredictedVsImpliedMismatch(model, p)) return false;
-        return true;
-      })
-      .sort((a, b) => a.name.localeCompare(b.name))
+    return filterPredictorRiders(participants, model, {
+      unassignedOnly: showUnassignedOnly,
+      mismatchOnly: showMismatchOnly,
+      assignedOverlay,
+    })
       .map(p => {
         const implied = impliedCategoryFromParticipant(p);
         const predicted = predictedCategoryFromParticipant(model, p);
         const mismatch = implied != null && predicted != null && implied !== predicted;
         let label = p.name;
-        if (p.ligaCategory?.category) label += ` (${p.ligaCategory.category})`;
+        const assigned = p.ligaCategory?.category;
+        if (assignedOverlay?.[p.zwiftId] || assigned) {
+          label += ` (${assignedOverlay?.[p.zwiftId] ?? assigned})`;
+        }
         if (mismatch) label += ` · vELO ${implied} ≠ ${predicted}`;
         return { zwiftId: p.zwiftId, label };
       });
-  }, [participants, showUnassignedOnly, showMismatchOnly, model]);
+  }, [participants, showUnassignedOnly, showMismatchOnly, model, assignedOverlay]);
 
   return (
-    <div className="bg-card border border-border rounded-lg p-6">
+    <div id="predictor-detail" className="bg-card border border-border rounded-lg p-6">
       <h2 className="text-xl font-semibold text-foreground mb-1">Predict &amp; Assign</h2>
       <p className="text-sm text-muted-foreground mb-4">
         All riders are shown in the dropdown, including locked riders. Selecting a rider pre-fills their Zwift power.
