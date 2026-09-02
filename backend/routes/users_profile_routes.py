@@ -7,7 +7,7 @@ from firebase_admin import firestore
 
 from authz import AuthzError, verify_user_token
 from extensions import db, stats_queue
-from services.category_engine import ZR_CATEGORIES, serialize_liga_category
+from services.category_engine import ZR_CATEGORIES, assignment_floor_category, serialize_liga_category
 from services.policy_store import (
     POLICY_DATA_POLICY,
     POLICY_PUBLIC_RESULTS,
@@ -817,7 +817,7 @@ def select_category():
         return jsonify({"message": "Din kategori er låst efter gennemført løb. Kontakt admin for at rykke op."}), 403
 
     auto = existing_lc.get("autoAssigned") or {}
-    auto_cat = auto.get("category")
+    auto_cat = assignment_floor_category(existing_lc) or auto.get("category")
 
     def cat_index(name):
         try:

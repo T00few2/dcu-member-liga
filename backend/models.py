@@ -339,6 +339,19 @@ class SelfSelectedDoc(TypedDict, total=False):
     selfSelectedAt: Any     # Firestore Timestamp
 
 
+class ManualAssignedDoc(TypedDict, total=False):
+    """Admin/predictor hold. Survives nightly auto-assign until released."""
+    category: str
+    assignedFrom: str       # "predicted"
+    predictedVelo: float
+    assignedRating: int
+    assignedAt: Any
+    upperBoundary: int
+    graceLimit: int
+    status: CategoryStatus
+    lastCheckedRating: int
+
+
 class LigaCategoryDoc(TypedDict, total=False):
     """
     Liga category assignment for a rider.
@@ -346,8 +359,9 @@ class LigaCategoryDoc(TypedDict, total=False):
 
     Before the rider's first race:
       - autoAssigned  is updated nightly based on current max30 vELO.
+      - manualAssigned is an admin hold (e.g. predictor) that nightly will not replace.
       - selfSelected  is set if the rider voluntarily picks a same/higher category.
-      - Effective category = max(autoAssigned.category, selfSelected.category).
+      - Effective category = max(manual or autoAssigned, selfSelected).
 
     After the rider's first race (locked == True):
       - category holds the frozen effective category (written at lock time).
@@ -355,6 +369,7 @@ class LigaCategoryDoc(TypedDict, total=False):
         nightly to track grace-period compliance.
     """
     autoAssigned: AutoAssignedDoc   # always present once assigned
+    manualAssigned: ManualAssignedDoc  # present only while an admin hold is active
     selfSelected: SelfSelectedDoc   # present only if rider chose a category
     locked: bool                    # True after first completed race
     lockedAt: Any                   # Firestore Timestamp – when locked

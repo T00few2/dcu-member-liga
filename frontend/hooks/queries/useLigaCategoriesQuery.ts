@@ -24,6 +24,9 @@ export interface LigaCategoryRider {
         locked?: boolean;
         autoAssignedCategory?: string;
         selfSelectedCategory?: string;
+        manualAssignedCategory?: string;
+        manualAssignedFrom?: string;
+        predictedVelo?: number;
     } | null;
 }
 

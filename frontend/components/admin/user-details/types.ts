@@ -84,6 +84,13 @@ export interface UserDetail {
             category?: string | null;
             selfSelectedAt?: number | null;
         } | null;
+        manualAssigned?: {
+            category?: string | null;
+            assignedFrom?: string | null;
+            predictedVelo?: number | null;
+            assignedAt?: number | null;
+            status?: string | null;
+        } | null;
     };
     verification: {
         status: string;

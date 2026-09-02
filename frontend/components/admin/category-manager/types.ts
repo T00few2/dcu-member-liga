@@ -17,6 +17,9 @@ export interface LigaCategory {
   locked?: boolean;
   autoAssignedCategory?: string;
   selfSelectedCategory?: string;
+  manualAssignedCategory?: string;
+  manualAssignedFrom?: string;
+  predictedVelo?: number;
 }
 
 export interface RiderEntry {
@@ -30,7 +33,7 @@ export interface RiderEntry {
   ligaCategory: LigaCategory | null;
 }
 
-export type FilterMode = 'all' | 'grace' | 'over';
+export type FilterMode = 'all' | 'grace' | 'over' | 'manual';
 
 export const ZR_CATEGORY_STYLES: Record<string, string> = {
   Diamond:  'bg-cyan-100 text-cyan-800',

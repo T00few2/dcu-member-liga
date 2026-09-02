@@ -26,6 +26,15 @@ export default function UserCategoryHistory({ ligaCategory }: UserCategoryHistor
                     <Row label="Last checked" value={fmtDate(ligaCategory.autoAssigned.lastCheckedAt)} />
                 </>
             )}
+            {ligaCategory.manualAssigned?.category && (
+                <>
+                    <div className="pt-2 pb-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Manual assignment</div>
+                    <Row label="Category" value={ligaCategory.manualAssigned.category} />
+                    <Row label="Source" value={ligaCategory.manualAssigned.assignedFrom || '—'} />
+                    <Row label="Predicted vELO" value={ligaCategory.manualAssigned.predictedVelo != null ? Number(ligaCategory.manualAssigned.predictedVelo).toFixed(0) : '—'} />
+                    <Row label="Assigned" value={fmtDate(ligaCategory.manualAssigned.assignedAt)} />
+                </>
+            )}
             {ligaCategory.selfSelected?.category && (
                 <>
                     <div className="pt-2 pb-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Self-selected</div>

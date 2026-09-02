@@ -13,11 +13,13 @@ interface CategoryListProps {
   assigned: RiderEntry[];
   overCount: number;
   graceCount: number;
+  manualCount: number;
   onFilterChange: (f: FilterMode) => void;
   onSearchChange: (s: string) => void;
   onGracePeriodChange: (n: number) => void;
   onRefresh: () => void;
   onReassign: (zwiftId: string, name: string) => void;
+  onReleaseManual: (zwiftId: string, name: string) => void;
 }
 
 function statusBadge(status: string | undefined) {
@@ -45,11 +47,13 @@ export default function CategoryList({
   assigned,
   overCount,
   graceCount,
+  manualCount,
   onFilterChange,
   onSearchChange,
   onGracePeriodChange,
   onRefresh,
   onReassign,
+  onReleaseManual,
 }: CategoryListProps) {
   return (
     <div className="bg-card rounded-lg shadow border border-border overflow-hidden">
@@ -82,7 +86,7 @@ export default function CategoryList({
             className="w-64 max-w-full px-3 py-1 border border-input rounded bg-background text-foreground text-sm"
           />
           <div className="flex gap-2 flex-wrap">
-            {(['all', 'grace', 'over'] as FilterMode[]).map(f => (
+            {(['all', 'grace', 'over', 'manual'] as FilterMode[]).map(f => (
               <button
                 key={f}
                 onClick={() => onFilterChange(f)}
@@ -92,7 +96,10 @@ export default function CategoryList({
                     : 'bg-muted text-muted-foreground hover:text-foreground'
                 }`}
               >
-                {f === 'all' ? `All (${riders.length})` : f === 'grace' ? `Grace (${graceCount})` : `Over limit (${overCount})`}
+                {f === 'all' ? `All (${riders.length})`
+                  : f === 'grace' ? `Grace (${graceCount})`
+                  : f === 'over' ? `Over limit (${overCount})`
+                  : `Manual (${manualCount})`}
               </button>
             ))}
             <button
@@ -136,6 +143,7 @@ export default function CategoryList({
                   const lc: LigaCategory | null = r.ligaCategory;
                   const isOver = lc?.status === 'over';
                   const isGrace = lc?.status === 'grace';
+                  const isManual = Boolean(lc?.manualAssignedCategory);
                   return (
                     <tr
                       key={r.zwiftId}
@@ -144,6 +152,8 @@ export default function CategoryList({
                           ? 'bg-red-50 dark:bg-red-950/20'
                           : isGrace
                           ? 'bg-yellow-50 dark:bg-yellow-950/20'
+                          : isManual
+                          ? 'bg-violet-50 dark:bg-violet-950/20'
                           : ''
                       }`}
                     >
@@ -163,7 +173,12 @@ export default function CategoryList({
                                   🔒 Locked
                                 </span>
                               )}
-                              {lc.selfSelectedCategory && lc.selfSelectedCategory === lc.category && lc.selfSelectedCategory !== lc.autoAssignedCategory && (
+                              {isManual && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-violet-100 text-violet-800">
+                                  Manual
+                                </span>
+                              )}
+                              {lc.selfSelectedCategory && lc.selfSelectedCategory === lc.category && lc.selfSelectedCategory !== lc.autoAssignedCategory && lc.selfSelectedCategory !== lc.manualAssignedCategory && (
                                 <span className="text-xs text-muted-foreground">(selvvalgt)</span>
                               )}
                             </div>
@@ -195,22 +210,32 @@ export default function CategoryList({
                         {statusBadge(lc?.status)}
                       </td>
                       <td className="px-4 py-3">
-                        {isOver && (
-                          <button
-                            onClick={() => onReassign(r.zwiftId, r.name)}
-                            className="px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 font-medium"
-                          >
-                            Move up
-                          </button>
-                        )}
-                        {isGrace && (
-                          <button
-                            onClick={() => onReassign(r.zwiftId, r.name)}
-                            className="px-3 py-1 text-xs bg-yellow-100 text-yellow-800 rounded hover:bg-yellow-200 font-medium"
-                          >
-                            Move up early
-                          </button>
-                        )}
+                        <div className="flex flex-wrap gap-1.5">
+                          {isManual && (
+                            <button
+                              onClick={() => onReleaseManual(r.zwiftId, r.name)}
+                              className="px-3 py-1 text-xs bg-violet-100 text-violet-800 rounded hover:bg-violet-200 font-medium"
+                            >
+                              Release
+                            </button>
+                          )}
+                          {isOver && (
+                            <button
+                              onClick={() => onReassign(r.zwiftId, r.name)}
+                              className="px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 font-medium"
+                            >
+                              Move up
+                            </button>
+                          )}
+                          {isGrace && (
+                            <button
+                              onClick={() => onReassign(r.zwiftId, r.name)}
+                              className="px-3 py-1 text-xs bg-yellow-100 text-yellow-800 rounded hover:bg-yellow-200 font-medium"
+                            >
+                              Move up early
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

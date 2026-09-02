@@ -175,6 +175,7 @@ def get_user_details(user_id):
         registration = data.get('registration') or {}
         auto_assigned = liga.get('autoAssigned') or {}
         self_selected = liga.get('selfSelected') or {}
+        manual_assigned = liga.get('manualAssigned') or {}
 
         def _serialize_verification_request(req):
             if not req:
@@ -265,6 +266,13 @@ def get_user_details(user_id):
                     'category': self_selected.get('category'),
                     'selfSelectedAt': _ts_ms(self_selected.get('selfSelectedAt')),
                 } if self_selected else None,
+                'manualAssigned': {
+                    'category': manual_assigned.get('category'),
+                    'assignedFrom': manual_assigned.get('assignedFrom'),
+                    'predictedVelo': manual_assigned.get('predictedVelo'),
+                    'assignedAt': _ts_ms(manual_assigned.get('assignedAt')),
+                    'status': manual_assigned.get('status'),
+                } if manual_assigned else None,
             },
             'verification': {
                 'status': verification.get('status', 'none'),

@@ -214,14 +214,36 @@ export default function CategoryManager() {
     }
   }, [user, effectiveGracePeriod, queryClient]);
 
+  const handleReleaseManual = useCallback(async (zwiftId: string, name: string) => {
+    if (!user) return;
+    if (!confirm(`Release the manual category assignment for ${name}?\n\nNightly auto-assign from vELO will apply again.`)) return;
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch(`${API_URL}/admin/liga-categories/${zwiftId}/release-manual`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) alert(`Error: ${data.message}`);
+      else queryClient.invalidateQueries({ queryKey: ['admin', 'liga-categories'] });
+    } catch {
+      alert('Failed to release manual assignment');
+    }
+  }, [user, queryClient]);
+
   // ── Derived stats ───────────────────────────────────────────────────────
 
   const assigned = riders.filter(r => r.ligaCategory);
   const overCount = assigned.filter(r => r.ligaCategory?.status === 'over').length;
   const graceCount = assigned.filter(r => r.ligaCategory?.status === 'grace').length;
   const okCount = assigned.filter(r => r.ligaCategory?.status === 'ok').length;
+  const manualCount = assigned.filter(r => r.ligaCategory?.manualAssignedCategory).length;
   const searchTerm = search.trim().toLowerCase();
-  const statusFiltered = filter === 'all' ? riders : riders.filter(r => r.ligaCategory?.status === filter);
+  const statusFiltered = filter === 'all'
+    ? riders
+    : filter === 'manual'
+    ? riders.filter(r => r.ligaCategory?.manualAssignedCategory)
+    : riders.filter(r => r.ligaCategory?.status === filter);
   const filtered = searchTerm
     ? statusFiltered.filter(r =>
         r.name.toLowerCase().includes(searchTerm) ||
@@ -266,7 +288,7 @@ export default function CategoryManager() {
               onClick={handleResetAssignments}
               disabled={assigning || resettingAssignments}
               className="px-3 py-1.5 rounded text-sm bg-destructive text-destructive-foreground hover:opacity-90 disabled:opacity-50 font-medium border border-border"
-              title="Clear lock, self-select and grace; rebuild unlocked autoAssigned"
+              title="Clear lock, self-select, manual holds and grace; rebuild unlocked autoAssigned"
             >
               {resettingAssignments ? 'Nulstiller…' : 'Nulstil kategori-tildelinger'}
             </button>
@@ -325,11 +347,13 @@ export default function CategoryManager() {
         assigned={assigned as RiderEntry[]}
         overCount={overCount}
         graceCount={graceCount}
+        manualCount={manualCount}
         onFilterChange={setFilter}
         onSearchChange={setSearch}
         onGracePeriodChange={n => setGracePeriod(n)}
         onRefresh={() => refetchRiders()}
         onReassign={handleReassign}
+        onReleaseManual={handleReleaseManual}
       />
     </div>
   );

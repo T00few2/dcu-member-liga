@@ -478,6 +478,17 @@
           "lastCheckedRating": 2033,
           "assignedAt": "2026-03-10T18:09:18+00:00",
           "lastCheckedAt": "2026-03-14T04:26:58+00:00"
+        },
+        "manualAssigned": {
+          "category": "Sapphire",
+          "assignedFrom": "predicted",
+          "predictedVelo": 1500,
+          "assignedRating": 1500,
+          "status": "over",
+          "upperBoundary": 1650,
+          "graceLimit": 1685,
+          "assignedAt": "2026-04-01T12:00:00+00:00",
+          "lastCheckedRating": 2033
         }
       },
       "verification": {

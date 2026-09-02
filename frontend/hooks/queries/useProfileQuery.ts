@@ -17,6 +17,7 @@ interface LigaCategory {
     lockedAt?: number;
     autoAssignedCategory?: string;
     selfSelectedCategory?: string;
+    manualAssignedCategory?: string;
 }
 
 export interface ProfileData {

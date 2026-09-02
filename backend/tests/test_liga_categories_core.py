@@ -62,3 +62,38 @@ def test_unlocked_rider_only_updates_auto_assignment():
     assert auto["assignedRating"] == 1200
     assert auto["assignedAt"] == "seed-ts"
     assert auto["lastCheckedRating"] == 1315
+
+
+def test_manual_assignment_survives_nightly_and_tracks_status():
+    existing_lc = {
+        "locked": False,
+        "autoAssigned": {
+            "assignedRating": 2100,
+            "assignedAt": "seed-ts",
+            "category": "Ruby",
+        },
+        "manualAssigned": {
+            "category": "Ruby",
+            "assignedFrom": "predicted",
+            "predictedVelo": 2000,
+            "assignedAt": "manual-ts",
+        },
+    }
+
+    update = _compute_liga_update(
+        eff_rating=2250,
+        existing_lc=existing_lc,
+        grace_period=35,
+        categories=None,
+    )
+
+    auto = update["ligaCategory.autoAssigned"]
+    assert auto["category"] == "Diamond"
+    assert auto["assignedAt"] == "seed-ts"
+
+    manual = update["ligaCategory.manualAssigned"]
+    assert manual["category"] == "Ruby"
+    assert manual["assignedFrom"] == "predicted"
+    assert manual["upperBoundary"] == 2200
+    assert manual["status"] == "over"
+    assert manual["lastCheckedRating"] == 2250

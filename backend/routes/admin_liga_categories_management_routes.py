@@ -147,7 +147,12 @@ def assign_liga_categories():
                 continue
 
             try:
-                liga_update = _compute_liga_update(eff_rating, None, grace_period, categories)
+                liga_update = _compute_liga_update(
+                    eff_rating,
+                    data.get("ligaCategory") or None,
+                    grace_period,
+                    categories,
+                )
                 user_update = with_schema_version(liga_update)
                 log_schema_issues(
                     logger,
@@ -237,6 +242,7 @@ def reset_liga_category_assignments():
                 clear_fields = {
                     "ligaCategory.locked": False,
                     "ligaCategory.selfSelected": firestore.DELETE_FIELD,
+                    "ligaCategory.manualAssigned": firestore.DELETE_FIELD,
                     "ligaCategory.category": firestore.DELETE_FIELD,
                     "ligaCategory.lockedAt": firestore.DELETE_FIELD,
                 }
@@ -487,16 +493,35 @@ def predict_assign_liga_category(zwift_id):
         categories = _resolve_categories(liga_settings)
 
         result = build_liga_category(predicted_velo, grace_period, categories)
-        result["assignedFrom"] = "predicted"
-        result["predictedVelo"] = predicted_velo
         result["lastCheckedAt"] = firestore.SERVER_TIMESTAMP
 
         existing_lc = user._data.get("ligaCategory") or {}
-        locked = existing_lc.get("locked", False)
+        if existing_lc.get("locked"):
+            return jsonify({
+                "message": "Rider is locked after racing. Reset season assignments before changing category.",
+            }), 400
 
-        doc_update: dict = {"ligaCategory.autoAssigned": result}
-        if not locked:
-            doc_update["ligaCategory.category"] = result["category"]
+        manual = {
+            "category": result["category"],
+            "assignedFrom": "predicted",
+            "predictedVelo": predicted_velo,
+            "assignedRating": int(predicted_velo),
+            "assignedAt": firestore.SERVER_TIMESTAMP,
+            "upperBoundary": result.get("upperBoundary"),
+            "graceLimit": result.get("graceLimit"),
+            "status": result.get("status"),
+            "lastCheckedRating": int(predicted_velo),
+        }
+
+        existing_auto = existing_lc.get("autoAssigned") or {}
+        auto = {**existing_auto, **result}
+        auto.pop("assignedFrom", None)
+        auto.pop("predictedVelo", None)
+
+        doc_update = {
+            "ligaCategory.manualAssigned": manual,
+            "ligaCategory.autoAssigned": auto,
+        }
 
         user_update = with_schema_version(doc_update)
         log_schema_issues(
@@ -518,5 +543,45 @@ def predict_assign_liga_category(zwift_id):
         )
     except Exception as e:
         logger.error("predict_assign_liga_category error: %s", e)
+        return jsonify({"message": str(e)}), 500
+
+
+@admin_bp.route("/admin/liga-categories/<zwift_id>/release-manual", methods=["POST"])
+def release_manual_liga_category(zwift_id):
+    """Drop an admin/predictor manual category hold so nightly auto-assign resumes."""
+    try:
+        require_admin(request)
+    except AuthzError as e:
+        return jsonify({"message": e.message}), e.status_code
+
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+
+    try:
+        user = UserService.get_user_by_id(zwift_id)
+        if not user:
+            return jsonify({"message": "User not found"}), 404
+
+        existing_lc = user._data.get("ligaCategory") or {}
+        if not (existing_lc.get("manualAssigned") or {}).get("category"):
+            return jsonify({"message": "Rider has no manual category assignment"}), 400
+
+        user_update = with_schema_version({
+            "ligaCategory.manualAssigned": firestore.DELETE_FIELD,
+        })
+        log_schema_issues(
+            logger,
+            f"users/{user.id} (release-manual)",
+            validate_user_doc(user_update, partial=True),
+        )
+        db.collection("users").document(str(user.id)).update(user_update)
+
+        auto_cat = (existing_lc.get("autoAssigned") or {}).get("category")
+        return jsonify({
+            "message": f"Manual assignment released. Auto category is {auto_cat or 'unassigned'}.",
+            "category": auto_cat,
+        }), 200
+    except Exception as e:
+        logger.error("release_manual_liga_category error: %s", e)
         return jsonify({"message": str(e)}), 500
 

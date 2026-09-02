@@ -5,10 +5,11 @@ from typing import Any, Iterable
 from firebase_admin import firestore
 
 from services.category_engine import (
-    _effective_cat_name,
+    assignment_floor_category,
     build_liga_category,
     cats_from_defs,
     compute_category_status,
+    effective_liga_category_name,
     ZR_CATEGORIES,
 )
 
@@ -33,14 +34,8 @@ def verification_category_names(liga_categories: Iterable[Any] | None) -> set[st
 
 
 def effective_user_category(liga_category: Any) -> str:
-    """Effective liga category for a user doc (locked / self-selected / auto)."""
-    lc = liga_category if isinstance(liga_category, dict) else {}
-    if lc.get("locked"):
-        locked_cat = lc.get("category") or (lc.get("autoAssigned") or {}).get("category")
-        return str(locked_cat or "").strip()
-    auto_cat = (lc.get("autoAssigned") or {}).get("category")
-    sel_cat = (lc.get("selfSelected") or {}).get("category")
-    return str(_effective_cat_name(auto_cat, sel_cat) or "").strip()
+    """Effective liga category for a user doc (locked / manual / self-selected / auto)."""
+    return effective_liga_category_name(liga_category)
 
 
 def _load_liga_settings(db_client) -> dict:
@@ -117,6 +112,30 @@ def _compute_liga_update(
             new_auto["assignedRating"] = auto.get("assignedRating", eff_rating)
             new_auto["assignedAt"] = auto.get("assignedAt")
             new_auto["lastCheckedAt"] = firestore.SERVER_TIMESTAMP
+
+            manual = existing_lc.get("manualAssigned") or {}
+            manual_cat = assignment_floor_category(existing_lc) if manual.get("category") else None
+            if manual_cat:
+                # Keep the admin hold; still refresh vELO-implied autoAssigned
+                # and status/bounds against the manual category.
+                rating_int = int(eff_rating)
+                upper_boundary, grace_limit = _bounds_for(manual_cat)
+                if upper_boundary is None and grace_limit is None:
+                    upper_boundary = manual.get("upperBoundary")
+                    grace_limit = manual.get("graceLimit")
+                new_manual = dict(manual)
+                new_manual["category"] = manual_cat
+                new_manual["upperBoundary"] = upper_boundary
+                new_manual["graceLimit"] = grace_limit
+                new_manual["status"] = compute_category_status(
+                    rating_int, upper_boundary, grace_limit
+                )
+                new_manual["lastCheckedRating"] = rating_int
+                return {
+                    "ligaCategory.autoAssigned": new_auto,
+                    "ligaCategory.manualAssigned": new_manual,
+                }
+
             return {"ligaCategory.autoAssigned": new_auto}
     else:
         new_auto = build_liga_category(eff_rating, grace_period, categories)

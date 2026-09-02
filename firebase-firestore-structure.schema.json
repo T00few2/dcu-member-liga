@@ -1352,6 +1352,40 @@
                   "$ref": "#/$defs/timestampString"
                 }
               }
+            },
+            "manualAssigned": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "Admin/predictor hold that nightly auto-assign will not replace until released.",
+              "properties": {
+                "category": {
+                  "type": "string"
+                },
+                "assignedFrom": {
+                  "type": "string"
+                },
+                "predictedVelo": {
+                  "type": "number"
+                },
+                "assignedRating": {
+                  "type": "number"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "upperBoundary": {
+                  "type": "number"
+                },
+                "graceLimit": {
+                  "type": "number"
+                },
+                "assignedAt": {
+                  "$ref": "#/$defs/timestampString"
+                },
+                "lastCheckedRating": {
+                  "type": "number"
+                }
+              }
             }
           }
         },

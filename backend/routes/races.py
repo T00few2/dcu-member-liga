@@ -9,7 +9,7 @@ from services.results.constants import (
     RESULTS_PHASE_PROVISIONAL,
 )
 from services.results.errors import FatalResultsError, ResultsProcessingError
-from services.category_engine import _effective_cat_name, build_liga_category, effective_rating
+from services.category_engine import build_liga_category, effective_liga_category_name, effective_rating
 from services.schema_validation import log_schema_issues, validate_race_doc, with_schema_version
 from datetime import datetime, timedelta, timezone
 from authz import require_admin, require_scheduler, verify_user_token, AuthzError
@@ -111,7 +111,6 @@ def _lock_categories_for_race(race_id):
                     # zwiftRacing data hadn't been refreshed yet) is corrected before
                     # the rider is permanently locked.
                     auto = lc.get('autoAssigned') or {}
-                    sel = lc.get('selfSelected') or {}
                     zr = data.get('zwiftRacing', {})
                     eff = effective_rating(
                         zr.get('currentRating', 'N/A'),
@@ -124,7 +123,8 @@ def _lock_categories_for_race(race_id):
                     else:
                         auto_cat = auto.get('category')
                     raced_category = raced_category_by_zwift_id.get(str(data.get('zwiftId', '')).strip())
-                    effective = raced_category or _effective_cat_name(auto_cat, sel.get('category'))
+                    fallback_lc = {**lc, 'autoAssigned': {**auto, 'category': auto_cat}}
+                    effective = raced_category or effective_liga_category_name(fallback_lc)
                     batch.update(doc.reference, {
                         'ligaCategory.locked': True,
                         'ligaCategory.lockedAt': firestore.SERVER_TIMESTAMP,
@@ -372,13 +372,7 @@ def _resolve_effective_user_category(liga_category: Any) -> str:
     ``serialize_liga_category`` so signup uses the same effective category that
     the frontend displays to the user.
     """
-    lc = liga_category if isinstance(liga_category, dict) else {}
-    if lc.get('locked'):
-        locked_cat = lc.get('category') or (lc.get('autoAssigned') or {}).get('category')
-        return str(locked_cat or '').strip()
-    auto_cat = (lc.get('autoAssigned') or {}).get('category')
-    sel_cat = (lc.get('selfSelected') or {}).get('category')
-    return str(_effective_cat_name(auto_cat, sel_cat) or '').strip()
+    return effective_liga_category_name(liga_category)
 
 
 def _pick_mode_config_for_user(race_data: dict[str, Any], user_category: str) -> tuple[str | None, str | None, str | None]:

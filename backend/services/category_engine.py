@@ -180,6 +180,27 @@ def _ts_to_ms(value) -> int | None:
     return value
 
 
+def assignment_floor_category(lc: dict | None) -> str | None:
+    """Category that self-select cannot go below: manual hold, else auto-assigned."""
+    data = lc if isinstance(lc, dict) else {}
+    manual_cat = (data.get("manualAssigned") or {}).get("category")
+    if manual_cat:
+        return str(manual_cat)
+    auto_cat = (data.get("autoAssigned") or {}).get("category")
+    return str(auto_cat) if auto_cat else None
+
+
+def effective_liga_category_name(lc: dict | None, categories: CategoryList | None = None) -> str:
+    """Effective racing category: locked, else harder of assignment floor and self-select."""
+    data = lc if isinstance(lc, dict) else {}
+    if data.get("locked"):
+        locked_cat = data.get("category") or (data.get("autoAssigned") or {}).get("category")
+        return str(locked_cat or "").strip()
+    floor = assignment_floor_category(data)
+    sel_cat = (data.get("selfSelected") or {}).get("category")
+    return str(_effective_cat_name(floor, sel_cat, categories) or "").strip()
+
+
 def serialize_liga_category(lc: dict | None) -> dict | None:
     """
     Flatten a ligaCategory Firestore document into an API response dict.
@@ -191,27 +212,33 @@ def serialize_liga_category(lc: dict | None) -> dict | None:
     auto = lc.get('autoAssigned') or {}
     locked = lc.get('locked', False)
     sel = lc.get('selfSelected') or {}
+    manual = lc.get('manualAssigned') or {}
     auto_cat = auto.get('category')
     sel_cat = sel.get('category') if sel else None
+    manual_cat = manual.get('category') if manual else None
 
-    if locked:
-        effective = lc.get('category') or auto_cat
-    else:
-        effective = _effective_cat_name(auto_cat, sel_cat)
+    effective = effective_liga_category_name(lc)
+
+    status_source = manual if manual_cat and not locked else auto
+    bounds_source = manual if manual_cat and not locked else auto
+    assigned_source = manual if manual_cat and not locked else auto
 
     return {
-        'category': effective,
-        'upperBoundary': auto.get('upperBoundary'),
-        'graceLimit': auto.get('graceLimit'),
-        'assignedRating': auto.get('assignedRating'),
-        'assignedAt': _ts_to_ms(auto.get('assignedAt')),
-        'status': auto.get('status', 'ok'),
+        'category': effective or None,
+        'upperBoundary': bounds_source.get('upperBoundary'),
+        'graceLimit': bounds_source.get('graceLimit'),
+        'assignedRating': assigned_source.get('assignedRating'),
+        'assignedAt': _ts_to_ms(assigned_source.get('assignedAt') or auto.get('assignedAt')),
+        'status': status_source.get('status', 'ok'),
         'lastCheckedRating': auto.get('lastCheckedRating'),
         'lastCheckedAt': _ts_to_ms(auto.get('lastCheckedAt')),
         'locked': locked,
         'lockedAt': _ts_to_ms(lc.get('lockedAt')),
         'autoAssignedCategory': auto_cat,
         'selfSelectedCategory': sel_cat,
+        'manualAssignedCategory': manual_cat,
+        'manualAssignedFrom': manual.get('assignedFrom'),
+        'predictedVelo': manual.get('predictedVelo'),
     }
 
 

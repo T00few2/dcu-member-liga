@@ -187,6 +187,25 @@ def test_effective_user_category_unlocked_self_selected_overrides_auto() -> None
     assert races._resolve_effective_user_category(liga_category) == "Platinum"
 
 
+def test_effective_user_category_manual_overrides_auto_until_released() -> None:
+    liga_category = {
+        "locked": False,
+        "autoAssigned": {"category": "Diamond"},
+        "manualAssigned": {"category": "Ruby"},
+    }
+    assert races._resolve_effective_user_category(liga_category) == "Ruby"
+
+
+def test_effective_user_category_self_select_can_still_upgrade_from_manual() -> None:
+    liga_category = {
+        "locked": False,
+        "autoAssigned": {"category": "Diamond"},
+        "manualAssigned": {"category": "Ruby"},
+        "selfSelected": {"category": "Diamond"},
+    }
+    assert races._resolve_effective_user_category(liga_category) == "Diamond"
+
+
 def test_effective_user_category_handles_missing_data() -> None:
     assert races._resolve_effective_user_category(None) == ""
     assert races._resolve_effective_user_category({}) == ""

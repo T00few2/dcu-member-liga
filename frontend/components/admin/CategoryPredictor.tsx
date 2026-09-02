@@ -232,9 +232,9 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
         <p>
           <span className="font-medium text-foreground">Workflow:</span> Review the model fit below, then scroll
           to <em>Predict &amp; Assign</em>. Select a rider, optionally load Strava power, compare the two columns,
-          and click Assign using the prediction you want. The predicted vELO is written as{' '}
-          <code className="bg-muted px-1 rounded text-xs">assignedFrom: &quot;predicted&quot;</code> so the nightly
-          job will re-evaluate them normally going forward.
+          and click Assign using the prediction you want. That assignment is a <em>manual hold</em>: nightly
+          auto-assign will not overwrite it until you release it from Categories. The predicted vELO is stored on
+          the hold so you can see it in the rider status table.
         </p>
       </div>
 

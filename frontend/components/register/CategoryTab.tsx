@@ -53,6 +53,7 @@ interface LigaCategory {
     lockedAt?: number;
     autoAssignedCategory?: string;
     selfSelectedCategory?: string;
+    manualAssignedCategory?: string;
 }
 
 interface Profile {
@@ -115,8 +116,9 @@ export default function CategoryTab() {
     const lc = profile?.ligaCategory;
     const currentCatIndex = lc ? catIndex(lc.category) : -1;
 
-    const autoAssignedIndex = lc?.autoAssignedCategory
-        ? catIndex(lc.autoAssignedCategory)
+    const floorCategory = lc?.manualAssignedCategory || lc?.autoAssignedCategory;
+    const autoAssignedIndex = floorCategory
+        ? catIndex(floorCategory)
         : currentCatIndex;
     const upgradeOptions = autoAssignedIndex > 0
         ? ZR_CATEGORIES.filter((_, i) => i <= autoAssignedIndex)
