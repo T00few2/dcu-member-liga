@@ -56,6 +56,7 @@ function renderForm(overrides: Partial<ComponentProps<typeof CategoryPredictorFo
     stravaPower: { wkg5s: 15, wkg1m: 6.2, wkg5m: 4.8, wkg20m: 4.4 },
     onSetPowerInput: vi.fn(),
     model: { coeffs: [0], r2: 1, rmse: 40, n: 10, activeFeatureKeys: ['wkg20m'], trainingPoints: [] },
+    activeFeatureKeys: ['wkg20m'],
     zwiftPrediction: zwiftPred,
     stravaPrediction: stravaPred,
     actualVelo: 1100,
@@ -95,5 +96,26 @@ describe('CategoryPredictorForm dual-source columns', () => {
     const load = screen.getByRole('button', { name: 'Load' });
     await user.click(load);
     expect(props.onLoadStrava).toHaveBeenCalledOnce();
+  });
+
+  it('only shows input rows for the currently selected regressors', () => {
+    renderForm({ activeFeatureKeys: ['weight_kg', 'wkg1m', 'wkg20m', 'compound5m'] });
+
+    expect(screen.getByText('Weight (kg)')).toBeInTheDocument();
+    expect(screen.queryByText('ZRS')).not.toBeInTheDocument();
+    expect(screen.queryByText('5s W/kg')).not.toBeInTheDocument();
+    expect(screen.getByText('1min W/kg')).toBeInTheDocument();
+    expect(screen.getByText('5min W/kg')).toBeInTheDocument();
+    expect(screen.getByText('20min W/kg')).toBeInTheDocument();
+    expect(screen.getByText('5m²/kg (auto)')).toBeInTheDocument();
+    expect(screen.getByText(/Using current model: Weight \(kg\), 1min W\/kg, 20min W\/kg, 5m²\/kg/)).toBeInTheDocument();
+  });
+
+  it('shows ZRS when that regressor is checked', () => {
+    renderForm({ activeFeatureKeys: ['zrs'] });
+
+    expect(screen.getByText('ZRS')).toBeInTheDocument();
+    expect(screen.queryByText('20min W/kg')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Load' })).not.toBeInTheDocument();
   });
 });

@@ -3,6 +3,7 @@ import {
   combineInputs,
   inputsFromParticipant,
   predictionFromInputs,
+  predictorFormLayout,
   EMPTY_POWER,
   EMPTY_PREDICTION,
   type ModelResult,
@@ -59,5 +60,20 @@ describe('predictionFromInputs', () => {
     expect(zwift.category).toBe('Platinum');
     expect(strava.category).toBe('Amethyst');
     expect(zwift.velo).not.toBe(strava.velo);
+  });
+});
+
+describe('predictorFormLayout', () => {
+  it('hides ZRS and unused power rows for the default regressor set', () => {
+    const layout = predictorFormLayout(['weight_kg', 'wkg1m', 'wkg20m', 'compound5m']);
+    expect(layout.showWeight).toBe(true);
+    expect(layout.showZrs).toBe(false);
+    expect(layout.powerRows.map(r => r.field)).toEqual(['wkg1m', 'wkg5m', 'wkg20m']);
+    expect(layout.powerRows.find(r => r.field === 'wkg5m')?.compoundLabel).toBe('5m²/kg (auto)');
+  });
+
+  it('shows ZRS only when that regressor is active', () => {
+    expect(predictorFormLayout(['zrs']).showZrs).toBe(true);
+    expect(predictorFormLayout(['zrs']).usesPower).toBe(false);
   });
 });

@@ -12,6 +12,7 @@ import {
   inputsFromParticipant,
   combineInputs,
   predictionFromInputs,
+  FEATURE_DEFS,
   EMPTY_POWER,
   EMPTY_SHARED,
   Participant,
@@ -59,6 +60,10 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   }, [predictorConfig]);
 
   const model = useMemo(() => buildModel(participants, selectedFeatures), [participants, selectedFeatures]);
+  const activeFeatureKeys = useMemo(
+    () => FEATURE_DEFS.filter(f => selectedFeatures[f.key]).map(f => f.key),
+    [selectedFeatures],
+  );
 
   // ── Rider / form state ───────────────────────────────────────────────────
   const [selectedZwiftId, setSelectedZwiftId] = useState('');
@@ -265,6 +270,7 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
         stravaPower={stravaPower}
         onSetPowerInput={handleSetPowerInput}
         model={model}
+        activeFeatureKeys={activeFeatureKeys}
         zwiftPrediction={zwiftPrediction}
         stravaPrediction={stravaPrediction}
         actualVelo={actualVelo}

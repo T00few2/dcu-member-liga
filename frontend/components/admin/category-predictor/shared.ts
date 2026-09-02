@@ -180,6 +180,47 @@ export const ALL_ON: Record<FeatureKey, boolean> = {
   compound5s: false, compound1m: false, compound5m: true, compound20m: false,
 };
 
+/** Maps a power duration to the feature keys that need that W/kg input. */
+export const POWER_ROW_DEFS: {
+  field: PowerField;
+  label: string;
+  step: string;
+  featureKeys: FeatureKey[];
+  compoundKey: FeatureKey;
+  compoundLabel: string;
+}[] = [
+  { field: 'wkg5s',  label: '5s W/kg',    step: '0.01', featureKeys: ['wkg5s', 'watts5s', 'compound5s'],     compoundKey: 'compound5s',  compoundLabel: '5s²/kg (auto)' },
+  { field: 'wkg1m',  label: '1min W/kg',  step: '0.01', featureKeys: ['wkg1m', 'watts1m', 'compound1m'],     compoundKey: 'compound1m',  compoundLabel: '1m²/kg (auto)' },
+  { field: 'wkg5m',  label: '5min W/kg',  step: '0.01', featureKeys: ['wkg5m', 'watts5m', 'compound5m'],     compoundKey: 'compound5m',  compoundLabel: '5m²/kg (auto)' },
+  { field: 'wkg20m', label: '20min W/kg', step: '0.01', featureKeys: ['wkg20m', 'watts20m', 'compound20m'], compoundKey: 'compound20m', compoundLabel: '20m²/kg (auto)' },
+];
+
+export interface PredictorFormLayout {
+  showWeight: boolean;
+  showZrs: boolean;
+  powerRows: { field: PowerField; label: string; step: string; compoundLabel: string | null }[];
+  usesPower: boolean;
+}
+
+/** Which Predict & Assign fields the current regressor set actually needs. */
+export function predictorFormLayout(activeKeys: FeatureKey[]): PredictorFormLayout {
+  const enabled = new Set(activeKeys);
+  const powerRows = POWER_ROW_DEFS
+    .filter(row => row.featureKeys.some(k => enabled.has(k)))
+    .map(row => ({
+      field: row.field,
+      label: row.label,
+      step: row.step,
+      compoundLabel: enabled.has(row.compoundKey) ? row.compoundLabel : null,
+    }));
+  return {
+    showWeight: enabled.has('weight_kg') || powerRows.length > 0,
+    showZrs: enabled.has('zrs'),
+    powerRows,
+    usesPower: powerRows.length > 0,
+  };
+}
+
 export function mergeFeatures(saved: Record<string, unknown>): Record<FeatureKey, boolean> {
   const out = { ...ALL_ON };
   for (const k of Object.keys(ALL_ON) as FeatureKey[]) {

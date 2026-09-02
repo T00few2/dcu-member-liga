@@ -1,5 +1,6 @@
 'use client';
 
+import { Fragment } from 'react';
 import {
   SharedField,
   PowerField,
@@ -8,6 +9,9 @@ import {
   Participant,
   ModelResult,
   PredictionSnapshot,
+  FeatureKey,
+  FEATURE_DEFS,
+  predictorFormLayout,
   ZR_CATEGORY_DEFAULTS,
   ZR_CATEGORY_STYLES,
 } from './shared';
@@ -42,6 +46,8 @@ export interface CategoryPredictorFormProps {
   onSetPowerInput: (source: 'zwift' | 'strava', field: PowerField, value: string) => void;
   /** Fitted OLS model — used for the RMSE band. */
   model: ModelResult | null;
+  /** Feature keys currently in the fitted (or selected) model. */
+  activeFeatureKeys: FeatureKey[];
   zwiftPrediction: PredictionSnapshot;
   stravaPrediction: PredictionSnapshot;
   /** Actual vELO for the selected rider, or null if unavailable. */
@@ -62,20 +68,8 @@ export interface CategoryPredictorFormProps {
   assignError: string;
 }
 
-const POWER_FIELDS: [PowerField, string, string][] = [
-  ['wkg5s',  '5s W/kg',    '0.01'],
-  ['wkg1m',  '1min W/kg',  '0.01'],
-  ['wkg5m',  '5min W/kg',  '0.01'],
-  ['wkg20m', '20min W/kg', '0.01'],
-];
-
-const SHARED_FIELDS: [SharedField, string, string][] = [
-  ['weightKg',    'Weight (kg)', '0.1'],
-  ['racingScore', 'ZRS',         '1'],
-];
-
-function compound5m(weightKg: number, wkg5m: number): number {
-  return weightKg > 0 ? (wkg5m * weightKg) ** 2 / weightKg : 0;
+function compoundScore(weightKg: number, wkg: number): number {
+  return weightKg > 0 ? (wkg * weightKg) ** 2 / weightKg : 0;
 }
 
 function CategoryBadge({ name }: { name: string }) {
@@ -157,6 +151,7 @@ export default function CategoryPredictorForm({
   stravaPower,
   onSetPowerInput,
   model,
+  activeFeatureKeys,
   zwiftPrediction,
   stravaPrediction,
   actualVelo,
@@ -178,8 +173,10 @@ export default function CategoryPredictorForm({
     : assignChoice === 'strava' ? stravaPrediction.velo != null
     : Boolean(assignChoice);
 
-  const zwiftCompound = compound5m(shared.weightKg, zwiftPower.wkg5m);
-  const stravaCompound = compound5m(shared.weightKg, stravaPower.wkg5m);
+  const layout = predictorFormLayout(activeFeatureKeys);
+  const modelLabels = activeFeatureKeys
+    .map(k => FEATURE_DEFS.find(f => f.key === k)?.label)
+    .filter((label): label is string => Boolean(label));
 
   return (
     <div className="bg-card border border-border rounded-lg p-6">
@@ -188,7 +185,7 @@ export default function CategoryPredictorForm({
         All riders are shown in the dropdown, including locked riders. Selecting a rider pre-fills their Zwift power.
         Click <strong>Load</strong> in the Strava column to pull 90-day outdoor power — useful for riders who train
         outdoors but race on Zwift. Both columns stay visible so you can compare predictions directly.
-        All fields are editable; predictions update live.
+        Fields follow the regressors currently checked above; predictions update live.
         <br />
         <span className="text-xs">
           5min watts is the raw absolute figure (not W/kg) — the compound score is derived from it automatically.
@@ -229,23 +226,49 @@ export default function CategoryPredictorForm({
         </select>
       </div>
 
-      {/* Shared fields: weight + ZRS apply to both columns */}
-      <div className="grid grid-cols-2 gap-x-8 gap-y-3 max-w-sm mb-5">
-        {SHARED_FIELDS.map(([field, label, step]) => (
-          <div key={field} className="contents">
-            <label className="text-sm text-foreground self-center">{label}</label>
-            <input
-              type="number"
-              step={step}
-              value={shared[field] || ''}
-              onChange={e => onSetSharedInput(field, e.target.value)}
-              className="border border-border rounded px-2 py-1 text-sm bg-background text-foreground w-24"
-            />
-          </div>
-        ))}
-      </div>
+      {!selectedZwiftId && (
+        <p className="text-sm text-muted-foreground mb-4">
+          Select a rider to fill Zwift power and see a prediction.
+        </p>
+      )}
 
-      {/* Zwift vs Strava comparison */}
+      {modelLabels.length > 0 && (
+        <p className="text-xs text-muted-foreground mb-4">
+          Using current model: {modelLabels.join(', ')}
+        </p>
+      )}
+
+      {/* Shared fields: weight + ZRS apply to both columns */}
+      {(layout.showWeight || layout.showZrs) && (
+        <div className="grid grid-cols-2 gap-x-8 gap-y-3 max-w-sm mb-5">
+          {layout.showWeight && (
+            <>
+              <label className="text-sm text-foreground self-center">Weight (kg)</label>
+              <input
+                type="number"
+                step="0.1"
+                value={shared.weightKg || ''}
+                onChange={e => onSetSharedInput('weightKg', e.target.value)}
+                className="border border-border rounded px-2 py-1 text-sm bg-background text-foreground w-24"
+              />
+            </>
+          )}
+          {layout.showZrs && (
+            <>
+              <label className="text-sm text-foreground self-center">ZRS</label>
+              <input
+                type="number"
+                step="1"
+                value={shared.racingScore || ''}
+                onChange={e => onSetSharedInput('racingScore', e.target.value)}
+                className="border border-border rounded px-2 py-1 text-sm bg-background text-foreground w-24"
+              />
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Zwift vs Strava comparison — only power rows the current model uses */}
       <div className="overflow-x-auto mb-4">
         <table className="text-sm w-auto">
           <thead>
@@ -261,50 +284,60 @@ export default function CategoryPredictorForm({
                     <span className="text-sm font-semibold text-foreground">Strava</span>
                     <span className="ml-1.5 text-xs font-normal text-muted-foreground">90d</span>
                   </span>
-                  <button
-                    onClick={onLoadStrava}
-                    disabled={!selectedZwiftId || loadingStrava}
-                    className="px-2.5 py-1 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                  >
-                    {loadingStrava ? 'Loading…' : 'Load'}
-                  </button>
+                  {layout.usesPower && (
+                    <button
+                      onClick={onLoadStrava}
+                      disabled={!selectedZwiftId || loadingStrava}
+                      className="px-2.5 py-1 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                    >
+                      {loadingStrava ? 'Loading…' : 'Load'}
+                    </button>
+                  )}
                 </div>
               </th>
             </tr>
           </thead>
           <tbody>
-            {POWER_FIELDS.map(([field, label, step]) => (
-              <tr key={field}>
-                <td className="text-sm text-foreground pr-4 py-1.5 whitespace-nowrap">{label}</td>
-                <td className={columnCellClass(zwiftActive)}>
-                  <input
-                    type="number"
-                    step={step}
-                    value={zwiftPower[field] || ''}
-                    onChange={e => onSetPowerInput('zwift', field, e.target.value)}
-                    className="border border-border rounded px-2 py-1 text-sm bg-background text-foreground w-24"
-                  />
-                </td>
-                <td className={columnCellClass(stravaActive)}>
-                  <input
-                    type="number"
-                    step={step}
-                    value={stravaPower[field] || ''}
-                    onChange={e => onSetPowerInput('strava', field, e.target.value)}
-                    className="border border-border rounded px-2 py-1 text-sm bg-background text-foreground w-24"
-                  />
-                </td>
-              </tr>
+            {layout.powerRows.map(row => (
+              <Fragment key={row.field}>
+                <tr>
+                  <td className="text-sm text-foreground pr-4 py-1.5 whitespace-nowrap">{row.label}</td>
+                  <td className={columnCellClass(zwiftActive)}>
+                    <input
+                      type="number"
+                      step={row.step}
+                      value={zwiftPower[row.field] || ''}
+                      onChange={e => onSetPowerInput('zwift', row.field, e.target.value)}
+                      className="border border-border rounded px-2 py-1 text-sm bg-background text-foreground w-24"
+                    />
+                  </td>
+                  <td className={columnCellClass(stravaActive)}>
+                    <input
+                      type="number"
+                      step={row.step}
+                      value={stravaPower[row.field] || ''}
+                      onChange={e => onSetPowerInput('strava', row.field, e.target.value)}
+                      className="border border-border rounded px-2 py-1 text-sm bg-background text-foreground w-24"
+                    />
+                  </td>
+                </tr>
+                {row.compoundLabel && (
+                  <tr>
+                    <td className="text-sm text-muted-foreground pr-4 py-1.5 whitespace-nowrap">{row.compoundLabel}</td>
+                    <td className={`${columnCellClass(zwiftActive)} font-mono text-muted-foreground`}>
+                      {compoundScore(shared.weightKg, zwiftPower[row.field]) > 0
+                        ? compoundScore(shared.weightKg, zwiftPower[row.field]).toFixed(1)
+                        : '—'}
+                    </td>
+                    <td className={`${columnCellClass(stravaActive)} font-mono text-muted-foreground`}>
+                      {compoundScore(shared.weightKg, stravaPower[row.field]) > 0
+                        ? compoundScore(shared.weightKg, stravaPower[row.field]).toFixed(1)
+                        : '—'}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
-            <tr>
-              <td className="text-sm text-muted-foreground pr-4 py-1.5 whitespace-nowrap">5m²/kg (auto)</td>
-              <td className={`${columnCellClass(zwiftActive)} font-mono text-muted-foreground`}>
-                {zwiftCompound > 0 ? zwiftCompound.toFixed(1) : '—'}
-              </td>
-              <td className={`${columnCellClass(stravaActive)} font-mono text-muted-foreground`}>
-                {stravaCompound > 0 ? stravaCompound.toFixed(1) : '—'}
-              </td>
-            </tr>
             <tr>
               <td className="text-sm text-foreground pr-4 pt-3 align-top whitespace-nowrap">Predicted vELO</td>
               <td className={`${columnCellClass(zwiftActive)} pt-3 align-top`}>
