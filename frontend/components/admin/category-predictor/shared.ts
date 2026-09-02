@@ -56,6 +56,33 @@ export interface Inputs {
   racingScore: number;
 }
 
+export type PowerField = 'wkg5s' | 'wkg1m' | 'wkg5m' | 'wkg20m';
+export type SharedField = 'weightKg' | 'racingScore';
+
+export type PowerInputs = Pick<Inputs, PowerField>;
+export type SharedInputs = Pick<Inputs, SharedField>;
+
+export const EMPTY_POWER: PowerInputs = { wkg5s: 0, wkg1m: 0, wkg5m: 0, wkg20m: 0 };
+export const EMPTY_SHARED: SharedInputs = { weightKg: 0, racingScore: 0 };
+
+export function combineInputs(shared: SharedInputs, power: PowerInputs): Inputs {
+  return { ...shared, ...power };
+}
+
+export function inputsFromParticipant(p: Participant): Inputs {
+  const kg = (p.weightInGrams ?? 0) / 1000;
+  const wkg = (w: number | null) => (kg > 0 && w && w > 0) ? parseFloat((w / kg).toFixed(2)) : 0;
+  const rs = typeof p.racingScore === 'number' ? p.racingScore : parseFloat(String(p.racingScore ?? '')) || 0;
+  return {
+    weightKg: kg,
+    wkg5s: wkg(p.cp5s),
+    wkg1m: wkg(p.cp1min),
+    wkg5m: wkg(p.cp5min),
+    wkg20m: wkg(p.cp20min),
+    racingScore: rs,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Feature definitions
 // ---------------------------------------------------------------------------
@@ -275,6 +302,38 @@ function fitOLS(X: number[][], y: number[]): number[] {
 
 export function predict(coeffs: number[], row: number[]): number {
   return coeffs[0] + row.reduce((s, v, i) => s + coeffs[i + 1] * v, 0);
+}
+
+export interface PredictionSnapshot {
+  velo: number | null;
+  category: string | null;
+  low: number | null;
+  high: number | null;
+  catLow: string | null;
+  catHigh: string | null;
+}
+
+export const EMPTY_PREDICTION: PredictionSnapshot = {
+  velo: null, category: null, low: null, high: null, catLow: null, catHigh: null,
+};
+
+/** Predicted vELO and category band for a filled input row. */
+export function predictionFromInputs(model: ModelResult | null, inputs: Inputs): PredictionSnapshot {
+  if (!model) return EMPTY_PREDICTION;
+  const activeFeatures = FEATURE_DEFS.filter(f => model.activeFeatureKeys.includes(f.key));
+  const predRow = activeFeatures.map(f => f.fromInputs(inputs));
+  if (predRow.length === 0 || predRow.some(v => v <= 0)) return EMPTY_PREDICTION;
+  const velo = Math.round(predict(model.coeffs, predRow));
+  const low = Math.round(velo - model.rmse);
+  const high = Math.round(velo + model.rmse);
+  return {
+    velo,
+    category: categoryFromVelo(velo, ZR_CATEGORY_DEFAULTS),
+    low,
+    high,
+    catLow: categoryFromVelo(low, ZR_CATEGORY_DEFAULTS),
+    catHigh: categoryFromVelo(high, ZR_CATEGORY_DEFAULTS),
+  };
 }
 
 // ---------------------------------------------------------------------------

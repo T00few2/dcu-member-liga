@@ -8,14 +8,18 @@ import {
   ALL_ON,
   mergeFeatures,
   buildModel,
-  predict,
-  categoryFromVelo,
   veloForCategory,
-  ZR_CATEGORY_DEFAULTS,
-  FEATURE_DEFS,
+  inputsFromParticipant,
+  combineInputs,
+  predictionFromInputs,
+  EMPTY_POWER,
+  EMPTY_SHARED,
   Participant,
-  Inputs,
   FeatureKey,
+  SharedField,
+  SharedInputs,
+  PowerField,
+  PowerInputs,
 } from './category-predictor/shared';
 import CategoryPredictorResults from './category-predictor/CategoryPredictorResults';
 import CategoryPredictorForm from './category-predictor/CategoryPredictorForm';
@@ -26,6 +30,11 @@ import CategoryPredictorForm from './category-predictor/CategoryPredictorForm';
 
 interface CategoryPredictorProps {
   user: User | null;
+}
+
+function parseNumericField(value: string): number {
+  const num = parseFloat(value);
+  return isNaN(num) ? 0 : num;
 }
 
 // ---------------------------------------------------------------------------
@@ -54,26 +63,25 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   // ── Rider / form state ───────────────────────────────────────────────────
   const [selectedZwiftId, setSelectedZwiftId] = useState('');
   const [showUnassignedOnly, setShowUnassignedOnly] = useState(false);
-  const [powerSource, setPowerSource] = useState<'zwift' | 'strava'>('zwift');
   const [loadingStrava, setLoadingStrava] = useState(false);
   const [stravaError, setStravaError] = useState('');
-  const [inputs, setInputs] = useState<Inputs>({ weightKg: 0, wkg5s: 0, wkg1m: 0, wkg5m: 0, wkg20m: 0, racingScore: 0 });
-  const [manualCategory, setManualCategory] = useState('');
+  const [shared, setShared] = useState<SharedInputs>(EMPTY_SHARED);
+  const [zwiftPower, setZwiftPower] = useState<PowerInputs>(EMPTY_POWER);
+  const [stravaPower, setStravaPower] = useState<PowerInputs>(EMPTY_POWER);
+  const [assignChoice, setAssignChoice] = useState('zwift');
   const [assigning, setAssigning] = useState(false);
   const [assignResult, setAssignResult] = useState<{ category: string } | null>(null);
   const [assignError, setAssignError] = useState('');
 
   // ── Derived prediction values ────────────────────────────────────────────
-  const activeFeatures = FEATURE_DEFS.filter(f => model?.activeFeatureKeys.includes(f.key));
-  const predRow = activeFeatures.map(f => f.fromInputs(inputs));
-  const predictedVelo = model && predRow.length > 0 && predRow.every(v => v > 0)
-    ? Math.round(predict(model.coeffs, predRow))
-    : null;
-  const predictedCategory = predictedVelo != null ? categoryFromVelo(predictedVelo, ZR_CATEGORY_DEFAULTS) : null;
-  const predLow  = predictedVelo != null && model ? Math.round(predictedVelo - model.rmse) : null;
-  const predHigh = predictedVelo != null && model ? Math.round(predictedVelo + model.rmse) : null;
-  const catLow   = predLow  != null ? categoryFromVelo(predLow,  ZR_CATEGORY_DEFAULTS) : null;
-  const catHigh  = predHigh != null ? categoryFromVelo(predHigh, ZR_CATEGORY_DEFAULTS) : null;
+  const zwiftPrediction = useMemo(
+    () => predictionFromInputs(model, combineInputs(shared, zwiftPower)),
+    [model, shared, zwiftPower],
+  );
+  const stravaPrediction = useMemo(
+    () => predictionFromInputs(model, combineInputs(shared, stravaPower)),
+    [model, shared, stravaPower],
+  );
 
   const selectedParticipant = participants.find(p => p.zwiftId === selectedZwiftId) ?? null;
   const actualVelo =
@@ -87,23 +95,21 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
 
   function handleSelectRider(zwiftId: string) {
     setSelectedZwiftId(zwiftId);
-    setManualCategory('');
+    setAssignChoice('zwift');
     setAssignResult(null);
     setAssignError('');
     setStravaError('');
     const p = participants.find(pp => pp.zwiftId === zwiftId);
-    if (!p) { setInputs({ weightKg: 0, wkg5s: 0, wkg1m: 0, wkg5m: 0, wkg20m: 0, racingScore: 0 }); return; }
-    const kg = (p.weightInGrams ?? 0) / 1000;
-    const wkg = (w: number | null) => (kg > 0 && w && w > 0) ? parseFloat((w / kg).toFixed(2)) : 0;
-    const rs = typeof p.racingScore === 'number' ? p.racingScore : parseFloat(String(p.racingScore ?? '')) || 0;
-    setInputs({
-      weightKg: kg,
-      wkg5s:  wkg(p.cp5s),
-      wkg1m:  wkg(p.cp1min),
-      wkg5m:  wkg(p.cp5min),
-      wkg20m: wkg(p.cp20min),
-      racingScore: rs,
-    });
+    if (!p) {
+      setShared({ ...EMPTY_SHARED });
+      setZwiftPower({ ...EMPTY_POWER });
+      setStravaPower({ ...EMPTY_POWER });
+      return;
+    }
+    const filled = inputsFromParticipant(p);
+    setShared({ weightKg: filled.weightKg, racingScore: filled.racingScore });
+    setZwiftPower({ wkg5s: filled.wkg5s, wkg1m: filled.wkg1m, wkg5m: filled.wkg5m, wkg20m: filled.wkg20m });
+    setStravaPower({ ...EMPTY_POWER });
   }
 
   async function handleLoadStrava() {
@@ -118,15 +124,14 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
       const data = await res.json();
       if (!res.ok) { setStravaError(data.message ?? 'Failed to load Strava data'); return; }
       const curve: Record<string, number> = data.curve ?? {};
-      const kg = inputs.weightKg > 0 ? inputs.weightKg : (selectedParticipant?.weightInGrams ?? 0) / 1000;
+      const kg = shared.weightKg > 0 ? shared.weightKg : (selectedParticipant?.weightInGrams ?? 0) / 1000;
       const c5s  = curve['w5']    ?? 0;
       const cp1  = curve['w60']   ?? 0;
       const cp5  = curve['w300']  ?? 0;
       const cp20 = curve['w1200'] ?? 0;
       const wkg = (w: number, prev: number) => kg > 0 && w > 0 ? parseFloat((w / kg).toFixed(2)) : prev;
-      setInputs(prev => ({
-        ...prev,
-        weightKg: kg || prev.weightKg,
+      setShared(prev => ({ ...prev, weightKg: kg || prev.weightKg }));
+      setStravaPower(prev => ({
         wkg5s:  wkg(c5s,  prev.wkg5s),
         wkg1m:  wkg(cp1,  prev.wkg1m),
         wkg5m:  wkg(cp5,  prev.wkg5m),
@@ -140,16 +145,18 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   }
 
   async function handleAssign() {
-    const targetCat = manualCategory || predictedCategory;
-    if (!selectedZwiftId || !user || !targetCat) return;
+    if (!selectedZwiftId || !user) return;
     let veloToSend: number;
-    if (manualCategory) {
-      const mid = veloForCategory(manualCategory);
+    if (assignChoice === 'zwift') {
+      if (zwiftPrediction.velo == null) return;
+      veloToSend = zwiftPrediction.velo;
+    } else if (assignChoice === 'strava') {
+      if (stravaPrediction.velo == null) return;
+      veloToSend = stravaPrediction.velo;
+    } else {
+      const mid = veloForCategory(assignChoice);
       if (!mid) { setAssignError('Could not compute a vELO for the chosen category'); return; }
       veloToSend = mid;
-    } else {
-      if (predictedVelo == null) return;
-      veloToSend = predictedVelo;
     }
     setAssigning(true);
     setAssignResult(null);
@@ -171,11 +178,24 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
     }
   }
 
-  function handleSetInput(field: keyof Inputs, value: string) {
+  function handleSetSharedInput(field: SharedField, value: string) {
     setAssignResult(null);
     setAssignError('');
-    const num = parseFloat(value);
-    setInputs(prev => ({ ...prev, [field]: isNaN(num) ? 0 : num }));
+    setShared(prev => ({ ...prev, [field]: parseNumericField(value) }));
+  }
+
+  function handleSetPowerInput(source: 'zwift' | 'strava', field: PowerField, value: string) {
+    setAssignResult(null);
+    setAssignError('');
+    const next = parseNumericField(value);
+    if (source === 'zwift') setZwiftPower(prev => ({ ...prev, [field]: next }));
+    else setStravaPower(prev => ({ ...prev, [field]: next }));
+  }
+
+  function handleSetAssignChoice(choice: string) {
+    setAssignChoice(choice);
+    setAssignResult(null);
+    setAssignError('');
   }
 
   async function handleSaveDefaults() {
@@ -194,12 +214,6 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
     } catch { /* ignore */ }
   }
 
-  function handleSetManualCategory(cat: string) {
-    setManualCategory(cat);
-    setAssignResult(null);
-    setAssignError('');
-  }
-
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -210,13 +224,13 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
           <span className="font-medium text-foreground">What this tool does:</span> Riders with thin Zwift profiles
           may not have a ZwiftRacing vELO score, so the automatic category assignment can&apos;t place them. This tool
           fits a linear model from riders <em>who do</em> have vELO scores, then uses it to predict a vELO for
-          any rider based on their power data — either from Zwift or from Strava — and assigns them a starting
+          any rider based on their power data — from Zwift and from Strava side by side — and assigns them a starting
           category using the same engine as the nightly job.
         </p>
         <p>
           <span className="font-medium text-foreground">Workflow:</span> Review the model fit below, then scroll
-          to <em>Predict &amp; Assign</em>. Select a rider, optionally switch to Strava power data and click Load,
-          adjust any values if needed, and click Assign. The predicted vELO is written as{' '}
+          to <em>Predict &amp; Assign</em>. Select a rider, optionally load Strava power, compare the two columns,
+          and click Assign using the prediction you want. The predicted vELO is written as{' '}
           <code className="bg-muted px-1 rounded text-xs">assignedFrom: &quot;predicted&quot;</code> so the nightly
           job will re-evaluate them normally going forward.
         </p>
@@ -242,26 +256,20 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
         onSelectRider={handleSelectRider}
         showUnassignedOnly={showUnassignedOnly}
         onSetShowUnassignedOnly={setShowUnassignedOnly}
-        powerSource={powerSource}
-        onSetPowerSource={(src) => {
-          setPowerSource(src);
-          if (src === 'zwift') setStravaError('');
-        }}
         loadingStrava={loadingStrava}
         onLoadStrava={handleLoadStrava}
         stravaError={stravaError}
-        inputs={inputs}
-        onSetInput={handleSetInput}
+        shared={shared}
+        onSetSharedInput={handleSetSharedInput}
+        zwiftPower={zwiftPower}
+        stravaPower={stravaPower}
+        onSetPowerInput={handleSetPowerInput}
         model={model}
-        predictedVelo={predictedVelo}
-        predictedCategory={predictedCategory}
-        predLow={predLow}
-        predHigh={predHigh}
-        catLow={catLow}
-        catHigh={catHigh}
+        zwiftPrediction={zwiftPrediction}
+        stravaPrediction={stravaPrediction}
         actualVelo={actualVelo}
-        manualCategory={manualCategory}
-        onSetManualCategory={handleSetManualCategory}
+        assignChoice={assignChoice}
+        onSetAssignChoice={handleSetAssignChoice}
         assigning={assigning}
         onAssign={handleAssign}
         assignResult={assignResult}
