@@ -47,6 +47,25 @@ def _competition_metrics_to_profile(competition: dict, profile: dict) -> dict:
     }
 
 
+def _activity_count_in_range(source: dict | None) -> int | None:
+    """Ride count for the CP window (typically 90d) from a power-profile payload or stored snapshot."""
+    if not isinstance(source, dict):
+        return None
+    top = source.get('activityCountInRange')
+    if isinstance(top, bool):
+        return None
+    if isinstance(top, (int, float)):
+        return int(top)
+    cbe = source.get('cpBestEfforts')
+    if isinstance(cbe, dict):
+        nested = cbe.get('activityCountInRange')
+        if isinstance(nested, bool):
+            return None
+        if isinstance(nested, (int, float)):
+            return int(nested)
+    return None
+
+
 def _power_profile_to_firestore(power_profile: dict) -> dict:
     """Map /api/link/power-curve/power-profile response to the zwiftPowerCurve Firestore shape."""
     return {
@@ -59,6 +78,7 @@ def _power_profile_to_firestore(power_profile: dict) -> dict:
         'metricsTimestamp': power_profile.get('metricsTimestamp'),
         'cpBestEfforts': power_profile.get('cpBestEfforts'),
         'relevantCpEfforts': power_profile.get('relevantCpEfforts'),
+        'activityCountInRange': _activity_count_in_range(power_profile),
         'updatedAt': firestore.SERVER_TIMESTAMP,
     }
 

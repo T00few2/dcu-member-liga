@@ -423,6 +423,7 @@ class ZwiftPowerCurve(TypedDict, total=False):
     metricsTimestamp: str
     cpBestEfforts: list[dict[str, Any]]
     relevantCpEfforts: list[RelevantCpEffort]
+    activityCountInRange: int
     updatedAt: Any
 
 

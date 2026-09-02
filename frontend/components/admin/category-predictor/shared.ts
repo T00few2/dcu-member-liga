@@ -21,6 +21,8 @@ export interface Participant {
   racingScore: number | string | null;
   max30Rating: number | string | null;
   ligaCategory: { locked?: boolean; category?: string } | null;
+  /** Zwift activities in the CP window (typically 90d), if known. */
+  zwiftActivityCount?: number | null;
 }
 
 export type CPField = 'cp5s' | 'cp1min' | 'cp5min' | 'cp20min' | 'racingScore';

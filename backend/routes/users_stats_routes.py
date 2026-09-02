@@ -9,6 +9,7 @@ from extensions import db, get_zwift_service, zr_service
 from services.category_engine import serialize_liga_category
 from services.user_service import UserService
 from services.zwift_tokens import get_valid_access_token
+from routes.integration import _activity_count_in_range
 from routes.users import users_bp
 
 logger = logging.getLogger(__name__)
@@ -76,6 +77,7 @@ def get_participants():
                         "phenotype": zr.get("phenotype", "N/A"),
                         "racingScore": zpro.get("racingScore", "N/A"),
                         "ligaCategory": lc,
+                        "zwiftActivityCount": _activity_count_in_range(zpc),
                     }
                 )
             except Exception as rider_error:

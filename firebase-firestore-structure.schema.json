@@ -1253,6 +1253,9 @@
             "metricsTimestamp": {
               "type": "string"
             },
+            "activityCountInRange": {
+              "type": "number"
+            },
             "cpBestEfforts": {
               "type": "array",
               "items": {

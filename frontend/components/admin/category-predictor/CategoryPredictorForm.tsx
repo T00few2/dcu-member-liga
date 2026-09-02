@@ -42,6 +42,10 @@ export interface CategoryPredictorFormProps {
   onLoadStrava: () => void;
   /** Error message from the last Strava fetch, or empty string. */
   stravaError: string;
+  /** Zwift activities in the CP window for the selected rider, if known. */
+  zwiftRideCount?: number | null;
+  /** Strava activities used for the loaded 90d curve, if loaded. */
+  stravaRideCount?: number | null;
   /** Weight and ZRS — shared by both power sources. */
   shared: SharedInputs;
   onSetSharedInput: (field: SharedField, value: string) => void;
@@ -72,6 +76,11 @@ export interface CategoryPredictorFormProps {
   assignResult: { category: string } | null;
   /** Error message from the last assign attempt, or empty string. */
   assignError: string;
+}
+
+function rideCountSuffix(count: number | null | undefined): string {
+  if (count == null) return '';
+  return ` · ${count} ${count === 1 ? 'ride' : 'rides'}`;
 }
 
 function compoundScore(weightKg: number, wkg: number): number {
@@ -165,6 +174,8 @@ export default function CategoryPredictorForm({
   loadingStrava,
   onLoadStrava,
   stravaError,
+  zwiftRideCount = null,
+  stravaRideCount = null,
   shared,
   onSetSharedInput,
   zwiftPower,
@@ -322,13 +333,17 @@ export default function CategoryPredictorForm({
               <th className="text-left pb-2 pr-4 font-medium text-foreground w-32" />
               <th className={columnHeaderClass(zwiftActive)}>
                 <span className="text-sm font-semibold text-foreground">Zwift</span>
-                <span className="ml-1.5 text-xs font-normal text-muted-foreground">90d</span>
+                <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                  90d{rideCountSuffix(zwiftRideCount)}
+                </span>
               </th>
               <th className={columnHeaderClass(stravaActive)}>
                 <div className="flex items-center gap-2">
                   <span>
                     <span className="text-sm font-semibold text-foreground">Strava</span>
-                    <span className="ml-1.5 text-xs font-normal text-muted-foreground">90d</span>
+                    <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                      90d{rideCountSuffix(stravaRideCount)}
+                    </span>
                   </span>
                   {layout.usesPower && (
                     <button

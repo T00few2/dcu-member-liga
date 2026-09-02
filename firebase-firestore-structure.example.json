@@ -431,6 +431,7 @@
         "categoryWomen": "A",
         "validPowerProfile": true,
         "metricsTimestamp": "2026-03-14T10:06:30+00:00",
+        "activityCountInRange": 18,
         "cpBestEfforts": [],
         "relevantCpEfforts": [
           {

@@ -72,6 +72,7 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   const [showMismatchOnly, setShowMismatchOnly] = useState(false);
   const [loadingStrava, setLoadingStrava] = useState(false);
   const [stravaError, setStravaError] = useState('');
+  const [stravaRideCount, setStravaRideCount] = useState<number | null>(null);
   const [shared, setShared] = useState<SharedInputs>(EMPTY_SHARED);
   const [zwiftPower, setZwiftPower] = useState<PowerInputs>(EMPTY_POWER);
   const [stravaPower, setStravaPower] = useState<PowerInputs>(EMPTY_POWER);
@@ -101,6 +102,7 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
     setAssignResult(null);
     setAssignError('');
     setStravaError('');
+    setStravaRideCount(null);
     const p = participants.find(pp => pp.zwiftId === zwiftId);
     if (!p) {
       setShared({ ...EMPTY_SHARED });
@@ -133,6 +135,7 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
       const cp20 = curve['w1200'] ?? 0;
       const wkg = (w: number, prev: number) => kg > 0 && w > 0 ? parseFloat((w / kg).toFixed(2)) : prev;
       setShared(prev => ({ ...prev, weightKg: kg || prev.weightKg }));
+      setStravaRideCount(typeof data.activityCount === 'number' ? data.activityCount : null);
       setStravaPower(prev => ({
         wkg5s:  wkg(c5s,  prev.wkg5s),
         wkg1m:  wkg(cp1,  prev.wkg1m),
@@ -263,6 +266,8 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
         loadingStrava={loadingStrava}
         onLoadStrava={handleLoadStrava}
         stravaError={stravaError}
+        zwiftRideCount={selectedParticipant?.zwiftActivityCount ?? null}
+        stravaRideCount={stravaRideCount}
         shared={shared}
         onSetSharedInput={handleSetSharedInput}
         zwiftPower={zwiftPower}

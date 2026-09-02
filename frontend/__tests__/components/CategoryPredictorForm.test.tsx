@@ -92,6 +92,13 @@ describe('CategoryPredictorForm dual-source columns', () => {
     expect(within(assign).getByRole('option', { name: 'Predicted Strava (Amethyst)' })).toBeInTheDocument();
   });
 
+  it('shows how many rides each power column is based on', () => {
+    renderForm({ zwiftRideCount: 12, stravaRideCount: 1 });
+
+    expect(screen.getByText(/12 rides/)).toBeInTheDocument();
+    expect(screen.getByText(/1 ride(?!s)/)).toBeInTheDocument();
+  });
+
   it('keeps Load in the Strava column and does not require a source toggle', async () => {
     const user = userEvent.setup();
     const { props } = renderForm({ stravaPrediction: EMPTY_PREDICTION, stravaPower: EMPTY_POWER });
