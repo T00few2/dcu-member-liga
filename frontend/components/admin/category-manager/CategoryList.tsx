@@ -14,6 +14,7 @@ interface CategoryListProps {
   overCount: number;
   graceCount: number;
   manualCount: number;
+  emptyMessage?: string;
   onFilterChange: (f: FilterMode) => void;
   onSearchChange: (s: string) => void;
   onGracePeriodChange: (n: number) => void;
@@ -48,6 +49,7 @@ export default function CategoryList({
   overCount,
   graceCount,
   manualCount,
+  emptyMessage,
   onFilterChange,
   onSearchChange,
   onGracePeriodChange,
@@ -133,9 +135,10 @@ export default function CategoryList({
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
-                    {riders.length === 0
-                      ? 'No categories assigned yet. Run assignment first.'
-                      : 'No riders match the current filter/search.'}
+                    {emptyMessage
+                      ?? (riders.length === 0
+                        ? 'No categories assigned yet. Run assignment first.'
+                        : 'No riders match the current filter/search.')}
                   </td>
                 </tr>
               ) : (

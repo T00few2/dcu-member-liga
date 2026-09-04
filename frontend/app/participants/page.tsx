@@ -4,7 +4,8 @@ import { Suspense, useCallback, useState, useMemo } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { useParticipantsQuery, useRacesQuery, useRaceSignupsQuery } from '@/hooks/queries';
-import { fromTimestamp } from '@/lib/formatDate';
+import RaceSignupSelect from '@/components/RaceSignupSelect';
+import { filterRidersBySignupIds } from '@/lib/raceSignupOptions';
 import type { Race } from '@/types/live';
 
 function getZRCategory(rating: number | string): string {
@@ -162,13 +163,6 @@ function SortIcon({ active, direction }: { active: boolean; direction: SortDirec
   );
 }
 
-function raceHasEventId(race: Race): boolean {
-  if (race.eventId) return true;
-  if ((race.eventConfiguration || []).some(c => !!c.eventId)) return true;
-  if ((race.raceGroups || []).some(g => !!g.eventId)) return true;
-  return false;
-}
-
 function ParticipantsPageContent() {
   const { loading: authLoading } = useAuth();
   const participantsQuery = useParticipantsQuery();
@@ -212,20 +206,6 @@ function ParticipantsPageContent() {
     return ids;
   }, [raceSignupsQuery.data]);
 
-  const raceOptions = useMemo(() => {
-    const now = Date.now();
-    return [...races]
-      .filter(r => r.preRegisterAllowed || raceHasEventId(r))
-      .sort((a, b) => {
-        const at = fromTimestamp(a.date)?.getTime() ?? 0;
-        const bt = fromTimestamp(b.date)?.getTime() ?? 0;
-        const aFuture = at > now;
-        const bFuture = bt > now;
-        if (aFuture !== bFuture) return aFuture ? -1 : 1;
-        return at - bt;
-      });
-  }, [races]);
-
   const selectedRace = races.find(r => r.id === raceFilter);
 
   const ligaKatOptions = useMemo(() => {
@@ -244,11 +224,10 @@ function ParticipantsPageContent() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    let result = participants.filter(p => {
+    let result = filterRidersBySignupIds(participants, raceFilter ? signupZwiftIds : null).filter(p => {
       const matchesSearch = !q || p.name.toLowerCase().includes(q) || (p.club && p.club.toLowerCase().includes(q));
       const matchesLigaKat = !ligaKatFilter || p.ligaCategory?.category === ligaKatFilter;
-      const matchesRace = !raceFilter || (p.zwiftId != null && signupZwiftIds.has(String(p.zwiftId)));
-      return matchesSearch && matchesLigaKat && matchesRace;
+      return matchesSearch && matchesLigaKat;
     });
 
     result = [...result].sort((a, b) => {
@@ -293,19 +272,13 @@ function ParticipantsPageContent() {
           : `${filtered.length} ryttere i DCU E-Serien.`}
       </p>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
-        <label className="flex items-center gap-2 text-sm text-foreground">
-          <span className="whitespace-nowrap font-medium">Tilmeldte til</span>
-          <select
-            value={raceFilter}
-            onChange={e => setRaceFilter(e.target.value)}
-            className="w-fit min-w-[12rem] px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="">DCU E-Serien</option>
-            {raceOptions.map(r => (
-              <option key={r.id} value={r.id}>{r.name}</option>
-            ))}
-          </select>
-        </label>
+        <RaceSignupSelect
+          races={races}
+          value={raceFilter}
+          onChange={setRaceFilter}
+          label="Tilmeldte til"
+          allLabel="DCU E-Serien"
+        />
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <div className="flex flex-row gap-2 items-center flex-wrap">
             <div className="inline-flex rounded-lg border border-input overflow-hidden">

@@ -1,11 +1,15 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
 import { useLigaCategoriesQuery } from '@/hooks/queries/useLigaCategoriesQuery';
 import { useLeagueSettingsQuery } from '@/hooks/queries/useLeagueSettingsQuery';
+import { useRacesQuery, useRaceSignupsQuery } from '@/hooks/queries';
+import { filterRidersBySignupIds } from '@/lib/raceSignupOptions';
+import type { Race } from '@/types/live';
+import RaceSignupSelect from '@/components/RaceSignupSelect';
 
 import CategoryBoundaryEditor from './category-manager/CategoryBoundaryEditor';
 import CategoryList from './category-manager/CategoryList';
@@ -23,11 +27,14 @@ export default function CategoryManager() {
 
   const { data: riders = [], isFetching: ridersLoading, refetch: refetchRiders } = useLigaCategoriesQuery();
   const { data: leagueSettings } = useLeagueSettingsQuery();
+  const racesQuery = useRacesQuery();
+  const races = (racesQuery.data ?? []) as Race[];
 
   const [assigning, setAssigning] = useState(false);
   const [resettingAssignments, setResettingAssignments] = useState(false);
   const [filter, setFilter] = useState<FilterMode>('all');
   const [search, setSearch] = useState('');
+  const [raceFilter, setRaceFilter] = useState('');
 
   // Grace period — seeded from leagueSettings once available
   const [gracePeriod, setGracePeriod] = useState<number | null>(null);
@@ -231,19 +238,40 @@ export default function CategoryManager() {
     }
   }, [user, queryClient]);
 
+  // ── Rider scope (all participants vs one race's signups) ────────────────
+
+  const selectedRaceId =
+    raceFilter && (racesQuery.isLoading || races.some(r => r.id === raceFilter)) ? raceFilter : '';
+  const raceSignupsQuery = useRaceSignupsQuery(selectedRaceId || null);
+  const signupZwiftIds = useMemo(() => {
+    if (!selectedRaceId) return null;
+    const ids = new Set<string>();
+    for (const row of raceSignupsQuery.data ?? []) {
+      if (row.zwiftId) ids.add(String(row.zwiftId));
+    }
+    return ids;
+  }, [selectedRaceId, raceSignupsQuery.data]);
+
+  const signupsLoading = Boolean(selectedRaceId) && raceSignupsQuery.isLoading;
+  const scopedRiders = useMemo(
+    () => (signupsLoading ? [] : filterRidersBySignupIds(riders, signupZwiftIds)),
+    [riders, signupZwiftIds, signupsLoading],
+  );
+  const selectedRace = races.find(r => r.id === selectedRaceId);
+
   // ── Derived stats ───────────────────────────────────────────────────────
 
-  const assigned = riders.filter(r => r.ligaCategory);
+  const assigned = scopedRiders.filter(r => r.ligaCategory);
   const overCount = assigned.filter(r => r.ligaCategory?.status === 'over').length;
   const graceCount = assigned.filter(r => r.ligaCategory?.status === 'grace').length;
   const okCount = assigned.filter(r => r.ligaCategory?.status === 'ok').length;
   const manualCount = assigned.filter(r => r.ligaCategory?.manualAssignedCategory).length;
   const searchTerm = search.trim().toLowerCase();
   const statusFiltered = filter === 'all'
-    ? riders
+    ? scopedRiders
     : filter === 'manual'
-    ? riders.filter(r => r.ligaCategory?.manualAssignedCategory)
-    : riders.filter(r => r.ligaCategory?.status === filter);
+    ? scopedRiders.filter(r => r.ligaCategory?.manualAssignedCategory)
+    : scopedRiders.filter(r => r.ligaCategory?.status === filter);
   const filtered = searchTerm
     ? statusFiltered.filter(r =>
         r.name.toLowerCase().includes(searchTerm) ||
@@ -252,12 +280,30 @@ export default function CategoryManager() {
       )
     : statusFiltered;
 
-  const ridersWithRating = riders.filter(r => !isNaN(parseFloat(String(r.effectiveRating))));
+  const ridersWithRating = scopedRiders.filter(r => !isNaN(parseFloat(String(r.effectiveRating))));
+  const listLoading = ridersLoading || signupsLoading;
 
   // ── Render ──────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-6">
+
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <RaceSignupSelect
+          races={races}
+          value={selectedRaceId}
+          onChange={setRaceFilter}
+          label="Signed up for"
+          allLabel="All participants"
+        />
+        <p className="text-sm text-muted-foreground">
+          {signupsLoading
+            ? 'Loading signups…'
+            : selectedRaceId
+            ? `${scopedRiders.length} signed up for ${selectedRace?.name || 'this race'}`
+            : `${riders.length} registered participants`}
+        </p>
+      </div>
 
       {/* ── Category Configuration ── */}
       <div className="bg-card p-6 rounded-lg shadow border border-border">
@@ -296,14 +342,15 @@ export default function CategoryManager() {
         </div>
         <p className="text-sm text-muted-foreground mb-5">
           Define vELO split points and category names. Defaults to the 10 standard ZR categories.
-          The distribution preview shows how effective ratings (max of current and 30-day max) map to these categories.
+          The distribution preview shows how effective ratings (max of current and 30-day max) map to these categories
+          {selectedRaceId ? ' for the selected race signups' : ''}.
           Use <strong>Verification</strong> to include a category in weight verification sampling and dual-recording reports.
           Use <strong>Assign Liga Categories</strong> to apply this configuration to all riders based on effective vELO.
         </p>
 
         <CategoryBoundaryEditor
           categories={effectiveLigaCategories}
-          riders={riders as RiderEntry[]}
+          riders={scopedRiders as RiderEntry[]}
           ridersWithRating={ridersWithRating as RiderEntry[]}
           onUpdateName={updateCatName}
           onUpdateUpper={updateCatUpper}
@@ -338,9 +385,9 @@ export default function CategoryManager() {
 
       {/* ── Rider Table ── */}
       <CategoryList
-        riders={riders as RiderEntry[]}
+        riders={scopedRiders as RiderEntry[]}
         filtered={filtered as RiderEntry[]}
-        ridersLoading={ridersLoading}
+        ridersLoading={listLoading}
         filter={filter}
         search={search}
         gracePeriod={effectiveGracePeriod}
@@ -351,6 +398,11 @@ export default function CategoryManager() {
         onFilterChange={setFilter}
         onSearchChange={setSearch}
         onGracePeriodChange={n => setGracePeriod(n)}
+        emptyMessage={
+          selectedRaceId && scopedRiders.length === 0 && !listLoading
+            ? 'No matching signups for this race.'
+            : undefined
+        }
         onRefresh={() => refetchRiders()}
         onReassign={handleReassign}
         onReleaseManual={handleReleaseManual}
