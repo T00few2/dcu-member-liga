@@ -27,7 +27,7 @@ describe('raceHasEventId', () => {
     expect(raceHasEventId(race({
       id: '1',
       name: 'A',
-      raceGroups: [{ eventId: 'e3', categories: [] }],
+      raceGroups: [{ id: 'g1', name: 'A', eventId: 'e3', categories: [] }],
     }))).toBe(true);
   });
 
