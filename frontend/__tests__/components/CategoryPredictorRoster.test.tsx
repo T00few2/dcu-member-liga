@@ -66,6 +66,7 @@ describe('CategoryPredictorRoster', () => {
     expect(screen.getByRole('columnheader', { name: 'Current' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: '30d max' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Category' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Category for Ada')).toHaveValue('Gold');
     expect(screen.getByText('1050')).toBeInTheDocument();
     expect(screen.getByText('1100')).toBeInTheDocument();
     expect(screen.getAllByText('Gold').length).toBeGreaterThanOrEqual(1);
@@ -104,6 +105,14 @@ describe('CategoryPredictorRoster', () => {
     expect(screen.getByText('8')).toBeInTheDocument();
     const assign = screen.getByLabelText('Assign Ada');
     expect(within(assign).getByRole('option', { name: /Strava \(Amethyst\)/ })).toBeInTheDocument();
+  });
+
+  it('assigns a category from the Category dropdown', async () => {
+    const user = userEvent.setup();
+    const { props } = renderRoster();
+
+    await user.selectOptions(screen.getByLabelText('Category for Ada'), 'Gold');
+    expect(props.onAssign).toHaveBeenCalledWith('1', 'Gold');
   });
 
   it('assigns from the row control', async () => {

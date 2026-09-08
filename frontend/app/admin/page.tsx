@@ -140,7 +140,7 @@ function AdminPageContent() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto mt-8 px-4">
+    <div className={`${activeSection === 'predictor' ? 'max-w-[110rem]' : 'max-w-7xl'} mx-auto mt-8 px-4`}>
       <h1 className="text-3xl font-bold mb-2 text-foreground">Admin Dashboard</h1>
       <p className="text-muted-foreground mb-8">Manage races, settings, and rider verification.</p>
 

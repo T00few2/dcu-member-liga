@@ -1,7 +1,6 @@
 'use client';
 
 import type { RiderEntry, LigaCategory, FilterMode } from './types';
-import { ZR_CATEGORY_STYLES } from './types';
 
 interface CategoryListProps {
   riders: RiderEntry[];
@@ -175,9 +174,24 @@ export default function CategoryList({
                         {lc ? (
                           <div className="space-y-1">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ZR_CATEGORY_STYLES[lc.category] ?? 'bg-slate-100 text-slate-800'}`}>
-                                {lc.category}
-                              </span>
+                              <select
+                                aria-label={`Category for ${r.name}`}
+                                value={lc.category}
+                                disabled={Boolean(lc.locked) || assigningZwiftId === r.zwiftId}
+                                onChange={e => {
+                                  const next = e.target.value;
+                                  if (!next || next === lc.category) return;
+                                  onAssignManual(r.zwiftId, r.name, next);
+                                }}
+                                className="border border-input rounded px-2 py-1 text-sm bg-background text-foreground max-w-36 disabled:opacity-50"
+                              >
+                                {lc.category && !categoryOptions.includes(lc.category) && (
+                                  <option value={lc.category}>{lc.category}</option>
+                                )}
+                                {categoryOptions.map(cat => (
+                                  <option key={cat} value={cat}>{cat}</option>
+                                ))}
+                              </select>
                               {lc.locked && (
                                 <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs bg-amber-100 text-amber-700">
                                   🔒 Locked
@@ -194,7 +208,22 @@ export default function CategoryList({
                             )}
                           </div>
                         ) : (
-                          <span className="text-muted-foreground text-xs">Not assigned</span>
+                          <select
+                            aria-label={`Category for ${r.name}`}
+                            value=""
+                            disabled={assigningZwiftId === r.zwiftId}
+                            onChange={e => {
+                              const next = e.target.value;
+                              if (!next) return;
+                              onAssignManual(r.zwiftId, r.name, next);
+                            }}
+                            className="border border-input rounded px-2 py-1 text-sm bg-background text-foreground max-w-36 disabled:opacity-50"
+                          >
+                            <option value="">Not assigned</option>
+                            {categoryOptions.map(cat => (
+                              <option key={cat} value={cat}>{cat}</option>
+                            ))}
+                          </select>
                         )}
                       </td>
                       <td className="px-4 py-3">

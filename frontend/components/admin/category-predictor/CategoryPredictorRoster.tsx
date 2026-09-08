@@ -212,7 +212,33 @@ export default function CategoryPredictorRoster({
                     {max30Velo ?? <Dash />}
                   </td>
                   <td className="px-3 py-2 text-center">
-                    {assigned ? <CategoryBadge name={assigned} compact /> : <Dash />}
+                    {locked ? (
+                      assigned ? <CategoryBadge name={assigned} compact /> : <Dash />
+                    ) : (
+                      <select
+                        aria-label={`Category for ${p.name}`}
+                        value={assigned ?? ''}
+                        disabled={assigningZwiftId === p.zwiftId}
+                        onChange={e => {
+                          const next = e.target.value;
+                          if (!next) {
+                            if (isManual) onRelease(p.zwiftId, p.name);
+                            return;
+                          }
+                          if (next === assigned) return;
+                          onAssign(p.zwiftId, next);
+                        }}
+                        className="border border-border rounded px-1.5 py-1 text-xs bg-background text-foreground max-w-[8.5rem] disabled:opacity-50"
+                      >
+                        <option value="">—</option>
+                        {assigned && !ZR_CATEGORY_DEFAULTS.some(c => c.name === assigned) && (
+                          <option value={assigned}>{assigned}</option>
+                        )}
+                        {ZR_CATEGORY_DEFAULTS.map(c => (
+                          <option key={c.name} value={c.name}>{c.name}</option>
+                        ))}
+                      </select>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-center border-l border-border">
                     {zwiftPred.catLow ? <CategoryBadge name={zwiftPred.catLow} compact /> : <Dash />}

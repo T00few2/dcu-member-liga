@@ -67,17 +67,28 @@ function renderList(overrides: Partial<ComponentProps<typeof CategoryList>> = {}
   return { ...render(<CategoryList {...props} />), props };
 }
 
-describe('CategoryList manual category column', () => {
-  it('shows a category select instead of a Manual badge', () => {
+describe('CategoryList category dropdown', () => {
+  it('shows a category select for each rider', () => {
     renderList();
 
+    expect(screen.getByLabelText('Category for Ada Lovelace')).toHaveValue('Platinum');
+    expect(screen.getByLabelText('Category for Jonas Lasse Frederiksen')).toHaveValue('Platinum');
     expect(screen.getByText('Manual category')).toBeInTheDocument();
     expect(screen.queryByText(/^Manual$/)).not.toBeInTheDocument();
     expect(screen.getByLabelText('Manual category for Ada Lovelace')).toHaveValue('');
     expect(screen.getByLabelText('Manual category for Jonas Lasse Frederiksen')).toHaveValue('Platinum');
   });
 
-  it('assigns the selected category', async () => {
+  it('assigns from the Category dropdown', async () => {
+    const user = userEvent.setup();
+    const onAssignManual = vi.fn();
+    renderList({ onAssignManual });
+
+    await user.selectOptions(screen.getByLabelText('Category for Ada Lovelace'), 'Gold');
+    expect(onAssignManual).toHaveBeenCalledWith('1', 'Ada Lovelace', 'Gold');
+  });
+
+  it('assigns the selected manual category', async () => {
     const user = userEvent.setup();
     const onAssignManual = vi.fn();
     renderList({ onAssignManual });
@@ -86,7 +97,7 @@ describe('CategoryList manual category column', () => {
     expect(onAssignManual).toHaveBeenCalledWith('1', 'Ada Lovelace', 'Gold');
   });
 
-  it('releases when the empty option is chosen', async () => {
+  it('releases when the empty manual option is chosen', async () => {
     const user = userEvent.setup();
     const onReleaseManual = vi.fn();
     renderList({ onReleaseManual });
