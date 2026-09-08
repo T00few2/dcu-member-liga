@@ -50,6 +50,8 @@ function renderForm(overrides: Partial<ComponentProps<typeof CategoryPredictorFo
     onSetShowUnassignedOnly: vi.fn(),
     showMismatchOnly: false,
     onSetShowMismatchOnly: vi.fn(),
+    showZeroVeloOnly: false,
+    onSetShowZeroVeloOnly: vi.fn(),
     loadingStrava: false,
     onLoadStrava: vi.fn(),
     stravaError: '',

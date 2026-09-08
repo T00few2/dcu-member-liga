@@ -32,6 +32,7 @@ export default function CategoryManager() {
 
   const [assigning, setAssigning] = useState(false);
   const [resettingAssignments, setResettingAssignments] = useState(false);
+  const [assigningZwiftId, setAssigningZwiftId] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterMode>('all');
   const [search, setSearch] = useState('');
   const [raceFilter, setRaceFilter] = useState('');
@@ -221,6 +222,29 @@ export default function CategoryManager() {
     }
   }, [user, effectiveGracePeriod, queryClient]);
 
+  const handleAssignManual = useCallback(async (zwiftId: string, name: string, category: string) => {
+    if (!user) return;
+    if (!confirm(
+      `Assign ${name} to ${category} as a manual hold?\n\nNightly auto-assign from vELO will not replace this until released.`
+    )) return;
+    setAssigningZwiftId(zwiftId);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch(`${API_URL}/admin/liga-categories/${zwiftId}/manual-assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ category }),
+      });
+      const data = await res.json();
+      if (!res.ok) alert(`Error: ${data.message}`);
+      else queryClient.invalidateQueries({ queryKey: ['admin', 'liga-categories'] });
+    } catch {
+      alert('Failed to assign manual category');
+    } finally {
+      setAssigningZwiftId(null);
+    }
+  }, [user, queryClient]);
+
   const handleReleaseManual = useCallback(async (zwiftId: string, name: string) => {
     if (!user) return;
     if (!confirm(`Release the manual category assignment for ${name}?\n\nNightly auto-assign from vELO will apply again.`)) return;
@@ -406,6 +430,9 @@ export default function CategoryManager() {
         onRefresh={() => refetchRiders()}
         onReassign={handleReassign}
         onReleaseManual={handleReleaseManual}
+        categoryOptions={effectiveLigaCategories.map(c => c.name)}
+        onAssignManual={handleAssignManual}
+        assigningZwiftId={assigningZwiftId}
       />
     </div>
   );

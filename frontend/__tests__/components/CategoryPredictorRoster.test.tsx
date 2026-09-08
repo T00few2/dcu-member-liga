@@ -38,6 +38,8 @@ function renderRoster(overrides: Partial<ComponentProps<typeof CategoryPredictor
     onSetShowUnassignedOnly: vi.fn(),
     showMismatchOnly: false,
     onSetShowMismatchOnly: vi.fn(),
+    showZeroVeloOnly: false,
+    onSetShowZeroVeloOnly: vi.fn(),
     stravaByRider: {},
     loadingStravaIds: {},
     bulkStravaProgress: null,
@@ -87,6 +89,16 @@ describe('CategoryPredictorRoster', () => {
 
     await user.click(screen.getByRole('button', { name: 'Assign' }));
     expect(props.onAssign).toHaveBeenCalledWith('1', 'zwift');
+  });
+
+  it('lets you select a rider with vELO 0', async () => {
+    const user = userEvent.setup();
+    const zeroVelo: Participant = { ...ada, name: 'Bea', zwiftId: '9', max30Rating: 0 };
+    const { props } = renderRoster({ riders: [zeroVelo] });
+
+    expect(screen.getByText('0')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Bea' }));
+    expect(props.onSelectRider).toHaveBeenCalledWith('9');
   });
 
   it('loads Strava for all visible riders', async () => {

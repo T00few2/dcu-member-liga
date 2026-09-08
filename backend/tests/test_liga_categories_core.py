@@ -3,6 +3,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from services.category_engine import build_manual_assigned
 from services.liga_categories_core import _compute_liga_update
 
 
@@ -97,3 +98,24 @@ def test_manual_assignment_survives_nightly_and_tracks_status():
     assert manual["upperBoundary"] == 2200
     assert manual["status"] == "over"
     assert manual["lastCheckedRating"] == 2250
+
+
+def test_build_manual_assigned_uses_category_bounds_and_rating_status():
+    manual = build_manual_assigned("Platinum", 1225, grace_points=35)
+    assert manual is not None
+    assert manual["category"] == "Platinum"
+    assert manual["assignedFrom"] == "admin"
+    assert manual["upperBoundary"] == 1300
+    assert manual["graceLimit"] == 1335
+    assert manual["assignedRating"] == 1225
+    assert manual["status"] == "ok"
+
+
+def test_build_manual_assigned_marks_over_limit():
+    manual = build_manual_assigned("Platinum", 1400, grace_points=35)
+    assert manual is not None
+    assert manual["status"] == "over"
+
+
+def test_build_manual_assigned_rejects_unknown_category():
+    assert build_manual_assigned("NotACategory", 1200) is None

@@ -342,7 +342,7 @@ class SelfSelectedDoc(TypedDict, total=False):
 class ManualAssignedDoc(TypedDict, total=False):
     """Admin/predictor hold. Survives nightly auto-assign until released."""
     category: str
-    assignedFrom: str       # "predicted"
+    assignedFrom: str       # "predicted" | "admin"
     predictedVelo: float
     assignedRating: int
     assignedAt: Any

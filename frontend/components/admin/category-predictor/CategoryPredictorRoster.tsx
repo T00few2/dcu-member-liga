@@ -23,6 +23,8 @@ export interface CategoryPredictorRosterProps {
   onSetShowUnassignedOnly: (v: boolean) => void;
   showMismatchOnly: boolean;
   onSetShowMismatchOnly: (v: boolean) => void;
+  showZeroVeloOnly: boolean;
+  onSetShowZeroVeloOnly: (v: boolean) => void;
   stravaByRider: Record<string, StravaRiderCache>;
   loadingStravaIds: Record<string, true>;
   bulkStravaProgress: { done: number; total: number } | null;
@@ -54,6 +56,8 @@ export default function CategoryPredictorRoster({
   onSetShowUnassignedOnly,
   showMismatchOnly,
   onSetShowMismatchOnly,
+  showZeroVeloOnly,
+  onSetShowZeroVeloOnly,
   stravaByRider,
   loadingStravaIds,
   bulkStravaProgress,
@@ -114,6 +118,17 @@ export default function CategoryPredictorRoster({
             onChange={e => onSetShowMismatchOnly(e.target.checked)}
           />
           Predicted ≠ vELO category
+        </label>
+        <label
+          className="flex items-center gap-1.5 text-sm text-muted-foreground cursor-pointer"
+          title="Riders whose ZwiftRacing vELO is 0 or missing"
+        >
+          <input
+            type="checkbox"
+            checked={showZeroVeloOnly}
+            onChange={e => onSetShowZeroVeloOnly(e.target.checked)}
+          />
+          vELO = 0
         </label>
         <span className="text-xs text-muted-foreground">{riders.length} rider{riders.length === 1 ? '' : 's'}</span>
       </div>
@@ -185,7 +200,11 @@ export default function CategoryPredictorRoster({
                     )}
                   </td>
                   <td className="px-3 py-2 text-center">
-                    {veloCat ? <CategoryBadge name={veloCat} compact /> : <Dash />}
+                    {veloCat ? (
+                      <CategoryBadge name={veloCat} compact />
+                    ) : (
+                      <span className="text-muted-foreground tabular-nums">0</span>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-center border-l border-border">
                     {zwiftPred.catLow ? <CategoryBadge name={zwiftPred.catLow} compact /> : <Dash />}

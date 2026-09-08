@@ -242,6 +242,53 @@ def serialize_liga_category(lc: dict | None) -> dict | None:
     }
 
 
+def get_category_by_name(
+    name: str,
+    categories: CategoryList | None = None,
+) -> tuple[str, int, Optional[int]] | None:
+    """Return (name, lower, upper) for a configured category, or None."""
+    cats = categories or ZR_CATEGORIES
+    for cat_name, lower, upper in cats:
+        if cat_name == name:
+            return cat_name, lower, upper
+    return None
+
+
+def build_manual_assigned(
+    category_name: str,
+    rating: int | float | None,
+    grace_points: int = GRACE_POINTS,
+    categories: CategoryList | None = None,
+    assigned_from: str = 'admin',
+) -> dict | None:
+    """
+    Build a manualAssigned hold for an admin-chosen category.
+    Returns None if the category name is not in the configured list.
+    """
+    found = get_category_by_name(category_name, categories)
+    if not found:
+        return None
+    name, _lower, upper = found
+    grace_limit = (upper + grace_points) if upper is not None else None
+    rating_int = int(rating) if rating is not None else None
+    status = (
+        compute_category_status(rating_int, upper, grace_limit)
+        if rating_int is not None
+        else 'ok'
+    )
+    result: dict = {
+        'category': name,
+        'assignedFrom': assigned_from,
+        'upperBoundary': upper,
+        'graceLimit': grace_limit,
+        'status': status,
+    }
+    if rating_int is not None:
+        result['assignedRating'] = rating_int
+        result['lastCheckedRating'] = rating_int
+    return result
+
+
 def reassign_to_next_category(
     current_category: str,
     current_max30: int | float,

@@ -36,6 +36,8 @@ export interface CategoryPredictorFormProps {
   /** Whether to show only riders whose predicted category differs from their vELO category. */
   showMismatchOnly: boolean;
   onSetShowMismatchOnly: (v: boolean) => void;
+  showZeroVeloOnly: boolean;
+  onSetShowZeroVeloOnly: (v: boolean) => void;
   /** Whether the Strava fetch is in progress. */
   loadingStrava: boolean;
   /** Called when the user clicks "Load" in the Strava column. */
@@ -165,6 +167,8 @@ export default function CategoryPredictorForm({
   onSetShowUnassignedOnly,
   showMismatchOnly,
   onSetShowMismatchOnly,
+  showZeroVeloOnly,
+  onSetShowZeroVeloOnly,
   loadingStrava,
   onLoadStrava,
   stravaError,
@@ -208,6 +212,7 @@ export default function CategoryPredictorForm({
     return filterPredictorRiders(participants, model, {
       unassignedOnly: showUnassignedOnly,
       mismatchOnly: showMismatchOnly,
+      zeroVeloOnly: showZeroVeloOnly,
       assignedOverlay,
     })
       .map(p => {
@@ -222,7 +227,7 @@ export default function CategoryPredictorForm({
         if (mismatch) label += ` · vELO ${implied} ≠ ${predicted}`;
         return { zwiftId: p.zwiftId, label };
       });
-  }, [participants, showUnassignedOnly, showMismatchOnly, model, assignedOverlay]);
+  }, [participants, showUnassignedOnly, showMismatchOnly, showZeroVeloOnly, model, assignedOverlay]);
 
   return (
     <div id="predictor-detail" className="bg-card border border-border rounded-lg p-6">
@@ -262,6 +267,17 @@ export default function CategoryPredictorForm({
               onChange={e => onSetShowMismatchOnly(e.target.checked)}
             />
             Predicted ≠ vELO category
+          </label>
+          <label
+            className="flex items-center gap-1.5 text-sm text-muted-foreground cursor-pointer"
+            title="Riders whose ZwiftRacing vELO is 0 or missing"
+          >
+            <input
+              type="checkbox"
+              checked={showZeroVeloOnly}
+              onChange={e => onSetShowZeroVeloOnly(e.target.checked)}
+            />
+            vELO = 0
           </label>
         </div>
         <select

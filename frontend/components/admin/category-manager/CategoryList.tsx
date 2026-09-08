@@ -21,6 +21,9 @@ interface CategoryListProps {
   onRefresh: () => void;
   onReassign: (zwiftId: string, name: string) => void;
   onReleaseManual: (zwiftId: string, name: string) => void;
+  categoryOptions: string[];
+  onAssignManual: (zwiftId: string, name: string, category: string) => void;
+  assigningZwiftId?: string | null;
 }
 
 function statusBadge(status: string | undefined) {
@@ -56,6 +59,9 @@ export default function CategoryList({
   onRefresh,
   onReassign,
   onReleaseManual,
+  categoryOptions,
+  onAssignManual,
+  assigningZwiftId = null,
 }: CategoryListProps) {
   return (
     <div className="bg-card rounded-lg shadow border border-border overflow-hidden">
@@ -123,6 +129,7 @@ export default function CategoryList({
               <tr>
                 <th className="px-4 py-3">Rider</th>
                 <th className="px-4 py-3">Category</th>
+                <th className="px-4 py-3">Manual category</th>
                 <th className="px-4 py-3 text-right">Rating at Assignment</th>
                 <th className="px-4 py-3 text-right">Upper Boundary</th>
                 <th className="px-4 py-3 text-right">Grace Limit</th>
@@ -134,7 +141,7 @@ export default function CategoryList({
             <tbody className="divide-y divide-border">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">
                     {emptyMessage
                       ?? (riders.length === 0
                         ? 'No categories assigned yet. Run assignment first.'
@@ -176,11 +183,6 @@ export default function CategoryList({
                                   🔒 Locked
                                 </span>
                               )}
-                              {isManual && (
-                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-violet-100 text-violet-800">
-                                  Manual
-                                </span>
-                              )}
                               {lc.selfSelectedCategory && lc.selfSelectedCategory === lc.category && lc.selfSelectedCategory !== lc.autoAssignedCategory && lc.selfSelectedCategory !== lc.manualAssignedCategory && (
                                 <span className="text-xs text-muted-foreground">(selvvalgt)</span>
                               )}
@@ -194,6 +196,27 @@ export default function CategoryList({
                         ) : (
                           <span className="text-muted-foreground text-xs">Not assigned</span>
                         )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <select
+                          aria-label={`Manual category for ${r.name}`}
+                          value={lc?.manualAssignedCategory ?? ''}
+                          disabled={Boolean(lc?.locked) || assigningZwiftId === r.zwiftId}
+                          onChange={e => {
+                            const next = e.target.value;
+                            if (!next) {
+                              onReleaseManual(r.zwiftId, r.name);
+                              return;
+                            }
+                            onAssignManual(r.zwiftId, r.name, next);
+                          }}
+                          className="border border-input rounded px-2 py-1 text-sm bg-background text-foreground max-w-36 disabled:opacity-50"
+                        >
+                          <option value="">—</option>
+                          {categoryOptions.map(cat => (
+                            <option key={cat} value={cat}>{cat}</option>
+                          ))}
+                        </select>
                       </td>
                       <td className="px-4 py-3 text-right font-mono text-muted-foreground">
                         {lc?.assignedRating ?? '–'}

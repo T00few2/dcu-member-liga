@@ -410,13 +410,24 @@ export function predictionFromInputs(model: ModelResult | null, inputs: Inputs):
   };
 }
 
-export function actualVeloFromParticipant(p: Participant): number | null {
+export function parseParticipantVelo(p: Participant): number | null {
   if (typeof p.max30Rating === 'number') {
-    return p.max30Rating > 0 ? p.max30Rating : null;
+    return Number.isFinite(p.max30Rating) ? p.max30Rating : null;
   }
-  if (p.max30Rating == null || p.max30Rating === 'N/A') return null;
+  if (p.max30Rating == null || p.max30Rating === 'N/A' || p.max30Rating === '') return null;
   const n = parseFloat(String(p.max30Rating));
-  return isNaN(n) || n <= 0 ? null : n;
+  return Number.isFinite(n) ? n : null;
+}
+
+export function actualVeloFromParticipant(p: Participant): number | null {
+  const n = parseParticipantVelo(p);
+  return n != null && n > 0 ? n : null;
+}
+
+/** True when ZwiftRacing has no usable vELO (0, missing, or N/A). */
+export function hasZeroVelo(p: Participant): boolean {
+  const n = parseParticipantVelo(p);
+  return n == null || n === 0;
 }
 
 export function impliedCategoryFromParticipant(p: Participant): string | null {
@@ -449,6 +460,7 @@ export function filterPredictorRiders(
   opts: {
     unassignedOnly: boolean;
     mismatchOnly: boolean;
+    zeroVeloOnly?: boolean;
     assignedOverlay?: Record<string, string>;
   },
 ): Participant[] {
@@ -456,6 +468,7 @@ export function filterPredictorRiders(
     .filter(p => {
       if (opts.unassignedOnly && riderAssignedCategory(p, opts.assignedOverlay)) return false;
       if (opts.mismatchOnly && !hasPredictedVsImpliedMismatch(model, p)) return false;
+      if (opts.zeroVeloOnly && !hasZeroVelo(p)) return false;
       return true;
     })
     .sort((a, b) => a.name.localeCompare(b.name));

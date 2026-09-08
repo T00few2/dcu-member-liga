@@ -13,6 +13,7 @@ from routes.admin import admin_bp
 from services.category_engine import (
     _effective_cat_name,
     build_liga_category,
+    build_manual_assigned,
     cats_from_defs,
     effective_rating,
     reassign_to_next_category,
@@ -543,6 +544,77 @@ def predict_assign_liga_category(zwift_id):
         )
     except Exception as e:
         logger.error("predict_assign_liga_category error: %s", e)
+        return jsonify({"message": str(e)}), 500
+
+
+@admin_bp.route("/admin/liga-categories/<zwift_id>/manual-assign", methods=["POST"])
+def manual_assign_liga_category(zwift_id):
+    """Set an admin-chosen category hold that nightly auto-assign will not replace."""
+    try:
+        require_admin(request)
+    except AuthzError as e:
+        return jsonify({"message": e.message}), e.status_code
+
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+
+    body = request.get_json(silent=True) or {}
+    category_name = str(body.get("category") or "").strip()
+    if not category_name:
+        return jsonify({"message": "category is required"}), 400
+
+    try:
+        user = UserService.get_user_by_id(zwift_id)
+        if not user:
+            return jsonify({"message": "User not found"}), 404
+
+        existing_lc = user._data.get("ligaCategory") or {}
+        if existing_lc.get("locked"):
+            return jsonify({
+                "message": "Rider is locked after racing. Reset season assignments before changing category.",
+            }), 400
+
+        liga_settings = _load_liga_settings(db)
+        grace_period = liga_settings["gracePeriod"]
+        categories = _resolve_categories(liga_settings)
+
+        data = user._data
+        zr = data.get("zwiftRacing", {})
+        rating = effective_rating(
+            zr.get("currentRating", "N/A"),
+            zr.get("max30Rating", "N/A"),
+            zr.get("max90Rating", "N/A"),
+        )
+
+        manual = build_manual_assigned(category_name, rating, grace_period, categories)
+        if not manual:
+            return jsonify({"message": f"Unknown category: {category_name}"}), 400
+
+        manual["assignedAt"] = firestore.SERVER_TIMESTAMP
+
+        doc_update = {"ligaCategory.manualAssigned": manual}
+        if not existing_lc.get("autoAssigned") and rating is not None:
+            auto = build_liga_category(rating, grace_period, categories)
+            auto["assignedAt"] = firestore.SERVER_TIMESTAMP
+            auto["lastCheckedAt"] = firestore.SERVER_TIMESTAMP
+            doc_update["ligaCategory.autoAssigned"] = auto
+            doc_update["ligaCategory.locked"] = False
+
+        user_update = with_schema_version(doc_update)
+        log_schema_issues(
+            logger,
+            f"users/{user.id} (manual-assign)",
+            validate_user_doc(user_update, partial=True),
+        )
+        db.collection("users").document(str(user.id)).update(user_update)
+
+        return jsonify({
+            "message": f"Rider assigned to {manual['category']}",
+            "category": manual["category"],
+            "status": manual["status"],
+        }), 200
+    except Exception as e:
+        logger.error("manual_assign_liga_category error: %s", e)
         return jsonify({"message": str(e)}), 500
 
 

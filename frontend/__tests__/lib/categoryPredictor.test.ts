@@ -148,6 +148,16 @@ describe('filterPredictorRiders', () => {
     expect(filterPredictorRiders(riders, model, { unassignedOnly: true, mismatchOnly: false, assignedOverlay: { '1': 'Platinum' } }))
       .toEqual([]);
   });
+
+  it('can isolate riders with vELO 0 or missing', () => {
+    const riders: Participant[] = [
+      { ...base, name: 'Ada', zwiftId: '1', max30Rating: 900, ligaCategory: null },
+      { ...base, name: 'Bea', zwiftId: '2', max30Rating: 0, ligaCategory: null },
+      { ...base, name: 'Cara', zwiftId: '3', max30Rating: 'N/A', ligaCategory: null },
+    ];
+    expect(filterPredictorRiders(riders, model, { unassignedOnly: false, mismatchOnly: false, zeroVeloOnly: true }).map(p => p.name))
+      .toEqual(['Bea', 'Cara']);
+  });
 });
 
 describe('hasPredictedVsImpliedMismatch', () => {
