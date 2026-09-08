@@ -25,6 +25,8 @@ export interface CategoryPredictorRosterProps {
   onSetShowMismatchOnly: (v: boolean) => void;
   showZeroVeloOnly: boolean;
   onSetShowZeroVeloOnly: (v: boolean) => void;
+  showNo30dVeloOnly: boolean;
+  onSetShowNo30dVeloOnly: (v: boolean) => void;
   stravaByRider: Record<string, StravaRiderCache>;
   loadingStravaIds: Record<string, true>;
   bulkStravaProgress: { done: number; total: number } | null;
@@ -60,6 +62,8 @@ export default function CategoryPredictorRoster({
   onSetShowMismatchOnly,
   showZeroVeloOnly,
   onSetShowZeroVeloOnly,
+  showNo30dVeloOnly,
+  onSetShowNo30dVeloOnly,
   stravaByRider,
   loadingStravaIds,
   bulkStravaProgress,
@@ -134,6 +138,17 @@ export default function CategoryPredictorRoster({
           />
           vELO = 0
         </label>
+        <label
+          className="flex items-center gap-1.5 text-sm text-muted-foreground cursor-pointer"
+          title="Riders whose 30-day max vELO is 0 or missing"
+        >
+          <input
+            type="checkbox"
+            checked={showNo30dVeloOnly}
+            onChange={e => onSetShowNo30dVeloOnly(e.target.checked)}
+          />
+          No 30d vELO
+        </label>
         <span className="text-xs text-muted-foreground">{riders.length} rider{riders.length === 1 ? '' : 's'}</span>
       </div>
 
@@ -144,6 +159,7 @@ export default function CategoryPredictorRoster({
               <th rowSpan={2} className="px-3 py-2 font-medium text-foreground normal-case text-sm whitespace-nowrap">Rider</th>
               <th rowSpan={2} className="px-3 py-2 font-medium text-center whitespace-nowrap">Current</th>
               <th rowSpan={2} className="px-3 py-2 font-medium text-center whitespace-nowrap">30d max</th>
+              <th rowSpan={2} className="px-3 py-2 font-medium text-center whitespace-nowrap">ZRS</th>
               <th rowSpan={2} className="px-3 py-2 font-medium text-center whitespace-nowrap">Category</th>
               <th colSpan={3} className="px-3 py-2 font-medium text-center border-l border-border">Zwift predicted</th>
               <th colSpan={3} className="px-3 py-2 font-medium text-center border-l border-border">Strava predicted</th>
@@ -163,7 +179,7 @@ export default function CategoryPredictorRoster({
           <tbody>
             {riders.length === 0 && (
               <tr>
-                <td colSpan={13} className="px-3 py-6 text-center text-muted-foreground">
+                <td colSpan={14} className="px-3 py-6 text-center text-muted-foreground">
                   No riders match the current filters.
                 </td>
               </tr>
@@ -175,6 +191,7 @@ export default function CategoryPredictorRoster({
               const stravaLoading = Boolean(loadingStravaIds[p.zwiftId]);
               const currentVelo = formatVeloValue(p.max30Rating);
               const max30Velo = formatVeloValue(p.rating);
+              const zrs = formatVeloValue(p.racingScore);
               const assigned = riderAssignedCategory(p, assignedOverlay);
               const isManual = Boolean(p.ligaCategory?.manualAssignedCategory || assignedOverlay[p.zwiftId]);
               const locked = Boolean(p.ligaCategory?.locked);
@@ -210,6 +227,9 @@ export default function CategoryPredictorRoster({
                   </td>
                   <td className="px-3 py-2 text-center tabular-nums whitespace-nowrap">
                     {max30Velo ?? <Dash />}
+                  </td>
+                  <td className="px-3 py-2 text-center tabular-nums whitespace-nowrap">
+                    {zrs ?? <Dash />}
                   </td>
                   <td className="px-3 py-2 text-center">
                     {locked ? (

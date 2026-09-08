@@ -418,13 +418,15 @@ export function formatVeloValue(value: number | string | null | undefined): stri
   return Number.isFinite(n) ? String(Math.round(n)) : null;
 }
 
-export function parseParticipantVelo(p: Participant): number | null {
-  if (typeof p.max30Rating === 'number') {
-    return Number.isFinite(p.max30Rating) ? p.max30Rating : null;
-  }
-  if (p.max30Rating == null || p.max30Rating === 'N/A' || p.max30Rating === '') return null;
-  const n = parseFloat(String(p.max30Rating));
+export function parseVeloField(value: number | string | null | undefined): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (value == null || value === 'N/A' || value === '') return null;
+  const n = parseFloat(String(value));
   return Number.isFinite(n) ? n : null;
+}
+
+export function parseParticipantVelo(p: Participant): number | null {
+  return parseVeloField(p.max30Rating);
 }
 
 export function actualVeloFromParticipant(p: Participant): number | null {
@@ -435,6 +437,12 @@ export function actualVeloFromParticipant(p: Participant): number | null {
 /** True when ZwiftRacing has no usable vELO (0, missing, or N/A). */
 export function hasZeroVelo(p: Participant): boolean {
   const n = parseParticipantVelo(p);
+  return n == null || n === 0;
+}
+
+/** True when the 30-day max column has no usable score (stored as `rating` / currentRating). */
+export function hasNo30dVelo(p: Participant): boolean {
+  const n = parseVeloField(p.rating);
   return n == null || n === 0;
 }
 
@@ -469,6 +477,7 @@ export function filterPredictorRiders(
     unassignedOnly: boolean;
     mismatchOnly: boolean;
     zeroVeloOnly?: boolean;
+    no30dVeloOnly?: boolean;
     assignedOverlay?: Record<string, string>;
   },
 ): Participant[] {
@@ -477,6 +486,7 @@ export function filterPredictorRiders(
       if (opts.unassignedOnly && riderAssignedCategory(p, opts.assignedOverlay)) return false;
       if (opts.mismatchOnly && !hasPredictedVsImpliedMismatch(model, p)) return false;
       if (opts.zeroVeloOnly && !hasZeroVelo(p)) return false;
+      if (opts.no30dVeloOnly && !hasNo30dVelo(p)) return false;
       return true;
     })
     .sort((a, b) => a.name.localeCompare(b.name));

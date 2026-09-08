@@ -67,6 +67,7 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   const [showUnassignedOnly, setShowUnassignedOnly] = useState(false);
   const [showMismatchOnly, setShowMismatchOnly] = useState(false);
   const [showZeroVeloOnly, setShowZeroVeloOnly] = useState(false);
+  const [showNo30dVeloOnly, setShowNo30dVeloOnly] = useState(false);
   const [stravaByRider, setStravaByRider] = useState<Record<string, StravaRiderCache>>({});
   const [loadingStravaIds, setLoadingStravaIds] = useState<Record<string, true>>({});
   const [bulkStravaProgress, setBulkStravaProgress] = useState<{ done: number; total: number } | null>(null);
@@ -100,9 +101,10 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
       unassignedOnly: showUnassignedOnly,
       mismatchOnly: showMismatchOnly,
       zeroVeloOnly: showZeroVeloOnly,
+      no30dVeloOnly: showNo30dVeloOnly,
       assignedOverlay,
     }),
-    [participants, model, showUnassignedOnly, showMismatchOnly, showZeroVeloOnly, assignedOverlay],
+    [participants, model, showUnassignedOnly, showMismatchOnly, showZeroVeloOnly, showNo30dVeloOnly, assignedOverlay],
   );
 
   function handleSelectRider(zwiftId: string, scrollToDetail = false) {
@@ -391,6 +393,8 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
         onSetShowMismatchOnly={setShowMismatchOnly}
         showZeroVeloOnly={showZeroVeloOnly}
         onSetShowZeroVeloOnly={setShowZeroVeloOnly}
+        showNo30dVeloOnly={showNo30dVeloOnly}
+        onSetShowNo30dVeloOnly={setShowNo30dVeloOnly}
         stravaByRider={stravaByRider}
         loadingStravaIds={loadingStravaIds}
         bulkStravaProgress={bulkStravaProgress}
@@ -418,6 +422,8 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
         onSetShowMismatchOnly={setShowMismatchOnly}
         showZeroVeloOnly={showZeroVeloOnly}
         onSetShowZeroVeloOnly={setShowZeroVeloOnly}
+        showNo30dVeloOnly={showNo30dVeloOnly}
+        onSetShowNo30dVeloOnly={setShowNo30dVeloOnly}
         loadingStrava={Boolean(selectedZwiftId && loadingStravaIds[selectedZwiftId])}
         onLoadStrava={handleLoadStrava}
         stravaError={selectedStrava?.error ?? ''}

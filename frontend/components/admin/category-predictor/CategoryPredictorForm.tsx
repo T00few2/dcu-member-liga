@@ -38,6 +38,8 @@ export interface CategoryPredictorFormProps {
   onSetShowMismatchOnly: (v: boolean) => void;
   showZeroVeloOnly: boolean;
   onSetShowZeroVeloOnly: (v: boolean) => void;
+  showNo30dVeloOnly: boolean;
+  onSetShowNo30dVeloOnly: (v: boolean) => void;
   /** Whether the Strava fetch is in progress. */
   loadingStrava: boolean;
   /** Called when the user clicks "Load" in the Strava column. */
@@ -169,6 +171,8 @@ export default function CategoryPredictorForm({
   onSetShowMismatchOnly,
   showZeroVeloOnly,
   onSetShowZeroVeloOnly,
+  showNo30dVeloOnly,
+  onSetShowNo30dVeloOnly,
   loadingStrava,
   onLoadStrava,
   stravaError,
@@ -213,6 +217,7 @@ export default function CategoryPredictorForm({
       unassignedOnly: showUnassignedOnly,
       mismatchOnly: showMismatchOnly,
       zeroVeloOnly: showZeroVeloOnly,
+      no30dVeloOnly: showNo30dVeloOnly,
       assignedOverlay,
     })
       .map(p => {
@@ -227,7 +232,7 @@ export default function CategoryPredictorForm({
         if (mismatch) label += ` · vELO ${implied} ≠ ${predicted}`;
         return { zwiftId: p.zwiftId, label };
       });
-  }, [participants, showUnassignedOnly, showMismatchOnly, showZeroVeloOnly, model, assignedOverlay]);
+  }, [participants, showUnassignedOnly, showMismatchOnly, showZeroVeloOnly, showNo30dVeloOnly, model, assignedOverlay]);
 
   return (
     <div id="predictor-detail" className="bg-card border border-border rounded-lg p-6">
@@ -278,6 +283,17 @@ export default function CategoryPredictorForm({
               onChange={e => onSetShowZeroVeloOnly(e.target.checked)}
             />
             vELO = 0
+          </label>
+          <label
+            className="flex items-center gap-1.5 text-sm text-muted-foreground cursor-pointer"
+            title="Riders whose 30-day max vELO is 0 or missing"
+          >
+            <input
+              type="checkbox"
+              checked={showNo30dVeloOnly}
+              onChange={e => onSetShowNo30dVeloOnly(e.target.checked)}
+            />
+            No 30d vELO
           </label>
         </div>
         <select

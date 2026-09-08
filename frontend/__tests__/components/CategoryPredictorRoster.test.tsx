@@ -41,6 +41,8 @@ function renderRoster(overrides: Partial<ComponentProps<typeof CategoryPredictor
     onSetShowMismatchOnly: vi.fn(),
     showZeroVeloOnly: false,
     onSetShowZeroVeloOnly: vi.fn(),
+    showNo30dVeloOnly: false,
+    onSetShowNo30dVeloOnly: vi.fn(),
     stravaByRider: {},
     loadingStravaIds: {},
     bulkStravaProgress: null,
@@ -65,10 +67,12 @@ describe('CategoryPredictorRoster', () => {
     expect(screen.getByRole('button', { name: 'Ada' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Current' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: '30d max' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'ZRS' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Category' })).toBeInTheDocument();
     expect(screen.getByLabelText('Category for Ada')).toHaveValue('Gold');
     expect(screen.getByText('1050')).toBeInTheDocument();
     expect(screen.getByText('1100')).toBeInTheDocument();
+    expect(screen.getByText('500')).toBeInTheDocument();
     expect(screen.getAllByText('Gold').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Platinum').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Amethyst').length).toBeGreaterThanOrEqual(1);
