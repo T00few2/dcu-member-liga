@@ -19,8 +19,10 @@ export interface Participant {
   cp5min: number | null;
   cp20min: number | null;
   racingScore: number | string | null;
+  /** Current ZwiftRacing vELO (`rating` from /participants). */
+  rating?: number | string | null;
   max30Rating: number | string | null;
-  ligaCategory: { locked?: boolean; category?: string } | null;
+  ligaCategory: { locked?: boolean; category?: string; manualAssignedCategory?: string } | null;
   /** Zwift activities in the CP window (typically 90d), if known. */
   zwiftActivityCount?: number | null;
 }
@@ -408,6 +410,12 @@ export function predictionFromInputs(model: ModelResult | null, inputs: Inputs):
     catLow: categoryFromVelo(low, ZR_CATEGORY_DEFAULTS),
     catHigh: categoryFromVelo(high, ZR_CATEGORY_DEFAULTS),
   };
+}
+
+export function formatVeloValue(value: number | string | null | undefined): string | null {
+  if (value == null || value === 'N/A' || value === '') return null;
+  const n = typeof value === 'number' ? value : parseFloat(String(value));
+  return Number.isFinite(n) ? String(Math.round(n)) : null;
 }
 
 export function parseParticipantVelo(p: Participant): number | null {

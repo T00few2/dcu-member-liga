@@ -74,6 +74,7 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   const [zwiftPower, setZwiftPower] = useState<PowerInputs>(EMPTY_POWER);
   const [assignChoice, setAssignChoice] = useState('zwift');
   const [assigningZwiftId, setAssigningZwiftId] = useState<string | null>(null);
+  const [releasingZwiftId, setReleasingZwiftId] = useState<string | null>(null);
   const [assignResult, setAssignResult] = useState<{ category: string } | null>(null);
   const [assignError, setAssignError] = useState('');
   const [assignErrors, setAssignErrors] = useState<Record<string, string>>({});
@@ -267,6 +268,41 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
     await submitAssign(zwiftId, veloToSend);
   }
 
+  async function handleRelease(zwiftId: string, name: string) {
+    if (!user) return;
+    if (!confirm(`Release the manual category assignment for ${name}?\n\nNightly auto-assign from vELO will apply again.`)) return;
+    setReleasingZwiftId(zwiftId);
+    setAssignErrors(prev => {
+      const next = { ...prev };
+      delete next[zwiftId];
+      return next;
+    });
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch(`${API_URL}/admin/liga-categories/${zwiftId}/release-manual`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAssignErrors(prev => ({ ...prev, [zwiftId]: data.message ?? 'Release failed' }));
+        return;
+      }
+      setAssignedOverlay(prev => {
+        const next = { ...prev };
+        delete next[zwiftId];
+        return next;
+      });
+      void queryClient.invalidateQueries({ queryKey: ['participants'] });
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'liga-categories'] });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Release failed';
+      setAssignErrors(prev => ({ ...prev, [zwiftId]: message }));
+    } finally {
+      setReleasingZwiftId(null);
+    }
+  }
+
   function handleSetSharedInput(field: SharedField, value: string) {
     setAssignResult(null);
     setAssignError('');
@@ -368,6 +404,8 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
         assigningZwiftId={assigningZwiftId}
         assignErrors={assignErrors}
         onAssign={(zwiftId, choice) => { void handleRosterAssign(zwiftId, choice); }}
+        releasingZwiftId={releasingZwiftId}
+        onRelease={(zwiftId, name) => { void handleRelease(zwiftId, name); }}
       />
 
       <CategoryPredictorForm

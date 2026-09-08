@@ -9,9 +9,9 @@ import {
   ZR_CATEGORY_DEFAULTS,
   predictionFromInputs,
   inputsFromParticipant,
-  impliedCategoryFromParticipant,
   predictionFromStravaCache,
   riderAssignedCategory,
+  formatVeloValue,
 } from './shared';
 
 export interface CategoryPredictorRosterProps {
@@ -34,6 +34,8 @@ export interface CategoryPredictorRosterProps {
   assigningZwiftId: string | null;
   assignErrors: Record<string, string>;
   onAssign: (zwiftId: string, choice: string) => void;
+  releasingZwiftId?: string | null;
+  onRelease: (zwiftId: string, name: string) => void;
 }
 
 function Dash({ title }: { title?: string }) {
@@ -67,6 +69,8 @@ export default function CategoryPredictorRoster({
   assigningZwiftId,
   assignErrors,
   onAssign,
+  releasingZwiftId = null,
+  onRelease,
 }: CategoryPredictorRosterProps) {
   const [choices, setChoices] = useState<Record<string, string>>({});
   const pendingStrava = riders.filter(p => {
@@ -139,10 +143,13 @@ export default function CategoryPredictorRoster({
             <tr className="text-xs uppercase text-muted-foreground border-b border-border">
               <th rowSpan={2} className="px-3 py-2 font-medium text-foreground normal-case text-sm whitespace-nowrap">Rider</th>
               <th rowSpan={2} className="px-3 py-2 font-medium text-center whitespace-nowrap">vELO</th>
+              <th rowSpan={2} className="px-3 py-2 font-medium text-center whitespace-nowrap">30d max</th>
+              <th rowSpan={2} className="px-3 py-2 font-medium text-center whitespace-nowrap">Category</th>
               <th colSpan={3} className="px-3 py-2 font-medium text-center border-l border-border">Zwift predicted</th>
               <th colSpan={3} className="px-3 py-2 font-medium text-center border-l border-border">Strava predicted</th>
               <th rowSpan={2} className="px-3 py-2 font-medium text-foreground normal-case text-sm whitespace-nowrap border-l border-border">Assign as</th>
               <th rowSpan={2} className="px-3 py-2 font-medium text-foreground normal-case text-sm whitespace-nowrap">Assign</th>
+              <th rowSpan={2} className="px-3 py-2 font-medium text-foreground normal-case text-sm whitespace-nowrap">Release</th>
             </tr>
             <tr className="text-xs text-muted-foreground border-b border-border">
               <th className="px-3 py-1 font-medium text-center border-l border-border whitespace-nowrap">Lower</th>
@@ -156,7 +163,7 @@ export default function CategoryPredictorRoster({
           <tbody>
             {riders.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-3 py-6 text-center text-muted-foreground">
+                <td colSpan={13} className="px-3 py-6 text-center text-muted-foreground">
                   No riders match the current filters.
                 </td>
               </tr>
@@ -166,8 +173,10 @@ export default function CategoryPredictorRoster({
               const stravaEntry = stravaByRider[p.zwiftId];
               const stravaPred = predictionFromStravaCache(model, p, stravaEntry);
               const stravaLoading = Boolean(loadingStravaIds[p.zwiftId]);
-              const veloCat = impliedCategoryFromParticipant(p);
+              const currentVelo = formatVeloValue(p.rating);
+              const max30Velo = formatVeloValue(p.max30Rating);
               const assigned = riderAssignedCategory(p, assignedOverlay);
+              const isManual = Boolean(p.ligaCategory?.manualAssignedCategory || assignedOverlay[p.zwiftId]);
               const locked = Boolean(p.ligaCategory?.locked);
               const choice = choices[p.zwiftId] ?? 'zwift';
               const zwiftReady = zwiftPred.velo != null;
@@ -192,19 +201,18 @@ export default function CategoryPredictorRoster({
                     >
                       {p.name}
                     </button>
-                    {assigned && (
-                      <span className="ml-1.5 text-xs text-muted-foreground">({assigned})</span>
-                    )}
                     {locked && (
                       <span className="ml-1.5 text-xs text-amber-700">locked</span>
                     )}
                   </td>
+                  <td className="px-3 py-2 text-center tabular-nums whitespace-nowrap">
+                    {currentVelo ?? <Dash />}
+                  </td>
+                  <td className="px-3 py-2 text-center tabular-nums whitespace-nowrap">
+                    {max30Velo ?? <Dash />}
+                  </td>
                   <td className="px-3 py-2 text-center">
-                    {veloCat ? (
-                      <CategoryBadge name={veloCat} compact />
-                    ) : (
-                      <span className="text-muted-foreground tabular-nums">0</span>
-                    )}
+                    {assigned ? <CategoryBadge name={assigned} compact /> : <Dash />}
                   </td>
                   <td className="px-3 py-2 text-center border-l border-border">
                     {zwiftPred.catLow ? <CategoryBadge name={zwiftPred.catLow} compact /> : <Dash />}
@@ -293,6 +301,18 @@ export default function CategoryPredictorRoster({
                         className="px-2.5 py-1 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
                       >
                         {assigningZwiftId === p.zwiftId ? '…' : 'Assign'}
+                      </button>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {isManual && (
+                      <button
+                        type="button"
+                        onClick={() => onRelease(p.zwiftId, p.name)}
+                        disabled={releasingZwiftId === p.zwiftId}
+                        className="px-2.5 py-1 text-xs rounded bg-violet-100 text-violet-800 hover:bg-violet-200 font-medium disabled:opacity-50"
+                      >
+                        {releasingZwiftId === p.zwiftId ? '…' : 'Release'}
                       </button>
                     )}
                   </td>

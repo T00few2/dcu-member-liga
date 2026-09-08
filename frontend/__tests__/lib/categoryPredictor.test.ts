@@ -6,6 +6,7 @@ import {
   predictorFormLayout,
   hasPredictedVsImpliedMismatch,
   filterPredictorRiders,
+  formatVeloValue,
   powerFromStravaCurve,
   EMPTY_POWER,
   EMPTY_PREDICTION,
@@ -157,6 +158,15 @@ describe('filterPredictorRiders', () => {
     ];
     expect(filterPredictorRiders(riders, model, { unassignedOnly: false, mismatchOnly: false, zeroVeloOnly: true }).map(p => p.name))
       .toEqual(['Bea', 'Cara']);
+  });
+});
+
+describe('formatVeloValue', () => {
+  it('rounds numeric scores and treats missing values as empty', () => {
+    expect(formatVeloValue(1100.4)).toBe('1100');
+    expect(formatVeloValue(0)).toBe('0');
+    expect(formatVeloValue('N/A')).toBeNull();
+    expect(formatVeloValue(null)).toBeNull();
   });
 });
 

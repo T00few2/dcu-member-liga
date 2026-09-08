@@ -23,6 +23,7 @@ const ada: Participant = {
   cp5min: 300,
   cp20min: 280,
   racingScore: 500,
+  rating: 1050,
   max30Rating: 1100,
   ligaCategory: null,
   zwiftActivityCount: 12,
@@ -49,17 +50,24 @@ function renderRoster(overrides: Partial<ComponentProps<typeof CategoryPredictor
     assigningZwiftId: null,
     assignErrors: {},
     onAssign: vi.fn(),
+    onRelease: vi.fn(),
     ...overrides,
   };
   return { ...render(<CategoryPredictorRoster {...props} />), props };
 }
 
 describe('CategoryPredictorRoster', () => {
-  it('lists riders with vELO category and Zwift lower/upper bounds', () => {
-    renderRoster();
+  it('lists riders with current vELO, 30d max, category, and Zwift bounds', () => {
+    renderRoster({
+      riders: [{ ...ada, ligaCategory: { category: 'Gold' } }],
+    });
 
     expect(screen.getByRole('button', { name: 'Ada' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'vELO' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: '30d max' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Category' })).toBeInTheDocument();
+    expect(screen.getByText('1050')).toBeInTheDocument();
+    expect(screen.getByText('1100')).toBeInTheDocument();
     expect(screen.getAllByText('Gold').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Platinum').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Amethyst').length).toBeGreaterThanOrEqual(1);
@@ -68,6 +76,21 @@ describe('CategoryPredictorRoster', () => {
     expect(screen.getByText('12')).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Assign as' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Assign' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Release' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Release' })).not.toBeInTheDocument();
+  });
+
+  it('shows Release only for manually assigned riders', async () => {
+    const user = userEvent.setup();
+    const { props } = renderRoster({
+      riders: [{
+        ...ada,
+        ligaCategory: { category: 'Platinum', manualAssignedCategory: 'Platinum' },
+      }],
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Release' }));
+    expect(props.onRelease).toHaveBeenCalledWith('1', 'Ada');
   });
 
   it('populates Strava bounds only after a load', () => {
