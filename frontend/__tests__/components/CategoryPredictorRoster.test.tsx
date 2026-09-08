@@ -63,7 +63,7 @@ describe('CategoryPredictorRoster', () => {
     });
 
     expect(screen.getByRole('button', { name: 'Ada' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'vELO' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Current' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: '30d max' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Category' })).toBeInTheDocument();
     expect(screen.getByText('1050')).toBeInTheDocument();

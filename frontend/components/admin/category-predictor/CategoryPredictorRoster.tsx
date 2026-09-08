@@ -142,7 +142,7 @@ export default function CategoryPredictorRoster({
           <thead className="sticky top-0 bg-card z-10">
             <tr className="text-xs uppercase text-muted-foreground border-b border-border">
               <th rowSpan={2} className="px-3 py-2 font-medium text-foreground normal-case text-sm whitespace-nowrap">Rider</th>
-              <th rowSpan={2} className="px-3 py-2 font-medium text-center whitespace-nowrap">vELO</th>
+              <th rowSpan={2} className="px-3 py-2 font-medium text-center whitespace-nowrap">Current</th>
               <th rowSpan={2} className="px-3 py-2 font-medium text-center whitespace-nowrap">30d max</th>
               <th rowSpan={2} className="px-3 py-2 font-medium text-center whitespace-nowrap">Category</th>
               <th colSpan={3} className="px-3 py-2 font-medium text-center border-l border-border">Zwift predicted</th>
@@ -173,8 +173,8 @@ export default function CategoryPredictorRoster({
               const stravaEntry = stravaByRider[p.zwiftId];
               const stravaPred = predictionFromStravaCache(model, p, stravaEntry);
               const stravaLoading = Boolean(loadingStravaIds[p.zwiftId]);
-              const currentVelo = formatVeloValue(p.rating);
-              const max30Velo = formatVeloValue(p.max30Rating);
+              const currentVelo = formatVeloValue(p.max30Rating);
+              const max30Velo = formatVeloValue(p.rating);
               const assigned = riderAssignedCategory(p, assignedOverlay);
               const isManual = Boolean(p.ligaCategory?.manualAssignedCategory || assignedOverlay[p.zwiftId]);
               const locked = Boolean(p.ligaCategory?.locked);
