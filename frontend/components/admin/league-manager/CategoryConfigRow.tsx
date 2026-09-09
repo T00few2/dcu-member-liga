@@ -1,5 +1,7 @@
 import type { Segment, CategoryConfig } from '@/types/admin';
 import { CollapsibleSegmentPicker } from './SegmentPicker';
+import LigaCategoryNameSelect from './LigaCategoryNameSelect';
+import { useRaceFormContext } from '@/lib/race-form-context';
 
 interface CategoryConfigRowProps {
     config: CategoryConfig;
@@ -19,6 +21,7 @@ export default function CategoryConfigRow({
     onUpdate,
     onToggleSprint,
 }: CategoryConfigRowProps) {
+    const categoryOptions = useRaceFormContext().categoryOptions ?? [];
     const maxLaps = config.laps || defaultLaps;
     const filteredSegments = segments.filter(s => (s.lap ?? 1) <= maxLaps);
 
@@ -27,11 +30,10 @@ export default function CategoryConfigRow({
             <div className="flex gap-2 items-start">
                 <div className="w-24">
                     <label className="text-[10px] text-muted-foreground font-bold uppercase block mb-1">Category</label>
-                    <input
-                        type="text"
+                    <LigaCategoryNameSelect
                         value={config.category}
-                        onChange={e => onUpdate('category', e.target.value)}
-                        className="w-full p-2 border border-input rounded bg-background text-foreground text-sm"
+                        onChange={v => onUpdate('category', v)}
+                        options={categoryOptions}
                         placeholder="e.g. A"
                     />
                 </div>

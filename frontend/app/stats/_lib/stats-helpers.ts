@@ -94,8 +94,8 @@ export const getConfiguredSprintsForCategory = (race: Race | undefined, category
     return pickFirstNonEmptySprints(race.sprints, race.sprintData);
 };
 
-export const categoryRankIndex = (category: string): number => {
-    const idx = CATEGORY_RANK_DESC.findIndex(
+export const categoryRankIndex = (category: string, rankOrder: string[] = CATEGORY_RANK_DESC): number => {
+    const idx = rankOrder.findIndex(
         (name) => name.toLowerCase() === String(category || '').trim().toLowerCase(),
     );
     return idx === -1 ? Number.MAX_SAFE_INTEGER : idx;

@@ -7,7 +7,8 @@ from firebase_admin import firestore
 
 from authz import AuthzError, verify_user_token
 from extensions import db, stats_queue
-from services.category_engine import ZR_CATEGORIES, assignment_floor_category, serialize_liga_category
+from services.category_engine import ZR_CATEGORIES, assignment_floor_category, cats_from_defs, serialize_liga_category
+from services.liga_categories_core import _load_liga_settings, _resolve_categories
 from services.policy_store import (
     POLICY_DATA_POLICY,
     POLICY_PUBLIC_RESULTS,
@@ -104,7 +105,9 @@ def get_profile():
                 200,
             )
 
-        lc = serialize_liga_category(user._data.get("ligaCategory"))
+        settings = _load_liga_settings(db) if db else {}
+        rank_cats = _resolve_categories(settings)
+        lc = serialize_liga_category(user._data.get("ligaCategory"), rank_cats)
         return (
             jsonify(
                 {
@@ -808,7 +811,17 @@ def select_category():
         return err
     chosen = body.category.strip()
 
-    cat_names = [name for name, _, _ in ZR_CATEGORIES]
+    settings = _load_liga_settings(db)
+    cat_defs = settings.get("categories")
+    if cat_defs and isinstance(cat_defs, list) and len(cat_defs) >= 2:
+        try:
+            cat_tuples = cats_from_defs(cat_defs)
+        except Exception:
+            cat_tuples = None
+    else:
+        cat_tuples = None
+    cats = cat_tuples or ZR_CATEGORIES
+    cat_names = [name for name, _, _ in cats]
     if chosen not in cat_names:
         return jsonify({"message": f"Unknown category: {chosen}"}), 400
 

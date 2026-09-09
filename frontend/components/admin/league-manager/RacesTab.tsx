@@ -6,7 +6,9 @@ import { useRaceForm } from '@/hooks/useRaceForm';
 import { fetchSegments, calculateRouteTotals } from '@/hooks/useLeagueData';
 import { API_URL } from '@/lib/api';
 import { User } from 'firebase/auth';
-import type { Race, Route, Segment, LeagueSettings, LoadingStatus } from '@/types/admin';
+import type { Race, Route, Segment, LeagueSettings, LoadingStatus, RaceGroup } from '@/types/admin';
+import { ligaCategoryNames } from '@/lib/ligaCategories';
+import { overlayRaceGroups } from '@/lib/overlayRaceGroups';
 import RaceForm from './RaceForm';
 import RaceList from './RaceList';
 
@@ -222,6 +224,18 @@ export default function RacesTab({
                 onUpdateGroupCategory={raceForm.updateGroupCategory}
                 onToggleGroupCategorySprint={raceForm.toggleGroupCategorySprint}
                 onToggleGroupSprint={raceForm.toggleGroupSprint}
+                categoryOptions={ligaCategoryNames(leagueSettings)}
+                onResetGroupsFromTemplate={() => {
+                    const result = overlayRaceGroups(
+                        leagueSettings.defaultRaceGroups,
+                        raceForm.formState.raceGroups,
+                    );
+                    if (result.diff.droppedEventIds.length) {
+                        const names = result.diff.droppedEventIds.map((d) => `${d.group || '?'} (${d.eventId})`).join(', ');
+                        if (!confirm(`Group rename/mismatch would drop event IDs: ${names}. Continue?`)) return;
+                    }
+                    raceForm.updateField('raceGroups', result.next as RaceGroup[]);
+                }}
                 onCancel={handleCancel}
                 onSave={handleSaveRace}
             />

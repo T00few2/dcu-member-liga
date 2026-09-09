@@ -4,7 +4,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { User } from 'firebase/auth';
 import { useQueryClient } from '@tanstack/react-query';
 import { API_URL } from '@/lib/api';
-import { useParticipantsQuery, usePredictorConfigQuery } from '@/hooks/queries';
+import { useParticipantsQuery, usePredictorConfigQuery, useLeagueSettingsQuery } from '@/hooks/queries';
+import { effectiveLigaCategories } from '@/lib/ligaCategories';
 import {
   ALL_ON,
   mergeFeatures,
@@ -47,6 +48,8 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   const participants = (participantsRaw ?? []) as Participant[];
 
   const { data: predictorConfig } = usePredictorConfigQuery();
+  const { data: leagueSettings } = useLeagueSettingsQuery();
+  const ligaCats = useMemo(() => effectiveLigaCategories(leagueSettings), [leagueSettings]);
 
   const [selectedFeatures, setSelectedFeatures] = useState<Record<FeatureKey, boolean>>(ALL_ON);
   const [savedFeedback, setSavedFeedback] = useState(false);
@@ -57,7 +60,7 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
     }
   }, [predictorConfig]);
 
-  const model = useMemo(() => buildModel(participants, selectedFeatures), [participants, selectedFeatures]);
+  const model = useMemo(() => buildModel(participants, selectedFeatures, ligaCats), [participants, selectedFeatures, ligaCats]);
   const activeFeatureKeys = useMemo(
     () => FEATURE_DEFS.filter(f => selectedFeatures[f.key]).map(f => f.key),
     [selectedFeatures],
@@ -85,12 +88,12 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   const stravaPower = selectedStrava?.power ?? EMPTY_POWER;
 
   const zwiftPrediction = useMemo(
-    () => predictionFromInputs(model, combineInputs(shared, zwiftPower)),
-    [model, shared, zwiftPower],
+    () => predictionFromInputs(model, combineInputs(shared, zwiftPower), ligaCats),
+    [model, shared, zwiftPower, ligaCats],
   );
   const stravaPrediction = useMemo(
-    () => predictionFromInputs(model, combineInputs(shared, stravaPower)),
-    [model, shared, stravaPower],
+    () => predictionFromInputs(model, combineInputs(shared, stravaPower), ligaCats),
+    [model, shared, stravaPower, ligaCats],
   );
 
   const selectedParticipant = participants.find(p => p.zwiftId === selectedZwiftId) ?? null;
@@ -245,7 +248,7 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
       if (stravaPrediction.velo == null) return;
       veloToSend = stravaPrediction.velo;
     } else {
-      const mid = veloForCategory(assignChoice);
+      const mid = veloForCategory(assignChoice, ligaCats);
       if (!mid) { setAssignError('Could not compute a vELO for the chosen category'); return; }
       veloToSend = mid;
     }
@@ -257,11 +260,11 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
     if (!p) return;
     let veloToSend: number | null = null;
     if (choice === 'zwift') {
-      veloToSend = predictionFromInputs(model, inputsFromParticipant(p)).velo;
+      veloToSend = predictionFromInputs(model, inputsFromParticipant(p), ligaCats).velo;
     } else if (choice === 'strava') {
       veloToSend = predictionFromStravaCache(model, p, stravaByRider[zwiftId]).velo;
     } else {
-      veloToSend = veloForCategory(choice);
+      veloToSend = veloForCategory(choice, ligaCats);
     }
     if (veloToSend == null || veloToSend <= 0) {
       setAssignErrors(prev => ({ ...prev, [zwiftId]: 'Could not compute a vELO for the chosen category' }));
@@ -410,6 +413,7 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
         onAssign={(zwiftId, choice) => { void handleRosterAssign(zwiftId, choice); }}
         releasingZwiftId={releasingZwiftId}
         onRelease={(zwiftId, name) => { void handleRelease(zwiftId, name); }}
+        categories={ligaCats}
       />
 
       <CategoryPredictorForm
@@ -446,6 +450,7 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
         assignResult={assignResult}
         assignError={assignError}
         assignedOverlay={assignedOverlay}
+        categories={ligaCats}
       />
     </div>
   );

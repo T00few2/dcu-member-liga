@@ -1,14 +1,20 @@
 // Shared types, constants and pure helpers used across CategoryPredictor sub-components.
 // Not a React file — no JSX.
 
+import {
+  ZR_CATEGORY_DEFAULTS,
+  ZR_CATEGORY_STYLES,
+  categoryFromVelo,
+  veloForCategory as veloForCategoryFromCats,
+  type LigaCategoryDef as CategoryDef,
+} from '@/lib/ligaCategories';
+
+export { ZR_CATEGORY_DEFAULTS, ZR_CATEGORY_STYLES, categoryFromVelo };
+export type { CategoryDef };
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-export interface CategoryDef {
-  name: string;
-  upper: number | null;
-}
 
 export interface Participant {
   name: string;
@@ -264,36 +270,6 @@ export function mergeFeatures(saved: Record<string, unknown>): Record<FeatureKey
   return out;
 }
 
-// ---------------------------------------------------------------------------
-// Category constants
-// ---------------------------------------------------------------------------
-
-export const ZR_CATEGORY_STYLES: Record<string, string> = {
-  Diamond: 'bg-cyan-100 text-cyan-800',
-  Ruby: 'bg-red-100 text-red-800',
-  Emerald: 'bg-green-100 text-green-800',
-  Sapphire: 'bg-blue-100 text-blue-800',
-  Amethyst: 'bg-purple-100 text-purple-800',
-  Platinum: 'bg-slate-100 text-slate-700',
-  Gold: 'bg-yellow-100 text-yellow-800',
-  Silver: 'bg-gray-100 text-gray-700',
-  Bronze: 'bg-orange-100 text-orange-800',
-  Copper: 'bg-amber-100 text-amber-800',
-};
-
-export const ZR_CATEGORY_DEFAULTS: CategoryDef[] = [
-  { name: 'Diamond',  upper: null },
-  { name: 'Ruby',     upper: 2200 },
-  { name: 'Emerald',  upper: 1900 },
-  { name: 'Sapphire', upper: 1650 },
-  { name: 'Amethyst', upper: 1450 },
-  { name: 'Platinum', upper: 1300 },
-  { name: 'Gold',     upper: 1150 },
-  { name: 'Silver',   upper: 1000 },
-  { name: 'Bronze',   upper:  850 },
-  { name: 'Copper',   upper:  650 },
-];
-
 export const SCATTER_COLORS: Record<string, string> = {
   Diamond: '#06b6d4',
   Ruby: '#ef4444',
@@ -311,22 +287,8 @@ export const SCATTER_COLORS: Record<string, string> = {
 // Category lookup
 // ---------------------------------------------------------------------------
 
-export function categoryFromVelo(velo: number, cats: CategoryDef[]): string {
-  for (let i = 0; i < cats.length; i++) {
-    const upper = cats[i].upper;
-    const lower = cats[i + 1]?.upper ?? 0;
-    if (velo >= lower && (upper === null || velo < upper)) return cats[i].name;
-  }
-  return cats[cats.length - 1].name;
-}
-
-// Returns a vELO that sits in the middle of the given category's range.
-export function veloForCategory(catName: string): number | null {
-  const idx = ZR_CATEGORY_DEFAULTS.findIndex(c => c.name === catName);
-  if (idx === -1) return null;
-  const upper = ZR_CATEGORY_DEFAULTS[idx].upper;
-  const lower = ZR_CATEGORY_DEFAULTS[idx + 1]?.upper ?? 0;
-  return upper === null ? lower + 300 : Math.round((upper + lower) / 2);
+export function veloForCategory(catName: string, cats: CategoryDef[] = ZR_CATEGORY_DEFAULTS): number | null {
+  return veloForCategoryFromCats(catName, cats);
 }
 
 // ---------------------------------------------------------------------------
@@ -394,7 +356,11 @@ export const EMPTY_PREDICTION: PredictionSnapshot = {
 };
 
 /** Predicted vELO and category band for a filled input row. */
-export function predictionFromInputs(model: ModelResult | null, inputs: Inputs): PredictionSnapshot {
+export function predictionFromInputs(
+  model: ModelResult | null,
+  inputs: Inputs,
+  cats: CategoryDef[] = ZR_CATEGORY_DEFAULTS,
+): PredictionSnapshot {
   if (!model) return EMPTY_PREDICTION;
   const activeFeatures = FEATURE_DEFS.filter(f => model.activeFeatureKeys.includes(f.key));
   const predRow = activeFeatures.map(f => f.fromInputs(inputs));
@@ -404,11 +370,11 @@ export function predictionFromInputs(model: ModelResult | null, inputs: Inputs):
   const high = Math.round(velo + model.rmse);
   return {
     velo,
-    category: categoryFromVelo(velo, ZR_CATEGORY_DEFAULTS),
+    category: categoryFromVelo(velo, cats),
     low,
     high,
-    catLow: categoryFromVelo(low, ZR_CATEGORY_DEFAULTS),
-    catHigh: categoryFromVelo(high, ZR_CATEGORY_DEFAULTS),
+    catLow: categoryFromVelo(low, cats),
+    catHigh: categoryFromVelo(high, cats),
   };
 }
 
@@ -446,19 +412,30 @@ export function hasNo30dVelo(p: Participant): boolean {
   return n == null || n === 0;
 }
 
-export function impliedCategoryFromParticipant(p: Participant): string | null {
+export function impliedCategoryFromParticipant(
+  p: Participant,
+  cats: CategoryDef[] = ZR_CATEGORY_DEFAULTS,
+): string | null {
   const velo = actualVeloFromParticipant(p);
-  return velo == null ? null : categoryFromVelo(velo, ZR_CATEGORY_DEFAULTS);
+  return velo == null ? null : categoryFromVelo(velo, cats);
 }
 
-export function predictedCategoryFromParticipant(model: ModelResult | null, p: Participant): string | null {
-  return predictionFromInputs(model, inputsFromParticipant(p)).category;
+export function predictedCategoryFromParticipant(
+  model: ModelResult | null,
+  p: Participant,
+  cats: CategoryDef[] = ZR_CATEGORY_DEFAULTS,
+): string | null {
+  return predictionFromInputs(model, inputsFromParticipant(p), cats).category;
 }
 
 /** True when Zwift-power predicted category differs from the category implied by actual vELO. */
-export function hasPredictedVsImpliedMismatch(model: ModelResult | null, p: Participant): boolean {
-  const predicted = predictedCategoryFromParticipant(model, p);
-  const implied = impliedCategoryFromParticipant(p);
+export function hasPredictedVsImpliedMismatch(
+  model: ModelResult | null,
+  p: Participant,
+  cats: CategoryDef[] = ZR_CATEGORY_DEFAULTS,
+): boolean {
+  const predicted = predictedCategoryFromParticipant(model, p, cats);
+  const implied = impliedCategoryFromParticipant(p, cats);
   return predicted != null && implied != null && predicted !== implied;
 }
 
@@ -509,7 +486,11 @@ export function predictionFromStravaCache(
 // Model builder
 // ---------------------------------------------------------------------------
 
-export function buildModel(participants: Participant[], enabled: Record<FeatureKey, boolean>): ModelResult | null {
+export function buildModel(
+  participants: Participant[],
+  enabled: Record<FeatureKey, boolean>,
+  cats: CategoryDef[] = ZR_CATEGORY_DEFAULTS,
+): ModelResult | null {
   const active = FEATURE_DEFS.filter(f => enabled[f.key]);
   if (active.length === 0) return null;
 
@@ -556,7 +537,7 @@ export function buildModel(participants: Participant[], enabled: Record<FeatureK
     actual: y[i],
     predicted: Math.round(preds[i]),
     name: p.name,
-    category: p.ligaCategory?.category ?? categoryFromVelo(y[i], ZR_CATEGORY_DEFAULTS),
+    category: p.ligaCategory?.category ?? categoryFromVelo(y[i], cats),
   }));
 
   return { coeffs, r2, rmse: Math.round(Math.sqrt(ssRes / y.length)), n: training.length, activeFeatureKeys: active.map(f => f.key), trainingPoints };

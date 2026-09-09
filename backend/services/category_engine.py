@@ -201,7 +201,10 @@ def effective_liga_category_name(lc: dict | None, categories: CategoryList | Non
     return str(_effective_cat_name(floor, sel_cat, categories) or "").strip()
 
 
-def serialize_liga_category(lc: dict | None) -> dict | None:
+def serialize_liga_category(
+    lc: dict | None,
+    categories: CategoryList | None = None,
+) -> dict | None:
     """
     Flatten a ligaCategory Firestore document into an API response dict.
     Returns None if lc is None or empty.
@@ -217,7 +220,7 @@ def serialize_liga_category(lc: dict | None) -> dict | None:
     sel_cat = sel.get('category') if sel else None
     manual_cat = manual.get('category') if manual else None
 
-    effective = effective_liga_category_name(lc)
+    effective = effective_liga_category_name(lc, categories)
 
     status_source = manual if manual_cat and not locked else auto
     bounds_source = manual if manual_cat and not locked else auto

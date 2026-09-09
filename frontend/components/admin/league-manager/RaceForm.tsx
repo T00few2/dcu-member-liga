@@ -38,6 +38,8 @@ interface RaceFormProps {
     onToggleGroupSprint: (groupIndex: number, seg: Segment) => void;
     onCancel: () => void;
     onSave: (e: React.FormEvent) => void;
+    categoryOptions?: string[];
+    onResetGroupsFromTemplate?: () => void;
 }
 
 interface RouteProfileSegment {
@@ -81,6 +83,8 @@ export default function RaceForm({
     onToggleGroupSprint,
     onCancel,
     onSave,
+    categoryOptions = [],
+    onResetGroupsFromTemplate,
 }: RaceFormProps) {
     const [loadingRouteProfile, setLoadingRouteProfile] = useState(false);
     const [savingRouteProfile, setSavingRouteProfile] = useState(false);
@@ -288,6 +292,7 @@ export default function RaceForm({
             onAddSingleModeCategory, onRemoveSingleModeCategory, onUpdateSingleModeCategory, onToggleSingleModeCategorySprint,
             onAddRaceGroup, onRemoveRaceGroup, onUpdateRaceGroup,
             onAddGroupCategory, onRemoveGroupCategory, onUpdateGroupCategory, onToggleGroupCategorySprint, onToggleGroupSprint,
+            categoryOptions,
         }}>
         <div className="bg-card p-6 rounded-lg shadow mb-8 border border-border">
             <div className="flex justify-between items-center mb-6">
@@ -349,7 +354,20 @@ export default function RaceForm({
 
                         {formState.eventMode === 'single' && <SingleModeConfig />}
                         {formState.eventMode === 'multi' && <MultiModeConfig />}
-                        {formState.eventMode === 'grouped' && <GroupedModeConfig />}
+                        {formState.eventMode === 'grouped' && (
+                            <div className="space-y-2">
+                                {onResetGroupsFromTemplate && (
+                                    <button
+                                        type="button"
+                                        onClick={onResetGroupsFromTemplate}
+                                        className="text-xs text-primary hover:text-primary/80 font-medium"
+                                    >
+                                        Reset groups from season template
+                                    </button>
+                                )}
+                                <GroupedModeConfig />
+                            </div>
+                        )}
 
                         <p className="text-xs text-muted-foreground mt-2">
                             {formState.eventMode === 'single'

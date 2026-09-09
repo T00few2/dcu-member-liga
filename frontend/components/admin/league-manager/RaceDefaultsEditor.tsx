@@ -37,6 +37,8 @@ export default function RaceDefaultsEditor({
     const [singleCats, setSingleCats] = useState<DefaultCategoryRow[]>([]);
     const [multiRows, setMultiRows] = useState<DefaultEventConfigRow[]>([]);
     const [groups, setGroups] = useState<DefaultRaceGroup[]>([]);
+    const [enforcePreview, setEnforcePreview] = useState<Record<string, unknown> | null>(null);
+    const [enforcing, setEnforcing] = useState(false);
 
     const categoryOptions = (leagueSettings.ligaCategories || [])
         .map((c) => c.name)
@@ -324,6 +326,7 @@ export default function RaceDefaultsEditor({
                 </div>
             )}
 
+            <div className="flex flex-wrap gap-2 items-center">
             <button
                 type="button"
                 onClick={handleSave}
@@ -332,6 +335,115 @@ export default function RaceDefaultsEditor({
             >
                 {status === 'saving' ? 'Saving...' : 'Save race defaults'}
             </button>
+            <button
+                type="button"
+                disabled={!user || enforcing}
+                onClick={async () => {
+                    if (!user) return;
+                    setEnforcing(true);
+                    onMessage?.(null);
+                    try {
+                        const token = await user.getIdToken();
+                        const res = await fetch(`${API_URL}/admin/races/enforce-race-structure`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                            body: JSON.stringify({ dryRun: true }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) {
+                            onMessage?.(data.message || 'Preview failed');
+                            return;
+                        }
+                        setEnforcePreview(data);
+                        const drops = (data.races || []).filter((r: { wouldDropEventId?: boolean }) => r.wouldDropEventId);
+                        if (drops.length) {
+                            onMessage?.(`Preview: ${drops.length} race(s) would drop an eventId on group rename. Review before enforce.`);
+                        } else {
+                            onMessage?.('Preview ready. Save defaults first if you changed the template, then enforce.');
+                        }
+                    } catch {
+                        onMessage?.('Preview failed');
+                    } finally {
+                        setEnforcing(false);
+                    }
+                }}
+                className="px-4 py-2 rounded border border-border text-sm font-medium hover:bg-muted disabled:opacity-50"
+            >
+                {enforcing ? 'Working…' : 'Preview enforce'}
+            </button>
+            <button
+                type="button"
+                disabled={!user || enforcing || !enforcePreview}
+                onClick={async () => {
+                    if (!user || !enforcePreview) return;
+                    const races = (enforcePreview.races || []) as { wouldDropEventId?: boolean; name?: string }[];
+                    const drops = races.filter((r) => r.wouldDropEventId);
+                    if (drops.length) {
+                        if (!confirm(`Enforce would drop event IDs on: ${drops.map((d) => d.name).join(', ')}. Continue?`)) return;
+                    }
+                    if (!confirm('Overlay the saved race-defaults template onto existing grouped races? Event IDs and matching sprints are kept. Signups are not auto-synced to Zwift.')) return;
+                    setEnforcing(true);
+                    try {
+                        const token = await user.getIdToken();
+                        const res = await fetch(`${API_URL}/admin/races/enforce-race-structure`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                            body: JSON.stringify({ dryRun: false }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) {
+                            onMessage?.(data.message || 'Enforce failed');
+                            return;
+                        }
+                        setEnforcePreview(null);
+                        onMessage?.(
+                            `${data.message || 'Enforced'}` +
+                            (data.syncSignupsReminder ? ' If event IDs are set, sync signups per race.' : ''),
+                        );
+                        await queryClient.invalidateQueries({ queryKey: ['races'] });
+                    } catch {
+                        onMessage?.('Enforce failed');
+                    } finally {
+                        setEnforcing(false);
+                    }
+                }}
+                className="px-4 py-2 rounded border border-border text-sm font-medium hover:bg-muted disabled:opacity-50"
+            >
+                Save and enforce
+            </button>
+            </div>
+            {enforcePreview && (
+                <div className="space-y-2">
+                    {(enforcePreview as { coverage?: { ok?: boolean; missing?: string[]; duplicated?: string[] } }).coverage?.ok === false && (
+                        <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">
+                            Every liga category must appear in exactly one template group
+                            {((enforcePreview as { coverage?: { missing?: string[] } }).coverage?.missing || []).length
+                                ? ` — missing: ${(enforcePreview as { coverage: { missing: string[] } }).coverage.missing.join(', ')}`
+                                : ''}
+                            {((enforcePreview as { coverage?: { duplicated?: string[] } }).coverage?.duplicated || []).length
+                                ? ` — duplicated: ${(enforcePreview as { coverage: { duplicated: string[] } }).coverage.duplicated.join(', ')}`
+                                : ''}
+                            .
+                        </p>
+                    )}
+                    {(enforcePreview as { races?: { wouldDropEventId?: boolean }[] }).races?.some((r) => r.wouldDropEventId) && (
+                        <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">
+                            Group rename/mismatch would drop one or more event IDs. Confirm before enforce.
+                        </p>
+                    )}
+                <pre className="text-xs overflow-auto max-h-48 bg-muted/30 p-2 rounded border border-border">
+                    {JSON.stringify(
+                        {
+                            coverage: (enforcePreview as { coverage?: unknown }).coverage,
+                            races: (enforcePreview as { races?: unknown }).races,
+                            skippedResults: (enforcePreview as { skippedResults?: unknown }).skippedResults,
+                        },
+                        null,
+                        2,
+                    )}
+                </pre>
+                </div>
+            )}
         </div>
     );
 }

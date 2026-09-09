@@ -38,6 +38,7 @@ export interface CategoryPredictorRosterProps {
   onAssign: (zwiftId: string, choice: string) => void;
   releasingZwiftId?: string | null;
   onRelease: (zwiftId: string, name: string) => void;
+  categories?: typeof ZR_CATEGORY_DEFAULTS;
 }
 
 function Dash({ title }: { title?: string }) {
@@ -75,6 +76,7 @@ export default function CategoryPredictorRoster({
   onAssign,
   releasingZwiftId = null,
   onRelease,
+  categories = ZR_CATEGORY_DEFAULTS,
 }: CategoryPredictorRosterProps) {
   const [choices, setChoices] = useState<Record<string, string>>({});
   const pendingStrava = riders.filter(p => {
@@ -251,10 +253,10 @@ export default function CategoryPredictorRoster({
                         className="border border-border rounded px-1.5 py-1 text-xs bg-background text-foreground max-w-[8.5rem] disabled:opacity-50"
                       >
                         <option value="">—</option>
-                        {assigned && !ZR_CATEGORY_DEFAULTS.some(c => c.name === assigned) && (
+                        {assigned && !categories.some(c => c.name === assigned) && (
                           <option value={assigned}>{assigned}</option>
                         )}
-                        {ZR_CATEGORY_DEFAULTS.map(c => (
+                        {categories.map(c => (
                           <option key={c.name} value={c.name}>{c.name}</option>
                         ))}
                       </select>
@@ -329,7 +331,7 @@ export default function CategoryPredictorRoster({
                         <option value="strava" disabled={!stravaReady}>
                           Strava ({stravaPred.category ?? '—'})
                         </option>
-                        {ZR_CATEGORY_DEFAULTS.map(c => (
+                        {categories.map(c => (
                           <option key={c.name} value={c.name}>{c.name}</option>
                         ))}
                       </select>

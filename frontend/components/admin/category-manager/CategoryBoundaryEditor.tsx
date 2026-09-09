@@ -8,6 +8,7 @@ interface CategoryBoundaryEditorProps {
   riders: RiderEntry[];
   ridersWithRating: RiderEntry[];
   onUpdateName: (i: number, name: string) => void;
+  onNameBlur?: (i: number) => void;
   onUpdateUpper: (i: number, raw: string) => void;
   onToggleVerification: (i: number, value: boolean) => void;
   onSplit: (i: number) => void;
@@ -19,6 +20,7 @@ export default function CategoryBoundaryEditor({
   riders,
   ridersWithRating,
   onUpdateName,
+  onNameBlur,
   onUpdateUpper,
   onToggleVerification,
   onSplit,
@@ -62,6 +64,7 @@ export default function CategoryBoundaryEditor({
                     type="text"
                     value={cat.name}
                     onChange={e => onUpdateName(i, e.target.value)}
+                    onBlur={() => onNameBlur?.(i)}
                     className="w-28 px-2 py-1 border border-input rounded bg-background text-foreground text-sm"
                   />
                 </td>

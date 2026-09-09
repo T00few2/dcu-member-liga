@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useLeagueSettingsQuery } from '@/hooks/queries';
+import { categoryRankOrder } from '@/lib/ligaCategories';
 
 import { ClubSnapshotCards } from './_components/ClubSnapshotCards';
 import { PowerCurveSection } from './_components/PowerCurveSection';
@@ -30,6 +31,8 @@ import type {
 export default function MyStatsPage() {
     const router = useRouter();
     const pathname = usePathname();
+    const { data: leagueSettings } = useLeagueSettingsQuery();
+    const rankOrder = categoryRankOrder(leagueSettings);
 
     const [selectedRaceId, setSelectedRaceId] = useState<string>('');
 
@@ -142,8 +145,8 @@ export default function MyStatsPage() {
         if (!selectedRace?.results) return null;
         const categories = Object.keys(selectedRace.results).filter((cat) => selectedRace.results?.[cat]?.length);
         if (categories.length === 0) return null;
-        return categories.sort((a, b) => categoryRankIndex(a) - categoryRankIndex(b))[0];
-    }, [selectedRace]);
+        return categories.sort((a, b) => categoryRankIndex(a, rankOrder) - categoryRankIndex(b, rankOrder))[0];
+    }, [selectedRace, rankOrder]);
 
     const referenceCategory = userCategory ?? primaryRaceCategory;
 
@@ -246,8 +249,8 @@ export default function MyStatsPage() {
     const powerLegendEntries = useMemo(() => {
         return [...displayRidersWithPower]
             .sort((a, b) => {
-                const aRank = categoryRankIndex(String(a.category));
-                const bRank = categoryRankIndex(String(b.category));
+                const aRank = categoryRankIndex(String(a.category), rankOrder);
+                const bRank = categoryRankIndex(String(b.category), rankOrder);
                 if (aRank !== bRank) return aRank - bRank;
                 const cat = String(a.category).localeCompare(String(b.category));
                 if (cat !== 0) return cat;
@@ -258,7 +261,7 @@ export default function MyStatsPage() {
                 style: getLineStyle(rider),
                 isHidden: hiddenRiderIds.has(String(rider.zwiftId)),
             }));
-    }, [displayRidersWithPower, hiddenRiderIds, statsMode, currentUserZwiftId, clubRiderIdsInRace, categoryColorMap]);
+    }, [displayRidersWithPower, hiddenRiderIds, statsMode, currentUserZwiftId, clubRiderIdsInRace, categoryColorMap, rankOrder]);
 
     const visibleDisplayRidersWithPower = useMemo(() => {
         return displayRidersWithPower.filter((rider) => !hiddenRiderIds.has(String(rider.zwiftId)));
@@ -314,8 +317,8 @@ export default function MyStatsPage() {
 
     const sprintFilterCategories = useMemo(() => {
         const categories = [...new Set(sprintSourceRiders.map((r) => String(r.category || '').trim()).filter(Boolean))];
-        return categories.sort((a, b) => categoryRankIndex(a) - categoryRankIndex(b));
-    }, [sprintSourceRiders]);
+        return categories.sort((a, b) => categoryRankIndex(a, rankOrder) - categoryRankIndex(b, rankOrder));
+    }, [sprintSourceRiders, rankOrder]);
 
     useEffect(() => {
         if (sprintCategoryFilter === 'all') return;

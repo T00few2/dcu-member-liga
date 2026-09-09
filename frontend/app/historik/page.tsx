@@ -5,6 +5,8 @@ import { useQuery } from '@tanstack/react-query';
 import { API_URL } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { sortCategoriesByRank } from '@/lib/categories';
+import { categoryRankOrder } from '@/lib/ligaCategories';
+import { useLeagueSettingsQuery } from '@/hooks/queries';
 import type {
     Race,
     Sprint,
@@ -35,11 +37,6 @@ interface ArchiveDetail {
     races: { id: string; name: string; date: string; hasResults: boolean }[];
 }
 
-const DEFAULT_CATEGORY_RANK = [
-    'Diamond', 'Ruby', 'Emerald', 'Sapphire', 'Amethyst', 'Platinum', 'Gold', 'Silver', 'Bronze', 'Copper',
-    'A', 'B', 'C', 'D', 'E',
-];
-
 const pickFirstNonEmpty = (...lists: (Sprint[] | undefined)[]): Sprint[] => {
     for (const list of lists) {
         if (Array.isArray(list) && list.length > 0) return list;
@@ -49,6 +46,8 @@ const pickFirstNonEmpty = (...lists: (Sprint[] | undefined)[]): Sprint[] => {
 
 export default function HistorikPage() {
     const { user } = useAuth();
+    const { data: leagueSettings } = useLeagueSettingsQuery();
+    const rankOrder = categoryRankOrder(leagueSettings);
     const [selectedArchiveId, setSelectedArchiveId] = useState<string>('');
     const [activeTab, setActiveTab] = useState<'standings' | 'results'>('standings');
     const [selectedRaceId, setSelectedRaceId] = useState<string>('');
@@ -185,7 +184,7 @@ export default function HistorikPage() {
     } else {
         availableRaceCategories = ['A', 'B', 'C', 'D', 'E'];
     }
-    availableRaceCategories = sortCategoriesByRank(availableRaceCategories, DEFAULT_CATEGORY_RANK);
+    availableRaceCategories = sortCategoriesByRank(availableRaceCategories, rankOrder);
 
     const displayRaceCategory = (selectedRace?.results && !availableRaceCategories.includes(selectedCategory) && availableRaceCategories.length > 0)
         ? availableRaceCategories[0]
@@ -212,7 +211,7 @@ export default function HistorikPage() {
     }
 
     let availableStandingsCategories = Object.keys(standings).length > 0 ? Object.keys(standings) : ['A', 'B', 'C', 'D', 'E'];
-    availableStandingsCategories = sortCategoriesByRank(availableStandingsCategories, DEFAULT_CATEGORY_RANK);
+    availableStandingsCategories = sortCategoriesByRank(availableStandingsCategories, rankOrder);
 
     const displayStandingsCategory = (Object.keys(standings).length > 0 && !availableStandingsCategories.includes(standingsCategory))
         ? availableStandingsCategories[0]

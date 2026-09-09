@@ -2,6 +2,7 @@
 
 import { useRaceFormContext } from '@/lib/race-form-context';
 import { CollapsibleSegmentPicker } from './SegmentPicker';
+import LigaCategoryNameSelect from './LigaCategoryNameSelect';
 
 export default function GroupedModeConfig() {
     const {
@@ -15,6 +16,7 @@ export default function GroupedModeConfig() {
         onUpdateGroupCategory,
         onToggleGroupCategorySprint,
         onToggleGroupSprint,
+        categoryOptions = [],
     } = useRaceFormContext();
 
     return (
@@ -74,7 +76,12 @@ export default function GroupedModeConfig() {
                                         <div className="flex gap-2 items-center">
                                             <div className="flex-1">
                                                 <label className="text-[10px] text-muted-foreground font-bold uppercase block mb-1">Category Name</label>
-                                                <input type="text" value={cat.category} onChange={e => onUpdateGroupCategory(groupIdx, catIdx, 'category', e.target.value)} className="w-full p-2 border border-input rounded bg-background text-foreground text-sm" placeholder="e.g. Diamond" />
+                                                <LigaCategoryNameSelect
+                                                    value={cat.category}
+                                                    onChange={v => onUpdateGroupCategory(groupIdx, catIdx, 'category', v)}
+                                                    options={categoryOptions}
+                                                    placeholder="e.g. Diamond"
+                                                />
                                             </div>
                                             <div className="w-20">
                                                 <label className="text-[10px] text-muted-foreground font-bold uppercase block mb-1">Laps</label>

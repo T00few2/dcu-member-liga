@@ -1,37 +1,38 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
-import { useProfileQuery } from '@/hooks/queries';
+import { useLeagueSettingsQuery, useProfileQuery } from '@/hooks/queries';
+import {
+    ZR_CATEGORY_GEMS,
+    ZR_CATEGORY_STYLES,
+    catLower,
+    effectiveLigaCategories,
+    type LigaCategoryDef,
+} from '@/lib/ligaCategories';
 
-// ---------------------------------------------------------------------------
-// Category metadata (mirrors category_engine.py)
-// ---------------------------------------------------------------------------
-const ZR_CATEGORIES = [
-    { name: 'Diamond',  lower: 2200, upper: null,  color: 'bg-sky-100 text-sky-800 border-sky-300',      gem: '💎' },
-    { name: 'Ruby',     lower: 1900, upper: 2200,  color: 'bg-red-100 text-red-800 border-red-300',       gem: '♦️' },
-    { name: 'Emerald',  lower: 1650, upper: 1900,  color: 'bg-emerald-100 text-emerald-800 border-emerald-300', gem: '💚' },
-    { name: 'Sapphire', lower: 1450, upper: 1650,  color: 'bg-blue-100 text-blue-800 border-blue-300',    gem: '💙' },
-    { name: 'Amethyst', lower: 1300, upper: 1450,  color: 'bg-purple-100 text-purple-800 border-purple-300', gem: '💜' },
-    { name: 'Platinum', lower: 1150, upper: 1300,  color: 'bg-slate-100 text-slate-700 border-slate-300', gem: '⬜' },
-    { name: 'Gold',     lower: 1000, upper: 1150,  color: 'bg-yellow-100 text-yellow-800 border-yellow-300', gem: '🥇' },
-    { name: 'Silver',   lower: 850,  upper: 1000,  color: 'bg-gray-100 text-gray-700 border-gray-300',    gem: '🥈' },
-    { name: 'Bronze',   lower: 650,  upper: 850,   color: 'bg-orange-100 text-orange-800 border-orange-300', gem: '🥉' },
-    { name: 'Copper',   lower: 0,    upper: 650,   color: 'bg-amber-100 text-amber-800 border-amber-300', gem: '🔶' },
-] as const;
+const GRACE_POINTS_FALLBACK = 35;
 
-type CategoryName = typeof ZR_CATEGORIES[number]['name'];
-
-const GRACE_POINTS = 35;
-
-function catMeta(name: string) {
-    return ZR_CATEGORIES.find(c => c.name === name);
-}
-
-function catIndex(name: string) {
-    return ZR_CATEGORIES.findIndex(c => c.name === name);
+function catMeta(name: string, cats: LigaCategoryDef[]) {
+    const idx = cats.findIndex(c => c.name === name);
+    if (idx < 0) {
+        return {
+            name,
+            lower: 0,
+            upper: null as number | null,
+            color: ZR_CATEGORY_STYLES[name] ?? 'bg-slate-100 text-slate-800 border-slate-300',
+            gem: ZR_CATEGORY_GEMS[name]?.gem ?? '●',
+        };
+    }
+    return {
+        name,
+        lower: catLower(cats, idx),
+        upper: cats[idx].upper,
+        color: `${ZR_CATEGORY_STYLES[name] ?? 'bg-slate-100 text-slate-800'} border-current/20`,
+        gem: ZR_CATEGORY_GEMS[name]?.gem ?? '●',
+    };
 }
 
 const statusLabel: Record<string, { label: string; cls: string }> = {
@@ -62,7 +63,7 @@ interface Profile {
     ligaCategory?: LigaCategory;
 }
 
-function CategoryExplanation() {
+function CategoryExplanation({ gracePoints }: { gracePoints: number }) {
     return (
         <div className="bg-muted/30 border border-border rounded-lg p-6 space-y-4 text-sm text-muted-foreground leading-relaxed">
             <h3 className="text-base font-semibold text-foreground">Hvordan fungerer kategorierne?</h3>
@@ -86,9 +87,9 @@ function CategoryExplanation() {
                 </p>
             </div>
             <div className="space-y-2">
-                <p className="font-medium text-foreground">Grace-periode ({GRACE_POINTS} vELO-point)</p>
+                <p className="font-medium text-foreground">Grace-periode ({gracePoints} vELO-point)</p>
                 <p>
-                    Har du nået over din kategoris øvre grænse, men er inden for grace-grænsen (+{GRACE_POINTS} vELO), er du i grace-periode.
+                    Har du nået over din kategoris øvre grænse, men er inden for grace-grænsen (+{gracePoints} vELO), er du i grace-periode.
                     Du fuldfører sæsonen i din nuværende kategori, men bør forberede dig på at rykke op.
                 </p>
             </div>
@@ -108,20 +109,24 @@ export default function CategoryTab() {
     const queryClient = useQueryClient();
 
     const { data: profile, isLoading: loading } = useProfileQuery();
+    const { data: leagueSettings } = useLeagueSettingsQuery();
+    const cats = useMemo(() => effectiveLigaCategories(leagueSettings), [leagueSettings]);
+    const gracePoints = leagueSettings?.gracePeriod ?? GRACE_POINTS_FALLBACK;
 
-    const [selected, setSelected] = useState<CategoryName | ''>('');
+    const [selected, setSelected] = useState<string>('');
     const [saving, setSaving] = useState(false);
     const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
 
     const lc = profile?.ligaCategory;
+    const catIndex = (name: string) => cats.findIndex(c => c.name === name);
     const currentCatIndex = lc ? catIndex(lc.category) : -1;
 
     const floorCategory = lc?.manualAssignedCategory || lc?.autoAssignedCategory;
     const autoAssignedIndex = floorCategory
         ? catIndex(floorCategory)
         : currentCatIndex;
-    const upgradeOptions = autoAssignedIndex > 0
-        ? ZR_CATEGORIES.filter((_, i) => i <= autoAssignedIndex)
+    const upgradeOptions = autoAssignedIndex >= 0
+        ? cats.filter((_, i) => i <= autoAssignedIndex).map(c => catMeta(c.name, cats))
         : [];
 
     const handleSave = async () => {
@@ -163,7 +168,7 @@ export default function CategoryTab() {
 
     if (!profile) return null;
 
-    const meta = lc ? catMeta(lc.category) : null;
+    const meta = lc ? catMeta(lc.category, cats) : null;
     const st = lc ? (statusLabel[lc.status] ?? statusLabel.ok) : null;
 
     return (
@@ -247,7 +252,7 @@ export default function CategoryTab() {
                     {upgradeOptions.length === 0 ? (
                         <p className="text-sm text-muted-foreground italic">
                             {autoAssignedIndex === 0
-                                ? 'Du er allerede i den højeste kategori (Diamond).'
+                                ? `Du er allerede i den højeste kategori (${cats[0]?.name || 'top'}).`
                                 : lc
                                 ? 'Ingen kategorier tilgængelige.'
                                 : 'Tilmeld dig for at se dine kategorimuligheder.'}
@@ -262,7 +267,7 @@ export default function CategoryTab() {
                                     {upgradeOptions.map(cat => (
                                         <button
                                             key={cat.name}
-                                            onClick={() => setSelected(cat.name as CategoryName)}
+                                            onClick={() => setSelected(cat.name)}
                                             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition ${
                                                 selected === cat.name
                                                     ? `${cat.color} ring-2 ring-offset-1 ring-primary`
@@ -303,7 +308,7 @@ export default function CategoryTab() {
             )}
 
             {/* Explanation */}
-            <CategoryExplanation />
+            <CategoryExplanation gracePoints={gracePoints} />
 
             {/* Category table */}
             <div className="bg-muted/20 border border-border rounded-lg p-5">
@@ -319,7 +324,8 @@ export default function CategoryTab() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
-                            {ZR_CATEGORIES.map(cat => {
+                            {cats.map(row => {
+                                const cat = catMeta(row.name, cats);
                                 const isCurrent = lc?.category === cat.name;
                                 return (
                                     <tr key={cat.name} className={isCurrent ? 'font-semibold' : ''}>

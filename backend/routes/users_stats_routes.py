@@ -7,6 +7,7 @@ from flask import jsonify, request
 from authz import AuthzError, verify_user_token
 from extensions import db, get_zwift_service, zr_service
 from services.category_engine import serialize_liga_category
+from services.liga_categories_core import _load_liga_settings, _resolve_categories
 from services.user_service import UserService
 from services.zwift_tokens import get_valid_access_token
 from routes.integration import _activity_count_in_range
@@ -34,13 +35,14 @@ def get_participants():
         except (ValueError, TypeError):
             fetch_limit = 1000
         user_objects = UserService.get_all_participants(limit=fetch_limit)
+        rank_cats = _resolve_categories(_load_liga_settings(db)) if db else None
 
         for user in user_objects:
             try:
                 data = user._data
                 zr = data.get("zwiftRacing", {})
                 zpro = data.get("zwiftProfile", {})
-                lc = serialize_liga_category(data.get("ligaCategory"))
+                lc = serialize_liga_category(data.get("ligaCategory"), rank_cats)
 
                 zpc = data.get("zwiftPowerCurve", {})
                 relevant_efforts = {

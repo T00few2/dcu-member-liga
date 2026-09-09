@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { User } from 'firebase/auth';
 import type { Race, LoadingStatus } from '@/types/admin';
 
+import { useLeagueSettingsQuery } from '@/hooks/queries';
+import { ligaCategoryNames } from '@/lib/ligaCategories';
 import { API_URL } from '@/lib/api';
 
 interface TestDataPanelProps {
@@ -14,16 +16,10 @@ interface TestDataPanelProps {
     onRacesChanged?: () => void;
 }
 
-/** Preferred display order for liga gem categories. */
-const GEM_ORDER = [
-    'Diamond', 'Ruby', 'Emerald', 'Sapphire', 'Amethyst',
-    'Platinum', 'Gold', 'Silver', 'Bronze', 'Copper',
-];
-
-function sortCategoryEntries(byCategory: Record<string, number>): [string, number][] {
+function sortCategoryEntries(byCategory: Record<string, number>, order: string[]): [string, number][] {
     return Object.entries(byCategory).sort(([a], [b]) => {
-        const ia = GEM_ORDER.indexOf(a);
-        const ib = GEM_ORDER.indexOf(b);
+        const ia = order.indexOf(a);
+        const ib = order.indexOf(b);
         if (ia === -1 && ib === -1) return a.localeCompare(b);
         if (ia === -1) return 1;
         if (ib === -1) return -1;
@@ -38,6 +34,8 @@ export default function TestDataPanel({
     setStatus,
     onRacesChanged,
 }: TestDataPanelProps) {
+    const { data: leagueSettings } = useLeagueSettingsQuery();
+    const gemOrder = ligaCategoryNames(leagueSettings);
     const [registeredRiderCount, setRegisteredRiderCount] = useState(0);
     const [ridersByCategory, setRidersByCategory] = useState<Record<string, number>>({});
     const [missingLigaCategoryCount, setMissingLigaCategoryCount] = useState(0);
@@ -97,8 +95,8 @@ export default function TestDataPanel({
     }, [testProgress]);
 
     const categoryBreakdown = useMemo(
-        () => sortCategoryEntries(ridersByCategory),
-        [ridersByCategory],
+        () => sortCategoryEntries(ridersByCategory, gemOrder),
+        [ridersByCategory, gemOrder],
     );
 
     const seedableRiderCount = useMemo(

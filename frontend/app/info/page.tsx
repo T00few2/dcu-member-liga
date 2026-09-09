@@ -10,6 +10,11 @@ import {
     isOneDaySeasonClass,
     tourEvents,
 } from '@/lib/seasonUi';
+import {
+    catLower,
+    effectiveLigaCategories,
+    ZR_CATEGORY_GEMS,
+} from '@/lib/ligaCategories';
 import type { Race } from '@/types/live';
 import type { StageRace } from '@/types/admin';
 
@@ -30,6 +35,50 @@ function joinDanishNames(names: string[]): string {
     if (names.length === 1) return names[0]!;
     if (names.length === 2) return `${names[0]} og ${names[1]}`;
     return `${names.slice(0, -1).join(', ')} og ${names[names.length - 1]}`;
+}
+
+function LigaCategoryInfoTable() {
+    const { data: leagueSettings } = useLeagueSettingsQuery();
+    const cats = effectiveLigaCategories(leagueSettings);
+    const grace = leagueSettings?.gracePeriod ?? 35;
+    return (
+        <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+            <table className="w-full text-sm">
+                <thead>
+                    <tr className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200">
+                        <th className="px-4 py-3 text-left font-bold">Gem</th>
+                        <th className="px-4 py-3 text-left font-bold">Kategori</th>
+                        <th className="px-4 py-3 text-left font-bold">vELO interval</th>
+                        <th className="px-4 py-3 text-left font-bold">Grace-grænse</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {cats.map((row, i) => {
+                        const lower = catLower(cats, i);
+                        const upper = row.upper;
+                        const range = upper == null ? `≥ ${lower}` : `${lower} – ${upper - 1}`;
+                        const graceLabel = upper == null ? '∞' : String(upper + grace);
+                        const gem = ZR_CATEGORY_GEMS[row.name];
+                        return (
+                            <tr key={row.name} className="bg-white dark:bg-slate-900/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                                <td className="px-4 py-2.5 text-lg">{gem?.gem ?? '●'}</td>
+                                <td className="px-4 py-2.5">
+                                    <span
+                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold"
+                                        style={gem ? { backgroundColor: gem.color, color: gem.textColor } : undefined}
+                                    >
+                                        {row.name}
+                                    </span>
+                                </td>
+                                <td className="px-4 py-2.5 font-mono text-slate-700 dark:text-slate-200 text-xs">{range}</td>
+                                <td className="px-4 py-2.5 font-mono text-slate-500 dark:text-slate-400 text-xs">{graceLabel}</td>
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
+        </div>
+    );
 }
 
 function calendarEventLabel(race: Race, event?: StageRace | null): string {
@@ -698,51 +747,9 @@ const chapters = [
                     </span>
                 </div>
 
-                {/* Category table */}
-                <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
-                    <table className="w-full text-sm">
-                        <thead>
-                            <tr className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200">
-                                <th className="px-4 py-3 text-left font-bold">Gem</th>
-                                <th className="px-4 py-3 text-left font-bold">Kategori</th>
-                                <th className="px-4 py-3 text-left font-bold">vELO interval</th>
-                                <th className="px-4 py-3 text-left font-bold">Grace-grænse</th>
-                                <th className="px-4 py-3 text-left font-bold">Niveau</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                            {[
-                                { gem: '💎', name: 'Diamond',  color: '#b9f2ff', textColor: '#0e4f6b', range: '≥ 2200',       grace: '∞',     niveau: 'Absolut elite' },
-                                { gem: '♦️', name: 'Ruby',     color: '#ff4e6a', textColor: '#fff',    range: '1900 – 2199',  grace: '2235',  niveau: 'Elite' },
-                                { gem: '💚', name: 'Emerald',  color: '#50c878', textColor: '#fff',    range: '1650 – 1899',  grace: '1935',  niveau: 'Meget stærk' },
-                                { gem: '💙', name: 'Sapphire', color: '#0f52ba', textColor: '#fff',    range: '1450 – 1649',  grace: '1685',  niveau: 'Stærk' },
-                                { gem: '💜', name: 'Amethyst', color: '#9b59b6', textColor: '#fff',    range: '1300 – 1449',  grace: '1485',  niveau: 'Avanceret' },
-                                { gem: '⬜', name: 'Platinum', color: '#e5e4e2', textColor: '#374151', range: '1150 – 1299',  grace: '1335',  niveau: 'Øvet+' },
-                                { gem: '🥇', name: 'Gold',     color: '#ffd700', textColor: '#374151', range: '1000 – 1149',  grace: '1185',  niveau: 'Øvet' },
-                                { gem: '🥈', name: 'Silver',   color: '#c0c0c0', textColor: '#374151', range: '850 – 999',    grace: '1035',  niveau: 'Motionist+' },
-                                { gem: '🥉', name: 'Bronze',   color: '#cd7f32', textColor: '#fff',    range: '650 – 849',    grace: '885',   niveau: 'Motionist' },
-                                { gem: '🔶', name: 'Copper',   color: '#b87333', textColor: '#fff',    range: '0 – 649',      grace: '685',   niveau: 'Begynder' },
-                            ].map((row, i) => (
-                                <tr key={i} className="bg-white dark:bg-slate-900/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                                    <td className="px-4 py-2.5 text-lg">{row.gem}</td>
-                                    <td className="px-4 py-2.5">
-                                        <span
-                                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold"
-                                            style={{ backgroundColor: row.color, color: row.textColor }}
-                                        >
-                                            {row.name}
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-2.5 font-mono text-slate-700 dark:text-slate-200 text-xs">{row.range}</td>
-                                    <td className="px-4 py-2.5 font-mono text-slate-500 dark:text-slate-400 text-xs">{row.grace}</td>
-                                    <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">{row.niveau}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+                <LigaCategoryInfoTable />
                 <p className="text-xs text-slate-400 dark:text-slate-500">
-                    Grace-grænsen er 35 vELO-point over den øvre kategorgrænse. Find dit aktuelle vELO på{' '}
+                    Grace-grænsen er league grace-points over den øvre kategorgrænse. Find dit aktuelle vELO på{' '}
                     <a href="https://www.zwiftracing.app/reference/categories" target="_blank" rel="noopener noreferrer" className="underline">zwiftracing.app</a>.
                     Du kan se og justere din kategori under{' '}
                     <Link href="/register" className="underline text-primary">Min Profil → Kategori</Link>.

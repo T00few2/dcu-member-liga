@@ -212,6 +212,28 @@ def test_effective_user_category_handles_missing_data() -> None:
     assert races._resolve_effective_user_category({"locked": False}) == ""
 
 
+def test_grouped_routing_and_effective_category_use_custom_names() -> None:
+    cats = [("Guld", 1000, None), ("Kobber", 0, 1000)]
+    liga_category = {
+        "locked": False,
+        "autoAssigned": {"category": "Kobber"},
+        "selfSelected": {"category": "Guld"},
+    }
+    assert races._resolve_effective_user_category(liga_category, cats) == "Guld"
+    race = {
+        "eventMode": "grouped",
+        "raceGroups": [
+            {
+                "name": "Low",
+                "eventId": "9",
+                "categories": [{"category": "Guld"}],
+            }
+        ],
+    }
+    _, event_id, _ = races._pick_mode_config_for_user(race, "Guld")
+    assert event_id == "9"
+
+
 def test_unlocked_diamond_rider_resolves_to_high_end_subgroup() -> None:
     """Regression: previously a Diamond rider with only autoAssigned set got
     'No event/subgroup configuration found for rider category' on signup."""

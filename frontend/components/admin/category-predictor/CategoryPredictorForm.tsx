@@ -80,8 +80,8 @@ export interface CategoryPredictorFormProps {
   assignResult: { category: string } | null;
   /** Error message from the last assign attempt, or empty string. */
   assignError: string;
-  /** Categories assigned this session, keyed by Zwift ID — keeps Unassigned filter in sync. */
   assignedOverlay?: Record<string, string>;
+  categories?: typeof ZR_CATEGORY_DEFAULTS;
 }
 
 function rideCountSuffix(count: number | null | undefined): string {
@@ -195,6 +195,7 @@ export default function CategoryPredictorForm({
   assignResult,
   assignError,
   assignedOverlay,
+  categories = ZR_CATEGORY_DEFAULTS,
 }: CategoryPredictorFormProps) {
   const zwiftActive = assignChoice === 'zwift';
   const stravaActive = assignChoice === 'strava';
@@ -475,7 +476,7 @@ export default function CategoryPredictorForm({
         >
           <option value="zwift">Predicted Zwift ({zwiftPrediction.category ?? '—'})</option>
           <option value="strava">Predicted Strava ({stravaPrediction.category ?? '—'})</option>
-          {ZR_CATEGORY_DEFAULTS.map(c => (
+          {categories.map(c => (
             <option key={c.name} value={c.name}>{c.name}</option>
           ))}
         </select>

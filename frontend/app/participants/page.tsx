@@ -3,38 +3,11 @@
 import { Suspense, useCallback, useState, useMemo } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
-import { useParticipantsQuery, useRacesQuery, useRaceSignupsQuery } from '@/hooks/queries';
+import { useLeagueSettingsQuery, useParticipantsQuery, useRacesQuery, useRaceSignupsQuery } from '@/hooks/queries';
 import RaceSignupSelect from '@/components/RaceSignupSelect';
 import { filterRidersBySignupIds } from '@/lib/raceSignupOptions';
+import { categoryFromVelo, categoryStyle, effectiveLigaCategories, ligaCategoryNames } from '@/lib/ligaCategories';
 import type { Race } from '@/types/live';
-
-function getZRCategory(rating: number | string): string {
-  const r = Number(rating);
-  if (isNaN(r) || rating === 'N/A') return '-';
-  if (r >= 2200) return 'Diamond';
-  if (r >= 1900) return 'Ruby';
-  if (r >= 1650) return 'Emerald';
-  if (r >= 1450) return 'Sapphire';
-  if (r >= 1300) return 'Amethyst';
-  if (r >= 1150) return 'Platinum';
-  if (r >= 1000) return 'Gold';
-  if (r >= 850) return 'Silver';
-  if (r >= 650) return 'Bronze';
-  return 'Copper';
-}
-
-const ZR_CATEGORY_STYLES: Record<string, string> = {
-  Diamond: 'bg-cyan-100 text-cyan-800',
-  Ruby: 'bg-red-100 text-red-800',
-  Emerald: 'bg-green-100 text-green-800',
-  Sapphire: 'bg-blue-100 text-blue-800',
-  Amethyst: 'bg-purple-100 text-purple-800',
-  Platinum: 'bg-slate-100 text-slate-700',
-  Gold: 'bg-yellow-100 text-yellow-800',
-  Silver: 'bg-gray-100 text-gray-700',
-  Bronze: 'bg-orange-100 text-orange-800',
-  Copper: 'bg-amber-100 text-amber-800',
-};
 
 interface LigaCategory {
   category: string;
@@ -142,8 +115,6 @@ function getSortValue(p: Participant, col: SortColumn, powerUnit: PowerUnit): st
   }
 }
 
-const LIGA_KAT_ORDER = ['Diamond','Ruby','Emerald','Sapphire','Amethyst','Platinum','Gold','Silver','Bronze','Copper'];
-
 function SortIcon({ active, direction }: { active: boolean; direction: SortDirection }) {
   if (!active) {
     return (
@@ -167,6 +138,9 @@ function ParticipantsPageContent() {
   const { loading: authLoading } = useAuth();
   const participantsQuery = useParticipantsQuery();
   const racesQuery = useRacesQuery();
+  const { data: leagueSettings } = useLeagueSettingsQuery();
+  const ligaCats = useMemo(() => effectiveLigaCategories(leagueSettings), [leagueSettings]);
+  const ligaKatOrder = useMemo(() => ligaCategoryNames(leagueSettings), [leagueSettings]);
   const participants = (participantsQuery.data ?? []) as Participant[];
   const races = (racesQuery.data ?? []) as Race[];
   const router = useRouter();
@@ -214,13 +188,13 @@ function ParticipantsPageContent() {
       if (p.ligaCategory?.category) cats.add(p.ligaCategory.category);
     }
     return Array.from(cats).sort((a, b) => {
-      const ai = LIGA_KAT_ORDER.indexOf(a);
-      const bi = LIGA_KAT_ORDER.indexOf(b);
+      const ai = ligaKatOrder.indexOf(a);
+      const bi = ligaKatOrder.indexOf(b);
       const ai2 = ai === -1 ? 999 : ai;
       const bi2 = bi === -1 ? 999 : bi;
       return ai2 - bi2;
     });
-  }, [participants]);
+  }, [participants, ligaKatOrder]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -393,15 +367,15 @@ function ParticipantsPageContent() {
                     <td className="px-6 py-4 font-medium text-card-foreground">{p.name}</td>
                     <td className="px-6 py-4 text-card-foreground">{p.club || '-'}</td>
                     <td className="px-6 py-4">
-                      {(() => { const cat = getZRCategory(p.rating); return cat !== '-' ? (
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ZR_CATEGORY_STYLES[cat] ?? 'bg-slate-100 text-slate-800'}`}>
+                      {(() => { const cat = categoryFromVelo(p.rating, ligaCats); return cat !== '-' ? (
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${categoryStyle(cat)}`}>
                           {cat}
                         </span>
                       ) : '-'; })()}
                     </td>
                     <td className="px-6 py-4">
-                      {(() => { const cat = getZRCategory(p.max30Rating); return cat !== '-' ? (
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ZR_CATEGORY_STYLES[cat] ?? 'bg-slate-100 text-slate-800'}`}>
+                      {(() => { const cat = categoryFromVelo(p.max30Rating, ligaCats); return cat !== '-' ? (
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${categoryStyle(cat)}`}>
                           {cat}
                         </span>
                       ) : '-'; })()}
@@ -409,7 +383,7 @@ function ParticipantsPageContent() {
                     <td className="px-6 py-4">
                       {p.ligaCategory ? (
                         <div className="flex items-center gap-1.5">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ZR_CATEGORY_STYLES[p.ligaCategory.category] ?? 'bg-slate-100 text-slate-800'}`}>
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${categoryStyle(p.ligaCategory.category)}`}>
                             {p.ligaCategory.category}
                           </span>
                           {p.ligaCategory.status === 'grace' && (
@@ -423,7 +397,7 @@ function ParticipantsPageContent() {
                     </td>
                     <td className="px-6 py-4">
                       {p.zwiftCategory && p.zwiftCategory !== 'N/A' ? (
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ZR_CATEGORY_STYLES[p.zwiftCategory] ?? 'bg-slate-100 text-slate-800'}`}>
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${categoryStyle(p.zwiftCategory)}`}>
                           {p.zwiftCategory}
                         </span>
                       ) : '-'}

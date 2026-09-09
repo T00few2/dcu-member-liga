@@ -10,6 +10,7 @@ from services.schema_validation import (
     validate_league_standings_doc,
     with_schema_version,
 )
+from services.category_changelog import liga_categories_fingerprint
 from services.request_models import LeagueSettingsRequest, parse_body
 from authz import require_admin, verify_user_token, AuthzError
 from routes.verification import _build_race_weight_verifications
@@ -32,6 +33,9 @@ def get_settings():
     try:
         doc = db.collection('league').document('settings').get()
         settings = doc.to_dict() if doc.exists else {}
+        settings["ligaCategoriesFingerprint"] = liga_categories_fingerprint(
+            settings.get("ligaCategories")
+        )
         return jsonify({'settings': settings}), 200
     except Exception as e:
         logger.error(f"Get settings error: {e}")

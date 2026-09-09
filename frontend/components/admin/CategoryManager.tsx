@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
 import { useLigaCategoriesQuery } from '@/hooks/queries/useLigaCategoriesQuery';
@@ -15,6 +16,7 @@ import CategoryBoundaryEditor from './category-manager/CategoryBoundaryEditor';
 import CategoryList from './category-manager/CategoryList';
 import {
   ZR_CATEGORY_DEFAULTS,
+  type CategoryChangelogOp,
   type CategoryDef,
   type RiderEntry,
   type FilterMode,
@@ -45,11 +47,36 @@ export default function CategoryManager() {
   const [ligaCategories, setLigaCategories] = useState<CategoryDef[] | null>(null);
   const [configDirty, setConfigDirty] = useState(false);
   const [configSaving, setConfigSaving] = useState(false);
+  const [changelog, setChangelog] = useState<CategoryChangelogOp[]>([]);
+  const [nameAtLastOp, setNameAtLastOp] = useState<string[] | null>(null);
+  const [preview, setPreview] = useState<Record<string, unknown> | null>(null);
+  const [previewing, setPreviewing] = useState(false);
 
   const effectiveLigaCategories: CategoryDef[] = ligaCategories ??
     (leagueSettings?.ligaCategories && Array.isArray(leagueSettings.ligaCategories) && leagueSettings.ligaCategories.length >= 2
       ? (leagueSettings.ligaCategories as CategoryDef[])
       : ZR_CATEGORY_DEFAULTS);
+
+  const savedNames = (leagueSettings?.ligaCategories && Array.isArray(leagueSettings.ligaCategories) && leagueSettings.ligaCategories.length >= 2
+    ? (leagueSettings.ligaCategories as CategoryDef[]).map((c) => c.name)
+    : ZR_CATEGORY_DEFAULTS.map((c) => c.name));
+  const effectiveNameAtLastOp = nameAtLastOp ?? savedNames;
+  const expectedFingerprint = (leagueSettings as { ligaCategoriesFingerprint?: string } | undefined)?.ligaCategoriesFingerprint ?? '';
+
+  function flushRenames(cats: CategoryDef[] = effectiveLigaCategories, names: string[] = effectiveNameAtLastOp): { ops: CategoryChangelogOp[]; names: string[] } {
+    const ops = [...changelog];
+    const nextNames = [...names];
+    cats.forEach((cat, i) => {
+      const prev = nextNames[i];
+      if (prev && cat.name && cat.name !== prev) {
+        ops.push({ op: 'rename', from: prev, to: cat.name });
+        nextNames[i] = cat.name;
+      } else if (cat.name) {
+        nextNames[i] = cat.name;
+      }
+    });
+    return { ops, names: nextNames };
+  }
 
   // ── Category config operations ──────────────────────────────────────────
 
@@ -58,6 +85,14 @@ export default function CategoryManager() {
     next[i] = { ...next[i], name };
     setLigaCategories(next);
     setConfigDirty(true);
+    setPreview(null);
+  }
+
+  function commitNameBlur(i: number) {
+    const { ops, names } = flushRenames();
+    setChangelog(ops);
+    setNameAtLastOp(names);
+    setPreview(null);
   }
 
   function updateCatUpper(i: number, raw: string) {
@@ -67,6 +102,7 @@ export default function CategoryManager() {
     next[i] = { ...next[i], upper: n };
     setLigaCategories(next);
     setConfigDirty(true);
+    setPreview(null);
   }
 
   function toggleCatVerification(i: number, value: boolean) {
@@ -74,11 +110,14 @@ export default function CategoryManager() {
     next[i] = { ...next[i], requiresVerification: value };
     setLigaCategories(next);
     setConfigDirty(true);
+    setPreview(null);
   }
 
   /** Split category i at the midpoint (or lower + 100 for unbounded top). */
   function splitCat(i: number) {
+    const { ops, names } = flushRenames();
     const cat = effectiveLigaCategories[i];
+    const fromName = cat.name;
     const lower = getCatLower(effectiveLigaCategories, i);
     const upper = cat.upper;
     const mid = upper !== null
@@ -86,53 +125,116 @@ export default function CategoryManager() {
       : lower + 100;
     const next = [...effectiveLigaCategories];
     next[i] = {
-      name: `${cat.name} A`,
+      name: `${fromName} A`,
       upper: cat.upper,
       requiresVerification: cat.requiresVerification === true,
     };
     next.splice(i + 1, 0, {
-      name: `${cat.name} B`,
+      name: `${fromName} B`,
       upper: mid,
       requiresVerification: false,
     });
+    const nextNames = [...names];
+    nextNames[i] = `${fromName} A`;
+    nextNames.splice(i + 1, 0, `${fromName} B`);
+    setChangelog([...ops, { op: 'split', from: fromName, into: [`${fromName} A`, `${fromName} B`], mid }]);
+    setNameAtLastOp(nextNames);
     setLigaCategories(next);
     setConfigDirty(true);
+    setPreview(null);
   }
 
   /** Merge category i upward into the category above it (i-1). */
   function mergeCatUp(i: number) {
     if (i === 0 || effectiveLigaCategories.length <= 2) return;
+    const { ops, names } = flushRenames();
     const next = [...effectiveLigaCategories];
     const removed = next[i];
+    const dest = next[i - 1];
     next.splice(i, 1);
-    // Keep verification if either merged row required it.
     if (removed?.requiresVerification) {
       next[i - 1] = { ...next[i - 1], requiresVerification: true };
     }
+    const nextNames = [...names];
+    nextNames.splice(i, 1);
+    setChangelog([...ops, { op: 'mergeUp', from: removed.name, into: dest.name }]);
+    setNameAtLastOp(nextNames);
     setLigaCategories(next);
     setConfigDirty(true);
+    setPreview(null);
   }
+
+  async function postConfig(dryRun: boolean) {
+    if (!user) return null;
+    const { ops } = flushRenames();
+    setChangelog(ops);
+    const token = await user.getIdToken();
+    const res = await fetch(`${API_URL}/admin/liga-categories/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        categories: effectiveLigaCategories,
+        changelog: ops,
+        dryRun,
+        expectedFingerprint,
+        gracePeriod: effectiveGracePeriod,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.message || `Request failed (${res.status})`);
+    }
+    return data;
+  }
+
+  const handlePreviewConfig = async () => {
+    if (!user) return;
+    setPreviewing(true);
+    try {
+      const data = await postConfig(true);
+      setPreview(data);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Preview failed');
+    } finally {
+      setPreviewing(false);
+    }
+  };
 
   const handleSaveConfig = async () => {
     if (!user) return;
+    if (!preview) {
+      alert('Preview the remap first, then save.');
+      return;
+    }
     setConfigSaving(true);
     try {
-      const token = await user.getIdToken();
-      const res = await fetch(`${API_URL}/admin/liga-categories/config`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ categories: effectiveLigaCategories }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setConfigDirty(false);
-        queryClient.invalidateQueries({ queryKey: ['league', 'settings'] });
-        alert(`Configuration saved (${data.count} categories).`);
-      } else {
-        alert(`Error: ${data.message}`);
-      }
-    } catch {
-      alert('Failed to save configuration');
+      const data = await postConfig(false);
+      setConfigDirty(false);
+      setChangelog([]);
+      setNameAtLastOp(effectiveLigaCategories.map((c) => c.name));
+      setPreview(null);
+      const nextFp = (data as { nextFingerprint?: string })?.nextFingerprint;
+      queryClient.setQueryData(
+        ['league', 'settings', 'auth'],
+        (old: Record<string, unknown> | undefined) =>
+          old
+            ? {
+                ...old,
+                ligaCategories: effectiveLigaCategories,
+                ligaCategoriesFingerprint: nextFp ?? old.ligaCategoriesFingerprint,
+                gracePeriod: effectiveGracePeriod,
+              }
+            : old,
+      );
+      queryClient.invalidateQueries({ queryKey: ['league', 'settings'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'liga-categories'] });
+      const counts = (data?.counts || {}) as Record<string, number>;
+      alert(
+        `Configuration saved (${data.count} categories).\n` +
+        `Riders updated: ${counts.usersUpdated ?? 0}. Signups rewritten: ${counts.signupRewrite ?? 0}.`,
+      );
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Failed to save configuration');
     } finally {
       setConfigSaving(false);
     }
@@ -143,7 +245,9 @@ export default function CategoryManager() {
   const handleAssign = async () => {
     if (!user) return;
     if (!confirm(
-      `Assign liga categories based on effective vELO (max of current and 30-day max)?\n\nLimit buffer: ${effectiveGracePeriod} points\nCategories: ${effectiveLigaCategories.length} configured\n\nThis will overwrite existing assignments for all riders.`
+      `Refresh auto-assigned categories from current vELO (max of current and 30-day max)?\n\n` +
+      `Uses the last saved configuration (${leagueSettings?.ligaCategories?.length ?? effectiveLigaCategories.length} categories, grace ${leagueSettings?.gracePeriod ?? effectiveGracePeriod}).\n\n` +
+      `Manual holds and self-selects are kept. This does not apply unsaved editor changes.`,
     )) return;
 
     setAssigning(true);
@@ -152,7 +256,7 @@ export default function CategoryManager() {
       const res = await fetch(`${API_URL}/admin/assign-liga-categories`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ gracePeriod: effectiveGracePeriod, categories: effectiveLigaCategories }),
+        body: JSON.stringify({}),
       });
       const data = await res.json();
       if (res.ok) {
@@ -173,7 +277,7 @@ export default function CategoryManager() {
       `Dette sletter låsning, selvvalg og grace-status fra sidste sæson, ` +
       `og tildeler nye ulåste kategorier ud fra nuværende vELO.\n\n` +
       `Grace buffer: ${effectiveGracePeriod} points\n` +
-      `Kategorier: ${effectiveLigaCategories.length}\n\n` +
+      `Kategorier (saved): ${savedNames.length}\n\n` +
       `Dette kan ikke fortrydes automatisk.`
     );
     if (!confirmed) return;
@@ -189,7 +293,7 @@ export default function CategoryManager() {
       const res = await fetch(`${API_URL}/admin/liga-categories/reset-assignments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ gracePeriod: effectiveGracePeriod, categories: effectiveLigaCategories }),
+        body: JSON.stringify({}),
       });
       const data = await res.json();
       if (res.ok) {
@@ -335,21 +439,35 @@ export default function CategoryManager() {
           <h2 className="text-xl font-semibold text-card-foreground">Category Configuration</h2>
           <div className="flex gap-2 flex-wrap">
             <button
-              onClick={() => { setLigaCategories(ZR_CATEGORY_DEFAULTS); setConfigDirty(true); }}
+              onClick={() => {
+                setLigaCategories(ZR_CATEGORY_DEFAULTS);
+                setChangelog([]);
+                setNameAtLastOp(ZR_CATEGORY_DEFAULTS.map((c) => c.name));
+                setConfigDirty(true);
+                setPreview(null);
+              }}
               className="px-3 py-1.5 rounded text-sm bg-muted text-muted-foreground hover:text-foreground border border-border"
             >
               Load ZR Defaults
             </button>
             <button
-              onClick={handleSaveConfig}
-              disabled={!configDirty || configSaving}
+              onClick={() => { void handlePreviewConfig(); }}
+              disabled={!configDirty || previewing || configSaving}
+              className="px-3 py-1.5 rounded text-sm bg-muted text-foreground hover:opacity-90 disabled:opacity-50 font-medium border border-border"
+            >
+              {previewing ? 'Previewing…' : 'Preview'}
+            </button>
+            <button
+              onClick={() => { void handleSaveConfig(); }}
+              disabled={!configDirty || !preview || configSaving}
               className="px-3 py-1.5 rounded text-sm bg-secondary text-secondary-foreground hover:opacity-90 disabled:opacity-50 font-medium border border-border"
             >
               {configSaving ? 'Saving…' : 'Save Configuration'}
             </button>
             <button
               onClick={handleAssign}
-              disabled={assigning || resettingAssignments}
+              disabled={assigning || resettingAssignments || configDirty}
+              title={configDirty ? 'Save configuration first' : 'Refresh auto categories from saved bands and current vELO'}
               className="px-3 py-1.5 rounded text-sm bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 font-medium"
             >
               {assigning ? 'Assigning…' : 'Assign Liga Categories'}
@@ -369,7 +487,7 @@ export default function CategoryManager() {
           The distribution preview shows how effective ratings (max of current and 30-day max) map to these categories
           {selectedRaceId ? ' for the selected race signups' : ''}.
           Use <strong>Verification</strong> to include a category in weight verification sampling and dual-recording reports.
-          Use <strong>Assign Liga Categories</strong> to apply this configuration to all riders based on effective vELO.
+          Preview then Save remaps rider holds and race name strings. <strong>Assign Liga Categories</strong> later refreshes auto bands from current vELO; it does not overwrite manuals or apply unsaved editor changes.
         </p>
 
         <CategoryBoundaryEditor
@@ -377,15 +495,54 @@ export default function CategoryManager() {
           riders={scopedRiders as RiderEntry[]}
           ridersWithRating={ridersWithRating as RiderEntry[]}
           onUpdateName={updateCatName}
+          onNameBlur={commitNameBlur}
           onUpdateUpper={updateCatUpper}
           onToggleVerification={toggleCatVerification}
           onSplit={splitCat}
           onMergeUp={mergeCatUp}
         />
 
+        {preview && (
+          <div className="mt-4 p-3 rounded border border-border bg-muted/30 text-sm space-y-2">
+            <p className="font-medium">Preview (no writes)</p>
+            <p className="text-muted-foreground">
+              Remap: {JSON.stringify((preview as { remap?: unknown }).remap || {})}
+            </p>
+            <ul className="text-xs text-muted-foreground grid sm:grid-cols-2 gap-1">
+              {Object.entries(((preview as { counts?: Record<string, number> }).counts) || {}).map(([k, v]) => (
+                <li key={k}>{k}: {String(v)}</li>
+              ))}
+            </ul>
+            {Array.isArray((preview as { samples?: { riders?: unknown[] } }).samples?.riders) &&
+              ((preview as { samples: { riders: unknown[] } }).samples.riders.length > 0) && (
+              <pre className="text-xs overflow-auto max-h-40 bg-background p-2 rounded border border-border">
+                {JSON.stringify((preview as { samples: { riders: unknown[] } }).samples.riders, null, 2)}
+              </pre>
+            )}
+            {Array.isArray((preview as { samples?: { races?: unknown[] } }).samples?.races) &&
+              ((preview as { samples: { races: unknown[] } }).samples.races.length > 0) && (
+              <div>
+                <p className="text-xs font-medium mt-2">Race name strings</p>
+                <pre className="text-xs overflow-auto max-h-32 bg-background p-2 rounded border border-border">
+                  {JSON.stringify((preview as { samples: { races: unknown[] } }).samples.races, null, 2)}
+                </pre>
+              </div>
+            )}
+            {Array.isArray((preview as { samples?: { signups?: unknown[] } }).samples?.signups) &&
+              ((preview as { samples: { signups: unknown[] } }).samples.signups.length > 0) && (
+              <div>
+                <p className="text-xs font-medium mt-2">Signup ligaCategory</p>
+                <pre className="text-xs overflow-auto max-h-32 bg-background p-2 rounded border border-border">
+                  {JSON.stringify((preview as { samples: { signups: unknown[] } }).samples.signups, null, 2)}
+                </pre>
+              </div>
+            )}
+          </div>
+        )}
+
         <p className="text-xs text-muted-foreground mt-3">
           <strong>Split</strong> divides a category at its midpoint. <strong>Merge ↑</strong> absorbs a category into the one above it.
-          Edit names freely; boundaries are derived from upper values. Categories are locked to a rider after their first race.
+          Rename commits when you leave the name field. Categories are locked to a rider after their first race.
         </p>
       </div>
 
@@ -430,7 +587,7 @@ export default function CategoryManager() {
         onRefresh={() => refetchRiders()}
         onReassign={handleReassign}
         onReleaseManual={handleReleaseManual}
-        categoryOptions={effectiveLigaCategories.map(c => c.name)}
+        categoryOptions={savedNames}
         onAssignManual={handleAssignManual}
         assigningZwiftId={assigningZwiftId}
       />

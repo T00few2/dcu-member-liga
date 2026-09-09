@@ -27,6 +27,7 @@ import routes.admin_verification_dual_routes  # noqa: E402, F401
 import routes.admin_trainers        # noqa: E402, F401
 import routes.admin_liga_categories_refresh_routes  # noqa: E402, F401
 import routes.admin_liga_categories_management_routes  # noqa: E402, F401
+import routes.admin_race_structure_routes  # noqa: E402, F401
 import routes.admin_season          # noqa: E402, F401
 import routes.admin_stats           # noqa: E402, F401
 import routes.admin_users           # noqa: E402, F401

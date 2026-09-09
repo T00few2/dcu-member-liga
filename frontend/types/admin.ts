@@ -299,6 +299,7 @@ export interface LeagueSettings {
     seasonRankPoints?: SeasonRankPoints;
     seasonBestResultsCount?: number;
     ligaCategories?: { name: string; upper?: number | null; requiresVerification?: boolean }[];
+    ligaCategoriesFingerprint?: string;
     weightVerificationValidDays?: number;
     /** Season race defaults — cloned into new races; not stored on race docs. */
     defaultEventMode?: EventMode;

@@ -33,9 +33,9 @@ def verification_category_names(liga_categories: Iterable[Any] | None) -> set[st
     return names
 
 
-def effective_user_category(liga_category: Any) -> str:
+def effective_user_category(liga_category: Any, categories=None) -> str:
     """Effective liga category for a user doc (locked / manual / self-selected / auto)."""
-    return effective_liga_category_name(liga_category)
+    return effective_liga_category_name(liga_category, categories)
 
 
 def _load_liga_settings(db_client) -> dict:

@@ -19,6 +19,7 @@ from services.category_engine import (
     reassign_to_next_category,
     serialize_liga_category,
 )
+from services.liga_categories_config import ConfigApplyError, run_liga_categories_config
 from services.liga_categories_core import (
     _compute_liga_update,
     _load_liga_settings,
@@ -40,7 +41,7 @@ _FIRESTORE_BATCH_SIZE = 400
 
 @admin_bp.route("/admin/liga-categories/config", methods=["POST"])
 def save_liga_categories_config():
-    """Save custom liga category definitions to league settings."""
+    """Save custom liga category definitions and remap stored names (dry-run or apply)."""
     try:
         require_admin(request)
     except AuthzError as e:
@@ -51,49 +52,21 @@ def save_liga_categories_config():
 
     try:
         body = request.get_json(silent=True) or {}
-        categories = body.get("categories")
-
-        if not categories or not isinstance(categories, list):
-            return jsonify({"message": "'categories' must be a non-empty list"}), 400
-        if len(categories) < 2:
-            return jsonify({"message": "At least 2 categories are required"}), 400
-
-        for cat in categories:
-            name = cat.get("name", "")
-            if not isinstance(name, str) or not name.strip():
-                return jsonify({"message": "Each category must have a non-empty name"}), 400
-            upper = cat.get("upper")
-            if upper is not None and not isinstance(upper, (int, float)):
-                return jsonify({"message": "upper must be a number or null"}), 400
-
-        null_upper_count = sum(1 for c in categories if c.get("upper") is None)
-        if null_upper_count != 1:
-            return jsonify({"message": "Exactly one category must have upper=null (the top)"}), 400
-        if categories[0].get("upper") is not None:
-            return jsonify({"message": "The category with upper=null must be first"}), 400
-
-        uppers = [c["upper"] for c in categories[1:]]
-        for i in range(len(uppers) - 1):
-            if uppers[i] is not None and uppers[i + 1] is not None and uppers[i] <= uppers[i + 1]:
-                return jsonify({"message": "Upper boundaries must be strictly decreasing"}), 400
-
-        normalised = [
-            {
-                "name": c["name"].strip(),
-                "upper": int(c["upper"]) if c.get("upper") is not None else None,
-                "requiresVerification": bool(c.get("requiresVerification")),
-            }
-            for c in categories
-        ]
-
-        settings_update = with_schema_version({"ligaCategories": normalised})
-        log_schema_issues(
+        dry_run = bool(body.get("dryRun"))
+        grace_raw = body.get("gracePeriod")
+        grace_period = int(grace_raw) if grace_raw is not None else None
+        result = run_liga_categories_config(
+            db,
             logger,
-            "league/settings (liga categories config)",
-            validate_league_settings_doc(settings_update, partial=True),
+            submitted_raw=body.get("categories") or [],
+            ops=body.get("changelog") or body.get("ops") or [],
+            dry_run=dry_run,
+            expected_fingerprint=body.get("expectedFingerprint"),
+            grace_period=grace_period,
         )
-        db.collection("league").document("settings").set(settings_update, merge=True)
-        return jsonify({"message": "Category configuration saved", "count": len(normalised)}), 200
+        return jsonify(result), 200
+    except ConfigApplyError as e:
+        return jsonify({"message": e.message}), e.status_code
     except Exception as e:
         logger.error("Save liga categories config error: %s", e)
         return jsonify({"message": str(e)}), 500
@@ -101,7 +74,11 @@ def save_liga_categories_config():
 
 @admin_bp.route("/admin/assign-liga-categories", methods=["POST"])
 def assign_liga_categories():
-    """Bulk-assign liga categories to all registered riders from effective vELO."""
+    """Bulk-assign liga categories to all registered riders from effective vELO.
+
+    Uses saved ``league/settings`` only. Unsaved editor bands in the request
+    body are ignored — Preview/Save is how config remaps apply.
+    """
     try:
         require_admin(request)
     except AuthzError as e:
@@ -111,21 +88,12 @@ def assign_liga_categories():
         return jsonify({"error": "DB not available"}), 500
 
     try:
-        body = request.get_json(silent=True) or {}
         settings_doc = db.collection("league").document("settings").get()
         settings = settings_doc.to_dict() if settings_doc.exists else {}
 
-        grace_period = int(body.get("gracePeriod", settings.get("gracePeriod", 35)))
-        cat_defs = body.get("categories") or settings.get("ligaCategories")
+        grace_period = int(settings.get("gracePeriod", 35))
+        cat_defs = settings.get("ligaCategories")
         categories = cats_from_defs(cat_defs) if cat_defs else None
-
-        settings_update = with_schema_version({"gracePeriod": grace_period})
-        log_schema_issues(
-            logger,
-            "league/settings (gracePeriod)",
-            validate_league_settings_doc(settings_update, partial=True),
-        )
-        db.collection("league").document("settings").set(settings_update, merge=True)
 
         docs = db.collection("users").where("registration.status", "==", "complete").stream()
 
@@ -204,21 +172,12 @@ def reset_liga_category_assignments():
         return jsonify({"error": "DB not available"}), 500
 
     try:
-        body = request.get_json(silent=True) or {}
         settings_doc = db.collection("league").document("settings").get()
         settings = settings_doc.to_dict() if settings_doc.exists else {}
 
-        grace_period = int(body.get("gracePeriod", settings.get("gracePeriod", 35)))
-        cat_defs = body.get("categories") or settings.get("ligaCategories")
+        grace_period = int(settings.get("gracePeriod", 35))
+        cat_defs = settings.get("ligaCategories")
         categories = cats_from_defs(cat_defs) if cat_defs else None
-
-        settings_update = with_schema_version({"gracePeriod": grace_period})
-        log_schema_issues(
-            logger,
-            "league/settings (gracePeriod via reset)",
-            validate_league_settings_doc(settings_update, partial=True),
-        )
-        db.collection("league").document("settings").set(settings_update, merge=True)
 
         docs = db.collection("users").where("registration.status", "==", "complete").stream()
 
@@ -314,12 +273,13 @@ def get_liga_categories():
         return jsonify({"error": "DB not available"}), 500
 
     try:
+        rank_cats = _resolve_categories(_load_liga_settings(db))
         docs = db.collection("users").where("registration.status", "==", "complete").stream()
 
         riders = []
         for doc in docs:
             data = doc.to_dict() or {}
-            lc = serialize_liga_category(data.get("ligaCategory"))
+            lc = serialize_liga_category(data.get("ligaCategory"), rank_cats)
             zr = data.get("zwiftRacing", {})
             current_rating = zr.get("currentRating", "N/A")
             max30_rating = zr.get("max30Rating", "N/A")

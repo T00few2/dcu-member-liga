@@ -4,6 +4,8 @@ import { useCallback } from 'react';
 import { db } from '@/lib/firebase';
 import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { useAuth } from '@/lib/auth-context';
+import { useLeagueSettingsQuery } from '@/hooks/queries';
+import { categoryRankOrder } from '@/lib/ligaCategories';
 import type {
     Race,
     RaceResult,
@@ -19,11 +21,6 @@ import StickyWattsStatusBadge from '@/components/StickyWattsStatusBadge';
 import DualRecordingResultModal from '@/components/DualRecordingResultModal';
 import ComposeEmailModal from '@/components/admin/ComposeEmailModal';
 import EmailRecipientControls from '@/components/admin/EmailRecipientControls';
-
-const CATEGORY_RANK = [
-    'Diamond', 'Ruby', 'Emerald', 'Sapphire', 'Amethyst', 'Platinum', 'Gold', 'Silver', 'Bronze', 'Copper',
-    'A', 'B', 'C', 'D', 'E',
-];
 
 interface ResultsModalProps {
     race: Race | null;
@@ -47,6 +44,8 @@ const formatDisplayDate = (value: unknown): string => {
 
 export default function ResultsModal({ race, status, onClose, onRaceUpdate, embedded = false }: ResultsModalProps) {
     const { user } = useAuth();
+    const { data: leagueSettings } = useLeagueSettingsQuery();
+    const rankOrder = categoryRankOrder(leagueSettings);
 
     const verifications = useAdminVerifications({ user, raceId: race?.id });
 
@@ -114,7 +113,7 @@ export default function ResultsModal({ race, status, onClose, onRaceUpdate, embe
     if (!race) return null;
 
     const results = race.results || {};
-    const rankIndex = new Map<string, number>(CATEGORY_RANK.map((cat, idx) => [cat.toLowerCase(), idx]));
+    const rankIndex = new Map<string, number>(rankOrder.map((cat, idx) => [cat.toLowerCase(), idx]));
     let categories = Object.keys(results);
 
     if (race.eventMode === 'multi' && race.eventConfiguration) {

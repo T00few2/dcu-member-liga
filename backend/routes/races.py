@@ -10,6 +10,7 @@ from services.results.constants import (
 )
 from services.results.errors import FatalResultsError, ResultsProcessingError
 from services.category_engine import build_liga_category, effective_liga_category_name, effective_rating
+from services.liga_categories_core import _load_liga_settings, _resolve_categories
 from services.schema_validation import log_schema_issues, validate_race_doc, with_schema_version
 from datetime import datetime, timedelta, timezone
 from authz import require_admin, require_scheduler, verify_user_token, AuthzError
@@ -92,6 +93,10 @@ def _lock_categories_for_race(race_id):
         if not zwift_ids:
             return
 
+        liga_settings = _load_liga_settings(db)
+        rank_cats = _resolve_categories(liga_settings)
+        grace_period = int(liga_settings.get("gracePeriod", 35))
+
         # Build zwiftId → doc_id map from user collection (only registered riders)
         docs = (
             db.collection('users')
@@ -118,13 +123,13 @@ def _lock_categories_for_race(race_id):
                         zr.get('max90Rating', 'N/A'),
                     )
                     if eff is not None:
-                        recomputed = build_liga_category(eff)
+                        recomputed = build_liga_category(eff, grace_period, rank_cats)
                         auto_cat = recomputed['category']
                     else:
                         auto_cat = auto.get('category')
                     raced_category = raced_category_by_zwift_id.get(str(data.get('zwiftId', '')).strip())
                     fallback_lc = {**lc, 'autoAssigned': {**auto, 'category': auto_cat}}
-                    effective = raced_category or effective_liga_category_name(fallback_lc)
+                    effective = raced_category or effective_liga_category_name(fallback_lc, rank_cats)
                     batch.update(doc.reference, {
                         'ligaCategory.locked': True,
                         'ligaCategory.lockedAt': firestore.SERVER_TIMESTAMP,
@@ -361,7 +366,25 @@ def _hydrate_event_config_subgroup_ids(data: dict[str, Any]) -> tuple[dict[str, 
     return data, warnings
 
 
-def _resolve_effective_user_category(liga_category: Any) -> str:
+def _ranking_categories():
+    """Liga bands for ranking; ZR defaults if settings are unavailable."""
+    try:
+        from flask import g, has_request_context
+        from services.liga_categories_core import _load_liga_settings, _resolve_categories
+
+        if has_request_context() and db:
+            if getattr(g, "_liga_rank_cats_loaded", False):
+                return getattr(g, "_liga_rank_cats", None)
+            cats = _resolve_categories(_load_liga_settings(db))
+            g._liga_rank_cats = cats
+            g._liga_rank_cats_loaded = True
+            return cats
+    except Exception:
+        pass
+    return None
+
+
+def _resolve_effective_user_category(liga_category: Any, categories=None) -> str:
     """Return the effective liga category for a user document.
 
     Unlocked riders do not have a top-level ``ligaCategory.category`` field
@@ -372,7 +395,8 @@ def _resolve_effective_user_category(liga_category: Any) -> str:
     ``serialize_liga_category`` so signup uses the same effective category that
     the frontend displays to the user.
     """
-    return effective_liga_category_name(liga_category)
+    cats = categories if categories is not None else _ranking_categories()
+    return effective_liga_category_name(liga_category, cats)
 
 
 def _pick_mode_config_for_user(race_data: dict[str, Any], user_category: str) -> tuple[str | None, str | None, str | None]:

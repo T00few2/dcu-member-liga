@@ -519,7 +519,11 @@ def _try_link_and_verify_activity(
 
         from services.dual_recording.scope import is_dr_candidate  # noqa: PLC0415
         from services.dual_recording_admin_core import resolve_rider_category_row  # noqa: PLC0415
-        from services.liga_categories_core import effective_user_category  # noqa: PLC0415
+        from services.liga_categories_core import (  # noqa: PLC0415
+            _load_liga_settings,
+            _resolve_categories,
+            effective_user_category,
+        )
 
         race_doc = db_ref.collection('races').document(matched_race_id).get()
         race_data = race_doc.to_dict() if race_doc.exists else {}
@@ -533,7 +537,8 @@ def _try_link_and_verify_activity(
             result_category, _ = resolve_rider_category_row(race_data or {}, str(user_doc_id))
         category_for_gate = str(result_category or '').strip()
         if not category_for_gate:
-            category_for_gate = effective_user_category(user_data.get('ligaCategory'))
+            rank_cats = _resolve_categories(_load_liga_settings(db_ref))
+            category_for_gate = effective_user_category(user_data.get('ligaCategory'), rank_cats)
 
         included, _source = is_dr_candidate(
             db_ref,

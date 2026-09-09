@@ -15,7 +15,7 @@ vi.mock('@/lib/auth-context', () => ({
 }));
 
 vi.mock('@tanstack/react-query', () => ({
-  useQueryClient: () => ({ invalidateQueries: vi.fn() }),
+  useQueryClient: () => ({ invalidateQueries: vi.fn(), setQueryData: vi.fn() }),
 }));
 
 vi.mock('@/hooks/queries/useLigaCategoriesQuery', () => ({
@@ -109,5 +109,30 @@ describe('CategoryManager race signup filter', () => {
     expect(screen.getByText('1 signed up for Opening Race')).toBeInTheDocument();
     expect(screen.queryByText('Ada Lovelace')).not.toBeInTheDocument();
     expect(screen.getByText('Grace Hopper')).toBeInTheDocument();
+  });
+
+  it('Assign posts an empty body and is disabled while the editor is dirty', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ assigned: 1, skipped: 0 }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    vi.spyOn(window, 'alert').mockImplementation(() => {});
+
+    render(<CategoryManager />);
+    const assignBtn = screen.getByRole('button', { name: 'Assign Liga Categories' });
+    expect(assignBtn).toBeEnabled();
+
+    await user.click(assignBtn);
+    const assignCall = fetchMock.mock.calls.find((call) =>
+      String(call[0]).includes('/admin/assign-liga-categories'),
+    );
+    expect(assignCall).toBeTruthy();
+    expect(JSON.parse(String(assignCall?.[1]?.body))).toEqual({});
+
+    await user.click(screen.getByRole('button', { name: 'Load ZR Defaults' }));
+    expect(assignBtn).toBeDisabled();
   });
 });

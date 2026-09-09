@@ -37,6 +37,7 @@ export interface RaceFormContextValue {
     onUpdateGroupCategory: (groupIndex: number, catIndex: number, field: keyof RaceGroupCategoryConfig, value: RaceGroupCategoryConfig[keyof RaceGroupCategoryConfig]) => void;
     onToggleGroupCategorySprint: (groupIndex: number, catIndex: number, seg: Segment) => void;
     onToggleGroupSprint: (groupIndex: number, seg: Segment) => void;
+    categoryOptions?: string[];
 }
 
 const RaceFormContext = createContext<RaceFormContextValue | null>(null);
