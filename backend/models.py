@@ -67,6 +67,20 @@ class RaceSignupDoc(TypedDict, total=False):
     lastError: str
 
 
+class StreamRiderDoc(TypedDict, total=False):
+    """Stored in races/{raceId}/streamRiders/{zwiftId}. Zwift pen only; not a liga signup."""
+    zwiftId: str
+    raceId: str
+    publicId: str
+    category: str
+    status: str  # 'registered' | 'failed'
+    addedAt: str
+    zwiftRegisteredAt: str
+    subgroupId: str
+    eventId: str
+    lastError: str
+
+
 class DualRecordingVerification(TypedDict, total=False):
     """Stored in races/{raceId}/dr_verifications/{zwiftId}."""
     status: str           # 'passed' | 'failed' | 'missing_strava' | 'missing_activity' | 'error'

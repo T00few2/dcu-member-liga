@@ -141,6 +141,13 @@
       "items": {
         "$ref": "#/$defs/raceSignupDoc"
       }
+    },
+    "streamRiders": {
+      "type": "array",
+      "description": "Collection-group view of races/{raceId}/streamRiders documents. Zwift-only dummy accounts for streaming; not liga users or race signups.",
+      "items": {
+        "$ref": "#/$defs/streamRiderDoc"
+      }
     }
   },
   "$defs": {
@@ -767,6 +774,50 @@
           "enum": ["pending", "registered", "failed"]
         },
         "signedUpAt": {
+          "$ref": "#/$defs/timestampString"
+        },
+        "zwiftRegisteredAt": {
+          "$ref": "#/$defs/timestampString"
+        },
+        "subgroupId": {
+          "type": "string"
+        },
+        "eventId": {
+          "type": "string"
+        },
+        "lastError": {
+          "type": "string"
+        }
+      }
+    },
+    "streamRiderDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Stored at races/{raceId}/streamRiders/{zwiftId}. Zwift pen registration only.",
+      "properties": {
+        "_id": {
+          "type": "string",
+          "description": "Numeric Zwift profile id or public UUID"
+        },
+        "zwiftId": {
+          "type": "string"
+        },
+        "raceId": {
+          "type": "string"
+        },
+        "publicId": {
+          "type": "string",
+          "description": "Zwift public UUID used by batch-register"
+        },
+        "category": {
+          "type": "string",
+          "description": "Liga category whose Zwift pen this rider is registered on"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["registered", "failed"]
+        },
+        "addedAt": {
           "$ref": "#/$defs/timestampString"
         },
         "zwiftRegisteredAt": {

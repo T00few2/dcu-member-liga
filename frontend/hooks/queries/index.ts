@@ -18,6 +18,7 @@ export { useUsersOverviewQuery } from './useUsersOverviewQuery';
 export { useUserDetailsQuery } from './useUserDetailsQuery';
 export { useLigaCategoriesQuery } from './useLigaCategoriesQuery';
 export type { LigaCategoryRider } from './useLigaCategoriesQuery';
+export { useStreamRidersQuery } from './useStreamRidersQuery';
 export { usePoliciesMetaQuery, usePoliciesVersionsQuery } from './usePoliciesQuery';
 export type { PolicyVersion, PolicyMeta, PolicyMetaResult, PolicyVersionsResult } from './usePoliciesQuery';
 export { usePolicyDocQuery } from './usePolicyDocQuery';

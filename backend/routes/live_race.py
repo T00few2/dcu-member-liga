@@ -13,6 +13,7 @@ from flask import Blueprint, jsonify, request
 
 from extensions import db, get_zwift_service, get_zwift_game_service
 from routes.races import resolve_signup_subgroup_id
+from services.stream_riders import stream_rider_hide_ids
 from services.results.constants import (
     CATEGORY_FILTER_ALL,
     DEFAULT_PROVISIONAL_REFRESH_SECONDS,
@@ -453,7 +454,9 @@ def get_live_riders_for_race(race_id: str):
         msg = err or f'No subgroupId for category {category!r}'
         return jsonify({'message': msg}), 404
 
-    cache_key = f'{race_id}:{subgroup_id}:{category}'
+    hide_ids = stream_rider_hide_ids(race_id)
+    hide_key = ",".join(sorted(hide_ids))
+    cache_key = f'{race_id}:{subgroup_id}:{category}:{hide_key}'
     now = time.time()
     cached = _LIVE_RIDERS_CACHE.get(cache_key)
     if cached and (now - cached[0]) < _CACHE_TTL_SEC:
@@ -474,6 +477,8 @@ def get_live_riders_for_race(race_id: str):
 
     for row in raw_rows:
         user_id = str(row.get('userId') or '').strip()
+        if user_id.lower() in hide_ids:
+            continue
         profile = registered.get(user_id)
         zwift_id = str(profile.get('zwiftId')) if profile and profile.get('zwiftId') else None
         riders_out.append(

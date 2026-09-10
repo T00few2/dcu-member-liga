@@ -593,6 +593,21 @@
       "lastError": ""
     }
   ],
+  "streamRiders": [
+    {
+      "_id": "9990001",
+      "zwiftId": "9990001",
+      "raceId": "race_doc_example_001",
+      "publicId": "00000000-0000-4000-8000-000000000001",
+      "category": "1. Division",
+      "status": "registered",
+      "addedAt": "2026-09-10T12:00:00+00:00",
+      "zwiftRegisteredAt": "2026-09-10T12:00:01+00:00",
+      "subgroupId": "7340598",
+      "eventId": "5701604",
+      "lastError": ""
+    }
+  ],
   "weight_history": [
     {
       "_id": "wh_20260515T001500Z_100001",

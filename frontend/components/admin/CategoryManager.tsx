@@ -14,6 +14,7 @@ import RaceSignupSelect from '@/components/RaceSignupSelect';
 
 import CategoryBoundaryEditor from './category-manager/CategoryBoundaryEditor';
 import CategoryList from './category-manager/CategoryList';
+import StreamRidersPanel from './category-manager/StreamRidersPanel';
 import {
   ZR_CATEGORY_DEFAULTS,
   type CategoryChangelogOp,
@@ -543,6 +544,14 @@ export default function CategoryManager() {
           Rename commits when you leave the name field. Categories are locked to a rider after their first race.
         </p>
       </div>
+
+      {selectedRaceId ? (
+        <StreamRidersPanel
+          raceId={selectedRaceId}
+          raceName={selectedRace?.name}
+          categoryOptions={savedNames}
+        />
+      ) : null}
 
       {/* ── Status Summary ── */}
       {assigned.length > 0 && (
