@@ -337,6 +337,10 @@
               "requiresVerification": {
                 "type": "boolean",
                 "description": "When true, riders in this category are in scope for weight verification sampling and dual-recording reports"
+              },
+              "color": {
+                "type": "string",
+                "description": "Badge hex color (#RRGGBB) for this liga category on Deltagere and related UI"
               }
             }
           }

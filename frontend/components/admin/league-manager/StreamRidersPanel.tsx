@@ -7,16 +7,25 @@ import {
   useStreamRidersQuery,
 } from '@/hooks/queries/useStreamRidersQuery';
 
+interface StreamRaceOption {
+  id: string;
+  name: string;
+}
+
 interface StreamRidersPanelProps {
   raceId: string;
   raceName?: string;
   categoryOptions: string[];
+  races?: StreamRaceOption[];
+  onRaceChange?: (raceId: string) => void;
 }
 
 export default function StreamRidersPanel({
   raceId,
   raceName,
   categoryOptions,
+  races,
+  onRaceChange,
 }: StreamRidersPanelProps) {
   const defaultCat = categoryOptions[0] || '';
   const [category, setCategory] = useState(defaultCat);
@@ -62,7 +71,7 @@ export default function StreamRidersPanel({
   }
 
   return (
-    <div className="bg-card p-6 rounded-lg shadow border border-border">
+    <div className="bg-card p-6 rounded-lg shadow mb-8 border border-border">
       <h2 className="text-xl font-semibold text-card-foreground mb-1">Stream riders</h2>
       <p className="text-sm text-muted-foreground mb-4">
         Register Zwift-only accounts onto a category pen for {raceName || 'this race'}.
@@ -70,6 +79,20 @@ export default function StreamRidersPanel({
       </p>
 
       <form onSubmit={handleAdd} className="flex flex-wrap items-end gap-2 mb-4">
+        {races && races.length > 0 && onRaceChange ? (
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            Race
+            <select
+              value={raceId}
+              onChange={e => onRaceChange(e.target.value)}
+              className="px-2 py-1.5 border border-input rounded bg-background text-foreground text-sm min-w-[12rem]"
+            >
+              {races.map(race => (
+                <option key={race.id} value={race.id}>{race.name}</option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           Category
           <select
@@ -102,7 +125,7 @@ export default function StreamRidersPanel({
         </label>
         <button
           type="submit"
-          disabled={addMutation.isPending || !effectiveCategory}
+          disabled={addMutation.isPending || !effectiveCategory || !raceId}
           className="px-3 py-1.5 rounded text-sm bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 font-medium"
         >
           {addMutation.isPending ? 'Signing up…' : 'Sign up'}

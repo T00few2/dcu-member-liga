@@ -2,19 +2,26 @@ export type LigaCategoryDef = {
   name: string;
   upper?: number | null;
   requiresVerification?: boolean;
+  /** Badge background as #RRGGBB. */
+  color?: string;
+};
+
+export type CategoryBadgeColors = {
+  backgroundColor: string;
+  color: string;
 };
 
 export const ZR_CATEGORY_DEFAULTS: LigaCategoryDef[] = [
-  { name: 'Diamond', upper: null, requiresVerification: true },
-  { name: 'Ruby', upper: 2200, requiresVerification: true },
-  { name: 'Emerald', upper: 1900, requiresVerification: false },
-  { name: 'Sapphire', upper: 1650, requiresVerification: false },
-  { name: 'Amethyst', upper: 1450, requiresVerification: false },
-  { name: 'Platinum', upper: 1300, requiresVerification: false },
-  { name: 'Gold', upper: 1150, requiresVerification: false },
-  { name: 'Silver', upper: 1000, requiresVerification: false },
-  { name: 'Bronze', upper: 850, requiresVerification: false },
-  { name: 'Copper', upper: 650, requiresVerification: false },
+  { name: 'Diamond', upper: null, requiresVerification: true, color: '#b9f2ff' },
+  { name: 'Ruby', upper: 2200, requiresVerification: true, color: '#ff4e6a' },
+  { name: 'Emerald', upper: 1900, requiresVerification: false, color: '#50c878' },
+  { name: 'Sapphire', upper: 1650, requiresVerification: false, color: '#0f52ba' },
+  { name: 'Amethyst', upper: 1450, requiresVerification: false, color: '#9b59b6' },
+  { name: 'Platinum', upper: 1300, requiresVerification: false, color: '#e5e4e2' },
+  { name: 'Gold', upper: 1150, requiresVerification: false, color: '#ffd700' },
+  { name: 'Silver', upper: 1000, requiresVerification: false, color: '#c0c0c0' },
+  { name: 'Bronze', upper: 850, requiresVerification: false, color: '#cd7f32' },
+  { name: 'Copper', upper: 650, requiresVerification: false, color: '#b87333' },
 ];
 
 export const ZR_CATEGORY_STYLES: Record<string, string> = {
@@ -44,6 +51,28 @@ export const ZR_CATEGORY_GEMS: Record<string, { gem: string; color: string; text
 };
 
 const LETTER_CATS = ['A', 'B', 'C', 'D', 'E'];
+
+/** Official Zwift A–E badge colors (white letter on the category disc). */
+export const ZWIFT_CATEGORY_COLORS: Record<string, CategoryBadgeColors> = {
+  A: { backgroundColor: '#e53935', color: '#ffffff' },
+  B: { backgroundColor: '#43a047', color: '#ffffff' },
+  C: { backgroundColor: '#00bcd4', color: '#ffffff' },
+  D: { backgroundColor: '#fbc02d', color: '#ffffff' },
+  E: { backgroundColor: '#8e24aa', color: '#ffffff' },
+};
+
+export const CATEGORY_COLOR_PRESETS = [
+  '#1d4ed8',
+  '#0f766e',
+  '#7c3aed',
+  '#c2410c',
+  '#a16207',
+  '#334155',
+  '#be123c',
+  '#0369a1',
+  '#4d7c0f',
+  '#6d28d9',
+];
 
 export function effectiveLigaCategories(
   settings?: { ligaCategories?: LigaCategoryDef[] } | null,
@@ -80,8 +109,85 @@ export function veloForCategory(catName: string, cats: LigaCategoryDef[]): numbe
   return upper == null ? lower + 300 : Math.round((upper + lower) / 2);
 }
 
-export function categoryStyle(name: string): string {
-  return ZR_CATEGORY_STYLES[name] ?? 'bg-slate-100 text-slate-800';
+export function parseCategoryHex(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const s = raw.trim();
+  if (/^#[0-9A-Fa-f]{6}$/.test(s)) return s.toLowerCase();
+  if (/^#[0-9A-Fa-f]{3}$/.test(s)) {
+    return `#${s[1]}${s[1]}${s[2]}${s[2]}${s[3]}${s[3]}`.toLowerCase();
+  }
+  return null;
+}
+
+export function contrastTextColor(bg: string): string {
+  const hex = parseCategoryHex(bg);
+  if (!hex) return '#1f2937';
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+  return yiq >= 150 ? '#1f2937' : '#ffffff';
+}
+
+export function zwiftCategoryColors(name: string): CategoryBadgeColors | null {
+  const key = name.trim().toUpperCase();
+  if (key.length === 1 && ZWIFT_CATEGORY_COLORS[key]) return ZWIFT_CATEGORY_COLORS[key];
+  return null;
+}
+
+export function fallbackCategoryHex(index: number): string {
+  return CATEGORY_COLOR_PRESETS[index % CATEGORY_COLOR_PRESETS.length];
+}
+
+export function editorColorForCategory(cat: LigaCategoryDef, index: number): string {
+  return parseCategoryHex(cat.color) ?? fallbackCategoryHex(index);
+}
+
+export function categoryColors(
+  name: string,
+  cats?: LigaCategoryDef[] | null,
+): CategoryBadgeColors | null {
+  const zwift = zwiftCategoryColors(name);
+  if (zwift) return zwift;
+
+  const trimmed = name.trim();
+  const idx = cats?.findIndex((c) => c.name === trimmed) ?? -1;
+  const def = idx >= 0 ? cats![idx] : undefined;
+  const stored = parseCategoryHex(def?.color);
+  if (stored) return { backgroundColor: stored, color: contrastTextColor(stored) };
+
+  const gem = ZR_CATEGORY_GEMS[trimmed];
+  if (gem) return { backgroundColor: gem.color, color: gem.textColor };
+
+  if (idx >= 0) {
+    const fallback = fallbackCategoryHex(idx);
+    return { backgroundColor: fallback, color: contrastTextColor(fallback) };
+  }
+  return null;
+}
+
+export function categoryBadgeAppearance(
+  name: string,
+  cats?: LigaCategoryDef[] | null,
+): { className: string; style?: CategoryBadgeColors } {
+  const colors = categoryColors(name, cats);
+  if (colors) return { className: '', style: colors };
+  return { className: ZR_CATEGORY_STYLES[name] ?? 'bg-slate-100 text-slate-800' };
+}
+
+export function categoryStyle(name: string, cats?: LigaCategoryDef[] | null): string {
+  const zwift = name.trim().toUpperCase();
+  if (zwift.length === 1 && ZWIFT_CATEGORY_COLORS[zwift]) {
+    const tw: Record<string, string> = {
+      A: 'bg-red-600 text-white',
+      B: 'bg-green-600 text-white',
+      C: 'bg-cyan-500 text-white',
+      D: 'bg-yellow-400 text-white',
+      E: 'bg-purple-700 text-white',
+    };
+    return tw[zwift];
+  }
+  return categoryBadgeAppearance(name, cats).className || 'bg-slate-100 text-slate-800';
 }
 
 export function catLower(cats: LigaCategoryDef[], index: number): number {

@@ -235,7 +235,7 @@ export default function CategoryPredictorRoster({
                   </td>
                   <td className="px-3 py-2 text-center">
                     {locked ? (
-                      assigned ? <CategoryBadge name={assigned} compact /> : <Dash />
+                      assigned ? <CategoryBadge name={assigned} compact categories={categories} /> : <Dash />
                     ) : (
                       <select
                         aria-label={`Category for ${p.name}`}
@@ -263,10 +263,10 @@ export default function CategoryPredictorRoster({
                     )}
                   </td>
                   <td className="px-3 py-2 text-center border-l border-border">
-                    {zwiftPred.catLow ? <CategoryBadge name={zwiftPred.catLow} compact /> : <Dash />}
+                    {zwiftPred.catLow ? <CategoryBadge name={zwiftPred.catLow} compact categories={categories} /> : <Dash />}
                   </td>
                   <td className="px-3 py-2 text-center">
-                    {zwiftPred.catHigh ? <CategoryBadge name={zwiftPred.catHigh} compact /> : <Dash />}
+                    {zwiftPred.catHigh ? <CategoryBadge name={zwiftPred.catHigh} compact categories={categories} /> : <Dash />}
                   </td>
                   <td
                     className="px-3 py-2 text-center text-xs text-muted-foreground tabular-nums whitespace-nowrap"
@@ -278,7 +278,7 @@ export default function CategoryPredictorRoster({
                     {stravaLoading ? (
                       <span className="text-xs text-muted-foreground">…</span>
                     ) : stravaPred.catLow ? (
-                      <CategoryBadge name={stravaPred.catLow} compact />
+                      <CategoryBadge name={stravaPred.catLow} compact categories={categories} />
                     ) : (
                       <Dash title={stravaEntry?.error} />
                     )}
@@ -287,7 +287,7 @@ export default function CategoryPredictorRoster({
                     {stravaLoading ? (
                       <span className="text-xs text-muted-foreground">…</span>
                     ) : stravaPred.catHigh ? (
-                      <CategoryBadge name={stravaPred.catHigh} compact />
+                      <CategoryBadge name={stravaPred.catHigh} compact categories={categories} />
                     ) : (
                       <Dash title={stravaEntry?.error} />
                     )}

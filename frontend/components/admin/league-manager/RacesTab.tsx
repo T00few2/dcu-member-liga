@@ -11,6 +11,7 @@ import { ligaCategoryNames } from '@/lib/ligaCategories';
 import { overlayRaceGroups } from '@/lib/overlayRaceGroups';
 import RaceForm from './RaceForm';
 import RaceList from './RaceList';
+import StreamRidersPanel from './StreamRidersPanel';
 
 interface RacesTabProps {
     user: User | null;
@@ -32,6 +33,7 @@ export default function RacesTab({
     const queryClient = useQueryClient();
     const raceForm = useRaceForm();
     const [availableSegments, setAvailableSegments] = useState<Segment[]>([]);
+    const [streamRaceId, setStreamRaceId] = useState('');
 
     const eventConfigLapSig = raceForm.formState.eventConfiguration.map(c => c.laps ?? 0).join(',');
     const singleCatLapSig = raceForm.formState.singleModeCategories.map(c => c.laps ?? 0).join(',');
@@ -64,8 +66,21 @@ export default function RacesTab({
         raceGroupLapSig,
     ]);
 
+    useEffect(() => {
+        const editingId = raceForm.formState.editingRaceId;
+        if (editingId) {
+            setStreamRaceId(editingId);
+            return;
+        }
+        setStreamRaceId(prev => {
+            if (prev && races.some(r => r.id === prev)) return prev;
+            return races[0]?.id || '';
+        });
+    }, [raceForm.formState.editingRaceId, races]);
+
     const handleEdit = useCallback((race: Race) => {
         raceForm.loadRace(race);
+        setStreamRaceId(race.id);
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }, [raceForm]);
 
@@ -199,6 +214,16 @@ export default function RacesTab({
 
     return (
         <>
+            {streamRaceId ? (
+                <StreamRidersPanel
+                    raceId={streamRaceId}
+                    raceName={races.find(r => r.id === streamRaceId)?.name}
+                    categoryOptions={ligaCategoryNames(leagueSettings)}
+                    races={races.map(r => ({ id: r.id, name: r.name }))}
+                    onRaceChange={setStreamRaceId}
+                />
+            ) : null}
+
             {/* Race Form */}
             <RaceForm
                 user={user}

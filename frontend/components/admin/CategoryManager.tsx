@@ -14,7 +14,6 @@ import RaceSignupSelect from '@/components/RaceSignupSelect';
 
 import CategoryBoundaryEditor from './category-manager/CategoryBoundaryEditor';
 import CategoryList from './category-manager/CategoryList';
-import StreamRidersPanel from './category-manager/StreamRidersPanel';
 import {
   ZR_CATEGORY_DEFAULTS,
   type CategoryChangelogOp,
@@ -114,6 +113,14 @@ export default function CategoryManager() {
     setPreview(null);
   }
 
+  function updateCatColor(i: number, color: string) {
+    const next = [...effectiveLigaCategories];
+    next[i] = { ...next[i], color };
+    setLigaCategories(next);
+    setConfigDirty(true);
+    setPreview(null);
+  }
+
   /** Split category i at the midpoint (or lower + 100 for unbounded top). */
   function splitCat(i: number) {
     const { ops, names } = flushRenames();
@@ -129,11 +136,13 @@ export default function CategoryManager() {
       name: `${fromName} A`,
       upper: cat.upper,
       requiresVerification: cat.requiresVerification === true,
+      color: cat.color,
     };
     next.splice(i + 1, 0, {
       name: `${fromName} B`,
       upper: mid,
       requiresVerification: false,
+      color: cat.color,
     });
     const nextNames = [...names];
     nextNames[i] = `${fromName} A`;
@@ -486,6 +495,7 @@ export default function CategoryManager() {
           Define vELO split points and category names. Defaults to the 10 standard ZR categories.
           Rider counts show how many riders currently sit in each assigned liga category (auto, manual, locked, and self-selected)
           {selectedRaceId ? ' among the selected race signups' : ''}.
+          Use <strong>Color</strong> for badge colors on Deltagere and elsewhere. Zwift A–E pens use the official Zwift colors and are not edited here.
           Use <strong>Verification</strong> to include a category in weight verification sampling and dual-recording reports.
           Preview then Save remaps rider holds and race name strings. <strong>Assign Liga Categories</strong> later refreshes auto bands from current vELO; it does not overwrite manuals or apply unsaved editor changes.
         </p>
@@ -497,6 +507,7 @@ export default function CategoryManager() {
           onNameBlur={commitNameBlur}
           onUpdateUpper={updateCatUpper}
           onToggleVerification={toggleCatVerification}
+          onUpdateColor={updateCatColor}
           onSplit={splitCat}
           onMergeUp={mergeCatUp}
         />
@@ -544,14 +555,6 @@ export default function CategoryManager() {
           Rename commits when you leave the name field. Categories are locked to a rider after their first race.
         </p>
       </div>
-
-      {selectedRaceId ? (
-        <StreamRidersPanel
-          raceId={selectedRaceId}
-          raceName={selectedRace?.name}
-          categoryOptions={savedNames}
-        />
-      ) : null}
 
       {/* ── Status Summary ── */}
       {assigned.length > 0 && (

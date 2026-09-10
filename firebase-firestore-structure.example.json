@@ -120,16 +120,16 @@
       "gracePeriod": 35,
       "weightVerificationValidDays": 30,
       "ligaCategories": [
-        { "name": "Diamond", "upper": null, "requiresVerification": true },
-        { "name": "Ruby", "upper": 2200, "requiresVerification": true },
-        { "name": "Emerald", "upper": 1900, "requiresVerification": false },
-        { "name": "Sapphire", "upper": 1650, "requiresVerification": false },
-        { "name": "Amethyst", "upper": 1450, "requiresVerification": false },
-        { "name": "Platinum", "upper": 1300, "requiresVerification": false },
-        { "name": "Gold", "upper": 1150, "requiresVerification": false },
-        { "name": "Silver", "upper": 1000, "requiresVerification": false },
-        { "name": "Bronze", "upper": 850, "requiresVerification": false },
-        { "name": "Copper", "upper": 650, "requiresVerification": false }
+        { "name": "Diamond", "upper": null, "requiresVerification": true, "color": "#b9f2ff" },
+        { "name": "Ruby", "upper": 2200, "requiresVerification": true, "color": "#ff4e6a" },
+        { "name": "Emerald", "upper": 1900, "requiresVerification": false, "color": "#50c878" },
+        { "name": "Sapphire", "upper": 1650, "requiresVerification": false, "color": "#0f52ba" },
+        { "name": "Amethyst", "upper": 1450, "requiresVerification": false, "color": "#9b59b6" },
+        { "name": "Platinum", "upper": 1300, "requiresVerification": false, "color": "#e5e4e2" },
+        { "name": "Gold", "upper": 1150, "requiresVerification": false, "color": "#ffd700" },
+        { "name": "Silver", "upper": 1000, "requiresVerification": false, "color": "#c0c0c0" },
+        { "name": "Bronze", "upper": 850, "requiresVerification": false, "color": "#cd7f32" },
+        { "name": "Copper", "upper": 650, "requiresVerification": false, "color": "#b87333" }
       ],
       "defaultEventMode": "grouped",
       "defaultRaceGroups": [

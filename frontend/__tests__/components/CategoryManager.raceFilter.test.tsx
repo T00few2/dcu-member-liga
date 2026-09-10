@@ -31,12 +31,6 @@ vi.mock('@/hooks/queries', () => ({
   useRaceSignupsQuery: (raceId: string | null) => useRaceSignupsQuery(raceId),
 }));
 
-vi.mock('@/hooks/queries/useStreamRidersQuery', () => ({
-  useStreamRidersQuery: () => ({ data: [], isFetching: false }),
-  useAddStreamRiderMutation: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useRemoveStreamRiderMutation: () => ({ mutateAsync: vi.fn(), isPending: false }),
-}));
-
 const { default: CategoryManager } = await import('@/components/admin/CategoryManager');
 
 const RIDERS = [
@@ -109,11 +103,9 @@ describe('CategoryManager race signup filter', () => {
     expect(screen.getByText('2 registered participants')).toBeInTheDocument();
     expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
     expect(screen.getByText('Grace Hopper')).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Stream riders' })).not.toBeInTheDocument();
 
     await user.selectOptions(screen.getByLabelText('Signed up for'), 'race-1');
 
-    expect(screen.getByRole('heading', { name: 'Stream riders' })).toBeInTheDocument();
     expect(screen.getByText('1 signed up for Opening Race')).toBeInTheDocument();
     expect(screen.queryByText('Ada Lovelace')).not.toBeInTheDocument();
     expect(screen.getByText('Grace Hopper')).toBeInTheDocument();

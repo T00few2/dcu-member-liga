@@ -7,8 +7,8 @@ import { API_URL } from '@/lib/api';
 import { useLeagueSettingsQuery, useProfileQuery } from '@/hooks/queries';
 import {
     ZR_CATEGORY_GEMS,
-    ZR_CATEGORY_STYLES,
     catLower,
+    categoryBadgeAppearance,
     effectiveLigaCategories,
     ratingMatchingCategoryBounds,
     type LigaCategoryDef,
@@ -18,12 +18,15 @@ const GRACE_POINTS_FALLBACK = 35;
 
 function catMeta(name: string, cats: LigaCategoryDef[]) {
     const idx = cats.findIndex(c => c.name === name);
+    const appearance = categoryBadgeAppearance(name, cats);
+    const className = `border ${appearance.className || 'border-black/10'}`;
     if (idx < 0) {
         return {
             name,
             lower: 0,
             upper: null as number | null,
-            color: ZR_CATEGORY_STYLES[name] ?? 'bg-slate-100 text-slate-800 border-slate-300',
+            className,
+            style: appearance.style,
             gem: ZR_CATEGORY_GEMS[name]?.gem ?? '●',
         };
     }
@@ -31,7 +34,8 @@ function catMeta(name: string, cats: LigaCategoryDef[]) {
         name,
         lower: catLower(cats, idx),
         upper: cats[idx].upper,
-        color: `${ZR_CATEGORY_STYLES[name] ?? 'bg-slate-100 text-slate-800'} border-current/20`,
+        className,
+        style: appearance.style,
         gem: ZR_CATEGORY_GEMS[name]?.gem ?? '●',
     };
 }
@@ -185,7 +189,7 @@ export default function CategoryTab() {
                             <div className="flex items-center gap-3">
                                 <span className="text-4xl">{meta.gem}</span>
                                 <div>
-                                    <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold border ${meta.color}`}>
+                                    <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${meta.className}`} style={meta.style}>
                                         {lc.category}
                                     </span>
                                     {lc.selfSelectedCategory && lc.selfSelectedCategory === lc.category && lc.selfSelectedCategory !== lc.autoAssignedCategory && (
@@ -273,11 +277,12 @@ export default function CategoryTab() {
                                         <button
                                             key={cat.name}
                                             onClick={() => setSelected(cat.name)}
-                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition ${
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition ${
                                                 selected === cat.name
-                                                    ? `${cat.color} ring-2 ring-offset-1 ring-primary`
-                                                    : `${cat.color} opacity-70 hover:opacity-100`
+                                                    ? `${cat.className} ring-2 ring-offset-1 ring-primary`
+                                                    : `${cat.className} opacity-70 hover:opacity-100`
                                             }`}
+                                            style={cat.style}
                                         >
                                             <span>{cat.gem}</span>
                                             <span>{cat.name}</span>
@@ -336,7 +341,7 @@ export default function CategoryTab() {
                                     <tr key={cat.name} className={isCurrent ? 'font-semibold' : ''}>
                                         <td className="py-2 pr-4 text-lg">{cat.gem}</td>
                                         <td className="py-2 pr-4">
-                                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${cat.color}`}>
+                                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cat.className}`} style={cat.style}>
                                                 {cat.name}
                                             </span>
                                             {isCurrent && (

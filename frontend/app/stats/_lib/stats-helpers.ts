@@ -1,4 +1,5 @@
 import type { CriticalPower, Race, Sprint } from '@/types/live';
+import { ZWIFT_CATEGORY_COLORS } from '@/lib/ligaCategories';
 
 export const STATS_PREFS_STORAGE_KEY = 'dcu-stats-page-preferences-v1';
 
@@ -108,7 +109,8 @@ export const buildCategoryColorMap = (categories: string[]): Record<string, stri
     const uniqueCategories = [...new Set(categories.map((c) => String(c || '').trim()).filter(Boolean))].sort();
     const map: Record<string, string> = {};
     uniqueCategories.forEach((category, index) => {
-        map[category] = CATEGORY_COLOR_PALETTE[index % CATEGORY_COLOR_PALETTE.length];
+        const zwift = category.length === 1 ? ZWIFT_CATEGORY_COLORS[category.toUpperCase()] : undefined;
+        map[category] = zwift?.backgroundColor ?? CATEGORY_COLOR_PALETTE[index % CATEGORY_COLOR_PALETTE.length];
     });
     return map;
 };

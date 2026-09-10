@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from services.category_changelog import liga_categories_fingerprint
 from services.category_engine import ZR_CATEGORY_DEFS
-from services.liga_categories_config import ConfigApplyError, run_liga_categories_config
+from services.liga_categories_config import ConfigApplyError, run_liga_categories_config, validate_submitted_shape
 
 
 class _SettingsDoc:
@@ -102,3 +102,22 @@ def test_assign_route_ignores_request_body_categories():
     fn = src[start:end]
     assert 'body.get("categories")' not in fn
     assert 'settings.get("ligaCategories")' in fn
+
+
+def test_submitted_categories_keep_valid_color():
+    cats = [
+        {"name": "1. Division", "upper": None, "color": "#1D4ED8", "requiresVerification": True},
+        {"name": "2. Division", "upper": 900, "color": "not-a-color"},
+    ]
+    out = validate_submitted_shape(cats)
+    assert out[0]["color"] == "#1d4ed8"
+    assert "color" not in out[1]
+
+
+def test_color_does_not_change_fingerprint():
+    base = [{"name": "1. Division", "upper": None}, {"name": "2. Division", "upper": 900}]
+    colored = [
+        {"name": "1. Division", "upper": None, "color": "#1d4ed8"},
+        {"name": "2. Division", "upper": 900, "color": "#0f766e"},
+    ]
+    assert liga_categories_fingerprint(base) == liga_categories_fingerprint(colored)

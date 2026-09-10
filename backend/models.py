@@ -236,6 +236,7 @@ class LigaCategoryDef(TypedDict, total=False):
     name: str
     upper: int | None
     requiresVerification: bool
+    color: str  # Badge hex color, e.g. "#1d4ed8"
 
 
 class LeagueSettings(TypedDict, total=False):

@@ -105,7 +105,15 @@ function DerivedCell({ value, active }: { value: number; active: boolean }) {
   );
 }
 
-function PredictionCell({ pred, model }: { pred: PredictionSnapshot; model: ModelResult | null }) {
+function PredictionCell({
+  pred,
+  model,
+  categories,
+}: {
+  pred: PredictionSnapshot;
+  model: ModelResult | null;
+  categories?: typeof ZR_CATEGORY_DEFAULTS;
+}) {
   return (
     <div className="space-y-1">
       <div>
@@ -117,7 +125,7 @@ function PredictionCell({ pred, model }: { pred: PredictionSnapshot; model: Mode
         {pred.category && (
           <>
             {' → '}
-            <CategoryBadge name={pred.category} />
+            <CategoryBadge name={pred.category} categories={categories} />
           </>
         )}
       </div>
@@ -127,11 +135,11 @@ function PredictionCell({ pred, model }: { pred: PredictionSnapshot; model: Mode
           {pred.catLow && pred.catHigh && (
             <>
               <span>(</span>
-              <CategoryBadge name={pred.catLow} compact />
+              <CategoryBadge name={pred.catLow} compact categories={categories} />
               {pred.catLow !== pred.catHigh && (
                 <>
                   <span>–</span>
-                  <CategoryBadge name={pred.catHigh} compact />
+                  <CategoryBadge name={pred.catHigh} compact categories={categories} />
                 </>
               )}
               <span>)</span>
@@ -430,10 +438,10 @@ export default function CategoryPredictorForm({
             <tr>
               <td className="text-sm text-foreground pr-4 pt-3 align-top whitespace-nowrap">Predicted vELO</td>
               <td className={`${columnCellClass(zwiftActive)} pt-3 align-top`}>
-                <PredictionCell pred={zwiftPrediction} model={model} />
+                <PredictionCell pred={zwiftPrediction} model={model} categories={categories} />
               </td>
               <td className={`${columnCellClass(stravaActive)} pt-3 align-top`}>
-                <PredictionCell pred={stravaPrediction} model={model} />
+                <PredictionCell pred={stravaPrediction} model={model} categories={categories} />
               </td>
             </tr>
           </tbody>

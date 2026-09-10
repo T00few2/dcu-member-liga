@@ -2,6 +2,7 @@
 
 import type { CategoryDef, RiderEntry } from './types';
 import { getCatLower, assignedCategoryCount, countAssignedToCategory } from './utils';
+import { contrastTextColor, editorColorForCategory } from '@/lib/ligaCategories';
 
 interface CategoryBoundaryEditorProps {
   categories: CategoryDef[];
@@ -10,6 +11,7 @@ interface CategoryBoundaryEditorProps {
   onNameBlur?: (i: number) => void;
   onUpdateUpper: (i: number, raw: string) => void;
   onToggleVerification: (i: number, value: boolean) => void;
+  onUpdateColor: (i: number, color: string) => void;
   onSplit: (i: number) => void;
   onMergeUp: (i: number) => void;
 }
@@ -21,6 +23,7 @@ export default function CategoryBoundaryEditor({
   onNameBlur,
   onUpdateUpper,
   onToggleVerification,
+  onUpdateColor,
   onSplit,
   onMergeUp,
 }: CategoryBoundaryEditorProps) {
@@ -37,6 +40,7 @@ export default function CategoryBoundaryEditor({
         <thead className="text-xs uppercase text-muted-foreground border-b border-border">
           <tr>
             <th className="pb-2 text-left pr-3">Name</th>
+            <th className="pb-2 text-left pr-3">Color</th>
             <th className="pb-2 text-left pr-3">vELO range</th>
             <th className="pb-2 text-right pr-3 w-28">Upper boundary</th>
             <th className="pb-2 text-center pr-3" title="Weight verification + dual-recording reports">Verification</th>
@@ -53,6 +57,7 @@ export default function CategoryBoundaryEditor({
             const count = countAssignedToCategory(riders, cat.name);
             const pct = assignedCount > 0 ? Math.round((count / assignedCount) * 100) : 0;
             const barW = Math.round((count / maxInAnyBucket) * 100);
+            const color = editorColorForCategory(cat, i);
             const isTop = i === 0;
             const canSplit = upper == null ? true : (upper - lower) >= 2;
             const canMergeUp = i > 0 && categories.length > 2;
@@ -68,6 +73,23 @@ export default function CategoryBoundaryEditor({
                     onBlur={() => onNameBlur?.(i)}
                     className="w-28 px-2 py-1 border border-input rounded bg-background text-foreground text-sm"
                   />
+                </td>
+                <td className="py-2 pr-3">
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="color"
+                      aria-label={`Color for ${cat.name}`}
+                      value={color}
+                      onChange={e => onUpdateColor(i, e.target.value)}
+                      className="h-8 w-10 cursor-pointer rounded border border-input bg-background p-0.5"
+                    />
+                    <span
+                      className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
+                      style={{ backgroundColor: color, color: contrastTextColor(color) }}
+                    >
+                      {cat.name || 'Preview'}
+                    </span>
+                  </label>
                 </td>
                 <td className="py-2 pr-3 font-mono text-xs text-muted-foreground whitespace-nowrap">
                   {lower} – {upper != null ? upper - 1 : '∞'}

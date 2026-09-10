@@ -1,6 +1,7 @@
 """Dry-run / apply liga category configuration with rider and race remaps."""
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from firebase_admin import firestore
@@ -40,15 +41,35 @@ class ConfigApplyError(ValueError):
         self.status_code = status_code
 
 
+_HEX_COLOR_RE = re.compile(r"^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$")
+
+
+def _parse_category_color(raw: object) -> str | None:
+    if not isinstance(raw, str):
+        return None
+    value = raw.strip()
+    match = _HEX_COLOR_RE.fullmatch(value)
+    if not match:
+        return None
+    digits = match.group(1)
+    if len(digits) == 3:
+        digits = "".join(ch * 2 for ch in digits)
+    return f"#{digits.lower()}"
+
+
 def _normalise_submitted(categories: list[dict]) -> list[dict]:
-    return [
-        {
+    out: list[dict] = []
+    for c in categories:
+        item: dict = {
             "name": str(c.get("name") or "").strip(),
             "upper": int(c["upper"]) if c.get("upper") is not None else None,
             "requiresVerification": bool(c.get("requiresVerification")),
         }
-        for c in categories
-    ]
+        color = _parse_category_color(c.get("color"))
+        if color:
+            item["color"] = color
+        out.append(item)
+    return out
 
 
 def validate_submitted_shape(categories: list) -> list[dict]:

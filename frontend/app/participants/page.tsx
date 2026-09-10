@@ -6,7 +6,13 @@ import { useAuth } from '@/lib/auth-context';
 import { useLeagueSettingsQuery, useParticipantsQuery, useRacesQuery, useRaceSignupsQuery } from '@/hooks/queries';
 import RaceSignupSelect from '@/components/RaceSignupSelect';
 import { filterRidersBySignupIds } from '@/lib/raceSignupOptions';
-import { categoryFromVelo, categoryStyle, effectiveLigaCategories, ligaCategoryNames } from '@/lib/ligaCategories';
+import {
+  categoryBadgeAppearance,
+  categoryFromVelo,
+  effectiveLigaCategories,
+  ligaCategoryNames,
+  type LigaCategoryDef,
+} from '@/lib/ligaCategories';
 import type { Race } from '@/types/live';
 
 interface LigaCategory {
@@ -134,6 +140,18 @@ function SortIcon({ active, direction }: { active: boolean; direction: SortDirec
   );
 }
 
+function CategoryPill({ name, cats }: { name: string; cats?: LigaCategoryDef[] }) {
+  const { className, style } = categoryBadgeAppearance(name, cats);
+  return (
+    <span
+      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${className}`}
+      style={style}
+    >
+      {name}
+    </span>
+  );
+}
+
 function ParticipantsPageContent() {
   const { loading: authLoading } = useAuth();
   const participantsQuery = useParticipantsQuery();
@@ -229,7 +247,7 @@ function ParticipantsPageContent() {
   function thProps(col: SortColumn) {
     return {
       onClick: () => handleSort(col),
-      className: 'px-6 py-3 font-bold cursor-pointer select-none hover:bg-muted/80 transition-colors whitespace-nowrap',
+      className: 'px-3 py-3 font-bold cursor-pointer select-none hover:bg-muted/80 transition-colors whitespace-nowrap',
     };
   }
 
@@ -238,67 +256,69 @@ function ParticipantsPageContent() {
   if (participantsQuery.isError) return <div className="p-8 text-center text-red-600">Kunne ikke hente deltagere</div>;
 
   return (
-    <div className="max-w-7xl mx-auto mt-8 px-4">
-      <h1 className="text-3xl font-bold mb-2 text-foreground">Deltagere</h1>
-      <p className="text-muted-foreground mb-4">
-        {raceFilter
-          ? `${filtered.length} tilmeldt til ${selectedRace?.name || 'løb'}`
-          : `${filtered.length} ryttere i DCU E-Serien.`}
-      </p>
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
-        <RaceSignupSelect
-          races={races}
-          value={raceFilter}
-          onChange={setRaceFilter}
-          label="Tilmeldte til"
-          allLabel="DCU E-Serien"
-        />
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <div className="flex flex-row gap-2 items-center flex-wrap">
-            <div className="inline-flex rounded-lg border border-input overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setPowerUnit('watts')}
-                className={`px-3 py-2 text-sm transition-colors ${powerUnit === 'watts' ? 'bg-primary text-primary-foreground' : 'bg-background text-foreground hover:bg-muted/60'}`}
-              >
-                Watt
-              </button>
-              <button
-                type="button"
-                onClick={() => setPowerUnit('wkg')}
-                className={`px-3 py-2 text-sm transition-colors border-l border-input ${powerUnit === 'wkg' ? 'bg-primary text-primary-foreground' : 'bg-background text-foreground hover:bg-muted/60'}`}
-              >
-                W/kg
-              </button>
-            </div>
-            <label className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span className="whitespace-nowrap">Liga kat</span>
-              <select
-                value={ligaKatFilter}
-                onChange={e => setLigaKatFilter(e.target.value)}
-                className="w-fit px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                <option value="">Alle</option>
-                {ligaKatOptions.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <input
-            type="search"
-            placeholder="Søg navn eller klub..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full sm:w-72 px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+    <div className="max-w-7xl mx-auto px-4 pt-8 pb-4 flex flex-col gap-4 h-[calc(100dvh-4.75rem)] min-h-0">
+      <div className="shrink-0">
+        <h1 className="text-3xl font-bold mb-2 text-foreground">Deltagere</h1>
+        <p className="text-muted-foreground mb-4">
+          {raceFilter
+            ? `${filtered.length} tilmeldt til ${selectedRace?.name || 'løb'}`
+            : `${filtered.length} ryttere i DCU E-Serien.`}
+        </p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <RaceSignupSelect
+            races={races}
+            value={raceFilter}
+            onChange={setRaceFilter}
+            label="Tilmeldte til"
+            allLabel="DCU E-Serien"
           />
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="flex flex-row gap-2 items-center flex-wrap">
+              <div className="inline-flex rounded-lg border border-input overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setPowerUnit('watts')}
+                  className={`px-3 py-2 text-sm transition-colors ${powerUnit === 'watts' ? 'bg-primary text-primary-foreground' : 'bg-background text-foreground hover:bg-muted/60'}`}
+                >
+                  Watt
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPowerUnit('wkg')}
+                  className={`px-3 py-2 text-sm transition-colors border-l border-input ${powerUnit === 'wkg' ? 'bg-primary text-primary-foreground' : 'bg-background text-foreground hover:bg-muted/60'}`}
+                >
+                  W/kg
+                </button>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span className="whitespace-nowrap">Liga kat</span>
+                <select
+                  value={ligaKatFilter}
+                  onChange={e => setLigaKatFilter(e.target.value)}
+                  className="w-fit px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="">Alle</option>
+                  {ligaKatOptions.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <input
+              type="search"
+              placeholder="Søg navn eller klub..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full sm:w-72 px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
         </div>
       </div>
 
-      <div className="bg-card rounded-lg shadow overflow-hidden border border-border">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-muted-foreground">
-            <thead className="bg-muted/50 text-xs uppercase text-muted-foreground border-b border-border">
+      <div className="bg-card rounded-lg shadow border border-border overflow-hidden flex-1 min-h-0">
+        <div className="h-full overflow-auto overscroll-contain">
+          <table className="min-w-max w-full text-left text-sm text-muted-foreground">
+            <thead className="sticky top-0 z-10 bg-muted text-xs uppercase text-muted-foreground border-b border-border">
               <tr>
                 <th {...thProps('name')}>
                   Navn <SortIcon active={sortCol === 'name'} direction={sortDir} />
@@ -351,41 +371,34 @@ function ParticipantsPageContent() {
                 <th {...thProps('phenotype')}>
                   Fænotype <SortIcon active={sortCol === 'phenotype'} direction={sortDir} />
                 </th>
-                <th className="px-6 py-3 font-bold">Profillinks</th>
+                <th className="px-3 py-3 font-bold whitespace-nowrap">Profillinks</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={18} className="px-6 py-8 text-center text-muted-foreground">
+                  <td colSpan={18} className="px-3 py-8 text-center text-muted-foreground">
                     {search || ligaKatFilter || raceFilter ? 'Ingen deltagere matcher søgningen.' : 'Ingen deltagere fundet endnu.'}
                   </td>
                 </tr>
               ) : (
-                filtered.map((p, idx) => (
+                filtered.map((p, idx) => {
+                  const zrKat = categoryFromVelo(p.rating, ligaCats);
+                  const zrMax30Kat = categoryFromVelo(p.max30Rating, ligaCats);
+                  return (
                   <tr key={`${p.zwiftId || 'no-zwift'}-${idx}`} className="hover:bg-muted/50 transition">
-                    <td className="px-6 py-4 font-medium text-card-foreground">{p.name}</td>
-                    <td className="px-6 py-4 text-card-foreground">{p.club || '-'}</td>
-                    <td className="px-6 py-4">
-                      {(() => { const cat = categoryFromVelo(p.rating, ligaCats); return cat !== '-' ? (
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${categoryStyle(cat)}`}>
-                          {cat}
-                        </span>
-                      ) : '-'; })()}
+                    <td className="px-3 py-3 font-medium text-card-foreground whitespace-nowrap">{p.name}</td>
+                    <td className="px-3 py-3 text-card-foreground whitespace-nowrap">{p.club || '-'}</td>
+                    <td className="px-3 py-3 whitespace-nowrap">
+                      {zrKat !== '-' ? <CategoryPill name={zrKat} cats={ligaCats} /> : '-'}
                     </td>
-                    <td className="px-6 py-4">
-                      {(() => { const cat = categoryFromVelo(p.max30Rating, ligaCats); return cat !== '-' ? (
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${categoryStyle(cat)}`}>
-                          {cat}
-                        </span>
-                      ) : '-'; })()}
+                    <td className="px-3 py-3 whitespace-nowrap">
+                      {zrMax30Kat !== '-' ? <CategoryPill name={zrMax30Kat} cats={ligaCats} /> : '-'}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       {p.ligaCategory ? (
                         <div className="flex items-center gap-1.5">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${categoryStyle(p.ligaCategory.category)}`}>
-                            {p.ligaCategory.category}
-                          </span>
+                          <CategoryPill name={p.ligaCategory.category} cats={ligaCats} />
                           {p.ligaCategory.status === 'grace' && (
                             <span title={`In grace zone (limit: ${p.ligaCategory.graceLimit})`} className="text-yellow-500 cursor-help text-xs font-bold">!</span>
                           )}
@@ -395,47 +408,45 @@ function ParticipantsPageContent() {
                         </div>
                       ) : '-'}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       {p.zwiftCategory && p.zwiftCategory !== 'N/A' ? (
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${categoryStyle(p.zwiftCategory)}`}>
-                          {p.zwiftCategory}
-                        </span>
+                        <CategoryPill name={p.zwiftCategory} />
                       ) : '-'}
                     </td>
-                    <td className="px-6 py-4 font-mono font-medium text-card-foreground">
+                    <td className="px-3 py-3 font-mono font-medium text-card-foreground whitespace-nowrap">
                       {p.racingScore !== 'N/A' && p.racingScore ? Math.round(Number(p.racingScore)) : '-'}
                     </td>
-                    <td className="px-6 py-4 font-mono font-medium text-card-foreground">
+                    <td className="px-3 py-3 font-mono font-medium text-card-foreground whitespace-nowrap">
                       {p.rating !== 'N/A' ? Math.round(Number(p.rating)) : '-'}
                     </td>
-                    <td className="px-6 py-4 font-mono text-muted-foreground">
+                    <td className="px-3 py-3 font-mono text-muted-foreground whitespace-nowrap">
                       {p.max30Rating !== 'N/A' ? Math.round(Number(p.max30Rating)) : '-'}
                     </td>
-                    <td className="px-6 py-4 font-mono text-muted-foreground">
+                    <td className="px-3 py-3 font-mono text-muted-foreground whitespace-nowrap">
                       {p.max90Rating !== 'N/A' ? Math.round(Number(p.max90Rating)) : '-'}
                     </td>
-                    <td className="px-6 py-4 font-mono text-card-foreground">
+                    <td className="px-3 py-3 font-mono text-card-foreground whitespace-nowrap">
                       {formatPower(p.zftp, p, powerUnit)}
                     </td>
-                    <td className="px-6 py-4 font-mono text-card-foreground">
+                    <td className="px-3 py-3 font-mono text-card-foreground whitespace-nowrap">
                       {formatPower(p.zmap, p, powerUnit)}
                     </td>
-                    <td className="px-6 py-4 font-mono text-card-foreground">
+                    <td className="px-3 py-3 font-mono text-card-foreground whitespace-nowrap">
                       {formatPower(p.cp5s, p, powerUnit)}
                     </td>
-                    <td className="px-6 py-4 font-mono text-card-foreground">
+                    <td className="px-3 py-3 font-mono text-card-foreground whitespace-nowrap">
                       {formatPower(p.cp1min, p, powerUnit)}
                     </td>
-                    <td className="px-6 py-4 font-mono text-card-foreground">
+                    <td className="px-3 py-3 font-mono text-card-foreground whitespace-nowrap">
                       {formatPower(p.cp5min, p, powerUnit)}
                     </td>
-                    <td className="px-6 py-4 font-mono text-card-foreground">
+                    <td className="px-3 py-3 font-mono text-card-foreground whitespace-nowrap">
                       {formatPower(p.cp20min, p, powerUnit)}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       {p.phenotype !== 'N/A' ? p.phenotype : '-'}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       {p.zwiftId ? (
                         <div className="flex items-center gap-3">
                           <a
@@ -466,7 +477,8 @@ function ParticipantsPageContent() {
                       ) : '-'}
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
