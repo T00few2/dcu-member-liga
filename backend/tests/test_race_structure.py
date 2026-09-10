@@ -83,15 +83,18 @@ def test_platinum_mid_to_low_keeps_event_ids():
     assert "Platinum" not in mid_names
     assert "Platinum" in low_names
     platinum = next(c for c in by_name["Low end"]["categories"] if c["category"] == "Platinum")
-    assert platinum.get("sprints") == []
+    assert platinum.get("sprints") == [{"id": 9}]
     gold = next(c for c in by_name["Low end"]["categories"] if c["category"] == "Gold")
     assert gold["sprints"] == [{"id": 2}]
 
 
-def test_sprints_stay_only_if_category_remains_in_same_group():
+def test_sprints_follow_category_when_it_changes_group():
     result = overlay_race_groups(TEMPLATE, _race_groups())
     mid = next(g for g in result["next"] if g["name"] == "Mid")
     assert all(c["category"] != "Platinum" for c in mid["categories"])
+    low = next(g for g in result["next"] if g["name"] == "Low end")
+    platinum = next(c for c in low["categories"] if c["category"] == "Platinum")
+    assert platinum.get("sprints") == [{"id": 9}]
 
 
 def test_case_insensitive_group_names():
@@ -127,6 +130,52 @@ def test_group_rename_same_id_keeps_event_id():
     assert low["eventId"] == "333"
     assert low["name"] == "Low"
     assert result["diff"]["droppedEventIds"] == []
+
+
+def test_renamed_groups_keep_sprints_via_leftover_id():
+    race = [
+        {
+            "id": "high",
+            "name": "High end",
+            "sprints": [{"id": "hs"}],
+            "categories": [{"category": "Division 1", "sprints": [{"id": "c1"}]}],
+        },
+        {
+            "id": "mid",
+            "name": "Mid",
+            "sprints": [{"id": "ms"}],
+            "categories": [{"category": "Division 4"}],
+        },
+        {
+            "id": "low",
+            "name": "Low end",
+            "sprints": [{"id": "ls"}],
+            "categories": [{"category": "Division 5", "sprints": [{"id": "c5"}]}],
+        },
+    ]
+    template = [
+        {
+            "id": "high",
+            "name": "Division 1-3",
+            "categories": [{"category": "Division 1"}, {"category": "Division 5"}],
+        },
+        {
+            "id": "mid",
+            "name": "Division 4-6",
+            "categories": [{"category": "Division 4"}],
+        },
+    ]
+    result = overlay_race_groups(template, race)
+    high = next(g for g in result["next"] if g["id"] == "high")
+    mid = next(g for g in result["next"] if g["id"] == "mid")
+    assert high["sprints"] == [{"id": "hs"}]
+    assert high["name"] == "Division 1-3"
+    d1 = next(c for c in high["categories"] if c["category"] == "Division 1")
+    d5 = next(c for c in high["categories"] if c["category"] == "Division 5")
+    assert d1["sprints"] == [{"id": "c1"}]
+    assert d5["sprints"] == [{"id": "c5"}]
+    assert mid["sprints"] == [{"id": "ms"}]
+    assert result["diff"]["dropped"] == ["Low end"]
 
 
 def test_results_skip_helper():

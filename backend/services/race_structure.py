@@ -48,12 +48,18 @@ def template_category_coverage(template: list | None, liga_names: list[str]) -> 
     }
 
 
+def _has_sprints(value: Any) -> bool:
+    return isinstance(value, list) and len(value) > 0
+
+
 def overlay_race_groups(template: list | None, race_groups: list | None) -> dict[str, Any]:
     """Match template groups by normalized name, then leftover id.
 
-    Keep eventId/secret/group sprints/laps. Category sprints stay only when the
-    name remains in the same group. New names get empty sprints. Unmatched race
-    groups are dropped (caller must warn if that would drop an eventId).
+    Keep eventId/secret/laps. Category sprints follow the category name across
+    groups. Group-level sprints stay on a name/id match; if that list is empty,
+    copy from a dropped/unmatched group that previously owned one of the
+    group's categories. Unmatched race groups are dropped (caller must warn if
+    that would drop an eventId).
     """
     race = [copy.deepcopy(g) for g in (race_groups or []) if isinstance(g, dict)]
     used: set[int] = set()
@@ -65,7 +71,23 @@ def overlay_race_groups(template: list | None, race_groups: list | None) -> dict
         "droppedEventIds": [],
         "categoryChanges": [],
         "warnings": [],
+        "droppedGroupsWithSprints": [],
     }
+
+    cat_by_norm: dict[str, dict] = {}
+    group_sprints_by_cat: dict[str, list] = {}
+    for rg in race:
+        group_sprints = rg.get("sprints") if isinstance(rg.get("sprints"), list) else []
+        for cat in rg.get("categories") or []:
+            if not isinstance(cat, dict):
+                continue
+            key = _norm_name(cat.get("category"))
+            if not key:
+                continue
+            if key not in cat_by_norm:
+                cat_by_norm[key] = cat
+            if _has_sprints(group_sprints) and key not in group_sprints_by_cat:
+                group_sprints_by_cat[key] = group_sprints
 
     def _find_match(tg: dict) -> int | None:
         tname = _norm_name(tg.get("name"))
@@ -84,6 +106,31 @@ def overlay_race_groups(template: list | None, race_groups: list | None) -> dict
                     return i
         return None
 
+    def _cats_for_template(t_cats: list[dict], group_label: Any) -> list[dict]:
+        new_cats: list[dict] = []
+        for tcat in t_cats:
+            name = str(tcat.get("category") or "").strip()
+            if not name:
+                continue
+            old = cat_by_norm.get(_norm_name(name))
+            if old:
+                kept = copy.deepcopy(old)
+                kept["category"] = name
+                new_cats.append(kept)
+            else:
+                new_cats.append({"category": name, "sprints": []})
+                diff["categoryChanges"].append({"group": group_label, "added": name})
+        return new_cats
+
+    def _fill_group_sprints(group: dict, t_names: list[str]) -> None:
+        if _has_sprints(group.get("sprints")):
+            return
+        for name in t_names:
+            src = group_sprints_by_cat.get(_norm_name(name))
+            if _has_sprints(src):
+                group["sprints"] = copy.deepcopy(src)
+                return
+
     for tg in template or []:
         if not isinstance(tg, dict):
             continue
@@ -99,39 +146,20 @@ def overlay_race_groups(template: list | None, race_groups: list | None) -> dict
                 "laps": tg.get("laps"),
                 "sprints": [],
                 "segmentType": "sprint",
-                "categories": [{"category": n, "sprints": []} for n in t_names],
+                "categories": _cats_for_template(t_cats, tg.get("name")),
             }
+            _fill_group_sprints(new_g, t_names)
             next_groups.append(new_g)
             diff["appended"].append(new_g.get("name"))
             continue
 
         used.add(idx)
         rg = race[idx]
-        old_cats = [c for c in (rg.get("categories") or []) if isinstance(c, dict)]
-        old_by_norm: dict[str, dict] = {}
-        for cat in old_cats:
-            key = _norm_name(cat.get("category"))
-            if key and key not in old_by_norm:
-                old_by_norm[key] = cat
-
-        new_cats: list[dict] = []
-        for tcat in t_cats:
-            name = str(tcat.get("category") or "").strip()
-            if not name:
-                continue
-            old = old_by_norm.get(_norm_name(name))
-            if old:
-                kept = copy.deepcopy(old)
-                kept["category"] = name
-                new_cats.append(kept)
-            else:
-                new_cats.append({"category": name, "sprints": []})
-                diff["categoryChanges"].append({"group": rg.get("name"), "added": name})
-
         next_g = copy.deepcopy(rg)
         if tg.get("name"):
             next_g["name"] = tg.get("name")
-        next_g["categories"] = new_cats
+        next_g["categories"] = _cats_for_template(t_cats, rg.get("name"))
+        _fill_group_sprints(next_g, t_names)
         next_groups.append(next_g)
         diff["matched"].append(next_g.get("name"))
 
@@ -144,6 +172,15 @@ def overlay_race_groups(template: list | None, race_groups: list | None) -> dict
             diff["droppedEventIds"].append({"group": rg.get("name"), "eventId": event_id})
             diff["warnings"].append(
                 f"Group {rg.get('name')!r} has no template match and would drop eventId {event_id}"
+            )
+        if _has_sprints(rg.get("sprints")) or any(
+            _has_sprints(c.get("sprints"))
+            for c in (rg.get("categories") or [])
+            if isinstance(c, dict)
+        ):
+            diff["droppedGroupsWithSprints"].append(rg.get("name"))
+            diff["warnings"].append(
+                f"Group {rg.get('name')!r} was dropped; category sprints are kept by name if the category still exists"
             )
 
     return {"next": next_groups, "diff": diff}

@@ -68,8 +68,8 @@ export default function RaceDefaultsEditor({
         );
     }, [leagueSettings]);
 
-    const handleSave = async () => {
-        if (!user) return;
+    const persistDefaults = async (): Promise<boolean> => {
+        if (!user) return false;
         setStatus('saving');
         onMessage?.(null);
         try {
@@ -91,14 +91,114 @@ export default function RaceDefaultsEditor({
             if (!res.ok) {
                 const data = await res.json().catch(() => ({}));
                 onMessage?.(data.message || 'Failed to save race defaults');
-                return;
+                return false;
             }
-            onMessage?.('Race defaults saved');
             await queryClient.invalidateQueries({ queryKey: ['league', 'settings'] });
+            return true;
         } catch {
             onMessage?.('Error saving race defaults');
+            return false;
         } finally {
             setStatus('idle');
+        }
+    };
+
+    const handleSave = async () => {
+        const ok = await persistDefaults();
+        if (ok) onMessage?.('Race defaults saved');
+    };
+
+    const handlePreviewEnforce = async () => {
+        if (!user) return;
+        setEnforcing(true);
+        onMessage?.(null);
+        try {
+            const token = await user.getIdToken();
+            const res = await fetch(`${API_URL}/admin/races/enforce-race-structure`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ dryRun: true }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                onMessage?.(data.message || 'Preview failed');
+                return;
+            }
+            setEnforcePreview(data);
+            const drops = (data.races || []).filter((r: { wouldDropEventId?: boolean }) => r.wouldDropEventId);
+            if (drops.length) {
+                onMessage?.(`Preview: ${drops.length} race(s) would drop an eventId on group rename. Review before enforce.`);
+            } else {
+                onMessage?.('Preview of the last saved template. Unsaved editor changes are not included — Save first, or use Save and enforce.');
+            }
+        } catch {
+            onMessage?.('Preview failed');
+        } finally {
+            setEnforcing(false);
+        }
+    };
+
+    const handleSaveAndEnforce = async () => {
+        if (!user) return;
+        if (!confirm(
+            'Save these race defaults, then overlay them onto existing grouped races? Event IDs are kept when the group name or id still matches. Category sprints follow the category. Signups are not auto-synced to Zwift.',
+        )) return;
+        setEnforcing(true);
+        onMessage?.(null);
+        try {
+            const saved = await persistDefaults();
+            if (!saved) return;
+            const token = await user.getIdToken();
+            const previewRes = await fetch(`${API_URL}/admin/races/enforce-race-structure`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ dryRun: true }),
+            });
+            const preview = await previewRes.json();
+            if (!previewRes.ok) {
+                onMessage?.(preview.message || 'Saved defaults, but enforce preview failed');
+                return;
+            }
+            setEnforcePreview(preview);
+            if (preview.coverage && preview.coverage.ok === false) {
+                onMessage?.(preview.message || 'Saved defaults, but every liga category must appear in exactly one group');
+                return;
+            }
+            const races = (preview.races || []) as { wouldDropEventId?: boolean; name?: string; wouldDropGroupsWithSprints?: string[] }[];
+            const drops = races.filter((r) => r.wouldDropEventId);
+            if (drops.length) {
+                if (!confirm(`Enforce would drop event IDs on: ${drops.map((d) => d.name).join(', ')}. Continue?`)) {
+                    onMessage?.('Race defaults saved. Enforce cancelled.');
+                    return;
+                }
+            }
+            const sprintDrops = races.filter((r) => (r.wouldDropGroupsWithSprints || []).length);
+            if (sprintDrops.length) {
+                if (!confirm('Some race groups will be removed. Category sprints are kept by name; group-only sprints on dropped groups are copied onto a remaining group when that group has none. Continue?')) {
+                    onMessage?.('Race defaults saved. Enforce cancelled.');
+                    return;
+                }
+            }
+            const res = await fetch(`${API_URL}/admin/races/enforce-race-structure`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ dryRun: false }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                onMessage?.(data.message || 'Enforce failed');
+                return;
+            }
+            setEnforcePreview(null);
+            onMessage?.(
+                `Defaults saved. ${data.message || 'Enforced'}` +
+                (data.syncSignupsReminder ? ' If event IDs are set, sync signups per race.' : ''),
+            );
+            await queryClient.invalidateQueries({ queryKey: ['races'] });
+        } catch {
+            onMessage?.('Save and enforce failed');
+        } finally {
+            setEnforcing(false);
         }
     };
 
@@ -138,7 +238,9 @@ export default function RaceDefaultsEditor({
                 <h2 className="text-xl font-semibold text-card-foreground">Race defaults</h2>
                 <p className="text-sm text-muted-foreground mt-1">
                     Set event mode and category structure once. New races clone this template;
-                    you fill Zwift event IDs (and route/sprints) per race. Does not change existing races.
+                    you fill Zwift event IDs (and route/sprints) per race. <strong>Save race defaults</strong> updates
+                    the template only. <strong>Save and enforce</strong> writes the template, then overlays it onto
+                    existing grouped races.
                 </p>
             </div>
 
@@ -338,75 +440,15 @@ export default function RaceDefaultsEditor({
             <button
                 type="button"
                 disabled={!user || enforcing}
-                onClick={async () => {
-                    if (!user) return;
-                    setEnforcing(true);
-                    onMessage?.(null);
-                    try {
-                        const token = await user.getIdToken();
-                        const res = await fetch(`${API_URL}/admin/races/enforce-race-structure`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                            body: JSON.stringify({ dryRun: true }),
-                        });
-                        const data = await res.json();
-                        if (!res.ok) {
-                            onMessage?.(data.message || 'Preview failed');
-                            return;
-                        }
-                        setEnforcePreview(data);
-                        const drops = (data.races || []).filter((r: { wouldDropEventId?: boolean }) => r.wouldDropEventId);
-                        if (drops.length) {
-                            onMessage?.(`Preview: ${drops.length} race(s) would drop an eventId on group rename. Review before enforce.`);
-                        } else {
-                            onMessage?.('Preview ready. Save defaults first if you changed the template, then enforce.');
-                        }
-                    } catch {
-                        onMessage?.('Preview failed');
-                    } finally {
-                        setEnforcing(false);
-                    }
-                }}
+                onClick={() => { void handlePreviewEnforce(); }}
                 className="px-4 py-2 rounded border border-border text-sm font-medium hover:bg-muted disabled:opacity-50"
             >
                 {enforcing ? 'Working…' : 'Preview enforce'}
             </button>
             <button
                 type="button"
-                disabled={!user || enforcing || !enforcePreview}
-                onClick={async () => {
-                    if (!user || !enforcePreview) return;
-                    const races = (enforcePreview.races || []) as { wouldDropEventId?: boolean; name?: string }[];
-                    const drops = races.filter((r) => r.wouldDropEventId);
-                    if (drops.length) {
-                        if (!confirm(`Enforce would drop event IDs on: ${drops.map((d) => d.name).join(', ')}. Continue?`)) return;
-                    }
-                    if (!confirm('Overlay the saved race-defaults template onto existing grouped races? Event IDs and matching sprints are kept. Signups are not auto-synced to Zwift.')) return;
-                    setEnforcing(true);
-                    try {
-                        const token = await user.getIdToken();
-                        const res = await fetch(`${API_URL}/admin/races/enforce-race-structure`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                            body: JSON.stringify({ dryRun: false }),
-                        });
-                        const data = await res.json();
-                        if (!res.ok) {
-                            onMessage?.(data.message || 'Enforce failed');
-                            return;
-                        }
-                        setEnforcePreview(null);
-                        onMessage?.(
-                            `${data.message || 'Enforced'}` +
-                            (data.syncSignupsReminder ? ' If event IDs are set, sync signups per race.' : ''),
-                        );
-                        await queryClient.invalidateQueries({ queryKey: ['races'] });
-                    } catch {
-                        onMessage?.('Enforce failed');
-                    } finally {
-                        setEnforcing(false);
-                    }
-                }}
+                disabled={!user || enforcing || status === 'saving'}
+                onClick={() => { void handleSaveAndEnforce(); }}
                 className="px-4 py-2 rounded border border-border text-sm font-medium hover:bg-muted disabled:opacity-50"
             >
                 Save and enforce
@@ -429,6 +471,13 @@ export default function RaceDefaultsEditor({
                     {(enforcePreview as { races?: { wouldDropEventId?: boolean }[] }).races?.some((r) => r.wouldDropEventId) && (
                         <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">
                             Group rename/mismatch would drop one or more event IDs. Confirm before enforce.
+                        </p>
+                    )}
+                    {(enforcePreview as { races?: { wouldDropGroupsWithSprints?: string[] }[] }).races?.some(
+                        (r) => (r.wouldDropGroupsWithSprints || []).length > 0,
+                    ) && (
+                        <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">
+                            One or more race groups would be removed. Category sprints stay with the category name.
                         </p>
                     )}
                 <pre className="text-xs overflow-auto max-h-48 bg-muted/30 p-2 rounded border border-border">

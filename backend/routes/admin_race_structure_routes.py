@@ -102,6 +102,7 @@ def enforce_race_structure():
                     "hasResults": p["hasResults"],
                     "hasEventId": p["hasEventId"],
                     "wouldDropEventId": bool(p["diff"].get("droppedEventIds")),
+                    "wouldDropGroupsWithSprints": list(p["diff"].get("droppedGroupsWithSprints") or []),
                 }
                 for p in previews
             ],
