@@ -55,6 +55,13 @@
         "$ref": "#/$defs/policyDoc"
       }
     },
+    "posts": {
+      "type": "array",
+      "description": "Nyheder blog posts. Comments live at posts/{postId}/comments.",
+      "items": {
+        "$ref": "#/$defs/postDoc"
+      }
+    },
     "races": {
       "type": "array",
       "items": {
@@ -468,6 +475,76 @@
         },
         "updatedAt": {
           "$ref": "#/$defs/timestampString"
+        }
+      }
+    },
+    "postDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Nyheder post at posts/{postId}. Comments are posts/{postId}/comments.",
+      "properties": {
+        "_id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "slug": {
+          "type": "string"
+        },
+        "coverImageUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "body": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "TipTap JSON document"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "published"
+          ]
+        },
+        "authorUid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the admin who created or last saved the post"
+        },
+        "authorName": {
+          "type": "string",
+          "description": "Byline shown on Nyheder; may be a participant name when posting on someone else's behalf"
+        },
+        "authorZwiftId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Zwift ID when the byline is a participant; null when the byline is the signed-in poster"
+        },
+        "publishedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestampString"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/timestampString"
+        },
+        "commentCount": {
+          "type": "integer"
         }
       }
     },

@@ -212,6 +212,39 @@
       "updatedAt": "2026-02-04T10:27:57+00:00"
     }
   ],
+  "posts": [
+    {
+      "_id": "post_example_001",
+      "title": "Race Preview: Example Classic",
+      "slug": "race-preview-example-classic",
+      "coverImageUrl": null,
+      "body": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Preview text for the example classic."
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "race-preview"
+      ],
+      "status": "published",
+      "authorUid": "auth_uid_example_001",
+      "authorName": "User Example",
+      "authorZwiftId": "100001",
+      "publishedAt": "2026-05-01T08:00:00+00:00",
+      "createdAt": "2026-04-30T18:00:00+00:00",
+      "updatedAt": "2026-05-01T08:00:00+00:00",
+      "commentCount": 0
+    }
+  ],
   "races": [
     {
       "_id": "race_doc_example_001",

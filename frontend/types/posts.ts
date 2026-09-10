@@ -10,6 +10,8 @@ export interface Post {
     status: 'draft' | 'published';
     authorUid: string;
     authorName: string;
+    /** Zwift ID when the byline is a participant; null when posting as the signed-in admin. */
+    authorZwiftId: string | null;
     publishedAt: string | null;
     createdAt: string;
     updatedAt: string;

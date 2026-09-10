@@ -6,7 +6,10 @@ import dynamic from 'next/dynamic';
 import { JSONContent } from '@tiptap/react';
 import { getPostById, updatePost, generateSlug } from '@/lib/posts';
 import { Post } from '@/types/posts';
+import { type PostAuthorValue } from '@/lib/postAuthorOptions';
 import { useAuth } from '@/lib/auth-context';
+import { usePosterAuthorDefault } from '@/hooks/usePosterAuthorDefault';
+import PostAuthorSelect from '@/components/admin/PostAuthorSelect';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '@/lib/firebase';
 
@@ -15,6 +18,7 @@ const BlogEditor = dynamic(() => import('@/components/blog/BlogEditor'), { ssr: 
 export default function EditPostPage() {
     const { id } = useParams<{ id: string }>();
     const { user, isAdmin, loading: authLoading } = useAuth();
+    const { value: posterAuthor } = usePosterAuthorDefault();
     const router = useRouter();
 
     const [post, setPost] = useState<Post | null>(null);
@@ -30,6 +34,8 @@ export default function EditPostPage() {
     const [body, setBody] = useState<JSONContent>({ type: 'doc', content: [] });
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
+    const [author, setAuthor] = useState<PostAuthorValue | null>(null);
+    const resolvedAuthor = author ?? posterAuthor;
 
     useEffect(() => {
         getPostById(id).then(p => {
@@ -41,6 +47,10 @@ export default function EditPostPage() {
             setStatus(p.status);
             setCoverImageUrl(p.coverImageUrl);
             setBody(p.body);
+            setAuthor({
+                authorName: p.authorName,
+                authorZwiftId: p.authorZwiftId,
+            });
         }).finally(() => setPostLoading(false));
     }, [id, router]);
 
@@ -79,6 +89,8 @@ export default function EditPostPage() {
                 body,
                 tags: tags.split(',').map(t => t.trim()).filter(Boolean),
                 status: saveStatus,
+                authorName: resolvedAuthor.authorName,
+                authorZwiftId: resolvedAuthor.authorZwiftId,
             });
             router.push('/admin#nyheder');
         } catch (e) {
@@ -127,6 +139,12 @@ export default function EditPostPage() {
                     />
                     <p className="text-xs text-muted-foreground mt-1">URL: /nyheder/{slug}</p>
                 </div>
+
+                <PostAuthorSelect
+                    poster={posterAuthor}
+                    value={resolvedAuthor}
+                    onChange={setAuthor}
+                />
 
                 {/* Tags */}
                 <div>

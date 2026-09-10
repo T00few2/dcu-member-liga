@@ -36,6 +36,7 @@ function normalizePost(id: string, data: Record<string, unknown>): Post {
         status: data.status === 'published' ? 'published' : 'draft',
         authorUid: String(data.authorUid ?? ''),
         authorName: String(data.authorName ?? ''),
+        authorZwiftId: data.authorZwiftId ? String(data.authorZwiftId) : null,
         publishedAt: data.publishedAt ? tsToString(data.publishedAt) : null,
         createdAt: tsToString(data.createdAt),
         updatedAt: tsToString(data.updatedAt),
@@ -109,6 +110,7 @@ export interface PostInput {
     status: 'draft' | 'published';
     authorUid: string;
     authorName: string;
+    authorZwiftId: string | null;
 }
 
 export async function createPost(input: PostInput): Promise<string> {

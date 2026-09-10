@@ -5,7 +5,10 @@ import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { JSONContent } from '@tiptap/react';
 import { createPost, generateSlug } from '@/lib/posts';
+import { type PostAuthorValue } from '@/lib/postAuthorOptions';
 import { useAuth } from '@/lib/auth-context';
+import { usePosterAuthorDefault } from '@/hooks/usePosterAuthorDefault';
+import PostAuthorSelect from '@/components/admin/PostAuthorSelect';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '@/lib/firebase';
 
@@ -13,6 +16,7 @@ const BlogEditor = dynamic(() => import('@/components/blog/BlogEditor'), { ssr: 
 
 export default function NewPostPage() {
     const { user, isAdmin, loading: authLoading } = useAuth();
+    const { value: posterAuthor } = usePosterAuthorDefault();
     const router = useRouter();
 
     const [title, setTitle] = useState('');
@@ -25,6 +29,8 @@ export default function NewPostPage() {
     const [body, setBody] = useState<JSONContent>({ type: 'doc', content: [] });
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
+    const [author, setAuthor] = useState<PostAuthorValue | null>(null);
+    const resolvedAuthor = author ?? posterAuthor;
 
     const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = e.target.value;
@@ -62,7 +68,8 @@ export default function NewPostPage() {
                 tags: tags.split(',').map(t => t.trim()).filter(Boolean),
                 status: saveStatus,
                 authorUid: user.uid,
-                authorName: user.displayName ?? user.email ?? 'Admin',
+                authorName: resolvedAuthor.authorName,
+                authorZwiftId: resolvedAuthor.authorZwiftId,
             });
             router.push('/admin#nyheder');
         } catch (e) {
@@ -108,6 +115,12 @@ export default function NewPostPage() {
                     />
                     <p className="text-xs text-muted-foreground mt-1">URL: /nyheder/{slug || '...'}</p>
                 </div>
+
+                <PostAuthorSelect
+                    poster={posterAuthor}
+                    value={resolvedAuthor}
+                    onChange={setAuthor}
+                />
 
                 {/* Tags */}
                 <div>

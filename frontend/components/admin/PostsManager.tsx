@@ -68,6 +68,8 @@ export default function PostsManager() {
                                     <h3 className="font-medium text-foreground truncate">{post.title}</h3>
                                 </div>
                                 <p className="text-xs text-muted-foreground mt-0.5">
+                                    {post.authorName}
+                                    {' · '}
                                     {post.publishedAt ? formatDate(post.publishedAt) : `Opdateret ${formatDate(post.updatedAt)}`}
                                     {' · '}{post.commentCount} {post.commentCount === 1 ? 'kommentar' : 'kommentarer'}
                                 </p>
