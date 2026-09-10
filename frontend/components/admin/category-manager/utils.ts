@@ -6,13 +6,11 @@ export function getCatLower(cats: CategoryDef[], i: number): number {
   return cats[i + 1].upper ?? 0;
 }
 
-/** Count riders whose effective rating falls within [lower, upper). */
-export function countInRange(riders: RiderEntry[], lower: number, upper: number | null | undefined): number {
-  return riders.filter(r => {
-    const effective = parseFloat(String(r.effectiveRating));
-    if (isNaN(effective)) return false;
-    if (effective < lower) return false;
-    if (upper != null && effective >= upper) return false;
-    return true;
-  }).length;
+/** Count riders whose assigned liga category (auto, manual, locked, self-selected) matches `categoryName`. */
+export function countAssignedToCategory(riders: RiderEntry[], categoryName: string): number {
+  return riders.filter(r => r.ligaCategory?.category === categoryName).length;
+}
+
+export function assignedCategoryCount(riders: RiderEntry[]): number {
+  return riders.filter(r => Boolean(r.ligaCategory?.category)).length;
 }

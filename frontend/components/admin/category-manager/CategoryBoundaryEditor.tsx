@@ -1,12 +1,11 @@
 'use client';
 
 import type { CategoryDef, RiderEntry } from './types';
-import { getCatLower, countInRange } from './utils';
+import { getCatLower, assignedCategoryCount, countAssignedToCategory } from './utils';
 
 interface CategoryBoundaryEditorProps {
   categories: CategoryDef[];
   riders: RiderEntry[];
-  ridersWithRating: RiderEntry[];
   onUpdateName: (i: number, name: string) => void;
   onNameBlur?: (i: number) => void;
   onUpdateUpper: (i: number, raw: string) => void;
@@ -18,7 +17,6 @@ interface CategoryBoundaryEditorProps {
 export default function CategoryBoundaryEditor({
   categories,
   riders,
-  ridersWithRating,
   onUpdateName,
   onNameBlur,
   onUpdateUpper,
@@ -26,11 +24,11 @@ export default function CategoryBoundaryEditor({
   onSplit,
   onMergeUp,
 }: CategoryBoundaryEditorProps) {
+  const assignedCount = assignedCategoryCount(riders);
+  const unassignedCount = riders.length - assignedCount;
   const maxInAnyBucket = Math.max(
     1,
-    ...categories.map((_, i) =>
-      countInRange(riders, getCatLower(categories, i), categories[i].upper)
-    )
+    ...categories.map(cat => countAssignedToCategory(riders, cat.name))
   );
 
   return (
@@ -42,7 +40,9 @@ export default function CategoryBoundaryEditor({
             <th className="pb-2 text-left pr-3">vELO range</th>
             <th className="pb-2 text-right pr-3 w-28">Upper boundary</th>
             <th className="pb-2 text-center pr-3" title="Weight verification + dual-recording reports">Verification</th>
-            <th className="pb-2 text-left">Riders ({ridersWithRating.length} with rating)</th>
+            <th className="pb-2 text-left">
+              Riders ({assignedCount} assigned{unassignedCount > 0 ? ` · ${unassignedCount} unassigned` : ''})
+            </th>
             <th className="pb-2 text-right">Actions</th>
           </tr>
         </thead>
@@ -50,8 +50,8 @@ export default function CategoryBoundaryEditor({
           {categories.map((cat, i) => {
             const lower = getCatLower(categories, i);
             const upper = cat.upper;
-            const count = countInRange(riders, lower, upper);
-            const pct = ridersWithRating.length > 0 ? Math.round((count / ridersWithRating.length) * 100) : 0;
+            const count = countAssignedToCategory(riders, cat.name);
+            const pct = assignedCount > 0 ? Math.round((count / assignedCount) * 100) : 0;
             const barW = Math.round((count / maxInAnyBucket) * 100);
             const isTop = i === 0;
             const canSplit = upper == null ? true : (upper - lower) >= 2;
@@ -63,6 +63,7 @@ export default function CategoryBoundaryEditor({
                   <input
                     type="text"
                     value={cat.name}
+                    aria-label={`Name for category ${i + 1}`}
                     onChange={e => onUpdateName(i, e.target.value)}
                     onBlur={() => onNameBlur?.(i)}
                     className="w-28 px-2 py-1 border border-input rounded bg-background text-foreground text-sm"

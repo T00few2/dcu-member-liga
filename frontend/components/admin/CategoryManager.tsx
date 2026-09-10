@@ -408,7 +408,6 @@ export default function CategoryManager() {
       )
     : statusFiltered;
 
-  const ridersWithRating = scopedRiders.filter(r => !isNaN(parseFloat(String(r.effectiveRating))));
   const listLoading = ridersLoading || signupsLoading;
 
   // ── Render ──────────────────────────────────────────────────────────────
@@ -484,8 +483,8 @@ export default function CategoryManager() {
         </div>
         <p className="text-sm text-muted-foreground mb-5">
           Define vELO split points and category names. Defaults to the 10 standard ZR categories.
-          The distribution preview shows how effective ratings (max of current and 30-day max) map to these categories
-          {selectedRaceId ? ' for the selected race signups' : ''}.
+          Rider counts show how many riders currently sit in each assigned liga category (auto, manual, locked, and self-selected)
+          {selectedRaceId ? ' among the selected race signups' : ''}.
           Use <strong>Verification</strong> to include a category in weight verification sampling and dual-recording reports.
           Preview then Save remaps rider holds and race name strings. <strong>Assign Liga Categories</strong> later refreshes auto bands from current vELO; it does not overwrite manuals or apply unsaved editor changes.
         </p>
@@ -493,7 +492,6 @@ export default function CategoryManager() {
         <CategoryBoundaryEditor
           categories={effectiveLigaCategories}
           riders={scopedRiders as RiderEntry[]}
-          ridersWithRating={ridersWithRating as RiderEntry[]}
           onUpdateName={updateCatName}
           onNameBlur={commitNameBlur}
           onUpdateUpper={updateCatUpper}

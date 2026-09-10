@@ -109,6 +109,34 @@ describe('CategoryManager race signup filter', () => {
     expect(screen.getByText('1 signed up for Opening Race')).toBeInTheDocument();
     expect(screen.queryByText('Ada Lovelace')).not.toBeInTheDocument();
     expect(screen.getByText('Grace Hopper')).toBeInTheDocument();
+    expect(screen.getByText('Riders (1 assigned)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Name for category 3').closest('tr')).toHaveTextContent('1 (100%)');
+  });
+
+  it('shows assigned category counts rather than current vELO buckets', () => {
+    useLigaCategoriesQuery.mockReturnValue({
+      data: [
+        {
+          ...RIDERS[0],
+          effectiveRating: 2300,
+          ligaCategory: {
+            ...RIDERS[0].ligaCategory,
+            category: 'Platinum',
+            manualAssignedCategory: 'Platinum',
+          },
+        },
+        RIDERS[1],
+      ],
+      isFetching: false,
+      refetch: refetchRiders,
+    });
+
+    render(<CategoryManager />);
+
+    expect(screen.getByText('Riders (2 assigned)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Name for category 1').closest('tr')).toHaveTextContent('0 (0%)');
+    expect(screen.getByLabelText('Name for category 6').closest('tr')).toHaveTextContent('1 (50%)');
+    expect(screen.getByLabelText('Name for category 3').closest('tr')).toHaveTextContent('1 (50%)');
   });
 
   it('Assign posts an empty body and is disabled while the editor is dirty', async () => {
