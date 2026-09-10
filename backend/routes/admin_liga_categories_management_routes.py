@@ -27,7 +27,6 @@ from services.liga_categories_core import (
 )
 from services.schema_validation import (
     log_schema_issues,
-    validate_league_settings_doc,
     validate_user_doc,
     with_schema_version,
 )

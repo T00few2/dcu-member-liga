@@ -1,4 +1,5 @@
 // Shared types for admin/league management
+import type { LigaCategoryDef } from '@/lib/ligaCategories';
 import type { StickyWattsResult } from '@/lib/stickyWatts';
 import type { EventMode, ResultsPhase, RaceType, SegmentType } from './enums';
 export type { EventMode, ResultsPhase, RaceType, SegmentType } from './enums';
@@ -298,7 +299,7 @@ export interface LeagueSettings {
     bestRacesCount: number;
     seasonRankPoints?: SeasonRankPoints;
     seasonBestResultsCount?: number;
-    ligaCategories?: { name: string; upper?: number | null; requiresVerification?: boolean }[];
+    ligaCategories?: LigaCategoryDef[];
     ligaCategoriesFingerprint?: string;
     weightVerificationValidDays?: number;
     /** Season race defaults — cloned into new races; not stored on race docs. */

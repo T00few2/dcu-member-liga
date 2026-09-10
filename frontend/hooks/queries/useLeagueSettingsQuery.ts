@@ -18,9 +18,7 @@ export function useLeagueSettingsQuery() {
             const res = await fetch(`${API_URL}/league/settings`, { headers });
             if (!res.ok) throw new Error('Failed to fetch league settings');
             const data = await res.json();
-            return (data.settings ?? {}) as LeagueSettings & {
-                ligaCategories?: { name: string }[];
-            };
+            return (data.settings ?? {}) as LeagueSettings;
         },
         staleTime: 5 * 60_000,
     });

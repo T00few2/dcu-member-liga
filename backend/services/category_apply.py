@@ -14,7 +14,6 @@ from services.category_engine import (
     build_manual_assigned,
     cats_from_defs,
     compute_category_status,
-    effective_rating,
     get_category_by_name,
 )
 

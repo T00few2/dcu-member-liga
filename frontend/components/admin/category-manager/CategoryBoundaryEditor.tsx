@@ -54,7 +54,7 @@ export default function CategoryBoundaryEditor({
             const pct = ridersWithRating.length > 0 ? Math.round((count / ridersWithRating.length) * 100) : 0;
             const barW = Math.round((count / maxInAnyBucket) * 100);
             const isTop = i === 0;
-            const canSplit = upper === null ? true : (upper - lower) >= 2;
+            const canSplit = upper == null ? true : (upper - lower) >= 2;
             const canMergeUp = i > 0 && categories.length > 2;
 
             return (

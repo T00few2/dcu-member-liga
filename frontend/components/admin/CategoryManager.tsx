@@ -120,7 +120,7 @@ export default function CategoryManager() {
     const fromName = cat.name;
     const lower = getCatLower(effectiveLigaCategories, i);
     const upper = cat.upper;
-    const mid = upper !== null
+    const mid = upper != null
       ? Math.floor((lower + upper) / 2)
       : lower + 100;
     const next = [...effectiveLigaCategories];

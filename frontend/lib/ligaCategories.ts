@@ -1,6 +1,6 @@
 export type LigaCategoryDef = {
   name: string;
-  upper: number | null;
+  upper?: number | null;
   requiresVerification?: boolean;
 };
 
@@ -67,7 +67,7 @@ export function categoryFromVelo(rating: number | string, cats: LigaCategoryDef[
   for (let i = 0; i < cats.length; i++) {
     const upper = cats[i].upper;
     const lower = cats[i + 1]?.upper ?? 0;
-    if (r >= lower && (upper === null || r < upper)) return cats[i].name;
+    if (r >= lower && (upper == null || r < upper)) return cats[i].name;
   }
   return cats[cats.length - 1]?.name ?? '-';
 }
@@ -77,7 +77,7 @@ export function veloForCategory(catName: string, cats: LigaCategoryDef[]): numbe
   if (idx === -1) return null;
   const upper = cats[idx].upper;
   const lower = cats[idx + 1]?.upper ?? 0;
-  return upper === null ? lower + 300 : Math.round((upper + lower) / 2);
+  return upper == null ? lower + 300 : Math.round((upper + lower) / 2);
 }
 
 export function categoryStyle(name: string): string {

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { useLeagueSettingsQuery } from '@/hooks/queries';
 import { categoryRankOrder } from '@/lib/ligaCategories';
 

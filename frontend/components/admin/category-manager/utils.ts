@@ -7,12 +7,12 @@ export function getCatLower(cats: CategoryDef[], i: number): number {
 }
 
 /** Count riders whose effective rating falls within [lower, upper). */
-export function countInRange(riders: RiderEntry[], lower: number, upper: number | null): number {
+export function countInRange(riders: RiderEntry[], lower: number, upper: number | null | undefined): number {
   return riders.filter(r => {
     const effective = parseFloat(String(r.effectiveRating));
     if (isNaN(effective)) return false;
     if (effective < lower) return false;
-    if (upper !== null && effective >= upper) return false;
+    if (upper != null && effective >= upper) return false;
     return true;
   }).length;
 }

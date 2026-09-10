@@ -126,11 +126,10 @@ describe('CategoryManager race signup filter', () => {
     expect(assignBtn).toBeEnabled();
 
     await user.click(assignBtn);
-    const assignCall = fetchMock.mock.calls.find((call) =>
-      String(call[0]).includes('/admin/assign-liga-categories'),
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/admin/assign-liga-categories'),
+      expect.objectContaining({ body: JSON.stringify({}) }),
     );
-    expect(assignCall).toBeTruthy();
-    expect(JSON.parse(String(assignCall?.[1]?.body))).toEqual({});
 
     await user.click(screen.getByRole('button', { name: 'Load ZR Defaults' }));
     expect(assignBtn).toBeDisabled();
