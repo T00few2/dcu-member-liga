@@ -403,7 +403,7 @@ export default function LiveRaceResultsTable({
         <section className="border-t border-border pt-6 mt-6">
             <header className="flex flex-wrap items-end justify-between gap-2 mb-3 border-b border-border">
                 <div className="flex items-center gap-1">
-                    {tabBtn('live', prerace ? 'Live resultater' : `Live resultater · ${category}`)}
+                    {tabBtn('live', `Live resultater · ${category}`)}
                     {tabBtn('info', 'Info')}
                 </div>
             </header>

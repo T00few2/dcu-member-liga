@@ -3,54 +3,30 @@
 import { useEffect, useMemo, useState } from 'react';
 import RouteElevationChart from '@/components/races/RouteElevationChart';
 import LiveRaceResultsTable from '@/components/live-race/LiveRaceResultsTable';
+import LiveRaceCategoryTabs from '@/components/live-race/LiveRaceCategoryTabs';
 import { fromTimestamp, formatDateLong, formatTimeWithTz } from '@/lib/formatDate';
 import { useRouteElevationQuery } from '@/hooks/queries';
 import { scaleRaceDistanceKm } from '@/hooks/useLeagueData';
-import type { CurrentLiveRace, Sprint } from '@/types/live';
+import type { LiveRaceCategoryTab, LiveRaceCategoryTabGroup } from '@/lib/live-race/categoryTabs';
+import type { CurrentLiveRace } from '@/types/live';
 
 interface Props {
     race: CurrentLiveRace;
-}
-
-function pickSprints(...candidates: (Sprint[] | undefined | null)[]): Sprint[] {
-    for (const c of candidates) {
-        if (c && c.length > 0) return c;
-    }
-    return [];
-}
-
-function getFirstTabInfo(race: CurrentLiveRace): { category: string; laps: number; sprints: Sprint[] } {
-    if (race.eventMode === 'grouped' && race.raceGroups?.length) {
-        const group = race.raceGroups[0];
-        const cat = group.categories?.[0];
-        return {
-            category: cat?.category ?? 'A',
-            laps: cat?.laps ?? group.laps ?? race.laps ?? 1,
-            sprints: pickSprints(cat?.sprints, group.sprints, race.sprints),
-        };
-    }
-    if (race.eventConfiguration?.length) {
-        const cfg = race.eventConfiguration[0];
-        return {
-            category: cfg.customCategory ?? 'A',
-            laps: cfg.laps ?? race.laps ?? 1,
-            sprints: pickSprints(cfg.sprints, race.sprints),
-        };
-    }
-    if (race.singleModeCategories?.length) {
-        const cfg = race.singleModeCategories[0];
-        return {
-            category: cfg.category ?? 'A',
-            laps: cfg.laps ?? race.laps ?? 1,
-            sprints: pickSprints(cfg.sprints, race.sprints),
-        };
-    }
-    return { category: 'A', laps: race.laps ?? 1, sprints: race.sprints ?? [] };
+    tabsByGroup: LiveRaceCategoryTabGroup[];
+    activeCat: string;
+    activeTab?: LiveRaceCategoryTab;
+    onSelectCategory: (cat: string) => void;
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
-export default function UpcomingRaceCountdown({ race }: Props) {
+export default function UpcomingRaceCountdown({
+    race,
+    tabsByGroup,
+    activeCat,
+    activeTab,
+    onSelectCategory,
+}: Props) {
     const raceDate = useMemo(() => fromTimestamp(race.date ?? null), [race.date]);
 
     const [secondsLeft, setSecondsLeft] = useState(() =>
@@ -65,7 +41,9 @@ export default function UpcomingRaceCountdown({ race }: Props) {
         return () => clearInterval(id);
     }, [raceDate]);
 
-    const { category, laps, sprints } = useMemo(() => getFirstTabInfo(race), [race]);
+    const category = activeTab?.cat ?? activeCat;
+    const laps = activeTab?.laps ?? race.laps ?? 1;
+    const sprints = activeTab?.sprints ?? [];
 
     const days = Math.floor(secondsLeft / 86400);
     const hours = Math.floor((secondsLeft % 86400) / 3600);
@@ -106,6 +84,12 @@ export default function UpcomingRaceCountdown({ race }: Props) {
                 </p>
                 {meta && <p className="text-xs text-muted-foreground mt-0.5">{meta}</p>}
             </header>
+
+            <LiveRaceCategoryTabs
+                tabsByGroup={tabsByGroup}
+                activeCat={activeCat}
+                onSelect={onSelectCategory}
+            />
 
             <div className="border border-border rounded-lg bg-card p-4">
                 {race.map && race.routeName ? (

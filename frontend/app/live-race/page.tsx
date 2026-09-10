@@ -1,74 +1,23 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import RouteElevationChart from '@/components/races/RouteElevationChart';
 import LiveRiderOverlay from '@/components/live-race/LiveRiderOverlay';
 import LiveRiderTooltip from '@/components/live-race/LiveRiderTooltip';
 import LiveRaceInfoCards from '@/components/live-race/LiveRaceInfoCards';
 import LiveRaceResultsTable from '@/components/live-race/LiveRaceResultsTable';
+import LiveRaceCategoryTabs from '@/components/live-race/LiveRaceCategoryTabs';
 import UpcomingRaceCountdown from '@/components/live-race/UpcomingRaceCountdown';
 import { useCurrentLiveRaceQuery, useLiveRidersQuery, useRouteElevationQuery, useUpcomingRaceQuery } from '@/hooks/queries';
 import { useLiveRaceAutoRefresh } from '@/hooks/queries/useLiveRaceAutoRefresh';
 import { useLiveRaceDoc } from '@/hooks/live-race/useLiveRaceDoc';
+import { useLiveRaceCategoryTabs } from '@/hooks/live-race/useLiveRaceCategoryTabs';
 import { clusterRiders, positionRiders, type RiderGroup } from '@/lib/live-race/cluster';
 import { fromTimestamp } from '@/lib/formatDate';
-import type { CurrentLiveRace, Sprint } from '@/types/live';
 import { scaleRaceDistanceKm } from '@/hooks/useLeagueData';
 
-interface CategoryTab {
-    cat: string;
-    label: string;
-    groupName?: string;
-    laps: number;
-    sprints: Sprint[];
-}
-
-function pickSprints(...candidates: (Sprint[] | undefined | null)[]): Sprint[] {
-    for (const c of candidates) {
-        if (c && c.length > 0) return c;
-    }
-    return [];
-}
-
-function getCategoryTabs(race: CurrentLiveRace): CategoryTab[] {
-    if (race.eventMode === 'grouped' && race.raceGroups?.length) {
-        const tabs: CategoryTab[] = [];
-        for (const group of race.raceGroups) {
-            for (const cat of group.categories ?? []) {
-                if (!cat?.category) continue;
-                tabs.push({
-                    cat: cat.category,
-                    label: cat.category,
-                    groupName: group.name || undefined,
-                    laps: cat.laps ?? group.laps ?? race.laps ?? 1,
-                    sprints: pickSprints(cat.sprints, group.sprints, race.sprints),
-                });
-            }
-        }
-        if (tabs.length) return tabs;
-    }
-    if (race.eventConfiguration?.length) {
-        return race.eventConfiguration.map((cfg) => ({
-            cat: cfg.customCategory,
-            label: cfg.customCategory,
-            laps: cfg.laps ?? race.laps ?? 1,
-            sprints: pickSprints(cfg.sprints, race.sprints),
-        }));
-    }
-    if (race.singleModeCategories?.length) {
-        return race.singleModeCategories.map((cfg) => ({
-            cat: cfg.category,
-            label: cfg.category,
-            laps: cfg.laps ?? race.laps ?? 1,
-            sprints: pickSprints(cfg.sprints, race.sprints),
-        }));
-    }
-    return [{ cat: 'A', label: 'A', laps: race.laps ?? 1, sprints: race.sprints ?? [] }];
-}
-
 function LiveRacePageContent() {
-    const router = useRouter();
     const searchParams = useSearchParams();
     const chartWrapRef = useRef<HTMLDivElement>(null);
 
@@ -98,38 +47,9 @@ function LiveRacePageContent() {
         intervalSeconds: currentRace?.resultsAutomation?.pollingIntervalSeconds ?? 30,
     });
 
-    const tabs = useMemo(
-        () => (currentRace ? getCategoryTabs(currentRace) : []),
-        [currentRace],
+    const { tabsByGroup, activeCat, activeTab, setCategory } = useLiveRaceCategoryTabs(
+        currentRace ?? upcomingRace,
     );
-
-    const activeCat = searchParams.get('cat') || tabs[0]?.cat || 'A';
-    const activeTab = tabs.find((t) => t.cat === activeCat) ?? tabs[0];
-
-    // Redirect to the first valid category if the URL carries a stale one.
-    useEffect(() => {
-        if (!tabs.length || !tabs[0]) return;
-        if (tabs.find((t) => t.cat === activeCat)) return;
-        const params = new URLSearchParams(searchParams.toString());
-        params.set('cat', tabs[0].cat);
-        router.replace(`/live-race?${params.toString()}`);
-    }, [tabs, activeCat, router, searchParams]);
-
-    const tabsByGroup = useMemo(() => {
-        const buckets = new Map<string | undefined, CategoryTab[]>();
-        const order: (string | undefined)[] = [];
-        for (const t of tabs) {
-            if (!buckets.has(t.groupName)) {
-                buckets.set(t.groupName, []);
-                order.push(t.groupName);
-            }
-            buckets.get(t.groupName)!.push(t);
-        }
-        return order.map((groupName) => ({
-            groupName,
-            tabs: buckets.get(groupName)!,
-        }));
-    }, [tabs]);
 
     const { data: liveRidersResp } = useLiveRidersQuery(currentRace?.id, activeCat);
     const liveRiders = liveRidersResp?.riders ?? [];
@@ -215,15 +135,6 @@ function LiveRacePageContent() {
         setSelectedRiderIds(new Set(group.riders.map((r) => r.userId)));
     }, []);
 
-    const setCategory = useCallback(
-        (cat: string) => {
-            const params = new URLSearchParams(searchParams.toString());
-            params.set('cat', cat);
-            router.replace(`/live-race?${params.toString()}`);
-        },
-        [router, searchParams],
-    );
-
     const handleGroupHover = useCallback(
         (group: RiderGroup | null, clientX: number, clientY: number) => {
             if (!group || !chartWrapRef.current) {
@@ -247,7 +158,15 @@ function LiveRacePageContent() {
 
     if (!currentRace) {
         if (upcomingRace) {
-            return <UpcomingRaceCountdown race={upcomingRace} />;
+            return (
+                <UpcomingRaceCountdown
+                    race={upcomingRace}
+                    tabsByGroup={tabsByGroup}
+                    activeCat={activeCat}
+                    activeTab={activeTab}
+                    onSelectCategory={setCategory}
+                />
+            );
         }
         return (
             <div className="container mx-auto px-4 py-12 text-center">
@@ -271,33 +190,11 @@ function LiveRacePageContent() {
                 </p>
             </header>
 
-            {tabs.length > 1 && (
-                <div className="mb-4 space-y-2">
-                    {tabsByGroup.map(({ groupName, tabs: groupTabs }) => (
-                        <div key={groupName ?? '__nogroup'} className="flex flex-wrap items-center gap-2">
-                            {groupName && (
-                                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground min-w-20">
-                                    {groupName}
-                                </span>
-                            )}
-                            {groupTabs.map((t) => (
-                                <button
-                                    key={`${groupName ?? ''}::${t.cat}`}
-                                    type="button"
-                                    onClick={() => setCategory(t.cat)}
-                                    className={`px-3 py-1.5 rounded text-sm font-semibold border ${
-                                        t.cat === activeCat
-                                            ? 'bg-primary text-primary-foreground border-primary'
-                                            : 'bg-card border-border text-muted-foreground hover:border-primary/50'
-                                    }`}
-                                >
-                                    {t.label}
-                                </button>
-                            ))}
-                        </div>
-                    ))}
-                </div>
-            )}
+            <LiveRaceCategoryTabs
+                tabsByGroup={tabsByGroup}
+                activeCat={activeCat}
+                onSelect={setCategory}
+            />
 
             <div className="border border-border rounded-lg bg-card p-4">
                 <h2 className="text-sm font-semibold text-card-foreground mb-2">Ruteprofil · live</h2>
