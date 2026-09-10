@@ -87,3 +87,20 @@ export function categoryStyle(name: string): string {
 export function catLower(cats: LigaCategoryDef[], index: number): number {
   return cats[index + 1]?.upper ?? 0;
 }
+
+function asRating(value: unknown): number | null {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** vELO shown next to live category bounds: hold rating if manual, else last nightly check. */
+export function ratingMatchingCategoryBounds(lc: {
+  assignedRating?: number | null;
+  lastCheckedRating?: number | null;
+  manualAssignedCategory?: string | null;
+} | null | undefined): number | null {
+  if (!lc) return null;
+  if (lc.manualAssignedCategory) return asRating(lc.assignedRating);
+  return asRating(lc.lastCheckedRating) ?? asRating(lc.assignedRating);
+}

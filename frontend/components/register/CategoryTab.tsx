@@ -10,6 +10,7 @@ import {
     ZR_CATEGORY_STYLES,
     catLower,
     effectiveLigaCategories,
+    ratingMatchingCategoryBounds,
     type LigaCategoryDef,
 } from '@/lib/ligaCategories';
 
@@ -215,8 +216,12 @@ export default function CategoryTab() {
                 {lc && (
                     <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
                         <div className="bg-muted/30 rounded p-3">
-                            <p className="text-xs text-muted-foreground">Tildelt rating</p>
-                            <p className="font-semibold">{lc.assignedRating ?? '—'} vELO</p>
+                            <p className="text-xs text-muted-foreground">
+                                {lc.manualAssignedCategory ? 'Tildelt rating' : 'Seneste vELO'}
+                            </p>
+                            <p className="font-semibold">
+                                {ratingMatchingCategoryBounds(lc) ?? '—'} vELO
+                            </p>
                         </div>
                         <div className="bg-muted/30 rounded p-3">
                             <p className="text-xs text-muted-foreground">Øvre grænse</p>
