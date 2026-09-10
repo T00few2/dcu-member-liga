@@ -63,6 +63,37 @@ def _resolve_categories(settings: dict):
     return None
 
 
+def auto_for_predict_assign(
+    existing_auto: dict | None,
+    real_rating: int | None,
+    grace_period: int,
+    categories,
+) -> dict | None:
+    """Do not copy predicted vELO onto autoAssigned.
+
+    Seed autoAssigned from real vELO only when the rider has none yet.
+    """
+    if existing_auto and existing_auto.get("category"):
+        return None
+    if real_rating is None:
+        return None
+    return build_liga_category(real_rating, grace_period, categories)
+
+
+def rebuild_auto_on_release(
+    existing_auto: dict | None,
+    eff_rating: int,
+    grace_period: int,
+    categories,
+) -> dict:
+    """Rebuild autoAssigned from current vELO after dropping a manual hold."""
+    new_auto = build_liga_category(eff_rating, grace_period, categories)
+    prev_at = (existing_auto or {}).get("assignedAt")
+    if prev_at is not None:
+        new_auto["assignedAt"] = prev_at
+    return new_auto
+
+
 def _compute_liga_update(
     eff_rating: int,
     existing_lc: dict | None,

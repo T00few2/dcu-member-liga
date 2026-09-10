@@ -24,6 +24,8 @@ from services.liga_categories_core import (
     _compute_liga_update,
     _load_liga_settings,
     _resolve_categories,
+    auto_for_predict_assign,
+    rebuild_auto_on_release,
 )
 from services.schema_validation import (
     log_schema_issues,
@@ -453,7 +455,6 @@ def predict_assign_liga_category(zwift_id):
         categories = _resolve_categories(liga_settings)
 
         result = build_liga_category(predicted_velo, grace_period, categories)
-        result["lastCheckedAt"] = firestore.SERVER_TIMESTAMP
 
         existing_lc = user._data.get("ligaCategory") or {}
         if existing_lc.get("locked"):
@@ -473,15 +474,24 @@ def predict_assign_liga_category(zwift_id):
             "lastCheckedRating": int(predicted_velo),
         }
 
-        existing_auto = existing_lc.get("autoAssigned") or {}
-        auto = {**existing_auto, **result}
-        auto.pop("assignedFrom", None)
-        auto.pop("predictedVelo", None)
-
-        doc_update = {
-            "ligaCategory.manualAssigned": manual,
-            "ligaCategory.autoAssigned": auto,
-        }
+        doc_update = {"ligaCategory.manualAssigned": manual}
+        zr = user._data.get("zwiftRacing") or {}
+        real_rating = effective_rating(
+            zr.get("currentRating", "N/A"),
+            zr.get("max30Rating", "N/A"),
+            zr.get("max90Rating", "N/A"),
+        )
+        seeded_auto = auto_for_predict_assign(
+            existing_lc.get("autoAssigned") or {},
+            real_rating,
+            grace_period,
+            categories,
+        )
+        if seeded_auto is not None:
+            seeded_auto["assignedAt"] = firestore.SERVER_TIMESTAMP
+            seeded_auto["lastCheckedAt"] = firestore.SERVER_TIMESTAMP
+            doc_update["ligaCategory.autoAssigned"] = seeded_auto
+            doc_update["ligaCategory.locked"] = False
 
         user_update = with_schema_version(doc_update)
         log_schema_issues(
@@ -597,9 +607,30 @@ def release_manual_liga_category(zwift_id):
         if not (existing_lc.get("manualAssigned") or {}).get("category"):
             return jsonify({"message": "Rider has no manual category assignment"}), 400
 
-        user_update = with_schema_version({
-            "ligaCategory.manualAssigned": firestore.DELETE_FIELD,
-        })
+        liga_settings = _load_liga_settings(db)
+        grace_period = liga_settings["gracePeriod"]
+        categories = _resolve_categories(liga_settings)
+        zr = user._data.get("zwiftRacing") or {}
+        rating = effective_rating(
+            zr.get("currentRating", "N/A"),
+            zr.get("max30Rating", "N/A"),
+            zr.get("max90Rating", "N/A"),
+        )
+
+        doc_update = {"ligaCategory.manualAssigned": firestore.DELETE_FIELD}
+        if rating is not None:
+            auto = rebuild_auto_on_release(
+                existing_lc.get("autoAssigned") or {},
+                rating,
+                grace_period,
+                categories,
+            )
+            auto["lastCheckedAt"] = firestore.SERVER_TIMESTAMP
+            if auto.get("assignedAt") is None:
+                auto["assignedAt"] = firestore.SERVER_TIMESTAMP
+            doc_update["ligaCategory.autoAssigned"] = auto
+
+        user_update = with_schema_version(doc_update)
         log_schema_issues(
             logger,
             f"users/{user.id} (release-manual)",
@@ -607,7 +638,12 @@ def release_manual_liga_category(zwift_id):
         )
         db.collection("users").document(str(user.id)).update(user_update)
 
-        auto_cat = (existing_lc.get("autoAssigned") or {}).get("category")
+        released_auto = (
+            doc_update.get("ligaCategory.autoAssigned")
+            or existing_lc.get("autoAssigned")
+            or {}
+        )
+        auto_cat = released_auto.get("category")
         return jsonify({
             "message": f"Manual assignment released. Auto category is {auto_cat or 'unassigned'}.",
             "category": auto_cat,
