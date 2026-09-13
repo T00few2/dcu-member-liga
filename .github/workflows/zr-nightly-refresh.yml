@@ -15,6 +15,7 @@ jobs:
             -X POST \
             -H "X-Scheduler-Token: ${{ secrets.SCHEDULER_SECRET }}" \
             -H "Content-Type: application/json" \
+            --data "{}" \
             https://us-central1-dcu-member-liga-479507.cloudfunctions.net/dcu_api/admin/refresh-zr-stats)
           echo "HTTP status: $response"
           echo "Response body:"
