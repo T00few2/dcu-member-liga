@@ -52,8 +52,8 @@ type SortColumn =
   | 'name'
   | 'club'
   | 'zrKat'
-  | 'zrMax30'
   | 'ligaKat'
+  | 'ligaKatMax30'
   | 'zwiftKat'
   | 'zftp'
   | 'zmap'
@@ -104,8 +104,8 @@ function getSortValue(p: Participant, col: SortColumn, powerUnit: PowerUnit): st
     case 'name': return p.name?.toLowerCase() ?? '';
     case 'club': return p.club?.toLowerCase() ?? '';
     case 'zrKat': return p.rating !== 'N/A' ? Number(p.rating) : -Infinity;
-    case 'zrMax30': return p.max30Rating !== 'N/A' ? Number(p.max30Rating) : -Infinity;
     case 'ligaKat': return p.ligaCategory?.category?.toLowerCase() ?? '';
+    case 'ligaKatMax30': return p.max30Rating !== 'N/A' ? Number(p.max30Rating) : -Infinity;
     case 'zwiftKat': return p.zwiftCategory?.toLowerCase() ?? '';
     case 'zftp': return toDisplayPower(p.zftp, p, powerUnit) ?? -Infinity;
     case 'zmap': return toDisplayPower(p.zmap, p, powerUnit) ?? -Infinity;
@@ -330,11 +330,11 @@ function ParticipantsPageContent() {
                 <th {...thProps('zrKat')}>
                   ZR Kat <SortIcon active={sortCol === 'zrKat'} direction={sortDir} />
                 </th>
-                <th {...thProps('zrMax30')}>
-                  ZR max30 <SortIcon active={sortCol === 'zrMax30'} direction={sortDir} />
-                </th>
                 <th {...thProps('ligaKat')}>
                   Liga Kat <SortIcon active={sortCol === 'ligaKat'} direction={sortDir} />
+                </th>
+                <th {...thProps('ligaKatMax30')} title="Liga-kategori beregnet ud fra max30 vELO">
+                  Liga Kat (max30) <SortIcon active={sortCol === 'ligaKatMax30'} direction={sortDir} />
                 </th>
                 <th {...thProps('zwiftKat')}>
                   Zwift Kat <SortIcon active={sortCol === 'zwiftKat'} direction={sortDir} />
@@ -387,15 +387,15 @@ function ParticipantsPageContent() {
                   // ZR Kat is ZwiftRacing's own gem scale (Copper…Diamond), not the
                   // league's divisions, so it always uses the ZR defaults.
                   const zrKat = categoryFromVelo(p.rating, ZR_CATEGORY_DEFAULTS);
+                  // What the rider's liga category would be on today's max30 vELO —
+                  // the assigned Liga Kat only moves between seasons.
+                  const ligaKatMax30 = categoryFromVelo(p.max30Rating, ligaCats);
                   return (
                   <tr key={`${p.zwiftId || 'no-zwift'}-${idx}`} className="hover:bg-muted/50 transition">
                     <td className="px-3 py-3 font-medium text-card-foreground whitespace-nowrap">{p.name}</td>
                     <td className="px-3 py-3 text-card-foreground whitespace-nowrap">{p.club || '-'}</td>
                     <td className="px-3 py-3 whitespace-nowrap">
                       {zrKat !== '-' ? <CategoryPill name={zrKat} cats={ZR_CATEGORY_DEFAULTS} /> : '-'}
-                    </td>
-                    <td className="px-3 py-3 font-mono text-muted-foreground whitespace-nowrap">
-                      {p.max30Rating !== 'N/A' ? Math.round(Number(p.max30Rating)) : '-'}
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap">
                       {p.ligaCategory ? (
@@ -409,6 +409,9 @@ function ParticipantsPageContent() {
                           )}
                         </div>
                       ) : '-'}
+                    </td>
+                    <td className="px-3 py-3 whitespace-nowrap">
+                      {ligaKatMax30 !== '-' ? <CategoryPill name={ligaKatMax30} cats={ligaCats} /> : '-'}
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap">
                       {p.zwiftCategory && p.zwiftCategory !== 'N/A' ? (
