@@ -4,7 +4,10 @@ import { useQuery } from '@tanstack/react-query';
 import { API_URL } from '@/lib/api';
 import type { CurrentLiveRace } from '@/types/live';
 
-export function useCurrentLiveRaceQuery(refetchInterval: number = 30_000) {
+export function useCurrentLiveRaceQuery(
+    refetchInterval: number = 30_000,
+    refetchIntervalInBackground = false,
+) {
     return useQuery<CurrentLiveRace | null>({
         queryKey: ['live-race', 'current'],
         queryFn: async () => {
@@ -14,6 +17,7 @@ export function useCurrentLiveRaceQuery(refetchInterval: number = 30_000) {
             return res.json();
         },
         refetchInterval,
+        refetchIntervalInBackground,
         staleTime: 15_000,
     });
 }

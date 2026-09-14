@@ -107,6 +107,9 @@ frontend/
 |-------|-------------|
 | `/live` | Live dashboard generator - create overlay/full-screen URLs |
 | `/live/[raceId]` | Live race results or standings display |
+| `/live-race/overlay/profile` | Stream overlay: live route profile with riders |
+| `/live-race/overlay/points` | Stream overlay: live results / points table |
+| `/live-race/overlay/info` | Stream overlay: point sprint info table |
 
 ---
 
@@ -162,6 +165,51 @@ Customize colors for OBS overlays:
 # Auto-cycling standings/results
 /live/race123?cat=A&cycle=30&full=true
 ```
+
+---
+
+## Live Race Stream Overlays
+
+Three single-component pages that mirror what `/live-race` shows, for use as OBS browser
+sources. Each renders one component on a white background with no navbar, footer or other
+site chrome, and follows the currently active race automatically.
+
+| Route | Shows |
+|-------|-------|
+| `/live-race/overlay/profile` | The live route profile with the rider groups drawn on it |
+| `/live-race/overlay/points` | The live results / points table |
+| `/live-race/overlay/info` | The point sprint (info) table |
+
+They share the components and data hooks with `/live-race` itself — `LiveRaceProfileCard`,
+`LiveResultsView` / `InfoView` and `useLiveRaceView` — so they cannot drift from the page.
+
+### URL Parameters
+
+| Parameter | Pages | Description |
+|-----------|-------|-------------|
+| `cat` | all | Division to show, e.g. `?cat=2.%20Division`. Defaults to the best division per the league's category ranking |
+| `gap` | profile | Metres between riders before they are split into separate groups (default `50`) |
+| `height` | profile | Chart height in pixels, to match the browser source |
+
+```
+# Best division, default sizing
+/live-race/overlay/profile
+
+# 3rd division points table
+/live-race/overlay/points?cat=3.%20Division
+
+# Profile sized for a 1920x300 browser source, tighter grouping
+/live-race/overlay/profile?gap=25&height=280
+```
+
+### OBS notes
+
+- Leave **"Shutdown source when not visible"** unticked. The rider positions are polled every
+  3 seconds, and react-query pauses its polling while the page reports itself as hidden.
+- Set the browser source size to the area you want; the pages have no fixed width and reflow
+  down to narrow sources.
+- Only the points overlay triggers the server-side results recalculation, so running all three
+  sources at once does not multiply backend load.
 
 ---
 

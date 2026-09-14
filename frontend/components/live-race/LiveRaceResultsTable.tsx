@@ -28,7 +28,7 @@ interface Props {
     isLive?: boolean;
 }
 
-type TabKey = 'live' | 'info';
+export type TabKey = 'live' | 'info';
 
 const pickFirstNonEmpty = (...lists: (Sprint[] | undefined)[]): Sprint[] => {
     for (const list of lists) {
@@ -62,7 +62,7 @@ function formatUpdatedAt(value?: string): string {
     return d.toLocaleString('da-DK', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
-function LiveResultsView({
+export function LiveResultsView({
     race,
     category,
     loading,
@@ -291,7 +291,7 @@ function LiveResultsView({
     );
 }
 
-function InfoView({
+export function InfoView({
     sprints,
     laps,
     routeId,
