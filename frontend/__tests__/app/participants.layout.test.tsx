@@ -104,6 +104,24 @@ describe('Participants table layout', () => {
     expect(ligaKatCell).toHaveClass('border-x-2', 'bg-primary/5');
   });
 
+  it('right-aligns measured values and centers the Zwift letter', () => {
+    render(<ParticipantsPage />);
+    const table = within(screen.getByRole('table'));
+
+    for (const label of ['ZRS', 'vELO', 'vELO max30', 'zFTP', '20m']) {
+      expect(table.getByText(new RegExp(`^${label.replace('.', '\\.')}$`)).closest('th')).toHaveClass('text-right');
+    }
+    // the values themselves, not just their headers
+    expect(table.getByText('500').closest('td')).toHaveClass('text-right', 'font-mono');
+
+    const zwiftKat = table.getByText('C');
+    expect(zwiftKat.closest('td')).toHaveClass('text-center');
+    expect(zwiftKat.closest('th')).toBeNull();
+
+    // category pills keep their shared left edge
+    expect(table.getAllByText('6. Division')[0].closest('td')).not.toHaveClass('text-center');
+  });
+
   it('explains both liga columns on hover', () => {
     render(<ParticipantsPage />);
     expect(screen.getByText(/^Liga Kat$/).closest('th')).toHaveAttribute(

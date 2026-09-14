@@ -69,6 +69,9 @@ type SortColumn =
 
 type SortDirection = 'asc' | 'desc';
 
+/** Digits line up ones under ones, so every measured column is right-aligned. */
+const NUMERIC_COLUMN = 'text-right';
+
 /** Liga Kat is the category a rider actually races in, so it gets its own band. */
 const LIGA_KAT_HIGHLIGHT = 'border-x-2 border-primary/30 bg-primary/5';
 
@@ -343,7 +346,7 @@ function ParticipantsPageContent() {
                 <th {...thProps('club')}>
                   Klub <SortIcon active={sortCol === 'club'} direction={sortDir} />
                 </th>
-                <th {...thProps('zwiftKat')}>
+                <th {...thProps('zwiftKat', 'text-center')}>
                   Zwift Kat <SortIcon active={sortCol === 'zwiftKat'} direction={sortDir} />
                 </th>
                 <th {...thProps('zrKat')}>
@@ -355,34 +358,34 @@ function ParticipantsPageContent() {
                 <th {...thProps('ligaKat', LIGA_KAT_HIGHLIGHT)}>
                   Liga Kat <SortIcon active={sortCol === 'ligaKat'} direction={sortDir} />
                 </th>
-                <th {...thProps('zrs')}>
+                <th {...thProps('zrs', NUMERIC_COLUMN)}>
                   ZRS <SortIcon active={sortCol === 'zrs'} direction={sortDir} />
                 </th>
-                <th {...thProps('velo')}>
+                <th {...thProps('velo', NUMERIC_COLUMN)}>
                   vELO <SortIcon active={sortCol === 'velo'} direction={sortDir} />
                 </th>
-                <th {...thProps('veloMax30')}>
+                <th {...thProps('veloMax30', NUMERIC_COLUMN)}>
                   vELO max30 <SortIcon active={sortCol === 'veloMax30'} direction={sortDir} />
                 </th>
-                <th {...thProps('veloMax90')}>
+                <th {...thProps('veloMax90', NUMERIC_COLUMN)}>
                   vELO max90 <SortIcon active={sortCol === 'veloMax90'} direction={sortDir} />
                 </th>
-                <th {...thProps('zftp')}>
+                <th {...thProps('zftp', NUMERIC_COLUMN)}>
                   zFTP <SortIcon active={sortCol === 'zftp'} direction={sortDir} />
                 </th>
-                <th {...thProps('zmap')}>
+                <th {...thProps('zmap', NUMERIC_COLUMN)}>
                   zMAP <SortIcon active={sortCol === 'zmap'} direction={sortDir} />
                 </th>
-                <th {...thProps('cp5s')}>
+                <th {...thProps('cp5s', NUMERIC_COLUMN)}>
                   5s <SortIcon active={sortCol === 'cp5s'} direction={sortDir} />
                 </th>
-                <th {...thProps('cp1min')}>
+                <th {...thProps('cp1min', NUMERIC_COLUMN)}>
                   1m <SortIcon active={sortCol === 'cp1min'} direction={sortDir} />
                 </th>
-                <th {...thProps('cp5min')}>
+                <th {...thProps('cp5min', NUMERIC_COLUMN)}>
                   5m <SortIcon active={sortCol === 'cp5min'} direction={sortDir} />
                 </th>
-                <th {...thProps('cp20min')}>
+                <th {...thProps('cp20min', NUMERIC_COLUMN)}>
                   20m <SortIcon active={sortCol === 'cp20min'} direction={sortDir} />
                 </th>
                 <th {...thProps('phenotype')}>
@@ -410,7 +413,7 @@ function ParticipantsPageContent() {
                   <tr key={`${p.zwiftId || 'no-zwift'}-${idx}`} className="hover:bg-muted/50 transition">
                     <td className="px-3 py-3 font-medium text-card-foreground whitespace-nowrap">{p.name}</td>
                     <td className="px-3 py-3 text-card-foreground whitespace-nowrap">{p.club || '-'}</td>
-                    <td className="px-3 py-3 whitespace-nowrap">
+                    <td className="px-3 py-3 whitespace-nowrap text-center">
                       {p.zwiftCategory && p.zwiftCategory !== 'N/A' ? (
                         <CategoryPill name={p.zwiftCategory} />
                       ) : '-'}
@@ -434,34 +437,34 @@ function ParticipantsPageContent() {
                         </div>
                       ) : '-'}
                     </td>
-                    <td className="px-3 py-3 font-mono font-medium text-card-foreground whitespace-nowrap">
+                    <td className={`px-3 py-3 font-mono font-medium text-card-foreground whitespace-nowrap ${NUMERIC_COLUMN}`}>
                       {p.racingScore !== 'N/A' && p.racingScore ? Math.round(Number(p.racingScore)) : '-'}
                     </td>
-                    <td className="px-3 py-3 font-mono font-medium text-card-foreground whitespace-nowrap">
+                    <td className={`px-3 py-3 font-mono font-medium text-card-foreground whitespace-nowrap ${NUMERIC_COLUMN}`}>
                       {p.rating !== 'N/A' ? Math.round(Number(p.rating)) : '-'}
                     </td>
-                    <td className="px-3 py-3 font-mono text-muted-foreground whitespace-nowrap">
+                    <td className={`px-3 py-3 font-mono text-muted-foreground whitespace-nowrap ${NUMERIC_COLUMN}`}>
                       {p.max30Rating !== 'N/A' ? Math.round(Number(p.max30Rating)) : '-'}
                     </td>
-                    <td className="px-3 py-3 font-mono text-muted-foreground whitespace-nowrap">
+                    <td className={`px-3 py-3 font-mono text-muted-foreground whitespace-nowrap ${NUMERIC_COLUMN}`}>
                       {p.max90Rating !== 'N/A' ? Math.round(Number(p.max90Rating)) : '-'}
                     </td>
-                    <td className="px-3 py-3 font-mono text-card-foreground whitespace-nowrap">
+                    <td className={`px-3 py-3 font-mono text-card-foreground whitespace-nowrap ${NUMERIC_COLUMN}`}>
                       {formatPower(p.zftp, p, powerUnit)}
                     </td>
-                    <td className="px-3 py-3 font-mono text-card-foreground whitespace-nowrap">
+                    <td className={`px-3 py-3 font-mono text-card-foreground whitespace-nowrap ${NUMERIC_COLUMN}`}>
                       {formatPower(p.zmap, p, powerUnit)}
                     </td>
-                    <td className="px-3 py-3 font-mono text-card-foreground whitespace-nowrap">
+                    <td className={`px-3 py-3 font-mono text-card-foreground whitespace-nowrap ${NUMERIC_COLUMN}`}>
                       {formatPower(p.cp5s, p, powerUnit)}
                     </td>
-                    <td className="px-3 py-3 font-mono text-card-foreground whitespace-nowrap">
+                    <td className={`px-3 py-3 font-mono text-card-foreground whitespace-nowrap ${NUMERIC_COLUMN}`}>
                       {formatPower(p.cp1min, p, powerUnit)}
                     </td>
-                    <td className="px-3 py-3 font-mono text-card-foreground whitespace-nowrap">
+                    <td className={`px-3 py-3 font-mono text-card-foreground whitespace-nowrap ${NUMERIC_COLUMN}`}>
                       {formatPower(p.cp5min, p, powerUnit)}
                     </td>
-                    <td className="px-3 py-3 font-mono text-card-foreground whitespace-nowrap">
+                    <td className={`px-3 py-3 font-mono text-card-foreground whitespace-nowrap ${NUMERIC_COLUMN}`}>
                       {formatPower(p.cp20min, p, powerUnit)}
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap">
