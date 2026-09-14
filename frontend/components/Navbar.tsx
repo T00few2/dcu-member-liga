@@ -15,7 +15,7 @@ export default function Navbar() {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
     const pathname = usePathname();
-    const hideNavbar = pathname === '/live' || pathname?.startsWith('/live/');
+    const hideNavbar = pathname === '/live' || pathname?.startsWith('/live/') || pathname?.startsWith('/live-race/overlay');
 
     // Close drawer when route changes
     useEffect(() => {

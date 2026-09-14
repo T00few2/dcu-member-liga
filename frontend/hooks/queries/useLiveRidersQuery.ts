@@ -4,7 +4,11 @@ import { useQuery } from '@tanstack/react-query';
 import { API_URL } from '@/lib/api';
 import type { LiveRidersResponse } from '@/types/live';
 
-export function useLiveRidersQuery(raceId: string | undefined, category: string | undefined) {
+export function useLiveRidersQuery(
+    raceId: string | undefined,
+    category: string | undefined,
+    refetchIntervalInBackground = false,
+) {
     return useQuery<LiveRidersResponse | null>({
         queryKey: ['live-race', 'riders', raceId, category],
         queryFn: async () => {
@@ -15,6 +19,7 @@ export function useLiveRidersQuery(raceId: string | undefined, category: string 
         },
         enabled: !!raceId && !!category,
         refetchInterval: 3_000,
+        refetchIntervalInBackground,
         staleTime: 0,
     });
 }

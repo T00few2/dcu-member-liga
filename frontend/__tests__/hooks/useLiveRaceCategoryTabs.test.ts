@@ -5,9 +5,11 @@ import type { CurrentLiveRace } from '@/types/live';
 
 const replace = vi.fn();
 let search = '';
+let pathname = '/live-race';
 
 vi.mock('next/navigation', () => ({
     useRouter: () => ({ replace }),
+    usePathname: () => pathname,
     useSearchParams: () => new URLSearchParams(search),
 }));
 
@@ -31,6 +33,7 @@ describe('useLiveRaceCategoryTabs', () => {
     beforeEach(() => {
         replace.mockClear();
         search = '';
+        pathname = '/live-race';
     });
 
     it('defaults to the first category and writes ?cat= on select', () => {
@@ -48,5 +51,37 @@ describe('useLiveRaceCategoryTabs', () => {
         search = 'cat=Nope';
         renderHook(() => useLiveRaceCategoryTabs(race));
         expect(replace).toHaveBeenCalledWith('/live-race?cat=Diamond');
+    });
+
+    it('stays on the current route instead of navigating to /live-race', () => {
+        pathname = '/live-race/overlay/points';
+        const { result } = renderHook(() => useLiveRaceCategoryTabs(race));
+
+        act(() => {
+            result.current.setCategory('Ruby');
+        });
+        expect(replace).toHaveBeenCalledWith('/live-race/overlay/points?cat=Ruby');
+    });
+
+    it('defaults to the best-ranked category when a rank order is given', () => {
+        const rankOrder = ['Gold', 'Ruby', 'Diamond'];
+        const { result } = renderHook(() => useLiveRaceCategoryTabs(race, { rankOrder }));
+        expect(result.current.activeCat).toBe('Gold');
+        expect(result.current.activeTab?.cat).toBe('Gold');
+    });
+
+    it('rewrites a stale category to the best-ranked tab when ranked', () => {
+        search = 'cat=Nope';
+        renderHook(() => useLiveRaceCategoryTabs(race, { rankOrder: ['Gold', 'Ruby', 'Diamond'] }));
+        expect(replace).toHaveBeenCalledWith('/live-race?cat=Gold');
+    });
+
+    it('keeps ?cat= when it names a real tab', () => {
+        search = 'cat=Ruby';
+        const { result } = renderHook(() =>
+            useLiveRaceCategoryTabs(race, { rankOrder: ['Diamond', 'Ruby', 'Gold'] }),
+        );
+        expect(result.current.activeCat).toBe('Ruby');
+        expect(replace).not.toHaveBeenCalled();
     });
 });
