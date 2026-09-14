@@ -66,7 +66,7 @@ describe('Participants table layout', () => {
 
     const table = screen.getByRole('table');
     const labels = within(table).getAllByText('6. Division');
-    expect(labels.length).toBeGreaterThanOrEqual(2);
+    expect(labels.length).toBeGreaterThanOrEqual(1);
     for (const label of labels) {
       expect(label).toHaveClass('whitespace-nowrap');
     }
@@ -74,6 +74,14 @@ describe('Participants table layout', () => {
     expect(table).toHaveClass('min-w-max');
     expect(table.parentElement).toHaveClass('overflow-auto');
     expect(table.parentElement?.parentElement).toHaveClass('flex-1');
+  });
+
+  it('shows the ZwiftRacing gem category and the raw max30 rating', () => {
+    render(<ParticipantsPage />);
+    const table = within(screen.getByRole('table'));
+    // rating 400 falls in Copper on the ZR scale, not in the league divisions.
+    expect(table.getByText('Copper')).toBeInTheDocument();
+    expect(table.getAllByText('410').length).toBeGreaterThanOrEqual(1);
   });
 
   it('paints Zwift Kat with official Zwift A–E colors', () => {

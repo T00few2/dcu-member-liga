@@ -7,6 +7,7 @@ import { useLeagueSettingsQuery, useParticipantsQuery, useRacesQuery, useRaceSig
 import RaceSignupSelect from '@/components/RaceSignupSelect';
 import { filterRidersBySignupIds } from '@/lib/raceSignupOptions';
 import {
+  ZR_CATEGORY_DEFAULTS,
   categoryBadgeAppearance,
   categoryFromVelo,
   effectiveLigaCategories,
@@ -383,17 +384,18 @@ function ParticipantsPageContent() {
                 </tr>
               ) : (
                 filtered.map((p, idx) => {
-                  const zrKat = categoryFromVelo(p.rating, ligaCats);
-                  const zrMax30Kat = categoryFromVelo(p.max30Rating, ligaCats);
+                  // ZR Kat is ZwiftRacing's own gem scale (Copper…Diamond), not the
+                  // league's divisions, so it always uses the ZR defaults.
+                  const zrKat = categoryFromVelo(p.rating, ZR_CATEGORY_DEFAULTS);
                   return (
                   <tr key={`${p.zwiftId || 'no-zwift'}-${idx}`} className="hover:bg-muted/50 transition">
                     <td className="px-3 py-3 font-medium text-card-foreground whitespace-nowrap">{p.name}</td>
                     <td className="px-3 py-3 text-card-foreground whitespace-nowrap">{p.club || '-'}</td>
                     <td className="px-3 py-3 whitespace-nowrap">
-                      {zrKat !== '-' ? <CategoryPill name={zrKat} cats={ligaCats} /> : '-'}
+                      {zrKat !== '-' ? <CategoryPill name={zrKat} cats={ZR_CATEGORY_DEFAULTS} /> : '-'}
                     </td>
-                    <td className="px-3 py-3 whitespace-nowrap">
-                      {zrMax30Kat !== '-' ? <CategoryPill name={zrMax30Kat} cats={ligaCats} /> : '-'}
+                    <td className="px-3 py-3 font-mono text-muted-foreground whitespace-nowrap">
+                      {p.max30Rating !== 'N/A' ? Math.round(Number(p.max30Rating)) : '-'}
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap">
                       {p.ligaCategory ? (
