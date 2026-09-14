@@ -84,16 +84,38 @@ describe('Participants table layout', () => {
     expect(table.queryByText('1. Division')).not.toBeInTheDocument();
   });
 
+  it('orders the category columns Zwift → ZR → max30 → assigned, and bands the assigned one', () => {
+    render(<ParticipantsPage />);
+    const headers = within(screen.getByRole('table'))
+      .getAllByRole('columnheader')
+      .map((th) => th.textContent?.trim().replace(/\s+/g, ' ') ?? '');
+    const katColumns = headers.filter((h) => /Kat/.test(h));
+    expect(katColumns).toEqual([
+      'Zwift Kat',
+      'ZR Kat',
+      'Liga Kat (max30)',
+      'Liga Kat',
+    ]);
+
+    const ligaKatHeader = screen.getByText(/^Liga Kat$/).closest('th')!;
+    expect(ligaKatHeader).toHaveClass('border-x-2', 'bg-primary/5');
+    // the column band runs through the body cells too
+    const ligaKatCell = within(screen.getByRole('table')).getAllByText('6. Division')[1].closest('td')!;
+    expect(ligaKatCell).toHaveClass('border-x-2', 'bg-primary/5');
+  });
+
   it('explains both liga columns on hover', () => {
     render(<ParticipantsPage />);
     expect(screen.getByText(/^Liga Kat$/).closest('th')).toHaveAttribute(
       'title',
-      expect.stringContaining('tildelte liga-kategori'),
+      expect.stringContaining('rent faktisk kører i'),
     );
     expect(screen.getByText(/Liga Kat \(max30\)/).closest('th')).toHaveAttribute(
       'title',
       expect.stringContaining('max30-vELO'),
     );
+    // the assigned column explains how it can be overridden
+    expect(screen.getByText(/^Liga Kat$/).closest('th')?.title).toMatch(/overskrives/);
   });
 
   it('derives Liga Kat (max30) from the max30 rating', () => {

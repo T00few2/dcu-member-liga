@@ -69,12 +69,15 @@ type SortColumn =
 
 type SortDirection = 'asc' | 'desc';
 
+/** Liga Kat is the category a rider actually races in, so it gets its own band. */
+const LIGA_KAT_HIGHLIGHT = 'border-x-2 border-primary/30 bg-primary/5';
+
 /** Hover text for column headers that need more than their label to be read right. */
 const COLUMN_HELP: Partial<Record<SortColumn, string>> = {
   ligaKat:
-    'Rytterens tildelte liga-kategori. Den tildeles ud fra max30-vELO ved tilmelding og '
-    + 'opdateres dagligt frem til første ligaløb, hvorefter den er låst for sæsonen. '
-    + '! = i grace-zonen, !! = over grace-grænsen.',
+    'Den kategori rytteren rent faktisk kører i. Den følger Liga Kat (max30), indtil den '
+    + 'overskrives – rytteren vælger selv en højere kategori, en admin rykker op, eller '
+    + 'kategorien låses efter første ligaløb. ! = i grace-zonen, !! = over grace-grænsen.',
   ligaKatMax30:
     'Den liga-kategori rytterens nuværende max30-vELO svarer til – altså hvor rytteren '
     + 'ville blive placeret i dag. Kan afvige fra den tildelte Liga Kat, fordi den låses '
@@ -257,10 +260,10 @@ function ParticipantsPageContent() {
     }
   }
 
-  function thProps(col: SortColumn) {
+  function thProps(col: SortColumn, extraClass = '') {
     return {
       onClick: () => handleSort(col),
-      className: 'px-3 py-3 font-bold cursor-pointer select-none hover:bg-muted/80 transition-colors whitespace-nowrap',
+      className: `px-3 py-3 font-bold cursor-pointer select-none hover:bg-muted/80 transition-colors whitespace-nowrap ${extraClass}`,
       ...(COLUMN_HELP[col] ? { title: COLUMN_HELP[col] } : {}),
     };
   }
@@ -340,17 +343,17 @@ function ParticipantsPageContent() {
                 <th {...thProps('club')}>
                   Klub <SortIcon active={sortCol === 'club'} direction={sortDir} />
                 </th>
+                <th {...thProps('zwiftKat')}>
+                  Zwift Kat <SortIcon active={sortCol === 'zwiftKat'} direction={sortDir} />
+                </th>
                 <th {...thProps('zrKat')}>
                   ZR Kat <SortIcon active={sortCol === 'zrKat'} direction={sortDir} />
-                </th>
-                <th {...thProps('ligaKat')}>
-                  Liga Kat <SortIcon active={sortCol === 'ligaKat'} direction={sortDir} />
                 </th>
                 <th {...thProps('ligaKatMax30')}>
                   Liga Kat (max30) <SortIcon active={sortCol === 'ligaKatMax30'} direction={sortDir} />
                 </th>
-                <th {...thProps('zwiftKat')}>
-                  Zwift Kat <SortIcon active={sortCol === 'zwiftKat'} direction={sortDir} />
+                <th {...thProps('ligaKat', LIGA_KAT_HIGHLIGHT)}>
+                  Liga Kat <SortIcon active={sortCol === 'ligaKat'} direction={sortDir} />
                 </th>
                 <th {...thProps('zrs')}>
                   ZRS <SortIcon active={sortCol === 'zrs'} direction={sortDir} />
@@ -408,9 +411,17 @@ function ParticipantsPageContent() {
                     <td className="px-3 py-3 font-medium text-card-foreground whitespace-nowrap">{p.name}</td>
                     <td className="px-3 py-3 text-card-foreground whitespace-nowrap">{p.club || '-'}</td>
                     <td className="px-3 py-3 whitespace-nowrap">
+                      {p.zwiftCategory && p.zwiftCategory !== 'N/A' ? (
+                        <CategoryPill name={p.zwiftCategory} />
+                      ) : '-'}
+                    </td>
+                    <td className="px-3 py-3 whitespace-nowrap">
                       {zrKat !== '-' ? <CategoryPill name={zrKat} cats={ZR_CATEGORY_DEFAULTS} /> : '-'}
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap">
+                      {ligaKatMax30 !== '-' ? <CategoryPill name={ligaKatMax30} cats={ligaCats} /> : '-'}
+                    </td>
+                    <td className={`px-3 py-3 whitespace-nowrap ${LIGA_KAT_HIGHLIGHT}`}>
                       {p.ligaCategory ? (
                         <div className="flex items-center gap-1.5">
                           <CategoryPill name={p.ligaCategory.category} cats={ligaCats} />
@@ -421,14 +432,6 @@ function ParticipantsPageContent() {
                             <span title={`Over grace limit (${p.ligaCategory.graceLimit})`} className="text-red-500 cursor-help text-xs font-bold">!!</span>
                           )}
                         </div>
-                      ) : '-'}
-                    </td>
-                    <td className="px-3 py-3 whitespace-nowrap">
-                      {ligaKatMax30 !== '-' ? <CategoryPill name={ligaKatMax30} cats={ligaCats} /> : '-'}
-                    </td>
-                    <td className="px-3 py-3 whitespace-nowrap">
-                      {p.zwiftCategory && p.zwiftCategory !== 'N/A' ? (
-                        <CategoryPill name={p.zwiftCategory} />
                       ) : '-'}
                     </td>
                     <td className="px-3 py-3 font-mono font-medium text-card-foreground whitespace-nowrap">
