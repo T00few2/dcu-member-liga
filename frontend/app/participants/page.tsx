@@ -69,6 +69,18 @@ type SortColumn =
 
 type SortDirection = 'asc' | 'desc';
 
+/** Hover text for column headers that need more than their label to be read right. */
+const COLUMN_HELP: Partial<Record<SortColumn, string>> = {
+  ligaKat:
+    'Rytterens tildelte liga-kategori. Den tildeles ud fra max30-vELO ved tilmelding og '
+    + 'opdateres dagligt frem til første ligaløb, hvorefter den er låst for sæsonen. '
+    + '! = i grace-zonen, !! = over grace-grænsen.',
+  ligaKatMax30:
+    'Den liga-kategori rytterens nuværende max30-vELO svarer til – altså hvor rytteren '
+    + 'ville blive placeret i dag. Kan afvige fra den tildelte Liga Kat, fordi den låses '
+    + 'efter første ligaløb.',
+};
+
 function getNumericValue(value: number | string | null | undefined): number | null {
   if (value === undefined || value === null || value === '' || value === 'N/A') {
     return null;
@@ -249,6 +261,7 @@ function ParticipantsPageContent() {
     return {
       onClick: () => handleSort(col),
       className: 'px-3 py-3 font-bold cursor-pointer select-none hover:bg-muted/80 transition-colors whitespace-nowrap',
+      ...(COLUMN_HELP[col] ? { title: COLUMN_HELP[col] } : {}),
     };
   }
 
@@ -333,7 +346,7 @@ function ParticipantsPageContent() {
                 <th {...thProps('ligaKat')}>
                   Liga Kat <SortIcon active={sortCol === 'ligaKat'} direction={sortDir} />
                 </th>
-                <th {...thProps('ligaKatMax30')} title="Liga-kategori beregnet ud fra max30 vELO">
+                <th {...thProps('ligaKatMax30')}>
                   Liga Kat (max30) <SortIcon active={sortCol === 'ligaKatMax30'} direction={sortDir} />
                 </th>
                 <th {...thProps('zwiftKat')}>

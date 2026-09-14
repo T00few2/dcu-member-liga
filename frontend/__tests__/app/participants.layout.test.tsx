@@ -84,6 +84,18 @@ describe('Participants table layout', () => {
     expect(table.queryByText('1. Division')).not.toBeInTheDocument();
   });
 
+  it('explains both liga columns on hover', () => {
+    render(<ParticipantsPage />);
+    expect(screen.getByText(/^Liga Kat$/).closest('th')).toHaveAttribute(
+      'title',
+      expect.stringContaining('tildelte liga-kategori'),
+    );
+    expect(screen.getByText(/Liga Kat \(max30\)/).closest('th')).toHaveAttribute(
+      'title',
+      expect.stringContaining('max30-vELO'),
+    );
+  });
+
   it('derives Liga Kat (max30) from the max30 rating', () => {
     render(<ParticipantsPage />);
     expect(screen.getByText(/Liga Kat \(max30\)/)).toBeInTheDocument();
