@@ -76,6 +76,33 @@ describe('Participants table layout', () => {
     expect(table.parentElement?.parentElement).toHaveClass('flex-1');
   });
 
+  it('shows the ZwiftRacing gem category in ZR Kat', () => {
+    render(<ParticipantsPage />);
+    const table = within(screen.getByRole('table'));
+    // rating 400 falls in Copper on the ZR scale, not in the league divisions.
+    expect(table.getByText('Copper')).toBeInTheDocument();
+    expect(table.queryByText('1. Division')).not.toBeInTheDocument();
+  });
+
+  it('explains both liga columns on hover', () => {
+    render(<ParticipantsPage />);
+    expect(screen.getByText(/^Liga Kat$/).closest('th')).toHaveAttribute(
+      'title',
+      expect.stringContaining('tildelte liga-kategori'),
+    );
+    expect(screen.getByText(/Liga Kat \(max30\)/).closest('th')).toHaveAttribute(
+      'title',
+      expect.stringContaining('max30-vELO'),
+    );
+  });
+
+  it('derives Liga Kat (max30) from the max30 rating', () => {
+    render(<ParticipantsPage />);
+    expect(screen.getByText(/Liga Kat \(max30\)/)).toBeInTheDocument();
+    // max30Rating 410 lands in 6. Division, alongside the assigned liga category.
+    expect(within(screen.getByRole('table')).getAllByText('6. Division')).toHaveLength(2);
+  });
+
   it('paints Zwift Kat with official Zwift A–E colors', () => {
     render(<ParticipantsPage />);
     const zwiftKat = within(screen.getByRole('table')).getByText('C');

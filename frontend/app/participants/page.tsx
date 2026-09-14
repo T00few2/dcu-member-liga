@@ -7,6 +7,7 @@ import { useLeagueSettingsQuery, useParticipantsQuery, useRacesQuery, useRaceSig
 import RaceSignupSelect from '@/components/RaceSignupSelect';
 import { filterRidersBySignupIds } from '@/lib/raceSignupOptions';
 import {
+  ZR_CATEGORY_DEFAULTS,
   categoryBadgeAppearance,
   categoryFromVelo,
   effectiveLigaCategories,
@@ -51,8 +52,8 @@ type SortColumn =
   | 'name'
   | 'club'
   | 'zrKat'
-  | 'zrMax30'
   | 'ligaKat'
+  | 'ligaKatMax30'
   | 'zwiftKat'
   | 'zftp'
   | 'zmap'
@@ -67,6 +68,18 @@ type SortColumn =
   | 'phenotype';
 
 type SortDirection = 'asc' | 'desc';
+
+/** Hover text for column headers that need more than their label to be read right. */
+const COLUMN_HELP: Partial<Record<SortColumn, string>> = {
+  ligaKat:
+    'Rytterens tildelte liga-kategori. Den tildeles ud fra max30-vELO ved tilmelding og '
+    + 'opdateres dagligt frem til første ligaløb, hvorefter den er låst for sæsonen. '
+    + '! = i grace-zonen, !! = over grace-grænsen.',
+  ligaKatMax30:
+    'Den liga-kategori rytterens nuværende max30-vELO svarer til – altså hvor rytteren '
+    + 'ville blive placeret i dag. Kan afvige fra den tildelte Liga Kat, fordi den låses '
+    + 'efter første ligaløb.',
+};
 
 function getNumericValue(value: number | string | null | undefined): number | null {
   if (value === undefined || value === null || value === '' || value === 'N/A') {
@@ -103,8 +116,8 @@ function getSortValue(p: Participant, col: SortColumn, powerUnit: PowerUnit): st
     case 'name': return p.name?.toLowerCase() ?? '';
     case 'club': return p.club?.toLowerCase() ?? '';
     case 'zrKat': return p.rating !== 'N/A' ? Number(p.rating) : -Infinity;
-    case 'zrMax30': return p.max30Rating !== 'N/A' ? Number(p.max30Rating) : -Infinity;
     case 'ligaKat': return p.ligaCategory?.category?.toLowerCase() ?? '';
+    case 'ligaKatMax30': return p.max30Rating !== 'N/A' ? Number(p.max30Rating) : -Infinity;
     case 'zwiftKat': return p.zwiftCategory?.toLowerCase() ?? '';
     case 'zftp': return toDisplayPower(p.zftp, p, powerUnit) ?? -Infinity;
     case 'zmap': return toDisplayPower(p.zmap, p, powerUnit) ?? -Infinity;
@@ -248,6 +261,7 @@ function ParticipantsPageContent() {
     return {
       onClick: () => handleSort(col),
       className: 'px-3 py-3 font-bold cursor-pointer select-none hover:bg-muted/80 transition-colors whitespace-nowrap',
+      ...(COLUMN_HELP[col] ? { title: COLUMN_HELP[col] } : {}),
     };
   }
 
@@ -329,11 +343,11 @@ function ParticipantsPageContent() {
                 <th {...thProps('zrKat')}>
                   ZR Kat <SortIcon active={sortCol === 'zrKat'} direction={sortDir} />
                 </th>
-                <th {...thProps('zrMax30')}>
-                  ZR max30 <SortIcon active={sortCol === 'zrMax30'} direction={sortDir} />
-                </th>
                 <th {...thProps('ligaKat')}>
                   Liga Kat <SortIcon active={sortCol === 'ligaKat'} direction={sortDir} />
+                </th>
+                <th {...thProps('ligaKatMax30')}>
+                  Liga Kat (max30) <SortIcon active={sortCol === 'ligaKatMax30'} direction={sortDir} />
                 </th>
                 <th {...thProps('zwiftKat')}>
                   Zwift Kat <SortIcon active={sortCol === 'zwiftKat'} direction={sortDir} />
@@ -383,17 +397,18 @@ function ParticipantsPageContent() {
                 </tr>
               ) : (
                 filtered.map((p, idx) => {
-                  const zrKat = categoryFromVelo(p.rating, ligaCats);
-                  const zrMax30Kat = categoryFromVelo(p.max30Rating, ligaCats);
+                  // ZR Kat is ZwiftRacing's own gem scale (Copper…Diamond), not the
+                  // league's divisions, so it always uses the ZR defaults.
+                  const zrKat = categoryFromVelo(p.rating, ZR_CATEGORY_DEFAULTS);
+                  // What the rider's liga category would be on today's max30 vELO —
+                  // the assigned Liga Kat only moves between seasons.
+                  const ligaKatMax30 = categoryFromVelo(p.max30Rating, ligaCats);
                   return (
                   <tr key={`${p.zwiftId || 'no-zwift'}-${idx}`} className="hover:bg-muted/50 transition">
                     <td className="px-3 py-3 font-medium text-card-foreground whitespace-nowrap">{p.name}</td>
                     <td className="px-3 py-3 text-card-foreground whitespace-nowrap">{p.club || '-'}</td>
                     <td className="px-3 py-3 whitespace-nowrap">
-                      {zrKat !== '-' ? <CategoryPill name={zrKat} cats={ligaCats} /> : '-'}
-                    </td>
-                    <td className="px-3 py-3 whitespace-nowrap">
-                      {zrMax30Kat !== '-' ? <CategoryPill name={zrMax30Kat} cats={ligaCats} /> : '-'}
+                      {zrKat !== '-' ? <CategoryPill name={zrKat} cats={ZR_CATEGORY_DEFAULTS} /> : '-'}
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap">
                       {p.ligaCategory ? (
@@ -407,6 +422,9 @@ function ParticipantsPageContent() {
                           )}
                         </div>
                       ) : '-'}
+                    </td>
+                    <td className="px-3 py-3 whitespace-nowrap">
+                      {ligaKatMax30 !== '-' ? <CategoryPill name={ligaKatMax30} cats={ligaCats} /> : '-'}
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap">
                       {p.zwiftCategory && p.zwiftCategory !== 'N/A' ? (
