@@ -1,5 +1,6 @@
 import requests
 import time
+from datetime import datetime
 from config import STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, BACKEND_URL, STRAVA_SERVICE_REFRESH_TOKEN
 from firebase_admin import firestore
 
@@ -187,17 +188,22 @@ class StravaService:
         resolution='high',
         series_type='time',
     ):
+        """Fetch activity streams. Pass resolution=None for the raw, un-downsampled stream.
+
+        Strava caps a 'high' resolution stream at 10,000 points, so rides longer than
+        ~2h47m come back time-averaged — which flattens short peaks. Callers that need
+        exact peak power (the power curve) must ask for the full stream.
+        """
         access_token = self._get_valid_token(rider_id)
         if not access_token:
             return None
 
         try:
             url = f"https://www.strava.com/api/v3/activities/{activity_id}/streams"
-            params = {
-                'keys': keys,
-                'resolution': resolution,
-                'series_type': series_type,
-            }
+            params = {'keys': keys}
+            if resolution:
+                params['resolution'] = resolution
+                params['series_type'] = series_type
             res = requests.get(
                 url,
                 params=params,
@@ -313,28 +319,92 @@ class StravaService:
             logger.error(f"Error fetching Strava activities for matching: {e}")
             return []
 
+    @staticmethod
+    def _activity_start_epoch(activity: dict) -> int | None:
+        """Unix seconds for a summary activity's UTC start, or None if unparseable."""
+        raw = activity.get('start_date') or ''
+        try:
+            return int(datetime.fromisoformat(raw.replace('Z', '+00:00')).timestamp())
+        except (AttributeError, ValueError):
+            return None
+
     def get_power_activities(self, rider_id: str, after_timestamp: int, max_activities: int = 50) -> list:
-        """Return rides with a hardware power meter recorded after `after_timestamp` (Unix seconds)."""
+        """Return the most recent rides with a hardware power meter since `after_timestamp`.
+
+        Walks the activity list newest-first using `before` as a cursor. Strava returns
+        activities oldest-first whenever `after` is supplied, so a single `after` page
+        would hand back the *start* of the window and silently drop everything recent —
+        exactly the rides a 90-day peak-power curve depends on. Non-power activities
+        (runs, hikes) are filtered out before `max_activities` is applied so they no
+        longer eat into the budget either.
+        """
         access_token = self._get_valid_token(rider_id)
         if not access_token:
             return []
-        try:
-            res = requests.get(
-                f"https://www.strava.com/api/v3/athlete/activities?per_page={max_activities}&after={after_timestamp}",
-                headers={'Authorization': f'Bearer {access_token}'},
-                timeout=15,
-            )
+
+        per_page = 200
+        max_pages = 10
+        seen_ids: set = set()
+        collected: list = []
+        cursor = None
+
+        for _ in range(max_pages):
+            params = {'per_page': per_page}
+            if cursor is not None:
+                params['before'] = cursor
+            try:
+                res = requests.get(
+                    "https://www.strava.com/api/v3/athlete/activities",
+                    params=params,
+                    headers={'Authorization': f'Bearer {access_token}'},
+                    timeout=15,
+                )
+            except Exception as e:
+                logger.error(f"Error fetching power activities: {e}")
+                break
+
             if res.status_code != 200:
                 logger.error(f"get_power_activities failed: {res.status_code}")
-                return []
-            return [
-                {'id': a['id'], 'name': a['name'], 'startDate': a['start_date']}
-                for a in res.json()
-                if a.get('device_watts', False)
-            ]
-        except Exception as e:
-            logger.error(f"Error fetching power activities: {e}")
-            return []
+                break
+
+            try:
+                batch = res.json() or []
+            except Exception as e:
+                logger.error(f"Error parsing power activities response: {e}")
+                break
+            if not batch:
+                break
+
+            oldest_epoch = None
+            new_ids = 0
+            reached_window_start = False
+
+            for a in batch:
+                epoch = self._activity_start_epoch(a)
+                if epoch is not None and (oldest_epoch is None or epoch < oldest_epoch):
+                    oldest_epoch = epoch
+                if epoch is not None and epoch <= after_timestamp:
+                    reached_window_start = True
+                    continue
+
+                act_id = a.get('id')
+                if act_id is None or act_id in seen_ids:
+                    continue
+                seen_ids.add(act_id)
+                new_ids += 1
+                if a.get('device_watts', False):
+                    collected.append({
+                        'id': act_id,
+                        'name': a.get('name'),
+                        'startDate': a.get('start_date'),
+                    })
+
+            if reached_window_start or len(batch) < per_page or new_ids == 0 or oldest_epoch is None:
+                break
+            cursor = oldest_epoch
+
+        collected.sort(key=lambda a: a.get('startDate') or '', reverse=True)
+        return collected[:max_activities]
 
     def get_segment_streams(self, segment_id: int):
         """Fetch distance and altitude streams for a public Strava segment."""

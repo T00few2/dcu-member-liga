@@ -5,7 +5,13 @@ import logging
 
 from extensions import strava_service
 
-from .time_series import _compute_best_efforts, _mask_streams, _mse_sync_offset, _parse_iso_utc, _resample_to_1hz
+from .time_series import (
+    _compute_best_efforts,
+    _mask_streams,
+    _mse_sync_offset,
+    _parse_iso_utc,
+    _resample_power_to_1hz,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -383,7 +389,12 @@ def _trim_strava_streams(
 
 
 def _compute_strava_power_curve(rider_id: str, activities: list, max_workers: int = 10) -> dict:
-    """Compute merged peak curve across rider activities."""
+    """Compute merged peak curve across rider activities.
+
+    Streams are requested at full resolution (resolution=None) so long rides are not
+    time-averaged before the peaks are read, and gaps are zero-filled rather than
+    interpolated so a stop never contributes watts to a best effort.
+    """
     merged: dict = {}
     futures = {}
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -393,6 +404,7 @@ def _compute_strava_power_curve(rider_id: str, activities: list, max_workers: in
                 rider_id,
                 act["id"],
                 "time,watts",
+                None,
             )
             futures[fut] = act["id"]
 
@@ -403,7 +415,7 @@ def _compute_strava_power_curve(rider_id: str, activities: list, max_workers: in
             watts = _extract_stream(streams or [], "watts")
             if not times or not watts:
                 continue
-            w_1hz = _resample_to_1hz(times, watts)
+            w_1hz = _resample_power_to_1hz(times, watts)
             if not w_1hz:
                 continue
             efforts = _compute_best_efforts(w_1hz)

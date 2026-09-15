@@ -23,6 +23,7 @@ from services.dual_recording.time_series import (  # noqa: F401
     _mask_streams,
     _mse_sync_offset,
     _parse_iso_utc,
+    _resample_power_to_1hz,
     _resample_to_1hz,
 )
 from services.dual_recording.verdict import (  # noqa: F401
