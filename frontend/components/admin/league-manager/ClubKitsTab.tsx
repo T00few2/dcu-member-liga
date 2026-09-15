@@ -21,6 +21,11 @@ interface JerseyUnlock {
     codeCheckedAt?: string | null;
 }
 
+interface JerseyTableRow extends JerseyUnlock {
+    pinnedOnly?: boolean;
+    pinnedClub?: string | null;
+}
+
 interface ClubKitRow {
     club: string;
     jerseySignature: number;
@@ -132,6 +137,37 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
         }
         return counts;
     }, [clubs]);
+
+    const jerseyTableRows = useMemo(() => {
+        const bySig = new Map<number, JerseyTableRow>();
+        for (const row of unlocks) {
+            bySig.set(row.jerseySignature, { ...row });
+        }
+        for (const kit of overview?.clubKits || []) {
+            if (kit.assignment !== 'pinned' || typeof kit.jerseySignature !== 'number') continue;
+            const existing = bySig.get(kit.jerseySignature);
+            if (existing) {
+                existing.pinnedClub = kit.club;
+                continue;
+            }
+            bySig.set(kit.jerseySignature, {
+                jerseySignature: kit.jerseySignature,
+                jerseyName: kit.jerseyName,
+                imageName: kit.imageName,
+                imageUrl: kit.imageUrl,
+                minLevel: null,
+                unlockCode: null,
+                pinnedOnly: true,
+                pinnedClub: kit.club,
+            });
+        }
+        const rows = [...bySig.values()];
+        rows.sort((a, b) => {
+            if (Boolean(a.pinnedOnly) !== Boolean(b.pinnedOnly)) return a.pinnedOnly ? -1 : 1;
+            return (a.jerseyName || '').localeCompare(b.jerseyName || '', 'da');
+        });
+        return rows;
+    }, [unlocks, overview?.clubKits]);
 
     const saveUnlocks = async (next: JerseyUnlock[]) => {
         setBusy(true);
@@ -433,18 +469,27 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                             </tr>
                         </thead>
                         <tbody>
-                            {unlocks.map((row) => (
+                            {jerseyTableRows.map((row) => (
                                 <tr key={row.jerseySignature} className="border-t border-border">
                                     <td className="p-2">
                                         <div className="flex items-center gap-2">
                                             {jerseyThumb(row.imageUrl, row.jerseyName)}
-                                            {row.jerseyName}
+                                            <div>
+                                                <div>{row.jerseyName}</div>
+                                                {row.pinnedClub && (
+                                                    <div className="text-xs text-muted-foreground">
+                                                        Pinnet: {row.pinnedClub}
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     </td>
                                     <td className="p-2">{row.minLevel ?? '—'}</td>
                                     <td className="p-2 font-mono">{row.unlockCode || '—'}</td>
                                     <td className="p-2">
-                                        {row.unlockCode ? (
+                                        {row.pinnedOnly ? (
+                                            'pinnet'
+                                        ) : row.unlockCode ? (
                                             <select
                                                 value={row.codeStatus || 'unverified'}
                                                 onChange={(e) => void updateUnlockStatus(row.jerseySignature, e.target.value as CodeStatus)}
@@ -458,9 +503,11 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                                     </td>
                                     <td className="p-2">{clubCountLabel(jerseyClubCount[row.jerseySignature] || 0)}</td>
                                     <td className="p-2 text-right">
-                                        <button type="button" className="text-red-600 text-xs" onClick={() => void removeUnlock(row.jerseySignature)}>
-                                            Fjern
-                                        </button>
+                                        {!row.pinnedOnly && (
+                                            <button type="button" className="text-red-600 text-xs" onClick={() => void removeUnlock(row.jerseySignature)}>
+                                                Fjern
+                                            </button>
+                                        )}
                                     </td>
                                 </tr>
                             ))}
