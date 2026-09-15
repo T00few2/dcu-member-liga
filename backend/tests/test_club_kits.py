@@ -7,6 +7,7 @@ from services.club_kits import (
     apply_auto_assignment,
     club_obtainable_intersection,
     drop_level_from_achievement,
+    effective_drop_level,
     extract_level_fields,
     obtainable_signatures,
     pin_club_kit,
@@ -17,6 +18,7 @@ from services.club_kits import (
 
 
 UNLOCKS = [
+    {"jerseySignature": 6, "jerseyName": "Zwift Standard Orange", "minLevel": 1, "imageName": "std"},
     {"jerseySignature": 1, "jerseyName": "Level 5", "minLevel": 5, "imageName": "l5"},
     {"jerseySignature": 2, "jerseyName": "Level 50", "minLevel": 50, "imageName": "l50"},
     {
@@ -58,19 +60,32 @@ def test_extract_level_fields_official_nested_and_unofficial_flat():
     assert unofficial["dropLevel"] == 112
 
 
+def test_unknown_drop_level_counts_as_starter_level():
+    assert effective_drop_level(None) == 1
+    assert effective_drop_level(0) == 1
+    assert effective_drop_level(12) == 12
+
+
 def test_obtainable_set_level_and_working_code_only():
     low = obtainable_signatures(UNLOCKS, 8)
-    assert low == {1, 3}
+    assert low == {6, 1, 3}
     high = obtainable_signatures(UNLOCKS, 50)
-    assert high == {1, 2, 3, 5}
+    assert high == {6, 1, 2, 3, 5}
     unknown = obtainable_signatures(UNLOCKS, None)
-    assert unknown == {3}
+    assert unknown == {6, 3}
     assert 4 not in high
 
 
-def test_club_intersection_unknown_level_uses_codes_only():
+def test_club_intersection_unknown_level_keeps_starter_kits():
     members = [{"dropLevel": 80}, {"dropLevel": None}]
-    assert club_obtainable_intersection(members, UNLOCKS) == {3}
+    assert club_obtainable_intersection(members, UNLOCKS) == {6, 3}
+
+
+def test_empty_unlock_index_has_empty_pool():
+    riders = [{"club": "DZR", "dropLevel": 80}]
+    preview = preview_auto_assignment(unlocks=[], club_kits=[], riders=riders)
+    assert preview["emptyPools"][0]["club"] == "DZR"
+    assert "Unlock-index er tomt" in preview["emptyPools"][0]["reason"]
 
 
 def test_greedy_prefers_unique_then_least_doubles_and_skips_pins():
@@ -97,15 +112,56 @@ def test_greedy_prefers_unique_then_least_doubles_and_skips_pins():
     assert pinned_row["jerseySignature"] == 2
 
 
-def test_least_doubles_when_pool_too_small():
+def test_auto_never_assigns_pinned_jersey_when_it_is_the_only_option():
+    unlocks = [{"jerseySignature": 2, "jerseyName": "Level 50", "minLevel": 50}]
+    riders = [
+        {"club": "Pinned Club", "dropLevel": 80},
+        {"club": "A", "dropLevel": 80},
+    ]
+    pinned = [{
+        "club": "Pinned Club",
+        "jerseySignature": 2,
+        "jerseyName": "Level 50",
+        "assignment": "pinned",
+    }]
+    preview = preview_auto_assignment(unlocks=unlocks, club_kits=pinned, riders=riders)
+    assert preview["coverage"]["autoCount"] == 0
+    assert preview["emptyPools"][0]["club"] == "A"
+    assert "pinnede" in preview["emptyPools"][0]["reason"]
+
+
+def test_auto_doubles_unpinned_kits_instead_of_reusing_pin():
+    unlocks = [
+        {"jerseySignature": 1, "jerseyName": "Level 5", "minLevel": 5},
+        {"jerseySignature": 2, "jerseyName": "Level 50", "minLevel": 50},
+    ]
+    riders = [
+        {"club": "Pinned Club", "dropLevel": 80},
+        {"club": "A", "dropLevel": 80},
+        {"club": "B", "dropLevel": 80},
+    ]
+    pinned = [{
+        "club": "Pinned Club",
+        "jerseySignature": 2,
+        "jerseyName": "Level 50",
+        "assignment": "pinned",
+    }]
+    preview = preview_auto_assignment(unlocks=unlocks, club_kits=pinned, riders=riders)
+    auto_sigs = [row["jerseySignature"] for row in preview["auto"]]
+    assert auto_sigs == [1, 1]
+    assert 2 not in auto_sigs
+    assert preview["coverage"]["sharedJerseyCount"] == 1
+
+
+def test_unknown_level_clubs_share_starter_then_working_code():
     riders = [
         {"club": "A", "dropLevel": None},
         {"club": "B", "dropLevel": None},
     ]
     preview = preview_auto_assignment(unlocks=UNLOCKS, club_kits=[], riders=riders)
     assert preview["coverage"]["autoCount"] == 2
-    assert preview["coverage"]["sharedJerseyCount"] == 1
-    assert {row["jerseySignature"] for row in preview["auto"]} == {3}
+    assert preview["coverage"]["sharedJerseyCount"] == 0
+    assert {row["jerseySignature"] for row in preview["auto"]} == {3, 6}
 
 
 def test_empty_pool_when_no_working_codes_and_low_levels():

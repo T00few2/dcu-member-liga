@@ -1,8 +1,8 @@
 """Obtainable club kits, intersections, and greedy auto-assignment.
 
-Level-auto kits count when a rider's stored dropLevel is known and >= minLevel.
-Promo-code kits count only when codeStatus is "working". Missing dropLevel means
-the rider contributes working-code kits only.
+Level-auto kits count when effective drop level >= minLevel. Missing or sub-1
+dropLevel is treated as 1 (starter kits every Zwift rider has). Promo-code kits
+count only when codeStatus is "working".
 """
 from __future__ import annotations
 
@@ -21,6 +21,9 @@ SOURCE_LEVEL = "level"
 SOURCE_CODE = "code"
 SOURCE_BOTH = "both"
 SOURCE_CLUB = "club"
+
+# New Zwift accounts start at drop level 1 and already have starter jerseys.
+MIN_ZWIFT_DROP_LEVEL = 1
 
 
 def drop_level_from_achievement(raw: Any) -> int | None:
@@ -90,18 +93,26 @@ def in_auto_pool(unlock: Mapping[str, Any]) -> bool:
     return _int_or_none(unlock.get("minLevel")) is not None or has_working_code(unlock)
 
 
+def effective_drop_level(drop_level: int | None) -> int:
+    """Unknown or sub-1 levels count as a new Zwift rider (starter kits)."""
+    if drop_level is None or drop_level < MIN_ZWIFT_DROP_LEVEL:
+        return MIN_ZWIFT_DROP_LEVEL
+    return drop_level
+
+
 def obtainable_signatures(
     unlocks: Iterable[Mapping[str, Any]],
     drop_level: int | None,
 ) -> set[int]:
     """Jerseys this rider can obtain via auto-grant and/or a working P-code."""
+    level = effective_drop_level(drop_level)
     obtained: set[int] = set()
     for unlock in unlocks:
         signature = _int_or_none(unlock.get("jerseySignature"))
         if signature is None:
             continue
         min_level = _int_or_none(unlock.get("minLevel"))
-        if drop_level is not None and min_level is not None and drop_level >= min_level:
+        if min_level is not None and level >= min_level:
             obtained.add(signature)
         if has_working_code(unlock):
             obtained.add(signature)
@@ -204,14 +215,17 @@ def denormalize_kit_row(
 
 
 def _empty_pool_reason(members: list[Mapping[str, Any]], unlocks: Iterable[Mapping[str, Any]]) -> str:
+    unlock_list = list(unlocks)
     known = sum(1 for m in members if _int_or_none(m.get("dropLevel")) is not None)
-    working_codes = sum(1 for u in unlocks if has_working_code(u))
+    working_codes = sum(1 for u in unlock_list if has_working_code(u))
+    if not any(in_auto_pool(u) for u in unlock_list):
+        return "Unlock-index er tomt — indlæs kendte trøjer eller tilføj minLevel/working codes"
     if not members:
         return "Ingen registrerede ryttere i klubben"
     if known == 0 and working_codes == 0:
-        return "Ukendt Zwift-level og ingen fungerende kode-trøjer"
+        return "Kun starttrøjer (level 1) i puljen — ingen fælles kit i unlock-index"
     if known == 0:
-        return "Ukendt Zwift-level — kun fungerende kode-trøjer tæller"
+        return "Ukendt Zwift-level tælles som 1 — kun starttrøjer og working codes"
     if working_codes == 0:
         return "Lav eller spredt Zwift-level og ingen fungerende kode-trøjer"
     return "Ingen fælles trøje i intersection (lav/ukendt level og ingen fælles working codes)"
@@ -224,7 +238,7 @@ def preview_auto_assignment(
     riders: Iterable[Mapping[str, Any]],
     jerseys_by_sig: Mapping[int, Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Greedy auto-assign unpinned clubs. Never overwrites pins or reuses pinned jerseys."""
+    """Greedy auto-assign unpinned clubs. Pins stay exclusive: never overwrite or reuse."""
     unlock_list = [dict(u) for u in unlocks]
     unlock_map = unlocks_by_signature(unlock_list)
     jersey_map = {int(k): dict(v) for k, v in (jerseys_by_sig or {}).items()}
@@ -259,15 +273,20 @@ def preview_auto_assignment(
             kit = existing[club]
             club_summaries.append(_club_summary(club, members, pool, kit, pinned=True))
             continue
-        if not pool:
+        auto_pool = set(pool) - pinned_sigs
+        if not auto_pool:
             empty_pools.append({
                 "club": club,
-                "reason": _empty_pool_reason(members, unlock_list),
+                "reason": (
+                    "Eneste fælles trøjer er allerede pinnede til andre klubber"
+                    if pool
+                    else _empty_pool_reason(members, unlock_list)
+                ),
                 "memberCount": len(members),
             })
-            club_summaries.append(_club_summary(club, members, pool, row, pinned=False))
+            club_summaries.append(_club_summary(club, members, auto_pool, row, pinned=False))
             continue
-        pending.append((club, pool, members))
+        pending.append((club, auto_pool, members))
 
     pending.sort(key=lambda item: (len(item[1]), item[0].lower()))
     for club, pool, members in pending:

@@ -123,6 +123,15 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
     const unlocks = overview?.jerseyUnlocks || [];
     const coverage = overview?.preview?.coverage;
     const clubs = overview?.preview?.clubs || [];
+    const jerseyClubCount = useMemo(() => {
+        const counts: Record<number, number> = {};
+        for (const club of clubs) {
+            const signature = club.kit?.jerseySignature;
+            if (typeof signature !== 'number') continue;
+            counts[signature] = (counts[signature] || 0) + 1;
+        }
+        return counts;
+    }, [clubs]);
 
     const saveUnlocks = async (next: JerseyUnlock[]) => {
         setBusy(true);
@@ -302,7 +311,8 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                 <div>
                     <h2 className="text-xl font-semibold text-foreground">Klubtrøjer</h2>
                     <p className="text-sm text-muted-foreground">
-                        Level-auto og working P-koder danner puljen. Pinnede klubtrøjer overskrives aldrig.
+                        Level-auto og working P-koder danner puljen. Ukendt rytter-level tælles som 1
+                        (starttrøjer alle har). En pinnet trøje er kun til den klub og tildeles aldrig automatisk til andre.
                     </p>
                 </div>
                 <div className="flex gap-2">
@@ -418,6 +428,7 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                                 <th className="p-2 text-left">Level</th>
                                 <th className="p-2 text-left">Kode</th>
                                 <th className="p-2 text-left">Status</th>
+                                <th className="p-2 text-left">Klubber</th>
                                 <th className="p-2" />
                             </tr>
                         </thead>
@@ -445,6 +456,7 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                                             </select>
                                         ) : '—'}
                                     </td>
+                                    <td className="p-2">{clubCountLabel(jerseyClubCount[row.jerseySignature] || 0)}</td>
                                     <td className="p-2 text-right">
                                         <button type="button" className="text-red-600 text-xs" onClick={() => void removeUnlock(row.jerseySignature)}>
                                             Fjern
@@ -514,6 +526,9 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                                             <span>
                                                 {club.kit?.jerseyName || '—'}
                                                 {club.pinned ? ' (pinned)' : club.kit ? ' (auto)' : ''}
+                                                {club.kit?.jerseySignature != null
+                                                    ? ` · ${clubCountLabel(jerseyClubCount[club.kit.jerseySignature] || 0)}`
+                                                    : ''}
                                             </span>
                                         </div>
                                     </td>
@@ -539,6 +554,10 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
             </section>
         </div>
     );
+}
+
+function clubCountLabel(count: number): string {
+    return count === 1 ? '1 klub' : `${count} klubber`;
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
