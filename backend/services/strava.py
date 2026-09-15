@@ -319,6 +319,24 @@ class StravaService:
             logger.error(f"Error fetching Strava activities for matching: {e}")
             return []
 
+    #: Strava sport types whose watts belong on a cycling power curve. Running power
+    #: (from a footpod or watch) also reports device_watts=True, but it is produced by
+    #: a different activity entirely and is not comparable to bike watts — a 20-minute
+    #: 5K would otherwise register as a 20-minute cycling best effort. E-bikes and
+    #: handcycles are excluded for the same reason: the watts are not leg power on a bike.
+    CYCLING_SPORT_TYPES = frozenset({
+        'Ride',
+        'VirtualRide',
+        'GravelRide',
+        'MountainBikeRide',
+    })
+
+    @classmethod
+    def _is_cycling_activity(cls, activity: dict) -> bool:
+        """True when the activity's sport type belongs on a cycling power curve."""
+        sport = activity.get('sport_type') or activity.get('type')
+        return sport in cls.CYCLING_SPORT_TYPES
+
     @staticmethod
     def _activity_start_epoch(activity: dict) -> int | None:
         """Unix seconds for a summary activity's UTC start, or None if unparseable."""
@@ -329,14 +347,19 @@ class StravaService:
             return None
 
     def get_power_activities(self, rider_id: str, after_timestamp: int, max_activities: int = 50) -> list:
-        """Return the most recent rides with a hardware power meter since `after_timestamp`.
+        """Return the most recent cycling activities with power since `after_timestamp`.
+
+        Two filters, both required. `device_watts` drops rides whose watts Strava
+        estimated rather than measured. The sport-type filter drops everything that is
+        not cycling: a run recorded with running power also reports device_watts=True,
+        and merging those watts into a cycling curve inflates it badly — a 21-minute
+        5K at 430W lands squarely on the 20-minute best effort.
 
         Walks the activity list newest-first using `before` as a cursor. Strava returns
         activities oldest-first whenever `after` is supplied, so a single `after` page
         would hand back the *start* of the window and silently drop everything recent —
-        exactly the rides a 90-day peak-power curve depends on. Non-power activities
-        (runs, hikes) are filtered out before `max_activities` is applied so they no
-        longer eat into the budget either.
+        exactly the rides a 90-day peak-power curve depends on. Both filters are applied
+        before `max_activities`, so non-cycling activities no longer eat into the budget.
         """
         access_token = self._get_valid_token(rider_id)
         if not access_token:
@@ -392,7 +415,7 @@ class StravaService:
                     continue
                 seen_ids.add(act_id)
                 new_ids += 1
-                if a.get('device_watts', False):
+                if a.get('device_watts', False) and self._is_cycling_activity(a):
                     collected.append({
                         'id': act_id,
                         'name': a.get('name'),

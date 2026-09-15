@@ -100,6 +100,72 @@ def _activity(index, days_ago, device_watts=True, sport='VirtualRide'):
     }
 
 
+def test_get_power_activities_excludes_runs_that_report_running_power(monkeypatch):
+    # A watch-recorded run reports device_watts=True, but running watts are not bike
+    # watts: a ~21min 5K would otherwise set the 20-minute cycling best effort.
+    page = [
+        _activity(1, days_ago=1, sport='Run'),
+        _activity(2, days_ago=2, sport='VirtualRide'),
+        _activity(3, days_ago=3, sport='TrailRun'),
+        _activity(4, days_ago=4, sport='Ride'),
+        _activity(5, days_ago=5, sport='Hike'),
+        _activity(6, days_ago=6, sport='GravelRide'),
+        _activity(7, days_ago=7, sport='MountainBikeRide'),
+    ]
+    service, _ = _service_with_activities(monkeypatch, [page])
+
+    after_ts = int((datetime.now(timezone.utc) - timedelta(days=90)).timestamp())
+    result = service.get_power_activities('rider', after_ts)
+
+    assert [a['id'] for a in result] == [2, 4, 6, 7]
+
+
+def test_get_power_activities_excludes_motor_assisted_sports(monkeypatch):
+    page = [
+        _activity(1, days_ago=1, sport='EBikeRide'),
+        _activity(2, days_ago=2, sport='EMountainBikeRide'),
+        _activity(3, days_ago=3, sport='Handcycle'),
+        _activity(4, days_ago=4, sport='Ride'),
+    ]
+    service, _ = _service_with_activities(monkeypatch, [page])
+
+    after_ts = int((datetime.now(timezone.utc) - timedelta(days=90)).timestamp())
+    result = service.get_power_activities('rider', after_ts)
+
+    assert [a['id'] for a in result] == [4]
+
+
+def test_get_power_activities_falls_back_to_legacy_type_field(monkeypatch):
+    # Older payloads carry `type` but no `sport_type`.
+    ride = {
+        'id': 1,
+        'name': 'Legacy ride',
+        'start_date': (datetime.now(timezone.utc) - timedelta(days=1)).strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'device_watts': True,
+        'type': 'Ride',
+    }
+    run = dict(ride, id=2, name='Legacy run', type='Run')
+    service, _ = _service_with_activities(monkeypatch, [[ride, run]])
+
+    after_ts = int((datetime.now(timezone.utc) - timedelta(days=90)).timestamp())
+    result = service.get_power_activities('rider', after_ts)
+
+    assert [a['id'] for a in result] == [1]
+
+
+def test_get_power_activities_skips_activities_with_no_sport_at_all(monkeypatch):
+    unknown = {
+        'id': 1,
+        'name': 'Mystery',
+        'start_date': (datetime.now(timezone.utc) - timedelta(days=1)).strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'device_watts': True,
+    }
+    service, _ = _service_with_activities(monkeypatch, [[unknown]])
+
+    after_ts = int((datetime.now(timezone.utc) - timedelta(days=90)).timestamp())
+    assert service.get_power_activities('rider', after_ts) == []
+
+
 def _service_with_activities(monkeypatch, pages):
     """Return (service, calls) wired to serve `pages` in order from requests.get."""
     service = strava_module.StravaService(db=None)
@@ -135,7 +201,7 @@ def test_get_power_activities_keeps_the_most_recent_rides(monkeypatch):
 def test_get_power_activities_excludes_rides_without_a_power_meter(monkeypatch):
     page = [
         _activity(1, days_ago=1, device_watts=True),
-        _activity(2, days_ago=2, device_watts=False, sport='Run'),
+        _activity(2, days_ago=2, device_watts=False, sport='Ride'),
         _activity(3, days_ago=3, device_watts=True),
     ]
     service, _ = _service_with_activities(monkeypatch, [page])
