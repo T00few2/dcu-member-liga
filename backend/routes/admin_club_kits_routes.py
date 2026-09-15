@@ -16,6 +16,7 @@ from services.club_kits import (
     preview_auto_assignment,
     unpin_club_kit,
 )
+from services.jersey_unlock_seed import match_known_unlocks, merge_unlocks
 from services.request_models import (
     ClubKitPinRequest,
     ClubKitUnpinRequest,
@@ -156,6 +157,41 @@ def save_jersey_unlocks():
         return jsonify({"jerseyUnlocks": rows, "message": "Unlock index saved"}), 200
     except Exception as exc:
         logger.exception("save_jersey_unlocks failed")
+        return jsonify({"message": str(exc)}), 500
+
+
+@admin_bp.route("/admin/jersey-unlocks/seed", methods=["POST"])
+def seed_jersey_unlocks():
+    """Merge known level kits and published P-codes into the unlock index."""
+    try:
+        require_admin(request)
+    except AuthzError as e:
+        return jsonify({"message": e.message}), e.status_code
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+    try:
+        settings = _load_settings()
+        existing = list(settings.get("jerseyUnlocks") or [])
+        catalog = get_zwift_game_service().get_jerseys(query=None, limit=None)
+        seeded = match_known_unlocks(catalog)
+        merged = merge_unlocks(existing, seeded)
+        update = with_schema_version({
+            "jerseyUnlocks": merged,
+            "updatedAt": firestore.SERVER_TIMESTAMP,
+        })
+        log_schema_issues(logger, "league/settings (jerseyUnlocks seed)", validate_league_settings_doc(update, partial=True))
+        _settings_ref().set(update, merge=True)
+        existing_sigs = {row.get("jerseySignature") for row in existing}
+        added = sum(1 for row in merged if row.get("jerseySignature") not in existing_sigs)
+        return jsonify({
+            "jerseyUnlocks": merged,
+            "seeded": len(seeded),
+            "added": added,
+            "total": len(merged),
+            "message": f"Tilføjet {added} kendte unlocks ({len(seeded)} matchede kataloget)",
+        }), 200
+    except Exception as exc:
+        logger.exception("seed_jersey_unlocks failed")
         return jsonify({"message": str(exc)}), 500
 
 

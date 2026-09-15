@@ -6,6 +6,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from services.category_engine import build_manual_assigned
 from services.liga_categories_core import (
     _compute_liga_update,
+    _load_liga_settings,
     auto_for_predict_assign,
     rebuild_auto_on_release,
 )
@@ -151,3 +152,41 @@ def test_release_rebuilds_auto_assigned_rating_from_current_velo():
     assert rebuilt["assignedRating"] == 1964
     assert rebuilt["assignedAt"] == "seed-ts"
     assert rebuilt["lastCheckedRating"] == 1964
+
+
+class _FakeSnap:
+    exists = True
+
+    def to_dict(self):
+        return {
+            "gracePeriod": 35,
+            "ligaCategories": [],
+            "clubKits": [{
+                "club": "Danish Zwift Racers",
+                "jerseySignature": 1381648520,
+                "jerseyName": "DZR 2025",
+                "assignment": "pinned",
+            }],
+            "jerseyUnlocks": [{"jerseySignature": 1381648520, "jerseyName": "DZR 2025"}],
+        }
+
+
+class _FakeDoc:
+    def get(self):
+        return _FakeSnap()
+
+
+class _FakeCol:
+    def document(self, _name):
+        return _FakeDoc()
+
+
+class _FakeDb:
+    def collection(self, _name):
+        return _FakeCol()
+
+
+def test_load_liga_settings_includes_club_kits_and_unlocks():
+    settings = _load_liga_settings(_FakeDb())
+    assert settings["clubKits"][0]["jerseyName"] == "DZR 2025"
+    assert settings["jerseyUnlocks"][0]["jerseySignature"] == 1381648520

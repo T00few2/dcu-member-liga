@@ -232,6 +232,23 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
         }
     };
 
+    const seedKnown = async () => {
+        setBusy(true);
+        try {
+            const headers = await authHeaders();
+            const res = await fetch(`${API_URL}/admin/jersey-unlocks/seed`, { method: 'POST', headers });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setStatus(data.message || 'Kunne ikke indlæse kendte unlocks');
+                return;
+            }
+            setStatus(data.message || 'Kendte unlocks indlæst');
+            await loadOverview();
+        } finally {
+            setBusy(false);
+        }
+    };
+
     const applyAuto = async () => {
         setBusy(true);
         try {
@@ -318,7 +335,21 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
             </div>
 
             <section className="space-y-3">
-                <h3 className="font-semibold">Unlock-index</h3>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="font-semibold">Unlock-index</h3>
+                    <button
+                        type="button"
+                        onClick={() => void seedKnown()}
+                        disabled={busy}
+                        className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-secondary/50 disabled:opacity-50"
+                    >
+                        Indlæs kendte level- og kode-trøjer
+                    </button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                    Fylder index med level-auto kits (ZwiftInsider) og publicerede P-koder (Zwift Wiki).
+                    Koder gemmes som unverified — ret til working/expired efter du har prøvet dem. Overskriver ikke rækker du allerede har rettet.
+                </p>
                 <div className="grid md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                         <input
@@ -429,18 +460,16 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
             <section className="space-y-3">
                 <h3 className="font-semibold">Pin klubtrøje</h3>
                 <div className="grid md:grid-cols-3 gap-2">
-                    <input
-                        list="club-kit-clubs"
+                    <select
                         value={pinClub}
                         onChange={(e) => setPinClub(e.target.value)}
-                        placeholder="Klubnavn"
                         className="p-2 border border-input rounded-lg bg-background"
-                    />
-                    <datalist id="club-kit-clubs">
+                    >
+                        <option value="">Vælg klub</option>
                         {clubOptions.map((club) => (
-                            <option key={club} value={club} />
+                            <option key={club} value={club}>{club}</option>
                         ))}
-                    </datalist>
+                    </select>
                     <input
                         value={pinNotes}
                         onChange={(e) => setPinNotes(e.target.value)}

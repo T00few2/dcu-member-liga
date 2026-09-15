@@ -128,6 +128,18 @@ def club_kits_by_club(club_kits: Iterable[Mapping[str, Any]]) -> dict[str, dict[
     return out
 
 
+def kit_for_club(club_kits: Iterable[Mapping[str, Any]], club_name: str) -> dict[str, Any] | None:
+    rows = club_kits_by_club(club_kits)
+    kit = rows.get(club_name)
+    if kit:
+        return kit
+    wanted = club_name.casefold()
+    for name, row in rows.items():
+        if name.casefold() == wanted:
+            return row
+    return None
+
+
 def riders_by_club(riders: Iterable[Mapping[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     grouped: dict[str, list[dict[str, Any]]] = {}
     for rider in riders:
@@ -433,7 +445,7 @@ def rider_club_kit_payload(
     club_name = _str_or_none(club)
     if not club_name:
         return None
-    kit = club_kits_by_club(settings.get("clubKits") or []).get(club_name)
+    kit = kit_for_club(settings.get("clubKits") or [], club_name)
     if not kit:
         return None
     signature = _int_or_none(kit.get("jerseySignature"))

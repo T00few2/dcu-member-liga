@@ -39,7 +39,7 @@ def effective_user_category(liga_category: Any, categories=None) -> str:
 
 
 def _load_liga_settings(db_client) -> dict:
-    """Load league settings; return gracePeriod and categories."""
+    """Load league settings used by category resolution and rider club-kit payload."""
     try:
         doc = db_client.collection("league").document("settings").get()
         s = doc.to_dict() if doc.exists else {}
@@ -49,6 +49,8 @@ def _load_liga_settings(db_client) -> dict:
         "gracePeriod": int(s.get("gracePeriod", 35)),
         "categories": s.get("ligaCategories"),
         "verificationCategories": verification_category_names(s.get("ligaCategories")),
+        "jerseyUnlocks": s.get("jerseyUnlocks") or [],
+        "clubKits": s.get("clubKits") or [],
     }
 
 

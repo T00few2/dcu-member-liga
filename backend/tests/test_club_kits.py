@@ -181,3 +181,56 @@ def test_rider_payload_hides_expired_code_but_keeps_level_grant():
     assert payload["showCode"] is False
     assert payload["hasLevelGrant"] is True
     assert payload["minLevel"] == 10
+
+
+def test_rider_payload_matches_club_case_insensitively():
+    settings = {
+        "clubKits": [{
+            "club": "Danish Zwift Racers",
+            "jerseySignature": 1381648520,
+            "jerseyName": "DZR 2025",
+            "assignment": "pinned",
+            "source": "club",
+            "imageName": "DZR2025_thumb",
+        }],
+    }
+    payload = rider_club_kit_payload(
+        club="danish zwift racers",
+        settings=settings,
+        drop_level=112,
+    )
+    assert payload is not None
+    assert payload["jerseyName"] == "DZR 2025"
+
+
+def test_seed_matches_catalog_level_and_code():
+    from services.jersey_unlock_seed import match_known_unlocks, merge_unlocks
+
+    catalog = [
+        {"signature": 1, "name": "Camo 1", "imageName": "camo1"},
+        {"signature": 2, "name": "GCN", "imageName": "gcn"},
+        {"signature": 3, "name": "Unknown Kit", "imageName": "x"},
+        {"signature": 4, "name": "Level 50", "imageName": "l50"},
+    ]
+    seeded = match_known_unlocks(catalog)
+    names = {row["jerseyName"] for row in seeded}
+    assert names == {"Camo 1", "GCN", "Level 50"}
+    camo = next(row for row in seeded if row["jerseyName"] == "Camo 1")
+    assert camo["minLevel"] == 9
+    assert camo.get("unlockCode") is None
+    gcn = next(row for row in seeded if row["jerseyName"] == "GCN")
+    assert gcn["unlockCode"] == "GOGCN"
+    assert gcn["codeStatus"] == "unverified"
+    level50 = next(row for row in seeded if row["jerseyName"] == "Level 50")
+    assert level50["minLevel"] == 50
+
+    existing = [{
+        "jerseySignature": 2,
+        "jerseyName": "GCN",
+        "unlockCode": "GOGCN",
+        "codeStatus": "working",
+    }]
+    merged = merge_unlocks(existing, seeded)
+    gcn_merged = next(row for row in merged if row["jerseySignature"] == 2)
+    assert gcn_merged["codeStatus"] == "working"
+    assert any(row["jerseySignature"] == 1 for row in merged)
