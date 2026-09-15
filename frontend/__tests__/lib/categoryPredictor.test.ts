@@ -152,9 +152,9 @@ describe('filterPredictorRiders', () => {
 
   it('can isolate riders with vELO 0 or missing', () => {
     const riders: Participant[] = [
-      { ...base, name: 'Ada', zwiftId: '1', max30Rating: 900, ligaCategory: null },
-      { ...base, name: 'Bea', zwiftId: '2', max30Rating: 0, ligaCategory: null },
-      { ...base, name: 'Cara', zwiftId: '3', max30Rating: 'N/A', ligaCategory: null },
+      { ...base, name: 'Ada', zwiftId: '1', rating: 900, max30Rating: 0, ligaCategory: null },
+      { ...base, name: 'Bea', zwiftId: '2', rating: 0, max30Rating: 900, ligaCategory: null },
+      { ...base, name: 'Cara', zwiftId: '3', rating: 'N/A', max30Rating: 900, ligaCategory: null },
     ];
     expect(filterPredictorRiders(riders, model, { unassignedOnly: false, mismatchOnly: false, zeroVeloOnly: true }).map(p => p.name))
       .toEqual(['Bea', 'Cara']);
@@ -162,9 +162,9 @@ describe('filterPredictorRiders', () => {
 
   it('can isolate riders without a 30d vELO score', () => {
     const riders: Participant[] = [
-      { ...base, name: 'Ada', zwiftId: '1', max30Rating: 900, rating: 880, ligaCategory: null },
-      { ...base, name: 'Bea', zwiftId: '2', max30Rating: 900, rating: 0, ligaCategory: null },
-      { ...base, name: 'Cara', zwiftId: '3', max30Rating: 900, rating: 'N/A', ligaCategory: null },
+      { ...base, name: 'Ada', zwiftId: '1', rating: 0, max30Rating: 900, ligaCategory: null },
+      { ...base, name: 'Bea', zwiftId: '2', rating: 900, max30Rating: 0, ligaCategory: null },
+      { ...base, name: 'Cara', zwiftId: '3', rating: 900, max30Rating: 'N/A', ligaCategory: null },
     ];
     expect(filterPredictorRiders(riders, model, { unassignedOnly: false, mismatchOnly: false, no30dVeloOnly: true }).map(p => p.name))
       .toEqual(['Bea', 'Cara']);

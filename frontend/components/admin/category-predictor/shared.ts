@@ -25,8 +25,9 @@ export interface Participant {
   cp5min: number | null;
   cp20min: number | null;
   racingScore: number | string | null;
-  /** Current ZwiftRacing vELO (`rating` from /participants). */
+  /** Current ZwiftRacing vELO (`rating` / `currentRating` from /participants). */
   rating?: number | string | null;
+  /** 30-day max ZwiftRacing vELO. */
   max30Rating: number | string | null;
   ligaCategory: { locked?: boolean; category?: string; manualAssignedCategory?: string } | null;
   /** Zwift activities in the CP window (typically 90d), if known. */
@@ -400,15 +401,15 @@ export function actualVeloFromParticipant(p: Participant): number | null {
   return n != null && n > 0 ? n : null;
 }
 
-/** True when ZwiftRacing has no usable vELO (0, missing, or N/A). */
+/** True when current ZwiftRacing vELO (`rating`) is 0, missing, or N/A. */
 export function hasZeroVelo(p: Participant): boolean {
-  const n = parseParticipantVelo(p);
+  const n = parseVeloField(p.rating);
   return n == null || n === 0;
 }
 
-/** True when the 30-day max column has no usable score (stored as `rating` / currentRating). */
+/** True when 30-day max vELO (`max30Rating`) is 0, missing, or N/A. */
 export function hasNo30dVelo(p: Participant): boolean {
-  const n = parseVeloField(p.rating);
+  const n = parseVeloField(p.max30Rating);
   return n == null || n === 0;
 }
 

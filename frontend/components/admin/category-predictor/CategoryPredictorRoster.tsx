@@ -191,8 +191,8 @@ export default function CategoryPredictorRoster({
               const stravaEntry = stravaByRider[p.zwiftId];
               const stravaPred = predictionFromStravaCache(model, p, stravaEntry);
               const stravaLoading = Boolean(loadingStravaIds[p.zwiftId]);
-              const currentVelo = formatVeloValue(p.max30Rating);
-              const max30Velo = formatVeloValue(p.rating);
+              const currentVelo = formatVeloValue(p.rating);
+              const max30Velo = formatVeloValue(p.max30Rating);
               const zrs = formatVeloValue(p.racingScore);
               const assigned = riderAssignedCategory(p, assignedOverlay);
               const isManual = Boolean(p.ligaCategory?.manualAssignedCategory || assignedOverlay[p.zwiftId]);

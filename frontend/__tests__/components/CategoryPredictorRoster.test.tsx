@@ -70,9 +70,12 @@ describe('CategoryPredictorRoster', () => {
     expect(screen.getByRole('columnheader', { name: 'ZRS' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Category' })).toBeInTheDocument();
     expect(screen.getByLabelText('Category for Ada')).toHaveValue('Gold');
-    expect(screen.getByText('1050')).toBeInTheDocument();
-    expect(screen.getByText('1100')).toBeInTheDocument();
-    expect(screen.getByText('500')).toBeInTheDocument();
+    const row = screen.getByRole('button', { name: 'Ada' }).closest('tr');
+    expect(row).toBeTruthy();
+    const cells = within(row!).getAllByRole('cell');
+    expect(cells[1]).toHaveTextContent('1050');
+    expect(cells[2]).toHaveTextContent('1100');
+    expect(cells[3]).toHaveTextContent('500');
     expect(screen.getAllByText('Gold').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Platinum').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Amethyst').length).toBeGreaterThanOrEqual(1);
@@ -129,7 +132,7 @@ describe('CategoryPredictorRoster', () => {
 
   it('lets you select a rider with vELO 0', async () => {
     const user = userEvent.setup();
-    const zeroVelo: Participant = { ...ada, name: 'Bea', zwiftId: '9', max30Rating: 0 };
+    const zeroVelo: Participant = { ...ada, name: 'Bea', zwiftId: '9', rating: 0 };
     const { props } = renderRoster({ riders: [zeroVelo] });
 
     expect(screen.getByText('0')).toBeInTheDocument();
