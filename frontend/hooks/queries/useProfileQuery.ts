@@ -25,6 +25,17 @@ export interface ProfileData {
     zwiftId: string;
     club?: string | null;
     ligaCategory?: LigaCategory;
+    dropLevel?: number | null;
+    clubKit?: {
+        jerseyName: string;
+        imageUrl?: string | null;
+        minLevel?: number | null;
+        unlockCode?: string | null;
+        notes?: string | null;
+        hasLevelGrant?: boolean;
+        showCode?: boolean;
+        assignment?: string;
+    } | null;
 }
 
 export function useProfileQuery() {

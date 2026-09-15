@@ -54,6 +54,10 @@ def validate_league_settings_doc(payload: Mapping[str, Any], *, partial: bool = 
         issues.append("seasonBestResultsCount should be int")
     if "seasonRankPoints" in payload and not isinstance(payload.get("seasonRankPoints"), Mapping):
         issues.append("seasonRankPoints should be an object")
+    if "jerseyUnlocks" in payload and not isinstance(payload.get("jerseyUnlocks"), list):
+        issues.append("jerseyUnlocks should be a list")
+    if "clubKits" in payload and not isinstance(payload.get("clubKits"), list):
+        issues.append("clubKits should be a list")
     if "schemaVersion" in payload and not isinstance(payload.get("schemaVersion"), int):
         issues.append("schemaVersion should be int")
     return issues

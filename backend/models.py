@@ -239,6 +239,33 @@ class LigaCategoryDef(TypedDict, total=False):
     color: str  # Badge hex color, e.g. "#1d4ed8"
 
 
+class JerseyUnlock(TypedDict, total=False):
+    """league/settings.jerseyUnlocks row."""
+    jerseySignature: int
+    jerseyName: str
+    imageName: str
+    imageUrl: str | None
+    minLevel: int | None
+    unlockCode: str | None
+    codeStatus: str
+    codeCheckedAt: Any
+
+
+class ClubKit(TypedDict, total=False):
+    """league/settings.clubKits row."""
+    club: str
+    jerseySignature: int
+    jerseyName: str
+    imageName: str
+    imageUrl: str | None
+    assignment: str
+    source: str
+    minLevel: int | None
+    unlockCode: str | None
+    codeStatus: str | None
+    notes: str | None
+
+
 class LeagueSettings(TypedDict, total=False):
     """Document: league/settings."""
     schemaVersion: int
@@ -252,6 +279,8 @@ class LeagueSettings(TypedDict, total=False):
     seasonRankPoints: SeasonRankPoints
     seasonBestResultsCount: int  # Season best-X lines; 0/omit = all
     ligaCategories: list[LigaCategoryDef]
+    jerseyUnlocks: list[JerseyUnlock]
+    clubKits: list[ClubKit]
 
 
 SeasonClass = Literal['tour', 'monument', 'wt_classic']
@@ -419,6 +448,9 @@ class ZwiftGameProfile(TypedDict, total=False):
     categoryWomen: str
     powerSourceType: str
     powerSourceModel: str
+    achievementLevel: int
+    dropLevel: int
+    totalExperiencePoints: int
     updatedAt: Any
 
 

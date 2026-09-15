@@ -1,0 +1,183 @@
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from services.club_kits import (
+    apply_auto_assignment,
+    club_obtainable_intersection,
+    drop_level_from_achievement,
+    extract_level_fields,
+    obtainable_signatures,
+    pin_club_kit,
+    preview_auto_assignment,
+    rider_club_kit_payload,
+    unpin_club_kit,
+)
+
+
+UNLOCKS = [
+    {"jerseySignature": 1, "jerseyName": "Level 5", "minLevel": 5, "imageName": "l5"},
+    {"jerseySignature": 2, "jerseyName": "Level 50", "minLevel": 50, "imageName": "l50"},
+    {
+        "jerseySignature": 3,
+        "jerseyName": "Working Code",
+        "unlockCode": "WORKS",
+        "codeStatus": "working",
+        "imageName": "code",
+    },
+    {
+        "jerseySignature": 4,
+        "jerseyName": "Dead Code",
+        "unlockCode": "DEAD",
+        "codeStatus": "expired",
+        "imageName": "dead",
+    },
+    {
+        "jerseySignature": 5,
+        "jerseyName": "Both",
+        "minLevel": 10,
+        "unlockCode": "BOTH",
+        "codeStatus": "expired",
+        "imageName": "both",
+    },
+]
+
+
+def test_drop_level_from_unofficial_hundredths():
+    assert drop_level_from_achievement(11202) == 112
+    assert drop_level_from_achievement(42) == 42
+    assert drop_level_from_achievement(None) is None
+
+
+def test_extract_level_fields_official_nested_and_unofficial_flat():
+    official = extract_level_fields({"achievements": {"achievementLevel": 42, "totalExperiencePoints": 9}})
+    assert official["dropLevel"] == 42
+    assert official["achievementLevel"] == 42
+    unofficial = extract_level_fields({"achievementLevel": 11202, "totalExperiencePoints": 1047591})
+    assert unofficial["dropLevel"] == 112
+
+
+def test_obtainable_set_level_and_working_code_only():
+    low = obtainable_signatures(UNLOCKS, 8)
+    assert low == {1, 3}
+    high = obtainable_signatures(UNLOCKS, 50)
+    assert high == {1, 2, 3, 5}
+    unknown = obtainable_signatures(UNLOCKS, None)
+    assert unknown == {3}
+    assert 4 not in high
+
+
+def test_club_intersection_unknown_level_uses_codes_only():
+    members = [{"dropLevel": 80}, {"dropLevel": None}]
+    assert club_obtainable_intersection(members, UNLOCKS) == {3}
+
+
+def test_greedy_prefers_unique_then_least_doubles_and_skips_pins():
+    riders = [
+        {"club": "A", "dropLevel": 80},
+        {"club": "B", "dropLevel": 80},
+        {"club": "C", "dropLevel": 80},
+        {"club": "Pinned Club", "dropLevel": 80},
+    ]
+    pinned = [{
+        "club": "Pinned Club",
+        "jerseySignature": 2,
+        "jerseyName": "Level 50",
+        "assignment": "pinned",
+        "source": "club",
+    }]
+    preview = preview_auto_assignment(unlocks=UNLOCKS, club_kits=pinned, riders=riders)
+    auto_sigs = {row["jerseySignature"] for row in preview["auto"]}
+    assert 2 not in auto_sigs
+    assert preview["coverage"]["pinnedCount"] == 1
+    applied = apply_auto_assignment(unlocks=UNLOCKS, club_kits=pinned, riders=riders)
+    pinned_row = next(row for row in applied if row["club"] == "Pinned Club")
+    assert pinned_row["assignment"] == "pinned"
+    assert pinned_row["jerseySignature"] == 2
+
+
+def test_least_doubles_when_pool_too_small():
+    riders = [
+        {"club": "A", "dropLevel": None},
+        {"club": "B", "dropLevel": None},
+    ]
+    preview = preview_auto_assignment(unlocks=UNLOCKS, club_kits=[], riders=riders)
+    assert preview["coverage"]["autoCount"] == 2
+    assert preview["coverage"]["sharedJerseyCount"] == 1
+    assert {row["jerseySignature"] for row in preview["auto"]} == {3}
+
+
+def test_empty_pool_when_no_working_codes_and_low_levels():
+    level_only = [u for u in UNLOCKS if u["jerseySignature"] in (1, 2, 5)]
+    riders = [{"club": "Tiny", "dropLevel": 1}, {"club": "Tiny", "dropLevel": 2}]
+    preview = preview_auto_assignment(unlocks=level_only, club_kits=[], riders=riders)
+    assert preview["emptyPools"][0]["club"] == "Tiny"
+    assert preview["coverage"]["autoCount"] == 0
+
+
+def test_pin_does_not_reuse_pinned_jersey_and_drops_auto_duplicate():
+    existing = [
+        {"club": "DZR", "jerseySignature": 99, "assignment": "pinned"},
+        {"club": "Other", "jerseySignature": 3, "assignment": "auto"},
+    ]
+    try:
+        pin_club_kit(club="Other", signature=99, club_kits=existing, unlocks=UNLOCKS)
+        raise AssertionError("expected pin collision")
+    except ValueError:
+        pass
+    next_rows = pin_club_kit(
+        club="Other",
+        signature=3,
+        club_kits=existing,
+        unlocks=UNLOCKS,
+        notes="Chosen basic kit",
+    )
+    other = next(row for row in next_rows if row["club"] == "Other")
+    assert other["assignment"] == "pinned"
+    assert other["unlockCode"] == "WORKS"
+
+
+def test_unpin_keeps_other_clubs():
+    rows = [
+        {"club": "DZR", "jerseySignature": 99, "assignment": "pinned"},
+        {"club": "Other", "jerseySignature": 3, "assignment": "auto"},
+    ]
+    out = unpin_club_kit("DZR", rows)
+    assert [row["club"] for row in out] == ["Other"]
+
+
+def test_public_settings_view_strips_codes():
+    from services.club_kits import public_settings_view
+    view = public_settings_view({
+        "jerseyUnlocks": [{"jerseySignature": 3, "unlockCode": "SECRET", "codeStatus": "working"}],
+        "clubKits": [{"club": "A", "unlockCode": "SECRET"}],
+    })
+    assert "unlockCode" not in view["jerseyUnlocks"][0]
+    assert "unlockCode" not in view["clubKits"][0]
+
+
+def test_rider_payload_hides_expired_code_but_keeps_level_grant():
+    settings = {
+        "jerseyUnlocks": UNLOCKS,
+        "clubKits": [{
+            "club": "Danish Zwift Racers",
+            "jerseySignature": 5,
+            "jerseyName": "Both",
+            "assignment": "auto",
+            "source": "both",
+            "minLevel": 10,
+            "unlockCode": "BOTH",
+            "codeStatus": "expired",
+        }],
+    }
+    payload = rider_club_kit_payload(
+        club="Danish Zwift Racers",
+        settings=settings,
+        drop_level=20,
+    )
+    assert payload is not None
+    assert payload["unlockCode"] is None
+    assert payload["showCode"] is False
+    assert payload["hasLevelGrant"] is True
+    assert payload["minLevel"] == 10

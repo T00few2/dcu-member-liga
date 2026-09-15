@@ -31,5 +31,6 @@ import routes.admin_race_structure_routes  # noqa: E402, F401
 import routes.admin_season          # noqa: E402, F401
 import routes.admin_stats           # noqa: E402, F401
 import routes.admin_users           # noqa: E402, F401
+import routes.admin_club_kits_routes  # noqa: E402, F401
 import routes.admin_live_race       # noqa: E402, F401
 import routes.admin_stream_riders   # noqa: E402, F401

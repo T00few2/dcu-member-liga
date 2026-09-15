@@ -17,6 +17,7 @@ from services.policy_store import (
 )
 from services.schema_validation import log_schema_issues, validate_user_doc, with_schema_version
 from services.user_service import UserService
+from services.club_kits import rider_club_kit_payload
 from services.users_profile_core import (
     _connected_zwift_id_from_user_data,
     _enrich_user_with_zwiftracing,
@@ -108,6 +109,21 @@ def get_profile():
         settings = _load_liga_settings(db) if db else {}
         rank_cats = _resolve_categories(settings)
         lc = serialize_liga_category(user._data.get("ligaCategory"), rank_cats)
+        is_admin = decoded_token.get("admin") is True
+        drop_level_int = None
+        club_kit = None
+        if is_admin:
+            zwift_profile = user._data.get("zwiftProfile") if isinstance(user._data.get("zwiftProfile"), dict) else {}
+            drop_level = zwift_profile.get("dropLevel")
+            try:
+                drop_level_int = int(drop_level) if drop_level is not None else None
+            except (TypeError, ValueError):
+                drop_level_int = None
+            club_kit = rider_club_kit_payload(
+                club=user.club,
+                settings=settings,
+                drop_level=drop_level_int,
+            )
         return (
             jsonify(
                 {
@@ -117,6 +133,8 @@ def get_profile():
                     "name": user.name,
                     "zwiftId": user.zwift_id,
                     "club": user.club,
+                    "dropLevel": drop_level_int if is_admin else None,
+                    "clubKit": club_kit,
                     "trainer": user.trainer,
                     "stravaConnected": bool(user._data.get("connections", {}).get("strava")),
                     "zwiftConnected": bool(user._data.get("connections", {}).get("zwift")),

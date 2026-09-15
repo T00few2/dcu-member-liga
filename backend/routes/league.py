@@ -10,6 +10,7 @@ from services.schema_validation import (
     validate_league_standings_doc,
     with_schema_version,
 )
+from services.club_kits import public_settings_view
 from services.category_changelog import liga_categories_fingerprint
 from services.request_models import LeagueSettingsRequest, parse_body
 from authz import require_admin, verify_user_token, AuthzError
@@ -36,6 +37,14 @@ def get_settings():
         settings["ligaCategoriesFingerprint"] = liga_categories_fingerprint(
             settings.get("ligaCategories")
         )
+        is_admin = False
+        try:
+            verify_admin_auth()
+            is_admin = True
+        except AuthzError:
+            is_admin = False
+        if not is_admin:
+            settings = public_settings_view(settings)
         return jsonify({'settings': settings}), 200
     except Exception as e:
         logger.error(f"Get settings error: {e}")

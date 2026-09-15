@@ -163,6 +163,7 @@ class ZwiftService:
         rider_id: int | None = None,
         user_access_token: str | None = None,
         include_competition_metrics: bool = True,
+        include_achievements: bool = False,
     ) -> dict[str, Any] | None:
         """
         Official replacement for old /api/profiles/{id}.
@@ -171,6 +172,8 @@ class ZwiftService:
         rider_id is kept for compatibility but ignored by the official endpoint.
         """
         params = {"includeCompetitionMetrics": str(include_competition_metrics).lower()}
+        if include_achievements:
+            params["includeAchievements"] = "true"
         response = self._api_get("/api/link/racing-profile", token=user_access_token, params=params)
         if response.status_code == 404:
             return None

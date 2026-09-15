@@ -13,21 +13,23 @@ import {
     TestDataPanel,
     RawDataViewer,
     RoutePlanningTab,
+    ClubKitsTab,
 } from './league-manager';
 
-export type LeagueManagerTab = 'races' | 'season' | 'results' | 'settings' | 'testing' | 'rawdata' | 'planning';
+export type LeagueManagerTab = 'races' | 'season' | 'results' | 'settings' | 'kits' | 'testing' | 'rawdata' | 'planning';
 
 interface LeagueManagerProps {
     initialActiveTab?: LeagueManagerTab;
     onTabChange?: (tab: LeagueManagerTab) => void;
 }
 
-const TABS: LeagueManagerTab[] = ['races', 'season', 'results', 'settings', 'testing', 'rawdata', 'planning'];
+const TABS: LeagueManagerTab[] = ['races', 'season', 'results', 'settings', 'kits', 'testing', 'rawdata', 'planning'];
 const TAB_LABELS: Record<LeagueManagerTab, string> = {
     races: 'Races',
     season: 'Season',
     results: 'Results',
     settings: 'Scoring Settings',
+    kits: 'Klubtrøjer',
     testing: 'Testing',
     rawdata: 'Results Editor',
     planning: 'Route Planning',
@@ -150,6 +152,10 @@ export default function LeagueManager({ initialActiveTab = 'races', onTabChange 
                     status={status}
                     setStatus={setStatus}
                 />
+            )}
+
+            {activeTab === 'kits' && (
+                <ClubKitsTab user={user} />
             )}
 
             {activeTab === 'testing' && (

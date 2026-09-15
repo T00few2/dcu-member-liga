@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import ClubKitCard from '@/components/register/ClubKitCard';
+import type { ClubKitPayload } from '@/lib/clubKitCopy';
 
 interface Club {
     name: string;
@@ -31,6 +33,8 @@ interface RiderInfoFormProps {
     onRequestTrainer: (name: string) => void;
     verificationCategoryNames?: string[];
     readOnly?: boolean;
+    clubKit?: ClubKitPayload | null;
+    dropLevel?: number | null;
 }
 
 function joinDanishNames(names: string[]): string {
@@ -48,7 +52,9 @@ export default function RiderInfoForm({
     trainers, loadingTrainers, trainersError,
     onRequestTrainer,
     verificationCategoryNames = [],
-    readOnly = false
+    readOnly = false,
+    clubKit = null,
+    dropLevel = null,
 }: RiderInfoFormProps) {
     const verificationLabel = joinDanishNames(verificationCategoryNames);
     // Club State
@@ -217,6 +223,10 @@ export default function RiderInfoForm({
                         </div>
                     )}
                 </div>
+
+                {clubKit?.jerseyName && (
+                    <ClubKitCard clubKit={clubKit} dropLevel={dropLevel} />
+                )}
 
                 {/* Trainer */}
                 <div>

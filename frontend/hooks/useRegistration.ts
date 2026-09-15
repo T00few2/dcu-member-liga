@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ToastProvider';
 
 import { API_URL } from '@/lib/api';
+import type { ClubKitPayload } from '@/lib/clubKitCopy';
 
 export function useRegistration() {
     const { user, loading: authLoading, refreshProfile } = useAuth();
@@ -43,6 +44,8 @@ export function useRegistration() {
     }[]>([]);
     const [dualRecordingOptIn, setDualRecordingOptIn] = useState(false);
     const [ligaCategory, setLigaCategory] = useState<string | null>(null);
+    const [clubKit, setClubKit] = useState<ClubKitPayload | null>(null);
+    const [dropLevel, setDropLevel] = useState<number | null>(null);
 
     // Policy Versions
     const [requiredDataPolicyVersion, setRequiredDataPolicyVersion] = useState<string | null>(null);
@@ -127,6 +130,8 @@ export function useRegistration() {
                         setVerificationRequests(data.verificationRequests || []);
                         setDualRecordingOptIn(!!data.dualRecordingOptIn);
                         setLigaCategory(data.ligaCategory?.category || null);
+                        setClubKit(data.clubKit || null);
+                        setDropLevel(typeof data.dropLevel === 'number' ? data.dropLevel : null);
                         setInitialData({ zwiftId: data.zwiftId });
                         setIsRegistered(data.registered);
                         if (data.hasDraft && !data.registered) setMessage('Velkommen tilbage! Kladde indlæst.');
@@ -344,6 +349,8 @@ export function useRegistration() {
         verificationRequests,
         dualRecordingOptIn,
         ligaCategory,
+        clubKit,
+        dropLevel,
         refreshProfile: async () => {
             await refreshProfile();
             setProfileTick((tick) => tick + 1);

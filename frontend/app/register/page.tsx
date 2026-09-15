@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useMemo } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useRegistration } from '@/hooks/useRegistration';
+import { useAuth } from '@/lib/auth-context';
 import { useLeagueSettingsQuery } from '@/hooks/queries/useLeagueSettingsQuery';
 import RiderInfoForm from '@/components/register/RiderInfoForm';
 import ConnectionsForm from '@/components/register/ConnectionsForm';
@@ -28,6 +29,7 @@ const MissingHints = ({ items }: { items: string[] }) => (
 function RegisterContent() {
     const router = useRouter();
     const pathname = usePathname();
+    const { isAdmin } = useAuth();
     const {
         authLoading, fetchingProfile,
         name, setName,
@@ -43,6 +45,7 @@ function RegisterContent() {
         trainerRequiresDualRecording,
         step0MissingItems, step1MissingItems, step2MissingItems,
         handleConnectStrava, handleDisconnectStrava, handleConnectZwift, handleDisconnectZwift, handleRequestTrainer, saveData,
+        clubKit, dropLevel,
     } = useRegistration();
 
     const { data: leagueSettings } = useLeagueSettingsQuery();
@@ -85,6 +88,8 @@ function RegisterContent() {
         trainers, loadingTrainers, trainersError,
         onRequestTrainer: handleRequestTrainer,
         verificationCategoryNames,
+        clubKit: isRegistered && isAdmin ? clubKit : null,
+        dropLevel: isRegistered && isAdmin ? dropLevel : null,
     };
 
     const setRegisterTab = (nextTab: RegisterTab) => {

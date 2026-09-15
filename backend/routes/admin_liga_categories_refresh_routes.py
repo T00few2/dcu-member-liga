@@ -324,7 +324,9 @@ def refresh_zwift_profile():
                     continue
 
                 profile = zwift_service.get_profile(
-                    user_access_token=access_token, include_competition_metrics=True
+                    user_access_token=access_token,
+                    include_competition_metrics=True,
+                    include_achievements=True,
                 )
                 if not profile:
                     skipped += 1
@@ -333,8 +335,16 @@ def refresh_zwift_profile():
                     continue
 
                 competition = profile.get("competitionMetrics") or {}
+                existing_user = user_ref.get().to_dict() or {}
+                existing_zwift_profile = (
+                    existing_user.get("zwiftProfile")
+                    if isinstance(existing_user.get("zwiftProfile"), dict)
+                    else {}
+                )
                 update: dict = {
-                    "zwiftProfile": _competition_metrics_to_profile(competition, profile),
+                    "zwiftProfile": _competition_metrics_to_profile(
+                        competition, profile, existing_zwift_profile
+                    ),
                     "updatedAt": firestore.SERVER_TIMESTAMP,
                 }
 

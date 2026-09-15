@@ -6,6 +6,60 @@ from collections import defaultdict
 
 from services.pen_exit_routing import synthesize_leadin_entries
 
+_JERSEY_CDN_TEMPLATES = (
+    "https://cdn.zwift.com/static/zc/JERSEYS/{name}.png",
+    "https://cdn.zwift.com/static/zc/game/Jerseys/{name}.png",
+    "https://cdn.zwift.com/static/web/images/clothing/Jerseys/{name}.png",
+    "https://static-cdn.zwift.com/gameassets/{name}.png",
+    "https://cdn-l-static.zwift.com/images/clothing/Jerseys/{name}.png",
+)
+_JERSEY_IMAGE_TEMPLATE: str | None | bool = False
+
+
+def jersey_image_url(image_name: str | None) -> str | None:
+    """First CDN template that returned an image, applied to imageName."""
+    name = (image_name or "").strip()
+    if not name:
+        return None
+    template = _resolved_jersey_image_template(name)
+    if not template:
+        return None
+    return template.format(name=name)
+
+
+def _looks_like_image(status: int, content_type: str | None, url: str) -> bool:
+    if status != 200:
+        return False
+    ct = (content_type or "").lower()
+    if "html" in ct:
+        return False
+    if "image" in ct or "octet-stream" in ct:
+        return True
+    return url.lower().split("?", 1)[0].endswith((".png", ".jpg", ".jpeg", ".webp"))
+
+
+def _resolved_jersey_image_template(sample_name: str) -> str | None:
+    global _JERSEY_IMAGE_TEMPLATE
+    if _JERSEY_IMAGE_TEMPLATE is not False:
+        return _JERSEY_IMAGE_TEMPLATE or None
+    for template in _JERSEY_CDN_TEMPLATES:
+        url = template.format(name=sample_name)
+        try:
+            resp = requests.head(url, timeout=4, allow_redirects=True)
+            if _looks_like_image(resp.status_code, resp.headers.get("Content-Type"), url):
+                _JERSEY_IMAGE_TEMPLATE = template
+                return template
+            get_resp = requests.get(url, timeout=4, stream=True)
+            get_type = get_resp.headers.get("Content-Type")
+            get_resp.close()
+            if _looks_like_image(get_resp.status_code, get_type, url):
+                _JERSEY_IMAGE_TEMPLATE = template
+                return template
+        except Exception:
+            continue
+    _JERSEY_IMAGE_TEMPLATE = None
+    return None
+
 class ZwiftGameService:
     def __init__(self):
         self._cache = None
@@ -59,6 +113,52 @@ class ZwiftGameService:
             
         # Sort by Map then Name
         return sorted(routes, key=lambda x: (x['map'], x['name']))
+
+    def get_jerseys(self, query: str | None = None, limit: int | None = 50):
+        """Public JERSEYS catalog: signature, name, imageName, imageUrl."""
+        game_dict = self.get_game_dictionary()
+        if not game_dict:
+            return []
+
+        raw = game_dict.get("JERSEYS") or {}
+        entries = raw.get("JERSEY") if isinstance(raw, dict) else raw
+        if isinstance(entries, dict):
+            entries = [entries]
+        if not isinstance(entries, list):
+            return []
+
+        needle = (query or "").strip().lower()
+        jerseys = []
+        for item in entries:
+            if not isinstance(item, dict):
+                continue
+            signature = item.get("signature")
+            try:
+                signature_int = int(signature)
+            except (TypeError, ValueError):
+                continue
+            name = item.get("name") or ""
+            image_name = item.get("imageName") or ""
+            haystack = f"{signature_int} {name} {image_name}".lower()
+            if needle and needle not in haystack:
+                continue
+            jerseys.append({
+                "signature": signature_int,
+                "name": name,
+                "imageName": image_name,
+                "imageUrl": jersey_image_url(image_name),
+            })
+
+        jerseys.sort(key=lambda row: ((row.get("name") or "").lower(), row["signature"]))
+        if limit is not None:
+            return jerseys[: max(0, int(limit))]
+        return jerseys
+
+    def jersey_by_signature(self, signature: int) -> dict | None:
+        for row in self.get_jerseys(query=str(signature), limit=None):
+            if row.get("signature") == int(signature):
+                return row
+        return None
 
     def get_event_segments(self, route_id, laps=1):
         """

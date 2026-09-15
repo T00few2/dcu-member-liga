@@ -289,6 +289,31 @@ export interface DefaultRaceGroup {
     laps?: number;
 }
 
+export interface JerseyUnlock {
+    jerseySignature: number;
+    jerseyName: string;
+    imageName?: string;
+    imageUrl?: string | null;
+    minLevel?: number | null;
+    unlockCode?: string | null;
+    codeStatus?: 'working' | 'expired' | 'unverified';
+    codeCheckedAt?: string | null;
+}
+
+export interface ClubKitAssignment {
+    club: string;
+    jerseySignature: number;
+    jerseyName: string;
+    imageName?: string;
+    imageUrl?: string | null;
+    assignment: 'pinned' | 'auto';
+    source?: 'level' | 'code' | 'both' | 'club';
+    minLevel?: number | null;
+    unlockCode?: string | null;
+    codeStatus?: 'working' | 'expired' | 'unverified' | null;
+    notes?: string | null;
+}
+
 export interface LeagueSettings {
     name?: string;
     seasonStart?: string;   // ISO date string, e.g. "2025-03-01"
@@ -301,6 +326,8 @@ export interface LeagueSettings {
     seasonBestResultsCount?: number;
     ligaCategories?: LigaCategoryDef[];
     ligaCategoriesFingerprint?: string;
+    jerseyUnlocks?: JerseyUnlock[];
+    clubKits?: ClubKitAssignment[];
     weightVerificationValidDays?: number;
     /** Season race defaults — cloned into new races; not stored on race docs. */
     defaultEventMode?: EventMode;

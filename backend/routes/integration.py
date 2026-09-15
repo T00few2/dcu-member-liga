@@ -7,6 +7,7 @@ from firebase_admin import firestore
 from extensions import db, strava_service, get_zwift_game_service, get_zwift_service, get_zwift_insider_service
 from config import FRONTEND_URL
 from authz import verify_user_token, AuthzError
+from services.club_kits import extract_level_fields
 from services.schema_validation import with_schema_version
 from services.zwift_tokens import (
     delete_token_doc,
@@ -27,9 +28,13 @@ logger = logging.getLogger(__name__)
 integration_bp = Blueprint('integration', __name__)
 
 
-def _competition_metrics_to_profile(competition: dict, profile: dict) -> dict:
+def _competition_metrics_to_profile(
+    competition: dict,
+    profile: dict,
+    existing_zwift_profile: dict | None = None,
+) -> dict:
     """Map competitionMetrics + profile fields to the zwiftProfile Firestore shape."""
-    return {
+    mapped = {
         'ftp': competition.get('ftp') or competition.get('zftp'),
         'zftp': competition.get('zftp'),
         'zmap': competition.get('zmap'),
@@ -45,6 +50,14 @@ def _competition_metrics_to_profile(competition: dict, profile: dict) -> dict:
         'powerSourceModel': profile.get('powerSourceModel'),
         'updatedAt': firestore.SERVER_TIMESTAMP,
     }
+    levels = extract_level_fields(profile)
+    if levels.get('dropLevel') is not None:
+        mapped.update(levels)
+    elif isinstance(existing_zwift_profile, dict):
+        for key in ('achievementLevel', 'dropLevel', 'totalExperiencePoints'):
+            if existing_zwift_profile.get(key) is not None:
+                mapped[key] = existing_zwift_profile[key]
+    return mapped
 
 
 def _activity_count_in_range(source: dict | None) -> int | None:
@@ -303,7 +316,11 @@ def zwift_callback():
             return jsonify({'message': 'Failed to get Zwift tokens'}), 500
 
         access_token = token_data.get('access_token')
-        profile = zwift_service.get_profile(user_access_token=access_token, include_competition_metrics=True) or {}
+        profile = zwift_service.get_profile(
+            user_access_token=access_token,
+            include_competition_metrics=True,
+            include_achievements=True,
+        ) or {}
         competition = profile.get('competitionMetrics') or {}
         zwift_user_id = profile.get('userId')
         profile_numeric_id = profile.get('id')
@@ -315,11 +332,15 @@ def zwift_callback():
         )
 
         power_profile = zwift_service.get_power_profile(access_token)
+        existing_user = user_doc_ref.get().to_dict() or {}
+        existing_zwift_profile = existing_user.get('zwiftProfile') if isinstance(existing_user.get('zwiftProfile'), dict) else {}
 
         callback_update: dict = {
             'authUid': uid,
             'zwiftUserId': zwift_user_id,
-            'zwiftProfile': _competition_metrics_to_profile(competition, profile),
+            'zwiftProfile': _competition_metrics_to_profile(
+                competition, profile, existing_zwift_profile
+            ),
             'connections': {
                 'zwift': {
                     'connected': True,
@@ -637,12 +658,20 @@ def zwift_webhook():
                 access_token = get_valid_access_token(token_owner_id, zwift_service)
                 if access_token:
                     # Refresh both profile + power curve for either score or power-curve updates.
-                    profile = zwift_service.get_profile(user_access_token=access_token, include_competition_metrics=True)
+                    profile = zwift_service.get_profile(
+                        user_access_token=access_token,
+                        include_competition_metrics=True,
+                        include_achievements=True,
+                    )
                     power_profile = zwift_service.get_power_profile(access_token)
                     update: dict = {'updatedAt': firestore.SERVER_TIMESTAMP}
                     if profile:
                         competition = profile.get('competitionMetrics') or {}
-                        update['zwiftProfile'] = _competition_metrics_to_profile(competition, profile)
+                        existing_user = db.collection('users').document(user_doc_id).get().to_dict() or {}
+                        existing_zwift_profile = existing_user.get('zwiftProfile') if isinstance(existing_user.get('zwiftProfile'), dict) else {}
+                        update['zwiftProfile'] = _competition_metrics_to_profile(
+                            competition, profile, existing_zwift_profile
+                        )
                     if power_profile:
                         update['zwiftPowerCurve'] = _power_profile_to_firestore(power_profile)
                     if len(update) > 1:
@@ -702,6 +731,18 @@ def get_routes():
     game_service = get_zwift_game_service()
     routes = game_service.get_routes()
     return jsonify({'routes': routes}), 200
+
+@integration_bp.route('/jerseys', methods=['GET'])
+def get_jerseys():
+    game_service = get_zwift_game_service()
+    query = request.args.get('q') or request.args.get('query')
+    limit_raw = request.args.get('limit')
+    try:
+        limit = int(limit_raw) if limit_raw is not None else 50
+    except (TypeError, ValueError):
+        limit = 50
+    jerseys = game_service.get_jerseys(query=query, limit=max(1, min(limit, 200)))
+    return jsonify({'jerseys': jerseys}), 200
 
 @integration_bp.route('/segments', methods=['GET'])
 def get_segments():

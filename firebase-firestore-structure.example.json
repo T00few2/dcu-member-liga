@@ -146,6 +146,41 @@
       ],
       "defaultSingleCategories": [],
       "defaultEventConfiguration": [],
+      "jerseyUnlocks": [
+        {
+          "jerseySignature": 90433914,
+          "jerseyName": "Zwift Standard Orange",
+          "imageName": "ZwiftStandardOrange_thumb",
+          "imageUrl": null,
+          "minLevel": 1,
+          "unlockCode": null,
+          "codeStatus": "unverified"
+        },
+        {
+          "jerseySignature": 72217084,
+          "jerseyName": "GCN",
+          "imageName": "GCN2024_thumb",
+          "imageUrl": null,
+          "minLevel": null,
+          "unlockCode": "EXAMPLECODE",
+          "codeStatus": "working"
+        }
+      ],
+      "clubKits": [
+        {
+          "club": "Danish Zwift Racers",
+          "jerseySignature": 1381648520,
+          "jerseyName": "DZR 2025",
+          "imageName": "DZR2025_thumb",
+          "imageUrl": null,
+          "assignment": "pinned",
+          "source": "club",
+          "minLevel": null,
+          "unlockCode": null,
+          "codeStatus": null,
+          "notes": "DZR club kit"
+        }
+      ],
       "updatedAt": "2026-07-01T12:00:00+00:00"
     },
     {
@@ -454,6 +489,9 @@
         "vo2max": 62.1,
         "category": "B",
         "categoryWomen": "A",
+        "achievementLevel": 11202,
+        "dropLevel": 112,
+        "totalExperiencePoints": 1047591,
         "updatedAt": "2026-03-14T10:07:00+00:00"
       },
       "zwiftPowerCurve": {

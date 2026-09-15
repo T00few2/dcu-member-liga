@@ -98,6 +98,59 @@ class LeagueSettingsRequest(BaseModel):
     model_config = {'extra': 'ignore'}
 
 
+class JerseyUnlockRequest(BaseModel):
+    jerseySignature: int
+    jerseyName: str = ''
+    imageName: str = ''
+    imageUrl: str | None = None
+    minLevel: int | None = None
+    unlockCode: str | None = None
+    codeStatus: Literal['working', 'expired', 'unverified'] | None = None
+    codeCheckedAt: str | None = None
+    notes: str | None = None
+
+    model_config = {'extra': 'ignore'}
+
+
+class JerseyUnlocksSaveRequest(BaseModel):
+    jerseyUnlocks: list[JerseyUnlockRequest] = Field(default_factory=list)
+
+    model_config = {'extra': 'ignore'}
+
+
+class ClubKitPinRequest(BaseModel):
+    club: str
+    jerseySignature: int
+    jerseyName: str = ''
+    imageName: str = ''
+    imageUrl: str | None = None
+    notes: str | None = None
+
+    @field_validator('club')
+    @classmethod
+    def _club_non_empty(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError('club is required')
+        return v
+
+    model_config = {'extra': 'ignore'}
+
+
+class ClubKitUnpinRequest(BaseModel):
+    club: str
+
+    @field_validator('club')
+    @classmethod
+    def _club_non_empty(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError('club is required')
+        return v
+
+    model_config = {'extra': 'ignore'}
+
+
 class StageRaceCreateRequest(BaseModel):
     name: str
     seasonClass: Literal['tour', 'monument', 'wt_classic']

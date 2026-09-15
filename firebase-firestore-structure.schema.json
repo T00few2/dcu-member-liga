@@ -395,7 +395,60 @@
             }
           }
         },
+        "jerseyUnlocks": {
+          "type": "array",
+          "description": "Curated catalog jerseys with drop-level auto-grant and/or promo code",
+          "items": { "$ref": "#/$defs/jerseyUnlock" }
+        },
+        "clubKits": {
+          "type": "array",
+          "description": "One assigned in-game jersey per DCU club (pinned or auto)",
+          "items": { "$ref": "#/$defs/clubKit" }
+        },
         "updatedAt": { "$ref": "#/$defs/timestampString" }
+      }
+    },
+    "jerseyUnlock": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "jerseySignature": { "type": "integer" },
+        "jerseyName": { "type": "string" },
+        "imageName": { "type": "string" },
+        "imageUrl": { "type": ["string", "null"] },
+        "minLevel": { "type": ["integer", "null"] },
+        "unlockCode": { "type": ["string", "null"] },
+        "codeStatus": {
+          "type": "string",
+          "enum": ["working", "expired", "unverified"]
+        },
+        "codeCheckedAt": { "$ref": "#/$defs/timestampString" }
+      }
+    },
+    "clubKit": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "club": { "type": "string" },
+        "jerseySignature": { "type": "integer" },
+        "jerseyName": { "type": "string" },
+        "imageName": { "type": "string" },
+        "imageUrl": { "type": ["string", "null"] },
+        "assignment": {
+          "type": "string",
+          "enum": ["pinned", "auto"]
+        },
+        "source": {
+          "type": "string",
+          "enum": ["level", "code", "both", "club"]
+        },
+        "minLevel": { "type": ["integer", "null"] },
+        "unlockCode": { "type": ["string", "null"] },
+        "codeStatus": {
+          "type": ["string", "null"],
+          "enum": ["working", "expired", "unverified", null]
+        },
+        "notes": { "type": ["string", "null"] }
       }
     },
     "leagueStandingsDoc": {
@@ -1354,6 +1407,17 @@
             },
             "categoryWomen": {
               "type": "string"
+            },
+            "achievementLevel": {
+              "type": "number",
+              "description": "Raw Zwift achievementLevel from racing-profile or unofficial JSON profile"
+            },
+            "dropLevel": {
+              "type": "integer",
+              "description": "Zwift drop level used for kit auto-grants"
+            },
+            "totalExperiencePoints": {
+              "type": "number"
             },
             "updatedAt": {
               "$ref": "#/$defs/timestampString"
