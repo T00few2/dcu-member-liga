@@ -555,6 +555,75 @@ function RuterSection() {
     );
 }
 
+function jerseyThumbUrl(imageUrl?: string | null, imageName?: string | null): string {
+    if (imageUrl) return imageUrl;
+    const name = (imageName || '').trim();
+    if (!name) return '';
+    return `https://cdn.zwift.com/static/zc/JERSEYS/${encodeURIComponent(name)}.png`;
+}
+
+function DeltagendeHoldSection() {
+    const { data: leagueSettings, isLoading } = useLeagueSettingsQuery();
+    const kits = useMemo(() => {
+        const rows = (leagueSettings?.clubKits || []).filter((row) => row.club && row.jerseyName);
+        return [...rows].sort((a, b) => a.club.localeCompare(b.club, 'da'));
+    }, [leagueSettings?.clubKits]);
+
+    if (isLoading) {
+        return <p className="text-slate-500 dark:text-slate-400">Indlæser klubtrøjer...</p>;
+    }
+
+    if (kits.length === 0) {
+        return (
+            <p className="text-slate-600 dark:text-slate-300">
+                Klubtrøjer vises her, når holdene er tildelt en in-game trøje.
+            </p>
+        );
+    }
+
+    return (
+        <div className="space-y-4">
+            <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
+                Hver deltagende klub har en in-game trøje. Se din klubtrøje og hvordan du låser den op under{' '}
+                <Link href="/register" className="text-primary underline hover:no-underline">Min Profil</Link>.
+            </p>
+            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+                <table className="w-full text-sm">
+                    <thead>
+                        <tr className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200">
+                            <th className="px-4 py-3 text-left font-bold">Klub</th>
+                            <th className="px-4 py-3 text-left font-bold">Trøje</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {kits.map((kit) => {
+                            const src = jerseyThumbUrl(kit.imageUrl, kit.imageName);
+                            return (
+                                <tr key={kit.club} className="bg-white dark:bg-slate-900/50">
+                                    <td className="px-4 py-2.5 font-medium text-slate-800 dark:text-slate-100">{kit.club}</td>
+                                    <td className="px-4 py-2.5">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 shrink-0 rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 overflow-hidden flex items-center justify-center">
+                                                {src ? (
+                                                    // eslint-disable-next-line @next/next/no-img-element
+                                                    <img src={src} alt={kit.jerseyName} className="w-full h-full object-contain" />
+                                                ) : (
+                                                    <span className="text-[9px] text-slate-400">—</span>
+                                                )}
+                                            </div>
+                                            <span className="text-slate-700 dark:text-slate-200">{kit.jerseyName}</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+}
+
 function ReglerSection() {
     const verificationNames = useVerificationCategoryNames();
     const verificationLabel = joinDanishNames(verificationNames);
@@ -673,6 +742,18 @@ const chapters = [
         title: 'Deltagelse og Regler',
         defaultOpen: false,
         content: <ReglerSection />,
+    },
+    {
+        id: 'hold',
+        icon: (
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 4l2-2h4l2 2h4v3.5l-2 .8V20H6V8.3L4 7.5V4h4z" />
+            </svg>
+        ),
+        iconBg: 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
+        title: 'Deltagende hold',
+        defaultOpen: false,
+        content: <DeltagendeHoldSection />,
     },
     {
         id: 'kategorier',

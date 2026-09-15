@@ -109,21 +109,17 @@ def get_profile():
         settings = _load_liga_settings(db) if db else {}
         rank_cats = _resolve_categories(settings)
         lc = serialize_liga_category(user._data.get("ligaCategory"), rank_cats)
-        is_admin = decoded_token.get("admin") is True
-        drop_level_int = None
-        club_kit = None
-        if is_admin:
-            zwift_profile = user._data.get("zwiftProfile") if isinstance(user._data.get("zwiftProfile"), dict) else {}
-            drop_level = zwift_profile.get("dropLevel")
-            try:
-                drop_level_int = int(drop_level) if drop_level is not None else None
-            except (TypeError, ValueError):
-                drop_level_int = None
-            club_kit = rider_club_kit_payload(
-                club=user.club,
-                settings=settings,
-                drop_level=drop_level_int,
-            )
+        zwift_profile = user._data.get("zwiftProfile") if isinstance(user._data.get("zwiftProfile"), dict) else {}
+        drop_level = zwift_profile.get("dropLevel")
+        try:
+            drop_level_int = int(drop_level) if drop_level is not None else None
+        except (TypeError, ValueError):
+            drop_level_int = None
+        club_kit = rider_club_kit_payload(
+            club=user.club,
+            settings=settings,
+            drop_level=drop_level_int,
+        )
         return (
             jsonify(
                 {
@@ -133,7 +129,7 @@ def get_profile():
                     "name": user.name,
                     "zwiftId": user.zwift_id,
                     "club": user.club,
-                    "dropLevel": drop_level_int if is_admin else None,
+                    "dropLevel": drop_level_int,
                     "clubKit": club_kit,
                     "trainer": user.trainer,
                     "stravaConnected": bool(user._data.get("connections", {}).get("strava")),
