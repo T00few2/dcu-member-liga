@@ -11,7 +11,6 @@ from .time_series import (
     _mse_sync_offset,
     _parse_iso_utc,
     _resample_power_to_1hz,
-    _resample_to_1hz,
 )
 
 logger = logging.getLogger(__name__)
