@@ -19,6 +19,11 @@ def _compute_avg_power_diff(
     return diff_w, diff_pct
 
 
+def _coerce_float(value) -> float:
+    """Stream samples may be null; treat a missing reading as zero."""
+    return float(value) if value is not None else 0.0
+
+
 def _resample_to_1hz(times: list, values: list) -> list:
     """Interpolate (time,value) pairs onto integer-second grid."""
     if not times or not values:
@@ -31,14 +36,65 @@ def _resample_to_1hz(times: list, values: list) -> list:
         while src + 1 < n and times[src + 1] <= t:
             src += 1
         if src + 1 >= n:
-            result[t] = float(values[src])
+            result[t] = _coerce_float(values[src])
         else:
             t0, t1 = float(times[src]), float(times[src + 1])
             if t1 == t0:
-                result[t] = float(values[src])
+                result[t] = _coerce_float(values[src])
             else:
                 alpha = (t - t0) / (t1 - t0)
-                result[t] = float(values[src]) * (1 - alpha) + float(values[src + 1]) * alpha
+                result[t] = _coerce_float(values[src]) * (1 - alpha) + _coerce_float(values[src + 1]) * alpha
+    return result
+
+
+#: Gaps longer than this many seconds are read as "the rider was not pedalling",
+#: not as a stretch of power to be invented by interpolation.
+POWER_GAP_THRESHOLD_SEC = 15
+
+
+def _resample_power_to_1hz(
+    times: list, watts: list, gap_threshold_sec: int = POWER_GAP_THRESHOLD_SEC
+) -> list:
+    """Put a power stream on a 1 Hz grid, treating recording gaps as zero watts.
+
+    Devices with auto-pause or smart recording emit no samples while the rider is
+    stopped, so the time stream jumps. Interpolating across such a jump (what
+    `_resample_to_1hz` does) invents power that was never produced and inflates
+    long-duration peaks — a 20-minute best effort can be built half out of a traffic
+    light. Short gaps are still interpolated; anything longer than
+    `gap_threshold_sec` is filled with zeros.
+    """
+    if not times or not watts:
+        return []
+
+    n = min(len(times), len(watts))
+    if n == 0:
+        return []
+
+    ts = [int(t) for t in times[:n]]
+    vals = [_coerce_float(w) for w in watts[:n]]
+
+    start = ts[0]
+    total = ts[-1] - start + 1
+    if total <= 0:
+        return []
+
+    result = [0.0] * total
+    for i in range(n - 1):
+        t0 = ts[i] - start
+        t1 = ts[i + 1] - start
+        if t1 <= t0:
+            result[t0] = vals[i]
+            continue
+        gap = t1 - t0
+        if gap > gap_threshold_sec:
+            # Rider was stopped (or the device was): only the sampled second counts.
+            result[t0] = vals[i]
+            continue
+        for t in range(t0, t1):
+            alpha = (t - t0) / gap
+            result[t] = vals[i] * (1 - alpha) + vals[i + 1] * alpha
+    result[total - 1] = vals[n - 1]
     return result
 
 
