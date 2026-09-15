@@ -88,14 +88,17 @@ def test_falls_back_to_profile_weight_when_competition_weight_is_missing(app, mo
     assert participant["weightInGrams"] == 76500
 
 
-def test_drops_a_padded_5s_effort_and_keeps_the_other_durations(app, monkeypatch):
+def test_repairs_a_padded_5s_effort_and_keeps_the_other_durations(app, monkeypatch):
     # Real profile data: a 3-second spike at exactly 1873W padded out to 5s.
     rider = _user(
         "15690",
         {"weightInGrams": 77105},
         {
             "cpBestEfforts": {
-                "pointsWatts": _points({1: 1873, 2: 1873, 3: 1873, 4: 1405, 5: 1124}),
+                "pointsWatts": _points({
+                    1: 1873, 2: 1873, 3: 1873, 4: 1405, 5: 1124,
+                    10: 826, 15: 773, 20: 655, 25: 604, 30: 563,
+                }),
             },
             "relevantCpEfforts": _relevant({5: 1124, 60: 482, 300: 368, 1200: 286}),
         },
@@ -103,7 +106,8 @@ def test_drops_a_padded_5s_effort_and_keeps_the_other_durations(app, monkeypatch
 
     [participant] = _fetch(app, monkeypatch, [rider])
 
-    assert participant["cp5s"] is None
+    assert participant["cp5s"] == 925
+    assert participant["cp5sEstimated"] is True
     assert participant["cp1min"] == 482
     assert participant["cp5min"] == 368
     assert participant["cp20min"] == 286
@@ -124,6 +128,7 @@ def test_keeps_a_5s_effort_backed_by_a_real_sprint(app, monkeypatch):
     [participant] = _fetch(app, monkeypatch, [rider])
 
     assert participant["cp5s"] == 940
+    assert participant["cp5sEstimated"] is False
 
 
 def test_keeps_a_5s_effort_when_the_curve_cannot_be_judged(app, monkeypatch):
@@ -140,7 +145,7 @@ def test_padding_in_one_rider_does_not_leak_into_the_next(app, monkeypatch):
         "a",
         {"weightInGrams": 70000},
         {
-            "cpBestEfforts": {"pointsWatts": _points({4: 1405, 5: 1124})},
+            "cpBestEfforts": {"pointsWatts": _points({4: 1405, 5: 1124, 10: 826, 15: 773})},
             "relevantCpEfforts": _relevant({5: 1124}),
         },
     )
@@ -155,5 +160,24 @@ def test_padding_in_one_rider_does_not_leak_into_the_next(app, monkeypatch):
 
     first, second = _fetch(app, monkeypatch, [padded, clean])
 
-    assert first["cp5s"] is None
+    assert first["cp5s"] == 925
+    assert first["cp5sEstimated"] is True
     assert second["cp5s"] == 940
+    assert second["cp5sEstimated"] is False
+
+
+def test_drops_a_padded_5s_effort_only_when_nothing_clean_anchors_it(app, monkeypatch):
+    # Whole short end is spike; no clean longer point to extrapolate from.
+    rider = _user(
+        "4",
+        {"weightInGrams": 70000},
+        {
+            "cpBestEfforts": {"pointsWatts": _points({4: 1405, 5: 1124})},
+            "relevantCpEfforts": _relevant({5: 1124}),
+        },
+    )
+
+    [participant] = _fetch(app, monkeypatch, [rider])
+
+    assert participant["cp5s"] is None
+    assert participant["cp5sEstimated"] is True

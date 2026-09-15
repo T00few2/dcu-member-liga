@@ -9,6 +9,7 @@ window, so a 3-second artefact still shows up as a 5-second "best effort".
 from __future__ import annotations
 
 import logging
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -86,3 +87,59 @@ def is_padded_effort(
     if marginal is None:
         return False
     return marginal < min_marginal_ratio * points[duration]
+
+
+def clean_durations_above(
+    points: dict[int, float],
+    duration: int,
+    min_marginal_ratio: float = DEFAULT_MIN_MARGINAL_RATIO,
+) -> list[int]:
+    """Durations longer than `duration` whose own values are not padded, ascending."""
+    return sorted(
+        d for d in points
+        if d > duration and not is_padded_effort(points, d, min_marginal_ratio)
+    )
+
+
+def corrected_watts(
+    points: dict[int, float],
+    duration: int,
+    min_marginal_ratio: float = DEFAULT_MIN_MARGINAL_RATIO,
+) -> float | None:
+    """Estimate the real best effort at `duration` when the reported one is padded.
+
+    A power-duration curve is close to a straight line in log-log space over a
+    narrow span, so the two shortest uncontaminated points give a local decay
+    exponent to extrapolate back down to `duration`. Only those two are used:
+    fitting the whole curve drags in the aerobic tail and badly oversteepens the
+    slope at sprint durations.
+
+    The result is then clamped between two bounds that hold by construction:
+
+    - It cannot exceed the reported value, which is a maximum taken over every
+      window of that length — the spike included.
+    - It cannot fall below the best effort at the next clean duration, because a
+      longer maximal window always contains a shorter window at least as hard.
+
+    Returns None when no clean longer point exists, which leaves the caller
+    nothing to anchor on.
+    """
+    reported = points.get(duration)
+    if not reported or reported <= 0:
+        return None
+
+    anchors = clean_durations_above(points, duration, min_marginal_ratio)
+    if not anchors:
+        return None
+
+    floor = points[anchors[0]]
+    if len(anchors) < 2:
+        estimate = floor
+    else:
+        d1, d2 = anchors[0], anchors[1]
+        p1, p2 = points[d1], points[d2]
+        # Positive for a normally decaying curve; <= 0 falls through to the floor.
+        exponent = math.log(p1 / p2) / math.log(d2 / d1)
+        estimate = p1 * (d1 / duration) ** exponent
+
+    return min(max(estimate, floor), reported)

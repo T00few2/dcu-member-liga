@@ -8,7 +8,7 @@ from authz import AuthzError, verify_user_token
 from extensions import db, get_zwift_service, zr_service
 from services.category_engine import serialize_liga_category
 from services.liga_categories_core import _load_liga_settings, _resolve_categories
-from services.power_curve_quality import is_padded_effort, points_watts
+from services.power_curve_quality import corrected_watts, is_padded_effort, points_watts
 from services.user_service import UserService
 from services.zwift_tokens import get_valid_access_token
 from routes.integration import _activity_count_in_range
@@ -62,17 +62,20 @@ def get_participants():
                     return None
 
                 def sprint_cp(duration_sec: int) -> tuple[int | None, bool]:
-                    """Short-duration CP, dropped when the curve shows it is a padded spike.
+                    """Short-duration CP, repaired when the curve shows it is a padded spike.
 
                     A trainer glitch inflates every window long enough to contain it, and
-                    these feed the vELO regression as both a raw and a squared feature —
-                    so a bad value is better omitted than trained on.
+                    these feed the vELO regression as raw, absolute and squared features.
+                    The clean part of the curve brackets the real effort closely enough to
+                    estimate it, so the value is rebuilt rather than discarded; it is only
+                    dropped when the curve offers nothing clean to anchor against.
                     """
-                    if is_padded_effort(curve_points, duration_sec):
-                        return None, True
-                    return cp(duration_sec), False
+                    if not is_padded_effort(curve_points, duration_sec):
+                        return cp(duration_sec), False
+                    repaired = corrected_watts(curve_points, duration_sec)
+                    return (round(repaired) if repaired is not None else None), True
 
-                cp5s, cp5s_padded = sprint_cp(5)
+                cp5s, cp5s_estimated = sprint_cp(5)
 
                 participants.append(
                     {
@@ -87,6 +90,7 @@ def get_participants():
                         # wattsKg, so preferring it keeps our W/kg equal to Zwift's.
                         "weightInGrams": zpro.get("weightInGrams") or zpro.get("weight"),
                         "cp5s": cp5s,
+                        "cp5sEstimated": cp5s_estimated,
                         "cp15s": cp(15),
                         "cp1min": cp(60),
                         "cp5min": cp(300),
@@ -100,7 +104,7 @@ def get_participants():
                         "zwiftActivityCount": _activity_count_in_range(zpc),
                     }
                 )
-                if cp5s_padded:
+                if cp5s_estimated:
                     padded_sprints += 1
             except Exception as rider_error:
                 malformed += 1
@@ -109,7 +113,7 @@ def get_participants():
         if malformed:
             logger.warning("Participants endpoint skipped malformed users: %s", malformed)
         if padded_sprints:
-            logger.info("Participants endpoint dropped padded 5s efforts: %s", padded_sprints)
+            logger.info("Participants endpoint repaired padded 5s efforts: %s", padded_sprints)
 
         return jsonify({"participants": participants}), 200
     except Exception as e:

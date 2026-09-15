@@ -3,7 +3,11 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
+import pytest
+
 from services.power_curve_quality import (
+    clean_durations_above,
+    corrected_watts,
     is_padded_effort,
     marginal_watts,
     points_watts,
@@ -120,3 +124,69 @@ def test_guard_generalises_to_other_durations():
 
     # 10s at 800W = 8000J, 15s at 533W = 7995J: seconds 11-15 carried nothing.
     assert is_padded_effort(points, 15) is True
+
+
+# ---------------------------------------------------------------------------
+# corrected_watts
+# ---------------------------------------------------------------------------
+
+def test_rebuilds_the_real_world_spike_close_to_the_measured_value():
+    # Rider 15690's stored curve. Strava independently measured 907.3W over the
+    # same window from the raw streams, so the estimate should land near it.
+    points = points_watts(_curve({
+        1: 1873, 2: 1873, 3: 1873, 4: 1405, 5: 1124,
+        10: 826, 15: 773, 20: 655, 25: 604, 30: 563,
+    }))
+
+    corrected = corrected_watts(points, 5)
+
+    assert corrected == pytest.approx(925.2, abs=0.5)
+    assert abs(corrected - 907.3) / 907.3 < 0.05
+
+
+def test_correction_never_exceeds_the_reported_maximum():
+    # Reported 5s is a max over every window, spike included, so the real effort
+    # cannot be above it however steep the local slope looks.
+    points = {5: 900, 10: 890, 15: 700}
+
+    assert corrected_watts(points, 5) == 900.0
+
+
+def test_correction_never_falls_below_the_next_clean_effort():
+    # The best 10s window contains a 5s window at least as hard.
+    points = {5: 1124, 10: 826, 15: 830}
+
+    assert corrected_watts(points, 5) == 826.0
+
+
+def test_correction_uses_only_the_two_nearest_clean_points():
+    # The aerobic tail is far steeper; including it would oversteepen the slope
+    # and push the 5s estimate up against the reported ceiling.
+    near = {5: 1124, 10: 826, 15: 773}
+    with_tail = {**near, 1200: 286, 2400: 273}
+
+    assert corrected_watts(near, 5) == pytest.approx(corrected_watts(with_tail, 5))
+
+
+def test_correction_falls_back_to_the_floor_with_a_single_clean_anchor():
+    assert corrected_watts({5: 1124, 10: 826}, 5) == 826.0
+
+
+def test_correction_falls_back_to_the_floor_on_a_non_decaying_curve():
+    # p1 <= p2 gives a non-positive exponent; the floor still holds.
+    points = {5: 1124, 10: 800, 15: 820}
+
+    assert corrected_watts(points, 5) == 800.0
+
+
+def test_correction_returns_none_without_a_clean_anchor():
+    assert corrected_watts({4: 1405, 5: 1124}, 5) is None
+    assert corrected_watts({}, 5) is None
+    assert corrected_watts({5: 0, 10: 800}, 5) is None
+
+
+def test_clean_durations_above_skips_padded_neighbours():
+    points = points_watts(_curve({5: 1124, 10: 800, 15: 533, 20: 500}))
+
+    # 15s is itself padded (10s at 800W = 8000J, 15s at 533W = 7995J).
+    assert clean_durations_above(points, 5) == [10, 20]
