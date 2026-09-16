@@ -88,6 +88,10 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
     const [pinClub, setPinClub] = useState('');
     const [pinNotes, setPinNotes] = useState('');
     const [pinJersey, setPinJersey] = useState<CatalogJersey | null>(null);
+    const [jerseySort, setJerseySort] = useState<{ key: 'name' | 'level'; dir: 'asc' | 'desc' }>({
+        key: 'name',
+        dir: 'asc',
+    });
 
     const authHeaders = useCallback(async () => {
         const token = await user?.getIdToken();
@@ -162,12 +166,22 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
             });
         }
         const rows = [...bySig.values()];
+        const dir = jerseySort.dir === 'asc' ? 1 : -1;
         rows.sort((a, b) => {
-            if (Boolean(a.pinnedOnly) !== Boolean(b.pinnedOnly)) return a.pinnedOnly ? -1 : 1;
-            return (a.jerseyName || '').localeCompare(b.jerseyName || '', 'da');
+            if (jerseySort.key === 'level') {
+                const aLevel = a.minLevel;
+                const bLevel = b.minLevel;
+                const aMissing = aLevel == null;
+                const bMissing = bLevel == null;
+                if (aMissing !== bMissing) return aMissing ? 1 : -1;
+                if (aLevel != null && bLevel != null && aLevel !== bLevel) {
+                    return (aLevel - bLevel) * dir;
+                }
+            }
+            return dir * (a.jerseyName || '').localeCompare(b.jerseyName || '', 'da');
         });
         return rows;
-    }, [unlocks, overview?.clubKits]);
+    }, [unlocks, overview?.clubKits, jerseySort]);
 
     const saveUnlocks = async (next: JerseyUnlock[]) => {
         setBusy(true);
@@ -460,8 +474,28 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                     <table className="w-full text-sm">
                         <thead className="bg-muted/50">
                             <tr>
-                                <th className="p-2 text-left">Trøje</th>
-                                <th className="p-2 text-left">Level</th>
+                                <th className="p-2 text-left">
+                                    <SortButton
+                                        label="Trøje"
+                                        active={jerseySort.key === 'name'}
+                                        dir={jerseySort.dir}
+                                        onClick={() => setJerseySort((prev) => ({
+                                            key: 'name',
+                                            dir: prev.key === 'name' && prev.dir === 'asc' ? 'desc' : 'asc',
+                                        }))}
+                                    />
+                                </th>
+                                <th className="p-2 text-left">
+                                    <SortButton
+                                        label="Level"
+                                        active={jerseySort.key === 'level'}
+                                        dir={jerseySort.dir}
+                                        onClick={() => setJerseySort((prev) => ({
+                                            key: 'level',
+                                            dir: prev.key === 'level' && prev.dir === 'asc' ? 'desc' : 'asc',
+                                        }))}
+                                    />
+                                </th>
                                 <th className="p-2 text-left">Kode</th>
                                 <th className="p-2 text-left">Status</th>
                                 <th className="p-2 text-left">Klubber</th>
@@ -600,6 +634,32 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                 )}
             </section>
         </div>
+    );
+}
+
+function SortButton({
+    label,
+    active,
+    dir,
+    onClick,
+}: {
+    label: string;
+    active: boolean;
+    dir: 'asc' | 'desc';
+    onClick: () => void;
+}) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className="inline-flex items-center gap-1 font-medium hover:text-foreground"
+            aria-label={`Sortér efter ${label}`}
+        >
+            {label}
+            <span className={`text-xs ${active ? 'text-foreground' : 'text-muted-foreground/50'}`}>
+                {active ? (dir === 'asc' ? '↑' : '↓') : '↕'}
+            </span>
+        </button>
     );
 }
 
