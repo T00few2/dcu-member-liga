@@ -132,15 +132,50 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
     const unlocks = overview?.jerseyUnlocks || [];
     const coverage = overview?.preview?.coverage;
     const clubs = overview?.preview?.clubs || [];
+    const savedKits = overview?.clubKits || [];
+    const savedByClub = useMemo(() => {
+        const map = new Map<string, ClubKitRow>();
+        for (const kit of savedKits) {
+            if (kit.club) map.set(kit.club, kit);
+        }
+        return map;
+    }, [savedKits]);
     const jerseyClubCount = useMemo(() => {
         const counts: Record<number, number> = {};
-        for (const club of clubs) {
-            const signature = club.kit?.jerseySignature;
-            if (typeof signature !== 'number') continue;
-            counts[signature] = (counts[signature] || 0) + 1;
+        for (const kit of savedKits) {
+            if (typeof kit.jerseySignature !== 'number') continue;
+            counts[kit.jerseySignature] = (counts[kit.jerseySignature] || 0) + 1;
         }
         return counts;
-    }, [clubs]);
+    }, [savedKits]);
+    const savedCoverage = useMemo(() => {
+        const pinned = savedKits.filter((kit) => kit.assignment === 'pinned');
+        const auto = savedKits.filter((kit) => kit.assignment === 'auto');
+        const usage = new Map<number, number>();
+        for (const kit of savedKits) {
+            if (typeof kit.jerseySignature !== 'number') continue;
+            usage.set(kit.jerseySignature, (usage.get(kit.jerseySignature) || 0) + 1);
+        }
+        const uniqueAuto = auto.filter((kit) => (usage.get(kit.jerseySignature) || 0) === 1).length;
+        const sharedJerseyCount = [...usage.values()].filter((count) => count > 1).length;
+        const totalClubs = clubs.length;
+        const assigned = pinned.length + auto.length;
+        return {
+            pinnedCount: pinned.length,
+            autoCount: auto.length,
+            uniqueAuto,
+            sharedJerseyCount,
+            percent: totalClubs ? Math.round((1000 * assigned) / totalClubs) / 10 : 0,
+        };
+    }, [savedKits, clubs.length]);
+    const previewDiffers = useMemo(
+        () => clubs.some((club) => {
+            const savedSig = savedByClub.get(club.club)?.jerseySignature ?? null;
+            const proposedSig = club.kit?.jerseySignature ?? null;
+            return savedSig !== proposedSig;
+        }),
+        [clubs, savedByClub],
+    );
 
     const jerseyTableRows = useMemo(() => {
         const bySig = new Map<number, JerseyTableRow>();
@@ -335,7 +370,9 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                 setStatus(data.message || 'Level-refresh fejlede');
                 return;
             }
-            setStatus(`Levels opdateret: ${data.updated}/${data.total} (skip ${data.skipped}, fail ${data.failed})`);
+            setStatus(
+                `Levels opdateret: ${data.updated}/${data.total} (skip ${data.skipped}, fail ${data.failed}). Gemte klubtrøjer er uændrede.`,
+            );
             await loadOverview();
         } finally {
             setBusy(false);
@@ -386,13 +423,26 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
             </div>
 
             {status && <p className="text-sm text-muted-foreground">{status}</p>}
+            {previewDiffers && (
+                <p className="text-sm text-amber-700 dark:text-amber-400">
+                    Foreslået auto-tildeling afviger fra det gemte. Min Profil og Info bruger stadig de gemte trøjer,
+                    indtil du klikker Anvend auto-tildeling.
+                </p>
+            )}
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <Stat label="Ryttere med level" value={`${overview?.riders.knownDropLevel ?? 0}/${overview?.riders.total ?? 0}`} />
-                <Stat label="Dækning" value={`${coverage?.percent ?? 0}%`} />
-                <Stat label="Pinned / auto" value={`${coverage?.pinnedCount ?? 0} / ${coverage?.autoCount ?? 0}`} />
-                <Stat label="Unikke auto / doubles" value={`${coverage?.uniqueAuto ?? 0} / ${coverage?.sharedJerseyCount ?? 0}`} />
+                <Stat label="Dækning (gemt)" value={`${savedCoverage.percent}%`} />
+                <Stat label="Pinned / auto (gemt)" value={`${savedCoverage.pinnedCount} / ${savedCoverage.autoCount}`} />
+                <Stat label="Unikke auto / doubles (gemt)" value={`${savedCoverage.uniqueAuto} / ${savedCoverage.sharedJerseyCount}`} />
             </div>
+            {previewDiffers && coverage && (
+                <p className="text-xs text-muted-foreground">
+                    Foreslået efter nuværende levels: {coverage.percent}% dækning,
+                    {' '}{coverage.pinnedCount} pinned / {coverage.autoCount} auto,
+                    {' '}{coverage.uniqueAuto} unikke / {coverage.sharedJerseyCount} doubles.
+                </p>
+            )}
 
             <section className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -595,7 +645,13 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                             </tr>
                         </thead>
                         <tbody>
-                            {clubs.map((club) => (
+                            {clubs.map((club) => {
+                                const saved = savedByClub.get(club.club);
+                                const proposed = club.kit;
+                                const savedSig = saved?.jerseySignature ?? null;
+                                const proposedSig = proposed?.jerseySignature ?? null;
+                                const proposedDiffers = savedSig !== proposedSig;
+                                return (
                                 <tr key={club.club} className="border-t border-border">
                                     <td className="p-2">{club.club}</td>
                                     <td className="p-2">{club.memberCount}</td>
@@ -603,25 +659,31 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                                     <td className="p-2">{club.poolSize}</td>
                                     <td className="p-2">
                                         <div className="flex items-center gap-2">
-                                            {jerseyThumb(club.kit?.imageUrl, club.kit?.jerseyName)}
+                                            {jerseyThumb(saved?.imageUrl, saved?.jerseyName)}
                                             <span>
-                                                {club.kit?.jerseyName || '—'}
-                                                {club.pinned ? ' (pinned)' : club.kit ? ' (auto)' : ''}
-                                                {club.kit?.jerseySignature != null
-                                                    ? ` · ${clubCountLabel(jerseyClubCount[club.kit.jerseySignature] || 0)}`
+                                                {saved?.jerseyName || '—'}
+                                                {saved?.assignment === 'pinned' ? ' (pinned)' : saved ? ' (auto)' : ''}
+                                                {savedSig != null
+                                                    ? ` · ${clubCountLabel(jerseyClubCount[savedSig] || 0)}`
                                                     : ''}
                                             </span>
                                         </div>
+                                        {proposedDiffers && (
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                                Foreslået: {proposed?.jerseyName || 'ingen'}
+                                            </p>
+                                        )}
                                     </td>
                                     <td className="p-2 text-right">
-                                        {club.pinned && (
+                                        {saved?.assignment === 'pinned' && (
                                             <button type="button" className="text-xs text-muted-foreground" onClick={() => void unpinClub(club.club)}>
                                                 Unpin
                                             </button>
                                         )}
                                     </td>
                                 </tr>
-                            ))}
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>
