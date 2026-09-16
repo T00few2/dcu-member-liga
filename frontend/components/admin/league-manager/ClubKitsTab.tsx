@@ -56,7 +56,6 @@ interface ClubSummary {
     belowKitLevelCount?: number;
     belowKitLevel?: BelowKitRider[];
 }
-}
 
 interface Overview {
     jerseyUnlocks: JerseyUnlock[];
