@@ -81,6 +81,28 @@ def numeric_zwift_id(value: Any) -> int | None:
     return int(text)
 
 
+def ensure_drop_level_fields(
+    zwift_id: Any,
+    mapped: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Keep mapped dropLevel, or fill from unofficial JSON profile. Never raises."""
+    out = dict(mapped or {})
+    if out.get("dropLevel") is not None:
+        return out
+    nid = numeric_zwift_id(zwift_id)
+    if nid is None:
+        return out
+    try:
+        extra = extract_level_fields(fetch_json_profile(game_client_access_token(), nid))
+        if extra.get("dropLevel") is not None:
+            out.update(extra)
+    except DropLevelAuthError as exc:
+        logger.warning("Drop-level fallback skipped for %s: %s", nid, exc)
+    except Exception:
+        logger.exception("Drop-level fallback failed for %s", nid)
+    return out
+
+
 def refresh_drop_levels_for_ids(
     zwift_ids: list[int],
     write_fields: Callable[[int, dict[str, Any]], None],

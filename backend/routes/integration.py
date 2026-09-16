@@ -8,6 +8,7 @@ from extensions import db, strava_service, get_zwift_game_service, get_zwift_ser
 from config import FRONTEND_URL
 from authz import verify_user_token, AuthzError
 from services.club_kits import extract_level_fields
+from services.zwift_drop_levels import ensure_drop_level_fields
 from services.schema_validation import with_schema_version
 from services.zwift_tokens import (
     delete_token_doc,
@@ -334,13 +335,15 @@ def zwift_callback():
         power_profile = zwift_service.get_power_profile(access_token)
         existing_user = user_doc_ref.get().to_dict() or {}
         existing_zwift_profile = existing_user.get('zwiftProfile') if isinstance(existing_user.get('zwiftProfile'), dict) else {}
+        zwift_profile = _competition_metrics_to_profile(
+            competition, profile, existing_zwift_profile
+        )
+        zwift_profile = ensure_drop_level_fields(profile_numeric_id, zwift_profile)
 
         callback_update: dict = {
             'authUid': uid,
             'zwiftUserId': zwift_user_id,
-            'zwiftProfile': _competition_metrics_to_profile(
-                competition, profile, existing_zwift_profile
-            ),
+            'zwiftProfile': zwift_profile,
             'connections': {
                 'zwift': {
                     'connected': True,
@@ -669,8 +672,12 @@ def zwift_webhook():
                         competition = profile.get('competitionMetrics') or {}
                         existing_user = db.collection('users').document(user_doc_id).get().to_dict() or {}
                         existing_zwift_profile = existing_user.get('zwiftProfile') if isinstance(existing_user.get('zwiftProfile'), dict) else {}
-                        update['zwiftProfile'] = _competition_metrics_to_profile(
+                        zwift_profile = _competition_metrics_to_profile(
                             competition, profile, existing_zwift_profile
+                        )
+                        update['zwiftProfile'] = ensure_drop_level_fields(
+                            profile.get('id') or existing_user.get('zwiftId'),
+                            zwift_profile,
                         )
                     if power_profile:
                         update['zwiftPowerCurve'] = _power_profile_to_firestore(power_profile)

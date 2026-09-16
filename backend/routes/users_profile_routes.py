@@ -18,6 +18,7 @@ from services.policy_store import (
 from services.schema_validation import log_schema_issues, validate_user_doc, with_schema_version
 from services.user_service import UserService
 from services.club_kits import rider_club_kit_payload
+from services.zwift_drop_levels import ensure_drop_level_fields
 from services.users_profile_core import (
     _connected_zwift_id_from_user_data,
     _enrich_user_with_zwiftracing,
@@ -365,6 +366,21 @@ def signup():
             db.collection("auth_mappings").document(uid).set(auth_map_data, merge=True)
 
             if not is_draft and zwift_id:
+                try:
+                    current = db.collection("users").document(str(doc_id)).get().to_dict() or {}
+                    profile = current.get("zwiftProfile") if isinstance(current.get("zwiftProfile"), dict) else {}
+                    filled = ensure_drop_level_fields(zwift_id, profile)
+                    if filled.get("dropLevel") is not None and profile.get("dropLevel") is None:
+                        payload = {
+                            f"zwiftProfile.{key}": value
+                            for key, value in filled.items()
+                            if key in ("dropLevel", "achievementLevel", "totalExperiencePoints")
+                        }
+                        payload["updatedAt"] = firestore.SERVER_TIMESTAMP
+                        db.collection("users").document(str(doc_id)).update(payload)
+                except Exception as level_err:
+                    logger.warning("Drop-level fill on signup failed for %s: %s", doc_id, level_err)
+
                 refreshed_doc = db.collection("users").document(str(doc_id)).get()
                 refreshed_data = refreshed_doc.to_dict() if refreshed_doc.exists else {}
                 zr = refreshed_data.get("zwiftRacing") or {}
