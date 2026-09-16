@@ -174,25 +174,86 @@ def club_obtainable_intersection(
     return set.intersection(*member_sets)
 
 
+def rider_can_obtain_kit(
+    member: Mapping[str, Any],
+    kit: Mapping[str, Any] | None,
+    unlocks: Iterable[Mapping[str, Any]],
+) -> bool:
+    """True if this rider can get the club's assigned kit via level and/or working code."""
+    if not kit:
+        return False
+    signature = _int_or_none(kit.get("jerseySignature"))
+    if signature is None:
+        return False
+    drop = _int_or_none(member.get("dropLevel"))
+    unlock_list = list(unlocks)
+    if signature in obtainable_signatures(unlock_list, drop):
+        return True
+    unlock = unlocks_by_signature(unlock_list).get(signature) or {}
+    min_level = _int_or_none(unlock.get("minLevel"))
+    if min_level is None:
+        min_level = _int_or_none(kit.get("minLevel"))
+    if min_level is not None and effective_drop_level(drop) >= min_level:
+        return True
+    return has_working_code(unlock) or has_working_code(kit)
+
+
+def rider_assigned_kit_coverage(
+    riders: Iterable[Mapping[str, Any]],
+    club_kits: Iterable[Mapping[str, Any]],
+    unlocks: Iterable[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Share of club riders who can obtain their club's saved/proposed kit."""
+    unlock_list = list(unlocks)
+    kit_list = list(club_kits)
+    with_club = [dict(r) for r in riders if _str_or_none(r.get("club"))]
+    assigned = 0
+    can_obtain = 0
+    for rider in with_club:
+        kit = kit_for_club(kit_list, rider.get("club") or "")
+        if kit and _int_or_none(kit.get("jerseySignature")) is not None:
+            assigned += 1
+        if rider_can_obtain_kit(rider, kit, unlock_list):
+            can_obtain += 1
+    total = len(with_club)
+    return {
+        "total": total,
+        "assigned": assigned,
+        "canObtain": can_obtain,
+        "percent": round(100.0 * can_obtain / total, 1) if total else 0.0,
+    }
+
+
+def _empty_kit_level_gap() -> dict[str, Any]:
+    return {
+        "kitMinLevel": None,
+        "belowKitLevelCount": 0,
+        "belowKitLevel": [],
+        "atKitLevelCount": None,
+    }
+
+
 def riders_below_kit_level(
     members: Iterable[Mapping[str, Any]],
     kit: Mapping[str, Any] | None,
     unlocks: Iterable[Mapping[str, Any]],
 ) -> dict[str, Any]:
-    """Riders who cannot obtain the saved kit via drop level (working codes count as obtainable)."""
+    """Level coverage for a saved kit. Working codes still skip the 'below' warning list."""
     if not kit:
-        return {"kitMinLevel": None, "belowKitLevelCount": 0, "belowKitLevel": []}
+        return _empty_kit_level_gap()
     signature = _int_or_none(kit.get("jerseySignature"))
     unlock = unlocks_by_signature(unlocks).get(signature or -1) or {}
     min_level = _int_or_none(unlock.get("minLevel"))
     if min_level is None:
         min_level = _int_or_none(kit.get("minLevel"))
-    if min_level is None or has_working_code(unlock) or has_working_code(kit):
-        return {"kitMinLevel": min_level, "belowKitLevelCount": 0, "belowKitLevel": []}
+    if min_level is None:
+        return _empty_kit_level_gap()
     below: list[dict[str, Any]] = []
+    at_level = 0
     for member in members:
         drop = _int_or_none(member.get("dropLevel"))
         if effective_drop_level(drop) >= min_level:
+            at_level += 1
             continue
         below.append({
             "name": _str_or_none(member.get("name")) or "",
@@ -203,10 +264,18 @@ def riders_below_kit_level(
         row["dropLevel"] if row["dropLevel"] is not None else 0,
         str(row["name"]).lower(),
     ))
+    if has_working_code(unlock) or has_working_code(kit):
+        return {
+            "kitMinLevel": min_level,
+            "belowKitLevelCount": 0,
+            "belowKitLevel": [],
+            "atKitLevelCount": at_level,
+        }
     return {
         "kitMinLevel": min_level,
         "belowKitLevelCount": len(below),
         "belowKitLevel": below,
+        "atKitLevelCount": at_level,
     }
 
 

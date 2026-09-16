@@ -55,12 +55,19 @@ interface ClubSummary {
     kitMinLevel?: number | null;
     belowKitLevelCount?: number;
     belowKitLevel?: BelowKitRider[];
+    atKitLevelCount?: number | null;
 }
 
 interface Overview {
     jerseyUnlocks: JerseyUnlock[];
     clubKits: ClubKitRow[];
     riders: { total: number; withClub: number; knownDropLevel: number; unknownDropLevel: number };
+    riderCoverage?: {
+        total: number;
+        assigned: number;
+        canObtain: number;
+        percent: number;
+    };
     preview: {
         clubs: ClubSummary[];
         emptyPools: { club: string; reason: string }[];
@@ -73,6 +80,12 @@ interface Overview {
             emptyCount: number;
             uniqueAuto: number;
             sharedJerseyCount: number;
+        };
+        riderCoverage?: {
+            total: number;
+            assigned: number;
+            canObtain: number;
+            percent: number;
         };
     };
 }
@@ -474,13 +487,24 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                             : `${savedCoverage.percent}%`
                     }
                 />
+                <Stat
+                    label="Rytterdækning (gemt)"
+                    value={
+                        overview?.riderCoverage
+                            ? `${overview.riderCoverage.percent}% · ${overview.riderCoverage.canObtain}/${overview.riderCoverage.total}`
+                            : '—'
+                    }
+                />
                 <Stat label="Pinned / auto (gemt)" value={`${savedCoverage.pinnedCount} / ${savedCoverage.autoCount}`} />
                 <Stat label="Unikke auto / doubles (gemt)" value={`${savedCoverage.uniqueAuto} / ${savedCoverage.sharedJerseyCount}`} />
             </div>
             {previewDiffers && coverage && (
                 <p className="text-xs text-muted-foreground">
-                    Foreslået efter nuværende levels: {coverage.percent}% dækning,
-                    {' '}{coverage.pinnedCount} pinned / {coverage.autoCount} auto,
+                    Foreslået efter nuværende levels: {coverage.percent}% klubdækning
+                    {overview?.preview.riderCoverage
+                        ? `, ${overview.preview.riderCoverage.percent}% rytterdækning (${overview.preview.riderCoverage.canObtain}/${overview.preview.riderCoverage.total})`
+                        : ''}
+                    , {coverage.pinnedCount} pinned / {coverage.autoCount} auto,
                     {' '}{coverage.uniqueAuto} unikke / {coverage.sharedJerseyCount} doubles.
                 </p>
             )}
@@ -724,6 +748,7 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                                 <th className="p-2 text-left">Medlemmer</th>
                                 <th className="p-2 text-left">Levels</th>
                                 <th className="p-2 text-left">Pool</th>
+                                <th className="p-2 text-left">Har level</th>
                                 <th className="p-2 text-left">Trøje</th>
                                 <th className="p-2" />
                             </tr>
@@ -745,6 +770,16 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                                     <td className="p-2">{club.memberCount}</td>
                                     <td className="p-2">{club.knownLevels}/{club.memberCount}</td>
                                     <td className="p-2">{club.poolSize}</td>
+                                    <td className={`p-2 ${
+                                        club.atKitLevelCount != null
+                                        && club.atKitLevelCount < club.memberCount
+                                            ? 'text-amber-700 dark:text-amber-400'
+                                            : ''
+                                    }`}>
+                                        {club.atKitLevelCount != null
+                                            ? `${club.atKitLevelCount}/${club.memberCount}`
+                                            : '—'}
+                                    </td>
                                     <td className="p-2">
                                         <div className="flex items-center gap-2">
                                             {jerseyThumb(saved?.imageUrl, saved?.jerseyName)}

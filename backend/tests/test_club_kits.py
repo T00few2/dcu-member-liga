@@ -12,6 +12,7 @@ from services.club_kits import (
     obtainable_signatures,
     pin_club_kit,
     preview_auto_assignment,
+    rider_assigned_kit_coverage,
     rider_club_kit_payload,
     riders_below_kit_level,
     unpin_club_kit,
@@ -92,7 +93,81 @@ def test_riders_below_kit_level_lists_low_and_unknown():
     gap = riders_below_kit_level(members, kit, UNLOCKS)
     assert gap["kitMinLevel"] == 50
     assert gap["belowKitLevelCount"] == 2
+    assert gap["atKitLevelCount"] == 1
     assert [row["name"] for row in gap["belowKitLevel"]] == ["Low", "Unknown"]
+
+
+def test_at_kit_level_count_all_members():
+    kit = {"club": "A", "jerseySignature": 2, "minLevel": 50, "assignment": "auto"}
+    members = [{"name": f"R{i}", "dropLevel": 50 + i} for i in range(8)]
+    gap = riders_below_kit_level(members, kit, UNLOCKS)
+    assert gap["atKitLevelCount"] == 8
+    assert gap["belowKitLevelCount"] == 0
+
+
+def test_at_kit_level_count_for_level_jersey():
+    kit = {"club": "A", "jerseySignature": 5, "minLevel": 10, "assignment": "auto"}
+    members = [
+        {"name": "High", "dropLevel": 20},
+        {"name": "Low", "dropLevel": 5},
+    ]
+    gap = riders_below_kit_level(members, kit, UNLOCKS)
+    assert gap["kitMinLevel"] == 10
+    assert gap["atKitLevelCount"] == 1
+    assert gap["belowKitLevelCount"] == 1
+
+
+def test_at_kit_level_count_even_with_working_code():
+    unlocks = [{
+        "jerseySignature": 9,
+        "jerseyName": "Level And Code",
+        "minLevel": 10,
+        "unlockCode": "OK",
+        "codeStatus": "working",
+    }]
+    kit = {"club": "A", "jerseySignature": 9, "minLevel": 10, "assignment": "auto"}
+    members = [
+        {"name": "High", "dropLevel": 20},
+        {"name": "Low", "dropLevel": 5},
+    ]
+    gap = riders_below_kit_level(members, kit, unlocks)
+    assert gap["atKitLevelCount"] == 1
+    assert gap["belowKitLevelCount"] == 0
+
+
+def test_rider_coverage_counts_who_can_obtain_assigned_kit():
+    riders = [
+        {"club": "MTB Randers", "dropLevel": 66},
+        {"club": "MTB Randers", "dropLevel": 43},
+        {"club": "Low Club", "dropLevel": 12},
+        {"club": "Low Club", "dropLevel": 8},
+        {"club": "Code Club", "dropLevel": 1},
+        {"club": "No Kit", "dropLevel": 80},
+    ]
+    kits = [
+        {"club": "MTB Randers", "jerseySignature": 2, "minLevel": 50, "assignment": "auto"},
+        {"club": "Low Club", "jerseySignature": 2, "minLevel": 50, "assignment": "auto"},
+        {"club": "Code Club", "jerseySignature": 3, "assignment": "auto"},
+    ]
+    # Signature 2 in UNLOCKS is Level 50. Override minLevel via kit+unlocks: use signature 2 as 50.
+    coverage = rider_assigned_kit_coverage(riders, kits, UNLOCKS)
+    assert coverage["total"] == 6
+    assert coverage["assigned"] == 5
+    # MTB: 66 yes, 43 no (level 50 kit); Low Club: 0; Code Club: 1 via working code; No Kit: 0
+    assert coverage["canObtain"] == 2
+    assert coverage["percent"] == 33.3
+
+
+def test_rider_coverage_level_40_both_riders():
+    riders = [
+        {"club": "MTB Randers", "dropLevel": 66},
+        {"club": "MTB Randers", "dropLevel": 43},
+    ]
+    unlocks = [{"jerseySignature": 40, "jerseyName": "Level 40", "minLevel": 40}]
+    kits = [{"club": "MTB Randers", "jerseySignature": 40, "minLevel": 40, "assignment": "auto"}]
+    coverage = rider_assigned_kit_coverage(riders, kits, unlocks)
+    assert coverage["canObtain"] == 2
+    assert coverage["percent"] == 100.0
 
 
 def test_riders_below_kit_level_ignores_working_code_kits():
@@ -100,6 +175,7 @@ def test_riders_below_kit_level_ignores_working_code_kits():
     members = [{"name": "Low", "dropLevel": 1}]
     gap = riders_below_kit_level(members, kit, UNLOCKS)
     assert gap["belowKitLevelCount"] == 0
+    assert gap["atKitLevelCount"] is None
 
 
 def test_empty_unlock_index_has_empty_pool():

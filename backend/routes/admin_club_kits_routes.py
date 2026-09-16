@@ -15,6 +15,7 @@ from services.club_kits import (
     club_kits_by_club,
     pin_club_kit,
     preview_auto_assignment,
+    rider_assigned_kit_coverage,
     riders_below_kit_level,
     riders_by_club,
     unpin_club_kit,
@@ -121,6 +122,11 @@ def club_kits_overview():
             ))
             annotated.append(row)
         preview["clubs"] = annotated
+        preview["riderCoverage"] = rider_assigned_kit_coverage(
+            riders,
+            preview.get("proposedClubKits") or [],
+            unlocks,
+        )
         known_levels = sum(1 for r in riders if r.get("dropLevel") is not None)
         return jsonify({
             "jerseyUnlocks": _fill_image_urls(list(settings.get("jerseyUnlocks") or [])),
@@ -132,6 +138,11 @@ def club_kits_overview():
                 "knownDropLevel": known_levels,
                 "unknownDropLevel": len(riders) - known_levels,
             },
+            "riderCoverage": rider_assigned_kit_coverage(
+                riders,
+                settings.get("clubKits") or [],
+                unlocks,
+            ),
         }), 200
     except Exception as exc:
         logger.exception("club_kits_overview failed")
