@@ -12,8 +12,11 @@ from extensions import db, get_zwift_game_service
 from routes.admin import admin_bp
 from services.club_kits import (
     apply_auto_assignment,
+    club_kits_by_club,
     pin_club_kit,
     preview_auto_assignment,
+    riders_below_kit_level,
+    riders_by_club,
     unpin_club_kit,
 )
 from services.jersey_unlock_seed import match_known_unlocks, merge_unlocks
@@ -105,6 +108,19 @@ def club_kits_overview():
             riders=riders,
             jerseys_by_sig=jerseys,
         )
+        grouped = riders_by_club(riders)
+        saved = club_kits_by_club(settings.get("clubKits") or [])
+        unlocks = settings.get("jerseyUnlocks") or []
+        annotated = []
+        for club in preview.get("clubs") or []:
+            row = dict(club)
+            row.update(riders_below_kit_level(
+                grouped.get(row.get("club") or "", []),
+                saved.get(row.get("club") or ""),
+                unlocks,
+            ))
+            annotated.append(row)
+        preview["clubs"] = annotated
         known_levels = sum(1 for r in riders if r.get("dropLevel") is not None)
         return jsonify({
             "jerseyUnlocks": _fill_image_urls(list(settings.get("jerseyUnlocks") or [])),

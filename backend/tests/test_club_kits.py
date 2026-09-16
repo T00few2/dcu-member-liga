@@ -13,6 +13,7 @@ from services.club_kits import (
     pin_club_kit,
     preview_auto_assignment,
     rider_club_kit_payload,
+    riders_below_kit_level,
     unpin_club_kit,
 )
 
@@ -79,6 +80,26 @@ def test_obtainable_set_level_and_working_code_only():
 def test_club_intersection_unknown_level_keeps_starter_kits():
     members = [{"dropLevel": 80}, {"dropLevel": None}]
     assert club_obtainable_intersection(members, UNLOCKS) == {6, 3}
+
+
+def test_riders_below_kit_level_lists_low_and_unknown():
+    kit = {"club": "A", "jerseySignature": 2, "minLevel": 50, "assignment": "auto"}
+    members = [
+        {"name": "High", "dropLevel": 80},
+        {"name": "Low", "dropLevel": 12},
+        {"name": "Unknown", "dropLevel": None},
+    ]
+    gap = riders_below_kit_level(members, kit, UNLOCKS)
+    assert gap["kitMinLevel"] == 50
+    assert gap["belowKitLevelCount"] == 2
+    assert [row["name"] for row in gap["belowKitLevel"]] == ["Low", "Unknown"]
+
+
+def test_riders_below_kit_level_ignores_working_code_kits():
+    kit = {"club": "A", "jerseySignature": 3, "assignment": "auto"}
+    members = [{"name": "Low", "dropLevel": 1}]
+    gap = riders_below_kit_level(members, kit, UNLOCKS)
+    assert gap["belowKitLevelCount"] == 0
 
 
 def test_empty_unlock_index_has_empty_pool():

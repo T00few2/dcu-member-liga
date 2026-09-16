@@ -174,6 +174,42 @@ def club_obtainable_intersection(
     return set.intersection(*member_sets)
 
 
+def riders_below_kit_level(
+    members: Iterable[Mapping[str, Any]],
+    kit: Mapping[str, Any] | None,
+    unlocks: Iterable[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Riders who cannot obtain the saved kit via drop level (working codes count as obtainable)."""
+    if not kit:
+        return {"kitMinLevel": None, "belowKitLevelCount": 0, "belowKitLevel": []}
+    signature = _int_or_none(kit.get("jerseySignature"))
+    unlock = unlocks_by_signature(unlocks).get(signature or -1) or {}
+    min_level = _int_or_none(unlock.get("minLevel"))
+    if min_level is None:
+        min_level = _int_or_none(kit.get("minLevel"))
+    if min_level is None or has_working_code(unlock) or has_working_code(kit):
+        return {"kitMinLevel": min_level, "belowKitLevelCount": 0, "belowKitLevel": []}
+    below: list[dict[str, Any]] = []
+    for member in members:
+        drop = _int_or_none(member.get("dropLevel"))
+        if effective_drop_level(drop) >= min_level:
+            continue
+        below.append({
+            "name": _str_or_none(member.get("name")) or "",
+            "dropLevel": drop,
+        })
+    below.sort(key=lambda row: (
+        row["dropLevel"] is None,
+        row["dropLevel"] if row["dropLevel"] is not None else 0,
+        str(row["name"]).lower(),
+    ))
+    return {
+        "kitMinLevel": min_level,
+        "belowKitLevelCount": len(below),
+        "belowKitLevel": below,
+    }
+
+
 def denormalize_kit_row(
     *,
     club: str,

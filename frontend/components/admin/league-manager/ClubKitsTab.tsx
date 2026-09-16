@@ -35,6 +35,12 @@ interface ClubKitRow {
     assignment: string;
     source?: string;
     notes?: string | null;
+    minLevel?: number | null;
+}
+
+interface BelowKitRider {
+    name: string;
+    dropLevel: number | null;
 }
 
 interface ClubSummary {
@@ -46,6 +52,10 @@ interface ClubSummary {
     poolSize: number;
     pinned: boolean;
     kit: ClubKitRow | null;
+    kitMinLevel?: number | null;
+    belowKitLevelCount?: number;
+    belowKitLevel?: BelowKitRider[];
+}
 }
 
 interface Overview {
@@ -165,9 +175,34 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
             autoCount: auto.length,
             uniqueAuto,
             sharedJerseyCount,
+            missingCount: Math.max(0, totalClubs - assigned),
             percent: totalClubs ? Math.round((1000 * assigned) / totalClubs) / 10 : 0,
         };
     }, [savedKits, clubs.length]);
+    const missingClubs = useMemo(
+        () => clubs.filter((club) => savedByClub.get(club.club)?.jerseySignature == null),
+        [clubs, savedByClub],
+    );
+    const emptyReasonByClub = useMemo(() => {
+        const map = new Map<string, string>();
+        for (const row of overview?.preview.emptyPools || []) {
+            map.set(row.club, row.reason);
+        }
+        return map;
+    }, [overview?.preview.emptyPools]);
+    const sortedClubs = useMemo(
+        () => [...clubs].sort((a, b) => {
+            const aMissing = savedByClub.get(a.club)?.jerseySignature == null;
+            const bMissing = savedByClub.get(b.club)?.jerseySignature == null;
+            if (aMissing !== bMissing) return aMissing ? -1 : 1;
+            return a.club.localeCompare(b.club, 'da');
+        }),
+        [clubs, savedByClub],
+    );
+    const clubsBelowKitLevel = useMemo(
+        () => clubs.filter((club) => (club.belowKitLevelCount || 0) > 0),
+        [clubs],
+    );
     const previewDiffers = useMemo(
         () => clubs.some((club) => {
             const savedSig = savedByClub.get(club.club)?.jerseySignature ?? null;
@@ -432,7 +467,14 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <Stat label="Ryttere med level" value={`${overview?.riders.knownDropLevel ?? 0}/${overview?.riders.total ?? 0}`} />
-                <Stat label="Dækning (gemt)" value={`${savedCoverage.percent}%`} />
+                <Stat
+                    label="Dækning (gemt)"
+                    value={
+                        savedCoverage.missingCount
+                            ? `${savedCoverage.percent}% · ${savedCoverage.missingCount} mangler`
+                            : `${savedCoverage.percent}%`
+                    }
+                />
                 <Stat label="Pinned / auto (gemt)" value={`${savedCoverage.pinnedCount} / ${savedCoverage.autoCount}`} />
                 <Stat label="Unikke auto / doubles (gemt)" value={`${savedCoverage.uniqueAuto} / ${savedCoverage.sharedJerseyCount}`} />
             </div>
@@ -632,6 +674,49 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
 
             <section className="space-y-3">
                 <h3 className="font-semibold">Klubber og tildeling</h3>
+                {missingClubs.length > 0 && (
+                    <div className="p-3 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 text-sm space-y-1">
+                        <p className="font-medium text-amber-900 dark:text-amber-200">
+                            Mangler gemt trøje ({missingClubs.length})
+                        </p>
+                        {missingClubs.map((club) => (
+                            <p key={club.club} className="text-amber-800 dark:text-amber-300">
+                                {club.club}
+                                {' · '}
+                                {club.memberCount} {club.memberCount === 1 ? 'medlem' : 'medlemmer'}
+                                {' · pool '}
+                                {club.poolSize}
+                                {emptyReasonByClub.get(club.club)
+                                    ? ` · ${emptyReasonByClub.get(club.club)}`
+                                    : club.kit?.jerseyName
+                                        ? ` · foreslået: ${club.kit.jerseyName}`
+                                        : ''}
+                            </p>
+                        ))}
+                    </div>
+                )}
+                {clubsBelowKitLevel.length > 0 && (
+                    <div className="p-3 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 text-sm space-y-2">
+                        <p className="font-medium text-amber-900 dark:text-amber-200">
+                            Ryttere under klubtrøjenens level ({clubsBelowKitLevel.length} klubber)
+                        </p>
+                        {clubsBelowKitLevel.map((club) => (
+                            <div key={club.club} className="text-amber-800 dark:text-amber-300">
+                                <p>
+                                    {club.club}: {club.belowKitLevelCount} under level {club.kitMinLevel}
+                                    {savedByClub.get(club.club)?.jerseyName
+                                        ? ` (${savedByClub.get(club.club)?.jerseyName})`
+                                        : ''}
+                                </p>
+                                <p className="text-xs pl-2">
+                                    {(club.belowKitLevel || []).map((rider) => (
+                                        `${rider.name || 'Ukendt'} (level ${rider.dropLevel ?? '?'})`
+                                    )).join(', ')}
+                                </p>
+                            </div>
+                        ))}
+                    </div>
+                )}
                 <div className="overflow-x-auto border border-border rounded-lg">
                     <table className="w-full text-sm">
                         <thead className="bg-muted/50">
@@ -645,14 +730,18 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                             </tr>
                         </thead>
                         <tbody>
-                            {clubs.map((club) => {
+                            {sortedClubs.map((club) => {
                                 const saved = savedByClub.get(club.club);
                                 const proposed = club.kit;
                                 const savedSig = saved?.jerseySignature ?? null;
                                 const proposedSig = proposed?.jerseySignature ?? null;
                                 const proposedDiffers = savedSig !== proposedSig;
+                                const missing = savedSig == null;
                                 return (
-                                <tr key={club.club} className="border-t border-border">
+                                <tr
+                                    key={club.club}
+                                    className={`border-t border-border ${missing ? 'bg-amber-50 dark:bg-amber-950/20' : ''}`}
+                                >
                                     <td className="p-2">{club.club}</td>
                                     <td className="p-2">{club.memberCount}</td>
                                     <td className="p-2">{club.knownLevels}/{club.memberCount}</td>
@@ -673,6 +762,11 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                                                 Foreslået: {proposed?.jerseyName || 'ingen'}
                                             </p>
                                         )}
+                                        {(club.belowKitLevelCount || 0) > 0 && (
+                                            <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+                                                {club.belowKitLevelCount} ryttere under level {club.kitMinLevel}
+                                            </p>
+                                        )}
                                     </td>
                                     <td className="p-2 text-right">
                                         {saved?.assignment === 'pinned' && (
@@ -687,13 +781,13 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                         </tbody>
                     </table>
                 </div>
-                {(overview?.preview.emptyPools || []).length > 0 && (
-                    <div className="text-sm text-muted-foreground space-y-1">
-                        {overview!.preview.emptyPools.map((row) => (
-                            <p key={row.club}>{row.club}: {row.reason}</p>
-                        ))}
-                    </div>
-                )}
+                {(overview?.preview.emptyPools || [])
+                    .filter((row) => savedByClub.get(row.club)?.jerseySignature != null)
+                    .map((row) => (
+                        <p key={row.club} className="text-sm text-muted-foreground">
+                            {row.club}: gemt trøje, men foreslået pulje er tom ({row.reason})
+                        </p>
+                    ))}
             </section>
         </div>
     );
