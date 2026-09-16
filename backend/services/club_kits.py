@@ -198,29 +198,48 @@ def rider_can_obtain_kit(
     return has_working_code(unlock) or has_working_code(kit)
 
 
+def kit_is_level_or_code(kit: Mapping[str, Any] | None, unlocks: Iterable[Mapping[str, Any]]) -> bool:
+    """Coverage only scores level-auto and working-code kits, not custom/club pins."""
+    if not kit:
+        return False
+    if _int_or_none(kit.get("jerseySignature")) is None:
+        return False
+    if (_str_or_none(kit.get("source")) or "") == SOURCE_CLUB:
+        return False
+    unlock = unlocks_by_signature(unlocks).get(_int_or_none(kit.get("jerseySignature")) or -1) or {}
+    min_level = _int_or_none(unlock.get("minLevel"))
+    if min_level is None:
+        min_level = _int_or_none(kit.get("minLevel"))
+    return min_level is not None or has_working_code(unlock) or has_working_code(kit)
+
+
 def rider_assigned_kit_coverage(
     riders: Iterable[Mapping[str, Any]],
     club_kits: Iterable[Mapping[str, Any]],
     unlocks: Iterable[Mapping[str, Any]],
 ) -> dict[str, Any]:
-    """Share of club riders who can obtain their club's saved/proposed kit."""
+    """Share of riders on level/code kits who can obtain that assigned jersey."""
     unlock_list = list(unlocks)
     kit_list = list(club_kits)
-    with_club = [dict(r) for r in riders if _str_or_none(r.get("club"))]
-    assigned = 0
+    eligible = 0
     can_obtain = 0
-    for rider in with_club:
+    skipped = 0
+    for rider in riders:
+        if not _str_or_none(rider.get("club")):
+            continue
         kit = kit_for_club(kit_list, rider.get("club") or "")
-        if kit and _int_or_none(kit.get("jerseySignature")) is not None:
-            assigned += 1
+        if not kit_is_level_or_code(kit, unlock_list):
+            skipped += 1
+            continue
+        eligible += 1
         if rider_can_obtain_kit(rider, kit, unlock_list):
             can_obtain += 1
-    total = len(with_club)
     return {
-        "total": total,
-        "assigned": assigned,
+        "total": eligible,
+        "assigned": eligible,
+        "skipped": skipped,
         "canObtain": can_obtain,
-        "percent": round(100.0 * can_obtain / total, 1) if total else 0.0,
+        "percent": round(100.0 * can_obtain / eligible, 1) if eligible else 0.0,
     }
 
 

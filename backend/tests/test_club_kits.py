@@ -149,13 +149,33 @@ def test_rider_coverage_counts_who_can_obtain_assigned_kit():
         {"club": "Low Club", "jerseySignature": 2, "minLevel": 50, "assignment": "auto"},
         {"club": "Code Club", "jerseySignature": 3, "assignment": "auto"},
     ]
-    # Signature 2 in UNLOCKS is Level 50. Override minLevel via kit+unlocks: use signature 2 as 50.
     coverage = rider_assigned_kit_coverage(riders, kits, UNLOCKS)
-    assert coverage["total"] == 6
-    assert coverage["assigned"] == 5
-    # MTB: 66 yes, 43 no (level 50 kit); Low Club: 0; Code Club: 1 via working code; No Kit: 0
+    assert coverage["total"] == 5
+    assert coverage["skipped"] == 1
+    # MTB: 66 yes, 43 no (level 50); Low Club: 0; Code Club: 1; No Kit excluded
     assert coverage["canObtain"] == 2
-    assert coverage["percent"] == 33.3
+    assert coverage["percent"] == 40.0
+
+
+def test_rider_coverage_skips_custom_and_club_kits():
+    riders = [
+        {"club": "DZR", "dropLevel": 1},
+        {"club": "DZR", "dropLevel": 12},
+        {"club": "Custom Pin", "dropLevel": 5},
+        {"club": "MTB Randers", "dropLevel": 66},
+        {"club": "MTB Randers", "dropLevel": 43},
+    ]
+    kits = [
+        {"club": "DZR", "jerseySignature": 99, "source": "club", "assignment": "pinned"},
+        {"club": "Custom Pin", "jerseySignature": 88, "assignment": "pinned"},
+        {"club": "MTB Randers", "jerseySignature": 40, "minLevel": 40, "source": "level", "assignment": "auto"},
+    ]
+    unlocks = [{"jerseySignature": 40, "jerseyName": "Level 40", "minLevel": 40}]
+    coverage = rider_assigned_kit_coverage(riders, kits, unlocks)
+    assert coverage["skipped"] == 3
+    assert coverage["total"] == 2
+    assert coverage["canObtain"] == 2
+    assert coverage["percent"] == 100.0
 
 
 def test_rider_coverage_level_40_both_riders():

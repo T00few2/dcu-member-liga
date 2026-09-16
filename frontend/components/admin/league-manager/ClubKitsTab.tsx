@@ -488,7 +488,7 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                     }
                 />
                 <Stat
-                    label="Rytterdækning (gemt)"
+                    label="Rytterdækning (level/kode)"
                     value={
                         overview?.riderCoverage
                             ? `${overview.riderCoverage.percent}% · ${overview.riderCoverage.canObtain}/${overview.riderCoverage.total}`
