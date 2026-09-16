@@ -22,6 +22,9 @@ MIN_PROVISIONAL_REFRESH_SECONDS: Final[int] = 10
 # the admin configured a longer windowDurationMinutes. Matches the 4h
 # auto-activation horizon in _auto_activate_if_due.
 MAX_LIVE_RACE_WINDOW_MINUTES: Final[int] = 240
+# Open /live-race this many minutes before race.date so riders in the start
+# pen appear on the profile during warmup (Zwift signup typically opens then).
+AUTO_ACTIVATE_LEAD_MINUTES: Final[int] = 30
 
 # Race status values persisted on rider results.
 RACE_STATUS_FIN: Final[str] = "FIN"

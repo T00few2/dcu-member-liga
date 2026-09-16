@@ -86,7 +86,8 @@
       "_id": "active",
       "raceId": "race_001",
       "activatedAt": "2026-05-22T17:00:00+00:00",
-      "activatedBy": "admin_uid_example"
+      "activatedBy": "admin_uid_example",
+      "manualDisabled": false
     }
   ],
   "league": [

@@ -208,7 +208,7 @@ def reset_season():
         db.collection('liveRaceState').document('active').set(
             {
                 'raceId': None,
-                'manualDisabled': True,
+                'manualDisabled': False,
                 'activatedAt': firestore.SERVER_TIMESTAMP,
                 'activatedBy': 'season_reset',
             },

@@ -15,6 +15,7 @@ from extensions import db, get_zwift_service, get_zwift_game_service
 from routes.races import resolve_signup_subgroup_id
 from services.stream_riders import stream_rider_hide_ids
 from services.results.constants import (
+    AUTO_ACTIVATE_LEAD_MINUTES,
     CATEGORY_FILTER_ALL,
     DEFAULT_PROVISIONAL_REFRESH_SECONDS,
     FETCH_MODE_FINISHERS,
@@ -204,11 +205,31 @@ def _cooldown_remaining_seconds(
     return remaining, last_update
 
 
-def _auto_activate_if_due() -> tuple[str, dict[str, Any], str] | None:
-    """If a scheduled race start time has arrived, write it to liveRaceState/active and return its data."""
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _live_window_bounds(race_date: datetime) -> tuple[datetime, datetime]:
+    """Inclusive live window: start minus lead-in through start plus hard cap."""
+    return (
+        race_date - timedelta(minutes=AUTO_ACTIVATE_LEAD_MINUTES),
+        race_date + timedelta(minutes=MAX_LIVE_RACE_WINDOW_MINUTES),
+    )
+
+
+def _auto_activate_if_due(
+    *,
+    disabled_at: datetime | None = None,
+) -> tuple[str, dict[str, Any], str] | None:
+    """If a scheduled race is in its live window, write it to liveRaceState/active.
+
+    When ``disabled_at`` is set (admin deactivated live mode), skip races whose
+    live-window start is at or before that timestamp so the current race stays
+    off, while a later race still auto-opens.
+    """
     if not db:
         return None
-    now = datetime.now(timezone.utc)
+    now = _now_utc()
     # Avoid order_by: it silently drops documents with incompatible/missing date types.
     best: tuple[datetime, str, dict[str, Any]] | None = None
     for doc in db.collection('races').stream():
@@ -216,15 +237,24 @@ def _auto_activate_if_due() -> tuple[str, dict[str, Any], str] | None:
         race_date = _parse_race_date(race_data.get('date'))
         if race_date is None:
             continue
-        if race_date <= now <= race_date + timedelta(hours=4):
-            # Prefer the most recently started race (highest race_date ≤ now)
-            if best is None or race_date > best[0]:
-                best = (race_date, doc.id, race_data)
+        window_start, window_end = _live_window_bounds(race_date)
+        if not (window_start <= now <= window_end):
+            continue
+        if disabled_at is not None and window_start <= disabled_at:
+            continue
+        # Prefer the most recently started race (highest race_date ≤ now)
+        if best is None or race_date > best[0]:
+            best = (race_date, doc.id, race_data)
     if best:
         _, race_id, race_data = best
         activated_at = now.isoformat()
         db.collection('liveRaceState').document('active').set(
-            {'raceId': race_id, 'activatedAt': activated_at, 'activatedBy': 'auto'}
+            {
+                'raceId': race_id,
+                'activatedAt': activated_at,
+                'activatedBy': 'auto',
+                'manualDisabled': False,
+            }
         )
         return race_id, race_data, activated_at
     return None
@@ -318,11 +348,14 @@ def get_live_race_current():
     state = state_doc.to_dict() or {}
     race_id = str(state.get('raceId') or '').strip()
     if not race_id:
-        # Respect explicit admin deactivation. Auto-activation should only kick in
-        # when live mode is not manually disabled.
+        # Admin deactivate keeps the current race off (window already started)
+        # but a later race whose window starts after activatedAt still opens.
+        disabled_at = None
         if bool(state.get('manualDisabled')):
-            return '', 204
-        result = _auto_activate_if_due()
+            disabled_at = _parse_race_date(state.get('activatedAt'))
+            if disabled_at is None:
+                return '', 204
+        result = _auto_activate_if_due(disabled_at=disabled_at)
         if result:
             race_id, race_data, activated_at = result
             return jsonify(_serialize_race_summary(race_id, race_data, activated_at)), 200

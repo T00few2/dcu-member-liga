@@ -13,6 +13,7 @@ import { useLiveRaceCategoryTabs } from '@/hooks/live-race/useLiveRaceCategoryTa
 import { clusterRiders, positionRiders } from '@/lib/live-race/cluster';
 import { fromTimestamp } from '@/lib/formatDate';
 import { scaleRaceDistanceKm } from '@/hooks/useLeagueData';
+import { AUTO_ACTIVATE_LEAD_MS, isLiveRaceWindowDue } from '@/lib/live-race/autoActivate';
 
 interface Options {
     /** Cluster distance in metres used to group riders on the profile. */
@@ -47,18 +48,18 @@ export function useLiveRaceView({
 }: Options = {}) {
     const { data: upcomingRace, isLoading: upcomingLoading } = useUpcomingRaceQuery();
 
-    // Flip to fast polling once the upcoming race's start time arrives so the
-    // auto-activation is picked up within a few seconds.
+    // Flip to fast polling 30 minutes before start so auto-activation (pens /
+    // warmup) is picked up within a few seconds of the live window opening.
     const upcomingDate = useMemo(
         () => (upcomingRace?.date ? fromTimestamp(upcomingRace.date) : null),
         [upcomingRace?.date],
     );
     const [isRaceDue, setIsRaceDue] = useState(
-        () => (upcomingDate ? upcomingDate.getTime() <= Date.now() : false),
+        () => isLiveRaceWindowDue(upcomingDate),
     );
     useEffect(() => {
         if (!upcomingDate || isRaceDue) return;
-        const ms = upcomingDate.getTime() - Date.now();
+        const ms = upcomingDate.getTime() - AUTO_ACTIVATE_LEAD_MS - Date.now();
         if (ms <= 0) { setIsRaceDue(true); return; }
         const tid = setTimeout(() => setIsRaceDue(true), ms);
         return () => clearTimeout(tid);

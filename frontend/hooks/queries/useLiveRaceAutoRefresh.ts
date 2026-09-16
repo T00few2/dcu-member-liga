@@ -13,7 +13,11 @@ export function useLiveRaceAutoRefresh({ enabled, intervalSeconds }: UseLiveRace
         if (!enabled || intervalSeconds <= 0) return;
 
         const tick = () => {
-            fetch(`${API_URL}/live-race/active/results/refresh`, { method: 'POST' }).catch(() => {});
+            fetch(`${API_URL}/live-race/active/results/refresh`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: '{}',
+            }).catch(() => {});
         };
 
         tick();

@@ -277,7 +277,7 @@ def test_reset_season_deletes_races_dr_clears_standings_and_live_state(
 
     live_payload = live_ref.set.call_args.args[0]
     assert live_payload["raceId"] is None
-    assert live_payload["manualDisabled"] is True
+    assert live_payload["manualDisabled"] is False
     assert live_payload["activatedBy"] == "season_reset"
     assert live_ref.set.call_args.kwargs["merge"] is False
 
