@@ -373,6 +373,7 @@ All incoming payloads are logged to the `zwift_webhooks` Firestore collection re
 A GitHub Actions cron job runs nightly at **03:00 UTC** (`POST /admin/refresh-zr-stats`):
 - Batch-fetches **ZwiftRacing** (vELO) stats for all registered riders
 - Updates `zwiftRacing.currentRating`, `max30Rating`, `max90Rating`, `phenotype`
+- Stores `max30Rating` as `max(ZR max30, current)` so a ZR max30 of 0 cannot undercut a real current vELO
 - Re-evaluates liga category status based on new `max30Rating`
 
 Note: `competitionMetrics` (FTP, zFTP, etc.) is kept current via the `RacingScoreUpdated` webhook, not the nightly job.

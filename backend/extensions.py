@@ -4,7 +4,7 @@ import threading
 import firebase_admin
 from firebase_admin import credentials, firestore
 from services.strava import StravaService
-from services.zwiftracing import ZwiftRacingService, RateLimitError
+from services.zwiftracing import ZwiftRacingService, RateLimitError, zwift_racing_fields_from_payload
 from services.zwift import ZwiftService
 from services.zwift_game import ZwiftGameService
 from services.zwift_insider import ZwiftInsiderService
@@ -173,14 +173,9 @@ class StatsQueue:
             self.enqueue(user_doc_id, zwift_id, attempt + 1, rider_label=label)
             return
 
-        data = zr_json if 'race' in zr_json else (zr_json.get('data') or {})
-        race = data.get('race') or {}
         payload = with_schema_version({
             'zwiftRacing': {
-                'currentRating': (race.get('current') or {}).get('rating', 'N/A'),
-                'max30Rating':   (race.get('max30') or {}).get('rating', 'N/A'),
-                'max90Rating':   (race.get('max90') or {}).get('rating', 'N/A'),
-                'phenotype':     (data.get('phenotype') or {}).get('value', 'N/A'),
+                **zwift_racing_fields_from_payload(zr_json),
                 'updatedAt':     firestore.SERVER_TIMESTAMP,
             }
         })

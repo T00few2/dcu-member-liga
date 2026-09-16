@@ -1,3 +1,4 @@
+import math
 import requests
 import time
 import logging
@@ -10,6 +11,56 @@ logger = logging.getLogger(__name__)
 class RateLimitError(Exception):
     """Raised when the ZR API returns HTTP 429 Too Many Requests."""
     pass
+
+
+def _zr_numeric(value) -> float | None:
+    if value is None or value == "N/A" or value == "":
+        return None
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(n):
+        return None
+    return n
+
+
+def floor_max30_with_current(current, max30):
+    """Store max30 as max(ZR max30, current).
+
+    ZwiftRacing sometimes reports max30 as 0 (or missing) while current is a
+    real score. A 30-day max cannot be below the rider's current vELO.
+    """
+    current_n = _zr_numeric(current)
+    max30_n = _zr_numeric(max30)
+    if current_n is None:
+        return max30
+    if max30_n is None or max30_n < current_n:
+        return current
+    return max30
+
+
+def zwift_racing_fields_from_payload(zr_json: Dict[str, Any] | None) -> Dict[str, Any]:
+    """Parse a ZR rider payload into the fields we persist on users.zwiftRacing."""
+    data = zr_json or {}
+    if "race" not in data:
+        data = data.get("data") or {}
+    race = data.get("race") or {}
+    current = (race.get("current") or {}).get("rating", "N/A")
+    max30 = (race.get("max30") or {}).get("rating", "N/A")
+    max90 = (race.get("max90") or {}).get("rating", "N/A")
+    if current is None:
+        current = "N/A"
+    if max30 is None:
+        max30 = "N/A"
+    if max90 is None:
+        max90 = "N/A"
+    return {
+        "currentRating": current,
+        "max30Rating": floor_max30_with_current(current, max30),
+        "max90Rating": max90,
+        "phenotype": (data.get("phenotype") or {}).get("value", "N/A"),
+    }
 
 
 class ZwiftRacingService:

@@ -428,7 +428,7 @@ class ZwiftPowerProfile(TypedDict, total=False):
 
 class ZwiftRacingProfile(TypedDict, total=False):
     currentRating: str | int
-    max30Rating: str | int
+    max30Rating: str | int  # stored as max(ZR max30, currentRating)
     max90Rating: str | int
     phenotype: str
     updatedAt: Any

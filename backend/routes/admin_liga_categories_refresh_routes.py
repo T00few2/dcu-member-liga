@@ -14,6 +14,7 @@ from extensions import db, get_zwift_service, zr_service
 from routes.admin import admin_bp
 from routes.integration import _competition_metrics_to_profile, _power_profile_to_firestore
 from services.category_engine import effective_rating
+from services.zwiftracing import zwift_racing_fields_from_payload
 from services.liga_categories_core import (
     _compute_liga_update,
     _load_liga_settings,
@@ -154,19 +155,15 @@ def refresh_zr_stats():
                 skipped_ids.append(zwift_id)
                 continue
 
-            data = rider_data if "race" in rider_data else (rider_data.get("data") or {})
-            race = data.get("race") or {}
-            new_current = (race.get("current") or {}).get("rating", "N/A")
-            new_max30 = (race.get("max30") or {}).get("rating", "N/A")
-            new_max90 = (race.get("max90") or {}).get("rating", "N/A")
+            zr_fields = zwift_racing_fields_from_payload(rider_data)
+            new_current = zr_fields["currentRating"]
+            new_max30 = zr_fields["max30Rating"]
+            new_max90 = zr_fields["max90Rating"]
             eff_rating = effective_rating(new_current, new_max30, new_max90)
 
             zr_update = {
                 "zwiftRacing": {
-                    "currentRating": new_current,
-                    "max30Rating": new_max30,
-                    "max90Rating": new_max90,
-                    "phenotype": (data.get("phenotype") or {}).get("value", "N/A"),
+                    **zr_fields,
                     "updatedAt": firestore.SERVER_TIMESTAMP,
                 }
             }

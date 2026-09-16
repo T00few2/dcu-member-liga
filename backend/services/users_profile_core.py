@@ -5,6 +5,7 @@ from firebase_admin import firestore
 from extensions import db, zr_service
 from services.category_engine import build_liga_category, cats_from_defs, effective_rating
 from services.schema_validation import with_schema_version
+from services.zwiftracing import zwift_racing_fields_from_payload
 
 
 def _resolve_liga_categories_from_settings(settings_doc: dict | None):
@@ -26,18 +27,11 @@ def _enrich_user_with_zwiftracing(user_doc_id: str, zwift_id: str) -> bool:
     if not zr_json:
         return False
 
-    data = zr_json if "race" in zr_json else (zr_json.get("data") or {})
-    race = data.get("race") or {}
-    current_rating = (race.get("current") or {}).get("rating", "N/A")
-    max30_rating = (race.get("max30") or {}).get("rating", "N/A")
-    max90_rating = (race.get("max90") or {}).get("rating", "N/A")
+    zr_fields = zwift_racing_fields_from_payload(zr_json)
 
     update_payload = {
         "zwiftRacing": {
-            "currentRating": current_rating,
-            "max30Rating": max30_rating,
-            "max90Rating": max90_rating,
-            "phenotype": (data.get("phenotype") or {}).get("value", "N/A"),
+            **zr_fields,
             "updatedAt": firestore.SERVER_TIMESTAMP,
         }
     }
@@ -45,7 +39,11 @@ def _enrich_user_with_zwiftracing(user_doc_id: str, zwift_id: str) -> bool:
     user_doc = db.collection("users").document(str(user_doc_id)).get()
     user_data = user_doc.to_dict() if user_doc.exists else {}
     if not (user_data.get("ligaCategory") or {}).get("autoAssigned"):
-        eff_rating = effective_rating(current_rating, max30_rating, max90_rating)
+        eff_rating = effective_rating(
+            zr_fields["currentRating"],
+            zr_fields["max30Rating"],
+            zr_fields["max90Rating"],
+        )
         if eff_rating is not None:
             settings_doc = db.collection("league").document("settings").get()
             settings = settings_doc.to_dict() if settings_doc.exists else {}
