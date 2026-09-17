@@ -85,7 +85,7 @@ export default function PointPage() {
                 samlet stilling) og sæsonpoint til Sæsonstillingen.
             </p>
 
-            <div className="flex gap-2 mb-6 border-b border-border overflow-x-auto">
+            <div className="flex gap-2 mb-6 border-b border-border overflow-x-auto overflow-y-hidden">
                 {TABS.map((t) => (
                     <button
                         key={t.id}
