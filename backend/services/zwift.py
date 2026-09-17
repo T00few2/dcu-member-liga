@@ -429,8 +429,9 @@ class ZwiftService:
         activityData.durationInMilliseconds is race elapsed time, not a
         segment effort duration. Pagination uses start/limit (max 200).
 
-        This is not yet the league scoring source — keep segment-results
-        for finish-segment inference, DNF handling, and sprint scoring.
+        Used for league finish times when the last race-lap banner instance
+        is missing from segment-results. Sprint/KOM/FAL still come from
+        segment-results.
 
         Returns: {"entries": [...], "totalEntryCount": int}
         """

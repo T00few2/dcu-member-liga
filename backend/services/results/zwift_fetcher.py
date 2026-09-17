@@ -13,6 +13,8 @@ from services.results.constants import (
 )
 from services.results.errors import FinishSegmentResolutionError
 from services.results.finish_selector import (
+    finish_banner_instance_missing,
+    last_race_lap_banner,
     resolve_finish_segment_candidate,
     select_finish_entries_from_route_instances,
 )
@@ -72,6 +74,22 @@ class ZwiftFetcher:
             crossings = all_results_raw or self.fetch_subgroup_crossings(
                 subgroup_id, event_secret
             )
+            intended_finish = last_race_lap_banner(route_segments)
+            if finish_banner_instance_missing(intended_finish, crossings):
+                official_finishers = self._finishers_from_official_race_results(
+                    subgroup_id,
+                    registered_riders,
+                )
+                if official_finishers:
+                    logger.info(
+                        "Finish banner %s count=%s has no segment-results; "
+                        "using official race-results for %s finishers (subgroup %s)",
+                        intended_finish[0],
+                        intended_finish[1],
+                        len(official_finishers),
+                        subgroup_id,
+                    )
+                    return official_finishers
             finish_results_raw = self._filter_finish_entries(
                 crossings,
                 route_segments,
@@ -127,6 +145,58 @@ class ZwiftFetcher:
 
             finishers.sort(key=lambda x: x['name'])
 
+        return finishers
+
+    def _finishers_from_official_race_results(
+        self,
+        subgroup_id: str,
+        registered_riders: dict[str, Any],
+    ) -> list[RiderResult]:
+        """
+        Build finishers from official race-results when the finish banner has
+        no segment-results (not configured as an event sprint).
+        """
+        if not self.zwift or not hasattr(self.zwift, "get_subgroup_race_results"):
+            return []
+        try:
+            payload = self.zwift.get_subgroup_race_results(str(subgroup_id))
+        except Exception as exc:
+            logger.warning(
+                "Could not fetch official race-results for subgroup %s: %s",
+                subgroup_id,
+                exc,
+            )
+            return []
+        entries = payload.get("entries") if isinstance(payload, dict) else None
+        if not isinstance(entries, list):
+            return []
+
+        finishers: list[RiderResult] = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            user_id = str(entry.get("userId") or "").strip()
+            registered_profile = registered_riders.get(user_id) if user_id else None
+            if not registered_profile:
+                continue
+            activity = entry.get("activityData") if isinstance(entry.get("activityData"), dict) else {}
+            duration_ms = int(activity.get("durationInMilliseconds") or 0)
+            activity_id = str(activity.get("activityId") or "").strip()
+            canonical_zwift_id = str(registered_profile.get("zwiftId") or user_id)
+            finisher: RiderResult = {
+                "zwiftId": canonical_zwift_id,
+                "finishTime": duration_ms if duration_ms > 0 else 0,
+                "raceStatus": RACE_STATUS_FIN if duration_ms > 0 else RACE_STATUS_DNF,
+                "flaggedCheating": bool(entry.get("flaggedCheating", False)),
+                "flaggedSandbagging": bool(entry.get("flaggedSandbagging", False)),
+                "criticalP": resolve_critical_power(entry.get("criticalP"), registered_profile),
+                "name": registered_profile.get("name"),
+            }
+            if activity_id:
+                finisher["activityId"] = activity_id
+            finishers.append(finisher)
+
+        finishers.sort(key=lambda row: row.get("finishTime") or 10**15)
         return finishers
 
     def _filter_finish_entries(

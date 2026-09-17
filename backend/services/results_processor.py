@@ -42,7 +42,11 @@ from services.results.finish_audit import (
 )
 from services.results.zwift_fetcher import ZwiftFetcher
 from services.category_config import CategoryConfigResolver
-from services.category_engine import _effective_cat_name
+from services.category_engine import (
+    ZR_CATEGORIES,
+    cats_from_defs,
+    effective_liga_category_name,
+)
 from services.schema_validation import (
     log_schema_issues,
     validate_league_standings_doc,
@@ -65,6 +69,7 @@ class ResultsProcessor:
         # Checked original file: game_service was imported but not seemingly used in the methods we refactored.
         # It was passed to __init__. I'll keep it to maintain signature compatibility.
         self.game = game_service
+        self._rank_cats = ZR_CATEGORIES
 
     def process_race_results(
         self,
@@ -144,6 +149,7 @@ class ResultsProcessor:
         # 2. Fetch League Settings (Point Schemes)
         settings_doc = self.db.collection('league').document('settings').get()
         settings = settings_doc.to_dict() if settings_doc.exists else {}
+        self._set_rank_cats_from_settings(settings)
 
         # Initialize Scorer
         scorer = RaceScorer(
@@ -254,6 +260,7 @@ class ResultsProcessor:
         race_data = race_doc.to_dict() or {}
         settings_doc = self.db.collection('league').document('settings').get()
         settings = settings_doc.to_dict() if settings_doc.exists else {}
+        self._set_rank_cats_from_settings(settings)
 
         scorer = RaceScorer(
             finish_points_scheme=settings.get('finishPoints', []),
@@ -1078,20 +1085,18 @@ class ResultsProcessor:
     def _effective_registered_category(self, rider_doc: dict[str, Any] | None) -> str | None:
         if not rider_doc:
             return None
-        liga = rider_doc.get('ligaCategory') or {}
-        if liga.get('locked') and liga.get('category'):
-            return str(liga.get('category'))
+        name = effective_liga_category_name(rider_doc.get('ligaCategory') or {}, self._rank_cats)
+        return name or None
 
-        auto_cat = (liga.get('autoAssigned') or {}).get('category')
-        self_cat = (liga.get('selfSelected') or {}).get('category')
-        effective = _effective_cat_name(auto_cat, self_cat)
-        if effective:
-            return str(effective)
-        if auto_cat:
-            return str(auto_cat)
-        if self_cat:
-            return str(self_cat)
-        return None
+    def _set_rank_cats_from_settings(self, settings: dict[str, Any] | None) -> None:
+        defs = (settings or {}).get('ligaCategories') or []
+        if isinstance(defs, list) and len(defs) >= 2:
+            try:
+                self._rank_cats = cats_from_defs(defs)
+                return
+            except Exception:
+                logger.warning("Could not parse ligaCategories for results ranking; using defaults")
+        self._rank_cats = ZR_CATEGORIES
 
     def _dedupe_finishers(self, riders: list[dict[str, Any]]) -> list[dict[str, Any]]:
         by_id: dict[str, dict[str, Any]] = {}

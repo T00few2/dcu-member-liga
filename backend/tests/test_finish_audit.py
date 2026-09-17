@@ -44,6 +44,24 @@ def test_collects_only_finishers():
     assert derived[0]["zwiftId"] == "1"
 
 
+def test_collects_wrong_category_finishers_with_time():
+    derived = collect_derived_finishers(
+        {
+            "3. Division": [
+                {
+                    "zwiftId": "1",
+                    "name": "Pushed up",
+                    "raceStatus": "WC",
+                    "finishTime": 4450000,
+                },
+            ]
+        }
+    )
+    assert len(derived) == 1
+    assert derived[0]["zwiftId"] == "1"
+    assert derived[0]["finishTime"] == 4450000
+
+
 def test_aligned_when_durations_match():
     derived = [
         {

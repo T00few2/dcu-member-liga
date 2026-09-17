@@ -8,6 +8,73 @@ from typing import Any, Callable
 logger = logging.getLogger("FinishSelector")
 
 
+def last_race_lap_banner(
+    route_segments: list[dict[str, Any]] | None,
+) -> tuple[str, int] | None:
+    """
+    Finish banner as shown in race config: last race-lap segment (lap >= 1).
+
+    Does not require the banner to appear in Zwift segment-results. When the
+    finish arch is not an event sprint, Zwift often omits those crossings.
+    """
+    last: tuple[str, int] | None = None
+    for seg in route_segments or []:
+        sid = str(seg.get("id") or "").strip()
+        if not sid:
+            continue
+        try:
+            lap = int(seg.get("lap") or 0)
+        except (TypeError, ValueError):
+            lap = 0
+        if lap < 1:
+            continue
+        try:
+            seg_count = int(seg.get("count") or 1)
+        except (TypeError, ValueError):
+            seg_count = 1
+        if seg_count < 1:
+            seg_count = 1
+        last = (sid, seg_count)
+    return last
+
+
+def finish_banner_instance_missing(
+    intended: tuple[str, int] | None,
+    crossings: list[dict[str, Any]] | None,
+) -> bool:
+    """True when the last race-lap banner occurrence is absent from segment-results.
+
+    Earlier FAL/sprint crossings of the same segment id do not count as the finish.
+    Zwift omits the finish arch when it is not configured as an event sprint.
+    """
+    if not intended:
+        return False
+    sid, required_count = intended
+    if required_count < 1:
+        return False
+    by_rider: dict[str, int] = {}
+    for entry in crossings or []:
+        if not isinstance(entry, dict):
+            continue
+        raw = entry.get("_officialSegmentResult") or {}
+        if not isinstance(raw, dict):
+            raw = {}
+        if str(raw.get("segmentId") or "").strip() != sid:
+            continue
+        rider = str(
+            (entry.get("profileData") or {}).get("id")
+            or entry.get("profileId")
+            or raw.get("userId")
+            or ""
+        ).strip()
+        if not rider:
+            continue
+        by_rider[rider] = by_rider.get(rider, 0) + 1
+    if not by_rider:
+        return True
+    return max(by_rider.values()) < required_count
+
+
 def select_finish_entries_from_route_instances(
     segmented: dict[str, list[dict[str, Any]]],
     route_segments: list[dict[str, Any]] | None,

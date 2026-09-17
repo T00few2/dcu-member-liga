@@ -34,8 +34,7 @@ def collect_derived_finishers(results: dict[str, list[dict[str, Any]]] | None) -
         for rider in riders or []:
             status = str(rider.get("raceStatus") or "").strip().upper()
             finish_time = _as_int(rider.get("finishTime")) or 0
-            is_fin = status == RACE_STATUS_FIN or (not status and finish_time > 0)
-            if not is_fin:
+            if finish_time <= 0:
                 continue
             derived.append(
                 {

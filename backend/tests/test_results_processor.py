@@ -180,6 +180,35 @@ class TestGroupedCategoryResolution:
         )
         assert resolved == 'Diamond'
 
+    def test_prefers_manual_push_up_over_auto_category(self):
+        from services.category_engine import cats_from_defs
+        from services.results_processor import ResultsProcessor
+        rp = ResultsProcessor(MagicMock(), MagicMock(), MagicMock())
+        rp._rank_cats = cats_from_defs([
+            {'name': '1. Division', 'upper': None},
+            {'name': '2. Division', 'upper': 2200},
+            {'name': '3. Division', 'upper': 1900},
+        ])
+        finisher = {'zwiftId': '661768'}
+        registered = {
+            '661768': {
+                'zwiftId': '661768',
+                'ligaCategory': {
+                    'locked': False,
+                    'autoAssigned': {'category': '3. Division'},
+                    'selfSelected': {'category': '2. Division'},
+                    'manualAssigned': {'category': '2. Division'},
+                },
+            }
+        }
+        resolved = rp._resolve_grouped_category(
+            finisher=finisher,
+            registered_riders=registered,
+            configured_categories=['1. Division', '2. Division', '3. Division'],
+            subgroup_label='B',
+        )
+        assert resolved == '2. Division'
+
     def test_falls_back_to_subgroup_label_when_category_matches(self):
         from services.results_processor import ResultsProcessor
         rp = ResultsProcessor(MagicMock(), MagicMock(), MagicMock())

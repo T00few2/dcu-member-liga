@@ -42,7 +42,7 @@ Use this first. Pick endpoint by task.
 4. Group segment-results by `segmentId`
 5. Use `race-results.rank` for official subgroup placing; keep local ranking after DQ/declass
 6. Use `eventSubgroupId` as subgroup integrity check
-7. Current league scoring still finishes from `segment-results`; do not drop that path for DNF or sprints
+7. League scoring uses `segment-results` for the last race-lap finish banner when that occurrence is present. If the finish arch is not an event sprint, Zwift omits that instance (earlier FAL/sprint crossings of the same `segmentId` do not count). Then finish times come from `race-results.activityData.durationInMilliseconds`. Keep `segment-results` for sprint/KOM/FAL and DNF detection.
 
 ### If task is live broadcast/overlay
 1. Poll `live-data` with `page`/`limit`
@@ -198,6 +198,7 @@ curl --request GET \
 - Must group by `segmentId`; one subgroup can contain many segments.
 - `durationInMilliseconds` is segment effort duration, not race elapsed time.
 - For official finish list and placing, use `race-results` instead.
+- Finish arches that are not event sprints are often omitted. Earlier FAL/sprint crossings of the same `segmentId` are not the last-lap finish.
 
 ---
 
@@ -457,7 +458,7 @@ curl --request GET \
 
 When implementing integration logic here:
 - Prefer `userId` over numeric IDs where available.
-- For official finish list and placing, use `race-results` (`ZwiftService.get_subgroup_race_results()`). For sprint/KOM/FAL scoring, treat `segment-results` as the canonical crossing source. League scoring still finishes from `segment-results`. On Live Results and finalize, `ResultsProcessor` compares derived `finishTime` to official race-results and stores `races.finishAudit` (`aligned` / `mismatch` / `unavailable`) without changing scored times. `POST /races/{id}/results/audit-finish` runs the same check against stored results before finalize.
+- For official finish list and placing, use `race-results` (`ZwiftService.get_subgroup_race_results()`). For sprint/KOM/FAL scoring, treat `segment-results` as the canonical crossing source. League finish times come from the last race-lap banner in `segment-results` when that occurrence exists; if the finish arch was not an event sprint (so only earlier FAL instances of the same banner appear), `ZwiftFetcher` uses `race-results.activityData.durationInMilliseconds`. On Live Results and finalize, `ResultsProcessor` compares derived `finishTime` to official race-results and stores `races.finishAudit` (`aligned` / `mismatch` / `unavailable`) without changing scored times. `POST /races/{id}/results/audit-finish` runs the same check against stored results before finalize.
 - For live overlays, use `live-data` only for currently active riders.
 - Keep this file official-only; do not mix unofficial endpoint guidance here.
 # Zwift API Documentation
@@ -850,7 +851,7 @@ Representative response shape:
 - Does not include sprint/KOM/FAL crossings. Keep using `segment-results` for those.
 - `activityData.durationInMilliseconds` is race elapsed time, not a `segment-results` segment effort duration. On The Classic it matched stored `finishTime` for all 18 finishers.
 - Historic/archived partner-owned DCU events work. Restricted events need `eventSecret` to resolve subgroup IDs from `/api/public/events/{eventId}`; race-results itself only needs the app token + `subgroupId`.
-- League scoring still uses `segment-results` for finish + sprints. `ZwiftService.get_subgroup_race_results()` is the client for this endpoint; do not switch `ZwiftFetcher` / `RaceScorer` yet.
+- League scoring uses `segment-results` for sprint/KOM/FAL. `ZwiftFetcher` uses this endpoint for finish times when the last race-lap banner instance is missing from `segment-results` (typical when the finish arch is not an event sprint).
 
 #### Batch Register Participants Example (Official API)
 
