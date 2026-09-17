@@ -813,7 +813,7 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                                 <th className="p-2 text-left">Klub</th>
                                 <th className="p-2 text-left">Medlemmer</th>
                                 <th className="p-2 text-left">Levels</th>
-                                <th className="p-2 text-left">Pool</th>
+                                <th className="p-2 text-left">Min. level</th>
                                 <th className="p-2 text-left">Har level</th>
                                 <th className="p-2 text-left">Trøje</th>
                                 <th className="p-2" />
@@ -835,7 +835,7 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                                     <td className="p-2">{club.club}</td>
                                     <td className="p-2">{club.memberCount}</td>
                                     <td className="p-2">{club.knownLevels}/{club.memberCount}</td>
-                                    <td className="p-2">{club.poolSize}</td>
+                                    <td className="p-2">{club.minDropLevel ?? '—'}</td>
                                     <td className={`p-2 ${
                                         club.atKitLevelCount != null
                                         && club.atKitLevelCount < club.memberCount
