@@ -279,3 +279,37 @@ class TestEdgeCases:
         assert by_id['2']['sprintDetails']['18245132094_2'] == SPRINT_POINTS[0]
         assert by_id['1']['sprintPoints'] == SPRINT_POINTS[0] * 2 + SPRINT_POINTS[1]
         assert by_id['2']['sprintPoints'] == SPRINT_POINTS[0] + SPRINT_POINTS[1] * 2
+
+    def test_first_across_beats_faster_elapsed(self, scorer):
+        """FAL/sprint points go to the first rider over the line, not the fastest effort."""
+        riders = [
+            make_rider(1, finish_time=3600000),
+            make_rider(2, finish_time=3700000),
+        ]
+        sprints = [{'id': 'seg1', 'count': 1, 'key': 'seg1_1', 'name': 'Sprint 1'}]
+        segment_efforts = {
+            'seg1': [
+                {
+                    'athleteId': '1',
+                    'elapsed': 1000,
+                    'worldTime': 500,
+                    'avgPower': 450,
+                },
+                {
+                    'athleteId': '2',
+                    'elapsed': 2000,
+                    'worldTime': 100,
+                    'avgPower': 300,
+                },
+            ]
+        }
+        result = scorer.calculate_results(
+            riders,
+            make_config(sprints=sprints, segment_type='sprint'),
+            segment_efforts_map=segment_efforts,
+        )
+        by_id = {r['zwiftId']: r for r in result}
+        assert by_id['2']['sprintDetails']['seg1_1'] == SPRINT_POINTS[0]
+        assert by_id['1']['sprintDetails']['seg1_1'] == SPRINT_POINTS[1]
+        assert by_id['2']['sprintData']['seg1_1']['rank'] == 1
+        assert by_id['1']['sprintData']['seg1_1']['rank'] == 2

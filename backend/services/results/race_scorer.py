@@ -226,7 +226,10 @@ class RaceScorer:
         allow_dnf_sprint_points: bool = False,
     ) -> None:
         """
-        Iterates over rider['sprintData'] and awards points based on scheme.
+        Award sprint/FAL points from rider sprintData.
+
+        Ranking is first across the line (earliest worldTime), not fastest
+        segment elapsed time.
         """
         # Determine segment types (sprint vs split)
         global_type = race_config.get('segmentType', 'sprint')
@@ -261,8 +264,7 @@ class RaceScorer:
                         'worldTime': data.get('worldTime', 0)
                     })
 
-            # 2. Sort (Fastest first)
-            # Use worldTime for ranking (lower = first across the line = rank 1)
+            # 2. Sort by first across the line (earliest worldTime), not fastest elapsed.
             efforts.sort(key=lambda x: x['worldTime'])
 
             # 3. Assign Ranks & Points with tie handling
