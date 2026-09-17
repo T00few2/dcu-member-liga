@@ -111,6 +111,10 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
     const [pinNotes, setPinNotes] = useState('');
     const [pinJersey, setPinJersey] = useState<CatalogJersey | null>(null);
     const [ignoreProposed, setIgnoreProposed] = useState(false);
+    const [clubSort, setClubSort] = useState<{ key: 'club' | 'minLevel'; dir: 'asc' | 'desc' }>({
+        key: 'club',
+        dir: 'asc',
+    });
     const [jerseySort, setJerseySort] = useState<{ key: 'name' | 'level'; dir: 'asc' | 'desc' }>({
         key: 'name',
         dir: 'asc',
@@ -204,13 +208,27 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
         return map;
     }, [overview?.preview.emptyPools]);
     const sortedClubs = useMemo(
-        () => [...clubs].sort((a, b) => {
-            const aMissing = savedByClub.get(a.club)?.jerseySignature == null;
-            const bMissing = savedByClub.get(b.club)?.jerseySignature == null;
-            if (aMissing !== bMissing) return aMissing ? -1 : 1;
-            return a.club.localeCompare(b.club, 'da');
-        }),
-        [clubs, savedByClub],
+        () => {
+            const dir = clubSort.dir === 'asc' ? 1 : -1;
+            return [...clubs].sort((a, b) => {
+                if (clubSort.key === 'minLevel') {
+                    const aLevel = a.minDropLevel;
+                    const bLevel = b.minDropLevel;
+                    const aUnknown = aLevel == null;
+                    const bUnknown = bLevel == null;
+                    if (aUnknown !== bUnknown) return aUnknown ? 1 : -1;
+                    if (aLevel != null && bLevel != null && aLevel !== bLevel) {
+                        return (aLevel - bLevel) * dir;
+                    }
+                    return a.club.localeCompare(b.club, 'da');
+                }
+                const aMissing = savedByClub.get(a.club)?.jerseySignature == null;
+                const bMissing = savedByClub.get(b.club)?.jerseySignature == null;
+                if (aMissing !== bMissing) return aMissing ? -1 : 1;
+                return a.club.localeCompare(b.club, 'da');
+            });
+        },
+        [clubs, savedByClub, clubSort],
     );
     const clubsBelowKitLevel = useMemo(
         () => clubs.filter((club) => (club.belowKitLevelCount || 0) > 0),
@@ -813,7 +831,17 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                                 <th className="p-2 text-left">Klub</th>
                                 <th className="p-2 text-left">Medlemmer</th>
                                 <th className="p-2 text-left">Levels</th>
-                                <th className="p-2 text-left">Min. level</th>
+                                <th className="p-2 text-left">
+                                    <SortButton
+                                        label="Min. level"
+                                        active={clubSort.key === 'minLevel'}
+                                        dir={clubSort.dir}
+                                        onClick={() => setClubSort((prev) => ({
+                                            key: 'minLevel',
+                                            dir: prev.key === 'minLevel' && prev.dir === 'asc' ? 'desc' : 'asc',
+                                        }))}
+                                    />
+                                </th>
                                 <th className="p-2 text-left">Har level</th>
                                 <th className="p-2 text-left">Trøje</th>
                                 <th className="p-2" />
