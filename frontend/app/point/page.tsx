@@ -11,13 +11,26 @@ import {
     type SeasonPointTableKey,
 } from '@/lib/seasonPointsDefaults';
 
-type Tab = 'race-day' | 'season';
+type Tab = 'race-day' | 'tour-gc' | 'season';
+
+const TABS: { id: Tab; label: string }[] = [
+    { id: 'race-day', label: 'Løbspoint' },
+    { id: 'tour-gc', label: 'Tour-GC' },
+    { id: 'season', label: 'Sæson' },
+];
 
 const PUBLIC_SEASON_KEYS: { key: SeasonPointTableKey; label: string }[] = [
     { key: 'tour_overall', label: 'Tour samlet (GC)' },
     { key: 'tour_stage', label: 'Tour-etape' },
     { key: 'wt_classic', label: 'Klassiker' },
 ];
+
+function padToLength(arr: number[], rows: number): number[] {
+    if (arr.length >= rows) return arr;
+    const out = [...arr];
+    while (out.length < rows) out.push(0);
+    return out;
+}
 
 export default function PointPage() {
     const settingsQuery = useLeagueSettingsQuery();
@@ -27,18 +40,16 @@ export default function PointPage() {
     const raceDayColumns: PointsPlaceColumn[] = useMemo(() => {
         const finish = settings?.finishPoints ?? [];
         const sprint = settings?.sprintPoints ?? [];
-        const league = settings?.leagueRankPoints ?? [];
-        const rows = Math.max(finish.length, sprint.length, league.length);
-        const pad = (arr: number[]) => {
-            const out = [...arr];
-            while (out.length < rows) out.push(0);
-            return out;
-        };
+        const rows = Math.max(finish.length, sprint.length);
         return [
-            { key: 'finish', label: 'Mål', values: pad(finish) },
-            { key: 'sprint', label: 'Spurt', values: pad(sprint) },
-            { key: 'league', label: 'Løbsplacering', values: pad(league) },
+            { key: 'finish', label: 'Mål', values: padToLength(finish, rows) },
+            { key: 'sprint', label: 'Spurt', values: padToLength(sprint, rows) },
         ];
+    }, [settings]);
+
+    const tourGcColumns: PointsPlaceColumn[] = useMemo(() => {
+        const league = settings?.leagueRankPoints ?? [];
+        return [{ key: 'league', label: 'Løbsplacering', values: league }];
     }, [settings]);
 
     const seasonColumns: PointsPlaceColumn[] = useMemo(() => {
@@ -70,22 +81,17 @@ export default function PointPage() {
         <div className="max-w-4xl mx-auto px-4 py-8">
             <h1 className="text-3xl font-bold mb-2 text-foreground">Point</h1>
             <p className="text-muted-foreground mb-6 max-w-2xl">
-                I hvert løb giver mål- og spurtpoint din placering. Placeringen giver sæsonpoint til
-                Tour og Klassikere.
+                Pointskalaerne er delt i tre: løbspoint (mål og FAL-spurter), Tour-GC (etapeplacering til
+                samlet stilling) og sæsonpoint til Sæsonstillingen.
             </p>
 
-            <div className="flex gap-2 mb-6 border-b border-border">
-                {(
-                    [
-                        { id: 'race-day' as const, label: 'Løbspoint' },
-                        { id: 'season' as const, label: 'Sæson' },
-                    ] as const
-                ).map((t) => (
+            <div className="flex gap-2 mb-6 border-b border-border overflow-x-auto">
+                {TABS.map((t) => (
                     <button
                         key={t.id}
                         type="button"
                         onClick={() => setTab(t.id)}
-                        className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+                        className={`shrink-0 px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors ${
                             tab === t.id
                                 ? 'border-primary text-primary'
                                 : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -96,17 +102,31 @@ export default function PointPage() {
                 ))}
             </div>
 
-            {tab === 'race-day' ? (
+            {tab === 'race-day' && (
                 <div className="space-y-3">
                     <p className="text-sm text-muted-foreground">
-                        Point for mål, spurt og den samlede løbsplacering (ranglistepoint for dagen).
+                        Point for mål og FAL-spurter (først over stregen) i det enkelte løb. Den samlede
+                        score afgør dagens placering.
                     </p>
                     <PointsPlaceTable columns={raceDayColumns} readOnly />
                 </div>
-            ) : (
+            )}
+
+            {tab === 'tour-gc' && (
                 <div className="space-y-3">
                     <p className="text-sm text-muted-foreground">
-                        Sæsonpoint for Tour (samlet + etape) og Klassikere — tæller til Sæsonstillingen.
+                        Klassikere scores som beskrevet under Løbspoint. I Touren omsættes hver etapes
+                        placering til GC-point med tabellen herunder, som summeres på tværs af etaperne.
+                    </p>
+                    <PointsPlaceTable columns={tourGcColumns} readOnly />
+                </div>
+            )}
+
+            {tab === 'season' && (
+                <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                        Sæsonpoint for Tour (samlet + etape) og Klassikere — tæller til Sæsonstillingen,
+                        ikke til Tourens interne GC.
                     </p>
                     <PointsPlaceTable columns={seasonColumns} readOnly />
                 </div>

@@ -383,7 +383,7 @@ function SaesonformatSection() {
             <div className="space-y-3">
                 <h4 className="font-bold text-slate-800 dark:text-white text-lg">Sådan fungerer point</h4>
                 {[
-                    'I hvert løb optjener du point ved spurter undervejs og ved målstregen.',
+                    'I hvert løb optjener du point ved FAL-spurter (først over stregen) undervejs og ved målstregen.',
                     'Din samlede pointscore i løbet afgør din placering den dag.',
                     'Placeringen giver sæsonpoint – Tour-etaper, Tour-samlet (GC) og Klassikere tæller til Sæsonstillingen.',
                 ].map((step, i) => (
@@ -875,8 +875,9 @@ const chapters = [
         content: (
             <div className="space-y-4">
                 <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
-                    Alle pointskalaer for løb (mål, spurt, løbsplacering) og sæsonpoint
-                    (Tour samlet, Tour-etape, Klassiker) ligger på point-siden.
+                    Alle pointskalaer for løb (mål og FAL-spurter), Tour-GC (løbsplacering på
+                    etaper) og sæsonpoint (Tour samlet, Tour-etape, Klassiker) ligger på
+                    point-siden.
                 </p>
                 <Link href="/point" className="inline-flex items-center gap-2 text-primary font-semibold hover:underline">
                     Se alle pointskalaer &rarr;

@@ -33,7 +33,7 @@ type GenTarget =
 const GEN_TARGETS: { key: GenTarget; label: string; group: 'race' | 'season' }[] = [
     { key: 'finish', label: 'Finish', group: 'race' },
     { key: 'sprint', label: 'Sprint', group: 'race' },
-    { key: 'league', label: 'League rank', group: 'race' },
+    { key: 'league', label: 'Tour-GC', group: 'race' },
     { key: 'tour_overall', label: 'Tour samlet', group: 'season' },
     { key: 'tour_stage', label: 'Tour-etape', group: 'season' },
     { key: 'monument', label: 'Monument', group: 'season' },
@@ -222,7 +222,7 @@ export default function LeagueSettingsForm({
     const raceDayColumns = [
         { key: 'finish', label: 'Finish', values: finishPoints },
         { key: 'sprint', label: 'Sprint', values: sprintPoints },
-        { key: 'league', label: 'League rank', values: leagueRankPoints },
+        { key: 'league', label: 'Tour-GC', values: leagueRankPoints },
     ];
 
     const seasonTableColumns = SEASON_POINT_TABLE_KEYS.map((key) => ({
@@ -275,7 +275,7 @@ export default function LeagueSettingsForm({
                             <div>
                                 <h2 className="text-lg font-semibold text-card-foreground">Race-day points</h2>
                                 <p className="text-xs text-muted-foreground mt-1">
-                                    Finish and sprint feed in-race scoring. League rank maps race order to event GC points
+                                    Finish and sprint feed in-race scoring. Tour-GC maps race order to event GC points
                                     (leave empty to use raw finish+sprint totals).
                                 </p>
                             </div>
