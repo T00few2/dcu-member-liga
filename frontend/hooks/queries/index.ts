@@ -28,6 +28,7 @@ export { useMemberCountQuery } from './useMemberCountQuery';
 export { useCurrentLiveRaceQuery } from './useCurrentLiveRaceQuery';
 export { useUpcomingRaceQuery } from './useUpcomingRaceQuery';
 export { useLiveRidersQuery } from './useLiveRidersQuery';
+export { useRegisteredClubsQuery } from './useRegisteredClubsQuery';
 export { useRouteElevationQuery } from './useRouteElevationQuery';
 export type { RouteElevationData } from './useRouteElevationQuery';
 export { useRaceSegmentsQuery } from './useRaceSegmentsQuery';

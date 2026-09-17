@@ -141,6 +141,7 @@ export interface PublicWeightVerificationRecord {
 export interface ResultEntry {
     zwiftId: string;
     name: string;
+    club?: string | null;
     finishTime: number;
     raceStatus?: string;
     finishRank?: number;

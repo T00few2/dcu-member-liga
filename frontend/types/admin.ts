@@ -256,6 +256,7 @@ export interface WeightVerificationRecord {
 export interface RaceResult {
     zwiftId: string;
     name: string;
+    club?: string;
     finishTime: number;
     raceStatus?: string;
     finishRank: number;

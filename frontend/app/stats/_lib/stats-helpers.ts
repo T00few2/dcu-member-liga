@@ -1,5 +1,7 @@
-import type { CriticalPower, Race, Sprint } from '@/types/live';
+import type { CriticalPower } from '@/types/live';
 import { ZWIFT_CATEGORY_COLORS } from '@/lib/ligaCategories';
+
+export { getConfiguredSprintsForCategory } from '@/lib/sprintColumns';
 
 export const STATS_PREFS_STORAGE_KEY = 'dcu-stats-page-preferences-v1';
 
@@ -54,45 +56,6 @@ export const normalizeCriticalPower = (value: unknown): CriticalPower | null => 
         criticalP5Minutes,
         criticalP20Minutes,
     };
-};
-
-const pickFirstNonEmptySprints = (...lists: (Sprint[] | undefined)[]): Sprint[] => {
-    for (const list of lists) {
-        if (Array.isArray(list) && list.length > 0) return list;
-    }
-    return [];
-};
-
-export const getConfiguredSprintsForCategory = (race: Race | undefined, category: string | null): Sprint[] => {
-    if (!race) return [];
-    const categoryName = String(category || '').trim();
-
-    if (race.eventMode === 'grouped' && race.raceGroups?.length) {
-        const group = race.raceGroups.find((g) => (g.categories || []).some((c) => c.category === categoryName));
-        const catCfg = group?.categories?.find((c) => c.category === categoryName);
-        // When raceGroups have sprints but empty category lists (common while
-        // setting up), still resolve group-level sprints for headers.
-        const fallbackGroup = race.raceGroups.find((g) => (g.sprints || []).length > 0);
-        return pickFirstNonEmptySprints(
-            catCfg?.sprints,
-            group?.sprints,
-            fallbackGroup?.sprints,
-            race.sprints,
-            race.sprintData,
-        );
-    }
-
-    if (race.eventMode === 'multi' && race.eventConfiguration?.length) {
-        const catConfig = race.eventConfiguration.find((c) => c.customCategory === categoryName);
-        return pickFirstNonEmptySprints(catConfig?.sprints, race.sprints, race.sprintData);
-    }
-
-    if (race.singleModeCategories?.length) {
-        const catConfig = race.singleModeCategories.find((c) => c.category === categoryName);
-        return pickFirstNonEmptySprints(catConfig?.sprints, race.sprints, race.sprintData);
-    }
-
-    return pickFirstNonEmptySprints(race.sprints, race.sprintData);
 };
 
 export const categoryRankIndex = (category: string, rankOrder: string[] = CATEGORY_RANK_DESC): number => {

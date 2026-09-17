@@ -747,6 +747,27 @@
         "finalizeRunId": {
           "type": "string"
         },
+        "results": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "zwiftId": { "type": "string" },
+                "name": { "type": "string" },
+                "club": { "type": "string", "description": "DCU club snapshot copied from the user profile at scoring" },
+                "finishTime": { "type": "integer" },
+                "finishRank": { "type": "integer" },
+                "finishPoints": { "type": "integer" },
+                "sprintPoints": { "type": "integer" },
+                "totalPoints": { "type": "integer" },
+                "raceStatus": { "type": "string" }
+              }
+            }
+          }
+        },
         "finishAudit": {
           "type": "object",
           "additionalProperties": true,

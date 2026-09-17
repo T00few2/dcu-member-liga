@@ -391,6 +391,23 @@ def get_upcoming_race():
     return '', 204
 
 
+@live_race_bp.route('/live-race/clubs', methods=['GET'])
+def get_live_race_clubs():
+    """Public zwiftId → club map for registered riders (used by live results)."""
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+    registered = _get_registered_riders('_clubs')
+    clubs: dict[str, str] = {}
+    for profile in registered.values():
+        if not isinstance(profile, dict):
+            continue
+        zid = str(profile.get('zwiftId') or '').strip()
+        club = _public_club(profile)
+        if zid and club:
+            clubs[zid] = club
+    return jsonify({'clubs': clubs}), 200
+
+
 @live_race_bp.route('/live-race/active/results/refresh', methods=['POST'])
 def refresh_active_race_results():
     if not db:

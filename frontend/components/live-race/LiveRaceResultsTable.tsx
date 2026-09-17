@@ -3,13 +3,14 @@
 import { useMemo, useState } from 'react';
 import type { LiveRider, Race, Sprint } from '@/types/live';
 import { fromTimestamp } from '@/lib/formatDate';
-import { useRaceSegmentsQuery, useRouteElevationQuery } from '@/hooks/queries';
+import { useRaceSegmentsQuery, useRegisteredClubsQuery, useRouteElevationQuery } from '@/hooks/queries';
 import SprintsByLap, {
     normalizeSprintDirectionForMatch,
     type SprintsByLapProfileData,
 } from '@/components/races/SprintsByLap';
 import { mergeElevationProfileWithLapBanners } from '@/lib/routeProfileSegments';
 import { formatTime, formatGap } from '@/app/results/_components/formatTime';
+import { getConfiguredSprintsForCategory, resolveSprintColumns } from '@/lib/sprintColumns';
 
 interface Props {
     race: Race | null;
@@ -30,32 +31,6 @@ interface Props {
 
 export type TabKey = 'live' | 'info';
 
-const pickFirstNonEmpty = (...lists: (Sprint[] | undefined)[]): Sprint[] => {
-    for (const list of lists) {
-        if (Array.isArray(list) && list.length > 0) return list;
-    }
-    return [];
-};
-
-function getConfiguredSprintsForCategory(race: Race | null | undefined, category: string): Sprint[] {
-    if (!race) return [];
-    if (race.eventMode === 'grouped' && race.raceGroups?.length) {
-        const group = race.raceGroups.find(g => (g.categories || []).some(c => c.category === category));
-        const catCfg = group?.categories?.find(c => c.category === category);
-        const fallbackGroup = race.raceGroups.find(g => (g.sprints || []).length > 0);
-        return pickFirstNonEmpty(catCfg?.sprints, group?.sprints, fallbackGroup?.sprints, race.sprints, race.sprintData);
-    }
-    if (race.eventMode === 'multi' && race.eventConfiguration) {
-        const catConfig = race.eventConfiguration.find(c => c.customCategory === category);
-        return pickFirstNonEmpty(catConfig?.sprints, race.sprints, race.sprintData);
-    }
-    if (race.singleModeCategories?.length) {
-        const catConfig = race.singleModeCategories.find(c => c.category === category);
-        return pickFirstNonEmpty(catConfig?.sprints, race.sprints, race.sprintData);
-    }
-    return pickFirstNonEmpty(race.sprints, race.sprintData);
-}
-
 function formatUpdatedAt(value?: string): string {
     const d = value ? fromTimestamp(value as never) : null;
     if (!d || Number.isNaN(d.getTime())) return '—';
@@ -69,6 +44,7 @@ export function LiveResultsView({
     prerace,
     liveRiders,
     isLive,
+    sprints,
 }: {
     race: Race | null;
     category: string;
@@ -76,8 +52,10 @@ export function LiveResultsView({
     prerace?: boolean;
     liveRiders?: LiveRider[];
     isLive?: boolean;
+    sprints?: Sprint[];
 }) {
     const rows = race?.results?.[category] ?? [];
+    const registeredClubs = useRegisteredClubsQuery().data ?? {};
 
     const { clubByZwiftId, clubByName } = useMemo(() => {
         const byZwiftId = new Map<string, string>();
@@ -94,24 +72,9 @@ export function LiveResultsView({
     }, [liveRiders]);
 
     const { sprintColumns, bestSplitTimes } = useMemo(() => {
-        const allSprintKeys = new Set<string>();
-        rows.forEach((r) => {
-            if (r.sprintDetails) Object.keys(r.sprintDetails).forEach((k) => allSprintKeys.add(k));
-        });
-
-        const orderedSprints = getConfiguredSprintsForCategory(race, category);
-        const columns: string[] = [];
-        orderedSprints.forEach((s) => {
-            const key = [s.key, `${s.id}_${s.count}`, s.id].filter(Boolean).find((k) => allSprintKeys.has(k!)) as
-                | string
-                | undefined;
-            if (key) {
-                columns.push(key);
-                allSprintKeys.delete(key);
-            }
-        });
-
-        const finalColumns = [...columns, ...Array.from(allSprintKeys).sort()];
+        const fromRace = getConfiguredSprintsForCategory(race, category);
+        const orderedSprints = fromRace.length > 0 ? fromRace : (sprints ?? []);
+        const finalColumns = resolveSprintColumns(orderedSprints, rows);
         const splitTimes: Record<string, number> = {};
         finalColumns.forEach((key) => {
             const sample = rows.find((r) => r.sprintDetails?.[key])?.sprintDetails?.[key];
@@ -124,10 +87,11 @@ export function LiveResultsView({
         });
 
         return { sprintColumns: finalColumns, bestSplitTimes: splitTimes };
-    }, [rows, race, category]);
+    }, [rows, race, category, sprints]);
 
     const getSprintHeader = (key: string): string => {
-        const sourceSprints = getConfiguredSprintsForCategory(race, category);
+        const fromRace = getConfiguredSprintsForCategory(race, category);
+        const sourceSprints = fromRace.length > 0 ? fromRace : (sprints ?? []);
         if (sourceSprints.length === 0) return key.replace(/_/g, ' ');
         const sprint = sourceSprints.find((s) => s.key === key || `${s.id}_${s.count}` === key || s.id === key);
         if (sprint) return `${sprint.name} #${sprint.count}`;
@@ -212,7 +176,9 @@ export function LiveResultsView({
                                 // finalized; in live mode show the running totals.
                                 const isDnf = !isLive && hasNoFinish;
                                 const club =
+                                    String(row.club ?? '').trim() ||
                                     clubByZwiftId.get(String(row.zwiftId ?? '').trim()) ||
+                                    registeredClubs[String(row.zwiftId ?? '').trim()] ||
                                     clubByName.get(String(row.name ?? '').trim().toLocaleLowerCase('da-DK')) ||
                                     '-';
                                 return (
@@ -417,6 +383,7 @@ export default function LiveRaceResultsTable({
                     prerace={prerace}
                     liveRiders={liveRiders}
                     isLive={isLive}
+                    sprints={sprints}
                 />
             ) : (
                 <InfoView

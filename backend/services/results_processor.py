@@ -234,6 +234,7 @@ class ResultsProcessor:
             normalized_phase,
             finalize_run_id=finalize_run_id,
             finish_audit=finish_audit,
+            registered_riders=registered_riders,
         )
 
     def ingest_prefetched_results(
@@ -307,6 +308,7 @@ class ResultsProcessor:
             all_results,
             normalized_phase,
             finalize_run_id=finalize_run_id,
+            registered_riders=self._load_registered_riders(),
         )
 
     def _persist_scored_results(
@@ -317,8 +319,14 @@ class ResultsProcessor:
         results_phase: str,
         finalize_run_id: str | None = None,
         finish_audit: dict[str, Any] | None = None,
+        registered_riders: dict[str, Any] | None = None,
     ) -> RaceResults:
         """Write scored results + phase timestamps, then refresh standings/GC."""
+        riders_map = registered_riders if registered_riders is not None else self._load_registered_riders()
+        if riders_map:
+            for riders in (all_results or {}).values():
+                if isinstance(riders, list):
+                    self._stamp_rider_clubs(riders, riders_map)
         normalized_phase = self._normalize_results_phase(results_phase)
         now = datetime.now(timezone.utc)
         race_update = with_schema_version({
@@ -741,6 +749,7 @@ class ResultsProcessor:
                 subgroup_start_time=start_time,
                 all_results_raw=all_crossings_raw,
             )
+            self._stamp_rider_clubs(finishers, registered_riders)
             if results_phase == RESULTS_PHASE_FINALIZED:
                 finishers = self._hydrate_activity_critical_power(
                     finishers=finishers,
@@ -778,6 +787,7 @@ class ResultsProcessor:
                         segment_efforts=segment_efforts,
                         registered_riders=registered_riders,
                     )
+            self._stamp_rider_clubs(finishers, registered_riders)
 
             if grouped_mode:
                 for seg_id, efforts in segment_efforts.items():
@@ -833,6 +843,7 @@ class ResultsProcessor:
                 riders = self._dedupe_finishers(grouped_finishers_by_category.get(category_name, []))
                 if not riders:
                     continue
+                self._stamp_rider_clubs(riders, registered_riders)
                 cat_config = self._get_category_config(race_data, category_name)
                 processed_batch = scorer.calculate_results(
                     riders,
@@ -1098,6 +1109,28 @@ class ResultsProcessor:
                 logger.warning("Could not parse ligaCategories for results ranking; using defaults")
         self._rank_cats = ZR_CATEGORIES
 
+    def _club_from_profile(self, profile: dict[str, Any] | None) -> str:
+        if not profile:
+            return ''
+        club = profile.get('club') or profile.get('team')
+        if isinstance(club, dict):
+            club = club.get('name') or club.get('club')
+        if club is None:
+            return ''
+        return str(club).strip()
+
+    def _stamp_rider_clubs(
+        self,
+        riders: list[dict[str, Any]],
+        registered_riders: dict[str, Any],
+    ) -> None:
+        for rider in riders or []:
+            zid = str(rider.get('zwiftId') or '').strip()
+            profile = registered_riders.get(zid) if zid else None
+            club = self._club_from_profile(profile)
+            if club:
+                rider['club'] = club
+
     def _dedupe_finishers(self, riders: list[dict[str, Any]]) -> list[dict[str, Any]]:
         by_id: dict[str, dict[str, Any]] = {}
         for rider in riders:
@@ -1215,7 +1248,7 @@ class ResultsProcessor:
                 if not canonical_id or canonical_id in existing_ids:
                     continue
 
-                out.append({
+                starter = {
                     'zwiftId': canonical_id,
                     'name': profile.get('name') or canonical_id,
                     'finishTime': 0,
@@ -1223,7 +1256,11 @@ class ResultsProcessor:
                     'flaggedCheating': False,
                     'flaggedSandbagging': False,
                     'criticalP': resolve_critical_power(None, profile),
-                })
+                }
+                club = self._club_from_profile(profile)
+                if club:
+                    starter['club'] = club
+                out.append(starter)
                 existing_ids.add(canonical_id)
 
         return out
@@ -1260,7 +1297,7 @@ class ResultsProcessor:
                 canonical_id = str(profile.get('zwiftId') or raw_id).strip()
                 if not canonical_id or canonical_id in existing_ids:
                     continue
-                out.append({
+                starter = {
                     'zwiftId': canonical_id,
                     'name': profile.get('name') or canonical_id,
                     'finishTime': 0,
@@ -1268,7 +1305,11 @@ class ResultsProcessor:
                     'flaggedCheating': False,
                     'flaggedSandbagging': False,
                     'criticalP': resolve_critical_power(None, profile),
-                })
+                }
+                club = self._club_from_profile(profile)
+                if club:
+                    starter['club'] = club
+                out.append(starter)
                 existing_ids.add(canonical_id)
 
         return out

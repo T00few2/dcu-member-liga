@@ -221,7 +221,7 @@ export default function RaceResultsTable({
                                     <tr key={rider.zwiftId} className="hover:bg-muted/20 transition odd:bg-transparent even:bg-[#f1efe7]">
                                         <td className="px-4 py-3 text-center font-medium text-muted-foreground">{idx + 1}</td>
                                         <td className="px-4 py-3 font-medium text-card-foreground">{rider.name}</td>
-                                        <td className="px-4 py-3 text-muted-foreground">{clubByZwiftId?.get(rider.zwiftId) || '-'}</td>
+                                        <td className="px-4 py-3 text-muted-foreground">{rider.club || clubByZwiftId?.get(rider.zwiftId) || '-'}</td>
                                         <td className="px-4 py-3 text-right font-mono text-muted-foreground">{formatTime(rider.finishTime, rider.raceStatus)}</td>
                                         {sprintColumns.map(sprintKey => {
                                             if (isDnf) {

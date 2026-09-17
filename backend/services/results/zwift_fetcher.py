@@ -119,6 +119,9 @@ class ZwiftFetcher:
 
                 if registered_profile:
                     finisher['name'] = registered_profile.get('name')
+                    club = str(registered_profile.get('club') or registered_profile.get('team') or '').strip()
+                    if club:
+                        finisher['club'] = club
                     finishers.append(finisher)
 
             finishers.sort(key=lambda x: x['finishTime'])
@@ -141,6 +144,9 @@ class ZwiftFetcher:
 
                 if registered_profile:
                     finisher['name'] = registered_profile.get('name')
+                    club = str(registered_profile.get('club') or registered_profile.get('team') or '').strip()
+                    if club:
+                        finisher['club'] = club
                     finishers.append(finisher)
 
             finishers.sort(key=lambda x: x['name'])
@@ -192,6 +198,9 @@ class ZwiftFetcher:
                 "criticalP": resolve_critical_power(entry.get("criticalP"), registered_profile),
                 "name": registered_profile.get("name"),
             }
+            club = str(registered_profile.get("club") or registered_profile.get("team") or "").strip()
+            if club:
+                finisher["club"] = club
             if activity_id:
                 finisher["activityId"] = activity_id
             finishers.append(finisher)

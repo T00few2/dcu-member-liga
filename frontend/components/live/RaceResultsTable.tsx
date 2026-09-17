@@ -1,6 +1,7 @@
-import { Race, ResultEntry, Sprint, OverlayConfig } from '@/types/live';
+import { Race, ResultEntry, OverlayConfig } from '@/types/live';
 import { formatTimeValue, formatDelta, shortenRiderName, parseWorldTime } from '@/lib/formatters';
 import { resolveColor } from '@/lib/colors';
+import { getConfiguredSprintsForCategory, resolveSprintColumns } from '@/lib/sprintColumns';
 
 interface RaceResultsTableProps {
     race: Race;
@@ -19,64 +20,30 @@ interface RaceResultsTableProps {
 export function RaceResultsTable({ race, results, category, config, overlay, standingsPoints }: RaceResultsTableProps) {
     const { showSprints, showLastSprint, isFull, nameMax } = config;
 
-    // Sprint Columns Logic
-    const allSprintKeys = new Set<string>();
-    if (showSprints || showLastSprint) {
-        results.forEach(r => {
-            if (r.sprintDetails) {
-                Object.keys(r.sprintDetails).forEach(k => allSprintKeys.add(k));
-            }
-        });
-    }
-
-    let configuredSegments: Sprint[] = [];
+    const configuredSegments = getConfiguredSprintsForCategory(race, category);
     let segmentType: 'sprint' | 'split' = race.segmentType || 'sprint';
-
-    if (race.eventMode === 'multi' && race.eventConfiguration) {
-        const catConfig = race.eventConfiguration.find(c => c.customCategory === category);
-        if (catConfig && catConfig.sprints && catConfig.sprints.length > 0) {
-            configuredSegments = catConfig.sprints;
-            segmentType = catConfig.segmentType || segmentType;
-        } else {
-            configuredSegments = race.sprints || [];
-        }
-    } else {
-        if (race.singleModeCategories && race.singleModeCategories.length > 0) {
-            const catConfig = race.singleModeCategories.find(c => c.category === category);
-            if (catConfig && catConfig.sprints && catConfig.sprints.length > 0) {
-                configuredSegments = catConfig.sprints;
-                segmentType = catConfig.segmentType || segmentType;
-            } else {
-                configuredSegments = race.sprints || race.sprintData || [];
-            }
-        } else {
-            configuredSegments = race.sprints || race.sprintData || [];
-        }
+    if (race.eventMode === 'grouped' && race.raceGroups?.length) {
+        const group = race.raceGroups.find((g) => (g.categories || []).some((c) => c.category === category));
+        const catCfg = group?.categories?.find((c) => c.category === category);
+        segmentType = catCfg?.segmentType || group?.segmentType || segmentType;
+    } else if (race.eventMode === 'multi' && race.eventConfiguration) {
+        const catConfig = race.eventConfiguration.find((c) => c.customCategory === category);
+        segmentType = catConfig?.segmentType || segmentType;
+    } else if (race.singleModeCategories?.length) {
+        const catConfig = race.singleModeCategories.find((c) => c.category === category);
+        segmentType = catConfig?.segmentType || segmentType;
     }
 
     const isSplitResults = segmentType === 'split';
-    const sprintSegments = configuredSegments.filter(s => s.type !== 'split');
-    const splitSegments = configuredSegments.filter(s => s.type === 'split');
+    const sprintSegments = configuredSegments.filter((s) => s.type !== 'split');
+    const splitSegments = configuredSegments.filter((s) => s.type === 'split');
     const activeSegments = isSplitResults
         ? (splitSegments.length > 0 ? splitSegments : configuredSegments)
         : sprintSegments;
 
     let sprintColumns: string[] = [];
-    const remainingSprintKeys = new Set(allSprintKeys);
-
-    if (activeSegments.length > 0) {
-        activeSegments.forEach(s => {
-            const potentialKeys = [s.key, `${s.id}_${s.count}`, `${s.id}`];
-            const foundKey = potentialKeys.find(k => k && remainingSprintKeys.has(k));
-            if (foundKey) {
-                sprintColumns.push(foundKey);
-                remainingSprintKeys.delete(foundKey);
-            }
-        });
-    }
-
-    if (remainingSprintKeys.size > 0) {
-        sprintColumns = [...sprintColumns, ...Array.from(remainingSprintKeys).sort()];
+    if (showSprints || showLastSprint) {
+        sprintColumns = resolveSprintColumns(activeSegments, results);
     }
 
     if (showLastSprint && sprintColumns.length > 0) {

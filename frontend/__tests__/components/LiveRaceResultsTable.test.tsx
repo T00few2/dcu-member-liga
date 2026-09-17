@@ -8,6 +8,7 @@ vi.mock('@/lib/firebase', () => ({ app: {}, auth: {}, db: {}, storage: {} }));
 vi.mock('@/hooks/queries', () => ({
     useRouteElevationQuery: () => ({ data: null }),
     useRaceSegmentsQuery: () => ({ data: [] }),
+    useRegisteredClubsQuery: () => ({ data: { '1': 'Danish Zwift Racers' } }),
 }));
 
 function rider(overrides: Partial<ResultEntry>): ResultEntry {
@@ -55,5 +56,43 @@ describe('LiveResultsView ranking', () => {
         expect(within(rows[1]).getByText('2')).toBeInTheDocument();
         expect(within(rows[1]).getByText('Aleksej Calmann')).toBeInTheDocument();
         expect(screen.queryByText('9')).not.toBeInTheDocument();
+    });
+
+    it('shows club from registered riders when the result row has none', () => {
+        render(<LiveResultsView race={race} category="1. Division" isLive />);
+        expect(screen.getByText('Danish Zwift Racers')).toBeInTheDocument();
+    });
+
+    it('shows club from the result row when live riders are gone', () => {
+        const withClub: Race = {
+            ...race,
+            results: {
+                '1. Division': [
+                    rider({ zwiftId: '1', name: 'Sebastian Bech Rask', club: 'Danish Zwift Racers' }),
+                ],
+            },
+        };
+        render(<LiveResultsView race={withClub} category="1. Division" isLive />);
+        expect(screen.getByText('Danish Zwift Racers')).toBeInTheDocument();
+    });
+
+    it('shows configured Champs-Élysées columns even without sprintDetails', () => {
+        const withSprints: Race = {
+            ...race,
+            eventMode: 'grouped',
+            raceGroups: [
+                {
+                    categories: [{ category: '1. Division' }],
+                    sprints: [
+                        { id: '1055881124', count: 1, name: 'Montmartre KOM' },
+                        { id: '1056322864', count: 1, name: 'Champs-Élysées' },
+                        { id: '1056322864', count: 2, name: 'Champs-Élysées' },
+                    ],
+                },
+            ],
+        };
+        render(<LiveResultsView race={withSprints} category="1. Division" isLive />);
+        expect(screen.getByText(/Champs-Élysées #1/i)).toBeInTheDocument();
+        expect(screen.getByText(/Champs-Élysées #2/i)).toBeInTheDocument();
     });
 });

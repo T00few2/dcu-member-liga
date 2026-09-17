@@ -209,6 +209,15 @@ class TestGroupedCategoryResolution:
         )
         assert resolved == '2. Division'
 
+    def test_stamps_club_from_registered_rider(self):
+        from services.results_processor import ResultsProcessor
+        rp = ResultsProcessor(MagicMock(), MagicMock(), MagicMock())
+        riders = [{'zwiftId': '661768', 'name': 'Daniel lyhne'}]
+        rp._stamp_rider_clubs(riders, {
+            '661768': {'zwiftId': '661768', 'club': 'Danish Zwift Racers'},
+        })
+        assert riders[0]['club'] == 'Danish Zwift Racers'
+
     def test_falls_back_to_subgroup_label_when_category_matches(self):
         from services.results_processor import ResultsProcessor
         rp = ResultsProcessor(MagicMock(), MagicMock(), MagicMock())
@@ -714,3 +723,35 @@ class TestIngestPrefetchedResults:
         payload = db.collection('races').document.return_value.update.call_args.args[0]
         assert payload['resultsPhase'] == RESULTS_PHASE_PROVISIONAL
         assert payload.get('provisionalUpdatedAt') is not None
+
+    def test_persist_stamps_club_from_registered_users(self):
+        from services.results.constants import RACE_STATUS_FIN
+        from services.results_processor import ResultsProcessor
+
+        race_data = make_race_data()
+        user = mock_doc('u1', {
+            'zwiftId': '9990001',
+            'name': 'Test Rider',
+            'club': 'Danish Zwift Racers',
+            'registration': {'status': 'complete'},
+        })
+        db = build_process_results_db(race_data, users=[user], settings={
+            'finishPoints': [10],
+            'sprintPoints': [],
+        })
+        rp = ResultsProcessor(db, MagicMock(), MagicMock())
+        rp.save_league_standings = MagicMock(return_value={})
+        scored = rp.ingest_prefetched_results(
+            'race1',
+            {
+                'A': [{
+                    'zwiftId': '9990001',
+                    'name': 'Test Rider',
+                    'finishTime': 2_000_000,
+                    'raceStatus': RACE_STATUS_FIN,
+                }],
+            },
+            {},
+            results_phase=RESULTS_PHASE_PROVISIONAL,
+        )
+        assert scored['A'][0]['club'] == 'Danish Zwift Racers'

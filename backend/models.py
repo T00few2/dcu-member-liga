@@ -102,6 +102,7 @@ class RiderResult(TypedDict, total=False):
     """
     zwiftId: str
     name: str
+    club: str
     finishTime: int       # Milliseconds; 0 means DNF
     finishRank: int       # 1-based; 0 means DNF or not ranked
     finishPoints: int

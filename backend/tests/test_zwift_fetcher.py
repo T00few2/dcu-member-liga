@@ -255,7 +255,7 @@ def test_fetch_finishers_uses_official_times_when_finish_banner_missing():
     }
     fetcher = ZwiftFetcher(zwift_service=zwift)
     registered = {
-        "uuid-daniel": {"zwiftId": "661768", "name": "Daniel lyhne"},
+        "uuid-daniel": {"zwiftId": "661768", "name": "Daniel lyhne", "club": "Danish Zwift Racers"},
     }
     route_segments = [
         {"id": "tchou", "lap": 3, "count": 3},
@@ -278,6 +278,7 @@ def test_fetch_finishers_uses_official_times_when_finish_banner_missing():
     assert finishers[0]["zwiftId"] == "661768"
     assert finishers[0]["finishTime"] == 4450000
     assert finishers[0]["activityId"] == "act-1"
+    assert finishers[0]["club"] == "Danish Zwift Racers"
     zwift.get_subgroup_race_results.assert_called_once_with("7340599")
 
 

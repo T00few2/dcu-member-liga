@@ -13,9 +13,9 @@ import {
 } from '@/hooks/queries';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { normalizeRace } from '@/lib/firestore-normalizers';
+import { getConfiguredSprintsForCategory, resolveSprintColumns } from '@/lib/sprintColumns';
 import type {
     Race,
-    Sprint,
     ResultEntry,
     StandingEntry,
 } from '@/types/live';
@@ -40,13 +40,6 @@ const DEFAULT_CATEGORY_RANK = [
     'Diamond', 'Ruby', 'Emerald', 'Sapphire', 'Amethyst', 'Platinum', 'Gold', 'Silver', 'Bronze', 'Copper',
     'A', 'B', 'C', 'D', 'E',
 ];
-
-const pickFirstNonEmpty = (...lists: (Sprint[] | undefined)[]): Sprint[] => {
-    for (const list of lists) {
-        if (Array.isArray(list) && list.length > 0) return list;
-    }
-    return [];
-};
 
 type ResultsTab = 'standings' | 'results' | 'tour';
 
@@ -436,20 +429,8 @@ export default function ResultsPage() {
     );
 
     const { sprintColumns, bestSplitTimes } = useMemo(() => {
-        const allSprintKeys = new Set<string>();
-        raceResults.forEach(r => {
-            if (r.sprintDetails) Object.keys(r.sprintDetails).forEach(k => allSprintKeys.add(k));
-        });
-
         const orderedSprints = getConfiguredSprintsForCategory(selectedRace, displayRaceCategory);
-
-        const columns: string[] = [];
-        orderedSprints.forEach(s => {
-            const key = [s.key, `${s.id}_${s.count}`, s.id].filter(Boolean).find(k => allSprintKeys.has(k!)) as string | undefined;
-            if (key) { columns.push(key); allSprintKeys.delete(key); }
-        });
-
-        const finalColumns = [...columns, ...Array.from(allSprintKeys).sort()];
+        const finalColumns = resolveSprintColumns(orderedSprints, raceResults);
         const splitTimes: Record<string, number> = {};
         finalColumns.forEach(key => {
             const sample = raceResults.find(r => r.sprintDetails?.[key])?.sprintDetails?.[key];
@@ -801,33 +782,4 @@ function EventGcPanel({
             countingHint="Tæller ikke (uden for event best-X)"
         />
     );
-}
-
-function getConfiguredSprintsForCategory(race: Race | undefined, category: string): Sprint[] {
-    if (!race) return [];
-
-    if (race.eventMode === 'grouped' && race.raceGroups?.length) {
-        const group = race.raceGroups.find(g => (g.categories || []).some(c => c.category === category));
-        const catCfg = group?.categories?.find(c => c.category === category);
-        const fallbackGroup = race.raceGroups.find(g => (g.sprints || []).length > 0);
-        return pickFirstNonEmpty(
-            catCfg?.sprints,
-            group?.sprints,
-            fallbackGroup?.sprints,
-            race.sprints,
-            race.sprintData,
-        );
-    }
-
-    if (race.eventMode === 'multi' && race.eventConfiguration) {
-        const catConfig = race.eventConfiguration.find(c => c.customCategory === category);
-        return pickFirstNonEmpty(catConfig?.sprints, race.sprints, race.sprintData);
-    }
-
-    if (race.singleModeCategories?.length) {
-        const catConfig = race.singleModeCategories.find(c => c.category === category);
-        return pickFirstNonEmpty(catConfig?.sprints, race.sprints, race.sprintData);
-    }
-
-    return pickFirstNonEmpty(race.sprints, race.sprintData);
 }

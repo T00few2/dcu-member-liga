@@ -240,3 +240,22 @@ def test_polling_interval_clamped_to_floor(
     body = response.get_json()
     # 5s elapsed < MIN floor of 10s → must skip, despite config saying 1s
     assert body["status"] == "skipped"
+
+
+def test_live_race_clubs_maps_zwift_id(app: Flask, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(live_race, "db", MagicMock())
+    monkeypatch.setattr(
+        live_race,
+        "_get_registered_riders",
+        lambda _rid: {
+            "661768": {"zwiftId": "661768", "club": "Danish Zwift Racers"},
+            "uuid-daniel": {"zwiftId": "661768", "club": "Danish Zwift Racers"},
+            "2": {"zwiftId": "2", "name": "No Club"},
+        },
+    )
+    with app.test_request_context("/live-race/clubs"):
+        response, status = live_race.get_live_race_clubs()
+    assert status == 200
+    clubs = response.get_json()["clubs"]
+    assert clubs["661768"] == "Danish Zwift Racers"
+    assert "2" not in clubs

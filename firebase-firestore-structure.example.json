@@ -308,6 +308,21 @@
       "provisionalUpdatedAt": "2026-05-20T19:35:00+00:00",
       "finalizedAt": null,
       "finalizeRunId": null,
+      "results": {
+        "Diamond": [
+          {
+            "zwiftId": "100001",
+            "name": "Example Rider",
+            "club": "Example Club",
+            "finishTime": 3600000,
+            "finishRank": 1,
+            "finishPoints": 20,
+            "sprintPoints": 5,
+            "totalPoints": 25,
+            "raceStatus": "FIN"
+          }
+        ]
+      },
       "finishAudit": {
         "status": "aligned",
         "summary": "Finish audit aligned: official race-results match derived finish times for 2 finisher(s) across 1 subgroup(s).",
