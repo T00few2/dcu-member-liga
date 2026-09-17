@@ -201,7 +201,8 @@ export function LiveResultsView({
                         </thead>
                         <tbody className="divide-y divide-border/50">
                             {rows.map((row, idx) => {
-                                const rank = row.finishRank && row.finishRank > 0 ? row.finishRank : idx + 1;
+                                // Rows are stored/sorted by total points, not finish order.
+                                const rank = idx + 1;
                                 const finished =
                                     (row.finishRank && row.finishRank > 0) ||
                                     String(row.raceStatus || '').toUpperCase() === 'FIN' ||
