@@ -110,6 +110,7 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
     const [pinClub, setPinClub] = useState('');
     const [pinNotes, setPinNotes] = useState('');
     const [pinJersey, setPinJersey] = useState<CatalogJersey | null>(null);
+    const [ignoreProposed, setIgnoreProposed] = useState(false);
     const [jerseySort, setJerseySort] = useState<{ key: 'name' | 'level'; dir: 'asc' | 'desc' }>({
         key: 'name',
         dir: 'asc',
@@ -216,12 +217,15 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
         [clubs],
     );
     const previewDiffers = useMemo(
-        () => clubs.some((club) => {
-            const savedSig = savedByClub.get(club.club)?.jerseySignature ?? null;
-            const proposedSig = club.kit?.jerseySignature ?? null;
-            return savedSig !== proposedSig;
-        }),
-        [clubs, savedByClub],
+        () => {
+            if (ignoreProposed) return false;
+            return clubs.some((club) => {
+                const savedSig = savedByClub.get(club.club)?.jerseySignature ?? null;
+                const proposedSig = club.kit?.jerseySignature ?? null;
+                return savedSig !== proposedSig;
+            });
+        },
+        [clubs, savedByClub, ignoreProposed],
     );
 
     const jerseyTableRows = useMemo(() => {
@@ -353,6 +357,41 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
         }
     };
 
+    const assignAutoSelected = async () => {
+        if (!pinClub.trim() || !pinJersey) return;
+        setBusy(true);
+        try {
+            const headers = await authHeaders();
+            const res = await fetch(`${API_URL}/admin/club-kits/assign-auto`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    club: pinClub.trim(),
+                    jerseySignature: pinJersey.signature,
+                    jerseyName: pinJersey.name,
+                    imageName: pinJersey.imageName,
+                    imageUrl: pinJersey.imageUrl,
+                    notes: pinNotes.trim() || null,
+                }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setStatus(data.message || 'Kunne ikke tildele trøje');
+                return;
+            }
+            setStatus(`Tildelt ${pinJersey.name} til ${pinClub} (auto)`);
+            setPinNotes('');
+            await loadOverview();
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const resetProposed = () => {
+        setIgnoreProposed(true);
+        setStatus('Forslag nulstillet. Viser kun gemte trøjer — andre klubber er uændrede.');
+    };
+
     const unpinClub = async (club: string) => {
         setBusy(true);
         try {
@@ -400,7 +439,8 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                 setStatus(data.message || 'Auto-tildeling fejlede');
                 return;
             }
-            setStatus('Auto-tildeling gemt (pins uændrede)');
+            setStatus('Auto-tildeling gemt (eksisterende kits uændrede, kun manglende klubber)');
+            setIgnoreProposed(false);
             await loadOverview();
         } finally {
             setBusy(false);
@@ -460,6 +500,14 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                     </button>
                     <button
                         type="button"
+                        onClick={resetProposed}
+                        disabled={busy}
+                        className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-secondary/50 disabled:opacity-50"
+                    >
+                        Nulstil forslag
+                    </button>
+                    <button
+                        type="button"
                         onClick={() => void applyAuto()}
                         disabled={busy}
                         className="px-3 py-2 text-sm bg-primary text-primary-foreground rounded-lg disabled:opacity-50"
@@ -472,8 +520,9 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
             {status && <p className="text-sm text-muted-foreground">{status}</p>}
             {previewDiffers && (
                 <p className="text-sm text-amber-700 dark:text-amber-400">
-                    Foreslået auto-tildeling afviger fra det gemte. Min Profil og Info bruger stadig de gemte trøjer,
-                    indtil du klikker Anvend auto-tildeling.
+                    Foreslået auto-tildeling afviger fra det gemte — kun klubber uden gemt trøje.
+                    Min Profil og Info bruger stadig de gemte trøjer. Brug Tildel som auto til nye klubber,
+                    eller Nulstil forslag for at skjule dette.
                 </p>
             )}
 
@@ -666,7 +715,11 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
             </section>
 
             <section className="space-y-3">
-                <h3 className="font-semibold">Pin klubtrøje</h3>
+                <h3 className="font-semibold">Tildel klubtrøje</h3>
+                <p className="text-xs text-muted-foreground">
+                    Vælg en trøje i søgningen ovenfor. Tildel som auto gemmer kun den klub og rører ikke de andre.
+                    Pin er eksklusiv og fjerner auto-kopier af samme trøje.
+                </p>
                 <div className="grid md:grid-cols-3 gap-2">
                     <select
                         value={pinClub}
@@ -684,13 +737,26 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                         placeholder="Notes (hvordan medlemmer får den)"
                         className="p-2 border border-input rounded-lg bg-background"
                     />
+                    <p className="text-sm self-center">
+                        {pinJersey ? `Valgt: ${pinJersey.name}` : 'Vælg en trøje i søgningen'}
+                    </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                    <button
+                        type="button"
+                        onClick={() => void assignAutoSelected()}
+                        disabled={busy || !pinClub || !pinJersey}
+                        className="px-3 py-2 text-sm bg-primary text-primary-foreground rounded-lg disabled:opacity-50"
+                    >
+                        Tildel som auto
+                    </button>
                     <button
                         type="button"
                         onClick={() => void pinSelected()}
                         disabled={busy || !pinClub || !pinJersey}
                         className="px-3 py-2 text-sm border border-border rounded-lg disabled:opacity-50"
                     >
-                        Pin {pinJersey ? pinJersey.name : 'valgt trøje'}
+                        Pin
                     </button>
                 </div>
             </section>
@@ -791,7 +857,7 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                                                     : ''}
                                             </span>
                                         </div>
-                                        {proposedDiffers && (
+                                        {proposedDiffers && !ignoreProposed && (
                                             <p className="text-xs text-muted-foreground mt-1">
                                                 Foreslået: {proposed?.jerseyName || 'ingen'}
                                             </p>

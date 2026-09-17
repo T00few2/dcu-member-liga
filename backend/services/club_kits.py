@@ -361,8 +361,12 @@ def preview_auto_assignment(
     club_kits: Iterable[Mapping[str, Any]],
     riders: Iterable[Mapping[str, Any]],
     jerseys_by_sig: Mapping[int, Mapping[str, Any]] | None = None,
+    preserve_saved: bool = True,
 ) -> dict[str, Any]:
-    """Greedy auto-assign unpinned clubs. Pins stay exclusive: never overwrite or reuse."""
+    """Greedy auto-assign clubs without a saved kit. Pins stay exclusive.
+
+    Saved auto kits are kept as-is unless preserve_saved is False (full reshuffle).
+    """
     unlock_list = [dict(u) for u in unlocks]
     unlock_map = unlocks_by_signature(unlock_list)
     jersey_map = {int(k): dict(v) for k, v in (jerseys_by_sig or {}).items()}
@@ -387,6 +391,17 @@ def preview_auto_assignment(
     auto_rows: list[dict[str, Any]] = []
     empty_pools: list[dict[str, Any]] = []
     club_summaries: list[dict[str, Any]] = []
+    saved_auto: dict[str, dict[str, Any]] = {}
+    if preserve_saved:
+        for club, row in existing.items():
+            if club in pinned_clubs:
+                continue
+            signature = _int_or_none(row.get("jerseySignature"))
+            if signature is None:
+                continue
+            saved_auto[club] = dict(row)
+            usage[signature] += 1
+            auto_rows.append(dict(row))
 
     pending: list[tuple[str, set[int], list[dict[str, Any]]]] = []
     for club in clubs:
@@ -396,6 +411,9 @@ def preview_auto_assignment(
         if club in pinned_clubs:
             kit = existing[club]
             club_summaries.append(_club_summary(club, members, pool, kit, pinned=True))
+            continue
+        if club in saved_auto:
+            club_summaries.append(_club_summary(club, members, pool, saved_auto[club], pinned=False))
             continue
         auto_pool = set(pool) - pinned_sigs
         if not auto_pool:
@@ -462,12 +480,14 @@ def apply_auto_assignment(
     club_kits: Iterable[Mapping[str, Any]],
     riders: Iterable[Mapping[str, Any]],
     jerseys_by_sig: Mapping[int, Mapping[str, Any]] | None = None,
+    preserve_saved: bool = True,
 ) -> list[dict[str, Any]]:
     preview = preview_auto_assignment(
         unlocks=unlocks,
         club_kits=club_kits,
         riders=riders,
         jerseys_by_sig=jerseys_by_sig,
+        preserve_saved=preserve_saved,
     )
     return list(preview["proposedClubKits"])
 
@@ -540,6 +560,78 @@ def pin_club_kit(
             row.get("assignment") == ASSIGN_AUTO
             and _int_or_none(row.get("jerseySignature")) == signature
         ):
+            continue
+        next_rows.append(row)
+    if not replaced:
+        next_rows.append(new_row)
+    return next_rows
+
+
+def assign_auto_club_kit(
+    *,
+    club: str,
+    signature: int,
+    club_kits: Iterable[Mapping[str, Any]],
+    unlocks: Iterable[Mapping[str, Any]],
+    jersey: Mapping[str, Any] | None = None,
+    notes: str | None = None,
+    image_url: str | None = None,
+    jersey_name: str | None = None,
+    image_name: str | None = None,
+) -> list[dict[str, Any]]:
+    """Set one club's kit as auto without pinning or touching other clubs."""
+    club = _str_or_none(club) or ""
+    if not club:
+        raise ValueError("club is required")
+    wanted = club.casefold()
+    existing = [dict(row) for row in club_kits]
+    for row in existing:
+        if row.get("assignment") != ASSIGN_PINNED:
+            continue
+        if _int_or_none(row.get("jerseySignature")) != signature:
+            continue
+        other = _str_or_none(row.get("club"))
+        if other and other.casefold() != wanted:
+            raise ValueError(f"Jersey already pinned to {other}")
+
+    unlock_map = unlocks_by_signature(unlocks)
+    unlock = dict(unlock_map.get(signature) or {})
+    jersey_payload = dict(jersey or {})
+    if jersey_name:
+        jersey_payload["jerseyName"] = jersey_name
+        jersey_payload["name"] = jersey_name
+    if image_name:
+        jersey_payload["imageName"] = image_name
+    if image_url:
+        jersey_payload["imageUrl"] = image_url
+        unlock["imageUrl"] = image_url
+    if notes is not None:
+        unlock["notes"] = notes
+
+    new_row = denormalize_kit_row(
+        club=club,
+        signature=signature,
+        assignment=ASSIGN_AUTO,
+        unlock=unlock,
+        jersey=jersey_payload,
+        notes=notes,
+    )
+    if notes is not None:
+        new_row["notes"] = _str_or_none(notes)
+    if image_url:
+        new_row["imageUrl"] = image_url
+    if jersey_name:
+        new_row["jerseyName"] = jersey_name
+    if image_name:
+        new_row["imageName"] = image_name
+
+    next_rows: list[dict[str, Any]] = []
+    replaced = False
+    for row in existing:
+        row_club = _str_or_none(row.get("club"))
+        if row_club and row_club.casefold() == wanted:
+            next_rows.append(new_row)
+            replaced = True
             continue
         next_rows.append(row)
     if not replaced:

@@ -4,6 +4,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from services.club_kits import (
+    assign_auto_club_kit,
     apply_auto_assignment,
     club_obtainable_intersection,
     drop_level_from_achievement,
@@ -318,6 +319,52 @@ def test_unpin_keeps_other_clubs():
     ]
     out = unpin_club_kit("DZR", rows)
     assert [row["club"] for row in out] == ["Other"]
+
+
+def test_assign_auto_leaves_other_clubs_and_allows_doubles():
+    existing = [
+        {"club": "Børkop Motion Cyklister", "jerseySignature": 3, "assignment": "auto"},
+        {"club": "DZR", "jerseySignature": 99, "assignment": "pinned"},
+    ]
+    next_rows = assign_auto_club_kit(
+        club="Viborg MTB",
+        signature=3,
+        club_kits=existing,
+        unlocks=UNLOCKS,
+    )
+    by_club = {row["club"]: row for row in next_rows}
+    assert by_club["Børkop Motion Cyklister"]["jerseySignature"] == 3
+    assert by_club["DZR"]["assignment"] == "pinned"
+    assert by_club["Viborg MTB"]["assignment"] == "auto"
+    assert by_club["Viborg MTB"]["jerseySignature"] == 3
+    assert by_club["Viborg MTB"]["jerseyName"] == "Working Code"
+
+
+def test_assign_auto_rejects_jersey_pinned_elsewhere():
+    existing = [{"club": "DZR", "jerseySignature": 99, "assignment": "pinned"}]
+    try:
+        assign_auto_club_kit(club="Viborg MTB", signature=99, club_kits=existing, unlocks=UNLOCKS)
+        raise AssertionError("expected pin collision")
+    except ValueError as exc:
+        assert "pinned" in str(exc).lower()
+
+
+def test_preview_keeps_saved_auto_and_only_fills_missing():
+    riders = [
+        {"club": "Saved", "dropLevel": 80},
+        {"club": "New", "dropLevel": 80},
+    ]
+    saved = [{"club": "Saved", "jerseySignature": 1, "jerseyName": "Level 5", "assignment": "auto"}]
+    preview = preview_auto_assignment(unlocks=UNLOCKS, club_kits=saved, riders=riders)
+    by_club = {row["club"]: row for row in preview["proposedClubKits"]}
+    assert by_club["Saved"]["jerseySignature"] == 1
+    assert by_club["New"]["assignment"] == "auto"
+    assert by_club["New"]["jerseySignature"] != 1
+    reshuffle = preview_auto_assignment(
+        unlocks=UNLOCKS, club_kits=saved, riders=riders, preserve_saved=False,
+    )
+    # Full reshuffle may pick a different unique kit for Saved; missing still assigned.
+    assert {row["club"] for row in reshuffle["proposedClubKits"]} == {"Saved", "New"}
 
 
 def test_public_settings_view_strips_codes():

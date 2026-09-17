@@ -12,6 +12,7 @@ from extensions import db, get_zwift_game_service
 from routes.admin import admin_bp
 from services.club_kits import (
     apply_auto_assignment,
+    assign_auto_club_kit,
     club_kits_by_club,
     pin_club_kit,
     preview_auto_assignment,
@@ -259,6 +260,46 @@ def pin_club_kit_route():
         return jsonify({"message": str(exc)}), 400
     except Exception as exc:
         logger.exception("pin_club_kit failed")
+        return jsonify({"message": str(exc)}), 500
+
+
+@admin_bp.route("/admin/club-kits/assign-auto", methods=["POST"])
+def assign_auto_club_kit_route():
+    try:
+        require_admin(request)
+    except AuthzError as e:
+        return jsonify({"message": e.message}), e.status_code
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+    body, err = parse_body(ClubKitPinRequest, request.get_json(silent=True) or {})
+    if err:
+        return err
+    try:
+        settings = _load_settings()
+        jerseys = _jersey_lookup()
+        catalog = jerseys.get(body.jerseySignature) or {}
+        next_kits = assign_auto_club_kit(
+            club=body.club,
+            signature=body.jerseySignature,
+            club_kits=settings.get("clubKits") or [],
+            unlocks=settings.get("jerseyUnlocks") or [],
+            jersey=catalog,
+            notes=body.notes,
+            image_url=body.imageUrl or catalog.get("imageUrl"),
+            jersey_name=body.jerseyName or catalog.get("name"),
+            image_name=body.imageName or catalog.get("imageName"),
+        )
+        update = with_schema_version({
+            "clubKits": next_kits,
+            "updatedAt": firestore.SERVER_TIMESTAMP,
+        })
+        log_schema_issues(logger, "league/settings (clubKits assign-auto)", validate_league_settings_doc(update, partial=True))
+        _settings_ref().set(update, merge=True)
+        return jsonify({"clubKits": next_kits, "message": "Club kit assigned"}), 200
+    except ValueError as exc:
+        return jsonify({"message": str(exc)}), 400
+    except Exception as exc:
+        logger.exception("assign_auto_club_kit failed")
         return jsonify({"message": str(exc)}), 500
 
 
