@@ -92,7 +92,11 @@ function formatSelectionReason(reason: string | undefined): string {
         case 'manual_strava_id':
             return 'Manual Strava activity selected';
         case 'lowest_similarity':
-            return 'Selected by lowest similarity score';
+            return 'Least Zwift-like among same-ride files';
+        case 'closest_duration':
+            return 'Selected by closest duration';
+        case 'no_similar_candidate':
+            return 'No same-ride Strava file (export or unrelated overlap only)';
         case 'best_overlap':
             return 'Selected by best overlap window';
         case 'no_meaningful_overlap':
@@ -245,8 +249,11 @@ function DualRecordingModalContent({
                                             <tbody className="divide-y divide-border">
                                                 {candidates.map((c) => (
                                                     <tr key={`${c.activityId}-${c.startDate || ''}`} className={c.selected ? 'bg-green-50 dark:bg-green-900/20' : ''}>
-                                                        <td className="px-2 py-1 font-mono">
-                                                            {c.activityId}
+                                                        <td className="px-2 py-1">
+                                                            <div className="font-mono">{c.activityId}</div>
+                                                            {c.name ? (
+                                                                <div className="text-muted-foreground truncate max-w-[16rem]">{c.name}</div>
+                                                            ) : null}
                                                         </td>
                                                         <td className="px-2 py-1 text-right">{c.overlapSec ?? 0}s</td>
                                                         <td className="px-2 py-1 text-right">{c.endDeltaSec ?? 0}s</td>
@@ -255,7 +262,11 @@ function DualRecordingModalContent({
                                                         </td>
                                                         <td className="px-2 py-1 text-center">
                                                             {c.selected ? 'picked' : ''}
-                                                            {c.meaningful ? (c.selected ? ' · meaningful' : 'meaningful') : (c.selected ? '' : 'low overlap')}
+                                                            {c.excludedAsExport ? (c.selected ? ' · export' : 'export') : ''}
+                                                            {c.belowSimilarityFloor ? (c.selected || c.excludedAsExport ? ' · unrelated' : 'unrelated') : ''}
+                                                            {c.meaningful
+                                                                ? (c.selected || c.excludedAsExport || c.belowSimilarityFloor ? ' · meaningful' : 'meaningful')
+                                                                : (c.selected ? '' : 'low overlap')}
                                                         </td>
                                                     </tr>
                                                 ))}

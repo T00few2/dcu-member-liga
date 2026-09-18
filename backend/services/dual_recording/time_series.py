@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import pytz
+
+_COPENHAGEN_TZ = pytz.timezone("Europe/Copenhagen")
+
 
 def _mask_streams(mask: list, **arrays: list) -> dict:
     """Apply a boolean mask to one or more parallel stream arrays."""
@@ -171,6 +175,22 @@ def _parse_iso_utc(iso_str: str) -> datetime | None:
         return datetime.fromisoformat(clean).replace(tzinfo=timezone.utc)
     except Exception:
         return None
+
+
+def _parse_event_start_iso(iso_str: str | None) -> datetime | None:
+    """Parse a race/event start. Naive timestamps are Europe/Copenhagen local time."""
+    if not iso_str:
+        return None
+    raw = str(iso_str).strip()
+    if not raw:
+        return None
+    try:
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return _parse_iso_utc(raw)
+    if dt.tzinfo is None:
+        dt = _COPENHAGEN_TZ.localize(dt)
+    return dt.astimezone(timezone.utc)
 
 
 def _compute_best_efforts_with_windows(

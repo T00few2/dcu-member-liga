@@ -111,8 +111,10 @@ export interface DualRecordingResult {
             endDeltaSec?: number;
             startDeltaSec?: number;
             meaningful?: boolean;
-            similarityScore?: number | null;
-            selected?: boolean;
+                        similarityScore?: number | null;
+                        selected?: boolean;
+                        excludedAsExport?: boolean;
+                        belowSimilarityFloor?: boolean;
         }>;
     };
     warning?: string;
