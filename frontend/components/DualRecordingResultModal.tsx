@@ -6,6 +6,7 @@ import { RecordingStreamsSection } from '@/components/shared/RecordingStreamsSec
 import { ExtendedPeakProfileChart } from '@/components/shared/ExtendedPeakProfileChart';
 import type { CpDiffRow } from '@/types/admin';
 import { explainDrFailureMetrics } from '@/lib/drFailureLabels';
+import { dualRecordingSourceCopy, isVoluntaryDualRecording } from '@/lib/drSource';
 import { DualRecordingProvider, useDualRecordingContext } from '@/lib/dr-context';
 
 // ─── Public props (minimal — caller only needs to supply these) ───────────────
@@ -44,46 +45,63 @@ function diffColour(pct: number | null | undefined, key: string): string {
     return Math.abs(pct) <= 3 ? 'text-green-600' : Math.abs(pct) <= 8 ? 'text-yellow-600' : 'text-red-600';
 }
 
-function StatusHeader({ status }: { status: string }) {
+function StatusHeader({ status, source }: { status: string; source?: string }) {
+    const sourceCopy = dualRecordingSourceCopy(source);
+    const voluntary = isVoluntaryDualRecording(source);
+
+    let statusChip: React.ReactNode;
     if (status === 'passed') {
-        return (
+        statusChip = (
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-100 text-green-800 font-semibold text-sm">
                 ✓ Godkendt
             </span>
         );
-    }
-    if (status === 'failed') {
-        return (
+    } else if (status === 'failed') {
+        statusChip = (
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-100 text-red-800 font-semibold text-sm">
                 ✗ Underkendtes
             </span>
         );
-    }
-    if (status === 'missing_strava') {
-        return (
+    } else if (status === 'missing_strava') {
+        statusChip = (
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-yellow-100 text-yellow-800 font-semibold text-sm">
                 ? Afventer Strava-data
             </span>
         );
-    }
-    if (status === 'missing_activity') {
-        return (
+    } else if (status === 'missing_activity') {
+        statusChip = (
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-800 font-semibold text-sm">
                 ! Mangler Zwift-aktivitet
             </span>
         );
-    }
-    if (status === 'error') {
-        return (
+    } else if (status === 'error') {
+        statusChip = (
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-200 text-slate-800 font-semibold text-sm">
                 ! Verifikation fejlede
             </span>
         );
+    } else {
+        statusChip = (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-700 font-semibold text-sm">
+                – Ikke verificeret
+            </span>
+        );
     }
+
     return (
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-700 font-semibold text-sm">
-            – Ikke verificeret
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+            {statusChip}
+            <span
+                title={sourceCopy.title}
+                className={`inline-flex items-center px-2.5 py-1 rounded-full border text-xs font-semibold ${
+                    voluntary
+                        ? 'bg-slate-50 text-slate-600 border-slate-300 border-dashed'
+                        : 'bg-orange-50 text-orange-800 border-orange-200'
+                }`}
+            >
+                {sourceCopy.short}
+            </span>
+        </div>
     );
 }
 
@@ -137,7 +155,7 @@ function DualRecordingModalContent({
 
     if (!open) return null;
 
-    const { status, verifiedAt, comparison, failingMetrics = [], stravaActivityId, zwiftActivityId } = verification;
+    const { status, verifiedAt, comparison, failingMetrics = [], stravaActivityId, zwiftActivityId, source } = verification;
     const cpDiffRows = streamResult?.comparison?.cpDiff ?? comparison?.cpDiff ?? [];
     const failureReasons = explainDrFailureMetrics(failingMetrics);
     const matchingDebug = streamResult?.matchingDebug;
@@ -194,7 +212,7 @@ function DualRecordingModalContent({
 
                     {/* Status */}
                     <div className="flex items-center justify-between">
-                        <StatusHeader status={status} />
+                        <StatusHeader status={status} source={source} />
                         {verifiedAt && (
                             <span className="text-xs text-muted-foreground">
                                 {new Date(verifiedAt).toLocaleString('da-DK')}
@@ -278,14 +296,23 @@ function DualRecordingModalContent({
                         </details>
                     )}
 
-                    {status === 'failed' && failureReasons.length > 0 && (
+                    {status === 'failed' && (
                         <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
-                            <div className="font-semibold mb-1">Failure reasons</div>
-                            <ul className="list-disc ml-5 space-y-0.5">
-                                {failureReasons.map((reason) => (
-                                    <li key={reason}>{reason}</li>
-                                ))}
-                            </ul>
+                            {failureReasons.length > 0 && (
+                                <>
+                                    <div className="font-semibold mb-1">Failure reasons</div>
+                                    <ul className="list-disc ml-5 space-y-0.5">
+                                        {failureReasons.map((reason) => (
+                                            <li key={reason}>{reason}</li>
+                                        ))}
+                                    </ul>
+                                </>
+                            )}
+                            <p className={`text-xs ${failureReasons.length > 0 ? 'mt-2' : ''} ${isVoluntaryDualRecording(source) ? 'text-slate-600' : 'font-medium'}`}>
+                                {isVoluntaryDualRecording(source)
+                                    ? 'Frivillig dual recording — ikke grundlag for DC.'
+                                    : 'Påkrævet dual recording — overvej DC.'}
+                            </p>
                         </div>
                     )}
 

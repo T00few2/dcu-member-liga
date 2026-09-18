@@ -85,22 +85,41 @@ def ensure_drop_level_fields(
     zwift_id: Any,
     mapped: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Keep mapped dropLevel, or fill from unofficial JSON profile. Never raises."""
+    """Fill dropLevel from unofficial JSON when missing or when official looks wrong.
+
+    Official racing-profile achievementLevel is often the XP-table level (e.g. 63).
+    In-game drop (jersey unlocks) is unofficial JSON hundredths (4661 → 46).
+    """
     out = dict(mapped or {})
-    if out.get("dropLevel") is not None:
+    mapped_raw = _achievement_raw(out)
+    if out.get("dropLevel") is not None and mapped_raw is not None and mapped_raw >= 1000:
         return out
     nid = numeric_zwift_id(zwift_id)
     if nid is None:
         return out
     try:
         extra = extract_level_fields(fetch_json_profile(game_client_access_token(), nid))
-        if extra.get("dropLevel") is not None:
+        extra_raw = _achievement_raw(extra)
+        extra_drop = extra.get("dropLevel")
+        if extra_drop is None:
+            return out
+        if out.get("dropLevel") is None or (extra_raw is not None and extra_raw >= 1000 and (mapped_raw is None or mapped_raw < 1000)):
             out.update(extra)
     except DropLevelAuthError as exc:
         logger.warning("Drop-level fallback skipped for %s: %s", nid, exc)
     except Exception:
         logger.exception("Drop-level fallback failed for %s", nid)
     return out
+
+
+def _achievement_raw(fields: dict[str, Any]) -> int | None:
+    raw = fields.get("achievementLevel")
+    if raw is None or isinstance(raw, bool):
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
 
 
 def refresh_drop_levels_for_ids(

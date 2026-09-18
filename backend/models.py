@@ -89,6 +89,7 @@ class DualRecordingVerification(TypedDict, total=False):
     zwiftActivityId: str
     stravaActivityId: int | None
     failingMetrics: list[str]    # e.g. ['w1200', 'w300']
+    source: str           # 'mandatory' | 'opt_in'
     comparison: dict[str, Any]  # cpDiff rows + avgPower for display
 
 

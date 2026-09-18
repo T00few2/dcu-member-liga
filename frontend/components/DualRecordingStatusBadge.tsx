@@ -2,6 +2,7 @@
 
 import type { DualRecordingVerification } from '@/types/admin';
 import { explainDrFailureMetrics } from '@/lib/drFailureLabels';
+import { dualRecordingSourceCopy, isVoluntaryDualRecording } from '@/lib/drSource';
 
 interface Props {
     verification: DualRecordingVerification | undefined;
@@ -13,6 +14,8 @@ export default function DualRecordingStatusBadge({ verification, onClick }: Prop
     if (verification.status === 'sw_only') return null;
 
     const { status } = verification;
+    const voluntary = isVoluntaryDualRecording(verification.source);
+    const sourceCopy = dualRecordingSourceCopy(verification.source);
 
     let icon: string;
     let colorClass: string;
@@ -47,14 +50,29 @@ export default function DualRecordingStatusBadge({ verification, onClick }: Prop
         title = 'Dual recording: Ikke verificeret';
     }
 
+    const fullTitle = `${title}\n${sourceCopy.title}`;
+    const captionClass = voluntary
+        ? 'text-slate-500'
+        : status === 'failed'
+            ? 'text-red-700'
+            : 'text-slate-600';
+
     return (
         <button
+            type="button"
             onClick={onClick}
-            title={title}
-            className={`inline-flex items-center justify-center w-6 h-6 rounded-full border text-xs font-bold cursor-pointer transition-colors ${colorClass}`}
-            aria-label={title}
+            title={fullTitle}
+            className="inline-flex flex-col items-center gap-0.5 cursor-pointer"
+            aria-label={fullTitle}
         >
-            {icon}
+            <span
+                className={`inline-flex items-center justify-center w-6 h-6 rounded-full border text-xs font-bold transition-colors ${colorClass} ${voluntary ? 'border-dashed' : ''}`}
+            >
+                {icon}
+            </span>
+            <span className={`text-[9px] leading-none font-semibold uppercase tracking-wide whitespace-nowrap ${captionClass}`}>
+                {sourceCopy.short}
+            </span>
         </button>
     );
 }

@@ -308,7 +308,7 @@ function CategoryResultsTable({
                         <th className="px-4 py-2 text-center w-24">Time</th>
                         <th className="px-4 py-2 text-right">Pts</th>
                         <th className="px-4 py-2 text-center w-16">Flags</th>
-                        <th className="px-4 py-2 text-center w-14" title="Dual Recording">DR</th>
+                        <th className="px-4 py-2 text-center w-[4.5rem]" title="Dual Recording — påkrævet kan give DC, frivillig er kun til information">DR</th>
                         <th className="px-4 py-2 text-center w-14" title="Weight Verification">WV</th>
                         <th className="px-4 py-2 text-center w-14" title="Sticky Watts">SW</th>
                         <th className="px-4 py-2 text-center w-12" title="Disqualify (0 pts)">DQ</th>
