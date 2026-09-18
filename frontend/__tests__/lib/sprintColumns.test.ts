@@ -1,18 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { getConfiguredSprintsForCategory, resolveSprintColumns } from '@/lib/sprintColumns';
-import type { Race, Sprint } from '@/types/live';
+import type { SelectedSegment } from '@/types/admin';
+import type { Race } from '@/types/live';
 
-const champs = (count: number): Sprint => ({
+const champs = (count: number): SelectedSegment => ({
     id: '1056322864',
     count,
     name: 'Champs-Élysées',
+    key: `1056322864_${count}`,
+    direction: 'forward',
     lap: count,
 });
 
-const montmartre = (count: number): Sprint => ({
+const montmartre = (count: number): SelectedSegment => ({
     id: '1055881124',
     count,
     name: 'Montmartre KOM',
+    key: `1055881124_${count}`,
+    direction: 'forward',
     lap: count,
 });
 
@@ -44,6 +49,9 @@ describe('getConfiguredSprintsForCategory', () => {
             eventMode: 'grouped',
             raceGroups: [
                 {
+                    id: 'g1',
+                    name: 'High end',
+                    eventId: 'evt-1',
                     categories: [{ category: '2. Division' }],
                     sprints: [montmartre(1), champs(1), champs(2)],
                 },

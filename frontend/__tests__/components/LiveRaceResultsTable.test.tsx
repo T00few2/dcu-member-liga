@@ -82,11 +82,14 @@ describe('LiveResultsView ranking', () => {
             eventMode: 'grouped',
             raceGroups: [
                 {
+                    id: 'g1',
+                    name: 'High end',
+                    eventId: 'evt-1',
                     categories: [{ category: '1. Division' }],
                     sprints: [
-                        { id: '1055881124', count: 1, name: 'Montmartre KOM' },
-                        { id: '1056322864', count: 1, name: 'Champs-Élysées' },
-                        { id: '1056322864', count: 2, name: 'Champs-Élysées' },
+                        { id: '1055881124', count: 1, name: 'Montmartre KOM', key: '1055881124_1', direction: 'forward', lap: 1 },
+                        { id: '1056322864', count: 1, name: 'Champs-Élysées', key: '1056322864_1', direction: 'forward', lap: 1 },
+                        { id: '1056322864', count: 2, name: 'Champs-Élysées', key: '1056322864_2', direction: 'forward', lap: 2 },
                     ],
                 },
             ],
