@@ -119,7 +119,7 @@ function StatsTable({ result }: { result: DualRecordingResult }) {
                 </tbody>
             </table>
             <p className="text-xs text-muted-foreground mt-2 px-1">
-                Strava values computed from the synchronised race window
+                Values computed from the overlapping race window
                 {sync ? ` · ${fmtOffset(sync.stravaOffsetSec)} · ${syncMethodLabel(sync.syncMethod)}` : ''}.
                 Diff = Zwift − Strava.
             </p>

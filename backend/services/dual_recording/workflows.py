@@ -188,13 +188,17 @@ def _compute_dual_recording_for_rider(
         )
     else:
         strava_cp_synced = _compute_best_efforts(strava_1hz_for_comparison, durations)
-    strava_avg_synced = (
-        round(sum(strava_1hz_for_comparison) / len(strava_1hz_for_comparison), 1)
-        if strava_1hz_for_comparison else None
-    )
+
+    overlap_n = min(len(z_1hz_for_comparison), len(strava_1hz_for_comparison))
+    if overlap_n > 0:
+        zwift_avg_synced = round(sum(z_1hz_for_comparison[:overlap_n]) / overlap_n, 1)
+        strava_avg_synced = round(sum(strava_1hz_for_comparison[:overlap_n]) / overlap_n, 1)
+    else:
+        zwift_avg_synced = None
+        strava_avg_synced = None
 
     similarity_metrics = _compute_similarity_metrics(z_1hz_for_comparison, strava_1hz_for_comparison)
-    avg_diff_w, avg_diff_pct = _compute_avg_power_diff(zwift_avg_watts, strava_avg_synced)
+    avg_diff_w, avg_diff_pct = _compute_avg_power_diff(zwift_avg_synced, strava_avg_synced)
 
     return {
         "zwift": {
@@ -236,7 +240,7 @@ def _compute_dual_recording_for_rider(
         "comparison": {
             "cpDiff": _build_cp_comparison(zwift_cp_synced, strava_cp_synced),
             "avgPower": {
-                "zwift": zwift_avg_watts,
+                "zwift": zwift_avg_synced,
                 "strava": strava_avg_synced,
                 "diffW": avg_diff_w,
                 "diffPct": avg_diff_pct,

@@ -138,3 +138,104 @@ def test_cpdiff_uses_zwift_peak_window_not_strava_independent_peak(monkeypatch):
     assert row_w15["strava"] == 250.0
     assert row_w15["diffW"] == 50.0
 
+
+def _patch_dual_recording_workflow(
+    monkeypatch,
+    *,
+    z_times,
+    z_watts,
+    s_times,
+    s_watts,
+    duration_sec,
+    zwift_avg_watts,
+):
+    monkeypatch.setattr(workflows, "get_valid_access_token", lambda *_args, **_kwargs: "token")
+    monkeypatch.setattr(workflows, "get_zwift_service", lambda: MagicMock(
+        get_best_power_curve_activity=MagicMock(return_value={"pointsWatts": {}}),
+    ))
+    monkeypatch.setattr(
+        workflows,
+        "_extract_zwift_activity_fields",
+        lambda _raw: {
+            "startedAt": "2026-05-16T16:00:00Z",
+            "durationSec": duration_sec,
+            "avgWatts": zwift_avg_watts,
+        },
+    )
+    monkeypatch.setattr(
+        workflows,
+        "_fetch_zwift_streams",
+        lambda *_args, **_kwargs: ({"time": z_times, "watts": z_watts}, {}),
+    )
+    monkeypatch.setattr(
+        workflows,
+        "_match_strava_activity",
+        lambda *_args, **_kwargs: (
+            {
+                "id": 123,
+                "name": "Strava DR",
+                "startDate": "2026-05-16T16:00:00Z",
+                "durationSec": duration_sec,
+                "averageWatts": 0,
+            },
+            "123",
+            {},
+        ),
+    )
+    monkeypatch.setattr(
+        workflows.strava_service,
+        "get_activity_streams",
+        lambda *_args, **_kwargs: [
+            _stream("time", s_times),
+            _stream("watts", s_watts),
+            _stream("cadence", [90.0] * len(s_times)),
+            _stream("heartrate", [150.0] * len(s_times)),
+            _stream("altitude", [50.0] * len(s_times)),
+        ],
+    )
+    monkeypatch.setattr(
+        workflows,
+        "_trim_strava_streams",
+        lambda *_args, **_kwargs: (
+            {
+                "time": s_times,
+                "watts": s_watts,
+                "cadence": [90.0] * len(s_times),
+                "heartrate": [150.0] * len(s_times),
+                "altitude": [50.0] * len(s_times),
+            },
+            0,
+            "power_mse_no_shift",
+            0,
+        ),
+    )
+
+
+def test_avg_power_uses_overlapping_window_not_full_zwift_activity(monkeypatch):
+    """Gennemsnit must ignore Zwift-only lead-in that Strava does not cover."""
+    db = _build_mock_db()
+    z_times = list(range(100))
+    z_watts = [400.0] * 20 + [200.0] * 80
+    s_times = list(range(20, 100))
+    s_watts = [200.0] * 80
+    _patch_dual_recording_workflow(
+        monkeypatch,
+        z_times=z_times,
+        z_watts=z_watts,
+        s_times=s_times,
+        s_watts=s_watts,
+        duration_sec=99,
+        zwift_avg_watts=240.0,
+    )
+
+    result = workflows._compute_dual_recording_for_rider(
+        db=db,
+        user_doc_id="10001",
+        zwift_activity_id="zwift-activity",
+    )
+    avg = result["comparison"]["avgPower"]
+    assert avg["zwift"] == 200.0
+    assert avg["strava"] == 200.0
+    assert avg["diffW"] == 0.0
+    assert result["zwift"]["avgWatts"] == 240.0
+
