@@ -204,19 +204,18 @@ export default function MyStatsPage() {
     }, [statsMode, selectedRace, referenceCategory, allRiders, currentUserZwiftId, clubRiderIdsInRace]);
 
     const displayRidersWithPower = useMemo<RiderWithPower[]>(() => {
-        return displayRiders
-            .map((rider) => {
-                // Some race payloads store CP on `criticalP`, others inline on the rider.
-                const raceCriticalPower = normalizeCriticalPower(rider.criticalP ?? rider);
-                return raceCriticalPower
-                    ? {
-                        ...rider,
-                        resolvedCriticalPower: raceCriticalPower,
-                        weightKg: weightKgByZwiftId[String(rider.zwiftId)] ?? null,
-                    }
-                    : null;
-            })
-            .filter((rider): rider is RiderWithPower => rider !== null);
+        return displayRiders.flatMap((rider) => {
+            // Some race payloads store CP on `criticalP`, others inline on the rider.
+            const raceCriticalPower = normalizeCriticalPower(rider.criticalP ?? rider);
+            if (!raceCriticalPower) return [];
+            const weightKg = weightKgByZwiftId[String(rider.zwiftId)];
+            const withPower: RiderWithPower = {
+                ...rider,
+                resolvedCriticalPower: raceCriticalPower,
+                weightKg: weightKg ?? null,
+            };
+            return [withPower];
+        });
     }, [displayRiders, weightKgByZwiftId]);
 
     const categoryColorMap = useMemo(() => {
