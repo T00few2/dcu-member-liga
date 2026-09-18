@@ -18,10 +18,14 @@ logger = logging.getLogger(__name__)
 
 # Among overlapping Strava files, pick the least Zwift-like trace so a
 # Zwift→Strava upload is not compared with itself. Unrelated rides (outdoor,
-# cooldown) score even lower, so ignore anything below the floor.
+# cooldown) score even lower, so ignore anything below the floor — unless the
+# only remaining non-export file is a truncated dual recording (late start /
+# early stop) that still finishes with the race.
 _ZWIFT_EXPORT_CORR = 0.995
 _ZWIFT_EXPORT_NAMED_CORR = 0.98
 _MIN_DUAL_RECORDING_CORR = 0.40
+_MIN_GRAY_CORR = 0.20
+_MAX_GRAY_END_DELTA_SEC = 480
 _CYCLING_SPORTS = frozenset({"Ride", "VirtualRide", "GravelRide", "MountainBikeRide"})
 
 
@@ -89,6 +93,7 @@ def _choose_among_meaningful(
 ) -> tuple[dict | None, str]:
     """Pick the dual-recording file: least similar to Zwift, but still the same ride."""
     dual_like: list[tuple[float, int, float, float, float, dict]] = []
+    gray: list[tuple[float, int, float, float, float, dict]] = []
     unscored: list[tuple[dict, float, float, float]] = []
 
     for act, overlap_sec, end_delta, start_delta in meaningful:
@@ -97,15 +102,26 @@ def _choose_among_meaningful(
         if score is None:
             unscored.append((act, overlap_sec, end_delta, start_delta))
             continue
-        if _is_zwift_export(act, score) or score < _MIN_DUAL_RECORDING_CORR:
+        if _is_zwift_export(act, score):
             continue
         duration_delta = abs(_activity_duration_sec(act) - zwift_window_sec)
-        dual_like.append((score, duration_delta, overlap_sec, end_delta, start_delta, act))
+        row = (score, duration_delta, overlap_sec, end_delta, start_delta, act)
+        if score >= _MIN_DUAL_RECORDING_CORR:
+            dual_like.append(row)
+            continue
+        if score >= _MIN_GRAY_CORR and end_delta <= _MAX_GRAY_END_DELTA_SEC:
+            gray.append(row)
 
     if dual_like:
         # Lowest correlation among same-ride files avoids the Zwift export.
         dual_like.sort(key=lambda row: (row[0], row[1], -row[2], row[3], row[4]))
         return dual_like[0][5], "lowest_similarity"
+
+    if gray:
+        # Truncated dual recording: only non-export left, finishes with the race,
+        # but Pearson is pulled down by a late start / early stop.
+        gray.sort(key=lambda row: (-row[0], row[3], -row[2]))
+        return gray[0][5], "gray_zone_non_export"
 
     if score_by_id and not unscored:
         return None, "no_similar_candidate"
@@ -234,7 +250,9 @@ def _match_strava_activity(
             if rid in score_by_id:
                 row["similarityScore"] = round(score_by_id[rid], 6)
                 row["excludedAsExport"] = _is_zwift_export(act, score_by_id[rid])
-                row["belowSimilarityFloor"] = score_by_id[rid] < _MIN_DUAL_RECORDING_CORR
+                row["belowSimilarityFloor"] = (
+                    score_by_id[rid] < _MIN_DUAL_RECORDING_CORR and rid != chosen_id
+                )
             if chosen_id and rid == chosen_id:
                 row["selected"] = True
 

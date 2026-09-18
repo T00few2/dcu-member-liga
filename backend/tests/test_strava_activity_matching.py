@@ -149,3 +149,46 @@ def test_does_not_select_unrelated_ride_as_only_overlap(monkeypatch):
     assert matched is None
     assert chosen_id is None
     assert debug["selectionReason"] == "no_similar_candidate"
+
+
+def test_selects_truncated_dual_over_zwift_export(monkeypatch):
+    """Andreas-style: dual started late so Pearson is ~0.34, but it finishes with the race."""
+    export = _act(40, "Zwift - Race: 1. Division", "2026-09-17T17:00:00Z", 4245)
+    dual = _act(41, "Cykeltur om aftenen", "2026-09-17T17:18:54Z", 3147)
+    _patch_activities(monkeypatch, [export, dual], {"40": 1.0, "41": 0.3355})
+
+    matched, chosen_id, debug = strava_match._match_strava_activity(
+        "rider-1",
+        None,
+        "2026-09-17T17:00:00Z",
+        4260,
+        *_times_watts(),
+        "2026-09-17T19:00",
+    )
+    assert chosen_id == "41"
+    assert matched["name"] == "Cykeltur om aftenen"
+    assert debug["selectionReason"] == "gray_zone_non_export"
+    by_id = {c["activityId"]: c for c in debug["candidates"]}
+    assert by_id["40"]["excludedAsExport"] is True
+    assert by_id["41"]["selected"] is True
+    assert by_id["41"]["belowSimilarityFloor"] is False
+
+
+def test_still_rejects_outdoor_ride_with_mismatched_end_in_gray_zone(monkeypatch):
+    export = _act(50, "Zwift - Race: 3. Division", "2026-09-17T17:00:00Z", 4856)
+    outdoor = _act(51, "Cykeltur om aftenen", "2026-09-17T16:46:19Z", 6753)
+    _patch_activities(monkeypatch, [export, outdoor], {"50": 1.0, "51": 0.231})
+
+    matched, chosen_id, debug = strava_match._match_strava_activity(
+        "rider-1",
+        None,
+        "2026-09-17T16:57:08Z",
+        4849,
+        *_times_watts(),
+        None,
+    )
+    assert matched is None
+    assert chosen_id is None
+    assert debug["selectionReason"] == "no_similar_candidate"
+    by_id = {c["activityId"]: c for c in debug["candidates"]}
+    assert by_id["51"]["belowSimilarityFloor"] is True

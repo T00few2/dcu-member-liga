@@ -111,6 +111,8 @@ function formatSelectionReason(reason: string | undefined): string {
             return 'Manual Strava activity selected';
         case 'lowest_similarity':
             return 'Least Zwift-like among same-ride files';
+        case 'gray_zone_non_export':
+            return 'Truncated dual recording (only non-Zwift overlap)';
         case 'closest_duration':
             return 'Selected by closest duration';
         case 'no_similar_candidate':
