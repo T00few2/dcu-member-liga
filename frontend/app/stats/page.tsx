@@ -11,16 +11,20 @@ import { SprintAnalysisSection } from './_components/SprintAnalysisSection';
 import {
     buildCategoryColorMap,
     categoryRankIndex,
+    formatDisplayPower,
     formatTime,
     getConfiguredSprintsForCategory,
     normalizeCategoryKey,
     normalizeCriticalPower,
+    parsePowerUnit,
+    toDisplayPower,
     STATS_PREFS_STORAGE_KEY,
 } from './_lib/stats-helpers';
 import { useStatsPageData } from './_lib/useStatsPageData';
 import type {
     ClubSnapshot,
     HiddenRiderIdsByMode,
+    PowerUnit,
     RiderWithCategory,
     RiderWithPower,
     SprintAnalysisRow,
@@ -38,6 +42,7 @@ export default function MyStatsPage() {
     const [selectedRaceId, setSelectedRaceId] = useState<string>('');
 
     const [sprintXAxis, setSprintXAxis] = useState<SprintXAxisMode>('time');
+    const [powerUnit, setPowerUnit] = useState<PowerUnit>('watts');
 
     const [statsMode, setStatsMode] = useState<StatsMode>('all');
     const [hiddenRiderIdsByMode, setHiddenRiderIdsByMode] = useState<HiddenRiderIdsByMode>({ all: [], club: [] });
@@ -51,6 +56,7 @@ export default function MyStatsPage() {
         currentUserZwiftId,
         currentUserClub,
         clubByZwiftId,
+        weightKgByZwiftId,
         isLoading,
     } = useStatsPageData({ selectedRaceId, setSelectedRaceId });
 
@@ -71,6 +77,7 @@ export default function MyStatsPage() {
                 statsMode?: string;
                 sprintXAxis?: string;
                 sprintCategoryFilter?: string;
+                powerUnit?: string;
                 hiddenRiderIdsByMode?: { all?: unknown; club?: unknown };
             };
 
@@ -79,6 +86,9 @@ export default function MyStatsPage() {
             }
             if (parsed.sprintXAxis === 'rank' || parsed.sprintXAxis === 'time') {
                 setSprintXAxis(parsed.sprintXAxis);
+            }
+            if (parsed.powerUnit === 'watts' || parsed.powerUnit === 'wkg') {
+                setPowerUnit(parsed.powerUnit);
             }
             if (typeof parsed.sprintCategoryFilter === 'string') {
                 setSprintCategoryFilter(parsed.sprintCategoryFilter);
@@ -102,6 +112,10 @@ export default function MyStatsPage() {
             const params = new URLSearchParams(window.location.search);
             setStatsMode(parseStatsMode(params.get('mode')));
             setSprintXAxis(parseSprintXAxis(params.get('x')));
+            const unitParam = params.get('unit');
+            if (unitParam === 'watts' || unitParam === 'wkg') {
+                setPowerUnit(parsePowerUnit(unitParam));
+            }
             const categoryParam = params.get('cat');
             setSprintCategoryFilter(categoryParam && categoryParam.trim() ? categoryParam.trim() : 'all');
             const raceParam = params.get('race');
@@ -120,10 +134,11 @@ export default function MyStatsPage() {
             statsMode,
             sprintXAxis,
             sprintCategoryFilter,
+            powerUnit,
             hiddenRiderIdsByMode,
         };
         window.localStorage.setItem(STATS_PREFS_STORAGE_KEY, JSON.stringify(payload));
-    }, [prefsHydrated, statsMode, sprintXAxis, sprintCategoryFilter, hiddenRiderIdsByMode]);
+    }, [prefsHydrated, statsMode, sprintXAxis, sprintCategoryFilter, powerUnit, hiddenRiderIdsByMode]);
 
     const selectedRace = useMemo(() => races.find((race) => race.id === selectedRaceId), [races, selectedRaceId]);
 
@@ -193,10 +208,16 @@ export default function MyStatsPage() {
             .map((rider) => {
                 // Some race payloads store CP on `criticalP`, others inline on the rider.
                 const raceCriticalPower = normalizeCriticalPower(rider.criticalP ?? rider);
-                return raceCriticalPower ? { ...rider, resolvedCriticalPower: raceCriticalPower } : null;
+                return raceCriticalPower
+                    ? {
+                        ...rider,
+                        resolvedCriticalPower: raceCriticalPower,
+                        weightKg: weightKgByZwiftId[String(rider.zwiftId)] ?? null,
+                    }
+                    : null;
             })
             .filter((rider): rider is RiderWithPower => rider !== null);
-    }, [displayRiders]);
+    }, [displayRiders, weightKgByZwiftId]);
 
     const categoryColorMap = useMemo(() => {
         return buildCategoryColorMap(displayRiders.map((rider) => rider.category));
@@ -218,7 +239,8 @@ export default function MyStatsPage() {
         let strokeColor = '#8884d8';
         let strokeWidth = 1.5;
         let opacity = 0.45;
-        let name = `${rider.name} (Kat ${rider.category})`;
+        let name = rider.name;
+        let tooltipName = rider.name;
 
         if (statsMode === 'club') {
             if (isMe) {
@@ -226,23 +248,26 @@ export default function MyStatsPage() {
                 strokeWidth = 5;
                 opacity = 1;
                 name = "Mig";
+                tooltipName = "Mig";
             } else if (isTeammate) {
                 strokeColor = riderCategoryColor;
                 strokeWidth = 2.5;
                 opacity = 0.7;
+                tooltipName = `${rider.name} (Kat ${rider.category})`;
             }
         } else if (isMe) {
             strokeColor = riderCategoryColor;
             strokeWidth = 5;
             opacity = 1;
             name = "Mig";
+            tooltipName = "Mig";
         } else {
             strokeColor = '#7c6ee6';
             strokeWidth = 1.75;
             opacity = 0.55;
         }
 
-        return { isMe, isTeammate, strokeColor, strokeWidth, opacity, name };
+        return { isMe, isTeammate, strokeColor, strokeWidth, opacity, name, tooltipName };
     };
 
     const hiddenRiderIds = useMemo(() => new Set(hiddenRiderIdsByMode[statsMode] || []), [hiddenRiderIdsByMode, statsMode]);
@@ -250,6 +275,9 @@ export default function MyStatsPage() {
     const powerLegendEntries = useMemo(() => {
         return [...displayRidersWithPower]
             .sort((a, b) => {
+                const aIsMe = a.zwiftId === currentUserZwiftId;
+                const bIsMe = b.zwiftId === currentUserZwiftId;
+                if (aIsMe !== bIsMe) return aIsMe ? -1 : 1;
                 const aRank = categoryRankIndex(String(a.category), rankOrder);
                 const bRank = categoryRankIndex(String(b.category), rankOrder);
                 if (aRank !== bRank) return aRank - bRank;
@@ -335,11 +363,12 @@ export default function MyStatsPage() {
         params.set('race', selectedRaceId);
         params.set('mode', statsMode);
         params.set('x', sprintXAxis);
+        params.set('unit', powerUnit);
         if (sprintCategoryFilter === 'all') params.delete('cat');
         else params.set('cat', sprintCategoryFilter);
         const query = params.toString();
         router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-    }, [selectedRaceId, statsMode, sprintXAxis, sprintCategoryFilter, pathname, router]);
+    }, [selectedRaceId, statsMode, sprintXAxis, powerUnit, sprintCategoryFilter, pathname, router]);
 
     const comparisonCategory = useMemo(() => {
         if (referenceCategory) return referenceCategory;
@@ -399,6 +428,7 @@ export default function MyStatsPage() {
                         time: sData.time / 1000,
                         rank: sData.rank,
                         power: sData.avgPower,
+                        weightKg: weightKgByZwiftId[String(rider.zwiftId)] ?? null,
                         isMe,
                         color,
                         opacity,
@@ -415,7 +445,7 @@ export default function MyStatsPage() {
                 scatterData,
             };
         });
-    }, [configuredSprints, userResult, sprintSourceRiders, currentUserZwiftId, clubRiderIdsInRace, statsMode, sprintCategoryColorMap]);
+    }, [configuredSprints, userResult, sprintSourceRiders, currentUserZwiftId, clubRiderIdsInRace, statsMode, sprintCategoryColorMap, weightKgByZwiftId]);
 
     const sprintAnalysisRowsForDisplay = useMemo<SprintAnalysisRow[]>(() => {
         return sprintAnalysisRows.map((row) => ({
@@ -454,10 +484,14 @@ export default function MyStatsPage() {
         const bestCp20 = displayRidersWithPower.reduce<{
             riderName: string;
             watts: number;
+            weightKg: number | null;
         } | null>((best, rider) => {
             const watts = Number(rider.resolvedCriticalPower.criticalP20Minutes || 0);
-            if (!best || watts > best.watts) {
-                return { riderName: rider.name, watts };
+            const display = toDisplayPower(watts, rider.weightKg, powerUnit);
+            const bestDisplay = best ? toDisplayPower(best.watts, best.weightKg, powerUnit) : null;
+            if (display === null) return best;
+            if (bestDisplay === null || display > bestDisplay) {
+                return { riderName: rider.name, watts, weightKg: rider.weightKg };
             }
             return best;
         }, null);
@@ -468,10 +502,17 @@ export default function MyStatsPage() {
             bestSprint,
             bestCp20,
         };
-    }, [statsMode, displayRiders, sprintAnalysisRows, displayRidersWithPower]);
+    }, [statsMode, displayRiders, sprintAnalysisRows, displayRidersWithPower, powerUnit]);
 
     const exportSprintCsv = () => {
-        const rows: string[][] = [['Sprint', 'Rytter', 'Kategori', 'Rang', 'Tid (s)', 'Effekt (w)']];
+        const rows: string[][] = [[
+            'Sprint',
+            'Rytter',
+            'Kategori',
+            'Rang',
+            'Tid (s)',
+            powerUnit === 'wkg' ? 'Effekt (W/kg)' : 'Effekt (W)',
+        ]];
         sprintAnalysisRowsForDisplay.forEach((row) => {
             row.scatterData.forEach((entry) => {
                 rows.push([
@@ -480,7 +521,7 @@ export default function MyStatsPage() {
                     String(entry.category || ''),
                     String(entry.rank ?? ''),
                     Number(entry.time).toFixed(2),
-                    String(entry.power ?? ''),
+                    formatDisplayPower(entry.power, entry.weightKg, powerUnit).replace(' W/kg', '').replace(' W', ''),
                 ]);
             });
         });
@@ -615,11 +656,13 @@ export default function MyStatsPage() {
                 </div>
             ) : (
                 <div className="space-y-12">
-                    {statsMode === 'club' && clubSnapshot && <ClubSnapshotCards snapshot={clubSnapshot} />}
+                    {statsMode === 'club' && clubSnapshot && <ClubSnapshotCards snapshot={clubSnapshot} powerUnit={powerUnit} />}
 
                     <PowerCurveSection
                         statsMode={statsMode}
                         userCategory={referenceCategory}
+                        powerUnit={powerUnit}
+                        setPowerUnit={setPowerUnit}
                         powerLegendEntries={powerLegendEntries}
                         visibleDisplayRidersWithPower={visibleDisplayRidersWithPower}
                         highlightedRiderId={highlightedRiderId}
@@ -645,6 +688,9 @@ export default function MyStatsPage() {
                         setHighlightedRiderId={setHighlightedRiderId}
                         statsMode={statsMode}
                         userResult={userResult}
+                        userWeightKg={currentUserZwiftId ? (weightKgByZwiftId[currentUserZwiftId] ?? null) : null}
+                        powerUnit={powerUnit}
+                        setPowerUnit={setPowerUnit}
                         exportSprintCsv={exportSprintCsv}
                         formatTime={formatTime}
                     />

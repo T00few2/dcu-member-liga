@@ -1,7 +1,9 @@
 import { CartesianGrid, Cell, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from 'recharts';
 
 import type { ResultEntry } from '@/types/live';
-import type { SprintAnalysisRow, SprintXAxisMode, StatsMode } from '../_lib/stats-types';
+import { formatConvertedPower, formatDisplayPower, powerAxisLabel, toDisplayPower } from '../_lib/stats-helpers';
+import type { PowerUnit, SprintAnalysisRow, SprintXAxisMode, StatsMode } from '../_lib/stats-types';
+import { PowerUnitToggle } from './PowerUnitToggle';
 
 type SprintAnalysisSectionProps = {
     sprintXAxis: SprintXAxisMode;
@@ -15,6 +17,9 @@ type SprintAnalysisSectionProps = {
     setHighlightedRiderId: (zwiftId: string | null) => void;
     statsMode: StatsMode;
     userResult: ResultEntry | null;
+    userWeightKg: number | null;
+    powerUnit: PowerUnit;
+    setPowerUnit: (unit: PowerUnit) => void;
     exportSprintCsv: () => void;
     formatTime: (ms: number) => string;
 };
@@ -31,6 +36,9 @@ export function SprintAnalysisSection({
     setHighlightedRiderId,
     statsMode,
     userResult,
+    userWeightKg,
+    powerUnit,
+    setPowerUnit,
     exportSprintCsv,
     formatTime,
 }: SprintAnalysisSectionProps) {
@@ -42,24 +50,27 @@ export function SprintAnalysisSection({
 
     return (
         <section>
-            <div className="flex justify-between items-center mb-4">
+            <div className="flex justify-between items-center mb-4 gap-3 flex-wrap">
                 <h2 className="text-2xl font-bold flex items-center gap-2">
                     <span>⚡ Sprintanalyse</span>
                 </h2>
 
-                <div className="bg-muted/30 p-1 rounded-lg flex text-xs font-medium">
-                    <button
-                        onClick={() => setSprintXAxis('rank')}
-                        className={`px-3 py-1 rounded transition-colors ${sprintXAxis === 'rank' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                    >
-                        Efter Rang
-                    </button>
-                    <button
-                        onClick={() => setSprintXAxis('time')}
-                        className={`px-3 py-1 rounded transition-colors ${sprintXAxis === 'time' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                    >
-                        Efter Tid
-                    </button>
+                <div className="flex items-center gap-2 flex-wrap">
+                    <PowerUnitToggle value={powerUnit} onChange={setPowerUnit} />
+                    <div className="bg-muted/30 p-1 rounded-lg flex text-xs font-medium">
+                        <button
+                            onClick={() => setSprintXAxis('rank')}
+                            className={`px-3 py-1 rounded transition-colors ${sprintXAxis === 'rank' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                            Efter Rang
+                        </button>
+                        <button
+                            onClick={() => setSprintXAxis('time')}
+                            className={`px-3 py-1 rounded transition-colors ${sprintXAxis === 'time' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                            Efter Tid
+                        </button>
+                    </div>
                 </div>
             </div>
             <div className="flex justify-between items-center gap-3 mb-4 flex-wrap">
@@ -105,7 +116,19 @@ export function SprintAnalysisSection({
             )}
 
             {configuredSprintsCount > 0 &&
-                sprintAnalysisRowsForDisplay.map((row) => (
+                sprintAnalysisRowsForDisplay.map((row) => {
+                    const yLabel = powerAxisLabel(powerUnit);
+                    const chartData = row.scatterData.flatMap((entry) => {
+                        const displayPower = toDisplayPower(entry.power, entry.weightKg, powerUnit);
+                        if (displayPower === null) return [];
+                        return [{ ...entry, power: displayPower }];
+                    });
+                    const myDisplayPower = row.myData
+                        ? toDisplayPower(row.myData.avgPower, userWeightKg, powerUnit)
+                        : null;
+                    const comparisonPowers = chartData.map((entry) => Number(entry.power));
+
+                    return (
                     <div key={row.sprintKey} className="mb-8">
                         <h3 className="text-lg font-semibold mb-3">Sprint {row.sprintIndex}</h3>
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-stretch">
@@ -138,13 +161,20 @@ export function SprintAnalysisSection({
                                         </div>
                                         <div className="bg-muted/30 p-2 rounded">
                                             <div className="text-xs text-muted-foreground">Gns. effekt</div>
-                                            <div className="font-mono font-bold text-orange-500">{row.myData.avgPower}w</div>
-                                            {row.scatterData.length > 0 && (
+                                            <div className="font-mono font-bold text-orange-500">
+                                                {formatDisplayPower(row.myData.avgPower, userWeightKg, powerUnit)}
+                                            </div>
+                                            {comparisonPowers.length > 0 && myDisplayPower !== null && (
                                                 <div className="text-[11px] text-muted-foreground mt-1">
                                                     {(() => {
-                                                        const bestPower = Math.max(...row.scatterData.map((entry) => Number(entry.power)));
-                                                        const delta = Number(row.myData.avgPower) - bestPower;
-                                                        return delta >= -0.5 ? 'Bedste effekt i klubvisning' : `${delta.toFixed(0)}w fra bedste`;
+                                                        const bestPower = Math.max(...comparisonPowers);
+                                                        const delta = myDisplayPower - bestPower;
+                                                        const closeEnough = powerUnit === 'wkg' ? delta >= -0.005 : delta >= -0.5;
+                                                        if (closeEnough) return 'Bedste effekt i klubvisning';
+                                                        const formattedDelta = powerUnit === 'wkg'
+                                                            ? `${delta.toFixed(2)} W/kg`
+                                                            : `${delta.toFixed(0)} W`;
+                                                        return `${formattedDelta} fra bedste`;
                                                     })()}
                                                 </div>
                                             )}
@@ -165,6 +195,10 @@ export function SprintAnalysisSection({
                                 {row.scatterData.length === 0 ? (
                                     <div className="h-full flex items-center justify-center text-muted-foreground italic">
                                         Ingen sammenligningsdata for denne sprint med nuvaerende filter. Proev en anden kategori eller vaelg &quot;Alle&quot;.
+                                    </div>
+                                ) : chartData.length === 0 ? (
+                                    <div className="h-full flex items-center justify-center px-6 text-center text-sm text-muted-foreground">
+                                        W/kg kan ikke vises uden rytternes vægt. Log ind for at hente vægtdata, eller skift tilbage til W.
                                     </div>
                                 ) : (
                                     <>
@@ -187,9 +221,11 @@ export function SprintAnalysisSection({
                                                     type="number"
                                                     dataKey="power"
                                                     name="Effekt"
-                                                    unit="w"
                                                     tick={{ fontSize: 10 }}
-                                                    label={{ value: 'Effekt (w)', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' }, fontSize: 10 }}
+                                                    tickFormatter={(value: number) => (
+                                                        powerUnit === 'wkg' ? Number(value).toFixed(1) : String(Math.round(Number(value)))
+                                                    )}
+                                                    label={{ value: `Effekt (${yLabel})`, angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' }, fontSize: 10 }}
                                                 />
                                                 <Tooltip
                                                     cursor={{ strokeDasharray: '3 3' }}
@@ -202,13 +238,13 @@ export function SprintAnalysisSection({
                                                                 <p className="font-bold" style={{ color: data.color }}>{data.name}</p>
                                                                 <p>Rang: {data.rank}</p>
                                                                 <p>Tid: {data.time.toFixed(2)}s</p>
-                                                                <p>Effekt: {data.power}w</p>
+                                                                <p>Effekt: {formatConvertedPower(data.power, powerUnit)}</p>
                                                             </div>
                                                         );
                                                     }}
                                                 />
-                                                <Scatter name="Riders" data={row.scatterData}>
-                                                    {row.scatterData.map((entry, index) => {
+                                                <Scatter name="Riders" data={chartData}>
+                                                    {chartData.map((entry, index) => {
                                                         const entryId = String(entry.id);
                                                         return (
                                                             <Cell
@@ -236,7 +272,8 @@ export function SprintAnalysisSection({
                             </div>
                         </div>
                     </div>
-                ))}
+                    );
+                })}
         </section>
     );
 }

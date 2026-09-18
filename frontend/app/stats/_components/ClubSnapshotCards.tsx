@@ -1,10 +1,12 @@
-import type { ClubSnapshot } from '../_lib/stats-types';
+import type { ClubSnapshot, PowerUnit } from '../_lib/stats-types';
+import { formatDisplayPower } from '../_lib/stats-helpers';
 
 type ClubSnapshotCardsProps = {
     snapshot: ClubSnapshot;
+    powerUnit: PowerUnit;
 };
 
-export function ClubSnapshotCards({ snapshot }: ClubSnapshotCardsProps) {
+export function ClubSnapshotCards({ snapshot, powerUnit }: ClubSnapshotCardsProps) {
     return (
         <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
@@ -28,7 +30,11 @@ export function ClubSnapshotCards({ snapshot }: ClubSnapshotCardsProps) {
             </div>
             <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
                 <div className="text-xs text-muted-foreground uppercase tracking-wide">Bedste CP20</div>
-                <div className="text-sm font-semibold">{snapshot.bestCp20 ? `${snapshot.bestCp20.watts}w` : '-'}</div>
+                <div className="text-sm font-semibold">
+                    {snapshot.bestCp20
+                        ? formatDisplayPower(snapshot.bestCp20.watts, snapshot.bestCp20.weightKg, powerUnit)
+                        : '-'}
+                </div>
                 {snapshot.bestCp20 && <div className="text-xs text-muted-foreground">{snapshot.bestCp20.riderName}</div>}
             </div>
         </section>

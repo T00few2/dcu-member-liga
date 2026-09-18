@@ -1,5 +1,6 @@
 import type { CriticalPower } from '@/types/live';
 import { ZWIFT_CATEGORY_COLORS } from '@/lib/ligaCategories';
+import type { PowerUnit } from './stats-types';
 
 export { getConfiguredSprintsForCategory } from '@/lib/sprintColumns';
 
@@ -82,4 +83,78 @@ export const formatTime = (ms: number) => {
     if (!ms) return '-';
     const totalSeconds = ms / 1000;
     return `${totalSeconds.toFixed(1)}s`;
+};
+
+export const parsePowerUnit = (value: string | null | undefined): PowerUnit => {
+    return value === 'wkg' ? 'wkg' : 'watts';
+};
+
+export const parseWeightKg = (weightInGrams: unknown): number | null => {
+    const grams = parsePositiveNumber(weightInGrams);
+    if (!grams) return null;
+    return grams / 1000;
+};
+
+export const toDisplayPower = (
+    watts: unknown,
+    weightKg: number | null | undefined,
+    unit: PowerUnit,
+): number | null => {
+    const power = typeof watts === 'number'
+        ? (Number.isFinite(watts) ? watts : null)
+        : parsePositiveNumber(watts);
+    if (power === null) return null;
+    if (unit === 'watts') return power;
+    if (!weightKg || weightKg <= 0) return null;
+    return power / weightKg;
+};
+
+export const formatDisplayPower = (
+    watts: unknown,
+    weightKg: number | null | undefined,
+    unit: PowerUnit,
+): string => {
+    return formatConvertedPower(toDisplayPower(watts, weightKg, unit), unit);
+};
+
+export const formatConvertedPower = (value: unknown, unit: PowerUnit): string => {
+    if (value === null || value === undefined || value === '') return '—';
+    const numeric = typeof value === 'number' ? value : Number(value);
+    if (!Number.isFinite(numeric)) return '—';
+    if (unit === 'watts') return `${Math.round(numeric)} W`;
+    return `${numeric.toFixed(2)} W/kg`;
+};
+
+export const powerAxisLabel = (unit: PowerUnit): string => (unit === 'wkg' ? 'W/kg' : 'Watts');
+
+export type PowerLegendGroup<T> = {
+    key: string;
+    label: string | null;
+    entries: T[];
+};
+
+export const groupPowerLegendEntries = <T extends { rider: { category: string } }>(
+    entries: T[],
+    groupByCategory: boolean,
+): PowerLegendGroup<T>[] => {
+    if (!groupByCategory) {
+        return [{ key: 'all', label: null, entries }];
+    }
+
+    const groups = new Map<string, T[]>();
+    const order: string[] = [];
+    for (const entry of entries) {
+        const category = String(entry.rider.category || '').trim() || 'Ukendt';
+        if (!groups.has(category)) {
+            groups.set(category, []);
+            order.push(category);
+        }
+        groups.get(category)!.push(entry);
+    }
+
+    return order.map((category) => ({
+        key: category,
+        label: category,
+        entries: groups.get(category)!,
+    }));
 };

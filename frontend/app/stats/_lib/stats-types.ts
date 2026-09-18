@@ -2,9 +2,13 @@ import type { CriticalPower, ResultEntry, Sprint, SprintPerformance } from '@/ty
 
 export type StatsMode = 'all' | 'club';
 export type SprintXAxisMode = 'rank' | 'time';
+export type PowerUnit = 'watts' | 'wkg';
 
 export type RiderWithCategory = ResultEntry & { category: string };
-export type RiderWithPower = RiderWithCategory & { resolvedCriticalPower: CriticalPower };
+export type RiderWithPower = RiderWithCategory & {
+    resolvedCriticalPower: CriticalPower;
+    weightKg: number | null;
+};
 
 export type HiddenRiderIdsByMode = {
     all: string[];
@@ -18,6 +22,7 @@ export type SprintScatterPoint = {
     time: number;
     rank: number;
     power: number;
+    weightKg: number | null;
     isMe: boolean;
     color: string;
     opacity: number;
@@ -36,7 +41,7 @@ export type ClubSnapshot = {
     riderCount: number;
     avgRank: number | null;
     bestSprint: { label: string; riderName: string; timeSec: number } | null;
-    bestCp20: { riderName: string; watts: number } | null;
+    bestCp20: { riderName: string; watts: number; weightKg: number | null } | null;
 };
 
 export type PowerLineStyle = {
@@ -46,4 +51,5 @@ export type PowerLineStyle = {
     strokeWidth: number;
     opacity: number;
     name: string;
+    tooltipName: string;
 };

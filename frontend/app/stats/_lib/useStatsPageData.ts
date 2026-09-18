@@ -5,6 +5,7 @@ import { useEffect, useMemo } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useParticipantsQuery, useProfileQuery, useRacesQuery } from '@/hooks/queries';
 import type { Race } from '@/types/live';
+import { parseWeightKg } from './stats-helpers';
 
 type UseStatsPageDataArgs = {
     selectedRaceId: string;
@@ -40,18 +41,23 @@ export function useStatsPageData({
         ? String(profileData.club)
         : null;
 
-    const clubByZwiftId = useMemo<Record<string, string>>(() => {
+    const { clubByZwiftId, weightKgByZwiftId } = useMemo(() => {
         const nextClubMap: Record<string, string> = {};
+        const nextWeightMap: Record<string, number> = {};
         const participants = Array.isArray(participantsQuery.data) ? participantsQuery.data : [];
         participants.forEach((participant: unknown) => {
-            const value = participant as { zwiftId?: string | number; club?: string };
+            const value = participant as { zwiftId?: string | number; club?: string; weightInGrams?: unknown };
             const zwiftId = String(value?.zwiftId ?? '').trim();
             if (!zwiftId) return;
             if (typeof value?.club === 'string' && value.club.trim().length > 0) {
                 nextClubMap[zwiftId] = value.club.trim();
             }
+            const weightKg = parseWeightKg(value?.weightInGrams);
+            if (weightKg) {
+                nextWeightMap[zwiftId] = weightKg;
+            }
         });
-        return nextClubMap;
+        return { clubByZwiftId: nextClubMap, weightKgByZwiftId: nextWeightMap };
     }, [participantsQuery.data]);
 
     useEffect(() => {
@@ -74,6 +80,7 @@ export function useStatsPageData({
         currentUserZwiftId,
         currentUserClub,
         clubByZwiftId,
+        weightKgByZwiftId,
         isLoading,
     };
 }
