@@ -9,13 +9,16 @@ from services.club_kits import (
     club_obtainable_intersection,
     drop_level_from_achievement,
     effective_drop_level,
+    extract_game_client_fields,
     extract_level_fields,
     obtainable_signatures,
+    parse_game_client_platform,
     pin_club_kit,
     preview_auto_assignment,
     rider_assigned_kit_coverage,
     rider_club_kit_payload,
     riders_below_kit_level,
+    riders_blocked_from_code_kit,
     unpin_club_kit,
 )
 
@@ -69,19 +72,49 @@ def test_unknown_drop_level_counts_as_starter_level():
     assert effective_drop_level(12) == 12
 
 
+def test_parse_game_client_platform():
+    assert parse_game_client_platform("CNL/3.82.11 (Windows 10) zwift/1.0") == "windows"
+    assert parse_game_client_platform("CNL (Macintosh; Intel Mac OS X)") == "mac"
+    assert parse_game_client_platform("CNL tvOS Apple TV") == "tvos"
+    assert parse_game_client_platform("Zwift iPhone") == "ios"
+    assert parse_game_client_platform("okhttp Android") == "android"
+    assert parse_game_client_platform("") == "unknown"
+
+
+def test_extract_game_client_fields():
+    fields = extract_game_client_fields({
+        "userAgent": "CNL/3.82.11 (Windows 10) zwift/1.0.165303 game/1.121.0",
+    })
+    assert fields["gameClientPlatform"] == "windows"
+    assert fields["canEnterUnlockCode"] is True
+    assert extract_game_client_fields({}) == {}
+
+
 def test_obtainable_set_level_and_working_code_only():
-    low = obtainable_signatures(UNLOCKS, 8)
+    low = obtainable_signatures(UNLOCKS, 8, can_enter_code=True)
     assert low == {6, 1, 3}
-    high = obtainable_signatures(UNLOCKS, 50)
+    high = obtainable_signatures(UNLOCKS, 50, can_enter_code=True)
     assert high == {6, 1, 2, 3, 5}
-    unknown = obtainable_signatures(UNLOCKS, None)
+    unknown = obtainable_signatures(UNLOCKS, None, can_enter_code=True)
     assert unknown == {6, 3}
     assert 4 not in high
+    assert obtainable_signatures(UNLOCKS, 8) == {6, 1}
 
 
 def test_club_intersection_unknown_level_keeps_starter_kits():
-    members = [{"dropLevel": 80}, {"dropLevel": None}]
+    members = [
+        {"dropLevel": 80, "canEnterUnlockCode": True},
+        {"dropLevel": None, "canEnterUnlockCode": True},
+    ]
     assert club_obtainable_intersection(members, UNLOCKS) == {6, 3}
+
+
+def test_club_intersection_excludes_codes_without_pc_mac():
+    members = [
+        {"dropLevel": 8, "gameClientPlatform": "windows", "canEnterUnlockCode": True},
+        {"dropLevel": 8, "gameClientPlatform": "tvos", "canEnterUnlockCode": False},
+    ]
+    assert club_obtainable_intersection(members, UNLOCKS) == {6, 1}
 
 
 def test_riders_below_kit_level_lists_low_and_unknown():
@@ -142,7 +175,7 @@ def test_rider_coverage_counts_who_can_obtain_assigned_kit():
         {"club": "MTB Randers", "dropLevel": 43},
         {"club": "Low Club", "dropLevel": 12},
         {"club": "Low Club", "dropLevel": 8},
-        {"club": "Code Club", "dropLevel": 1},
+        {"club": "Code Club", "dropLevel": 1, "canEnterUnlockCode": True},
         {"club": "No Kit", "dropLevel": 80},
     ]
     kits = [
@@ -273,13 +306,58 @@ def test_auto_doubles_unpinned_kits_instead_of_reusing_pin():
 
 def test_unknown_level_clubs_share_starter_then_working_code():
     riders = [
-        {"club": "A", "dropLevel": None},
-        {"club": "B", "dropLevel": None},
+        {"club": "A", "dropLevel": None, "canEnterUnlockCode": True},
+        {"club": "B", "dropLevel": None, "canEnterUnlockCode": True},
     ]
     preview = preview_auto_assignment(unlocks=UNLOCKS, club_kits=[], riders=riders)
     assert preview["coverage"]["autoCount"] == 2
     assert preview["coverage"]["sharedJerseyCount"] == 0
     assert {row["jerseySignature"] for row in preview["auto"]} == {3, 6}
+
+
+def test_tvos_club_does_not_get_p_code_jersey():
+    riders = [
+        {"club": "TV Club", "dropLevel": 1, "gameClientPlatform": "tvos", "canEnterUnlockCode": False},
+        {"club": "TV Club", "dropLevel": 2, "gameClientPlatform": "ios"},
+    ]
+    preview = preview_auto_assignment(unlocks=UNLOCKS, club_kits=[], riders=riders)
+    assert preview["coverage"]["autoCount"] == 1
+    assert preview["auto"][0]["jerseySignature"] == 6
+    saved = [{
+        "club": "TV Club",
+        "jerseySignature": 3,
+        "jerseyName": "Working Code",
+        "assignment": "auto",
+        "unlockCode": "WORKS",
+        "codeStatus": "working",
+    }]
+    reshuffle = preview_auto_assignment(unlocks=UNLOCKS, club_kits=saved, riders=riders)
+    assert reshuffle["auto"][0]["jerseySignature"] == 6
+
+
+def test_assign_auto_rejects_code_kit_for_non_pc_mac():
+    try:
+        assign_auto_club_kit(
+            club="TV Club",
+            signature=3,
+            club_kits=[],
+            unlocks=UNLOCKS,
+            members=[{"name": "Apple TV", "dropLevel": 1, "gameClientPlatform": "tvos"}],
+        )
+        raise AssertionError("expected P-code rejection")
+    except ValueError as exc:
+        assert "PC/Mac" in str(exc)
+
+
+def test_riders_blocked_from_code_kit_skips_level_grant():
+    kit = {"club": "A", "jerseySignature": 3, "assignment": "auto"}
+    members = [
+        {"name": "TV", "dropLevel": 1, "gameClientPlatform": "tvos"},
+        {"name": "PC", "dropLevel": 1, "canEnterUnlockCode": True},
+    ]
+    gap = riders_blocked_from_code_kit(members, kit, UNLOCKS)
+    assert gap["cannotEnterCodeCount"] == 1
+    assert gap["cannotEnterCode"][0]["name"] == "TV"
 
 
 def test_empty_pool_when_no_working_codes_and_low_levels():
@@ -401,6 +479,37 @@ def test_rider_payload_hides_expired_code_but_keeps_level_grant():
     assert payload["showCode"] is False
     assert payload["hasLevelGrant"] is True
     assert payload["minLevel"] == 10
+
+
+def test_rider_payload_hides_p_code_unless_pc_mac():
+    settings = {
+        "jerseyUnlocks": UNLOCKS,
+        "clubKits": [{
+            "club": "Code Club",
+            "jerseySignature": 3,
+            "jerseyName": "Working Code",
+            "assignment": "auto",
+        }],
+    }
+    blocked = rider_club_kit_payload(
+        club="Code Club",
+        settings=settings,
+        drop_level=1,
+        can_enter_unlock_code=False,
+    )
+    assert blocked is not None
+    assert blocked["showCode"] is False
+    assert blocked["codeBlocked"] is True
+    assert blocked["unlockCode"] is None
+    allowed = rider_club_kit_payload(
+        club="Code Club",
+        settings=settings,
+        drop_level=1,
+        can_enter_unlock_code=True,
+    )
+    assert allowed is not None
+    assert allowed["showCode"] is True
+    assert allowed["unlockCode"] == "WORKS"
 
 
 def test_rider_payload_matches_club_case_insensitively():

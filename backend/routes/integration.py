@@ -7,7 +7,7 @@ from firebase_admin import firestore
 from extensions import db, strava_service, get_zwift_game_service, get_zwift_service, get_zwift_insider_service
 from config import FRONTEND_URL
 from authz import verify_user_token, AuthzError
-from services.club_kits import extract_level_fields
+from services.club_kits import extract_game_client_fields, extract_level_fields
 from services.zwift_drop_levels import ensure_drop_level_fields
 from services.schema_validation import with_schema_version
 from services.zwift_tokens import (
@@ -56,6 +56,13 @@ def _competition_metrics_to_profile(
         mapped.update(levels)
     elif isinstance(existing_zwift_profile, dict):
         for key in ('achievementLevel', 'dropLevel', 'totalExperiencePoints'):
+            if existing_zwift_profile.get(key) is not None:
+                mapped[key] = existing_zwift_profile[key]
+    client = extract_game_client_fields(profile)
+    if client:
+        mapped.update(client)
+    elif isinstance(existing_zwift_profile, dict):
+        for key in ('gameClientUserAgent', 'gameClientPlatform', 'canEnterUnlockCode'):
             if existing_zwift_profile.get(key) is not None:
                 mapped[key] = existing_zwift_profile[key]
     return mapped

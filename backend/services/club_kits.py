@@ -100,11 +100,66 @@ def effective_drop_level(drop_level: int | None) -> int:
     return drop_level
 
 
+PLATFORM_WINDOWS = "windows"
+PLATFORM_MAC = "mac"
+PLATFORM_IOS = "ios"
+PLATFORM_ANDROID = "android"
+PLATFORM_TVOS = "tvos"
+PLATFORM_UNKNOWN = "unknown"
+PC_MAC_PLATFORMS = {PLATFORM_WINDOWS, PLATFORM_MAC}
+
+
+def parse_game_client_platform(user_agent: str | None) -> str:
+    """Last Zwift launch OS from profile userAgent."""
+    text = (user_agent or "").lower()
+    if not text.strip():
+        return PLATFORM_UNKNOWN
+    if "tvos" in text or "apple tv" in text:
+        return PLATFORM_TVOS
+    if "iphone" in text or "ipad" in text or "ipod" in text:
+        return PLATFORM_IOS
+    if "android" in text:
+        return PLATFORM_ANDROID
+    if "macintosh" in text or "mac os" in text or "macos" in text:
+        return PLATFORM_MAC
+    if "windows" in text:
+        return PLATFORM_WINDOWS
+    return PLATFORM_UNKNOWN
+
+
+def extract_game_client_fields(profile: Mapping[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(profile, Mapping):
+        return {}
+    ua = _str_or_none(profile.get("userAgent"))
+    if not ua:
+        return {}
+    platform = parse_game_client_platform(ua)
+    return {
+        "gameClientUserAgent": ua,
+        "gameClientPlatform": platform,
+        "canEnterUnlockCode": platform in PC_MAC_PLATFORMS,
+    }
+
+
+def rider_can_enter_unlock_code(member: Mapping[str, Any] | None) -> bool:
+    if not isinstance(member, Mapping):
+        return False
+    flag = member.get("canEnterUnlockCode")
+    if flag is True:
+        return True
+    if flag is False:
+        return False
+    platform = (_str_or_none(member.get("gameClientPlatform")) or "").lower()
+    return platform in PC_MAC_PLATFORMS
+
+
 def obtainable_signatures(
     unlocks: Iterable[Mapping[str, Any]],
     drop_level: int | None,
+    *,
+    can_enter_code: bool = False,
 ) -> set[int]:
-    """Jerseys this rider can obtain via auto-grant and/or a working P-code."""
+    """Jerseys this rider can obtain via auto-grant and/or a working P-code on PC/Mac."""
     level = effective_drop_level(drop_level)
     obtained: set[int] = set()
     for unlock in unlocks:
@@ -114,7 +169,7 @@ def obtainable_signatures(
         min_level = _int_or_none(unlock.get("minLevel"))
         if min_level is not None and level >= min_level:
             obtained.add(signature)
-        if has_working_code(unlock):
+        if can_enter_code and has_working_code(unlock):
             obtained.add(signature)
     return obtained
 
@@ -168,7 +223,11 @@ def club_obtainable_intersection(
     member_sets: list[set[int]] = []
     for member in members:
         drop_level = _int_or_none(member.get("dropLevel"))
-        member_sets.append(obtainable_signatures(unlocks, drop_level))
+        member_sets.append(obtainable_signatures(
+            unlocks,
+            drop_level,
+            can_enter_code=rider_can_enter_unlock_code(member),
+        ))
     if not member_sets:
         return set()
     return set.intersection(*member_sets)
@@ -187,7 +246,8 @@ def rider_can_obtain_kit(
         return False
     drop = _int_or_none(member.get("dropLevel"))
     unlock_list = list(unlocks)
-    if signature in obtainable_signatures(unlock_list, drop):
+    can_enter = rider_can_enter_unlock_code(member)
+    if signature in obtainable_signatures(unlock_list, drop, can_enter_code=can_enter):
         return True
     unlock = unlocks_by_signature(unlock_list).get(signature) or {}
     min_level = _int_or_none(unlock.get("minLevel"))
@@ -195,7 +255,7 @@ def rider_can_obtain_kit(
         min_level = _int_or_none(kit.get("minLevel"))
     if min_level is not None and effective_drop_level(drop) >= min_level:
         return True
-    return has_working_code(unlock) or has_working_code(kit)
+    return can_enter and (has_working_code(unlock) or has_working_code(kit))
 
 
 def kit_is_level_or_code(kit: Mapping[str, Any] | None, unlocks: Iterable[Mapping[str, Any]]) -> bool:
@@ -298,6 +358,72 @@ def riders_below_kit_level(
     }
 
 
+def riders_blocked_from_code_kit(
+    members: Iterable[Mapping[str, Any]],
+    kit: Mapping[str, Any] | None,
+    unlocks: Iterable[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Riders who need a P-code for the saved kit but last launched off PC/Mac."""
+    empty = {"cannotEnterCodeCount": 0, "cannotEnterCode": []}
+    if not kit:
+        return empty
+    signature = _int_or_none(kit.get("jerseySignature"))
+    unlock = unlocks_by_signature(unlocks).get(signature or -1) or {}
+    if not (has_working_code(unlock) or has_working_code(kit)):
+        return empty
+    min_level = _int_or_none(unlock.get("minLevel"))
+    if min_level is None:
+        min_level = _int_or_none(kit.get("minLevel"))
+    blocked: list[dict[str, Any]] = []
+    for member in members:
+        if rider_can_enter_unlock_code(member):
+            continue
+        drop = _int_or_none(member.get("dropLevel"))
+        if min_level is not None and effective_drop_level(drop) >= min_level:
+            continue
+        blocked.append({
+            "name": _str_or_none(member.get("name")) or "",
+            "dropLevel": drop,
+            "gameClientPlatform": _str_or_none(member.get("gameClientPlatform")) or PLATFORM_UNKNOWN,
+        })
+    blocked.sort(key=lambda row: str(row["name"]).lower())
+    return {
+        "cannotEnterCodeCount": len(blocked),
+        "cannotEnterCode": blocked,
+    }
+
+
+def assert_kit_enterable_by_club(
+    members: Iterable[Mapping[str, Any]],
+    kit: Mapping[str, Any] | None,
+    unlocks: Iterable[Mapping[str, Any]],
+) -> None:
+    """Reject assigning a P-code jersey when any rider cannot type the code."""
+    blocked = riders_blocked_from_code_kit(members, kit, unlocks)
+    count = int(blocked["cannotEnterCodeCount"] or 0)
+    if count <= 0:
+        return
+    names = ", ".join(row["name"] or "?" for row in blocked["cannotEnterCode"][:8])
+    extra = f" (+{count - 8})" if count > 8 else ""
+    raise ValueError(
+        f"Trøjen kræver P-kode, men {count} rytter(e) bruger ikke PC/Mac: {names}{extra}"
+    )
+
+
+def members_for_club(
+    grouped: Mapping[str, list[dict[str, Any]]],
+    club: str | None,
+) -> list[dict[str, Any]]:
+    club_name = _str_or_none(club) or ""
+    if club_name in grouped:
+        return grouped[club_name]
+    wanted = club_name.casefold()
+    for name, rows in grouped.items():
+        if name.casefold() == wanted:
+            return rows
+    return []
+
+
 def denormalize_kit_row(
     *,
     club: str,
@@ -342,12 +468,15 @@ def _empty_pool_reason(members: list[Mapping[str, Any]], unlocks: Iterable[Mappi
     unlock_list = list(unlocks)
     known = sum(1 for m in members if _int_or_none(m.get("dropLevel")) is not None)
     working_codes = sum(1 for u in unlock_list if has_working_code(u))
+    pc_mac = sum(1 for m in members if rider_can_enter_unlock_code(m))
     if not any(in_auto_pool(u) for u in unlock_list):
         return "Unlock-index er tomt — indlæs kendte trøjer eller tilføj minLevel/working codes"
     if not members:
         return "Ingen registrerede ryttere i klubben"
     if known == 0 and working_codes == 0:
         return "Kun starttrøjer (level 1) i puljen — ingen fælles kit i unlock-index"
+    if working_codes and pc_mac == 0:
+        return "Working codes kræver PC/Mac, og ingen medlemmer har sidst logget ind derfra"
     if known == 0:
         return "Ukendt Zwift-level tælles som 1 — kun starttrøjer og working codes"
     if working_codes == 0:
@@ -398,6 +527,9 @@ def preview_auto_assignment(
                 continue
             signature = _int_or_none(row.get("jerseySignature"))
             if signature is None:
+                continue
+            blocked = riders_blocked_from_code_kit(grouped.get(club, []), row, unlock_list)
+            if blocked["cannotEnterCodeCount"]:
                 continue
             saved_auto[club] = dict(row)
             usage[signature] += 1
@@ -503,6 +635,7 @@ def pin_club_kit(
     image_url: str | None = None,
     jersey_name: str | None = None,
     image_name: str | None = None,
+    members: Iterable[Mapping[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     club = _str_or_none(club) or ""
     if not club:
@@ -546,6 +679,8 @@ def pin_club_kit(
         new_row["jerseyName"] = jersey_name
     if image_name:
         new_row["imageName"] = image_name
+    if members is not None:
+        assert_kit_enterable_by_club(members, new_row, unlocks)
 
     next_rows: list[dict[str, Any]] = []
     replaced = False
@@ -578,6 +713,7 @@ def assign_auto_club_kit(
     image_url: str | None = None,
     jersey_name: str | None = None,
     image_name: str | None = None,
+    members: Iterable[Mapping[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Set one club's kit as auto without pinning or touching other clubs."""
     club = _str_or_none(club) or ""
@@ -624,6 +760,8 @@ def assign_auto_club_kit(
         new_row["jerseyName"] = jersey_name
     if image_name:
         new_row["imageName"] = image_name
+    if members is not None:
+        assert_kit_enterable_by_club(members, new_row, unlocks)
 
     next_rows: list[dict[str, Any]] = []
     replaced = False
@@ -675,6 +813,7 @@ def rider_club_kit_payload(
     club: str | None,
     settings: Mapping[str, Any],
     drop_level: int | None,
+    can_enter_unlock_code: bool = False,
 ) -> dict[str, Any] | None:
     """Public Min Profil payload. Live unlock row wins for dead codes."""
     club_name = _str_or_none(club)
@@ -706,12 +845,14 @@ def rider_club_kit_payload(
         "assignment": kit.get("assignment") or ASSIGN_AUTO,
         "source": kit.get("source") or unlock_source(unlock or kit),
         "minLevel": min_level,
-        "unlockCode": unlock_code if working else None,
+        "unlockCode": unlock_code if working and can_enter_unlock_code else None,
         "codeStatus": code_status,
         "notes": notes,
         "dropLevel": drop_level,
         "hasLevelGrant": has_level_grant,
-        "showCode": working,
+        "showCode": working and can_enter_unlock_code,
+        "codeBlocked": working and not can_enter_unlock_code and not has_level_grant,
+        "canEnterUnlockCode": can_enter_unlock_code,
     }
 
 
@@ -726,6 +867,7 @@ def _club_summary(
     known = [m for m in members if _int_or_none(m.get("dropLevel")) is not None]
     levels = [_int_or_none(m.get("dropLevel")) for m in known]
     levels_int = [lv for lv in levels if lv is not None]
+    pc_mac = sum(1 for m in members if rider_can_enter_unlock_code(m))
     return {
         "club": club,
         "memberCount": len(members),
@@ -733,6 +875,7 @@ def _club_summary(
         "unknownLevels": len(members) - len(known),
         "minDropLevel": min(levels_int) if levels_int else None,
         "maxDropLevel": max(levels_int) if levels_int else None,
+        "pcMacCount": pc_mac,
         "poolSize": len(pool),
         "poolSignatures": sorted(pool),
         "pinned": pinned,

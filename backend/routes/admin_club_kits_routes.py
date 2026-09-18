@@ -14,10 +14,12 @@ from services.club_kits import (
     apply_auto_assignment,
     assign_auto_club_kit,
     club_kits_by_club,
+    members_for_club,
     pin_club_kit,
     preview_auto_assignment,
     rider_assigned_kit_coverage,
     riders_below_kit_level,
+    riders_blocked_from_code_kit,
     riders_by_club,
     unpin_club_kit,
 )
@@ -73,6 +75,12 @@ def _registered_riders() -> list[dict[str, Any]]:
             "club": club,
             "zwiftId": zwift_id,
             "dropLevel": drop_level_int,
+            "gameClientPlatform": profile.get("gameClientPlatform") or "unknown",
+            "canEnterUnlockCode": (
+                profile.get("canEnterUnlockCode")
+                if isinstance(profile.get("canEnterUnlockCode"), bool)
+                else None
+            ),
         })
     return riders
 
@@ -116,11 +124,10 @@ def club_kits_overview():
         annotated = []
         for club in preview.get("clubs") or []:
             row = dict(club)
-            row.update(riders_below_kit_level(
-                grouped.get(row.get("club") or "", []),
-                saved.get(row.get("club") or ""),
-                unlocks,
-            ))
+            members = grouped.get(row.get("club") or "", [])
+            kit = saved.get(row.get("club") or "")
+            row.update(riders_below_kit_level(members, kit, unlocks))
+            row.update(riders_blocked_from_code_kit(members, kit, unlocks))
             annotated.append(row)
         preview["clubs"] = annotated
         preview["riderCoverage"] = rider_assigned_kit_coverage(
@@ -248,6 +255,7 @@ def pin_club_kit_route():
             image_url=body.imageUrl or catalog.get("imageUrl"),
             jersey_name=body.jerseyName or catalog.get("name"),
             image_name=body.imageName or catalog.get("imageName"),
+            members=members_for_club(riders_by_club(_registered_riders()), body.club),
         )
         update = with_schema_version({
             "clubKits": next_kits,
@@ -288,6 +296,7 @@ def assign_auto_club_kit_route():
             image_url=body.imageUrl or catalog.get("imageUrl"),
             jersey_name=body.jerseyName or catalog.get("name"),
             image_name=body.imageName or catalog.get("imageName"),
+            members=members_for_club(riders_by_club(_registered_riders()), body.club),
         )
         update = with_schema_version({
             "clubKits": next_kits,

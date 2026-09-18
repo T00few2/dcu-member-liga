@@ -43,12 +43,19 @@ interface BelowKitRider {
     dropLevel: number | null;
 }
 
+interface CodeBlockedRider {
+    name: string;
+    dropLevel: number | null;
+    gameClientPlatform?: string | null;
+}
+
 interface ClubSummary {
     club: string;
     memberCount: number;
     knownLevels: number;
     unknownLevels: number;
     minDropLevel: number | null;
+    pcMacCount?: number;
     poolSize: number;
     pinned: boolean;
     kit: ClubKitRow | null;
@@ -56,6 +63,8 @@ interface ClubSummary {
     belowKitLevelCount?: number;
     belowKitLevel?: BelowKitRider[];
     atKitLevelCount?: number | null;
+    cannotEnterCodeCount?: number;
+    cannotEnterCode?: CodeBlockedRider[];
 }
 
 interface Overview {
@@ -232,6 +241,10 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
     );
     const clubsBelowKitLevel = useMemo(
         () => clubs.filter((club) => (club.belowKitLevelCount || 0) > 0),
+        [clubs],
+    );
+    const clubsBlockedFromCode = useMemo(
+        () => clubs.filter((club) => (club.cannotEnterCodeCount || 0) > 0),
         [clubs],
     );
     const previewDiffers = useMemo(
@@ -503,8 +516,8 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                 <div>
                     <h2 className="text-xl font-semibold text-foreground">Klubtrøjer</h2>
                     <p className="text-sm text-muted-foreground">
-                        Level-auto og working P-koder danner puljen. Ukendt rytter-level tælles som 1
-                        (starttrøjer alle har). En pinnet trøje er kun til den klub og tildeles aldrig automatisk til andre.
+                        Level-auto og working P-koder danner puljen. P-koder tæller kun for ryttere, der sidst har kørt Zwift på PC/Mac.
+                        Ukendt rytter-level tælles som 1 (starttrøjer alle har). En pinnet trøje er kun til den klub og tildeles aldrig automatisk til andre.
                     </p>
                 </div>
                 <div className="flex gap-2">
@@ -737,6 +750,7 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                 <p className="text-xs text-muted-foreground">
                     Vælg en trøje i søgningen ovenfor. Tildel som auto gemmer kun den klub og rører ikke de andre.
                     Pin er eksklusiv og fjerner auto-kopier af samme trøje.
+                    P-kode-trøjer kan kun tildeles, hvis ryttere uden level-grant sidst har kørt Zwift på PC/Mac.
                 </p>
                 <div className="grid md:grid-cols-3 gap-2">
                     <select
@@ -802,6 +816,28 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                         ))}
                     </div>
                 )}
+                {clubsBlockedFromCode.length > 0 && (
+                    <div className="p-3 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 text-sm space-y-2">
+                        <p className="font-medium text-amber-900 dark:text-amber-200">
+                            P-kode kræver PC/Mac ({clubsBlockedFromCode.length} klubber)
+                        </p>
+                        {clubsBlockedFromCode.map((club) => (
+                            <div key={club.club} className="text-amber-800 dark:text-amber-300">
+                                <p>
+                                    {club.club}: {club.cannotEnterCodeCount} ryttere kan ikke indtaste koden
+                                    {savedByClub.get(club.club)?.jerseyName
+                                        ? ` (${savedByClub.get(club.club)?.jerseyName})`
+                                        : ''}
+                                </p>
+                                <p className="text-xs pl-2">
+                                    {(club.cannotEnterCode || []).map((rider) => (
+                                        `${rider.name || 'Ukendt'} (${platformLabel(rider.gameClientPlatform)})`
+                                    )).join(', ')}
+                                </p>
+                            </div>
+                        ))}
+                    </div>
+                )}
                 {clubsBelowKitLevel.length > 0 && (
                     <div className="p-3 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 text-sm space-y-2">
                         <p className="font-medium text-amber-900 dark:text-amber-200">
@@ -843,6 +879,7 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                                     />
                                 </th>
                                 <th className="p-2 text-left">Har level</th>
+                                <th className="p-2 text-left">PC/Mac</th>
                                 <th className="p-2 text-left">Trøje</th>
                                 <th className="p-2" />
                             </tr>
@@ -874,6 +911,13 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                                             ? `${club.atKitLevelCount}/${club.memberCount}`
                                             : '—'}
                                     </td>
+                                    <td className={`p-2 ${
+                                        (club.pcMacCount || 0) < club.memberCount
+                                            ? 'text-amber-700 dark:text-amber-400'
+                                            : ''
+                                    }`}>
+                                        {`${club.pcMacCount ?? 0}/${club.memberCount}`}
+                                    </td>
                                     <td className="p-2">
                                         <div className="flex items-center gap-2">
                                             {jerseyThumb(saved?.imageUrl, saved?.jerseyName)}
@@ -893,6 +937,11 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                                         {(club.belowKitLevelCount || 0) > 0 && (
                                             <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
                                                 {club.belowKitLevelCount} ryttere under level {club.kitMinLevel}
+                                            </p>
+                                        )}
+                                        {(club.cannotEnterCodeCount || 0) > 0 && (
+                                            <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+                                                {club.cannotEnterCodeCount} ryttere kan ikke indtaste P-kode
                                             </p>
                                         )}
                                     </td>
@@ -949,6 +998,19 @@ function SortButton({
 
 function clubCountLabel(count: number): string {
     return count === 1 ? '1 klub' : `${count} klubber`;
+}
+
+function platformLabel(platform?: string | null): string {
+    const labels: Record<string, string> = {
+        windows: 'Windows',
+        mac: 'Mac',
+        ios: 'iOS',
+        android: 'Android',
+        tvos: 'Apple TV',
+        unknown: 'ukendt',
+    };
+    const key = (platform || 'unknown').toLowerCase();
+    return labels[key] || platform || 'ukendt';
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

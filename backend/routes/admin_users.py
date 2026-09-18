@@ -217,6 +217,11 @@ def get_user_details(user_id):
                 'category': zp.get('category'),
                 'powerSourceType': zp.get('powerSourceType'),
                 'powerSourceModel': zp.get('powerSourceModel'),
+                'dropLevel': zp.get('dropLevel'),
+                'achievementLevel': zp.get('achievementLevel'),
+                'gameClientUserAgent': zp.get('gameClientUserAgent'),
+                'gameClientPlatform': zp.get('gameClientPlatform'),
+                'canEnterUnlockCode': zp.get('canEnterUnlockCode'),
                 'updatedAt': _ts_ms(zp.get('updatedAt')),
             } if zp else None,
             'zwiftPowerCurve': {

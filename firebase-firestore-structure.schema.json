@@ -1440,6 +1440,19 @@
             "totalExperiencePoints": {
               "type": "number"
             },
+            "gameClientUserAgent": {
+              "type": "string",
+              "description": "Last Zwift game userAgent (platform of last launch)"
+            },
+            "gameClientPlatform": {
+              "type": "string",
+              "enum": ["windows", "mac", "ios", "android", "tvos", "unknown"],
+              "description": "Parsed last game client. P-codes can only be typed on windows/mac."
+            },
+            "canEnterUnlockCode": {
+              "type": "boolean",
+              "description": "True when last game client is Windows or Mac"
+            },
             "updatedAt": {
               "$ref": "#/$defs/timestampString"
             }

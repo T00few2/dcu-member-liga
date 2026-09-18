@@ -48,6 +48,20 @@ def test_competition_metrics_preserves_drop_level_when_achievements_missing():
     assert mapped['ftp'] == 200
 
 
+def test_competition_metrics_preserves_game_client():
+    mapped = _competition_metrics_to_profile(
+        {'ftp': 200},
+        {'weight': 70},
+        {
+            'gameClientUserAgent': 'CNL (Windows 10)',
+            'gameClientPlatform': 'windows',
+            'canEnterUnlockCode': True,
+        },
+    )
+    assert mapped['gameClientPlatform'] == 'windows'
+    assert mapped['canEnterUnlockCode'] is True
+
+
 def test_competition_metrics_reads_official_achievements():
     mapped = _competition_metrics_to_profile(
         {},

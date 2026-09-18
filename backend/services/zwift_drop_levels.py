@@ -8,11 +8,11 @@ from __future__ import annotations
 import logging
 import os
 import time
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 import requests
 
-from services.club_kits import extract_level_fields
+from services.club_kits import extract_game_client_fields, extract_level_fields
 
 logger = logging.getLogger(__name__)
 
@@ -81,30 +81,44 @@ def numeric_zwift_id(value: Any) -> int | None:
     return int(text)
 
 
+PROFILE_LEVEL_KEYS = ("dropLevel", "achievementLevel", "totalExperiencePoints")
+PROFILE_CLIENT_KEYS = ("gameClientUserAgent", "gameClientPlatform", "canEnterUnlockCode")
+
+
+def unofficial_profile_fields(profile: Mapping[str, Any] | None) -> dict[str, Any]:
+    fields = extract_level_fields(profile)
+    fields.update(extract_game_client_fields(profile))
+    return fields
+
+
 def ensure_drop_level_fields(
     zwift_id: Any,
     mapped: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Fill dropLevel from unofficial JSON when missing or when official looks wrong.
+    """Fill dropLevel and last game client from unofficial JSON profile.
 
     Official racing-profile achievementLevel is often the XP-table level (e.g. 63).
     In-game drop (jersey unlocks) is unofficial JSON hundredths (4661 → 46).
     """
     out = dict(mapped or {})
-    mapped_raw = _achievement_raw(out)
-    if out.get("dropLevel") is not None and mapped_raw is not None and mapped_raw >= 1000:
-        return out
     nid = numeric_zwift_id(zwift_id)
     if nid is None:
         return out
     try:
-        extra = extract_level_fields(fetch_json_profile(game_client_access_token(), nid))
+        extra = unofficial_profile_fields(fetch_json_profile(game_client_access_token(), nid))
         extra_raw = _achievement_raw(extra)
+        mapped_raw = _achievement_raw(out)
         extra_drop = extra.get("dropLevel")
-        if extra_drop is None:
-            return out
-        if out.get("dropLevel") is None or (extra_raw is not None and extra_raw >= 1000 and (mapped_raw is None or mapped_raw < 1000)):
-            out.update(extra)
+        if extra_drop is not None and (
+            out.get("dropLevel") is None
+            or (extra_raw is not None and extra_raw >= 1000 and (mapped_raw is None or mapped_raw < 1000))
+        ):
+            for key in PROFILE_LEVEL_KEYS:
+                if key in extra:
+                    out[key] = extra[key]
+        for key in PROFILE_CLIENT_KEYS:
+            if key in extra:
+                out[key] = extra[key]
     except DropLevelAuthError as exc:
         logger.warning("Drop-level fallback skipped for %s: %s", nid, exc)
     except Exception:
@@ -137,8 +151,8 @@ def refresh_drop_levels_for_ids(
     for index, zwift_id in enumerate(zwift_ids):
         try:
             profile = fetch_json_profile(access, zwift_id)
-            fields = extract_level_fields(profile)
-            if fields.get("dropLevel") is None:
+            fields = unofficial_profile_fields(profile)
+            if not fields:
                 skipped += 1
             else:
                 write_fields(zwift_id, fields)

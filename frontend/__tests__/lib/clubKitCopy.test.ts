@@ -40,4 +40,16 @@ describe('clubKitUnlockLines', () => {
         expect(lines.join(' ')).not.toMatch(/indtast/i);
         expect(lines.some((line) => line.includes('Zwift-level 10'))).toBe(true);
     });
+
+    it('explains that P-codes are PC/Mac only when the rider cannot enter a code', () => {
+        const kit: ClubKitPayload = {
+            jerseyName: 'Working Code',
+            showCode: false,
+            codeBlocked: true,
+        };
+        const lines = clubKitUnlockLines(kit, 1);
+        expect(lines.join(' ')).toMatch(/PC eller Mac/i);
+        expect(lines.join(' ')).not.toMatch(/tryk P/i);
+        expect(lines.some((line) => /WORKS|GOGCN/.test(line))).toBe(false);
+    });
 });

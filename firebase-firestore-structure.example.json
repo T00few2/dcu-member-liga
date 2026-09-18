@@ -508,6 +508,9 @@
         "achievementLevel": 11202,
         "dropLevel": 112,
         "totalExperiencePoints": 1047591,
+        "gameClientUserAgent": "CNL/3.82.11 (Windows 10) zwift/1.0.165303 game/1.121.0 curl/8.12.1",
+        "gameClientPlatform": "windows",
+        "canEnterUnlockCode": true,
         "updatedAt": "2026-03-14T10:07:00+00:00"
       },
       "zwiftPowerCurve": {

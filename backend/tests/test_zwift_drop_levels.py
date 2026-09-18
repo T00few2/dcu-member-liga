@@ -6,13 +6,19 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from services.zwift_drop_levels import ensure_drop_level_fields
 
 
-def test_ensure_drop_level_keeps_hundredths(monkeypatch):
-    def _should_not_fetch(*_args, **_kwargs):
-        raise AssertionError("should not fetch")
-
-    monkeypatch.setattr("services.zwift_drop_levels.fetch_json_profile", _should_not_fetch)
+def test_ensure_drop_level_keeps_hundredths_and_merges_client(monkeypatch):
+    monkeypatch.setattr("services.zwift_drop_levels.game_client_access_token", lambda: "token")
+    monkeypatch.setattr(
+        "services.zwift_drop_levels.fetch_json_profile",
+        lambda _token, _zwift_id: {
+            "achievementLevel": 8050,
+            "userAgent": "CNL/3.82.11 (Windows 10) zwift/1.0",
+        },
+    )
     out = ensure_drop_level_fields(123, {"dropLevel": 80, "achievementLevel": 8050})
     assert out["dropLevel"] == 80
+    assert out["gameClientPlatform"] == "windows"
+    assert out["canEnterUnlockCode"] is True
 
 
 def test_ensure_drop_level_overrides_official_xp_level(monkeypatch):

@@ -15,6 +15,8 @@ export interface ClubKitPayload {
     dropLevel?: number | null;
     hasLevelGrant?: boolean;
     showCode?: boolean;
+    codeBlocked?: boolean;
+    canEnterUnlockCode?: boolean;
 }
 
 export function clubKitUnlockLines(kit: ClubKitPayload, dropLevel?: number | null): string[] {
@@ -39,6 +41,10 @@ export function clubKitUnlockLines(kit: ClubKitPayload, dropLevel?: number | nul
 
     if (kit.showCode && kit.unlockCode) {
         lines.push(`PC/Mac: tryk P og indtast ${kit.unlockCode}`);
+    } else if (kit.codeBlocked) {
+        lines.push(
+            'Unlock-koden kan kun indtastes på PC eller Mac. Vi viser den ikke, fordi din sidste Zwift-klient ikke er PC/Mac.',
+        );
     }
 
     if (kit.assignment === 'pinned' && lines.length === 0) {

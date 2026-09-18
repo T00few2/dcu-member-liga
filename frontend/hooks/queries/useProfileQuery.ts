@@ -34,6 +34,8 @@ export interface ProfileData {
         notes?: string | null;
         hasLevelGrant?: boolean;
         showCode?: boolean;
+        codeBlocked?: boolean;
+        canEnterUnlockCode?: boolean;
         assignment?: string;
     } | null;
 }

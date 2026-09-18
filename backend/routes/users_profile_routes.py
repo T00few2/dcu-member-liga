@@ -17,7 +17,7 @@ from services.policy_store import (
 )
 from services.schema_validation import log_schema_issues, validate_user_doc, with_schema_version
 from services.user_service import UserService
-from services.club_kits import rider_club_kit_payload
+from services.club_kits import rider_can_enter_unlock_code, rider_club_kit_payload
 from services.zwift_drop_levels import ensure_drop_level_fields
 from services.users_profile_core import (
     _connected_zwift_id_from_user_data,
@@ -120,6 +120,7 @@ def get_profile():
             club=user.club,
             settings=settings,
             drop_level=drop_level_int,
+            can_enter_unlock_code=rider_can_enter_unlock_code(zwift_profile),
         )
         return (
             jsonify(
@@ -370,12 +371,15 @@ def signup():
                     current = db.collection("users").document(str(doc_id)).get().to_dict() or {}
                     profile = current.get("zwiftProfile") if isinstance(current.get("zwiftProfile"), dict) else {}
                     filled = ensure_drop_level_fields(zwift_id, profile)
+                    payload = {}
                     if filled.get("dropLevel") is not None and profile.get("dropLevel") is None:
-                        payload = {
-                            f"zwiftProfile.{key}": value
-                            for key, value in filled.items()
-                            if key in ("dropLevel", "achievementLevel", "totalExperiencePoints")
-                        }
+                        for key in ("dropLevel", "achievementLevel", "totalExperiencePoints"):
+                            if key in filled:
+                                payload[f"zwiftProfile.{key}"] = filled[key]
+                    for key in ("gameClientUserAgent", "gameClientPlatform", "canEnterUnlockCode"):
+                        if key in filled:
+                            payload[f"zwiftProfile.{key}"] = filled[key]
+                    if payload:
                         payload["updatedAt"] = firestore.SERVER_TIMESTAMP
                         db.collection("users").document(str(doc_id)).update(payload)
                 except Exception as level_err:

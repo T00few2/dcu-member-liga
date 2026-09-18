@@ -39,6 +39,11 @@ export interface UserDetail {
         powerCompoundScore?: number | null;
         vo2max?: number | null;
         category?: string | null;
+        dropLevel?: number | null;
+        achievementLevel?: number | null;
+        gameClientUserAgent?: string | null;
+        gameClientPlatform?: string | null;
+        canEnterUnlockCode?: boolean | null;
         updatedAt?: number | null;
     } | null;
     zwiftPowerCurve?: {

@@ -56,6 +56,15 @@ export default function UserProfile({ detail }: UserProfileProps) {
                         <Row label="Height" value={detail.zwiftProfile.height != null ? `${detail.zwiftProfile.height} cm` : '—'} />
                         <Row label="Power Compound" value={detail.zwiftProfile.powerCompoundScore != null ? detail.zwiftProfile.powerCompoundScore : '—'} />
                         <Row label="Zwift Category" value={detail.zwiftProfile.category || '—'} />
+                        <Row label="Drop level" value={detail.zwiftProfile.dropLevel != null ? detail.zwiftProfile.dropLevel : '—'} />
+                        <Row
+                            label="Last game client"
+                            value={gameClientLabel(detail.zwiftProfile.gameClientPlatform)}
+                        />
+                        <Row
+                            label="Can enter P-code"
+                            value={detail.zwiftProfile.canEnterUnlockCode ? 'Yes (PC/Mac)' : 'No'}
+                        />
                         <Row label="Updated" value={fmtDateTime(detail.zwiftProfile.updatedAt)} />
                     </SectionCard>
                 )}
@@ -116,4 +125,18 @@ export default function UserProfile({ detail }: UserProfileProps) {
             )}
         </>
     );
+}
+
+function gameClientLabel(platform?: string | null): string {
+    const labels: Record<string, string> = {
+        windows: 'Windows',
+        mac: 'Mac',
+        ios: 'iOS',
+        android: 'Android',
+        tvos: 'Apple TV',
+        unknown: 'Unknown',
+    };
+    const key = (platform || '').toLowerCase();
+    if (!key) return '—';
+    return labels[key] || platform || '—';
 }
