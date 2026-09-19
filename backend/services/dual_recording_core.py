@@ -35,6 +35,7 @@ from services.dual_recording.storage import (  # noqa: F401
 )
 from services.dual_recording.persistence import (  # noqa: F401
     _is_dual_recording_required,
+    _load_gw_thresholds,
     _load_sw_thresholds,
     _persist_dr_verification_result,
 )

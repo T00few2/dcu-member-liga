@@ -164,6 +164,7 @@ def trigger_rider_dr_verification(
     activity_id: str,
     event_start_iso: str | None,
     sw_thresholds: dict | None = None,
+    gw_thresholds: dict | None = None,
 ) -> None:
     _run_dr_verification_background(
         db=db,
@@ -173,6 +174,7 @@ def trigger_rider_dr_verification(
         race_id=race_id,
         event_start_iso=event_start_iso or None,
         sw_thresholds=sw_thresholds,
+        gw_thresholds=gw_thresholds,
     )
 
 

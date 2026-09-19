@@ -1,6 +1,7 @@
 // Shared types for admin/league management
 import type { LigaCategoryDef } from '@/lib/ligaCategories';
 import type { StickyWattsResult } from '@/lib/stickyWatts';
+import type { GhostWattsResult } from '@/lib/ghostWatts';
 import type { EventMode, ResultsPhase, RaceType, SegmentType } from './enums';
 export type { EventMode, ResultsPhase, RaceType, SegmentType } from './enums';
 
@@ -207,6 +208,7 @@ export interface DualRecordingVerification {
     passed?: boolean;
     verifiedAt?: string;
     swVerifiedAt?: string;
+    gwVerifiedAt?: string;
     activityId?: string;
     zwiftActivityId?: string;
     stravaActivityId?: number | null;
@@ -232,6 +234,7 @@ export interface DualRecordingVerification {
         };
     };
     stickyWatts?: StickyWattsResult | null;
+    ghostWatts?: GhostWattsResult | null;
     trainerName?: string | null;
 }
 

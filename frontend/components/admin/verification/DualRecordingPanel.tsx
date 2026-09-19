@@ -9,6 +9,7 @@ import {
 import { RecordingStreamsSection } from '@/components/shared/RecordingStreamsSection';
 import { ExtendedPeakProfileChart } from '@/components/shared/ExtendedPeakProfileChart';
 import StickyWattsPanel from '@/components/admin/verification/StickyWattsPanel';
+import GhostWattsPanel from '@/components/admin/verification/GhostWattsPanel';
 import type { useDualRecording } from '@/hooks/useDualRecording';
 import type {
     DualRecordingResult, CpDiffRow,
@@ -473,14 +474,29 @@ export default function DualRecordingPanel({ riderId, hook, children }: Props) {
                             </div>
                         ) : null}
 
-                        {/* Sticky watts analysis */}
+                        {/* Sticky / ghost watts analysis */}
                         {result.zwift.streams?.time?.length ? (
-                            <div>
-                                <h4 className="text-sm font-semibold mb-2 text-card-foreground">
-                                    Sticky Watts{' '}
-                                    <span className="ml-1 text-xs font-normal text-muted-foreground">(Eksperimentel)</span>
-                                </h4>
-                                <StickyWattsPanel stream={result.zwift.streams as { time: number[]; watts: (number | null)[] }} />
+                            <div className="space-y-4">
+                                <div>
+                                    <h4 className="text-sm font-semibold mb-2 text-card-foreground">
+                                        Sticky Watts{' '}
+                                        <span className="ml-1 text-xs font-normal text-muted-foreground">(Eksperimentel)</span>
+                                    </h4>
+                                    <StickyWattsPanel stream={result.zwift.streams as { time: number[]; watts: (number | null)[] }} />
+                                </div>
+                                <div>
+                                    <h4 className="text-sm font-semibold mb-2 text-card-foreground">
+                                        Ghost Watts{' '}
+                                        <span className="ml-1 text-xs font-normal text-muted-foreground">(Eksperimentel)</span>
+                                    </h4>
+                                    <GhostWattsPanel
+                                        stream={{
+                                            time: result.zwift.streams.time,
+                                            watts: result.zwift.streams.watts,
+                                            cadence: result.zwift.streams.cadence ?? [],
+                                        }}
+                                    />
+                                </div>
                             </div>
                         ) : null}
                     </div>

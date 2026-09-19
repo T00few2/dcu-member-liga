@@ -44,6 +44,17 @@ def _load_sw_thresholds(db: object) -> dict | None:
     return None
 
 
+def _load_gw_thresholds(db: object) -> dict | None:
+    """Read saved ghost-watts thresholds from Firestore admin settings."""
+    try:
+        snap = db.collection("league").document("adminSettings").get()
+        if snap.exists:
+            return (snap.to_dict() or {}).get("ghostWattsThresholds") or None
+    except Exception as exc:
+        logger.warning("_load_gw_thresholds: %s", exc)
+    return None
+
+
 def _persist_dr_verification_result(
     db: object,
     *,
@@ -102,6 +113,10 @@ def _persist_dr_verification_result(
     sticky_watts = (result.get("zwift") or {}).get("stickyWatts")
     if sticky_watts:
         doc_payload["stickyWatts"] = sticky_watts
+
+    ghost_watts = (result.get("zwift") or {}).get("ghostWatts")
+    if ghost_watts:
+        doc_payload["ghostWatts"] = ghost_watts
 
     stream_meta = _store_dr_stream_blob(
         race_id=race_id,

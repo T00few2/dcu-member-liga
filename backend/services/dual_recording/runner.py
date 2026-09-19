@@ -7,8 +7,12 @@ import logging
 from extensions import get_zwift_service
 from services.zwift_tokens import get_valid_access_token
 
-from .persistence import _load_sw_thresholds, _persist_dr_verification_result  # noqa: F401
-from .time_series import analyze_sticky_watts
+from .persistence import (  # noqa: F401
+    _load_gw_thresholds,
+    _load_sw_thresholds,
+    _persist_dr_verification_result,
+)
+from .time_series import analyze_ghost_watts, analyze_sticky_watts
 from .workflows import _compute_dual_recording_for_rider
 from .zwift import _fetch_zwift_streams
 
@@ -23,6 +27,7 @@ def _run_dr_verification_background(
     race_id: str,
     event_start_iso: str | None,
     sw_thresholds: dict | None = None,
+    gw_thresholds: dict | None = None,
 ) -> None:
     """Compute full DR comparison and persist to races/{race_id}/dr_verifications/{zwift_id}."""
     try:
@@ -31,6 +36,7 @@ def _run_dr_verification_background(
         result = _compute_dual_recording_for_rider(
             db, user_doc_id, activity_id, event_start_iso,
             sw_thresholds=sw_thresholds,
+            gw_thresholds=gw_thresholds,
         )
         source = resolve_dr_source(db, zwift_id_canonical, race_id=race_id)
         doc_payload = _persist_dr_verification_result(
@@ -59,8 +65,9 @@ def _run_sw_only_background(
     activity_id: str,
     race_id: str,
     sw_thresholds: dict | None = None,
+    gw_thresholds: dict | None = None,
 ) -> None:
-    """Fetch Zwift stream, compute sticky watts, patch dr_verifications/{zwift_id}."""
+    """Fetch Zwift stream, compute sticky + ghost watts, patch dr_verifications/{zwift_id}."""
     try:
         access_token = get_valid_access_token(user_doc_id, get_zwift_service())
 
@@ -88,6 +95,12 @@ def _run_sw_only_background(
             zwift_streams.get("watts") or [],
             sw_thresholds,
         )
+        ghost_watts = analyze_ghost_watts(
+            zwift_streams.get("time") or [],
+            zwift_streams.get("watts") or [],
+            zwift_streams.get("cadence") or [],
+            gw_thresholds,
+        )
 
         trainer_name: str | None = None
         try:
@@ -106,7 +119,13 @@ def _run_sw_only_background(
         existing = vref.get()
         existing_status = ((existing.to_dict() or {}).get("status") or "") if existing.exists else ""
 
-        sw_patch: dict = {"stickyWatts": sticky_watts, "swVerifiedAt": datetime.now(timezone.utc).isoformat()}
+        now_iso = datetime.now(timezone.utc).isoformat()
+        sw_patch: dict = {
+            "stickyWatts": sticky_watts,
+            "swVerifiedAt": now_iso,
+            "ghostWatts": ghost_watts,
+            "gwVerifiedAt": now_iso,
+        }
         if trainer_name:
             sw_patch["trainerName"] = trainer_name
 
@@ -123,8 +142,10 @@ def _run_sw_only_background(
                 **sw_patch,
             })
         logger.info(
-            "SW stored: race=%s rider=%s suspicious=%s (prior_status=%r)",
-            race_id, zwift_id_canonical, sticky_watts.get("suspicious"), existing_status or "none",
+            "SW/GW stored: race=%s rider=%s sw=%s gw=%s (prior_status=%r)",
+            race_id, zwift_id_canonical,
+            sticky_watts.get("suspicious"), ghost_watts.get("suspicious"),
+            existing_status or "none",
         )
     except Exception as exc:
         logger.error(

@@ -185,6 +185,24 @@
       "updatedAt": "2026-07-01T12:00:00+00:00"
     },
     {
+      "_id": "adminSettings",
+      "stickyWattsThresholds": {
+        "minWatts": 100,
+        "minRun": 3,
+        "zeroThresh": 20,
+        "suspiciousPairPct": 25,
+        "suspiciousPreZero": 2
+      },
+      "ghostWattsThresholds": {
+        "cadZeroThresh": 5,
+        "minGhostWatts": 8,
+        "minRun": 3,
+        "minGhostSeconds": 20,
+        "minGhostEvents": 3,
+        "suspiciousFloorW": 10
+      }
+    },
+    {
       "_id": "standings",
       "schemaVersion": 1,
       "updatedAt": "2026-07-01T12:00:00+00:00",
@@ -470,6 +488,7 @@
       "dualRecordingOptIn": false,
       "drReportSeenAt": "2026-05-24T14:54:08+00:00",
       "swReportSeenAt": "2026-05-24T14:54:08+00:00",
+      "gwReportSeenAt": "2026-05-24T14:54:08+00:00",
       "lastReadNewsPostId": "post_example_latest",
       "updatedAt": "2026-03-13T07:05:59+00:00",
       "equipment": {

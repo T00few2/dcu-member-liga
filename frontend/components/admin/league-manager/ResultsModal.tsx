@@ -18,6 +18,7 @@ import { useEmailComposer } from '@/hooks/useEmailComposer';
 import DualRecordingStatusBadge from '@/components/DualRecordingStatusBadge';
 import WeightVerificationStatusBadge from '@/components/WeightVerificationStatusBadge';
 import StickyWattsStatusBadge from '@/components/StickyWattsStatusBadge';
+import GhostWattsStatusBadge from '@/components/GhostWattsStatusBadge';
 import DualRecordingResultModal from '@/components/DualRecordingResultModal';
 import ComposeEmailModal from '@/components/admin/ComposeEmailModal';
 import EmailRecipientControls from '@/components/admin/EmailRecipientControls';
@@ -311,6 +312,7 @@ function CategoryResultsTable({
                         <th className="px-4 py-2 text-center w-[4.5rem]" title="Dual Recording — påkrævet kan give DC, frivillig er kun til information">DR</th>
                         <th className="px-4 py-2 text-center w-14" title="Weight Verification">WV</th>
                         <th className="px-4 py-2 text-center w-14" title="Sticky Watts">SW</th>
+                        <th className="px-4 py-2 text-center w-14" title="Ghost Watts">GW</th>
                         <th className="px-4 py-2 text-center w-12" title="Disqualify (0 pts)">DQ</th>
                         <th className="px-4 py-2 text-center w-12" title="Declassify (Last place pts)">DC</th>
                         <th className="px-4 py-2 text-center w-12" title="Exclude from results">EX</th>
@@ -376,6 +378,12 @@ function CategoryResultsTable({
                                 <td className="px-4 py-2 text-center">
                                     <StickyWattsStatusBadge
                                         stickyWatts={drVerifications.get(zwiftId)?.stickyWatts}
+                                        trainerName={drVerifications.get(zwiftId)?.trainerName || usersByZwiftId.get(zwiftId)?.trainer}
+                                    />
+                                </td>
+                                <td className="px-4 py-2 text-center">
+                                    <GhostWattsStatusBadge
+                                        ghostWatts={drVerifications.get(zwiftId)?.ghostWatts}
                                         trainerName={drVerifications.get(zwiftId)?.trainerName || usersByZwiftId.get(zwiftId)?.trainer}
                                     />
                                 </td>

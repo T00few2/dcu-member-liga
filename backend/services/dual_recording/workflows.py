@@ -14,6 +14,7 @@ from .time_series import (
     _compute_best_efforts_with_windows,
     _compute_efforts_on_reference_windows,
     _resample_to_1hz,
+    analyze_ghost_watts,
     analyze_sticky_watts,
 )
 from .verdict import _build_cp_comparison, _compute_similarity_metrics
@@ -33,6 +34,7 @@ def _compute_dual_recording_for_rider(
     event_start_iso: str | None = None,
     strava_activity_id: str | None = None,
     sw_thresholds: dict | None = None,
+    gw_thresholds: dict | None = None,
 ) -> dict:
     """Run the full dual-recording comparison for one rider/activity."""
     access_token = get_valid_access_token(user_doc_id, get_zwift_service())
@@ -73,6 +75,12 @@ def _compute_dual_recording_for_rider(
         zwift_streams.get("watts") or [],
         sw_thresholds,
     )
+    ghost_watts = analyze_ghost_watts(
+        zwift_streams.get("time") or [],
+        zwift_streams.get("watts") or [],
+        zwift_streams.get("cadence") or [],
+        gw_thresholds,
+    )
 
     zwift_cp_curve: dict = {}
     if access_token:
@@ -110,6 +118,7 @@ def _compute_dual_recording_for_rider(
                 "cpCurve": zwift_cp_curve,
                 "streams": zwift_streams or None,
                 "stickyWatts": sticky_watts,
+                "ghostWatts": ghost_watts,
             },
             "strava": None,
             "sync": None,
@@ -210,6 +219,7 @@ def _compute_dual_recording_for_rider(
             "cpCurveSynced": zwift_cp_synced,
             "streams": zwift_streams or None,
             "stickyWatts": sticky_watts,
+            "ghostWatts": ghost_watts,
         },
         "strava": {
             "activityId": int(resolved_strava_id) if resolved_strava_id else None,

@@ -9,6 +9,8 @@ export interface NotificationState {
     drReportSeenAt: string | null;
     latestSwFlaggedAt: string | null;
     swReportSeenAt: string | null;
+    latestGwFlaggedAt: string | null;
+    gwReportSeenAt: string | null;
     latestPublishedPostId: string | null;
     lastReadNewsPostId: string | null;
     trainerRequiresDualRecording: boolean;

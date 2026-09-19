@@ -13,6 +13,7 @@ from services.dual_recording.scope import (
     is_dr_candidate,
 )
 from services.dual_recording_core import (
+    _load_gw_thresholds,
     _load_sw_thresholds,
     _run_sw_only_background,
 )
@@ -151,6 +152,7 @@ def batch_verify_dual_recording(race_id):
 
         candidates = collect_dr_candidates_for_race(db, race_data)
         sw_thresholds = _load_sw_thresholds(db)
+        gw_thresholds = _load_gw_thresholds(db)
         summary: list[dict] = []
 
         for candidate in candidates:
@@ -179,6 +181,7 @@ def batch_verify_dual_recording(race_id):
                 activity_id=str(activity_id),
                 event_start_iso=event_start or None,
                 sw_thresholds=sw_thresholds,
+                gw_thresholds=gw_thresholds,
             )
             summary.append({"zwiftId": zwift_id, "activityId": str(activity_id), "status": "triggered"})
 
@@ -277,6 +280,7 @@ def verify_dual_recording_for_rider(race_id: str, zwift_id: str):
             activity_id=str(activity_id),
             event_start_iso=event_start or None,
             sw_thresholds=_load_sw_thresholds(db),
+            gw_thresholds=_load_gw_thresholds(db),
         )
 
         vdoc = (
@@ -388,6 +392,7 @@ def verify_sticky_watts_for_rider(race_id: str, zwift_id: str):
             }), 200
 
         sw_thresholds = _load_sw_thresholds(db)
+        gw_thresholds = _load_gw_thresholds(db)
         _run_sw_only_background(
             db=db,
             user_doc_id=str(zwift_id),
@@ -395,6 +400,7 @@ def verify_sticky_watts_for_rider(race_id: str, zwift_id: str):
             activity_id=activity_id,
             race_id=race_id,
             sw_thresholds=sw_thresholds,
+            gw_thresholds=gw_thresholds,
         )
 
         vdoc = (

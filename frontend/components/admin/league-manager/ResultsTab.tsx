@@ -700,7 +700,7 @@ export default function ResultsTab({ user, races, status, setStatus }: ResultsTa
                                 Run DR
                             </button>
                             <button onClick={handleRunSWOnly} disabled={!viewingResultsId || drBatchRunning} className="text-sm bg-slate-600 text-white px-4 py-2 rounded hover:opacity-90 font-semibold disabled:opacity-50">
-                                Run SW
+                                Run SW/GW
                             </button>
                         </div>
                         {drBatchProgress && drBatchProgress.total > 0 && (

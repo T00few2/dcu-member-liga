@@ -1,6 +1,7 @@
 import type { EventMode, ResultsPhase, RaceType, SegmentType } from './enums';
 export type { EventMode, ResultsPhase, RaceType, SegmentType } from './enums';
 import type { StickyWattsResult } from '@/lib/stickyWatts';
+import type { GhostWattsResult } from '@/lib/ghostWatts';
 
 export interface Sprint {
     id: string;
@@ -107,6 +108,7 @@ export interface DualRecordingVerification {
     passed?: boolean;
     verifiedAt?: string;
     swVerifiedAt?: string;
+    gwVerifiedAt?: string;
     activityId?: string;
     zwiftActivityId?: string;
     stravaActivityId?: number | null;
@@ -130,6 +132,7 @@ export interface DualRecordingVerification {
         };
     };
     stickyWatts?: StickyWattsResult | null;
+    ghostWatts?: GhostWattsResult | null;
     trainerName?: string | null;
 }
 

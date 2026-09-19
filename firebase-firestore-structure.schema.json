@@ -26,12 +26,13 @@
     },
     "league": {
       "type": "array",
-      "description": "Singleton docs: settings, standings (wrapper), liveOverlay",
+      "description": "Singleton docs: settings, standings (wrapper), liveOverlay, adminSettings",
       "items": {
         "oneOf": [
           { "$ref": "#/$defs/leagueSettingsDoc" },
           { "$ref": "#/$defs/leagueStandingsDoc" },
-          { "$ref": "#/$defs/leagueLiveOverlayDoc" }
+          { "$ref": "#/$defs/leagueLiveOverlayDoc" },
+          { "$ref": "#/$defs/leagueAdminSettingsDoc" }
         ]
       }
     },
@@ -449,6 +450,37 @@
           "enum": ["working", "expired", "unverified", null]
         },
         "notes": { "type": ["string", "null"] }
+      }
+    },
+    "leagueAdminSettingsDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Singleton at league/adminSettings — experimental power-analysis thresholds",
+      "properties": {
+        "_id": { "type": "string", "const": "adminSettings" },
+        "stickyWattsThresholds": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "minWatts": { "type": "number" },
+            "minRun": { "type": "integer" },
+            "zeroThresh": { "type": "number" },
+            "suspiciousPairPct": { "type": "number" },
+            "suspiciousPreZero": { "type": "integer" }
+          }
+        },
+        "ghostWattsThresholds": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "cadZeroThresh": { "type": "number" },
+            "minGhostWatts": { "type": "number" },
+            "minRun": { "type": "integer" },
+            "minGhostSeconds": { "type": "integer" },
+            "minGhostEvents": { "type": "integer" },
+            "suspiciousFloorW": { "type": "number" }
+          }
+        }
       }
     },
     "leagueStandingsDoc": {
@@ -937,6 +969,9 @@
         "swVerifiedAt": {
           "$ref": "#/$defs/timestampString"
         },
+        "gwVerifiedAt": {
+          "$ref": "#/$defs/timestampString"
+        },
         "trainerName": {
           "type": "string"
         },
@@ -953,6 +988,9 @@
             "maxRunLength": {
               "type": "integer"
             },
+            "stickyRuns": {
+              "type": "integer"
+            },
             "nonZeroSamples": {
               "type": "integer"
             },
@@ -962,6 +1000,21 @@
             "totalSamples": {
               "type": "integer"
             }
+          }
+        },
+        "ghostWatts": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "suspicious": { "type": "boolean" },
+            "insufficientCadence": { "type": "boolean" },
+            "ghostEvents": { "type": "integer" },
+            "ghostSeconds": { "type": "integer" },
+            "medianGhostWatts": { "type": "number" },
+            "maxGhostWatts": { "type": "number" },
+            "zeroCadenceSeconds": { "type": "integer" },
+            "ghostShareOfZeroCadence": { "type": "number" },
+            "totalSamples": { "type": "integer" }
           }
         },
         "passed": {
@@ -1321,6 +1374,9 @@
           "$ref": "#/$defs/timestampString"
         },
         "swReportSeenAt": {
+          "$ref": "#/$defs/timestampString"
+        },
+        "gwReportSeenAt": {
           "$ref": "#/$defs/timestampString"
         },
         "lastReadNewsPostId": {

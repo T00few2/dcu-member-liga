@@ -112,6 +112,13 @@ def _sw_flagged_timestamp(verification: dict) -> str | None:
     return verification.get("swVerifiedAt") or verification.get("verifiedAt")
 
 
+def _gw_flagged_timestamp(verification: dict) -> str | None:
+    """ISO timestamp for when ghost watts was flagged suspicious."""
+    if (verification.get("ghostWatts") or {}).get("suspicious") is not True:
+        return None
+    return verification.get("gwVerifiedAt") or verification.get("verifiedAt")
+
+
 def _connected_zwift_id_from_user_data(data: dict | None) -> str | None:
     if not isinstance(data, dict):
         return None

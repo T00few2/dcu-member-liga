@@ -362,7 +362,9 @@ def _compute_similarity_score_for_activity(
         z_dt = _parse_iso_utc(zwift_started_at) if zwift_started_at else None
         s_dt = _parse_iso_utc(strava_started_at) if strava_started_at else None
         ts_offset = int((s_dt - z_dt).total_seconds()) if (z_dt and s_dt) else 0
-        power_offset = _mse_sync_offset(zwift_times, zwift_watts, s_times, s_watts)
+        power_offset = _mse_sync_offset(
+            zwift_times, zwift_watts, s_times, s_watts, hint_offset=ts_offset,
+        )
         if power_offset is None:
             strava_offset = ts_offset
         elif power_offset == 0:
@@ -430,7 +432,9 @@ def _trim_strava_streams(
     s_dt = _parse_iso_utc(strava_started_at) if strava_started_at else None
     ts_offset = int((s_dt - z_dt).total_seconds()) if (z_dt and s_dt) else 0
 
-    power_offset = _mse_sync_offset(z_times, z_watts, s_times, s_watts)
+    power_offset = _mse_sync_offset(
+        z_times, z_watts, s_times, s_watts, hint_offset=ts_offset,
+    )
     if power_offset is None:
         strava_offset = ts_offset
         sync_method = "timestamp"

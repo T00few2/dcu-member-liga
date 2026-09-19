@@ -22,6 +22,7 @@ from services.zwift_drop_levels import ensure_drop_level_fields
 from services.users_profile_core import (
     _connected_zwift_id_from_user_data,
     _enrich_user_with_zwiftracing,
+    _gw_flagged_timestamp,
     _latest_published_post_id,
     _normalize_zwift_id,
     _sw_flagged_timestamp,
@@ -517,6 +518,8 @@ def _normalize_verification_doc(data: dict) -> dict:
         out["verifiedAt"] = _serialize_optional_timestamp(out.get("verifiedAt"))
     if "swVerifiedAt" in out:
         out["swVerifiedAt"] = _serialize_optional_timestamp(out.get("swVerifiedAt"))
+    if "gwVerifiedAt" in out:
+        out["gwVerifiedAt"] = _serialize_optional_timestamp(out.get("gwVerifiedAt"))
     return out
 
 
@@ -525,8 +528,10 @@ def _notification_state_payload(user, uid: str) -> dict:
     latest_published_post_id = _latest_published_post_id()
     latest_dr_failed_at = None
     latest_sw_flagged_at = None
+    latest_gw_flagged_at = None
     dr_report_seen_at = None
     sw_report_seen_at = None
+    gw_report_seen_at = None
     last_read_news_post_id = None
     trainer_requires_dr = False
 
@@ -537,6 +542,7 @@ def _notification_state_payload(user, uid: str) -> dict:
     last_read_news_post_id = user_data.get("lastReadNewsPostId")
     dr_report_seen_at = _serialize_optional_timestamp(user_data.get("drReportSeenAt"))
     sw_report_seen_at = _serialize_optional_timestamp(user_data.get("swReportSeenAt"))
+    gw_report_seen_at = _serialize_optional_timestamp(user_data.get("gwReportSeenAt"))
 
     trainer_name = ((user_data.get("equipment") or {}).get("trainer") or "") if user_data else ""
     if not trainer_name and user:
@@ -545,9 +551,9 @@ def _notification_state_payload(user, uid: str) -> dict:
 
     if user and user.zwift_id:
         zwift_id = str(user.zwift_id)
-        # TODO(perf): Denormalize latestDrFailedAt / latestSwFlaggedAt onto the
-        # user doc from dual_recording/runner.py + persistence.py when a doc
-        # transitions to status='failed' or stickyWatts.suspicious=true. The
+        # TODO(perf): Denormalize latestDrFailedAt / latestSwFlaggedAt / latestGwFlaggedAt
+        # onto the user doc from dual_recording/runner.py + persistence.py when a doc
+        # transitions to status='failed' or stickyWatts/ghostWatts.suspicious=true. The
         # current collection_group scan is bounded by per-user verification
         # count and is fine while seasons are short, but it grows linearly with
         # historical races. Revisit if Firestore read cost becomes visible or
@@ -574,11 +580,20 @@ def _notification_state_payload(user, uid: str) -> dict:
         if sw_timestamps:
             latest_sw_flagged_at = max(sw_timestamps)
 
+        gw_timestamps = [_gw_flagged_timestamp(v) for v in all_verifications]
+        gw_timestamps = [
+            _serialize_optional_timestamp(t) for t in gw_timestamps if t
+        ]
+        if gw_timestamps:
+            latest_gw_flagged_at = max(gw_timestamps)
+
     return {
         "latestDrFailedAt": latest_dr_failed_at,
         "drReportSeenAt": dr_report_seen_at,
         "latestSwFlaggedAt": latest_sw_flagged_at,
         "swReportSeenAt": sw_report_seen_at,
+        "latestGwFlaggedAt": latest_gw_flagged_at,
+        "gwReportSeenAt": gw_report_seen_at,
         "latestPublishedPostId": latest_published_post_id,
         "lastReadNewsPostId": last_read_news_post_id,
         "trainerRequiresDualRecording": trainer_requires_dr,
@@ -677,6 +692,29 @@ def mark_sw_report_seen():
         return jsonify({"message": str(e)}), 500
 
 
+@users_bp.route("/profile/gw-report-seen", methods=["POST"])
+def mark_gw_report_seen():
+    try:
+        try:
+            decoded_token = verify_user_token(request)
+        except AuthzError as e:
+            return jsonify({"message": e.message}), e.status_code
+        uid = decoded_token["uid"]
+
+        if not db:
+            return jsonify({"message": "Database not available"}), 500
+
+        user = UserService.get_user_by_auth_uid(uid)
+        doc_id = str(user.id) if user else uid
+        payload = with_schema_version({"gwReportSeenAt": firestore.SERVER_TIMESTAMP})
+        log_schema_issues(logger, f"users/{doc_id} (gw-report-seen)", validate_user_doc(payload, partial=True))
+        db.collection("users").document(doc_id).set(payload, merge=True)
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        logger.error("mark_gw_report_seen error: %s", e)
+        return jsonify({"message": str(e)}), 500
+
+
 @users_bp.route("/profile/dual-recording-opt-in", methods=["POST"])
 def set_dual_recording_opt_in():
     try:
@@ -709,8 +747,10 @@ _DR_SUMMARY_KEEP = (
     "passed",
     "verifiedAt",
     "swVerifiedAt",
+    "gwVerifiedAt",
     "failingMetrics",
     "stickyWatts",
+    "ghostWatts",
     "trainerName",
     "source",
     "activityId",

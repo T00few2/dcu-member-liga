@@ -3,6 +3,8 @@
 import { useState, useCallback } from 'react';
 import { User } from 'firebase/auth';
 import { API_URL } from '@/lib/api';
+import type { StickyWattsResult } from '@/lib/stickyWatts';
+import type { GhostWattsResult } from '@/lib/ghostWatts';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -53,6 +55,8 @@ export interface DualRecordingResult {
             heartrate: (number | null)[];
             altitude: (number | null)[];
         } | null;
+        stickyWatts?: StickyWattsResult | null;
+        ghostWatts?: GhostWattsResult | null;
     };
     strava: {
         activityId: number | null;

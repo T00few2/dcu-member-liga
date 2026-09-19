@@ -9,8 +9,8 @@ import { usePathname } from "next/navigation";
 
 export default function Navbar() {
     const { user, signInWithGoogle, logOut, loading, isRegistered, needsConsentUpdate, isImpersonating, toggleImpersonation, isAdmin } = useAuth();
-    const { weightNeedsAction, dualRecordingFlagged, stickyWattsFlagged, hasUnreadNews } = useNotifications();
-    const profileHasNotification = weightNeedsAction || dualRecordingFlagged || stickyWattsFlagged;
+    const { weightNeedsAction, dualRecordingFlagged, stickyWattsFlagged, ghostWattsFlagged, hasUnreadNews } = useNotifications();
+    const profileHasNotification = weightNeedsAction || dualRecordingFlagged || stickyWattsFlagged || ghostWattsFlagged;
     const avatarHasNotification = profileHasNotification || hasUnreadNews;
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);

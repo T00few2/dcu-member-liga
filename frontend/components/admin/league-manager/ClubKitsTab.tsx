@@ -878,8 +878,8 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                                         }))}
                                     />
                                 </th>
-                                <th className="p-2 text-left">Har level</th>
-                                <th className="p-2 text-left">PC/Mac</th>
+                                <th className="p-2 text-left">level ok?</th>
+                                <th className="p-2 text-left">PC/Mac?</th>
                                 <th className="p-2 text-left">Trøje</th>
                                 <th className="p-2" />
                             </tr>

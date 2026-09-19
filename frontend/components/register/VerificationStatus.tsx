@@ -11,6 +11,7 @@ import { useNotificationStateQuery } from '@/hooks/queries/useNotificationStateQ
 import DualRecordingStatusBadge from '@/components/DualRecordingStatusBadge';
 import DualRecordingResultModal from '@/components/DualRecordingResultModal';
 import StickyWattsStatusBadge from '@/components/StickyWattsStatusBadge';
+import GhostWattsStatusBadge from '@/components/GhostWattsStatusBadge';
 import WeightVideoSubmitForm from '@/components/WeightVideoSubmitForm';
 import { useLeagueSettingsQuery } from '@/hooks/queries/useLeagueSettingsQuery';
 import type { ProfileDrVerification } from '@/hooks/queries/useProfileDrVerificationsQuery';
@@ -37,7 +38,7 @@ interface VerificationStatusProps {
     ligaCategory?: string | null;
 }
 
-type Tab = 'vægt' | 'dual-recording' | 'sticky-watts';
+type Tab = 'vægt' | 'dual-recording' | 'sticky-watts' | 'ghost-watts';
 
 export default function VerificationStatus({
     status, deadline, requests = [], refreshProfile,
@@ -79,15 +80,23 @@ export default function VerificationStatus({
         (!notifState.swReportSeenAt || notifState.latestSwFlaggedAt > notifState.swReportSeenAt)
     );
 
+    const hasUnseenGw = !!(
+        notifState?.latestGwFlaggedAt &&
+        (!notifState.gwReportSeenAt || notifState.latestGwFlaggedAt > notifState.gwReportSeenAt)
+    );
+
     useEffect(() => {
         if (!user) return;
         const shouldMarkDr = activeTab === 'dual-recording' && hasUnseenDr;
         const shouldMarkSw = activeTab === 'sticky-watts' && hasUnseenSw;
-        if (!shouldMarkDr && !shouldMarkSw) return;
+        const shouldMarkGw = activeTab === 'ghost-watts' && hasUnseenGw;
+        if (!shouldMarkDr && !shouldMarkSw && !shouldMarkGw) return;
 
         const endpoint = shouldMarkDr
             ? `${API_URL}/profile/dr-report-seen`
-            : `${API_URL}/profile/sw-report-seen`;
+            : shouldMarkSw
+                ? `${API_URL}/profile/sw-report-seen`
+                : `${API_URL}/profile/gw-report-seen`;
 
         user.getIdToken().then(token =>
             fetch(endpoint, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
@@ -97,7 +106,7 @@ export default function VerificationStatus({
         }).catch((err) => {
             console.error('Failed to mark report as seen:', err);
         });
-    }, [activeTab, user, hasUnseenDr, hasUnseenSw, queryClient]);
+    }, [activeTab, user, hasUnseenDr, hasUnseenSw, hasUnseenGw, queryClient]);
 
     const activeRequest = requests.find(r => r.status === 'pending');
     const displayStatus = status === 'none' && activeRequest ? 'pending' : status;
@@ -110,8 +119,10 @@ export default function VerificationStatus({
 
     const hasDrVerifications = drVerifications.length > 0;
     const hasSwVerifications = drVerifications.some(v => v.stickyWatts != null);
+    const hasGwVerifications = drVerifications.some(v => v.ghostWatts != null);
     const latestDr = drVerifications.find(v => v.status && v.status !== 'sw_only');
     const latestSw = drVerifications.find(v => v.stickyWatts != null);
+    const latestGw = drVerifications.find(v => v.ghostWatts != null);
 
     const setOptIn = async (enabled: boolean) => {
         if (!user || isMandatoryDr) return;
@@ -138,6 +149,7 @@ export default function VerificationStatus({
         { id: 'vægt', label: 'Vægt' },
         { id: 'dual-recording', label: 'Dual Recording', unseen: hasUnseenDr },
         { id: 'sticky-watts', label: 'Sticky Watts', unseen: hasUnseenSw },
+        { id: 'ghost-watts', label: 'Ghost Watts', unseen: hasUnseenGw },
     ];
 
     const drStatusLabel = isMandatoryDr
@@ -160,8 +172,8 @@ export default function VerificationStatus({
                 />
                 <SummaryCard title="Dual recording" value={drStatusLabel} />
                 <SummaryCard
-                    title="Seneste DR / SW"
-                    value={`${latestDr ? latestDr.status : '—'} / ${latestSw?.stickyWatts?.suspicious ? 'mærkelig' : latestSw ? 'ok' : '—'}`}
+                    title="Seneste DR / SW / GW"
+                    value={`${latestDr ? latestDr.status : '—'} / ${latestSw?.stickyWatts?.suspicious ? 'mærkelig' : latestSw ? 'ok' : '—'} / ${latestGw?.ghostWatts?.suspicious ? 'mærkelig' : latestGw?.ghostWatts?.insufficientCadence ? 'ingen cad.' : latestGw ? 'ok' : '—'}`}
                 />
             </div>
 
@@ -345,6 +357,44 @@ export default function VerificationStatus({
                                         <RaceLink v={v} />
                                     </div>
                                     {v.stickyWatts?.suspicious && (
+                                        <span className="text-xs text-amber-600 font-medium">Mærkelig</span>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {activeTab === 'ghost-watts' && (
+                <div className="space-y-4">
+                    <div className="flex items-start gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-200">
+                        <p>
+                            <strong>Eksperimentel funktion</strong> — Ghost Watts-analysen er under udvikling.
+                            Resultaterne er til information og ikke grundlag for en afgørelse.
+                            Analysen bruger Zwift FIT (cadence ≈ 0 med resterende watt) og kan ikke se,
+                            hvis Zwift selv opfinder cadence.
+                        </p>
+                    </div>
+                    {drLoading ? (
+                        <div className="p-8 text-center text-muted-foreground">Indlæser...</div>
+                    ) : !hasGwVerifications ? (
+                        <div className="p-8 text-center bg-gray-50 dark:bg-gray-900 rounded-lg border border-border">
+                            <h3 className="text-xl font-bold mb-2">Ingen Ghost Watts-data</h3>
+                            <p className="text-muted-foreground">Der er ingen Ghost Watts-analyser tilgængelige for dig endnu.</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            {drVerifications.filter(v => v.ghostWatts != null).map((v) => (
+                                <div key={`${v.archiveId || 'live'}-gw-${v.raceId}-${v.gwVerifiedAt || v.verifiedAt}`} className="flex justify-between items-center text-sm p-3 bg-muted/30 rounded">
+                                    <div className="flex items-center gap-3">
+                                        <GhostWattsStatusBadge ghostWatts={v.ghostWatts} trainerName={v.trainerName} />
+                                        <span className="text-muted-foreground">
+                                            {v.verifiedAt ? new Date(v.verifiedAt).toLocaleDateString('da-DK') : '—'}
+                                        </span>
+                                        <RaceLink v={v} />
+                                    </div>
+                                    {v.ghostWatts?.suspicious && (
                                         <span className="text-xs text-amber-600 font-medium">Mærkelig</span>
                                     )}
                                 </div>

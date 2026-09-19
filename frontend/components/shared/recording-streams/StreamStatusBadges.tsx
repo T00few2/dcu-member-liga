@@ -50,8 +50,7 @@ export function StreamStatusBadges({
                 <p className="text-xs text-amber-700 mb-2 px-1">
                     {showGapOverlay && <>Strava starts late: {fmtGap(gapSec, gapFraction)}. </>}
                     {showEndGapOverlay && <>Strava stops early: {fmtGap(endGapSec, endGapFraction)}. </>}
-                    Total crop {fmtGap(gapSec + endGapSec, totalCropFraction)} exceeds the 15% limit —
-                    Zwift stream was not cropped. Peak watt comparison may be distorted.
+                    Total crop {fmtGap(gapSec + endGapSec, totalCropFraction)} exceeds the 15% limit.
                 </p>
             )}
             {showGapOverlay && !cropExceedsLimit && (

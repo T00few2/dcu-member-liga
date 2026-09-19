@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from statistics import median
 
 import pytz
 
@@ -103,9 +104,20 @@ def _resample_power_to_1hz(
 
 
 def _mse_sync_offset(
-    z_times: list, z_watts: list, s_times: list, s_watts: list, search_sec: int = 600
+    z_times: list,
+    z_watts: list,
+    s_times: list,
+    s_watts: list,
+    search_sec: int = 600,
+    hint_offset: int | None = None,
 ) -> int | None:
-    """Find integer-second offset to minimize MSE of power streams."""
+    """Find integer-second offset to minimize MSE of power streams.
+
+    Searches ±search_sec around 0 and, when given, around hint_offset (clock
+    difference). A 20-minute late Strava start sits far outside ±10 minutes,
+    so without the hint MSE can lock onto a local minimum near t=0 and report
+    an early stop instead of a late start.
+    """
     if not z_times or not z_watts or not s_times or not s_watts:
         return None
 
@@ -132,9 +144,13 @@ def _mse_sync_offset(
     if mse_zero is None:
         return None
 
+    offsets = set(range(-search_sec, search_sec + 1))
+    if hint_offset is not None:
+        offsets.update(range(hint_offset - search_sec, hint_offset + search_sec + 1))
+
     best_mse = mse_zero
     best_tau = 0
-    for tau in range(-search_sec, search_sec + 1):
+    for tau in offsets:
         if tau == 0:
             continue
         m = _mse(tau)
@@ -306,6 +322,144 @@ def analyze_sticky_watts(times: list, watts: list, thresholds: dict | None = Non
         "stickyRuns": sticky_runs,
         "maxRunLength": max_run,
         "preZeroEvents": pre_zero_events,
+        "suspicious": suspicious,
+    }
+
+
+_GW_DEFAULTS: dict = {
+    "cadZeroThresh": 5,
+    "minGhostWatts": 8,
+    "minRun": 3,
+    "minGhostSeconds": 20,
+    "minGhostEvents": 3,
+    "suspiciousFloorW": 10,
+}
+
+# Pedaling samples used to decide whether cadence data is real (missing sensors
+# write 0 rpm for the whole ride and would otherwise mass-flag ghost watts).
+_GW_ACTIVE_WATTS = 50
+_GW_MIN_ACTIVE_CADENCE_SHARE = 0.20
+
+
+def _empty_ghost_watts(total: int, *, insufficient: bool) -> dict:
+    return {
+        "totalSamples": total,
+        "ghostEvents": 0,
+        "ghostSeconds": 0,
+        "medianGhostWatts": 0.0,
+        "maxGhostWatts": 0,
+        "zeroCadenceSeconds": 0,
+        "ghostShareOfZeroCadence": 0.0,
+        "insufficientCadence": insufficient,
+        "suspicious": False,
+    }
+
+
+def _sticky_run_mask(vals: list[int], min_watts: int, min_run: int) -> list[bool]:
+    """True on samples that are already a sticky identical-watt plateau."""
+    mask = [False] * len(vals)
+    i = 0
+    n = len(vals)
+    while i < n:
+        w = vals[i]
+        if w <= min_watts:
+            i += 1
+            continue
+        j = i + 1
+        while j < n and vals[j] == w:
+            j += 1
+        if (j - i) >= min_run:
+            for k in range(i, j):
+                mask[k] = True
+        i = j
+    return mask
+
+
+def analyze_ghost_watts(
+    times: list,
+    watts: list,
+    cadence: list | None,
+    thresholds: dict | None = None,
+) -> dict:
+    """Detect ghost-watts (raised power floor while cadence is ~0)."""
+    t = {**_GW_DEFAULTS, **(thresholds or {})}
+    cad_zero = t["cadZeroThresh"]
+    min_ghost = t["minGhostWatts"]
+    min_run = t["minRun"]
+
+    n = min(len(times), len(watts))
+    if n == 0:
+        return _empty_ghost_watts(0, insufficient=True)
+
+    vals: list[int] = [int(w) if w is not None else 0 for w in watts[:n]]
+    cad_raw = cadence or []
+    if not cad_raw:
+        return _empty_ghost_watts(n, insufficient=True)
+
+    n = min(n, len(cad_raw))
+    vals = vals[:n]
+    cad: list[int] = [int(c) if c is not None else 0 for c in cad_raw[:n]]
+
+    active = 0
+    active_with_cad = 0
+    for w, c in zip(vals, cad):
+        if w > _GW_ACTIVE_WATTS:
+            active += 1
+            if c >= cad_zero:
+                active_with_cad += 1
+    if active < 4 or (active_with_cad / active) < _GW_MIN_ACTIVE_CADENCE_SHARE:
+        return _empty_ghost_watts(n, insufficient=True)
+
+    sticky = _sticky_run_mask(vals, _SW_DEFAULTS["minWatts"], _SW_DEFAULTS["minRun"])
+
+    zero_cadence_seconds = sum(1 for c in cad if c < cad_zero)
+    ghost_share_samples = 0
+    is_ghost = [False] * n
+    for i in range(n):
+        if cad[i] < cad_zero and vals[i] >= min_ghost and not sticky[i]:
+            is_ghost[i] = True
+            ghost_share_samples += 1
+
+    ghost_share = (
+        round(ghost_share_samples / zero_cadence_seconds * 100, 1)
+        if zero_cadence_seconds > 0
+        else 0.0
+    )
+
+    ghost_events = 0
+    ghost_seconds = 0
+    ghost_watts: list[int] = []
+    i = 0
+    while i < n:
+        if not is_ghost[i]:
+            i += 1
+            continue
+        j = i + 1
+        while j < n and is_ghost[j]:
+            j += 1
+        run_len = j - i
+        if run_len >= min_run:
+            ghost_events += 1
+            ghost_seconds += run_len
+            ghost_watts.extend(vals[i:j])
+        i = j
+
+    median_w = round(float(median(ghost_watts)), 1) if ghost_watts else 0.0
+    max_w = max(ghost_watts) if ghost_watts else 0
+    suspicious = (
+        median_w >= t["suspiciousFloorW"]
+        and (ghost_seconds >= t["minGhostSeconds"] or ghost_events >= t["minGhostEvents"])
+    )
+
+    return {
+        "totalSamples": n,
+        "ghostEvents": ghost_events,
+        "ghostSeconds": ghost_seconds,
+        "medianGhostWatts": median_w,
+        "maxGhostWatts": max_w,
+        "zeroCadenceSeconds": zero_cadence_seconds,
+        "ghostShareOfZeroCadence": ghost_share,
+        "insufficientCadence": False,
         "suspicious": suspicious,
     }
 

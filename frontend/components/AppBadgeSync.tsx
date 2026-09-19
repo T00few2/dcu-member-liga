@@ -4,8 +4,8 @@ import { useEffect } from 'react';
 import { useNotifications } from '@/hooks/useNotifications';
 
 export default function AppBadgeSync() {
-    const { weightNeedsAction, dualRecordingFlagged, stickyWattsFlagged, hasUnreadNews } = useNotifications();
-    const count = [weightNeedsAction, dualRecordingFlagged, stickyWattsFlagged, hasUnreadNews].filter(Boolean).length;
+    const { weightNeedsAction, dualRecordingFlagged, stickyWattsFlagged, ghostWattsFlagged, hasUnreadNews } = useNotifications();
+    const count = [weightNeedsAction, dualRecordingFlagged, stickyWattsFlagged, ghostWattsFlagged, hasUnreadNews].filter(Boolean).length;
 
     useEffect(() => {
         if (!('setAppBadge' in navigator)) return;

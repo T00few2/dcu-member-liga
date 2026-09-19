@@ -21,5 +21,9 @@ export function useNotifications() {
         !!ns?.latestSwFlaggedAt &&
         (!ns.swReportSeenAt || ns.latestSwFlaggedAt > ns.swReportSeenAt);
 
-    return { weightNeedsAction, dualRecordingFlagged, stickyWattsFlagged, hasUnreadNews };
+    const ghostWattsFlagged =
+        !!ns?.latestGwFlaggedAt &&
+        (!ns.gwReportSeenAt || ns.latestGwFlaggedAt > ns.gwReportSeenAt);
+
+    return { weightNeedsAction, dualRecordingFlagged, stickyWattsFlagged, ghostWattsFlagged, hasUnreadNews };
 }
