@@ -46,6 +46,36 @@ export function tourEvents(stageRaces: StageRace[]): StageRace[] {
     return stageRaces.filter((e) => isTourSeasonClass(e.seasonClass));
 }
 
+function etapeWord(n: number): string {
+    return n === 1 ? 'etape' : 'etaper';
+}
+
+/** Public copy: how many stages count toward a tour's GC (best-X of Y). */
+export function tourGcCountingSentence(
+    event: Pick<StageRace, 'name' | 'bestRacesCount' | 'stages'>,
+    options?: { includeName?: boolean },
+): string {
+    const total = event.stages?.length ?? 0;
+    const configured = Number(event.bestRacesCount);
+    const count = Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : 0;
+    const includeName = options?.includeName !== false && Boolean(event.name);
+    const prefix = includeName ? `${event.name}: ` : '';
+
+    if (total < 1) {
+        if (count < 1) return '';
+        return `${prefix}De bedste ${count} ${etapeWord(count)} tæller til Tour-GC.`;
+    }
+
+    const counting = count < 1 ? total : Math.min(count, total);
+    if (counting >= total) {
+        return `${prefix}Alle ${total} ${etapeWord(total)} tæller til Tour-GC.`;
+    }
+    if (counting === 1) {
+        return `${prefix}Den bedste etape af ${total} tæller til Tour-GC.`;
+    }
+    return `${prefix}De bedste ${counting} af ${total} etaper tæller til Tour-GC.`;
+}
+
 export function tourStageRaces(races: Race[], eventId: string): Race[] {
     return races
         .filter((r) => r.stageRaceId === eventId)

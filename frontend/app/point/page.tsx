@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useLeagueSettingsQuery } from '@/hooks/queries';
+import { useLeagueSettingsQuery, useStageRacesQuery } from '@/hooks/queries';
 import PointsPlaceTable, { type PointsPlaceColumn } from '@/components/admin/league-manager/PointsPlaceTable';
 import {
     DEFAULT_SEASON_RANK_POINTS,
@@ -10,6 +10,7 @@ import {
     maxPlaceInTable,
     type SeasonPointTableKey,
 } from '@/lib/seasonPointsDefaults';
+import { tourEvents, tourGcCountingSentence } from '@/lib/seasonUi';
 
 type Tab = 'race-day' | 'tour-gc' | 'season';
 
@@ -34,8 +35,11 @@ function padToLength(arr: number[], rows: number): number[] {
 
 export default function PointPage() {
     const settingsQuery = useLeagueSettingsQuery();
+    const stageRacesQuery = useStageRacesQuery();
     const [tab, setTab] = useState<Tab>('race-day');
     const settings = settingsQuery.data;
+    const tours = useMemo(() => tourEvents(stageRacesQuery.data ?? []), [stageRacesQuery.data]);
+    const seasonCountsAll = !(settings?.seasonBestResultsCount);
 
     const raceDayColumns: PointsPlaceColumn[] = useMemo(() => {
         const finish = settings?.finishPoints ?? [];
@@ -118,6 +122,18 @@ export default function PointPage() {
                         Klassikere scores som beskrevet under Løbspoint. I Touren omsættes hver etapes
                         placering til GC-point med tabellen herunder, som summeres på tværs af etaperne.
                     </p>
+                    {tours.length === 1 && (
+                        <p className="text-sm font-medium text-foreground">
+                            {tourGcCountingSentence(tours[0])}
+                        </p>
+                    )}
+                    {tours.length > 1 && (
+                        <ul className="text-sm font-medium text-foreground list-disc pl-5 space-y-1">
+                            {tours.map((tour) => (
+                                <li key={tour.id}>{tourGcCountingSentence(tour)}</li>
+                            ))}
+                        </ul>
+                    )}
                     <PointsPlaceTable columns={tourGcColumns} readOnly />
                 </div>
             )}
@@ -128,6 +144,11 @@ export default function PointPage() {
                         Sæsonpoint for Tour (samlet + etape) og Klassikere — tæller til Sæsonstillingen,
                         ikke til Tourens interne GC.
                     </p>
+                    {seasonCountsAll && (
+                        <p className="text-sm font-medium text-foreground">
+                            Alle klassikere og alle etaper tæller til Sæsonstillingen.
+                        </p>
+                    )}
                     <PointsPlaceTable columns={seasonColumns} readOnly />
                 </div>
             )}
