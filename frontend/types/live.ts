@@ -155,6 +155,8 @@ export interface ResultEntry {
     sprintData?: Record<string, SprintPerformance>;
     criticalP?: CriticalPower;
     dualRecordingVerification?: DualRecordingVerification;
+    declassified?: boolean;
+    disqualified?: boolean;
 }
 
 export interface SprintPerformance {

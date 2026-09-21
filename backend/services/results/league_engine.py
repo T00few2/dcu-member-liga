@@ -7,6 +7,7 @@ import logging
 
 from models import LeagueSettings, LeagueStandings, RiderResult, SegmentType, SprintConfig
 from services.category_config import CategoryConfigResolver
+from services.results.ranking import competition_places
 from utils.datetime_utils import normalize_dt, parse_dt
 
 logger = logging.getLogger(__name__)
@@ -165,16 +166,13 @@ class LeagueEngine:
             manual_exclusions,
         )
         # Rank by league points desc; DQ (0) still get a place if present in map.
+        # Equal scores (e.g. all declassified last-place pts) share the same place.
         ranked = [
-            (zid, pts)
+            (zid, int(pts))
             for zid, pts in points_map.items()
             if pts is not None
         ]
-        ranked.sort(key=lambda item: (-int(item[1]), str(item[0])))
-        places: dict[str, int] = {}
-        for idx, (zid, _pts) in enumerate(ranked):
-            places[zid] = idx + 1
-        return places
+        return competition_places(ranked)
 
     def _calculate_race_league_points(
         self,

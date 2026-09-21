@@ -13,6 +13,7 @@ import { formatTime, formatGap } from './formatTime';
 import DualRecordingStatusBadge from '@/components/DualRecordingStatusBadge';
 import PublicWeightVerificationStatusBadge from '@/components/PublicWeightVerificationStatusBadge';
 import DualRecordingResultModal from '@/components/DualRecordingResultModal';
+import DeclassifiedBadge, { isRiderDeclassified } from '@/components/DeclassifiedBadge';
 import type { User } from 'firebase/auth';
 import { API_URL } from '@/lib/api';
 import type { DualRecordingResult } from '@/hooks/useDualRecording';
@@ -217,10 +218,16 @@ export default function RaceResultsTable({
                                 {raceResults.map((rider, idx) => {
                                     const drVerification = drVerifications?.get(rider.zwiftId);
                                     const isDnf = !rider.finishTime || rider.finishTime <= 0;
+                                    const isDeclassified = isRiderDeclassified(rider.zwiftId, selectedRace, rider);
                                     return (
                                     <tr key={rider.zwiftId} className="hover:bg-muted/20 transition odd:bg-transparent even:bg-[#f1efe7]">
                                         <td className="px-4 py-3 text-center font-medium text-muted-foreground">{idx + 1}</td>
-                                        <td className="px-4 py-3 font-medium text-card-foreground">{rider.name}</td>
+                                        <td className="px-4 py-3 font-medium text-card-foreground">
+                                            <span className="inline-flex items-center">
+                                                {rider.name}
+                                                <DeclassifiedBadge show={isDeclassified} />
+                                            </span>
+                                        </td>
                                         <td className="px-4 py-3 text-muted-foreground">{rider.club || clubByZwiftId?.get(rider.zwiftId) || '-'}</td>
                                         <td className="px-4 py-3 text-right font-mono text-muted-foreground">{formatTime(rider.finishTime, rider.raceStatus)}</td>
                                         {sprintColumns.map(sprintKey => {

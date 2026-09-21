@@ -167,6 +167,65 @@ class TestSeasonEngineOneDay:
         )
         assert standings["A"][0]["results"][0]["source"] == "gc"
 
+    def test_tied_gc_points_share_season_points(self):
+        """Declassified riders share last-place GC pts; season prestige must match."""
+        last_place_league_pts = RANK_POINTS[1]
+        event = {
+            "id": "eckd",
+            "seasonClass": "wt_classic",
+            "resultsPhase": "finalized",
+            "standings": {
+                "A": [
+                    {"zwiftId": "1", "name": "Winner", "totalPoints": RANK_POINTS[0]},
+                    {"zwiftId": "2", "name": "DC 1", "totalPoints": last_place_league_pts},
+                    {"zwiftId": "3", "name": "DC 2", "totalPoints": last_place_league_pts},
+                    {"zwiftId": "4", "name": "DC 3", "totalPoints": last_place_league_pts},
+                ]
+            },
+        }
+        standings = SeasonEngine(SETTINGS).calculate_standings([event], {})
+        by_id = {e["zwiftId"]: e for e in standings["A"]}
+        shared = points_for_place(DEFAULT_SEASON_RANK_POINTS["wt_classic"], 2)
+        assert by_id["1"]["totalPoints"] == points_for_place(
+            DEFAULT_SEASON_RANK_POINTS["wt_classic"], 1
+        )
+        assert by_id["2"]["totalPoints"] == shared
+        assert by_id["3"]["totalPoints"] == shared
+        assert by_id["4"]["totalPoints"] == shared
+
+
+class TestSeasonEngineTourDeclass:
+    def test_declassified_stage_riders_share_tour_stage_points(self):
+        event = {
+            "id": "tour1",
+            "seasonClass": "tour",
+            "resultsPhase": "provisional",
+            "standings": {},
+        }
+        riders = [
+            make_rider(1, total_points=150, finish_rank=1, finish_time=3600000),
+            make_rider(2, total_points=120, finish_rank=2, finish_time=3700000),
+            make_rider(3, total_points=120, finish_rank=3, finish_time=3800000),
+            make_rider(4, total_points=120, finish_rank=4, finish_time=3900000),
+        ]
+        stage = make_stage(
+            "s1",
+            event_id="tour1",
+            index=1,
+            phase="finalized",
+            results={"A": riders},
+        )
+        stage["manualDeclassifications"] = ["2", "3", "4"]
+        standings = SeasonEngine(SETTINGS).calculate_standings([event], {"s1": stage})
+        by_id = {e["zwiftId"]: e for e in standings["A"]}
+        shared = points_for_place(DEFAULT_SEASON_RANK_POINTS["tour_stage"], 2)
+        assert by_id["1"]["totalPoints"] == points_for_place(
+            DEFAULT_SEASON_RANK_POINTS["tour_stage"], 1
+        )
+        assert by_id["2"]["totalPoints"] == shared
+        assert by_id["3"]["totalPoints"] == shared
+        assert by_id["4"]["totalPoints"] == shared
+
 
 class TestSeasonBestX:
     def test_best_results_count_limits_total(self):

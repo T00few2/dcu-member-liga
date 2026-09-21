@@ -2,6 +2,7 @@ import { Race, ResultEntry, OverlayConfig } from '@/types/live';
 import { formatTimeValue, formatDelta, shortenRiderName, parseWorldTime } from '@/lib/formatters';
 import { resolveColor } from '@/lib/colors';
 import { getConfiguredSprintsForCategory, resolveSprintColumns } from '@/lib/sprintColumns';
+import DeclassifiedBadge, { isRiderDeclassified } from '@/components/DeclassifiedBadge';
 
 interface RaceResultsTableProps {
     race: Race;
@@ -240,6 +241,7 @@ export function RaceResultsTable({ race, results, category, config, overlay, sta
             >
                 {results.map((rider, idx) => {
                     const isDnf = !rider.finishTime || rider.finishTime <= 0;
+                    const isDeclassified = isRiderDeclassified(rider.zwiftId, race, rider);
                     return (
                     <tr 
                         key={rider.zwiftId} 
@@ -258,7 +260,10 @@ export function RaceResultsTable({ race, results, category, config, overlay, sta
                             {idx + 1}
                         </td>
                         <td className={`${bodyCellPadding} px-2 truncate align-middle`}>
-                            {shortenRiderName(rider.name, nameMax)}
+                            <span className="inline-flex items-center max-w-full">
+                                <span className="truncate">{shortenRiderName(rider.name, nameMax)}</span>
+                                <DeclassifiedBadge show={isDeclassified} />
+                            </span>
                         </td>
                         {sprintColumns.length > 0 ? (
                             <>

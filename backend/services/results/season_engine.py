@@ -10,6 +10,7 @@ from typing import Any
 from models import LeagueStandings
 from services.results.constants import RESULTS_PHASE_FINALIZED
 from services.results.league_engine import LeagueEngine
+from services.results.ranking import competition_places
 from services.results.season_points_defaults import (
     DEFAULT_SEASON_RANK_POINTS,
     points_for_place,
@@ -158,13 +159,26 @@ class SeasonEngine:
         for category, entries in standings.items():
             if not isinstance(entries, list):
                 continue
-            for place_idx, entry in enumerate(entries):
+            scored: list[tuple[str, int]] = []
+            name_by_id: dict[str, str] = {}
+            for entry in entries:
                 if not isinstance(entry, dict):
                     continue
                 zid = str(entry.get("zwiftId") or "").strip()
                 if not zid:
                     continue
-                place = place_idx + 1
+                try:
+                    gc_pts = int(entry.get("totalPoints") or 0)
+                except (TypeError, ValueError):
+                    gc_pts = 0
+                scored.append((zid, gc_pts))
+                name_by_id[zid] = str(entry.get("name") or "")
+
+            places = competition_places(scored)
+            for zid, _gc_pts in scored:
+                place = places.get(zid)
+                if not place:
+                    continue
                 pts = points_for_place(scheme, place)
                 if pts <= 0:
                     continue
@@ -172,7 +186,7 @@ class SeasonEngine:
                     table,
                     category=category,
                     zwift_id=zid,
-                    name=str(entry.get("name") or ""),
+                    name=name_by_id.get(zid, ""),
                     points=pts,
                     race_id=None,
                     stage_race_id=event_id,

@@ -166,6 +166,21 @@ class TestPointsRace:
         assert cat['2'] == cat['3'] == cat['4']
         assert cat['2'] == RANK_POINTS[1]
 
+    def test_declassified_riders_share_race_place_for_season_mapping(self):
+        engine = LeagueEngine(SETTINGS)
+        riders = [
+            make_rider(1, total_points=150, finish_time=3600000, finish_rank=1),
+            make_rider(2, total_points=120, finish_time=3700000, finish_rank=2),
+            make_rider(3, total_points=110, finish_time=3800000, finish_rank=3),
+            make_rider(4, total_points=100, finish_time=3900000, finish_rank=4),
+        ]
+        race = make_race('r1', 'points', {'A': riders}, manual_declassifications=['2', '3', '4'])
+        places = engine.get_race_places(
+            riders, race, 'A', 'points', set(), {'2', '3', '4'}, set()
+        )
+        assert places['1'] == 1
+        assert places['2'] == places['3'] == places['4'] == 2
+
 
 # ---------------------------------------------------------------------------
 # Time trial

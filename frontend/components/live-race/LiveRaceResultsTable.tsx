@@ -11,6 +11,7 @@ import SprintsByLap, {
 import { mergeElevationProfileWithLapBanners } from '@/lib/routeProfileSegments';
 import { formatTime, formatGap } from '@/app/results/_components/formatTime';
 import { getConfiguredSprintsForCategory, resolveSprintColumns } from '@/lib/sprintColumns';
+import DeclassifiedBadge, { isRiderDeclassified } from '@/components/DeclassifiedBadge';
 
 interface Props {
     race: Race | null;
@@ -185,7 +186,10 @@ export function LiveResultsView({
                                     <tr key={row.zwiftId || idx} className="hover:bg-muted/20 transition">
                                         <td className="py-2 px-3 text-center font-mono text-muted-foreground">{rank}</td>
                                         <td className="py-2 px-3 font-medium text-card-foreground">
-                                            {row.name || 'Ukendt'}
+                                            <span className="inline-flex items-center">
+                                                {row.name || 'Ukendt'}
+                                                <DeclassifiedBadge show={isRiderDeclassified(row.zwiftId, race, row)} />
+                                            </span>
                                         </td>
                                         <td className="py-2 px-3 text-muted-foreground">{club}</td>
                                         <td className="py-2 px-3 text-right font-mono text-muted-foreground">
