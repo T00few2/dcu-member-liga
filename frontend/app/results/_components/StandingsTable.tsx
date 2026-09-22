@@ -96,6 +96,7 @@ export default function StandingsTable({
                                         </td>
                                         <td className="px-4 py-3 font-medium text-card-foreground">
                                             <span className="inline-flex items-center gap-2">
+                                                {rider.name}
                                                 {showDivisionLeaderJersey && rider.calculatedTotal === leaderPoints && (
                                                     // eslint-disable-next-line @next/next/no-img-element
                                                     <img
@@ -105,7 +106,6 @@ export default function StandingsTable({
                                                         className="w-10 h-10 object-contain shrink-0"
                                                     />
                                                 )}
-                                                {rider.name}
                                             </span>
                                         </td>
                                         <td className="px-4 py-3 text-muted-foreground">{clubByZwiftId?.get(rider.zwiftId) || '-'}</td>

@@ -35,7 +35,8 @@ describe('StandingsTable division leader jersey', () => {
         const images = screen.getAllByAltText('Danish Cycling Member');
         expect(images).toHaveLength(2);
         expect(images[0]).toHaveAttribute('src', JERSEY);
-        expect(screen.getByText('Leader').parentElement).toContainElement(images[0]);
+        const leaderHtml = screen.getByText('Leader').closest('span')?.innerHTML ?? '';
+        expect(leaderHtml.indexOf('Leader')).toBeLessThan(leaderHtml.indexOf('<img'));
         expect(screen.getByText('Second').parentElement?.querySelector('img')).toBeNull();
     });
 
