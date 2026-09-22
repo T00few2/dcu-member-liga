@@ -551,10 +551,33 @@ def test_scratch_reassigns_autos_and_keeps_pins():
     by_club = {row["club"]: row for row in preview["proposedClubKits"]}
     assert by_club["Pinned Club"]["assignment"] == "pinned"
     assert by_club["Pinned Club"]["jerseySignature"] == 2
-    assert by_club["A"]["jerseySignature"] != by_club["B"]["jerseySignature"]
+    assert by_club["A"]["jerseySignature"] == 3
+    assert by_club["B"]["jerseySignature"] != 3
     assert 2 not in {by_club["A"]["jerseySignature"], by_club["B"]["jerseySignature"]}
     assert "Pinned Club" not in {row["club"] for row in preview["changes"]}
-    assert any(row["club"] == "B" and row["fromSignature"] == 1 for row in preview["changes"])
+
+
+def test_scratch_assigns_code_jerseys_to_all_pc_clubs_before_level_kits():
+    riders = [
+        {"club": "PC Club", "dropLevel": 80, "canEnterUnlockCode": True},
+        {"club": "Console", "dropLevel": 80, "canEnterUnlockCode": False},
+    ]
+    preview = preview_auto_assignment(unlocks=UNLOCKS, club_kits=[], riders=riders, mode="scratch")
+    by_club = {row["club"]: row for row in preview["proposedClubKits"]}
+    assert by_club["PC Club"]["jerseySignature"] == 3
+    assert by_club["Console"]["jerseySignature"] != 3
+
+
+def test_scratch_does_not_give_code_jersey_to_mixed_club():
+    riders = [
+        {"club": "Mixed", "dropLevel": 80, "canEnterUnlockCode": True},
+        {"club": "Mixed", "dropLevel": 80, "canEnterUnlockCode": False},
+        {"club": "PC Club", "dropLevel": 8, "canEnterUnlockCode": True},
+    ]
+    preview = preview_auto_assignment(unlocks=UNLOCKS, club_kits=[], riders=riders, mode="scratch")
+    by_club = {row["club"]: row for row in preview["proposedClubKits"]}
+    assert by_club["PC Club"]["jerseySignature"] == 3
+    assert by_club["Mixed"]["jerseySignature"] != 3
 
 
 def test_new_mode_keeps_existing_and_fills_missing():

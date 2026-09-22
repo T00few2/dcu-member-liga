@@ -636,7 +636,7 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
             </div>
             <p className="text-xs text-muted-foreground">
                 Opdater rytter-levels skriver kun drop level. Tildel-knapperne laver et forslag uden at gemme.
-                Fra bunden ignorerer gemte auto-trøjer og fordeler unikt, så alle i klubben kan få trøjen. Pins bliver.
+                Fra bunden ignorerer gemte auto-trøjer. P-kode-trøjer tildeles først til klubber hvor alle ryttere er på PC/Mac, derefter fordeles level-trøjer unikt. Pins bliver.
                 Nye klubber rører ikke eksisterende tildelinger. Minimal omfordeling flytter kun en klub, hvis en anden trøje dækker flere af dens ryttere.
             </p>
 

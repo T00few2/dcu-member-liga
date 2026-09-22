@@ -530,6 +530,20 @@ def _resolve_assign_mode(mode: str | None, preserve_saved: bool) -> str:
     return ASSIGN_MODE_NEW if preserve_saved else ASSIGN_MODE_SCRATCH
 
 
+def _working_code_signatures(unlocks: Iterable[Mapping[str, Any]]) -> set[int]:
+    signatures: set[int] = set()
+    for unlock in unlocks:
+        signature = _int_or_none(unlock.get("jerseySignature"))
+        if signature is not None and has_working_code(unlock):
+            signatures.add(signature)
+    return signatures
+
+
+def _all_members_can_enter_code(members: Iterable[Mapping[str, Any]]) -> bool:
+    rows = list(members)
+    return bool(rows) and all(rider_can_enter_unlock_code(member) for member in rows)
+
+
 def _pick_intersection(pool: set[int], usage: Counter[int]) -> int:
     unused = [sig for sig in pool if usage[sig] == 0]
     if unused:
@@ -543,6 +557,49 @@ def _pick_best_coverage(counts: dict[int, int], usage: Counter[int]) -> int:
     unused = [sig for sig in candidates if usage[sig] == 0]
     pool = unused or candidates
     return min(pool, key=lambda sig: (usage[sig], sig))
+
+
+def _assign_code_jerseys_first(
+    pending: list[tuple[str, set[int], list[dict[str, Any]]]],
+    *,
+    unlock_list: list[dict[str, Any]],
+    unlock_map: Mapping[int, Mapping[str, Any]],
+    jersey_map: Mapping[int, Mapping[str, Any]],
+    usage: Counter[int],
+    auto_rows: list[dict[str, Any]],
+    club_summaries: list[dict[str, Any]],
+    pinned_sigs: set[int],
+) -> list[tuple[str, set[int], list[dict[str, Any]]]]:
+    """Give each free P-code jersey to an all-PC/Mac club before level jerseys are used."""
+    code_sigs = _working_code_signatures(unlock_list) - pinned_sigs
+    if not code_sigs:
+        return pending
+    code_pending: list[tuple[str, set[int], list[dict[str, Any]], set[int]]] = []
+    rest: list[tuple[str, set[int], list[dict[str, Any]]]] = []
+    for club, pool, members in pending:
+        code_pool = pool & code_sigs
+        if code_pool and _all_members_can_enter_code(members):
+            code_pending.append((club, code_pool, members, pool))
+        else:
+            rest.append((club, pool, members))
+    code_pending.sort(key=lambda item: (len(item[1]), item[0].lower()))
+    for club, code_pool, members, full_pool in code_pending:
+        unused = [sig for sig in code_pool if usage[sig] == 0]
+        if not unused:
+            rest.append((club, full_pool, members))
+            continue
+        pick = min(unused)
+        usage[pick] += 1
+        kit_row = denormalize_kit_row(
+            club=club,
+            signature=pick,
+            assignment=ASSIGN_AUTO,
+            unlock=unlock_map.get(pick) or {},
+            jersey=jersey_map.get(pick) or {},
+        )
+        auto_rows.append(kit_row)
+        club_summaries.append(_club_summary(club, members, full_pool, kit_row, pinned=False))
+    return rest
 
 
 def _assignment_changes(
@@ -642,6 +699,7 @@ def preview_auto_assignment(
     """Propose club kits. Pins stay exclusive and are never moved.
 
     scratch: ignore saved auto kits and assign every club from scratch.
+    Working P-code jerseys go first, and only to clubs where every rider is on PC/Mac.
     new: keep every saved kit and only fill clubs that have none.
     minimal: keep a saved kit unless another jersey covers more of that club's riders.
     """
@@ -707,6 +765,18 @@ def preview_auto_assignment(
             club_summaries.append(_club_summary(club, members, candidate_pool, None, pinned=False))
             continue
         pending.append((club, candidate_pool, members))
+
+    if assign_mode == ASSIGN_MODE_SCRATCH:
+        pending = _assign_code_jerseys_first(
+            pending,
+            unlock_list=unlock_list,
+            unlock_map=unlock_map,
+            jersey_map=jersey_map,
+            usage=usage,
+            auto_rows=auto_rows,
+            club_summaries=club_summaries,
+            pinned_sigs=pinned_sigs,
+        )
 
     pending.sort(key=lambda item: (len(item[1]), item[0].lower()))
     for club, pool, members in pending:
