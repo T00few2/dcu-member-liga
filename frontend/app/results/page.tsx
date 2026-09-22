@@ -593,6 +593,7 @@ export default function ResultsPage() {
                         countingHint={seasonMode
                             ? 'Tæller ikke (uden for sæson best-X)'
                             : 'Tæller ikke (uden for best-X)'}
+                        showDivisionLeaderJersey
                     />
                 </ErrorBoundary>
             )}

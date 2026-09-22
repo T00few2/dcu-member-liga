@@ -5,6 +5,9 @@ import {
     type SeasonStandingColumn,
 } from '@/lib/seasonUi';
 
+const DIVISION_LEADER_JERSEY_URL =
+    'https://cdn.zwift.com/static/zc/JERSEYS/DanishCyclingMember2019_thumb.png';
+
 type ProcessedRider = StandingEntry & {
     calculatedTotal: number;
     countingKeys: Set<string>;
@@ -22,6 +25,8 @@ interface Props {
     clubByZwiftId?: Map<string, string>;
     title?: string;
     countingHint?: string;
+    /** Season division leader may wear the Danish Cycling Member jersey. */
+    showDivisionLeaderJersey?: boolean;
 }
 
 export default function StandingsTable({
@@ -35,10 +40,12 @@ export default function StandingsTable({
     clubByZwiftId,
     title = 'Førertavle',
     countingHint = 'Tæller ikke (uden for best-X)',
+    showDivisionLeaderJersey = false,
 }: Props) {
     const columns = columnsProp?.length
         ? columnsProp
         : buildLegacyStandingColumns(races);
+    const leaderPoints = currentStandings[0]?.calculatedTotal;
 
     return (
         <div className="space-y-6">
@@ -87,7 +94,20 @@ export default function StandingsTable({
                                         <td className="px-4 py-3 text-center font-medium text-muted-foreground">
                                             {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
                                         </td>
-                                        <td className="px-4 py-3 font-medium text-card-foreground">{rider.name}</td>
+                                        <td className="px-4 py-3 font-medium text-card-foreground">
+                                            <span className="inline-flex items-center gap-2">
+                                                {showDivisionLeaderJersey && rider.calculatedTotal === leaderPoints && (
+                                                    // eslint-disable-next-line @next/next/no-img-element
+                                                    <img
+                                                        src={DIVISION_LEADER_JERSEY_URL}
+                                                        alt="Danish Cycling Member"
+                                                        title="Fører i divisionen må køre i Danish Cycling Member"
+                                                        className="w-10 h-10 object-contain shrink-0"
+                                                    />
+                                                )}
+                                                {rider.name}
+                                            </span>
+                                        </td>
                                         <td className="px-4 py-3 text-muted-foreground">{clubByZwiftId?.get(rider.zwiftId) || '-'}</td>
                                         <td className="px-4 py-3 text-center text-muted-foreground">{rider.raceCount}</td>
                                         {columns.map((col) => {
