@@ -106,6 +106,38 @@ interface CatalogJersey {
     imageUrl?: string | null;
 }
 
+type AssignmentMode = 'scratch' | 'new' | 'minimal';
+
+interface AssignmentChange {
+    club: string;
+    fromSignature?: number | null;
+    toSignature?: number | null;
+    fromName?: string | null;
+    toName?: string | null;
+}
+
+interface AssignmentProposal {
+    mode: AssignmentMode;
+    proposedClubKits: ClubKitRow[];
+    changes: AssignmentChange[];
+    riderCoverage?: {
+        total: number;
+        canObtain: number;
+        percent: number;
+    };
+    savedRiderCoverage?: {
+        total: number;
+        canObtain: number;
+        percent: number;
+    };
+}
+
+function assignmentModeLabel(mode: AssignmentMode): string {
+    if (mode === 'scratch') return 'Tildel alle fra bunden';
+    if (mode === 'new') return 'Tildel nye klubber';
+    return 'Minimal omfordeling';
+}
+
 export default function ClubKitsTab({ user }: ClubKitsTabProps) {
     const [overview, setOverview] = useState<Overview | null>(null);
     const [status, setStatus] = useState('');
@@ -119,7 +151,7 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
     const [pinClub, setPinClub] = useState('');
     const [pinNotes, setPinNotes] = useState('');
     const [pinJersey, setPinJersey] = useState<CatalogJersey | null>(null);
-    const [ignoreProposed, setIgnoreProposed] = useState(false);
+    const [proposal, setProposal] = useState<AssignmentProposal | null>(null);
     const [clubSort, setClubSort] = useState<{ key: 'club' | 'minLevel'; dir: 'asc' | 'desc' }>({
         key: 'club',
         dir: 'asc',
@@ -166,8 +198,14 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
     }, [search]);
 
     const unlocks = overview?.jerseyUnlocks || [];
-    const coverage = overview?.preview?.coverage;
     const clubs = overview?.preview?.clubs || [];
+    const proposalByClub = useMemo(() => {
+        const map = new Map<string, ClubKitRow>();
+        for (const kit of proposal?.proposedClubKits || []) {
+            if (kit.club) map.set(kit.club, kit);
+        }
+        return map;
+    }, [proposal]);
     const savedKits = overview?.clubKits || [];
     const savedByClub = useMemo(() => {
         const map = new Map<string, ClubKitRow>();
@@ -247,17 +285,7 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
         () => clubs.filter((club) => (club.cannotEnterCodeCount || 0) > 0),
         [clubs],
     );
-    const previewDiffers = useMemo(
-        () => {
-            if (ignoreProposed) return false;
-            return clubs.some((club) => {
-                const savedSig = savedByClub.get(club.club)?.jerseySignature ?? null;
-                const proposedSig = club.kit?.jerseySignature ?? null;
-                return savedSig !== proposedSig;
-            });
-        },
-        [clubs, savedByClub, ignoreProposed],
-    );
+    const previewDiffers = (proposal?.changes?.length || 0) > 0;
 
     const jerseyTableRows = useMemo(() => {
         const bySig = new Map<number, JerseyTableRow>();
@@ -315,6 +343,7 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                 return;
             }
             setStatus('Unlock-index gemt');
+            setProposal(null);
             await loadOverview();
         } finally {
             setBusy(false);
@@ -382,6 +411,7 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
             }
             setStatus(`Pinned ${pinClub}`);
             setPinNotes('');
+            setProposal(null);
             await loadOverview();
         } finally {
             setBusy(false);
@@ -412,15 +442,11 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
             }
             setStatus(`Tildelt ${pinJersey.name} til ${pinClub} (auto)`);
             setPinNotes('');
+            setProposal(null);
             await loadOverview();
         } finally {
             setBusy(false);
         }
-    };
-
-    const resetProposed = () => {
-        setIgnoreProposed(true);
-        setStatus('Forslag nulstillet. Viser kun gemte trøjer — andre klubber er uændrede.');
     };
 
     const unpinClub = async (club: string) => {
@@ -437,6 +463,7 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                 setStatus(data.message || 'Kunne ikke unpinne');
                 return;
             }
+            setProposal(null);
             await loadOverview();
         } finally {
             setBusy(false);
@@ -454,24 +481,56 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                 return;
             }
             setStatus(data.message || 'Kendte unlocks indlæst');
+            setProposal(null);
             await loadOverview();
         } finally {
             setBusy(false);
         }
     };
 
-    const applyAuto = async () => {
+    const proposeAssignment = async (mode: AssignmentMode) => {
         setBusy(true);
         try {
             const headers = await authHeaders();
-            const res = await fetch(`${API_URL}/admin/club-kits/apply`, { method: 'POST', headers });
+            const res = await fetch(`${API_URL}/admin/club-kits/preview`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ mode }),
+            });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {
-                setStatus(data.message || 'Auto-tildeling fejlede');
+                setStatus(data.message || 'Kunne ikke lave forslag');
                 return;
             }
-            setStatus('Auto-tildeling gemt (eksisterende kits uændrede, kun manglende klubber)');
-            setIgnoreProposed(false);
+            setProposal(data);
+            const changes = data.changes?.length || 0;
+            setStatus(
+                changes
+                    ? `${assignmentModeLabel(mode)}: ${changes} klubber ændres. Gem tildeling for at skrive det.`
+                    : `${assignmentModeLabel(mode)}: ingen ændringer i forhold til det gemte.`,
+            );
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const saveProposal = async () => {
+        if (!proposal) return;
+        setBusy(true);
+        try {
+            const headers = await authHeaders();
+            const res = await fetch(`${API_URL}/admin/club-kits/apply`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ clubKits: proposal.proposedClubKits }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setStatus(data.message || 'Kunne ikke gemme tildeling');
+                return;
+            }
+            setProposal(null);
+            setStatus('Tildeling gemt. Min Profil og Info bruger de nye trøjer.');
             await loadOverview();
         } finally {
             setBusy(false);
@@ -488,8 +547,9 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                 setStatus(data.message || 'Level-refresh fejlede');
                 return;
             }
+            setProposal(null);
             setStatus(
-                `Levels opdateret: ${data.updated}/${data.total} (skip ${data.skipped}, fail ${data.failed}). Gemte klubtrøjer er uændrede.`,
+                `Levels opdateret: ${data.updated}/${data.total} (skip ${data.skipped}, fail ${data.failed}). Kun rytter-level — ikke PC/Mac, og klubtrøjer er uændrede.`,
             );
             await loadOverview();
         } finally {
@@ -520,7 +580,7 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                         Ukendt rytter-level tælles som 1 (starttrøjer alle har). En pinnet trøje er kun til den klub og tildeles aldrig automatisk til andre.
                     </p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                     <button
                         type="button"
                         onClick={() => void refreshLevels()}
@@ -531,29 +591,63 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                     </button>
                     <button
                         type="button"
-                        onClick={resetProposed}
+                        onClick={() => void proposeAssignment('scratch')}
                         disabled={busy}
                         className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-secondary/50 disabled:opacity-50"
                     >
-                        Nulstil forslag
+                        Tildel alle fra bunden
                     </button>
                     <button
                         type="button"
-                        onClick={() => void applyAuto()}
+                        onClick={() => void proposeAssignment('new')}
                         disabled={busy}
+                        className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-secondary/50 disabled:opacity-50"
+                    >
+                        Tildel nye klubber
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => void proposeAssignment('minimal')}
+                        disabled={busy}
+                        className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-secondary/50 disabled:opacity-50"
+                    >
+                        Minimal omfordeling
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => void saveProposal()}
+                        disabled={busy || !proposal || !previewDiffers}
                         className="px-3 py-2 text-sm bg-primary text-primary-foreground rounded-lg disabled:opacity-50"
                     >
-                        Anvend auto-tildeling
+                        Gem tildeling
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setProposal(null);
+                            setStatus('Forslag forkastet. Gemte trøjer er uændrede.');
+                        }}
+                        disabled={busy || !proposal}
+                        className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-secondary/50 disabled:opacity-50"
+                    >
+                        Forkast forslag
                     </button>
                 </div>
             </div>
+            <p className="text-xs text-muted-foreground">
+                Opdater rytter-levels skriver kun drop level. Tildel-knapperne laver et forslag uden at gemme.
+                Fra bunden ignorerer gemte auto-trøjer og fordeler unikt, så alle i klubben kan få trøjen. Pins bliver.
+                Nye klubber rører ikke eksisterende tildelinger. Minimal omfordeling flytter kun en klub, hvis en anden trøje dækker flere af dens ryttere.
+            </p>
 
             {status && <p className="text-sm text-muted-foreground">{status}</p>}
-            {previewDiffers && (
+            {proposal && (
                 <p className="text-sm text-amber-700 dark:text-amber-400">
-                    Foreslået auto-tildeling afviger fra det gemte — kun klubber uden gemt trøje.
-                    Min Profil og Info bruger stadig de gemte trøjer. Brug Tildel som auto til nye klubber,
-                    eller Nulstil forslag for at skjule dette.
+                    Forslag ({assignmentModeLabel(proposal.mode)}): {proposal.changes?.length || 0} klubber ændres.
+                    Min Profil og Info bruger stadig de gemte trøjer, indtil du gemmer.
+                    {proposal.savedRiderCoverage && proposal.riderCoverage
+                        ? ` Rytterdækning ${proposal.savedRiderCoverage.percent}% → ${proposal.riderCoverage.percent}% (${proposal.riderCoverage.canObtain}/${proposal.riderCoverage.total}).`
+                        : ''}
                 </p>
             )}
 
@@ -578,16 +672,6 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                 <Stat label="Pinned / auto (gemt)" value={`${savedCoverage.pinnedCount} / ${savedCoverage.autoCount}`} />
                 <Stat label="Unikke auto / doubles (gemt)" value={`${savedCoverage.uniqueAuto} / ${savedCoverage.sharedJerseyCount}`} />
             </div>
-            {previewDiffers && coverage && (
-                <p className="text-xs text-muted-foreground">
-                    Foreslået efter nuværende levels: {coverage.percent}% klubdækning
-                    {overview?.preview.riderCoverage
-                        ? `, ${overview.preview.riderCoverage.percent}% rytterdækning (${overview.preview.riderCoverage.canObtain}/${overview.preview.riderCoverage.total})`
-                        : ''}
-                    , {coverage.pinnedCount} pinned / {coverage.autoCount} auto,
-                    {' '}{coverage.uniqueAuto} unikke / {coverage.sharedJerseyCount} doubles.
-                </p>
-            )}
 
             <section className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -807,10 +891,10 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                                 {club.memberCount} {club.memberCount === 1 ? 'medlem' : 'medlemmer'}
                                 {' · pool '}
                                 {club.poolSize}
-                                {emptyReasonByClub.get(club.club)
-                                    ? ` · ${emptyReasonByClub.get(club.club)}`
-                                    : club.kit?.jerseyName
-                                        ? ` · foreslået: ${club.kit.jerseyName}`
+                                {proposalByClub.get(club.club)?.jerseyName
+                                    ? ` · foreslået: ${proposalByClub.get(club.club)?.jerseyName}`
+                                    : emptyReasonByClub.get(club.club)
+                                        ? ` · ${emptyReasonByClub.get(club.club)}`
                                         : ''}
                             </p>
                         ))}
@@ -887,10 +971,10 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                         <tbody>
                             {sortedClubs.map((club) => {
                                 const saved = savedByClub.get(club.club);
-                                const proposed = club.kit;
+                                const proposed = proposal ? proposalByClub.get(club.club) : undefined;
                                 const savedSig = saved?.jerseySignature ?? null;
                                 const proposedSig = proposed?.jerseySignature ?? null;
-                                const proposedDiffers = savedSig !== proposedSig;
+                                const proposedDiffers = Boolean(proposal) && savedSig !== proposedSig;
                                 const missing = savedSig == null;
                                 return (
                                 <tr
@@ -929,7 +1013,7 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                                                     : ''}
                                             </span>
                                         </div>
-                                        {proposedDiffers && !ignoreProposed && (
+                                        {proposedDiffers && (
                                             <p className="text-xs text-muted-foreground mt-1">
                                                 Foreslået: {proposed?.jerseyName || 'ingen'}
                                             </p>

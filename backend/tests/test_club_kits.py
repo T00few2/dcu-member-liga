@@ -331,8 +331,12 @@ def test_tvos_club_does_not_get_p_code_jersey():
         "unlockCode": "WORKS",
         "codeStatus": "working",
     }]
-    reshuffle = preview_auto_assignment(unlocks=UNLOCKS, club_kits=saved, riders=riders)
+    kept = preview_auto_assignment(unlocks=UNLOCKS, club_kits=saved, riders=riders, mode="new")
+    assert kept["auto"][0]["jerseySignature"] == 3
+    assert kept["changes"] == []
+    reshuffle = preview_auto_assignment(unlocks=UNLOCKS, club_kits=saved, riders=riders, mode="minimal")
     assert reshuffle["auto"][0]["jerseySignature"] == 6
+    assert reshuffle["changes"][0]["toSignature"] == 6
 
 
 def test_assign_auto_rejects_code_kit_for_non_pc_mac():
@@ -530,6 +534,69 @@ def test_rider_payload_matches_club_case_insensitively():
     )
     assert payload is not None
     assert payload["jerseyName"] == "DZR 2025"
+
+
+def test_scratch_reassigns_autos_and_keeps_pins():
+    riders = [
+        {"club": "Pinned Club", "dropLevel": 80, "canEnterUnlockCode": True},
+        {"club": "A", "dropLevel": 80, "canEnterUnlockCode": True},
+        {"club": "B", "dropLevel": 80, "canEnterUnlockCode": True},
+    ]
+    saved = [
+        {"club": "Pinned Club", "jerseySignature": 2, "jerseyName": "Level 50", "assignment": "pinned"},
+        {"club": "A", "jerseySignature": 1, "jerseyName": "Level 5", "assignment": "auto"},
+        {"club": "B", "jerseySignature": 1, "jerseyName": "Level 5", "assignment": "auto"},
+    ]
+    preview = preview_auto_assignment(unlocks=UNLOCKS, club_kits=saved, riders=riders, mode="scratch")
+    by_club = {row["club"]: row for row in preview["proposedClubKits"]}
+    assert by_club["Pinned Club"]["assignment"] == "pinned"
+    assert by_club["Pinned Club"]["jerseySignature"] == 2
+    assert by_club["A"]["jerseySignature"] != by_club["B"]["jerseySignature"]
+    assert 2 not in {by_club["A"]["jerseySignature"], by_club["B"]["jerseySignature"]}
+    assert "Pinned Club" not in {row["club"] for row in preview["changes"]}
+    assert any(row["club"] == "B" and row["fromSignature"] == 1 for row in preview["changes"])
+
+
+def test_new_mode_keeps_existing_and_fills_missing():
+    riders = [
+        {"club": "Saved", "dropLevel": 80, "canEnterUnlockCode": True},
+        {"club": "New", "dropLevel": 80, "canEnterUnlockCode": True},
+    ]
+    saved = [{"club": "Saved", "jerseySignature": 1, "jerseyName": "Level 5", "assignment": "auto"}]
+    preview = preview_auto_assignment(unlocks=UNLOCKS, club_kits=saved, riders=riders, mode="new")
+    by_club = {row["club"]: row for row in preview["proposedClubKits"]}
+    assert by_club["Saved"]["jerseySignature"] == 1
+    assert by_club["New"]["jerseySignature"] != 1
+    assert [row["club"] for row in preview["changes"]] == ["New"]
+
+
+def test_minimal_keeps_full_coverage_and_assigns_new_club():
+    riders = [
+        {"club": "Full", "dropLevel": 80, "canEnterUnlockCode": True},
+        {"club": "Full", "dropLevel": 80, "canEnterUnlockCode": True},
+        {"club": "New", "dropLevel": 8, "canEnterUnlockCode": True},
+    ]
+    saved = [{"club": "Full", "jerseySignature": 1, "jerseyName": "Level 5", "assignment": "auto"}]
+    preview = preview_auto_assignment(unlocks=UNLOCKS, club_kits=saved, riders=riders, mode="minimal")
+    by_club = {row["club"]: row for row in preview["proposedClubKits"]}
+    assert by_club["Full"]["jerseySignature"] == 1
+    assert by_club["New"]["jerseySignature"] in {3, 6}
+    assert all(row["club"] != "Full" for row in preview["changes"])
+
+
+def test_commit_rejects_moved_pin():
+    from services.club_kits import commit_club_kit_proposal
+
+    existing = [{"club": "DZR", "jerseySignature": 2, "assignment": "pinned", "jerseyName": "Level 50"}]
+    try:
+        commit_club_kit_proposal(
+            proposed=[{"club": "DZR", "jerseySignature": 1, "assignment": "pinned"}],
+            existing=existing,
+            unlocks=UNLOCKS,
+        )
+        raise AssertionError("expected pin lock")
+    except ValueError as exc:
+        assert "Pin" in str(exc)
 
 
 def test_seed_matches_catalog_level_and_code():

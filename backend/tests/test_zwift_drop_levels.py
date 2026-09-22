@@ -3,7 +3,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from services.zwift_drop_levels import ensure_drop_level_fields
+from services.zwift_drop_levels import ensure_drop_level_fields, profile_level_fields
 
 
 def test_ensure_drop_level_keeps_hundredths_and_merges_client(monkeypatch):
@@ -43,6 +43,22 @@ def test_ensure_drop_level_fills_from_unofficial_json(monkeypatch):
     assert out["dropLevel"] == 112
     assert out["ftp"] == 200
     assert out["achievementLevel"] == 11202
+
+
+def test_profile_level_fields_drops_game_client():
+    fields = profile_level_fields({
+        "dropLevel": 46,
+        "achievementLevel": 4661,
+        "totalExperiencePoints": 365605,
+        "gameClientPlatform": "windows",
+        "canEnterUnlockCode": True,
+        "gameClientUserAgent": "CNL (Windows 10)",
+    })
+    assert fields == {
+        "dropLevel": 46,
+        "achievementLevel": 4661,
+        "totalExperiencePoints": 365605,
+    }
 
 
 def test_ensure_drop_level_survives_auth_error(monkeypatch):

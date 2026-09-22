@@ -484,25 +484,95 @@ def _empty_pool_reason(members: list[Mapping[str, Any]], unlocks: Iterable[Mappi
     return "Ingen fælles trøje i intersection (lav/ukendt level og ingen fælles working codes)"
 
 
-def preview_auto_assignment(
-    *,
+ASSIGN_MODE_SCRATCH = "scratch"
+ASSIGN_MODE_NEW = "new"
+ASSIGN_MODE_MINIMAL = "minimal"
+ASSIGN_MODES = {ASSIGN_MODE_SCRATCH, ASSIGN_MODE_NEW, ASSIGN_MODE_MINIMAL}
+
+
+def signature_obtain_counts(
+    members: Iterable[Mapping[str, Any]],
     unlocks: Iterable[Mapping[str, Any]],
-    club_kits: Iterable[Mapping[str, Any]],
-    riders: Iterable[Mapping[str, Any]],
-    jerseys_by_sig: Mapping[int, Mapping[str, Any]] | None = None,
-    preserve_saved: bool = True,
-) -> dict[str, Any]:
-    """Greedy auto-assign clubs without a saved kit. Pins stay exclusive.
+    *,
+    banned: set[int] | None = None,
+) -> dict[int, int]:
+    """How many members can obtain each jersey, ignoring pinned signatures."""
+    unlock_list = list(unlocks)
+    banned_sigs = banned or set()
+    counts: dict[int, int] = {}
+    for member in members:
+        drop_level = _int_or_none(member.get("dropLevel"))
+        for signature in obtainable_signatures(
+            unlock_list,
+            drop_level,
+            can_enter_code=rider_can_enter_unlock_code(member),
+        ):
+            if signature in banned_sigs:
+                continue
+            counts[signature] = counts.get(signature, 0) + 1
+    return counts
 
-    Saved auto kits are kept as-is unless preserve_saved is False (full reshuffle).
-    """
-    unlock_list = [dict(u) for u in unlocks]
-    unlock_map = unlocks_by_signature(unlock_list)
-    jersey_map = {int(k): dict(v) for k, v in (jerseys_by_sig or {}).items()}
-    existing = club_kits_by_club(club_kits)
-    grouped = riders_by_club(riders)
 
-    clubs = sorted(set(grouped) | {c for c in existing})
+def club_obtain_count(
+    members: Iterable[Mapping[str, Any]],
+    kit: Mapping[str, Any] | None,
+    unlocks: Iterable[Mapping[str, Any]],
+) -> int:
+    if not kit:
+        return 0
+    unlock_list = list(unlocks)
+    return sum(1 for member in members if rider_can_obtain_kit(member, kit, unlock_list))
+
+
+def _resolve_assign_mode(mode: str | None, preserve_saved: bool) -> str:
+    if mode in ASSIGN_MODES:
+        return mode
+    return ASSIGN_MODE_NEW if preserve_saved else ASSIGN_MODE_SCRATCH
+
+
+def _pick_intersection(pool: set[int], usage: Counter[int]) -> int:
+    unused = [sig for sig in pool if usage[sig] == 0]
+    if unused:
+        return min(unused)
+    return min(pool, key=lambda sig: (usage[sig], sig))
+
+
+def _pick_best_coverage(counts: dict[int, int], usage: Counter[int]) -> int:
+    best = max(counts.values())
+    candidates = [sig for sig, count in counts.items() if count == best]
+    unused = [sig for sig in candidates if usage[sig] == 0]
+    pool = unused or candidates
+    return min(pool, key=lambda sig: (usage[sig], sig))
+
+
+def _assignment_changes(
+    before: Iterable[Mapping[str, Any]],
+    after: Iterable[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    before_map = club_kits_by_club(before)
+    after_map = club_kits_by_club(after)
+    changes: list[dict[str, Any]] = []
+    clubs = sorted(set(before_map) | set(after_map), key=str.lower)
+    for club in clubs:
+        old = before_map.get(club)
+        new = after_map.get(club)
+        old_sig = _int_or_none(old.get("jerseySignature")) if old else None
+        new_sig = _int_or_none(new.get("jerseySignature")) if new else None
+        if old_sig == new_sig:
+            continue
+        changes.append({
+            "club": club,
+            "fromSignature": old_sig,
+            "toSignature": new_sig,
+            "fromName": _str_or_none(old.get("jerseyName")) if old else None,
+            "toName": _str_or_none(new.get("jerseyName")) if new else None,
+        })
+    return changes
+
+
+def _pinned_rows(
+    existing: Mapping[str, Mapping[str, Any]],
+) -> tuple[list[dict[str, Any]], set[str], set[int]]:
     pinned_rows: list[dict[str, Any]] = []
     pinned_clubs: set[str] = set()
     pinned_sigs: set[int] = set()
@@ -515,22 +585,95 @@ def preview_auto_assignment(
         pinned_clubs.add(club)
         pinned_sigs.add(signature)
         pinned_rows.append(dict(row))
+    return pinned_rows, pinned_clubs, pinned_sigs
+
+
+def saved_club_summaries(
+    *,
+    unlocks: Iterable[Mapping[str, Any]],
+    club_kits: Iterable[Mapping[str, Any]],
+    riders: Iterable[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Admin table rows for the kits that are already saved. Does not propose changes."""
+    unlock_list = list(unlocks)
+    existing = club_kits_by_club(club_kits)
+    grouped = riders_by_club(riders)
+    pinned_rows, pinned_clubs, pinned_sigs = _pinned_rows(existing)
+    clubs = sorted(set(grouped) | set(existing))
+    summaries: list[dict[str, Any]] = []
+    empty_pools: list[dict[str, Any]] = []
+    for club in clubs:
+        members = grouped.get(club, [])
+        pool = club_obtainable_intersection(members, unlock_list)
+        kit = existing.get(club)
+        pinned = club in pinned_clubs
+        summaries.append(_club_summary(club, members, pool, kit, pinned=pinned))
+        if kit:
+            continue
+        auto_pool = set(pool) - pinned_sigs
+        if auto_pool:
+            continue
+        empty_pools.append({
+            "club": club,
+            "reason": (
+                "Eneste fælles trøjer er allerede pinnede til andre klubber"
+                if pool
+                else _empty_pool_reason(members, unlock_list)
+            ),
+            "memberCount": len(members),
+        })
+    return {
+        "clubs": summaries,
+        "pinned": pinned_rows,
+        "emptyPools": empty_pools,
+        "proposedClubKits": [dict(row) for row in existing.values()],
+    }
+
+
+def preview_auto_assignment(
+    *,
+    unlocks: Iterable[Mapping[str, Any]],
+    club_kits: Iterable[Mapping[str, Any]],
+    riders: Iterable[Mapping[str, Any]],
+    jerseys_by_sig: Mapping[int, Mapping[str, Any]] | None = None,
+    preserve_saved: bool = True,
+    mode: str | None = None,
+) -> dict[str, Any]:
+    """Propose club kits. Pins stay exclusive and are never moved.
+
+    scratch: ignore saved auto kits and assign every club from scratch.
+    new: keep every saved kit and only fill clubs that have none.
+    minimal: keep a saved kit unless another jersey covers more of that club's riders.
+    """
+    assign_mode = _resolve_assign_mode(mode, preserve_saved)
+    unlock_list = [dict(u) for u in unlocks]
+    unlock_map = unlocks_by_signature(unlock_list)
+    jersey_map = {int(k): dict(v) for k, v in (jerseys_by_sig or {}).items()}
+    existing = club_kits_by_club(club_kits)
+    grouped = riders_by_club(riders)
+
+    clubs = sorted(set(grouped) | set(existing))
+    pinned_rows, pinned_clubs, pinned_sigs = _pinned_rows(existing)
 
     usage: Counter[int] = Counter(pinned_sigs)
     auto_rows: list[dict[str, Any]] = []
     empty_pools: list[dict[str, Any]] = []
     club_summaries: list[dict[str, Any]] = []
     saved_auto: dict[str, dict[str, Any]] = {}
-    if preserve_saved:
+    if assign_mode != ASSIGN_MODE_SCRATCH:
         for club, row in existing.items():
             if club in pinned_clubs:
                 continue
             signature = _int_or_none(row.get("jerseySignature"))
-            if signature is None:
+            if signature is None or signature in pinned_sigs:
                 continue
-            blocked = riders_blocked_from_code_kit(grouped.get(club, []), row, unlock_list)
-            if blocked["cannotEnterCodeCount"]:
-                continue
+            members = grouped.get(club, [])
+            if assign_mode == ASSIGN_MODE_MINIMAL:
+                counts = signature_obtain_counts(members, unlock_list, banned=pinned_sigs)
+                best = max(counts.values()) if counts else 0
+                current = club_obtain_count(members, row, unlock_list)
+                if current < best:
+                    continue
             saved_auto[club] = dict(row)
             usage[signature] += 1
             auto_rows.append(dict(row))
@@ -539,7 +682,6 @@ def preview_auto_assignment(
     for club in clubs:
         members = grouped.get(club, [])
         pool = club_obtainable_intersection(members, unlock_list)
-        row = existing.get(club)
         if club in pinned_clubs:
             kit = existing[club]
             club_summaries.append(_club_summary(club, members, pool, kit, pinned=True))
@@ -547,8 +689,12 @@ def preview_auto_assignment(
         if club in saved_auto:
             club_summaries.append(_club_summary(club, members, pool, saved_auto[club], pinned=False))
             continue
-        auto_pool = set(pool) - pinned_sigs
-        if not auto_pool:
+        if assign_mode == ASSIGN_MODE_MINIMAL:
+            counts = signature_obtain_counts(members, unlock_list, banned=pinned_sigs)
+            candidate_pool = set(counts)
+        else:
+            candidate_pool = set(pool) - pinned_sigs
+        if not candidate_pool:
             empty_pools.append({
                 "club": club,
                 "reason": (
@@ -558,17 +704,19 @@ def preview_auto_assignment(
                 ),
                 "memberCount": len(members),
             })
-            club_summaries.append(_club_summary(club, members, auto_pool, row, pinned=False))
+            club_summaries.append(_club_summary(club, members, candidate_pool, None, pinned=False))
             continue
-        pending.append((club, auto_pool, members))
+        pending.append((club, candidate_pool, members))
 
     pending.sort(key=lambda item: (len(item[1]), item[0].lower()))
     for club, pool, members in pending:
-        unused = [sig for sig in pool if usage[sig] == 0]
-        if unused:
-            pick = min(unused)
+        if assign_mode == ASSIGN_MODE_MINIMAL:
+            counts = signature_obtain_counts(members, unlock_list, banned=pinned_sigs)
+            if not counts:
+                continue
+            pick = _pick_best_coverage(counts, usage)
         else:
-            pick = min(pool, key=lambda sig: (usage[sig], sig))
+            pick = _pick_intersection(pool, usage)
         usage[pick] += 1
         unlock = unlock_map.get(pick) or {}
         jersey = jersey_map.get(pick) or {}
@@ -586,12 +734,17 @@ def preview_auto_assignment(
     total_clubs = len(clubs)
     shared = [sig for sig, count in usage.items() if count > 1]
     unique_auto = sum(1 for row in auto_rows if usage[int(row["jerseySignature"])] == 1)
+    proposed = pinned_rows + auto_rows
+    flat_riders = [member for members in grouped.values() for member in members]
 
     return {
+        "mode": assign_mode,
         "clubs": sorted(club_summaries, key=lambda c: c["club"].lower()),
         "pinned": pinned_rows,
         "auto": auto_rows,
         "emptyPools": empty_pools,
+        "changes": _assignment_changes(existing.values(), proposed),
+        "riderCoverage": rider_assigned_kit_coverage(flat_riders, proposed, unlock_list),
         "coverage": {
             "assignedClubs": len(assigned_clubs),
             "totalClubs": total_clubs,
@@ -602,7 +755,7 @@ def preview_auto_assignment(
             "uniqueAuto": unique_auto,
             "sharedJerseyCount": len(shared),
         },
-        "proposedClubKits": pinned_rows + auto_rows,
+        "proposedClubKits": proposed,
     }
 
 
@@ -613,6 +766,7 @@ def apply_auto_assignment(
     riders: Iterable[Mapping[str, Any]],
     jerseys_by_sig: Mapping[int, Mapping[str, Any]] | None = None,
     preserve_saved: bool = True,
+    mode: str | None = None,
 ) -> list[dict[str, Any]]:
     preview = preview_auto_assignment(
         unlocks=unlocks,
@@ -620,8 +774,70 @@ def apply_auto_assignment(
         riders=riders,
         jerseys_by_sig=jerseys_by_sig,
         preserve_saved=preserve_saved,
+        mode=mode,
     )
     return list(preview["proposedClubKits"])
+
+
+def commit_club_kit_proposal(
+    *,
+    proposed: Iterable[Mapping[str, Any]],
+    existing: Iterable[Mapping[str, Any]],
+    unlocks: Iterable[Mapping[str, Any]],
+    jerseys_by_sig: Mapping[int, Mapping[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Replace saved auto kits with a reviewed proposal. Pins cannot move."""
+    existing_map = club_kits_by_club(existing)
+    proposed_map = club_kits_by_club(proposed)
+    existing_pins = {
+        club: row for club, row in existing_map.items() if row.get("assignment") == ASSIGN_PINNED
+    }
+    proposed_pins = {
+        club: row for club, row in proposed_map.items() if row.get("assignment") == ASSIGN_PINNED
+    }
+    if set(existing_pins) != set(proposed_pins):
+        raise ValueError("Pinned klubber kan ikke ændres her")
+    for club, row in existing_pins.items():
+        proposed_sig = _int_or_none(proposed_pins[club].get("jerseySignature"))
+        if proposed_sig != _int_or_none(row.get("jerseySignature")):
+            raise ValueError(f"Pin for {club} kan ikke ændres her")
+
+    pinned_sigs = {
+        sig for row in existing_pins.values()
+        if (sig := _int_or_none(row.get("jerseySignature"))) is not None
+    }
+    unlock_map = unlocks_by_signature(unlocks)
+    jersey_map = {int(k): dict(v) for k, v in (jerseys_by_sig or {}).items()}
+    out: list[dict[str, Any]] = [dict(existing_pins[club]) for club in sorted(existing_pins, key=str.lower)]
+    for club in sorted(proposed_map, key=str.lower):
+        if club in existing_pins:
+            continue
+        row = proposed_map[club]
+        if row.get("assignment") == ASSIGN_PINNED:
+            raise ValueError("Nye pins skal sættes med Pin")
+        signature = _int_or_none(row.get("jerseySignature"))
+        if signature is None:
+            raise ValueError(f"Mangler trøje for {club}")
+        if signature in pinned_sigs:
+            raise ValueError(f"Trøjen er pinnet og kan ikke auto-tildeles til {club}")
+        unlock = dict(unlock_map.get(signature) or {})
+        previous = existing_map.get(club)
+        if not unlock and previous and _int_or_none(previous.get("jerseySignature")) == signature:
+            kept = dict(previous)
+            kept["assignment"] = ASSIGN_AUTO
+            out.append(kept)
+            continue
+        if not unlock and signature not in jersey_map:
+            raise ValueError(f"Ukendt trøje {signature} for {club}")
+        out.append(denormalize_kit_row(
+            club=club,
+            signature=signature,
+            assignment=ASSIGN_AUTO,
+            unlock=unlock,
+            jersey=jersey_map.get(signature) or {},
+            notes=_str_or_none(row.get("notes")),
+        ))
+    return out
 
 
 def pin_club_kit(

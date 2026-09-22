@@ -136,6 +136,11 @@ def _achievement_raw(fields: dict[str, Any]) -> int | None:
         return None
 
 
+def profile_level_fields(fields: Mapping[str, Any]) -> dict[str, Any]:
+    """Drop-level refresh writes only level fields, never last game client."""
+    return {key: fields[key] for key in PROFILE_LEVEL_KEYS if key in fields}
+
+
 def refresh_drop_levels_for_ids(
     zwift_ids: list[int],
     write_fields: Callable[[int, dict[str, Any]], None],
@@ -143,7 +148,7 @@ def refresh_drop_levels_for_ids(
     sleep_s: float = 0.12,
     token: str | None = None,
 ) -> dict[str, int]:
-    """Fetch JSON profiles and call write_fields(zwift_id, level_fields)."""
+    """Fetch JSON profiles and write drop level fields only."""
     access = token or game_client_access_token()
     updated = 0
     skipped = 0
@@ -151,8 +156,8 @@ def refresh_drop_levels_for_ids(
     for index, zwift_id in enumerate(zwift_ids):
         try:
             profile = fetch_json_profile(access, zwift_id)
-            fields = unofficial_profile_fields(profile)
-            if not fields:
+            fields = profile_level_fields(unofficial_profile_fields(profile))
+            if fields.get("dropLevel") is None:
                 skipped += 1
             else:
                 write_fields(zwift_id, fields)

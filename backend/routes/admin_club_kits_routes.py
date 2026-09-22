@@ -11,9 +11,10 @@ from authz import AuthzError, require_admin
 from extensions import db, get_zwift_game_service
 from routes.admin import admin_bp
 from services.club_kits import (
-    apply_auto_assignment,
+    ASSIGN_MODES,
     assign_auto_club_kit,
     club_kits_by_club,
+    commit_club_kit_proposal,
     members_for_club,
     pin_club_kit,
     preview_auto_assignment,
@@ -21,6 +22,7 @@ from services.club_kits import (
     riders_below_kit_level,
     riders_blocked_from_code_kit,
     riders_by_club,
+    saved_club_summaries,
     unpin_club_kit,
 )
 from services.jersey_unlock_seed import match_known_unlocks, merge_unlocks
@@ -111,12 +113,10 @@ def club_kits_overview():
     try:
         settings = _load_settings()
         riders = _registered_riders()
-        jerseys = _jersey_lookup()
-        preview = preview_auto_assignment(
+        preview = saved_club_summaries(
             unlocks=settings.get("jerseyUnlocks") or [],
             club_kits=settings.get("clubKits") or [],
             riders=riders,
-            jerseys_by_sig=jerseys,
         )
         grouped = riders_by_club(riders)
         saved = club_kits_by_club(settings.get("clubKits") or [])
@@ -346,14 +346,25 @@ def preview_club_kits_route():
     if not db:
         return jsonify({"error": "DB not available"}), 500
     try:
+        body = request.get_json(silent=True) or {}
+        mode = body.get("mode")
+        if mode not in ASSIGN_MODES:
+            return jsonify({"message": "mode must be scratch, new, or minimal"}), 400
         settings = _load_settings()
+        riders = _registered_riders()
         preview = preview_auto_assignment(
             unlocks=settings.get("jerseyUnlocks") or [],
             club_kits=settings.get("clubKits") or [],
-            riders=_registered_riders(),
+            riders=riders,
             jerseys_by_sig=_jersey_lookup(),
+            mode=mode,
         )
-        return jsonify({"preview": preview}), 200
+        preview["savedRiderCoverage"] = rider_assigned_kit_coverage(
+            riders,
+            settings.get("clubKits") or [],
+            settings.get("jerseyUnlocks") or [],
+        )
+        return jsonify(preview), 200
     except Exception as exc:
         logger.exception("preview_club_kits failed")
         return jsonify({"message": str(exc)}), 500
@@ -368,11 +379,15 @@ def apply_club_kits_route():
     if not db:
         return jsonify({"error": "DB not available"}), 500
     try:
+        body = request.get_json(silent=True) or {}
+        proposed = body.get("clubKits")
+        if not isinstance(proposed, list):
+            return jsonify({"message": "clubKits er påkrævet — lav et forslag før du gemmer"}), 400
         settings = _load_settings()
-        next_kits = apply_auto_assignment(
+        next_kits = commit_club_kit_proposal(
+            proposed=proposed,
+            existing=settings.get("clubKits") or [],
             unlocks=settings.get("jerseyUnlocks") or [],
-            club_kits=settings.get("clubKits") or [],
-            riders=_registered_riders(),
             jerseys_by_sig=_jersey_lookup(),
         )
         update = with_schema_version({
@@ -381,7 +396,9 @@ def apply_club_kits_route():
         })
         log_schema_issues(logger, "league/settings (clubKits apply)", validate_league_settings_doc(update, partial=True))
         _settings_ref().set(update, merge=True)
-        return jsonify({"clubKits": next_kits, "message": "Auto-assignment applied"}), 200
+        return jsonify({"clubKits": next_kits, "message": "Tildeling gemt"}), 200
+    except ValueError as exc:
+        return jsonify({"message": str(exc)}), 400
     except Exception as exc:
         logger.exception("apply_club_kits failed")
         return jsonify({"message": str(exc)}), 500
