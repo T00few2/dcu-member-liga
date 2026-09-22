@@ -35,8 +35,11 @@ describe('StandingsTable division leader jersey', () => {
         const images = screen.getAllByAltText('Danish Cycling Member');
         expect(images).toHaveLength(2);
         expect(images[0]).toHaveAttribute('src', JERSEY);
-        const leaderHtml = screen.getByText('Leader').closest('span')?.innerHTML ?? '';
-        expect(leaderHtml.indexOf('Leader')).toBeLessThan(leaderHtml.indexOf('<img'));
+        const leaderHtml = screen.getByText('Leader').closest('span')?.parentElement;
+        expect(leaderHtml?.className).toContain('flex-col');
+        expect(leaderHtml?.className).toContain('sm:flex-row');
+        const html = leaderHtml?.innerHTML ?? '';
+        expect(html.indexOf('Leader')).toBeLessThan(html.indexOf('<img'));
         expect(screen.getByText('Second').parentElement?.querySelector('img')).toBeNull();
     });
 

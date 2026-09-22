@@ -94,16 +94,16 @@ export default function StandingsTable({
                                         <td className="px-4 py-3 text-center font-medium text-muted-foreground">
                                             {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
                                         </td>
-                                        <td className="px-4 py-3 font-medium text-card-foreground">
-                                            <span className="inline-flex items-center gap-2">
-                                                {rider.name}
+                                        <td className="px-4 py-3 font-medium text-card-foreground whitespace-normal">
+                                            <span className="flex flex-col items-start gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
+                                                <span>{rider.name}</span>
                                                 {showDivisionLeaderJersey && rider.calculatedTotal === leaderPoints && (
                                                     // eslint-disable-next-line @next/next/no-img-element
                                                     <img
                                                         src={DIVISION_LEADER_JERSEY_URL}
                                                         alt="Danish Cycling Member"
                                                         title="Fører i divisionen må køre i Danish Cycling Member"
-                                                        className="w-10 h-10 object-contain shrink-0"
+                                                        className="w-8 h-8 sm:w-10 sm:h-10 object-contain shrink-0"
                                                     />
                                                 )}
                                             </span>
