@@ -714,7 +714,7 @@ export default function ResultsPage() {
 
     return (
         <div className="max-w-6xl mx-auto px-4 py-8">
-            <div className="mb-8 flex items-baseline justify-between gap-4">
+            <div className="mb-8 flex items-center gap-3">
                 <h1 className="text-3xl font-bold text-foreground">Resultater & Stilling</h1>
                 <button
                     type="button"
@@ -722,9 +722,9 @@ export default function ResultsPage() {
                     aria-label="Kun kvinder"
                     title="Kun kvinder"
                     onClick={() => setWomenView(!womenOnly)}
-                    className={`text-lg leading-none transition ${womenOnly
-                        ? 'text-primary'
-                        : 'text-muted-foreground/70 hover:text-foreground'
+                    className={`w-9 h-9 rounded-full text-xl leading-none font-semibold transition ${womenOnly
+                        ? 'bg-primary text-primary-foreground'
+                        : 'border border-border text-foreground/80 hover:border-primary hover:text-primary'
                         }`}
                 >
                     ♀
