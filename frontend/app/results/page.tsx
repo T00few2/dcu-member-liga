@@ -299,7 +299,6 @@ export default function ResultsPage() {
             const params = new URLSearchParams(window.location.search);
             const tab = parseTab(params.get('tab'), hasTour);
             setActiveTab(tab);
-            setWomenOnly(params.get('women') === '1');
 
             if (tab === 'standings') {
                 setStandingsClass(parseStandingsClass(params.get('view')));
@@ -327,6 +326,16 @@ export default function ResultsPage() {
         window.addEventListener('popstate', syncFromUrl);
         return () => window.removeEventListener('popstate', syncFromUrl);
     }, [hasTour, tours]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const readWomen = () => {
+            setWomenOnly(new URLSearchParams(window.location.search).get('women') === '1');
+        };
+        readWomen();
+        window.addEventListener('popstate', readWomen);
+        return () => window.removeEventListener('popstate', readWomen);
+    }, []);
 
     // Default one-day race selection
     useEffect(() => {
@@ -593,8 +602,8 @@ export default function ResultsPage() {
         router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
     };
 
-    const isLoading = authLoading || racesQuery.isLoading || settingsQuery.isLoading || liveStandingsDoc.loading
-        || (womenOnly && womenQuery.isLoading);
+    const womenLoading = womenOnly && womenQuery.isLoading && !womenQuery.data;
+    const isLoading = authLoading || racesQuery.isLoading || settingsQuery.isLoading || liveStandingsDoc.loading;
 
     if (isLoading) {
         return <div className="p-8 text-center text-muted-foreground">Indlæser resultater...</div>;
@@ -705,7 +714,7 @@ export default function ResultsPage() {
 
     return (
         <div className="max-w-6xl mx-auto px-4 py-8">
-            <div className="flex items-center justify-between gap-4 mb-8">
+            <div className="mb-8">
                 <h1 className="text-3xl font-bold text-foreground">Resultater & Stilling</h1>
                 <button
                     type="button"
@@ -713,7 +722,7 @@ export default function ResultsPage() {
                     aria-label="Kun kvinder"
                     title="Kun kvinder"
                     onClick={() => setWomenView(!womenOnly)}
-                    className={`shrink-0 w-11 h-11 rounded-full text-2xl leading-none font-semibold transition ${womenOnly
+                    className={`mt-3 w-11 h-11 rounded-full text-2xl leading-none font-semibold transition ${womenOnly
                         ? 'bg-primary text-primary-foreground shadow-sm'
                         : 'border border-border text-muted-foreground hover:text-foreground hover:bg-muted/40'
                         }`}
@@ -724,7 +733,10 @@ export default function ResultsPage() {
             {womenOnly && womenQuery.isError && (
                 <p className="mb-6 text-sm text-destructive">Kvindestilling kunne ikke hentes.</p>
             )}
-
+            {womenLoading ? (
+                <p className="text-muted-foreground">Indlæser kvindestilling...</p>
+            ) : (
+            <>
             <div className="flex gap-4 mb-8 border-b border-border overflow-x-auto">
                 <button
                     onClick={() => setResultsTab('standings')}
@@ -957,6 +969,8 @@ export default function ResultsPage() {
                         )}
                     </div>
                 </ErrorBoundary>
+            )}
+            </>
             )}
         </div>
     );
