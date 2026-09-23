@@ -663,7 +663,7 @@ export default function ResultsPage() {
                                 ['individual', 'Individuel'],
                                 ['sprint', 'Sprint'],
                                 ['kom', 'KOM'],
-                                ['clubs', 'Klubber'],
+                                ['clubs', 'Klub'],
                             ] as const).map(([key, label]) => (
                                 <button
                                     key={key}

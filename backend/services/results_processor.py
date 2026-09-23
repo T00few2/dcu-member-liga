@@ -735,8 +735,8 @@ class ResultsProcessor:
                 logger.error(f"Time parse error: {e}")
                 continue
 
-            # Determine Configs (must happen before fetch_finishers so sprint IDs
-            # can be forwarded for accurate finish-segment identification)
+            # Determine Configs (must happen before segment-effort fetch so
+            # sprint IDs are available for KOM/FAL scoring).
             category_sprints, category_segment_type = self._resolve_subgroup_category_config(
                 source=source,
                 grouped_mode=grouped_mode,
@@ -746,8 +746,8 @@ class ResultsProcessor:
                 category_config_map=category_config_map,
             )
 
-            # Route chronology (including finish banners) for DNF/sprint mapping.
-            # Finish times themselves come from official race-results.
+            # Finish times come from official race-results. Segment-results
+            # crossings are for sprint/KOM/FAL only.
             route_segments = self._resolve_route_segments(race_data, subgroup)
             all_crossings_raw = self._prefetch_subgroup_crossings_if_needed(
                 subgroup_id=subgroup_id,

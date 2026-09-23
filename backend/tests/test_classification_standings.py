@@ -125,6 +125,19 @@ def test_rider_with_only_classification_points_is_added():
     assert by_id["9"]["name"] == "Bea"
 
 
+def test_unsaved_route_uses_zwift_catalog_type():
+    sprints = [{"id": "1055881124", "count": 1, "key": "1055881124_1", "name": "Montmartre KOM", "direction": "forward"}]
+    standings = apply_classification_standings(
+        {"1. Division": [{"zwiftId": "1", "name": "Ada", "totalPoints": 10, "results": []}]},
+        {"r1": _race("r1", {"1. Division": [_rider(1, {"1055881124_1": 5})]}, sprints=sprints)},
+        season_mode=True,
+        stage_race_ids={"event-1"},
+        catalogs=[],
+    )
+    assert standings["1. Division"][0]["komPoints"] == 5
+    assert standings["1. Division"][0]["sprintPoints"] == 0
+
+
 def test_manual_exclusion_is_skipped():
     race = _race("r1", {"A": [_rider(1, {"1_1": 5})]}, sprints=SPRINTS)
     race["manualExclusions"] = ["1"]

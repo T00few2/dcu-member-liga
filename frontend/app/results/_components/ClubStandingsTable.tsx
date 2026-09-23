@@ -8,7 +8,7 @@ export default function ClubStandingsTable({ rows }: Props) {
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-semibold text-card-foreground">Klubber</h2>
+                <h2 className="text-xl font-semibold text-card-foreground">Klub</h2>
             </div>
             <p className="text-sm text-muted-foreground">
                 Klubbens point er summen af de tre ryttere med flest sæsonpoint. Alle divisioner tæller med.

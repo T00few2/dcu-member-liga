@@ -7,16 +7,9 @@ from typing import Any
 from models import RiderResult
 from services.results.constants import (
     FETCH_MODE_FINISHERS,
-    FETCH_MODE_LIVE,
     RACE_STATUS_DNF,
     RACE_STATUS_FIN,
 )
-from services.results.errors import FinishSegmentResolutionError
-from services.results.finish_selector import (
-    resolve_finish_segment_candidate,
-    select_finish_entries_from_route_instances,
-)
-from services.results.finish_time import resolve_finish_time_ms
 from services.results.critical_power import resolve_critical_power
 
 logger = logging.getLogger('ZwiftFetcher')
@@ -67,61 +60,23 @@ class ZwiftFetcher:
         """
         Fetches participants/finishers for a subgroup and maps them to registered riders.
 
-        Finish times come from official race-results. Segment-results are only
-        used for finish times if race-results are unavailable.
+        Finish times come only from official race-results
+        (activityData.durationInMilliseconds). Segment-results are never used
+        as a finish source.
         """
+        del event_secret, route_segments, configured_sprints, subgroup_start_time, all_results_raw
         finishers: list[RiderResult] = []
         if fetch_mode == FETCH_MODE_FINISHERS:
             official_finishers = self._finishers_from_official_race_results(
                 subgroup_id,
                 registered_riders,
             )
-            if official_finishers:
-                logger.info(
-                    "Using official race-results for %s finishers (subgroup %s)",
-                    len(official_finishers),
-                    subgroup_id,
-                )
-                return official_finishers
-
-            crossings = all_results_raw or self.fetch_subgroup_crossings(
-                subgroup_id, event_secret
+            logger.info(
+                "Using official race-results for %s finishers (subgroup %s)",
+                len(official_finishers),
+                subgroup_id,
             )
-            finish_results_raw = self._filter_finish_entries(
-                crossings,
-                route_segments,
-                configured_sprints,
-            )
-
-            for entry in finish_results_raw:
-                profile = entry.get('profileData', {})
-                zid = str(profile.get('id') or entry.get('profileId'))
-                registered_profile = registered_riders.get(zid)
-                canonical_zwift_id = str(registered_profile.get('zwiftId')) if registered_profile and registered_profile.get('zwiftId') else zid
-
-                # Helper to build finisher object
-                finish_time_ms = resolve_finish_time_ms(entry, subgroup_start_time)
-                finisher: RiderResult = {
-                    'zwiftId': canonical_zwift_id,
-                    'finishTime': finish_time_ms,
-                    'raceStatus': RACE_STATUS_FIN if finish_time_ms > 0 else RACE_STATUS_DNF,
-                    'flaggedCheating': entry.get('flaggedCheating', False),
-                    'flaggedSandbagging': entry.get('flaggedSandbagging', False),
-                    'criticalP': resolve_critical_power(entry.get('criticalP'), registered_profile),
-                }
-                official_sr = entry.get('_officialSegmentResult') or {}
-                seg_activity_id = str(official_sr.get('activityId') or '').strip()
-                if seg_activity_id:
-                    finisher['activityId'] = seg_activity_id
-
-                if registered_profile:
-                    finisher['name'] = registered_profile.get('name')
-                    club = str(registered_profile.get('club') or registered_profile.get('team') or '').strip()
-                    if club:
-                        finisher['club'] = club
-                    finishers.append(finisher)
-
-            finishers.sort(key=lambda x: x['finishTime'])
+            return official_finishers
 
         else:
             participants_raw = self.zwift.get_event_participants(subgroup_id)
@@ -159,7 +114,8 @@ class ZwiftFetcher:
         Build finishers from official race-results.
 
         Finish times always come from activityData.durationInMilliseconds.
-        Sprint/KOM/FAL points still come from segment-results separately.
+        Returns an empty list if race-results are unavailable. There is no
+        banner-crossing fallback. Sprint/KOM/FAL still come from segment-results.
         """
         if not self.zwift or not hasattr(self.zwift, "get_subgroup_race_results"):
             return []
@@ -206,68 +162,6 @@ class ZwiftFetcher:
 
         finishers.sort(key=lambda row: row.get("finishTime") or 10**15)
         return finishers
-
-    def _filter_finish_entries(
-        self,
-        entries: list[dict[str, Any]],
-        route_segments: list[dict[str, Any]] | None = None,
-        configured_sprints: list[dict[str, Any]] | None = None,
-    ) -> list[dict[str, Any]]:
-        """
-        Filter segment entries to finish-line entries only.
-
-        Deterministically select finish-line entries from route segment instances.
-        No heuristic fallback is applied.
-        """
-        by_segment: dict[str, list[dict[str, Any]]] = {}
-        for e in entries:
-            raw = e.get("_officialSegmentResult") or {}
-            seg_id = str(raw.get("segmentId", ""))
-            by_segment.setdefault(seg_id, []).append(e)
-
-        # All entries have no segmentId -> unsegmented/single-segment payload; return as-is.
-        if set(by_segment.keys()) == {""}:
-            return entries
-
-        # Work only with entries that carry a segmentId.
-        segmented = {sid: ents for sid, ents in by_segment.items() if sid}
-
-        if not segmented:
-            return entries
-
-        selected_from_route = select_finish_entries_from_route_instances(
-            segmented=segmented,
-            route_segments=route_segments,
-            configured_sprints=configured_sprints,
-            entry_sort_key=self._entry_sort_key,
-        )
-        if selected_from_route:
-            return selected_from_route
-        finish_candidate = resolve_finish_segment_candidate(
-            segmented=segmented,
-            route_segments=route_segments,
-            configured_sprints=configured_sprints,
-        )
-        # Provisional in-race runs can legitimately have zero finish crossings so far.
-        # If finish mapping is deterministic but no rider reached that crossing yet,
-        # return an empty finisher list rather than failing the whole processing pass.
-        if finish_candidate:
-            return []
-        raise FinishSegmentResolutionError(
-            "Could not deterministically resolve finish segment from route instances. "
-            "Check route segments and configured sprint instances.",
-            context={
-                "segment_ids_in_payload": sorted(segmented.keys()),
-                "route_segment_count": len(route_segments or []),
-                "configured_sprint_count": len(configured_sprints or []),
-            },
-        )
-
-    def _entry_sort_key(self, entry: dict[str, Any]) -> tuple[int, int]:
-        raw = entry.get("_officialSegmentResult") or {}
-        end_world_time = int(raw.get("endWorldTime", 0) or 0)
-        duration_ms = int(entry.get("activityData", {}).get("durationInMilliseconds", 0) or 0)
-        return (end_world_time, duration_ms)
 
     def fetch_segment_efforts(
         self,

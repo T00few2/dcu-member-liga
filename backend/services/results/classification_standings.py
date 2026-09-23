@@ -7,9 +7,12 @@ Totals are the sum of every finalized season race, not best-X.
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 import unicodedata
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 from services.category_config import CategoryConfigResolver
@@ -60,6 +63,32 @@ def index_profile_segments(segments: list[dict[str, Any]] | None) -> dict[tuple[
         direction = normalize_profile_direction(seg.get("direction"), seg.get("name"))
         indexed[(name, direction)] = seg_type
     return indexed
+
+
+@lru_cache(maxsize=1)
+def default_segment_catalog() -> tuple[dict[str, Any], ...]:
+    """Zwift catalog types used when a route profile has not been saved."""
+    path = Path(__file__).resolve().parents[2] / "data" / "zwift_segment_types.json"
+    try:
+        rows = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.error("Could not load zwift segment types from %s: %s", path, exc)
+        return ()
+    if not isinstance(rows, list):
+        return ()
+    return tuple(row for row in rows if isinstance(row, dict))
+
+
+def profile_index_for_race(
+    scored_sprints: list[dict[str, Any]],
+    catalogs: list[list[dict[str, Any]]],
+) -> dict[tuple[str, str], str]:
+    """Catalog types, with a saved route profile overriding the same banners."""
+    index = index_profile_segments(list(default_segment_catalog()))
+    override = choose_profile_index(scored_sprints, catalogs)
+    if override:
+        index.update(override)
+    return index
 
 
 def choose_profile_index(
@@ -241,7 +270,7 @@ def apply_classification_standings(
             if CategoryConfigResolver.get_segment_type(race, str(category)) == "split":
                 continue
             sprints = CategoryConfigResolver.get_sprints(race, str(category)) or []
-            index = choose_profile_index(sprints, catalogs)
+            index = profile_index_for_race(sprints, catalogs)
             if not index:
                 continue
             if category not in riders_by_category:
