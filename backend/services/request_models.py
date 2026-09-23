@@ -112,6 +112,23 @@ class JerseyUnlockRequest(BaseModel):
     model_config = {'extra': 'ignore'}
 
 
+class ClassificationJerseyRequest(BaseModel):
+    jerseySignature: int
+    jerseyName: str = ''
+    imageName: str = ''
+    imageUrl: str | None = None
+
+    model_config = {'extra': 'ignore'}
+
+
+class ClassificationJerseysSaveRequest(BaseModel):
+    individual: ClassificationJerseyRequest | None = None
+    sprint: ClassificationJerseyRequest | None = None
+    kom: ClassificationJerseyRequest | None = None
+
+    model_config = {'extra': 'ignore'}
+
+
 class JerseyUnlocksSaveRequest(BaseModel):
     jerseyUnlocks: list[JerseyUnlockRequest] = Field(default_factory=list)
 

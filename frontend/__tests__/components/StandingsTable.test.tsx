@@ -47,4 +47,30 @@ describe('StandingsTable division leader jersey', () => {
         renderTable(false);
         expect(screen.queryByAltText('Danish Cycling Member')).not.toBeInTheDocument();
     });
+
+    it('shows the sprint jersey on every rider tied for the sprint lead', () => {
+        const sprint = {
+            src: 'https://cdn.example/sprint.png',
+            alt: 'Sprint jersey',
+            title: 'Spurttrøje',
+        };
+        render(
+            <StandingsTable
+                currentStandings={[
+                    { ...rider('Leader', 40), sprintPoints: 8 },
+                    { ...rider('Tied', 30), sprintPoints: 8 },
+                    { ...rider('Second', 20), sprintPoints: 1 },
+                ]}
+                availableStandingsCategories={['A']}
+                displayStandingsCategory="A"
+                standingsCategory="A"
+                setStandingsCategory={() => {}}
+                sprintJersey={sprint}
+            />,
+        );
+        const images = screen.getAllByAltText('Sprint jersey');
+        expect(images).toHaveLength(2);
+        expect(images[0]).toHaveAttribute('src', sprint.src);
+        expect(screen.getByText('Second').parentElement?.querySelector('img')).toBeNull();
+    });
 });

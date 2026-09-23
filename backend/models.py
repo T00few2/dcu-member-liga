@@ -283,6 +283,7 @@ class LeagueSettings(TypedDict, total=False):
     ligaCategories: list[LigaCategoryDef]
     jerseyUnlocks: list[JerseyUnlock]
     clubKits: list[ClubKit]
+    classificationJerseys: dict[str, Any]
 
 
 SeasonClass = Literal['tour', 'monument', 'wt_classic']
@@ -297,6 +298,12 @@ class LeagueRaceResult(TypedDict, total=False):
     points: int
 
 
+class ClassificationResultLine(TypedDict, total=False):
+    """Sprint or KOM points from one race. Sum of all races, not best-X."""
+    raceId: str
+    points: int
+
+
 class LeagueEntry(TypedDict, total=False):
     """A rider's aggregated entry in the league standings for one category."""
     zwiftId: str
@@ -306,6 +313,10 @@ class LeagueEntry(TypedDict, total=False):
     results: list[LeagueRaceResult]
     lastRacePoints: int
     lastRaceDate: Any   # datetime | None at runtime
+    sprintPoints: int
+    komPoints: int
+    sprintResults: list[ClassificationResultLine]
+    komResults: list[ClassificationResultLine]
 
 
 # category label → ordered list of league entries

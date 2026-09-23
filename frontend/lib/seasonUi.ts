@@ -181,6 +181,42 @@ export function buildSeasonStandingColumns(
     return columns;
 }
 
+/** One column per race. Sprint and KOM points are per stage, not event GC. */
+export function buildClassificationColumns(
+    races: Race[],
+    stageRaces: StageRace[],
+): SeasonStandingColumn[] {
+    const eventsById = new Map(stageRaces.map((e) => [e.id, e]));
+    const eventsOrdered = [...stageRaces].sort(
+        (a, b) => eventSortDate(a, races) - eventSortDate(b, races) || a.name.localeCompare(b.name),
+    );
+    const columns: SeasonStandingColumn[] = [];
+    for (const event of eventsOrdered) {
+        const stages = races
+            .filter((r) => r.stageRaceId === event.id)
+            .sort((a, b) => (a.stageIndex ?? 0) - (b.stageIndex ?? 0) || raceDateAsc(a, b));
+        for (const race of stages) {
+            columns.push({
+                key: `stage:${race.id}`,
+                label: stageColumnLabel(race, event),
+                raceId: race.id,
+                stageRaceId: event.id,
+                source: 'stage',
+            });
+        }
+    }
+    for (const race of [...races].sort(raceDateAsc)) {
+        if (race.stageRaceId && eventsById.has(race.stageRaceId)) continue;
+        columns.push({
+            key: `legacy:${race.id}`,
+            label: race.name,
+            raceId: race.id,
+            source: 'legacy',
+        });
+    }
+    return columns;
+}
+
 export function buildLegacyStandingColumns(races: Race[]): SeasonStandingColumn[] {
     return [...races].sort(raceDateAsc).map((race) => ({
         key: `legacy:${race.id}`,

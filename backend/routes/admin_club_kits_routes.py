@@ -26,7 +26,9 @@ from services.club_kits import (
     unpin_club_kit,
 )
 from services.jersey_unlock_seed import match_known_unlocks, merge_unlocks
+from services.classification_jerseys import build_classification_jerseys
 from services.request_models import (
+    ClassificationJerseysSaveRequest,
     ClubKitPinRequest,
     ClubKitUnpinRequest,
     JerseyUnlocksSaveRequest,
@@ -139,6 +141,7 @@ def club_kits_overview():
         return jsonify({
             "jerseyUnlocks": _fill_image_urls(list(settings.get("jerseyUnlocks") or [])),
             "clubKits": _fill_image_urls(list(settings.get("clubKits") or [])),
+            "classificationJerseys": settings.get("classificationJerseys") or {},
             "preview": preview,
             "riders": {
                 "total": len(riders),
@@ -154,6 +157,36 @@ def club_kits_overview():
         }), 200
     except Exception as exc:
         logger.exception("club_kits_overview failed")
+        return jsonify({"message": str(exc)}), 500
+
+
+@admin_bp.route("/admin/classification-jerseys", methods=["PUT"])
+def save_classification_jerseys():
+    try:
+        require_admin(request)
+    except AuthzError as e:
+        return jsonify({"message": e.message}), e.status_code
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+    body, err = parse_body(ClassificationJerseysSaveRequest, request.get_json(silent=True) or {})
+    if err:
+        return err
+    try:
+        stored = build_classification_jerseys(body.model_dump(), _jersey_lookup())
+        update = with_schema_version({
+            "classificationJerseys": stored,
+            "updatedAt": firestore.SERVER_TIMESTAMP,
+        })
+        log_schema_issues(
+            logger,
+            "league/settings (classification jerseys)",
+            validate_league_settings_doc(update, partial=True),
+        )
+        # update() replaces the map, so a cleared slot does not linger from a merge.
+        _settings_ref().update(update)
+        return jsonify({"classificationJerseys": stored}), 200
+    except Exception as exc:
+        logger.exception("save_classification_jerseys failed")
         return jsonify({"message": str(exc)}), 500
 
 

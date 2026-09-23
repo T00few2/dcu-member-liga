@@ -318,6 +318,19 @@ export interface ClubKitAssignment {
     notes?: string | null;
 }
 
+export interface ClassificationJersey {
+    jerseySignature: number;
+    jerseyName: string;
+    imageName?: string;
+    imageUrl?: string | null;
+}
+
+export interface ClassificationJerseys {
+    individual?: ClassificationJersey | null;
+    sprint?: ClassificationJersey | null;
+    kom?: ClassificationJersey | null;
+}
+
 export interface LeagueSettings {
     name?: string;
     seasonStart?: string;   // ISO date string, e.g. "2025-03-01"
@@ -332,6 +345,7 @@ export interface LeagueSettings {
     ligaCategoriesFingerprint?: string;
     jerseyUnlocks?: JerseyUnlock[];
     clubKits?: ClubKitAssignment[];
+    classificationJerseys?: ClassificationJerseys;
     weightVerificationValidDays?: number;
     /** Season race defaults — cloned into new races; not stored on race docs. */
     defaultEventMode?: EventMode;

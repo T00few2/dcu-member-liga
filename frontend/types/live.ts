@@ -222,6 +222,11 @@ export interface StandingResultLine {
     points: number;
 }
 
+export interface ClassificationResultLine {
+    raceId: string;
+    points: number;
+}
+
 export interface StandingEntry {
     zwiftId: string;
     name: string;
@@ -230,6 +235,10 @@ export interface StandingEntry {
     results: StandingResultLine[];
     calculatedTotal?: number;
     pointsByRace?: Record<string, { points: number; isBest: boolean }>;
+    sprintPoints?: number;
+    komPoints?: number;
+    sprintResults?: ClassificationResultLine[];
+    komResults?: ClassificationResultLine[];
 }
 
 export interface OverlayConfig {

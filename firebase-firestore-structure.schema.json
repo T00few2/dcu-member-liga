@@ -253,6 +253,22 @@
         "lastRacePoints": { "type": "number" },
         "raceCount": { "type": "integer" },
         "lastRaceDate": { "$ref": "#/$defs/timestampString" },
+        "sprintPoints": {
+          "type": "number",
+          "description": "Season sum of sprint-classified banner points in this division"
+        },
+        "komPoints": {
+          "type": "number",
+          "description": "Season sum of climb-classified banner points in this division"
+        },
+        "sprintResults": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/classificationResultLine" }
+        },
+        "komResults": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/classificationResultLine" }
+        },
         "results": {
           "type": "array",
           "items": {
@@ -406,7 +422,35 @@
           "description": "One assigned in-game jersey per DCU club (pinned or auto)",
           "items": { "$ref": "#/$defs/clubKit" }
         },
+        "classificationJerseys": {
+          "type": "object",
+          "description": "Zwift jerseys worn by the individual, sprint, and KOM leaders",
+          "additionalProperties": false,
+          "properties": {
+            "individual": { "$ref": "#/$defs/classificationJersey" },
+            "sprint": { "$ref": "#/$defs/classificationJersey" },
+            "kom": { "$ref": "#/$defs/classificationJersey" }
+          }
+        },
         "updatedAt": { "$ref": "#/$defs/timestampString" }
+      }
+    },
+    "classificationResultLine": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "raceId": { "type": "string" },
+        "points": { "type": "number" }
+      }
+    },
+    "classificationJersey": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "jerseySignature": { "type": "integer" },
+        "jerseyName": { "type": "string" },
+        "imageName": { "type": "string" },
+        "imageUrl": { "type": ["string", "null"] }
       }
     },
     "jerseyUnlock": {

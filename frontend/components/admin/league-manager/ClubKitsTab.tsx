@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { User } from 'firebase/auth';
 import { API_URL } from '@/lib/api';
+import type { ClassificationJerseys } from '@/types/admin';
+import ClassificationJerseysEditor from './ClassificationJerseysEditor';
 
 interface ClubKitsTabProps {
     user: User | null;
@@ -70,6 +72,7 @@ interface ClubSummary {
 interface Overview {
     jerseyUnlocks: JerseyUnlock[];
     clubKits: ClubKitRow[];
+    classificationJerseys?: ClassificationJerseys;
     riders: { total: number; withClub: number; knownDropLevel: number; unknownDropLevel: number };
     riderCoverage?: {
         total: number;
@@ -572,6 +575,11 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
 
     return (
         <div className="space-y-8">
+            <ClassificationJerseysEditor
+                user={user}
+                saved={overview?.classificationJerseys}
+                onSaved={() => void loadOverview()}
+            />
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                     <h2 className="text-xl font-semibold text-foreground">Klubtrøjer</h2>

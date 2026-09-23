@@ -8,6 +8,18 @@ import {
 const DIVISION_LEADER_JERSEY_URL =
     'https://cdn.zwift.com/static/zc/JERSEYS/DanishCyclingMember2019_thumb.png';
 
+const DEFAULT_LEADER_JERSEY: StandingJersey = {
+    src: DIVISION_LEADER_JERSEY_URL,
+    alt: 'Danish Cycling Member',
+    title: 'Fører i divisionen må køre i Danish Cycling Member',
+};
+
+export type StandingJersey = {
+    src: string;
+    alt: string;
+    title: string;
+};
+
 type ProcessedRider = StandingEntry & {
     calculatedTotal: number;
     countingKeys: Set<string>;
@@ -25,8 +37,15 @@ interface Props {
     clubByZwiftId?: Map<string, string>;
     title?: string;
     countingHint?: string;
-    /** Season division leader may wear the Danish Cycling Member jersey. */
+    /** Season division leader may wear the individual classification jersey. */
     showDivisionLeaderJersey?: boolean;
+    /** Replaces the default Danish Cycling Member image when set. */
+    leaderJersey?: StandingJersey;
+    /** Shown beside the division sprint leader. Omitted until a jersey is chosen. */
+    sprintJersey?: StandingJersey | null;
+    /** Shown beside the division KOM leader. Omitted until a jersey is chosen. */
+    komJersey?: StandingJersey | null;
+    totalLabel?: string;
 }
 
 export default function StandingsTable({
@@ -41,11 +60,18 @@ export default function StandingsTable({
     title = 'Førertavle',
     countingHint = 'Tæller ikke (uden for best-X)',
     showDivisionLeaderJersey = false,
+    leaderJersey,
+    sprintJersey = null,
+    komJersey = null,
+    totalLabel = 'Samlede point',
 }: Props) {
     const columns = columnsProp?.length
         ? columnsProp
         : buildLegacyStandingColumns(races);
     const leaderPoints = currentStandings[0]?.calculatedTotal;
+    const individualJersey = leaderJersey ?? DEFAULT_LEADER_JERSEY;
+    const sprintLeaderPoints = maxPoints(currentStandings, 'sprintPoints');
+    const komLeaderPoints = maxPoints(currentStandings, 'komPoints');
 
     return (
         <div className="space-y-6">
@@ -85,7 +111,7 @@ export default function StandingsTable({
                                             {col.label}
                                         </th>
                                     ))}
-                                    <th className="px-4 py-3 text-right font-bold text-primary">Samlede point</th>
+                                    <th className="px-4 py-3 text-right font-bold text-primary">{totalLabel}</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border">
@@ -98,13 +124,13 @@ export default function StandingsTable({
                                             <span className="flex flex-col items-start gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
                                                 <span>{rider.name}</span>
                                                 {showDivisionLeaderJersey && rider.calculatedTotal === leaderPoints && (
-                                                    // eslint-disable-next-line @next/next/no-img-element
-                                                    <img
-                                                        src={DIVISION_LEADER_JERSEY_URL}
-                                                        alt="Danish Cycling Member"
-                                                        title="Fører i divisionen må køre i Danish Cycling Member"
-                                                        className="w-8 h-8 sm:w-10 sm:h-10 object-contain shrink-0"
-                                                    />
+                                                    <JerseyIcon jersey={individualJersey} />
+                                                )}
+                                                {sprintJersey && sprintLeaderPoints > 0 && (rider.sprintPoints ?? 0) === sprintLeaderPoints && (
+                                                    <JerseyIcon jersey={sprintJersey} />
+                                                )}
+                                                {komJersey && komLeaderPoints > 0 && (rider.komPoints ?? 0) === komLeaderPoints && (
+                                                    <JerseyIcon jersey={komJersey} />
                                                 )}
                                             </span>
                                         </td>
@@ -141,5 +167,26 @@ export default function StandingsTable({
                 )}
             </div>
         </div>
+    );
+}
+
+function maxPoints(riders: ProcessedRider[], field: 'sprintPoints' | 'komPoints'): number {
+    let max = 0;
+    for (const rider of riders) {
+        const value = Number(rider[field]) || 0;
+        if (value > max) max = value;
+    }
+    return max;
+}
+
+function JerseyIcon({ jersey }: { jersey: StandingJersey }) {
+    return (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+            src={jersey.src}
+            alt={jersey.alt}
+            title={jersey.title}
+            className="w-8 h-8 sm:w-10 sm:h-10 object-contain shrink-0"
+        />
     );
 }

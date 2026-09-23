@@ -19,12 +19,15 @@ import type {
     ResultEntry,
     StandingEntry,
 } from '@/types/live';
-import type { StageRace } from '@/types/admin';
-import StandingsTable from './_components/StandingsTable';
+import type { ClassificationJersey, StageRace } from '@/types/admin';
+import StandingsTable, { type StandingJersey } from './_components/StandingsTable';
+import ClubStandingsTable from './_components/ClubStandingsTable';
 import RaceResultsTable from './_components/RaceResultsTable';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { sortCategoriesByRank } from '@/lib/categories';
+import { buildClubStandings } from '@/lib/clubStandings';
 import {
+    buildClassificationColumns,
     buildEventGcColumns,
     buildLegacyStandingColumns,
     buildSeasonStandingColumns,
@@ -42,6 +45,21 @@ const DEFAULT_CATEGORY_RANK = [
 ];
 
 type ResultsTab = 'standings' | 'results' | 'tour';
+type StandingsClass = 'individual' | 'sprint' | 'kom' | 'clubs';
+
+function parseStandingsClass(value: string | null): StandingsClass {
+    if (value === 'sprint' || value === 'kom' || value === 'clubs') return value;
+    return 'individual';
+}
+
+function standingJersey(
+    row: ClassificationJersey | null | undefined,
+    titleFor: (name: string) => string,
+): StandingJersey | null {
+    if (!row?.imageUrl) return null;
+    const name = row.jerseyName || 'Trøje';
+    return { src: row.imageUrl, alt: name, title: titleFor(name) };
+}
 
 type ResultsView =
     | { mode: 'race'; raceId: string }
@@ -93,6 +111,7 @@ export default function ResultsPage() {
     const [lastTourStageId, setLastTourStageId] = useState<string>('');
     const [selectedCategory, setSelectedCategory] = useState<string>('A');
     const [standingsCategory, setStandingsCategory] = useState<string>('');
+    const [standingsClass, setStandingsClass] = useState<StandingsClass>('individual');
     const [autoSelectStandingsCategory, setAutoSelectStandingsCategory] = useState(true);
 
     const racesQuery = useRacesQuery();
@@ -193,6 +212,7 @@ export default function ResultsPage() {
         tab?: ResultsTab;
         eventId?: string;
         view?: ResultsView | null;
+        standingsClass?: StandingsClass;
     }) => {
         const params = new URLSearchParams(
             typeof window === 'undefined' ? '' : window.location.search,
@@ -211,6 +231,11 @@ export default function ResultsPage() {
             } else if (opts.view === null) {
                 params.delete('view');
             }
+        } else if (tab === 'standings') {
+            params.delete('event');
+            const cls = opts.standingsClass ?? standingsClass;
+            if (cls === 'individual') params.delete('view');
+            else params.set('view', cls);
         } else {
             params.delete('event');
             params.delete('view');
@@ -218,7 +243,7 @@ export default function ResultsPage() {
 
         const query = params.toString();
         router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-    }, [activeTab, hasTour, tourEventId, tours, router, pathname]);
+    }, [activeTab, hasTour, standingsClass, tourEventId, tours, router, pathname]);
 
     const setResultsTab = (tab: ResultsTab) => {
         const next = tab === 'tour' && !hasTour ? 'standings' : tab;
@@ -233,6 +258,10 @@ export default function ResultsPage() {
             const params = new URLSearchParams(window.location.search);
             const tab = parseTab(params.get('tab'), hasTour);
             setActiveTab(tab);
+
+            if (tab === 'standings') {
+                setStandingsClass(parseStandingsClass(params.get('view')));
+            }
 
             if (tab === 'tour' && hasTour) {
                 const eventParam = params.get('event');
@@ -414,6 +443,53 @@ export default function ResultsPage() {
         [standings, displayStandingsCategory, seasonColumns, bestCount],
     );
 
+    const classificationColumns = useMemo(
+        () => buildClassificationColumns(sortedRaces, stageRaces),
+        [sortedRaces, stageRaces],
+    );
+
+    const classificationStandings = useMemo(() => {
+        if (standingsClass !== 'sprint' && standingsClass !== 'kom') return [];
+        const pointsKey = standingsClass === 'sprint' ? 'sprintPoints' : 'komPoints';
+        const linesKey = standingsClass === 'sprint' ? 'sprintResults' : 'komResults';
+        const rows = (standings[displayStandingsCategory] || []).map((rider) => ({
+            ...rider,
+            totalPoints: rider[pointsKey] ?? 0,
+            raceCount: (rider[linesKey] ?? []).length,
+            results: (rider[linesKey] ?? []).map((line) => ({
+                raceId: line.raceId,
+                points: line.points,
+                source: 'stage' as const,
+            })),
+        }));
+        return processStandingsForDisplay(rows, classificationColumns, 0)
+            .filter((rider) => rider.calculatedTotal > 0);
+    }, [standings, standingsClass, displayStandingsCategory, classificationColumns]);
+
+    const clubRows = useMemo(
+        () => buildClubStandings(standings, clubByZwiftId),
+        [standings, clubByZwiftId],
+    );
+
+    const classificationJerseys = settingsQuery.data?.classificationJerseys;
+    const individualJersey = standingJersey(
+        classificationJerseys?.individual,
+        (name) => `Fører i divisionen må køre i ${name}`,
+    );
+    const sprintJersey = standingJersey(
+        classificationJerseys?.sprint,
+        (name) => `Spurttrøje i divisionen: ${name}`,
+    );
+    const komJersey = standingJersey(
+        classificationJerseys?.kom,
+        (name) => `Bjergtrøje i divisionen: ${name}`,
+    );
+
+    const selectStandingsClass = (next: StandingsClass) => {
+        setStandingsClass(next);
+        writeUrl({ tab: 'standings', standingsClass: next });
+    };
+
     const eventGcColumns = useMemo(
         () => (selectedGcEvent ? buildEventGcColumns(selectedGcEvent, sortedRaces) : []),
         [selectedGcEvent, sortedRaces],
@@ -581,20 +657,61 @@ export default function ResultsPage() {
 
             {activeTab === 'standings' && (
                 <ErrorBoundary label="Sæsonstilling">
-                    <StandingsTable
-                        currentStandings={currentStandings}
-                        columns={seasonColumns}
-                        availableStandingsCategories={availableStandingsCategories}
-                        displayStandingsCategory={displayStandingsCategory}
-                        standingsCategory={standingsCategory}
-                        setStandingsCategory={handleStandingsCategoryChange}
-                        clubByZwiftId={clubByZwiftId}
-                        title={seasonMode ? 'Sæsonstilling' : 'Førertavle'}
-                        countingHint={seasonMode
-                            ? 'Tæller ikke (uden for sæson best-X)'
-                            : 'Tæller ikke (uden for best-X)'}
-                        showDivisionLeaderJersey
-                    />
+                    <div className="space-y-6">
+                        <div className="flex gap-2 border-b border-border overflow-x-auto">
+                            {([
+                                ['individual', 'Individuel'],
+                                ['sprint', 'Sprint'],
+                                ['kom', 'KOM'],
+                                ['clubs', 'Klubber'],
+                            ] as const).map(([key, label]) => (
+                                <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => selectStandingsClass(key)}
+                                    className={`shrink-0 pb-2 px-4 text-sm font-medium transition ${standingsClass === key ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+                        {standingsClass === 'clubs' ? (
+                            <ClubStandingsTable rows={clubRows} />
+                        ) : standingsClass === 'individual' ? (
+                            <StandingsTable
+                                currentStandings={currentStandings}
+                                columns={seasonColumns}
+                                availableStandingsCategories={availableStandingsCategories}
+                                displayStandingsCategory={displayStandingsCategory}
+                                standingsCategory={standingsCategory}
+                                setStandingsCategory={handleStandingsCategoryChange}
+                                clubByZwiftId={clubByZwiftId}
+                                title={seasonMode ? 'Sæsonstilling' : 'Førertavle'}
+                                countingHint={seasonMode
+                                    ? 'Tæller ikke (uden for sæson best-X)'
+                                    : 'Tæller ikke (uden for best-X)'}
+                                showDivisionLeaderJersey
+                                leaderJersey={individualJersey ?? undefined}
+                                sprintJersey={sprintJersey}
+                                komJersey={komJersey}
+                            />
+                        ) : (
+                            <StandingsTable
+                                currentStandings={classificationStandings}
+                                columns={classificationColumns}
+                                availableStandingsCategories={availableStandingsCategories}
+                                displayStandingsCategory={displayStandingsCategory}
+                                standingsCategory={standingsCategory}
+                                setStandingsCategory={handleStandingsCategoryChange}
+                                clubByZwiftId={clubByZwiftId}
+                                title={standingsClass === 'sprint' ? 'Sprint' : 'KOM'}
+                                totalLabel={standingsClass === 'sprint' ? 'Sprintpoint' : 'KOM-point'}
+                                countingHint="Tæller med"
+                                showDivisionLeaderJersey={Boolean(standingsClass === 'sprint' ? sprintJersey : komJersey)}
+                                leaderJersey={(standingsClass === 'sprint' ? sprintJersey : komJersey) ?? undefined}
+                            />
+                        )}
+                    </div>
                 </ErrorBoundary>
             )}
 

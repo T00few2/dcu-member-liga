@@ -27,6 +27,10 @@ from services.results.errors import (
     StartTimeParseError,
 )
 from services.results.league_engine import LeagueEngine
+from services.results.classification_standings import (
+    apply_classification_standings,
+    load_profile_catalogs,
+)
 from services.results.season_engine import SeasonEngine, season_mode_enabled
 from services.results.stage_race_ops import (
     load_races_by_id,
@@ -488,12 +492,26 @@ class ResultsProcessor:
                     except Exception as e:
                         logger.error(f"Error updating event GC for {linked}: {e}")
 
-        if season_mode_enabled(settings, len(stage_races)):
-            return SeasonEngine(settings).calculate_standings(stage_races, races_by_id)
+        season_mode = season_mode_enabled(settings, len(stage_races))
+        if season_mode:
+            standings = SeasonEngine(settings).calculate_standings(stage_races, races_by_id)
+        else:
+            races_data = list(races_by_id.values())
+            engine = LeagueEngine(settings)
+            standings = engine.calculate_standings(races_data, override_race_id, override_race_data)
 
-        races_data = list(races_by_id.values())
-        engine = LeagueEngine(settings)
-        return engine.calculate_standings(races_data, override_race_id, override_race_data)
+        try:
+            catalogs = load_profile_catalogs(self.db)
+        except Exception as e:
+            logger.error(f"Error loading route profiles for sprint/KOM standings: {e}")
+            catalogs = []
+        return apply_classification_standings(
+            standings,
+            races_by_id,
+            season_mode=season_mode,
+            stage_race_ids={str(event.get("id") or "") for event in stage_races},
+            catalogs=catalogs,
+        )
 
     def recalculate_season_standings(self) -> LeagueStandings:
         """Full season/legacy recompute without a race override (admin finalize paths)."""
