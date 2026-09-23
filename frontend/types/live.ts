@@ -225,6 +225,8 @@ export interface StandingResultLine {
 export interface ClassificationResultLine {
     raceId: string;
     points: number;
+    /** Points on the last sprint or KOM banner of this race. */
+    lastBannerPoints?: number;
 }
 
 export interface StandingEntry {

@@ -302,6 +302,7 @@ class ClassificationResultLine(TypedDict, total=False):
     """Sprint or KOM points from one race. Sum of all races, not best-X."""
     raceId: str
     points: int
+    lastBannerPoints: int  # points on the last sprint or KOM banner of this race
 
 
 class LeagueEntry(TypedDict, total=False):

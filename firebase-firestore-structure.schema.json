@@ -440,7 +440,11 @@
       "additionalProperties": true,
       "properties": {
         "raceId": { "type": "string" },
-        "points": { "type": "number" }
+        "points": { "type": "number" },
+        "lastBannerPoints": {
+          "type": "number",
+          "description": "Points on the last sprint or KOM banner of this race, used to break season ties"
+        }
       }
     },
     "classificationJersey": {

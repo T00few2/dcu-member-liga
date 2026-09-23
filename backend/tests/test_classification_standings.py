@@ -77,8 +77,8 @@ def test_sums_every_finalized_race_and_ignores_untyped_banners():
     assert rider["sprintPoints"] == 8
     assert rider["komPoints"] == 8
     assert rider["sprintResults"] == [
-        {"raceId": "r1", "points": 5},
-        {"raceId": "r2", "points": 3},
+        {"raceId": "r1", "points": 5, "lastBannerPoints": 5},
+        {"raceId": "r2", "points": 3, "lastBannerPoints": 3},
     ]
     assert rider["totalPoints"] == 40
 
@@ -123,6 +123,26 @@ def test_rider_with_only_classification_points_is_added():
     assert by_id["9"]["komPoints"] == 5
     assert by_id["9"]["totalPoints"] == 0
     assert by_id["9"]["name"] == "Bea"
+
+
+def test_last_banner_points_are_the_final_occurrence():
+    sprints = [
+        {"id": "2", "lap": 1, "count": 1, "key": "2_1", "name": "Montmartre KOM", "direction": "forward"},
+        {"id": "1", "lap": 1, "count": 1, "key": "1_1", "name": "Lutece Sprint", "direction": "forward"},
+        {"id": "2", "lap": 2, "count": 2, "key": "2_2", "name": "Montmartre KOM", "direction": "forward"},
+        {"id": "1", "lap": 2, "count": 2, "key": "1_2", "name": "Lutece Sprint", "direction": "forward"},
+    ]
+    standings = apply_classification_standings(
+        {"A": [{"zwiftId": "1", "name": "Ada", "totalPoints": 10, "results": []}]},
+        {"r1": _race("r1", {"A": [_rider(1, {"2_1": 5, "2_2": 1, "1_1": 3, "1_2": 2})]}, sprints=sprints)},
+        season_mode=True,
+        stage_race_ids={"event-1"},
+        catalogs=[PARIS],
+    )
+    rider = standings["A"][0]
+    assert rider["komPoints"] == 6
+    assert rider["komResults"] == [{"raceId": "r1", "points": 6, "lastBannerPoints": 1}]
+    assert rider["sprintResults"] == [{"raceId": "r1", "points": 5, "lastBannerPoints": 2}]
 
 
 def test_unsaved_route_uses_zwift_catalog_type():

@@ -27,6 +27,13 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import { sortCategoriesByRank } from '@/lib/categories';
 import { buildClubStandings } from '@/lib/clubStandings';
 import {
+    classificationLeaderIds,
+    classificationRankKey,
+    compareClassificationRank,
+    latestClassificationRaceId,
+    type ClassificationKind,
+} from '@/lib/classificationTiebreak';
+import {
     buildClassificationColumns,
     buildEventGcColumns,
     buildLegacyStandingColumns,
@@ -448,11 +455,21 @@ export default function ResultsPage() {
         [sortedRaces, stageRaces],
     );
 
+    const stageRaceIds = useMemo(() => new Set(stageRaces.map((event) => event.id)), [stageRaces]);
+
+    const lastClassificationRaceId = useMemo(
+        () => latestClassificationRaceId(sortedRaces, stageRaceIds, seasonMode),
+        [sortedRaces, stageRaceIds, seasonMode],
+    );
+
+    const categoryStandings = standings[displayStandingsCategory] || [];
+
     const classificationStandings = useMemo(() => {
         if (standingsClass !== 'sprint' && standingsClass !== 'kom') return [];
-        const pointsKey = standingsClass === 'sprint' ? 'sprintPoints' : 'komPoints';
-        const linesKey = standingsClass === 'sprint' ? 'sprintResults' : 'komResults';
-        const rows = (standings[displayStandingsCategory] || []).map((rider) => ({
+        const kind: ClassificationKind = standingsClass;
+        const pointsKey = kind === 'sprint' ? 'sprintPoints' : 'komPoints';
+        const linesKey = kind === 'sprint' ? 'sprintResults' : 'komResults';
+        const rows = categoryStandings.map((rider) => ({
             ...rider,
             totalPoints: rider[pointsKey] ?? 0,
             raceCount: (rider[linesKey] ?? []).length,
@@ -463,8 +480,21 @@ export default function ResultsPage() {
             })),
         }));
         return processStandingsForDisplay(rows, classificationColumns, 0)
-            .filter((rider) => rider.calculatedTotal > 0);
-    }, [standings, standingsClass, displayStandingsCategory, classificationColumns]);
+            .filter((rider) => rider.calculatedTotal > 0)
+            .sort((a, b) => compareClassificationRank(
+                classificationRankKey(a, kind, lastClassificationRaceId),
+                classificationRankKey(b, kind, lastClassificationRaceId),
+            ));
+    }, [categoryStandings, standingsClass, classificationColumns, lastClassificationRaceId]);
+
+    const sprintLeaderIds = useMemo(
+        () => classificationLeaderIds(categoryStandings, 'sprint', lastClassificationRaceId),
+        [categoryStandings, lastClassificationRaceId],
+    );
+    const komLeaderIds = useMemo(
+        () => classificationLeaderIds(categoryStandings, 'kom', lastClassificationRaceId),
+        [categoryStandings, lastClassificationRaceId],
+    );
 
     const clubRows = useMemo(
         () => buildClubStandings(standings, clubByZwiftId),
@@ -694,6 +724,8 @@ export default function ResultsPage() {
                                 leaderJersey={individualJersey ?? undefined}
                                 sprintJersey={sprintJersey}
                                 komJersey={komJersey}
+                                sprintLeaderIds={sprintLeaderIds}
+                                komLeaderIds={komLeaderIds}
                             />
                         ) : (
                             <StandingsTable
@@ -709,6 +741,7 @@ export default function ResultsPage() {
                                 countingHint="Tæller med"
                                 showDivisionLeaderJersey={Boolean(standingsClass === 'sprint' ? sprintJersey : komJersey)}
                                 leaderJersey={(standingsClass === 'sprint' ? sprintJersey : komJersey) ?? undefined}
+                                leaderIds={standingsClass === 'sprint' ? sprintLeaderIds : komLeaderIds}
                             />
                         )}
                     </div>

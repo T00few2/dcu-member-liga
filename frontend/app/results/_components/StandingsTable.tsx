@@ -45,6 +45,12 @@ interface Props {
     sprintJersey?: StandingJersey | null;
     /** Shown beside the division KOM leader. Omitted until a jersey is chosen. */
     komJersey?: StandingJersey | null;
+    /** Sprint leaders after last-race tiebreaks. Falls back to equal points when omitted. */
+    sprintLeaderIds?: Set<string>;
+    /** KOM leaders after last-race tiebreaks. Falls back to equal points when omitted. */
+    komLeaderIds?: Set<string>;
+    /** Classification-tab leaders. Falls back to equal totals when omitted. */
+    leaderIds?: Set<string>;
     totalLabel?: string;
 }
 
@@ -63,6 +69,9 @@ export default function StandingsTable({
     leaderJersey,
     sprintJersey = null,
     komJersey = null,
+    sprintLeaderIds,
+    komLeaderIds,
+    leaderIds,
     totalLabel = 'Samlede point',
 }: Props) {
     const columns = columnsProp?.length
@@ -123,13 +132,13 @@ export default function StandingsTable({
                                         <td className="px-4 py-3 font-medium text-card-foreground whitespace-normal">
                                             <span className="flex flex-col items-start gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
                                                 <span>{rider.name}</span>
-                                                {showDivisionLeaderJersey && rider.calculatedTotal === leaderPoints && (
+                                                {showDivisionLeaderJersey && wearsJersey(rider, leaderIds, leaderPoints) && (
                                                     <JerseyIcon jersey={individualJersey} />
                                                 )}
-                                                {sprintJersey && sprintLeaderPoints > 0 && (rider.sprintPoints ?? 0) === sprintLeaderPoints && (
+                                                {sprintJersey && wearsClassJersey(rider, sprintLeaderIds, 'sprintPoints', sprintLeaderPoints) && (
                                                     <JerseyIcon jersey={sprintJersey} />
                                                 )}
-                                                {komJersey && komLeaderPoints > 0 && (rider.komPoints ?? 0) === komLeaderPoints && (
+                                                {komJersey && wearsClassJersey(rider, komLeaderIds, 'komPoints', komLeaderPoints) && (
                                                     <JerseyIcon jersey={komJersey} />
                                                 )}
                                             </span>
@@ -168,6 +177,21 @@ export default function StandingsTable({
             </div>
         </div>
     );
+}
+
+function wearsJersey(rider: ProcessedRider, leaderIds: Set<string> | undefined, leaderPoints: number | undefined): boolean {
+    if (leaderIds) return leaderIds.has(rider.zwiftId);
+    return leaderPoints !== undefined && rider.calculatedTotal === leaderPoints;
+}
+
+function wearsClassJersey(
+    rider: ProcessedRider,
+    leaderIds: Set<string> | undefined,
+    field: 'sprintPoints' | 'komPoints',
+    leaderPoints: number,
+): boolean {
+    if (leaderIds) return leaderIds.has(rider.zwiftId);
+    return leaderPoints > 0 && (rider[field] ?? 0) === leaderPoints;
 }
 
 function maxPoints(riders: ProcessedRider[], field: 'sprintPoints' | 'komPoints'): number {

@@ -73,4 +73,28 @@ describe('StandingsTable division leader jersey', () => {
         expect(images[0]).toHaveAttribute('src', sprint.src);
         expect(screen.getByText('Second').parentElement?.querySelector('img')).toBeNull();
     });
+
+    it('shows the sprint jersey only on the riders who win the tiebreak', () => {
+        const sprint = {
+            src: 'https://cdn.example/sprint.png',
+            alt: 'Sprint jersey',
+            title: 'Spurttrøje',
+        };
+        render(
+            <StandingsTable
+                currentStandings={[
+                    { ...rider('Leader', 40), sprintPoints: 8 },
+                    { ...rider('Tied', 30), sprintPoints: 8 },
+                ]}
+                availableStandingsCategories={['A']}
+                displayStandingsCategory="A"
+                standingsCategory="A"
+                setStandingsCategory={() => {}}
+                sprintJersey={sprint}
+                sprintLeaderIds={new Set(['Leader'])}
+            />,
+        );
+        expect(screen.getAllByAltText('Sprint jersey')).toHaveLength(1);
+        expect(screen.getByText('Tied').parentElement?.querySelector('img')).toBeNull();
+    });
 });

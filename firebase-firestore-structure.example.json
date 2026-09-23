@@ -238,10 +238,10 @@
             "sprintPoints": 8,
             "komPoints": 5,
             "sprintResults": [
-              { "raceId": "race_doc_example_001", "points": 8 }
+              { "raceId": "race_doc_example_001", "points": 8, "lastBannerPoints": 3 }
             ],
             "komResults": [
-              { "raceId": "race_doc_example_001", "points": 5 }
+              { "raceId": "race_doc_example_001", "points": 5, "lastBannerPoints": 5 }
             ],
             "results": [
               {

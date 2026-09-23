@@ -153,21 +153,53 @@ def _points_value(raw: Any) -> int:
     return int(raw)
 
 
+def _banner_sort_key(sprint: dict[str, Any], position: int) -> tuple[int, int, int]:
+    """Later in the race sorts higher: lap, then occurrence, then list order."""
+    def _num(value: Any) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 0
+
+    return (_num(sprint.get("lap")), _num(sprint.get("count")), position)
+
+
+def _banner_points(details: dict[str, Any], sprint: dict[str, Any]) -> int:
+    for key in _sprint_keys(sprint):
+        if key in details:
+            return _points_value(details.get(key))
+    return 0
+
+
 def points_for_rider(
     rider: dict[str, Any],
     sprints: list[dict[str, Any]],
     index: dict[tuple[str, str], str],
-) -> tuple[int, int]:
+) -> tuple[int, int, int, int]:
+    """Return sprint total, KOM total, and points on the last banner of each."""
     details = rider.get("sprintDetails") or {}
     if not isinstance(details, dict) or not index:
-        return 0, 0
+        return 0, 0, 0, 0
     key_class: dict[str, str | None] = {}
-    for sprint in sprints:
+    last_sprint: dict[str, Any] | None = None
+    last_kom: dict[str, Any] | None = None
+    last_sprint_key = (-1, -1, -1)
+    last_kom_key = (-1, -1, -1)
+    for position, sprint in enumerate(sprints):
         if not isinstance(sprint, dict):
             continue
         cls = banner_class(sprint, index)
         for key in _sprint_keys(sprint):
             key_class.setdefault(key, cls)
+        if cls not in ("sprint", "kom"):
+            continue
+        order = _banner_sort_key(sprint, position)
+        if cls == "sprint" and order >= last_sprint_key:
+            last_sprint = sprint
+            last_sprint_key = order
+        elif cls == "kom" and order >= last_kom_key:
+            last_kom = sprint
+            last_kom_key = order
     sprint_points = 0
     kom_points = 0
     for key, raw in details.items():
@@ -179,7 +211,9 @@ def points_for_rider(
             sprint_points += points
         elif cls == "kom":
             kom_points += points
-    return sprint_points, kom_points
+    last_sprint_points = _banner_points(details, last_sprint) if last_sprint else 0
+    last_kom_points = _banner_points(details, last_kom) if last_kom else 0
+    return sprint_points, kom_points, last_sprint_points, last_kom_points
 
 
 def _blank_entry(zwift_id: str, name: str) -> dict[str, Any]:
@@ -282,7 +316,7 @@ def apply_classification_standings(
                 zid = str(rider.get("zwiftId") or "")
                 if not zid or zid in skipped:
                     continue
-                sprint_points, kom_points = points_for_rider(rider, sprints, index)
+                sprint_points, kom_points, last_sprint, last_kom = points_for_rider(rider, sprints, index)
                 if sprint_points <= 0 and kom_points <= 0:
                     continue
                 entry = riders_by_category[category].get(zid)
@@ -292,12 +326,21 @@ def apply_classification_standings(
                     order_by_category[category].append(entry)
                 elif rider.get("name") and not entry.get("name"):
                     entry["name"] = rider.get("name")
+                race_key = str(race.get("id") or race_id)
                 if sprint_points > 0:
                     entry["sprintPoints"] = int(entry.get("sprintPoints") or 0) + sprint_points
-                    entry["sprintResults"].append({"raceId": str(race.get("id") or race_id), "points": sprint_points})
+                    entry["sprintResults"].append({
+                        "raceId": race_key,
+                        "points": sprint_points,
+                        "lastBannerPoints": last_sprint,
+                    })
                 if kom_points > 0:
                     entry["komPoints"] = int(entry.get("komPoints") or 0) + kom_points
-                    entry["komResults"].append({"raceId": str(race.get("id") or race_id), "points": kom_points})
+                    entry["komResults"].append({
+                        "raceId": race_key,
+                        "points": kom_points,
+                        "lastBannerPoints": last_kom,
+                    })
 
     final: dict[str, list[dict[str, Any]]] = {}
     for category, ordered in order_by_category.items():
