@@ -242,10 +242,15 @@ class ZwiftGameService:
                 order_counter += 1
 
         # Pre-index segments by roadId for faster lookup.
-        # Include lap/loop banners (archId null / requiresAllCheckpoints) so finish-line
-        # arches like Paris Champs-Élysées remain selectable for race scoring.
+        # Skip lap/loop banners (null archId or requiresAllCheckpoints). They are
+        # finish arches, not event sprints, and Zwift does not return them in
+        # segment-results (e.g. Paris Champs-Élysées, Volcano lap arch).
         segments_by_road = defaultdict(list)
         for seg in segments_data:
+            if seg.get("archId") is None:
+                continue
+            if seg.get("requiresAllCheckpoints"):
+                continue
             road_id = seg.get("roadId")
             if road_id is not None:
                 segments_by_road[road_id].append(seg)
