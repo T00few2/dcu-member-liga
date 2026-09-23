@@ -86,6 +86,7 @@ def get_participants():
                         "zftp": zpro.get("zftp", "N/A"),
                         "zmap": zpro.get("zmap", "N/A"),
                         "zwiftCategory": zpro.get("category", "N/A"),
+                        "male": zpro.get("male") if isinstance(zpro.get("male"), bool) else None,
                         # competitionMetrics weight is what Zwift divides by for its own
                         # wattsKg, so preferring it keeps our W/kg equal to Zwift's.
                         "weightInGrams": zpro.get("weightInGrams") or zpro.get("weight"),

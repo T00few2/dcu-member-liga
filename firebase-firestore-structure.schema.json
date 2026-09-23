@@ -1533,6 +1533,10 @@
             "categoryWomen": {
               "type": "string"
             },
+            "male": {
+              "type": "boolean",
+              "description": "Zwift racing-profile male flag. false means the rider is a woman."
+            },
             "achievementLevel": {
               "type": "number",
               "description": "Raw Zwift achievementLevel from racing-profile or unofficial JSON profile"

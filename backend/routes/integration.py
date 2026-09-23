@@ -51,6 +51,10 @@ def _competition_metrics_to_profile(
         'powerSourceModel': profile.get('powerSourceModel'),
         'updatedAt': firestore.SERVER_TIMESTAMP,
     }
+    if isinstance(profile.get('male'), bool):
+        mapped['male'] = profile['male']
+    elif isinstance(existing_zwift_profile, dict) and isinstance(existing_zwift_profile.get('male'), bool):
+        mapped['male'] = existing_zwift_profile['male']
     levels = extract_level_fields(profile)
     if levels.get('dropLevel') is not None:
         mapped.update(levels)

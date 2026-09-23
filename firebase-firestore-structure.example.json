@@ -552,6 +552,7 @@
         "vo2max": 62.1,
         "category": "B",
         "categoryWomen": "A",
+        "male": true,
         "achievementLevel": 11202,
         "dropLevel": 112,
         "totalExperiencePoints": 1047591,

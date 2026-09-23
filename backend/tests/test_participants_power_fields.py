@@ -78,6 +78,7 @@ def test_prefers_the_competition_weight_zwift_divides_by(app, monkeypatch):
     [participant] = _fetch(app, monkeypatch, [rider])
 
     assert participant["weightInGrams"] == 77105
+    assert participant["male"] is None
 
 
 def test_falls_back_to_profile_weight_when_competition_weight_is_missing(app, monkeypatch):

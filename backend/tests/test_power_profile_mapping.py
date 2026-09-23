@@ -62,6 +62,15 @@ def test_competition_metrics_preserves_game_client():
     assert mapped['canEnterUnlockCode'] is True
 
 
+def test_competition_metrics_keeps_male_and_does_not_invent_it():
+    mapped = _competition_metrics_to_profile({'ftp': 200}, {'male': False}, None)
+    assert mapped['male'] is False
+    kept = _competition_metrics_to_profile({'ftp': 200}, {}, {'male': True})
+    assert kept['male'] is True
+    missing = _competition_metrics_to_profile({'ftp': 200}, {}, None)
+    assert 'male' not in missing
+
+
 def test_competition_metrics_reads_official_achievements():
     mapped = _competition_metrics_to_profile(
         {},

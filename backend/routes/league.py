@@ -4,6 +4,7 @@ from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
 from extensions import db
 from services.results_processor import ResultsProcessor
+from services.results.women_view import json_ready, load_women_view
 from services.schema_validation import (
     log_schema_issues,
     validate_league_settings_doc,
@@ -113,6 +114,23 @@ def save_settings():
     except Exception as e:
         logger.error(f"Save settings error: {e}")
         return jsonify({'message': str(e)}), 500
+
+@league_bp.route('/results/women', methods=['GET'])
+def get_women_results():
+    """Rescored results and standings for riders whose Zwift profile is female."""
+    try:
+        verify_user_token(request)
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+    try:
+        payload = json_ready(load_women_view(db))
+        return jsonify(payload), 200
+    except Exception as e:
+        logger.error(f"Women results error: {e}")
+        return jsonify({'message': str(e)}), 500
+
 
 @league_bp.route('/league/standings', methods=['GET'])
 def get_standings():

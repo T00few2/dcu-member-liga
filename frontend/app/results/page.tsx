@@ -10,6 +10,7 @@ import {
     useRaceDrVerificationsQuery,
     useRaceWeightVerificationsQuery,
     useParticipantsQuery,
+    useWomenResultsQuery,
 } from '@/hooks/queries';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { normalizeRace } from '@/lib/firestore-normalizers';
@@ -119,14 +120,39 @@ export default function ResultsPage() {
     const [selectedCategory, setSelectedCategory] = useState<string>('A');
     const [standingsCategory, setStandingsCategory] = useState<string>('');
     const [standingsClass, setStandingsClass] = useState<StandingsClass>('individual');
+    const [womenOnly, setWomenOnly] = useState(false);
     const [autoSelectStandingsCategory, setAutoSelectStandingsCategory] = useState(true);
 
     const racesQuery = useRacesQuery();
     const settingsQuery = useLeagueSettingsQuery();
     const stageRacesQuery = useStageRacesQuery();
     const participantsQuery = useParticipantsQuery();
+    const womenQuery = useWomenResultsQuery(womenOnly);
 
-    const stageRaces = stageRacesQuery.data ?? [];
+    const womenRaceResults = useMemo(() => {
+        const map = new Map<string, NonNullable<Race['results']>>();
+        for (const race of womenQuery.data?.races ?? []) {
+            if (race?.id) map.set(race.id, race.results ?? {});
+        }
+        return map;
+    }, [womenQuery.data]);
+
+    const womenEventStandings = useMemo(() => {
+        const map = new Map<string, NonNullable<StageRace['standings']>>();
+        for (const event of womenQuery.data?.events ?? []) {
+            if (event?.id) map.set(event.id, event.standings ?? {});
+        }
+        return map;
+    }, [womenQuery.data]);
+
+    const stageRaces = useMemo(() => {
+        const base = stageRacesQuery.data ?? [];
+        if (!womenOnly) return base;
+        return base.map((event) => ({
+            ...event,
+            standings: womenEventStandings.get(event.id) ?? {},
+        }));
+    }, [stageRacesQuery.data, womenOnly, womenQuery.data, womenEventStandings]);
     const tours = useMemo(() => tourEvents(stageRaces), [stageRaces]);
     const hasTour = tours.length > 0;
 
@@ -149,10 +175,16 @@ export default function ResultsPage() {
 
     const races = useMemo<Race[]>(() => {
         const base = (racesQuery.data ?? []) as Race[];
+        if (womenOnly) {
+            return base.map((race) => {
+                const results = womenRaceResults.get(race.id);
+                return { ...race, results: results ?? {} };
+            });
+        }
         if (!liveRaceDoc.data || !selectedRaceId) return base;
         const updated = normalizeRace(liveRaceDoc.data, selectedRaceId);
         return base.map(r => (r.id === selectedRaceId ? { ...r, ...updated } : r));
-    }, [racesQuery.data, liveRaceDoc.data, selectedRaceId]);
+    }, [racesQuery.data, liveRaceDoc.data, selectedRaceId, womenOnly, womenQuery.data, womenRaceResults]);
 
     const eventsById = useMemo(
         () => new Map(stageRaces.map((e) => [e.id, e])),
@@ -160,7 +192,9 @@ export default function ResultsPage() {
     );
 
     const seasonMode = stageRaces.length > 0;
-    const standings = liveStandingsDoc.data?.standings ?? {};
+    const standings = womenOnly
+        ? (womenQuery.data?.standings ?? {})
+        : (liveStandingsDoc.data?.standings ?? {});
 
     const sortedRaces = useMemo(
         () =>
@@ -265,6 +299,7 @@ export default function ResultsPage() {
             const params = new URLSearchParams(window.location.search);
             const tab = parseTab(params.get('tab'), hasTour);
             setActiveTab(tab);
+            setWomenOnly(params.get('women') === '1');
 
             if (tab === 'standings') {
                 setStandingsClass(parseStandingsClass(params.get('view')));
@@ -549,7 +584,17 @@ export default function ResultsPage() {
         return { sprintColumns: finalColumns, bestSplitTimes: splitTimes };
     }, [selectedRace, raceResults, displayRaceCategory]);
 
-    const isLoading = authLoading || racesQuery.isLoading || settingsQuery.isLoading || liveStandingsDoc.loading;
+    const setWomenView = (on: boolean) => {
+        setWomenOnly(on);
+        const params = new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search);
+        if (on) params.set('women', '1');
+        else params.delete('women');
+        const query = params.toString();
+        router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    };
+
+    const isLoading = authLoading || racesQuery.isLoading || settingsQuery.isLoading || liveStandingsDoc.loading
+        || (womenOnly && womenQuery.isLoading);
 
     if (isLoading) {
         return <div className="p-8 text-center text-muted-foreground">Indlæser resultater...</div>;
@@ -660,7 +705,25 @@ export default function ResultsPage() {
 
     return (
         <div className="max-w-6xl mx-auto px-4 py-8">
-            <h1 className="text-3xl font-bold mb-8 text-foreground">Resultater & Stilling</h1>
+            <div className="flex items-center justify-between gap-4 mb-8">
+                <h1 className="text-3xl font-bold text-foreground">Resultater & Stilling</h1>
+                <button
+                    type="button"
+                    aria-pressed={womenOnly}
+                    aria-label="Kun kvinder"
+                    title="Kun kvinder"
+                    onClick={() => setWomenView(!womenOnly)}
+                    className={`shrink-0 w-11 h-11 rounded-full text-2xl leading-none font-semibold transition ${womenOnly
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'border border-border text-muted-foreground hover:text-foreground hover:bg-muted/40'
+                        }`}
+                >
+                    ♀
+                </button>
+            </div>
+            {womenOnly && womenQuery.isError && (
+                <p className="mb-6 text-sm text-destructive">Kvindestilling kunne ikke hentes.</p>
+            )}
 
             <div className="flex gap-4 mb-8 border-b border-border overflow-x-auto">
                 <button
