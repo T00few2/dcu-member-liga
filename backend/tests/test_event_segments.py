@@ -34,6 +34,25 @@ class EventSegmentFilterTests(unittest.TestCase):
             )
             self.assertEqual(laps, [1, 2, 3], sprint_id)
 
+    def test_la_boucle_finish_detection_keeps_champs_banner(self):
+        game = ZwiftGameService()
+        segments = game.get_event_segments(
+            LA_BOUCLE_ROUTE_ID,
+            laps=3,
+            include_lap_banners=True,
+        )
+        champs = [
+            segment
+            for segment in segments
+            if str(segment.get("id")) == CHAMPS_ELYSEES_ID
+        ]
+        self.assertEqual([segment.get("count") for segment in champs], [1, 2, 3], champs)
+        self.assertEqual(champs[-1].get("lap"), 3)
+
+        from services.results.finish_selector import last_race_lap_banner
+
+        self.assertEqual(last_race_lap_banner(segments), (CHAMPS_ELYSEES_ID, 3))
+
 
 if __name__ == "__main__":
     unittest.main()

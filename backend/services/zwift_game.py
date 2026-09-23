@@ -160,10 +160,16 @@ class ZwiftGameService:
                 return row
         return None
 
-    def get_event_segments(self, route_id, laps=1):
+    def get_event_segments(self, route_id, laps=1, include_lap_banners=False):
         """
         Given a route ID and a number of laps, load the route manifest and segments,
         and return a list of segment dictionaries that the route travels through.
+
+        Lap/finish banners (null archId or requiresAllCheckpoints) are omitted by
+        default so the sprint picker cannot select arches Zwift does not score.
+        Pass include_lap_banners=True for finish detection: the last race-lap
+        banner is still the intended finish even when it is absent from
+        segment-results.
         """
         # Resolve data files relative to backend/services, regardless of process CWD.
         # This avoids intermittent "missing segments" when the app is started from
@@ -242,15 +248,16 @@ class ZwiftGameService:
                 order_counter += 1
 
         # Pre-index segments by roadId for faster lookup.
-        # Skip lap/loop banners (null archId or requiresAllCheckpoints). They are
-        # finish arches, not event sprints, and Zwift does not return them in
-        # segment-results (e.g. Paris Champs-Élysées, Volcano lap arch).
+        # Sprint pickers omit lap/loop banners (null archId or requiresAllCheckpoints).
+        # Finish detection keeps them so the last race-lap arch can fall back to
+        # official race-results when Zwift omits it (e.g. Champs-Élysées).
         segments_by_road = defaultdict(list)
         for seg in segments_data:
-            if seg.get("archId") is None:
-                continue
-            if seg.get("requiresAllCheckpoints"):
-                continue
+            if not include_lap_banners:
+                if seg.get("archId") is None:
+                    continue
+                if seg.get("requiresAllCheckpoints"):
+                    continue
             road_id = seg.get("roadId")
             if road_id is not None:
                 segments_by_road[road_id].append(seg)

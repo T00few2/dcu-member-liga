@@ -327,8 +327,53 @@ def test_fetch_finishers_uses_official_times_when_last_champs_instance_missing()
     zwift.get_subgroup_race_results.assert_called_once_with("7340599")
 
 
-def test_fetch_finishers_uses_segment_times_when_last_champs_instance_present():
+def test_fetch_finishers_uses_official_times_even_when_last_champs_instance_present():
     zwift = MagicMock()
+    zwift.get_subgroup_race_results.return_value = {
+        "entries": [
+            {
+                "userId": "uuid-daniel",
+                "activityData": {
+                    "activityId": "act-1",
+                    "durationInMilliseconds": 4237154,
+                },
+                "criticalP": {},
+            }
+        ],
+        "totalEntryCount": 1,
+    }
+    fetcher = ZwiftFetcher(zwift_service=zwift)
+    registered = {
+        "uuid-daniel": {"zwiftId": "661768", "name": "Daniel lyhne"},
+    }
+    route_segments = [
+        {"id": "champs", "lap": 1, "count": 1},
+        {"id": "champs", "lap": 2, "count": 2},
+        {"id": "champs", "lap": 3, "count": 3},
+    ]
+    crossings = [
+        _entry("uuid-daniel", "champs", 100, 1000),
+        _entry("uuid-daniel", "champs", 200, 2000),
+        _entry("uuid-daniel", "champs", 300, 3661000),
+    ]
+
+    finishers = fetcher.fetch_finishers(
+        subgroup_id="7340599",
+        event_secret="",
+        fetch_mode="finishers",
+        registered_riders=registered,
+        route_segments=route_segments,
+        all_results_raw=crossings,
+    )
+
+    assert len(finishers) == 1
+    assert finishers[0]["finishTime"] == 4237154
+    zwift.get_subgroup_race_results.assert_called_once_with("7340599")
+
+
+def test_fetch_finishers_falls_back_to_segment_times_when_official_unavailable():
+    zwift = MagicMock()
+    zwift.get_subgroup_race_results.side_effect = RuntimeError("race-results down")
     fetcher = ZwiftFetcher(zwift_service=zwift)
     registered = {
         "uuid-daniel": {"zwiftId": "661768", "name": "Daniel lyhne"},
@@ -355,4 +400,47 @@ def test_fetch_finishers_uses_segment_times_when_last_champs_instance_present():
 
     assert len(finishers) == 1
     assert finishers[0]["finishTime"] == 3661000
-    zwift.get_subgroup_race_results.assert_not_called()
+
+
+def test_fetch_finishers_does_not_treat_last_sprint_as_finish_when_banner_listed():
+    """La Boucle after picker filter: last sprint is Tchou Tchou, finish is Champs."""
+    zwift = MagicMock()
+    zwift.get_subgroup_race_results.return_value = {
+        "entries": [
+            {
+                "userId": "uuid-daniel",
+                "activityData": {
+                    "activityId": "act-1",
+                    "durationInMilliseconds": 4237154,
+                },
+                "criticalP": {},
+            }
+        ],
+        "totalEntryCount": 1,
+    }
+    fetcher = ZwiftFetcher(zwift_service=zwift)
+    registered = {
+        "uuid-daniel": {"zwiftId": "661768", "name": "Daniel lyhne"},
+    }
+    route_segments = [
+        {"id": "lutece", "lap": 3, "count": 3},
+        {"id": "tchou", "lap": 3, "count": 3},
+        {"id": "1056322864", "lap": 3, "count": 3, "name": "Champs-Élysées"},
+    ]
+    crossings = [
+        _entry("uuid-daniel", "lutece", 100, 1000),
+        _entry("uuid-daniel", "tchou", 180, 3663792),
+    ]
+
+    finishers = fetcher.fetch_finishers(
+        subgroup_id="7340599",
+        event_secret="",
+        fetch_mode="finishers",
+        registered_riders=registered,
+        route_segments=route_segments,
+        all_results_raw=crossings,
+    )
+
+    assert len(finishers) == 1
+    assert finishers[0]["finishTime"] == 4237154
+    zwift.get_subgroup_race_results.assert_called_once_with("7340599")

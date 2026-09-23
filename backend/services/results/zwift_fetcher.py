@@ -13,8 +13,6 @@ from services.results.constants import (
 )
 from services.results.errors import FinishSegmentResolutionError
 from services.results.finish_selector import (
-    finish_banner_instance_missing,
-    last_race_lap_banner,
     resolve_finish_segment_candidate,
     select_finish_entries_from_route_instances,
 )
@@ -68,28 +66,27 @@ class ZwiftFetcher:
     ) -> list[RiderResult]:
         """
         Fetches participants/finishers for a subgroup and maps them to registered riders.
+
+        Finish times come from official race-results. Segment-results are only
+        used for finish times if race-results are unavailable.
         """
         finishers: list[RiderResult] = []
         if fetch_mode == FETCH_MODE_FINISHERS:
+            official_finishers = self._finishers_from_official_race_results(
+                subgroup_id,
+                registered_riders,
+            )
+            if official_finishers:
+                logger.info(
+                    "Using official race-results for %s finishers (subgroup %s)",
+                    len(official_finishers),
+                    subgroup_id,
+                )
+                return official_finishers
+
             crossings = all_results_raw or self.fetch_subgroup_crossings(
                 subgroup_id, event_secret
             )
-            intended_finish = last_race_lap_banner(route_segments)
-            if finish_banner_instance_missing(intended_finish, crossings):
-                official_finishers = self._finishers_from_official_race_results(
-                    subgroup_id,
-                    registered_riders,
-                )
-                if official_finishers:
-                    logger.info(
-                        "Finish banner %s count=%s has no segment-results; "
-                        "using official race-results for %s finishers (subgroup %s)",
-                        intended_finish[0],
-                        intended_finish[1],
-                        len(official_finishers),
-                        subgroup_id,
-                    )
-                    return official_finishers
             finish_results_raw = self._filter_finish_entries(
                 crossings,
                 route_segments,
@@ -159,8 +156,10 @@ class ZwiftFetcher:
         registered_riders: dict[str, Any],
     ) -> list[RiderResult]:
         """
-        Build finishers from official race-results when the finish banner has
-        no segment-results (not configured as an event sprint).
+        Build finishers from official race-results.
+
+        Finish times always come from activityData.durationInMilliseconds.
+        Sprint/KOM/FAL points still come from segment-results separately.
         """
         if not self.zwift or not hasattr(self.zwift, "get_subgroup_race_results"):
             return []

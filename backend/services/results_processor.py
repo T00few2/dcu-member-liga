@@ -746,8 +746,8 @@ class ResultsProcessor:
                 category_config_map=category_config_map,
             )
 
-            # Build ordered route segment list for finish-line identification.
-            # The finish segment = last race-lap banner on the route.
+            # Route chronology (including finish banners) for DNF/sprint mapping.
+            # Finish times themselves come from official race-results.
             route_segments = self._resolve_route_segments(race_data, subgroup)
             all_crossings_raw = self._prefetch_subgroup_crossings_if_needed(
                 subgroup_id=subgroup_id,
@@ -1017,7 +1017,11 @@ class ResultsProcessor:
         route_laps = subgroup.get('laps') or race_data.get('laps') or 1
         if route_id:
             try:
-                route_segs = self.game.get_event_segments(str(route_id), int(route_laps))
+                route_segs = self.game.get_event_segments(
+                    str(route_id),
+                    int(route_laps),
+                    include_lap_banners=True,
+                )
                 route_segments = [s for s in route_segs if isinstance(s, dict)]
             except Exception as e:
                 logger.warning(f"Could not resolve route segments for {route_id}: {e}")
