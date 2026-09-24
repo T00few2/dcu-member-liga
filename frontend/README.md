@@ -36,6 +36,8 @@ NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_storage_bucket
 NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
 NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
 NEXT_PUBLIC_API_URL=http://localhost:8080
+NEXT_PUBLIC_HERO_VIDEO_URL=https://firebasestorage.googleapis.com/v0/b/dcu-member-liga-479507.firebasestorage.app/o/public%2Fhero-video.mp4?alt=media
+NEXT_PUBLIC_HERO_POSTER_URL=https://firebasestorage.googleapis.com/v0/b/dcu-member-liga-479507.firebasestorage.app/o/public%2Fhero-video-poster.jpg?alt=media
 ```
 
 ### Development

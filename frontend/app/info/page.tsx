@@ -5,6 +5,7 @@ import Link from 'next/link';
 import CodeOfConductModal from '@/components/CodeOfConductModal';
 import { API_URL, getZwiftInsiderUrl } from '@/lib/api';
 import { useLeagueSettingsQuery, useRacesQuery, useStageRacesQuery } from '@/hooks/queries';
+import HeroBackgroundVideo from '@/components/home/HeroBackgroundVideo';
 import { formatDateShort, fromTimestamp } from '@/lib/formatDate';
 import {
     isOneDaySeasonClass,
@@ -939,9 +940,7 @@ export default function InfoPage() {
         <div className="w-full relative -mt-4 text-foreground bg-background">
             {/* Hero */}
             <div className="relative w-full min-h-[45vh] flex flex-col items-center justify-center overflow-hidden bg-black pb-16 pt-8">
-                <video autoPlay loop muted playsInline preload="auto" className="absolute inset-0 w-full h-full object-cover z-0 opacity-40 mix-blend-screen bg-black">
-                    <source src="/hero-video.mp4" type="video/mp4" />
-                </video>
+                <HeroBackgroundVideo />
                 <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/50 to-background/95 z-0" />
                 <div className="absolute top-1/4 left-1/4 w-[30rem] h-[30rem] bg-primary/20 rounded-full mix-blend-screen filter blur-[120px] animate-pulse z-0" />
                 <div className="absolute bottom-1/4 right-1/4 w-[30rem] h-[30rem] bg-white/10 rounded-full mix-blend-screen filter blur-[120px] animate-pulse [animation-delay:2s] z-0" />
