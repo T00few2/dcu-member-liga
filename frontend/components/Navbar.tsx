@@ -7,6 +7,10 @@ import { useNotifications } from "@/hooks/useNotifications";
 import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 
+function NavLink(props: React.ComponentProps<typeof Link>) {
+    return <Link prefetch={false} {...props} />;
+}
+
 export default function Navbar() {
     const { user, signInWithGoogle, logOut, loading, isRegistered, needsConsentUpdate, isImpersonating, toggleImpersonation, isAdmin } = useAuth();
     const { weightNeedsAction, dualRecordingFlagged, stickyWattsFlagged, ghostWattsFlagged, hasUnreadNews } = useNotifications();
@@ -68,7 +72,7 @@ export default function Navbar() {
                     <div className="flex items-center gap-4">
                         <div className="flex items-center gap-3">
                             <Image src="/DCU_logo_white.svg" alt="DCU Logo" width={36} height={36} priority />
-                            <Link href="/" className="text-xl font-bold">DCU E-serien</Link>
+                            <NavLink href="/" className="text-xl font-bold">DCU E-serien</NavLink>
                         </div>
                     </div>
 
@@ -81,7 +85,7 @@ export default function Navbar() {
                                         {isRegistered && !needsConsentUpdate && (
                                             <div className="hidden md:flex items-center gap-6">
                                                 {authNavLinks.map(link => (
-                                                    <Link
+                                                    <NavLink
                                                         key={link.href}
                                                         href={link.href}
                                                         className={`hover:bg-white/10 px-3 py-2 rounded-md text-base transition-colors ${pathname === link.href ? 'text-white font-bold' : 'text-white/90 font-bold'
@@ -93,7 +97,7 @@ export default function Navbar() {
                                                                 <span className="absolute -top-1 -right-2.5 h-2 w-2 rounded-full bg-tertiary" />
                                                             </span>
                                                         ) : link.label}
-                                                    </Link>
+                                                    </NavLink>
                                                 ))}
                                             </div>
                                         )}
@@ -152,21 +156,21 @@ export default function Navbar() {
                                                                 {isImpersonating ? 'Afslut brugervisning' : 'Vis som bruger'}
                                                             </button>
                                                         )}
-                                                        <Link
+                                                        <NavLink
                                                             href="/point"
                                                             className="block px-4 py-2 text-sm hover:bg-slate-50"
                                                             onClick={() => setIsMenuOpen(false)}
                                                         >
                                                             Point
-                                                        </Link>
-                                                        <Link
+                                                        </NavLink>
+                                                        <NavLink
                                                             href="/register"
                                                             className="block px-4 py-2 text-sm hover:bg-slate-50"
                                                             onClick={() => setIsMenuOpen(false)}
                                                         >
                                                             Min Profil
-                                                        </Link>
-                                                        <Link
+                                                        </NavLink>
+                                                        <NavLink
                                                             href="/verification"
                                                             className="block px-4 py-2 text-sm hover:bg-slate-50 flex items-center justify-between"
                                                             onClick={() => setIsMenuOpen(false)}
@@ -175,7 +179,7 @@ export default function Navbar() {
                                                             {profileHasNotification && (
                                                                 <span className="h-2 w-2 rounded-full bg-tertiary"></span>
                                                             )}
-                                                        </Link>
+                                                        </NavLink>
                                                         <button
                                                             onClick={() => {
                                                                 logOut();
@@ -193,13 +197,13 @@ export default function Navbar() {
                                 ) : (
                                     <div className="flex items-center gap-4">
                                         {publicNavLinks.map(link => (
-                                            <Link
+                                            <NavLink
                                                 key={link.href}
                                                 href={link.href}
                                                 className={`hidden md:inline hover:bg-white/10 px-3 py-2 rounded-md text-base transition-colors ${pathname === link.href ? 'text-white font-bold' : 'text-white/90 font-bold'}`}
                                             >
                                                 {link.label}
-                                            </Link>
+                                            </NavLink>
                                         ))}
                                         <button
                                             onClick={() => signInWithGoogle('login')}
@@ -255,7 +259,7 @@ export default function Navbar() {
 
 
                         {user && isRegistered && !needsConsentUpdate && authNavLinks.map(link => (
-                            <Link
+                            <NavLink
                                 key={link.href}
                                 href={link.href}
                                 className={`px-4 py-3 rounded-lg transition-colors flex items-center justify-between ${pathname === link.href
@@ -268,26 +272,26 @@ export default function Navbar() {
                                 {link.href === '/nyheder' && hasUnreadNews && (
                                     <span className="h-2 w-2 rounded-full bg-tertiary" />
                                 )}
-                            </Link>
+                            </NavLink>
                         ))}
 
                         {user ? (
                             <div className="border-t border-slate-800 pt-4 mt-4">
-                                <Link
+                                <NavLink
                                     href="/point"
                                     className="block px-4 py-3 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg"
                                     onClick={() => setIsDrawerOpen(false)}
                                 >
                                     Point
-                                </Link>
-                                <Link
+                                </NavLink>
+                                <NavLink
                                     href="/register"
                                     className="block px-4 py-3 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg"
                                     onClick={() => setIsDrawerOpen(false)}
                                 >
                                     Min Profil
-                                </Link>
-                                <Link
+                                </NavLink>
+                                <NavLink
                                     href="/verification"
                                     className="flex items-center justify-between px-4 py-3 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg"
                                     onClick={() => setIsDrawerOpen(false)}
@@ -296,7 +300,7 @@ export default function Navbar() {
                                     {profileHasNotification && (
                                         <span className="h-2 w-2 rounded-full bg-tertiary" />
                                     )}
-                                </Link>
+                                </NavLink>
                                 <button
                                     onClick={() => {
                                         logOut();
@@ -310,14 +314,14 @@ export default function Navbar() {
                         ) : (
                             <div className="border-t border-slate-800 pt-4 mt-4">
                                 {publicNavLinks.map(link => (
-                                    <Link
+                                    <NavLink
                                         key={link.href}
                                         href={link.href}
                                         className={`block px-4 py-3 rounded-lg ${pathname === link.href ? 'bg-primary text-primary-foreground font-medium' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}
                                         onClick={() => setIsDrawerOpen(false)}
                                     >
                                         {link.label}
-                                    </Link>
+                                    </NavLink>
                                 ))}
                                 <button
                                     onClick={() => {

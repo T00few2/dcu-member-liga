@@ -26,24 +26,28 @@ export interface RouteElevationData {
     profileSegments?: ProfileSegment[];
 }
 
+const ELEVATION_STALE_MS = 24 * 60 * 60_000;
+
 export function useRouteElevationQuery(
     worldName: string | undefined,
     routeName: string | undefined,
-    laps: number,
+    _laps: number,
+    options?: { enabled?: boolean },
 ) {
+    const enabled = options?.enabled ?? true;
     return useQuery<RouteElevationData | null>({
-        queryKey: ['route-elevation', worldName, routeName, laps],
+        queryKey: ['route-elevation', worldName, routeName],
         queryFn: async () => {
             const params = new URLSearchParams({
                 world: worldName!,
                 route: routeName!,
-                laps: String(laps),
             });
             const res = await fetch(`/api/route-elevation?${params}`);
             if (!res.ok) return null;
             return res.json();
         },
-        enabled: !!worldName && !!routeName,
-        staleTime: 5 * 60_000,
+        enabled: enabled && !!worldName && !!routeName,
+        staleTime: ELEVATION_STALE_MS,
+        gcTime: ELEVATION_STALE_MS,
     });
 }

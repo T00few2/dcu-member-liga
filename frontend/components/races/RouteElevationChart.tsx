@@ -18,7 +18,7 @@ import {
 } from 'recharts';
 import type { Sprint } from '@/types/live';
 import { useRaceSegmentsQuery, useRouteElevationQuery } from '@/hooks/queries';
-import { mergeElevationProfileWithLapBanners } from '@/lib/routeProfileSegments';
+import { mergeElevationProfileWithLapBanners, tileElevationArrays, tileProfileSegments } from '@/lib/routeProfileSegments';
 
 interface RouteSegment {
     from: number;
@@ -66,6 +66,8 @@ interface Props {
     extraProfileSegments?: ProfileSegment[];
     overlay?: (ctx: RouteElevationOverlayContext) => ReactNode;
     height?: number;
+    /** When false, skip the elevation fetch (e.g. schedule cards below the fold). */
+    enabled?: boolean;
 }
 
 interface DataPoint {
@@ -429,8 +431,9 @@ export default function RouteElevationChart({
     extraProfileSegments = [],
     overlay,
     height = CHART_HEIGHT,
+    enabled = true,
 }: Props) {
-    const { data: json, isLoading: loading } = useRouteElevationQuery(worldName, routeName, laps);
+    const { data: json, isLoading: loading } = useRouteElevationQuery(worldName, routeName, laps, { enabled });
     const { data: eventSegments = [] } = useRaceSegmentsQuery(
         routeId,
         laps,
@@ -439,12 +442,13 @@ export default function RouteElevationChart({
 
     const data: DataPoint[] | null = (() => {
         if (!json?.distance?.length || !json?.altitude?.length) return null;
-        const n = Math.max(1, Math.floor(json.distance.length / TARGET_POINTS));
-        const raw = json.distance
+        const tiled = tileElevationArrays(json.distance, json.altitude, laps);
+        const n = Math.max(1, Math.floor(tiled.distance.length / TARGET_POINTS));
+        const raw = tiled.distance
             .filter((_, i) => i % n === 0)
             .map((d, i) => ({
                 distance: d / 1_000,
-                altitude: json.altitude[i * n],
+                altitude: tiled.altitude[i * n],
             }));
         return raw.map((pt, i) => ({
             ...pt,
@@ -461,8 +465,18 @@ export default function RouteElevationChart({
 
     const routeSegments: RouteSegment[] = useMemo(() => {
         if (!json && extraProfileSegments.length === 0) return [];
+        const lapKm = json?.distance?.length
+            ? (json.distance[json.distance.length - 1] ?? 0) / 1000
+            : 0;
+        const tiledJson = json
+            ? {
+                ...json,
+                ...tileElevationArrays(json.distance ?? [], json.altitude ?? [], laps),
+                profileSegments: tileProfileSegments(json.profileSegments ?? [], laps, lapKm),
+            }
+            : json;
         const mergedProfile = mergeElevationProfileWithLapBanners(
-            json,
+            tiledJson,
             pointSegments,
             eventSegments,
             laps,
@@ -476,7 +490,7 @@ export default function RouteElevationChart({
         return (json?.segments ?? []).map((seg) => toRouteSegment(seg));
     }, [json, extraProfileSegments, pointSegments, eventSegments, laps]);
 
-    if (loading) {
+    if (!enabled || loading) {
         return (
             <div className="h-28 flex items-center justify-center text-muted-foreground text-xs">
                 Henter ruteprofil…

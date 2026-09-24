@@ -88,6 +88,7 @@ function ScheduleRaceCard({
             eventName={isTour ? null : eventName}
             seasonClassLabel={badgeLabel}
             stageLabel={stageLabel}
+            deferElevation
         />
     );
 }

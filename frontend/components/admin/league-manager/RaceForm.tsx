@@ -164,11 +164,10 @@ export default function RaceForm({
         setRouteProfileError(null);
         try {
             // Always load 1 lap: elevation_cache stores single-lap race-relative coords.
-            // Multi-lap tiling is applied by the elevation API when race cards request laps > 1.
+            // Multi-lap tiling is applied in the chart when a race requests laps > 1.
             const params = new URLSearchParams({
                 world: selectedRoute.map,
                 route: selectedRoute.name,
-                laps: '1',
                 fresh: '1',
             });
             const res = await fetch(`/api/route-elevation?${params}`, { cache: 'no-store' });

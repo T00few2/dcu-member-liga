@@ -151,19 +151,61 @@ export type ElevationProfileLike = {
     profileSegments?: ProfileSegmentLike[];
 };
 
-/** Race-only lap length from a tiled elevation stream (metres → km). */
+/** Race-only lap length from a single-lap elevation stream (metres → km). */
 export function lapLengthKmFromElevation(
     elevationData: ElevationProfileLike | null | undefined,
-    laps: number,
+    _laps: number,
     fallbackLapKm = 0,
 ): number {
     const distances = elevationData?.distance;
-    const tiledRaceKm =
+    const lapRaceKm =
         Array.isArray(distances) && distances.length > 0
             ? (distances[distances.length - 1] ?? 0) / 1000
             : 0;
-    if (laps > 0 && tiledRaceKm > 0) return tiledRaceKm / laps;
-    return fallbackLapKm;
+    return lapRaceKm > 0 ? lapRaceKm : fallbackLapKm;
+}
+
+export function tileElevationArrays(
+    distance: number[],
+    altitude: number[],
+    laps: number,
+): { distance: number[]; altitude: number[] } {
+    const n = Math.max(1, laps);
+    if (n <= 1 || distance.length === 0) {
+        return { distance, altitude };
+    }
+    const lapLengthM = distance[distance.length - 1] ?? 0;
+    const tiledDistance: number[] = [];
+    const tiledAltitude: number[] = [];
+    for (let lap = 0; lap < n; lap++) {
+        const offsetM = lapLengthM * lap;
+        for (let i = 0; i < distance.length; i++) {
+            tiledDistance.push((distance[i] ?? 0) + offsetM);
+            tiledAltitude.push(altitude[i] ?? 0);
+        }
+    }
+    return { distance: tiledDistance, altitude: tiledAltitude };
+}
+
+export function tileProfileSegments<T extends ProfileSegmentLike>(
+    segments: T[],
+    laps: number,
+    lapLengthKm: number,
+): T[] {
+    const n = Math.max(1, laps);
+    if (n <= 1 || segments.length === 0) return segments;
+    const tiled: T[] = [];
+    for (let lap = 0; lap < n; lap++) {
+        const offsetKm = lapLengthKm * lap;
+        for (const seg of segments) {
+            tiled.push({
+                ...seg,
+                fromKm: roundKm(seg.fromKm + offsetKm),
+                toKm: roundKm(seg.toKm + offsetKm),
+            });
+        }
+    }
+    return tiled;
 }
 
 /**

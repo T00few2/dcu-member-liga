@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
 import { getZwiftInsiderUrl, API_URL } from '@/lib/api';
@@ -18,7 +18,8 @@ import { useRouteElevationQuery, useRaceSegmentsQuery, useMyRaceSignupsQuery, us
 import { useAuth } from '@/lib/auth-context';
 import { scaleRaceDistanceKm } from '@/hooks/useLeagueData';
 import { formatOmgangeDisplay } from '@/lib/raceLaps';
-import { mergeElevationProfileWithLapBanners } from '@/lib/routeProfileSegments';
+import { mergeElevationProfileWithLapBanners, tileProfileSegments, lapLengthKmFromElevation } from '@/lib/routeProfileSegments';
+import { useInViewOnce } from '@/hooks/useInViewOnce';
 
 interface RaceCardProps {
     race: Race;
@@ -31,6 +32,8 @@ interface RaceCardProps {
     eventName?: string | null;
     seasonClassLabel?: string | null;
     stageLabel?: string | null;
+    /** Wait until the card is near the viewport before fetching elevation (schedule lists). */
+    deferElevation?: boolean;
 }
 
 const normalize = (value?: string | null) => (value || '').trim().toLowerCase();
@@ -128,7 +131,11 @@ export default function RaceCard({
     eventName,
     seasonClassLabel,
     stageLabel,
+    deferElevation = false,
 }: RaceCardProps) {
+    const rootRef = useRef<HTMLDivElement>(null);
+    const elevationInView = useInViewOnce(rootRef);
+    const elevationEnabled = !deferElevation || elevationInView;
     const raceDate = fromTimestamp(race.date) || new Date(NaN);
     const isPublicVariant = variant === 'public';
     const { user, isRegistered } = useAuth();
@@ -186,6 +193,7 @@ export default function RaceCard({
         race.map && race.routeName ? race.map : undefined,
         race.map && race.routeName ? race.routeName : undefined,
         lapsToShow,
+        { enabled: elevationEnabled },
     );
 
     const leadInKm = Number(elevationData?.leadInDistance) || 0;
@@ -231,8 +239,15 @@ export default function RaceCard({
 
     const fallbackLapKm =
         lapsToShow > 0 ? Math.max(0, displayDistanceKm - leadInKm) / lapsToShow : 0;
+    const lapKm = lapLengthKmFromElevation(elevationData, lapsToShow, fallbackLapKm);
+    const elevationForProfile = elevationData
+        ? {
+            ...elevationData,
+            profileSegments: tileProfileSegments(elevationData.profileSegments ?? [], lapsToShow, lapKm),
+        }
+        : elevationData;
     const mergedProfileSegments = mergeElevationProfileWithLapBanners(
-        elevationData,
+        elevationForProfile,
         resolvedSprintsToShow,
         eventSegments,
         lapsToShow,
@@ -320,6 +335,7 @@ export default function RaceCard({
 
     return (
         <div
+            ref={rootRef}
             className={`bg-card border border-border rounded-lg shadow-sm overflow-hidden mb-6 ${isPast ? 'opacity-75' : ''} ${
                 !isPublicVariant && isRegistered && !isPast && isSignedUp ? 'border-l-4 border-l-green-500' : ''
             }`}
@@ -420,6 +436,7 @@ export default function RaceCard({
                             laps={1}
                             routeId={race.routeId}
                             pointSegments={resolvedProfileSprintsToShow}
+                            enabled={elevationEnabled}
                         />
                     </div>
                 )}

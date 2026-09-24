@@ -5,6 +5,8 @@ import {
     mergeLapBannerProfileSegments,
     resolveRaceRelativeProfileSegments,
     shiftSegmentsByLeadIn,
+    tileElevationArrays,
+    tileProfileSegments,
 } from '@/lib/routeProfileSegments';
 
 describe('shiftSegmentsByLeadIn', () => {
@@ -173,14 +175,9 @@ describe('mergeElevationProfileWithLapBanners', () => {
         { id: '1056322864', name: 'Champs-Élysées', count: 3, lap: 3, direction: 'forward' },
     ];
 
-    it('derives lap length from tiled elevation and synthesizes missing banners', () => {
-        const tiled = [
-            ...catalog,
-            ...catalog.map((s) => ({ ...s, fromKm: s.fromKm + lapLengthKm, toKm: s.toKm + lapLengthKm })),
-            ...catalog.map((s) => ({ ...s, fromKm: s.fromKm + 2 * lapLengthKm, toKm: s.toKm + 2 * lapLengthKm })),
-        ];
+    it('derives lap length from single-lap elevation and synthesizes missing banners', () => {
         const out = mergeElevationProfileWithLapBanners(
-            { distance: [0, 16_000, 32_000, 48_000], profileSegments: tiled },
+            { distance: [0, 16_000], profileSegments: catalog },
             champsSprints,
             eventSegments,
             3,
@@ -268,5 +265,23 @@ describe('resolveRaceRelativeProfileSegments', () => {
         ];
         const out = resolveRaceRelativeProfileSegments(null, inclusive, 3.077, false);
         expect(out[0].fromKm).toBe(3.532);
+    });
+});
+
+describe('tileElevationArrays / tileProfileSegments', () => {
+    it('repeats one lap of coords across N laps', () => {
+        const tiled = tileElevationArrays([0, 1000, 2000], [10, 20, 15], 2);
+        expect(tiled.distance).toEqual([0, 1000, 2000, 2000, 3000, 4000]);
+        expect(tiled.altitude).toEqual([10, 20, 15, 10, 20, 15]);
+    });
+
+    it('offsets profile segments by lap length', () => {
+        const segs = tileProfileSegments(
+            [{ name: 'Sprint', type: 'sprint', fromKm: 1, toKm: 1.2, direction: 'forward' }],
+            2,
+            10,
+        );
+        expect(segs.map((s) => s.fromKm)).toEqual([1, 11]);
+        expect(segs.map((s) => s.toKm)).toEqual([1.2, 11.2]);
     });
 });

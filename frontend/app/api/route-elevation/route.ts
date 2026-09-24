@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { resolveRaceRelativeProfileSegments, roundKm } from '@/lib/routeProfileSegments';
+import { resolveRaceRelativeProfileSegments } from '@/lib/routeProfileSegments';
 import { resolveZwiftRoute, zwiftCatalogSegments } from '@/lib/zwiftRouteCatalog';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -39,7 +39,6 @@ export async function GET(req: NextRequest) {
     const world = req.nextUrl.searchParams.get('world');
     const route = req.nextUrl.searchParams.get('route');
     const fresh = req.nextUrl.searchParams.get('fresh') === '1';
-    const laps = Math.max(1, parseInt(req.nextUrl.searchParams.get('laps') ?? '1', 10) || 1);
 
     if (!world || !route) {
         return NextResponse.json({ error: 'Missing world or route param' }, { status: 400 });
@@ -140,32 +139,7 @@ export async function GET(req: NextRequest) {
         }
     }
 
-    const lapLengthM = raceDistances.length > 0
-        ? (raceDistances[raceDistances.length - 1] ?? 0)
-        : 0;
-
-    const tiledDistance: number[] = [];
-    const tiledAltitude: number[] = [];
-    for (let lap = 0; lap < laps; lap++) {
-        const offsetM = lapLengthM * lap;
-        for (let i = 0; i < raceDistances.length; i++) {
-            tiledDistance.push((raceDistances[i] ?? 0) + offsetM);
-            tiledAltitude.push(raceAltitudes[i] ?? 0);
-        }
-    }
-
-    const lapLengthKm = lapLengthM / 1000;
-    const profileSegments: ProfileSegment[] = [];
-    for (let lap = 0; lap < laps; lap++) {
-        const offsetKm = lapLengthKm * lap;
-        for (const seg of singleLapProfileSegments) {
-            profileSegments.push({
-                ...seg,
-                fromKm: roundKm(seg.fromKm + offsetKm),
-                toKm: roundKm(seg.toKm + offsetKm),
-            });
-        }
-    }
+    const downsampled = downsampleElevation(raceDistances, raceAltitudes, 400);
 
     const raceRelativeRouteSegments: RouteSegment[] = singleLapProfileSegments.map((seg) => ({
         from: seg.fromKm,
@@ -178,10 +152,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
         {
             ...data,
-            distance: tiledDistance.length > 0 ? tiledDistance : data?.distance,
-            altitude: tiledAltitude.length > 0 ? tiledAltitude : data?.altitude,
+            distance: downsampled.distance.length > 0 ? downsampled.distance : data?.distance,
+            altitude: downsampled.altitude.length > 0 ? downsampled.altitude : data?.altitude,
             segments: raceRelativeRouteSegments,
-            profileSegments,
+            profileSegments: singleLapProfileSegments,
             leadInDistance: leadInKm > 0 ? leadInKm : (data?.leadInDistance ?? undefined),
             stravaSegmentId: match.stravaSegmentId,
             stravaSegmentUrl: match.stravaSegmentUrl || `https://www.strava.com/segments/${match.stravaSegmentId}`,
@@ -190,4 +164,27 @@ export async function GET(req: NextRequest) {
             ? { headers: { 'Cache-Control': 'no-store' } }
             : { headers: { 'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800' } }
     );
+}
+
+function downsampleElevation(
+    distance: number[],
+    altitude: number[],
+    targetPoints: number,
+): { distance: number[]; altitude: number[] } {
+    if (distance.length <= targetPoints) {
+        return { distance, altitude };
+    }
+    const step = Math.max(1, Math.floor(distance.length / targetPoints));
+    const outD: number[] = [];
+    const outA: number[] = [];
+    for (let i = 0; i < distance.length; i += step) {
+        outD.push(distance[i] ?? 0);
+        outA.push(altitude[i] ?? 0);
+    }
+    const last = distance.length - 1;
+    if (outD[outD.length - 1] !== distance[last]) {
+        outD.push(distance[last] ?? 0);
+        outA.push(altitude[last] ?? 0);
+    }
+    return { distance: outD, altitude: outA };
 }
