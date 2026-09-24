@@ -358,3 +358,48 @@ def test_dry_run_writes_nothing():
     assert preview['dryRun'] is True
     assert preview['races'][0]['assignedPlace'] == 2
     assert preview['message'] == 'Dry run — no writes'
+
+
+def test_move_up_and_the_panel_share_apply_move(monkeypatch):
+    from services.category_transfer import _profile_fields, move_rider_up
+
+    calls = []
+
+    def fake_apply(_db, **kwargs):
+        calls.append(kwargs)
+        return {'message': 'Rider moved to Silver', 'transferId': 't1', 'category': 'Silver', 'races': []}
+
+    monkeypatch.setattr('services.category_transfer.apply_move', fake_apply)
+    monkeypatch.setattr(
+        'services.category_transfer._load_liga_settings',
+        lambda _db: {'gracePeriod': 35, 'categories': None},
+    )
+
+    class _Db:
+        def collection(self, name):
+            raise AssertionError(f'move up must not write {name} itself')
+
+    user = {
+        'name': 'Mathias',
+        'zwiftRacing': {'currentRating': 901, 'max30Rating': 901},
+        'ligaCategory': {
+            'locked': True,
+            'category': 'Copper',
+            'autoAssigned': {'category': 'Copper', 'assignedRating': 0, 'status': 'over'},
+        },
+    }
+    locked = move_rider_up(_Db(), user_doc_id='u1', zwift_id='1', user_data=user)
+    unlocked_user = {
+        'zwiftRacing': user['zwiftRacing'],
+        'ligaCategory': {'locked': False, 'autoAssigned': {'category': 'Copper', 'status': 'over'}},
+    }
+    unlocked = move_rider_up(_Db(), user_doc_id='u1', zwift_id='1', user_data=unlocked_user)
+    assert [call['to_category'] for call in calls] == ['Silver', 'Silver']
+    assert locked['transferId'] == unlocked['transferId'] == 't1'
+
+    fields = _profile_fields(user, 'Silver', None, 35)
+    assert fields['ligaCategory.category'] == 'Silver'
+    assert fields['ligaCategory.locked'] is True
+    assert fields['ligaCategory.manualAssigned']['category'] == 'Silver'
+    assert fields['ligaCategory.autoAssigned']['category'] == 'Silver'
+    assert fields['ligaCategory.autoAssigned']['status'] == 'ok'

@@ -12,9 +12,12 @@ from typing import Any
 from firebase_admin import firestore
 
 from services.category_engine import (
+    _effective_cat_name,
+    build_liga_category,
     build_manual_assigned,
     effective_liga_category_name,
     effective_rating,
+    reassign_to_next_category,
 )
 from services.category_transfer_logic import (
     STATUS_APPLIED,
@@ -186,7 +189,38 @@ def _category_update(user_data: dict[str, Any], to_category: str, categories, gr
     lc = user_data.get("ligaCategory") or {}
     self_selected = (lc.get("selfSelected") or {}).get("category")
     clear_self = bool(self_selected) and str(self_selected) != to_category
-    return {"manual": manual, "clearSelfSelect": clear_self, "wasLocked": bool(lc.get("locked"))}
+    auto_assigned = {
+        "category": manual["category"],
+        "upperBoundary": manual.get("upperBoundary"),
+        "graceLimit": manual.get("graceLimit"),
+        "status": manual.get("status"),
+        "lastCheckedAt": firestore.SERVER_TIMESTAMP,
+    }
+    if manual.get("assignedRating") is not None:
+        auto_assigned["assignedRating"] = manual["assignedRating"]
+        auto_assigned["lastCheckedRating"] = manual.get("lastCheckedRating", manual["assignedRating"])
+    return {
+        "manual": manual,
+        "autoAssigned": auto_assigned,
+        "clearSelfSelect": clear_self,
+        "wasLocked": bool(lc.get("locked")),
+    }
+
+
+def _profile_fields(user_data: dict[str, Any], to_category: str, categories, grace_period: int) -> dict[str, Any]:
+    """Profile fields every category move writes. Move up and the panel share this."""
+    bits = _category_update(user_data, to_category, categories, grace_period)
+    fields: dict[str, Any] = {
+        "ligaCategory.category": to_category,
+        "ligaCategory.locked": True,
+        "ligaCategory.manualAssigned": bits["manual"],
+        "ligaCategory.autoAssigned": bits["autoAssigned"],
+    }
+    if not bits["wasLocked"]:
+        fields["ligaCategory.lockedAt"] = firestore.SERVER_TIMESTAMP
+    if bits["clearSelfSelect"]:
+        fields["ligaCategory.selfSelected"] = firestore.DELETE_FIELD
+    return fields
 
 
 def build_move_preview(
@@ -353,6 +387,48 @@ def _signup_rows_for_apply(planned: list[dict[str, Any]], zwift_id: str) -> list
     return rows
 
 
+def move_rider_up(
+    db: Any,
+    *,
+    user_doc_id: str,
+    zwift_id: str,
+    user_data: dict[str, Any],
+) -> dict[str, Any]:
+    """Pick the next division, then run the same transfer as the admin panel."""
+    lc = user_data.get("ligaCategory") or {}
+    if not lc:
+        raise CategoryTransferError("Rider has no assigned liga category")
+    settings = _load_liga_settings(db)
+    grace_period = int(settings.get("gracePeriod", 35))
+    categories = _resolve_categories(settings)
+    zr = user_data.get("zwiftRacing") or {}
+    rating = effective_rating(
+        zr.get("currentRating", "N/A"),
+        zr.get("max30Rating", "N/A"),
+        zr.get("max90Rating", "N/A"),
+    )
+    if rating is None:
+        raise CategoryTransferError("Rider has no vELO rating")
+
+    current_cat = effective_liga_category_name(lc, categories)
+    if not current_cat:
+        raise CategoryTransferError("Rider has no assigned liga category")
+
+    target = build_liga_category(rating, grace_period, categories)
+    rated_cat = _effective_cat_name(target["category"], current_cat, categories)
+    if rated_cat != current_cat:
+        to_category = str(target["category"])
+    else:
+        to_category = str(reassign_to_next_category(current_cat, rating, grace_period, categories)["category"])
+    return apply_move(
+        db,
+        user_doc_id=user_doc_id,
+        zwift_id=zwift_id,
+        user_data=user_data,
+        to_category=to_category,
+    )
+
+
 def apply_move(
     db: Any,
     *,
@@ -366,7 +442,7 @@ def apply_move(
     scoring = _scoring_settings(db)
     categories = _resolve_categories(settings)
     grace_period = int(settings.get("gracePeriod", 35))
-    category_bits = _category_update(user_data, to_category, categories, grace_period)
+    user_update = _profile_fields(user_data, to_category, categories, grace_period)
     races = _load_races(db)
     credits, _skipped = plan_credits(races, zwift_id, to_category)
     transfer_id = uuid.uuid4().hex
@@ -384,15 +460,6 @@ def apply_move(
     signup_rows = _signup_rows_for_apply(preview.get("signups") or [], zwift_id)
     pen_errors = _move_pens(db, signup_rows, restore=False)
 
-    user_update: dict[str, Any] = {
-        "ligaCategory.category": to_category,
-        "ligaCategory.locked": True,
-        "ligaCategory.manualAssigned": category_bits["manual"],
-    }
-    if not category_bits["wasLocked"]:
-        user_update["ligaCategory.lockedAt"] = firestore.SERVER_TIMESTAMP
-    if category_bits["clearSelfSelect"]:
-        user_update["ligaCategory.selfSelected"] = firestore.DELETE_FIELD
     user_payload = with_schema_version(user_update)
     log_schema_issues(logger, f"users/{user_doc_id} (category transfer)", validate_user_doc(user_payload, partial=True))
     db.collection("users").document(str(user_doc_id)).update(user_payload)
@@ -420,6 +487,8 @@ def apply_move(
     result["applied"] = True
     result["transferId"] = transfer_id
     result["penErrors"] = pen_errors
+    result["category"] = to_category
+    result["status"] = (user_update.get("ligaCategory.autoAssigned") or {}).get("status")
     result["message"] = f"Rider moved to {to_category}"
     return result
 

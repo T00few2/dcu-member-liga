@@ -11,12 +11,10 @@ from extensions import db
 from firebase_admin import firestore
 from routes.admin import admin_bp
 from services.category_engine import (
-    _effective_cat_name,
     build_liga_category,
     build_manual_assigned,
     cats_from_defs,
     effective_rating,
-    reassign_to_next_category,
     serialize_liga_category,
 )
 from services.liga_categories_config import ConfigApplyError, run_liga_categories_config
@@ -309,7 +307,7 @@ def get_liga_categories():
 
 @admin_bp.route("/admin/liga-categories/<zwift_id>/reassign", methods=["POST"])
 def reassign_liga_category(zwift_id):
-    """Manually move a rider up to the next category tier."""
+    """Manually move a rider up. Destination is chosen here; the write is a category transfer."""
     try:
         require_admin(request)
     except AuthzError as e:
@@ -323,58 +321,27 @@ def reassign_liga_category(zwift_id):
         if not user:
             return jsonify({"message": "User not found"}), 404
 
-        data = user._data
-        lc = data.get("ligaCategory")
-        if not lc:
-            return jsonify({"message": "Rider has no assigned liga category"}), 400
+        from services.category_transfer import CategoryTransferError, move_rider_up
 
-        liga_settings = _load_liga_settings(db)
-        grace_period = liga_settings["gracePeriod"]
-        categories = _resolve_categories(liga_settings)
-
-        zr = data.get("zwiftRacing", {})
-        eff_rating = effective_rating(
-            zr.get("currentRating", "N/A"),
-            zr.get("max30Rating", "N/A"),
-            zr.get("max90Rating", "N/A"),
-        )
-        if eff_rating is None:
-            return jsonify({"message": "Rider has no vELO rating"}), 400
-
-        auto = lc.get("autoAssigned") or {}
-        current_cat = auto.get("category")
-
-        target = build_liga_category(eff_rating, grace_period, categories)
-        target_cat = target["category"]
-        effective_new_cat = _effective_cat_name(target_cat, current_cat, categories)
-
-        if effective_new_cat != current_cat:
-            update_fields = target
-            update_fields.pop("assignedRating", None)
-        else:
-            update_fields = reassign_to_next_category(current_cat, eff_rating, grace_period, categories)
-
-        update_fields["lastCheckedAt"] = firestore.SERVER_TIMESTAMP
-
-        new_auto = {**auto, **update_fields}
-        doc_update = {"ligaCategory.autoAssigned": new_auto}
-        if lc.get("locked"):
-            doc_update["ligaCategory.category"] = update_fields["category"]
-
-        user_update = with_schema_version(doc_update)
-        log_schema_issues(
-            logger,
-            f"users/{user.id} (manual reassign)",
-            validate_user_doc(user_update, partial=True),
-        )
-        db.collection("users").document(str(user.id)).update(user_update)
+        try:
+            result = move_rider_up(
+                db,
+                user_doc_id=str(user.id),
+                zwift_id=str(zwift_id),
+                user_data=user._data,
+            )
+        except CategoryTransferError as exc:
+            return jsonify({"message": exc.message}), exc.status_code
 
         return (
             jsonify(
                 {
-                    "message": f"Rider moved to {update_fields['category']}",
-                    "category": update_fields["category"],
-                    "status": update_fields["status"],
+                    "message": result.get("message"),
+                    "category": result.get("category"),
+                    "status": result.get("status"),
+                    "transferId": result.get("transferId"),
+                    "races": result.get("races") or [],
+                    "penErrors": result.get("penErrors") or [],
                 }
             ),
             200,

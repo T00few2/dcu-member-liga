@@ -322,7 +322,9 @@ export default function CategoryManager() {
 
   const handleReassign = useCallback(async (zwiftId: string, name: string) => {
     if (!user) return;
-    if (!confirm(`Move ${name} up to the next category?\n\nThis resets their grace limit to the new category boundary + ${effectiveGracePeriod} points.`)) return;
+    if (!confirm(
+      `Move ${name} up to the next category?\n\nFinished races stay in the current division. The new division gets a last-place credit for each race they have actually finished.`
+    )) return;
     try {
       const token = await user.getIdToken();
       const res = await fetch(`${API_URL}/admin/liga-categories/${zwiftId}/reassign`, {
@@ -330,12 +332,26 @@ export default function CategoryManager() {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       });
       const data = await res.json();
-      if (!res.ok) alert(`Error: ${data.message}`);
-      else queryClient.invalidateQueries({ queryKey: ['admin', 'liga-categories'] });
+      if (!res.ok) {
+        alert(`Error: ${data.message}`);
+        return;
+      }
+      const credited = Array.isArray(data.races) ? data.races.length : 0;
+      const penErrors = Array.isArray(data.penErrors) ? data.penErrors.filter(Boolean) : [];
+      const lines = [data.message || `${name} moved up`];
+      if (credited > 0) {
+        lines.push(`Last-place credit in ${credited} finished race${credited === 1 ? '' : 's'}.`);
+      }
+      if (penErrors.length > 0) lines.push(`Pen warnings: ${penErrors.join(' ')}`);
+      alert(lines.join('\n\n'));
+      queryClient.invalidateQueries({ queryKey: ['admin', 'liga-categories'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'category-transfers'] });
+      queryClient.invalidateQueries({ queryKey: ['races'] });
+      queryClient.invalidateQueries({ queryKey: ['league-standings'] });
     } catch {
       alert('Failed to reassign rider');
     }
-  }, [user, effectiveGracePeriod, queryClient]);
+  }, [user, queryClient]);
 
   const handleAssignManual = useCallback(async (zwiftId: string, name: string, category: string) => {
     if (!user) return;
