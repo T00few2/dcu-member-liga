@@ -440,7 +440,7 @@ class TestProcessRaceResultsBranching:
         assert rp._process_event_source.call_count == 1
         call = rp._process_event_source.call_args
         # Positional args: source, race_data, registered_riders, scorer, all_results,
-        # fetch_mode, category_filter, results_phase
+        # fetch_mode, category_filter, results_phase, race_id
         assert call.args[5] == fetch_mode
         assert call.args[6] == category_filter
         assert call.args[7] == RESULTS_PHASE_FINALIZED
@@ -471,6 +471,7 @@ class TestProcessRaceResultsBranching:
             fetch_mode=FETCH_MODE_FINISHERS,
             category_filter=CATEGORY_FILTER_ALL,
             results_phase=RESULTS_PHASE_FINALIZED,
+            race_id='race-1',
         )
         assert ok is False
 

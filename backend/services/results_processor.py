@@ -209,6 +209,7 @@ class ResultsProcessor:
                 fetch_mode,
                 category_filter,
                 normalized_phase,
+                race_id,
                 collected_subgroup_ids=collected_subgroup_ids,
             )
             if ok:
@@ -674,6 +675,7 @@ class ResultsProcessor:
         fetch_mode: str,
         category_filter: str | None,
         results_phase: str,
+        race_id: str,
         collected_subgroup_ids: list[str] | None = None,
     ) -> bool:
         event_id = source.get('id')
