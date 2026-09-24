@@ -1,5 +1,5 @@
 export function formatTime(ms: number, raceStatus?: string): string {
-    void raceStatus;
+    if (String(raceStatus || '').toUpperCase() === 'XFER') return '—';
     if (!ms || ms <= 0) return 'DNF';
     const roundedMs = Math.round(ms / 10) * 10;
     const totalSeconds = Math.floor(roundedMs / 1000);

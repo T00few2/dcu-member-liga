@@ -118,7 +118,10 @@ class RiderResult(TypedDict, total=False):
     sprintDetails: dict[str, int | float]   # points (sprint) or worldTime (split)
     isTestData: bool
     activityId: str                          # Zwift activity ID for this race event
-    raceStatus: str                          # FIN | DNF | WC | ...
+    raceStatus: str                          # FIN | DNF | WC | XFER
+    categoryTransfer: bool
+    transferFromCategory: str
+    transferId: str
 
 
 class FinishAuditIssue(TypedDict, total=False):

@@ -35,6 +35,18 @@ describe('buildClubStandings', () => {
         expect(rows[1].points).toBe(5);
     });
 
+    it('counts a moved rider only in the division they are in now', () => {
+        const standings = {
+            A: [rider('1', 'Ada', 100)],
+            B: [rider('1', 'Ada', 8), rider('2', 'Bea', 40)],
+        };
+        const clubs = new Map([['1', 'North'], ['2', 'North']]);
+        const categories = new Map([['1', 'B']]);
+        const rows = buildClubStandings(standings, clubs, categories);
+        expect(rows[0].points).toBe(48);
+        expect(rows[0].riders.map((r) => r.zwiftId)).toEqual(['2', '1']);
+    });
+
     it('leaves out riders without a club and keeps a club with fewer than three riders', () => {
         const rows = buildClubStandings(
             { A: [rider('1', 'Ada', 12), rider('2', 'Bea', 30)] },

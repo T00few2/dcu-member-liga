@@ -14,6 +14,7 @@ import RaceSignupSelect from '@/components/RaceSignupSelect';
 
 import CategoryBoundaryEditor from './category-manager/CategoryBoundaryEditor';
 import CategoryList from './category-manager/CategoryList';
+import CategoryTransferPanel from './category-manager/CategoryTransferPanel';
 import {
   ZR_CATEGORY_DEFAULTS,
   type CategoryChangelogOp,
@@ -441,6 +442,11 @@ export default function CategoryManager() {
             : `${riders.length} registered participants`}
         </p>
       </div>
+
+      <CategoryTransferPanel
+        riders={riders as RiderEntry[]}
+        categories={effectiveLigaCategories.map((cat) => cat.name)}
+      />
 
       {/* ── Category Configuration ── */}
       <div className="bg-card p-6 rounded-lg shadow border border-border">

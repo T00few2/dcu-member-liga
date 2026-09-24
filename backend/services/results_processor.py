@@ -51,6 +51,7 @@ from services.category_engine import (
     cats_from_defs,
     effective_liga_category_name,
 )
+from services.category_transfer import protected_zwift_ids, reapply_active_transfers
 from services.schema_validation import (
     log_schema_issues,
     validate_league_standings_doc,
@@ -331,6 +332,7 @@ class ResultsProcessor:
             for riders in (all_results or {}).values():
                 if isinstance(riders, list):
                     self._stamp_rider_clubs(riders, riders_map)
+        all_results = reapply_active_transfers(self.db, race_id, all_results)
         normalized_phase = self._normalize_results_phase(results_phase)
         now = datetime.now(timezone.utc)
         race_update = with_schema_version({
@@ -398,7 +400,7 @@ class ResultsProcessor:
             raise RaceNotFoundError(f"Race {race_id} not found", context={"race_id": race_id})
 
         race_data = race_doc.to_dict()
-        results = race_data.get('results', {})
+        results = reapply_active_transfers(self.db, race_id, race_data.get('results', {}))
 
         if not results:
             logger.info("  No results to recalculate")
@@ -705,6 +707,7 @@ class ResultsProcessor:
         custom_cat_finishers: list[Any] = []
         custom_cat_segment_efforts: dict[str | int, Any] = {}
         grouped_finishers_by_category: dict[str, list[Any]] = defaultdict(list)
+        protected_transfer_ids = protected_zwift_ids(self.db, race_id)
         grouped_segment_efforts: dict[str | int, list[Any]] = {}
         grouped_sprints_union = self._merge_grouped_sprints(source)
 
@@ -815,6 +818,14 @@ class ResultsProcessor:
                 for finisher in finishers:
                     rider_doc = registered_riders.get(str(finisher.get('zwiftId') or '').strip())
                     registered_category = self._effective_registered_category(rider_doc)
+                    zid = str(finisher.get('zwiftId') or '').strip()
+                    if (
+                        zid
+                        and zid in protected_transfer_ids
+                        and subgroup_expected_category
+                    ):
+                        grouped_finishers_by_category[subgroup_expected_category].append(finisher)
+                        continue
                     if (
                         subgroup_expected_category
                         and registered_category

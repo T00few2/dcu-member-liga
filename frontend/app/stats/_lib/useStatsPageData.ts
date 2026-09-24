@@ -37,6 +37,17 @@ export function useStatsPageData({
         ? String(profileData.zwiftId)
         : null;
 
+    const currentUserCategory = useMemo(() => {
+        if (!currentUserZwiftId) return null;
+        const participants = Array.isArray(participantsQuery.data) ? participantsQuery.data : [];
+        const me = participants.find((participant: unknown) => {
+            const value = participant as { zwiftId?: string | number };
+            return String(value?.zwiftId ?? '') === currentUserZwiftId;
+        }) as { category?: string } | undefined;
+        const category = String(me?.category ?? '').trim();
+        return category && category !== 'N/A' ? category : null;
+    }, [participantsQuery.data, currentUserZwiftId]);
+
     const currentUserClub = profileData?.club
         ? String(profileData.club)
         : null;
@@ -78,6 +89,7 @@ export function useStatsPageData({
     return {
         races,
         currentUserZwiftId,
+        currentUserCategory,
         currentUserClub,
         clubByZwiftId,
         weightKgByZwiftId,

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useLeagueSettingsQuery } from '@/hooks/queries';
 import { categoryRankOrder } from '@/lib/ligaCategories';
+import { preferredResultCategory } from '@/lib/preferredResultCategory';
 
 import { ClubSnapshotCards } from './_components/ClubSnapshotCards';
 import { PowerCurveSection } from './_components/PowerCurveSection';
@@ -54,6 +55,7 @@ export default function MyStatsPage() {
     const {
         races,
         currentUserZwiftId,
+        currentUserCategory,
         currentUserClub,
         clubByZwiftId,
         weightKgByZwiftId,
@@ -143,14 +145,8 @@ export default function MyStatsPage() {
     const selectedRace = useMemo(() => races.find((race) => race.id === selectedRaceId), [races, selectedRaceId]);
 
     const userCategory = useMemo(() => {
-        if (!selectedRace?.results || !currentUserZwiftId) return null;
-        for (const [cat, riders] of Object.entries(selectedRace.results)) {
-            if (riders.some((r) => r.zwiftId === currentUserZwiftId)) {
-                return cat;
-            }
-        }
-        return null;
-    }, [selectedRace, currentUserZwiftId]);
+        return preferredResultCategory(selectedRace?.results, currentUserZwiftId || '', currentUserCategory);
+    }, [selectedRace, currentUserZwiftId, currentUserCategory]);
 
     const userResult = useMemo(() => {
         if (!selectedRace?.results || !userCategory || !currentUserZwiftId) return null;

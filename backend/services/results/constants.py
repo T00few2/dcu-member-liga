@@ -30,3 +30,4 @@ AUTO_ACTIVATE_LEAD_MINUTES: Final[int] = 30
 RACE_STATUS_FIN: Final[str] = "FIN"
 RACE_STATUS_DNF: Final[str] = "DNF"
 RACE_STATUS_WC: Final[str] = "WC"
+RACE_STATUS_XFER: Final[str] = "XFER"

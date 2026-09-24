@@ -367,6 +367,22 @@
             "totalPoints": 25,
             "raceStatus": "FIN"
           }
+        ],
+        "Ruby": [
+          {
+            "zwiftId": "100002",
+            "name": "Moved Rider",
+            "club": "Example Club",
+            "finishTime": 0,
+            "finishRank": 2,
+            "finishPoints": 15,
+            "sprintPoints": 0,
+            "totalPoints": 15,
+            "raceStatus": "XFER",
+            "categoryTransfer": true,
+            "transferFromCategory": "Diamond",
+            "transferId": "transfer_example_001"
+          }
         ]
       },
       "finishAudit": {
@@ -711,6 +727,24 @@
       "subgroupId": "7340598",
       "eventId": "5701604",
       "lastError": ""
+    }
+  ],
+  "categoryTransfers": [
+    {
+      "_id": "transfer_example_001",
+      "schemaVersion": 1,
+      "zwiftId": "100001",
+      "userDocId": "100001",
+      "name": "Example Rider",
+      "fromCategory": "Ruby",
+      "toCategory": "Diamond",
+      "status": "applied",
+      "creditedRaceIds": ["race_doc_example_001"],
+      "preexistingDestinationRaceIds": [],
+      "categorySnapshot": { "category": "Ruby", "locked": true },
+      "signupSnapshot": [],
+      "penErrors": [],
+      "createdAtIso": "2026-05-21T08:00:00+00:00"
     }
   ],
   "weight_history": [

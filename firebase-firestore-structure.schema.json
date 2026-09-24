@@ -18,6 +18,13 @@
         "$ref": "#/$defs/authMappingDoc"
       }
     },
+    "categoryTransfers": {
+      "type": "array",
+      "description": "Admin moves of a rider from one liga division to another. Each applied move appends last-place credits; it does not rewrite the division the rider left.",
+      "items": {
+        "$ref": "#/$defs/categoryTransferDoc"
+      }
+    },
     "elevation_cache": {
       "type": "array",
       "items": {
@@ -843,7 +850,13 @@
                 "finishPoints": { "type": "integer" },
                 "sprintPoints": { "type": "integer" },
                 "totalPoints": { "type": "integer" },
-                "raceStatus": { "type": "string" }
+                "raceStatus": { "type": "string" },
+                "categoryTransfer": {
+                  "type": "boolean",
+                  "description": "True when this row is a last-place credit from a category move, not a finish the rider rode in this division."
+                },
+                "transferFromCategory": { "type": "string" },
+                "transferId": { "type": "string" }
               }
             }
           }
@@ -1905,6 +1918,27 @@
           "type": "boolean",
           "description": "When true and raceId is empty, auto-activation is skipped for races whose live window already started at activatedAt. A later race (window start after activatedAt) still auto-activates."
         }
+      }
+    },
+    "categoryTransferDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "_id": { "type": "string" },
+        "schemaVersion": { "type": "integer" },
+        "zwiftId": { "type": "string" },
+        "userDocId": { "type": "string" },
+        "name": { "type": "string" },
+        "fromCategory": { "type": "string" },
+        "toCategory": { "type": "string" },
+        "status": { "type": "string", "enum": ["applied", "reverted"] },
+        "creditedRaceIds": { "type": "array", "items": { "type": "string" } },
+        "preexistingDestinationRaceIds": { "type": "array", "items": { "type": "string" } },
+        "categorySnapshot": { "type": "object", "additionalProperties": true },
+        "signupSnapshot": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+        "penErrors": { "type": "array", "items": { "type": "string" } },
+        "createdAtIso": { "type": "string" },
+        "revertedAtIso": { "type": "string" }
       }
     }
   }

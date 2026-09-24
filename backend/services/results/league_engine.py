@@ -7,6 +7,7 @@ import logging
 
 from models import LeagueSettings, LeagueStandings, RiderResult, SegmentType, SprintConfig
 from services.category_config import CategoryConfigResolver
+from services.category_transfer_logic import is_category_transfer
 from services.results.ranking import competition_places
 from utils.datetime_utils import normalize_dt, parse_dt
 
@@ -191,9 +192,12 @@ class LeagueEngine:
         if not self.league_rank_points:
             # No league rank points configured - use raw totalPoints
             result: dict[str, int | None] = {}
-            valid_riders_count = sum(1 for r in riders
+            valid_riders_count = sum(
+                1 for r in riders
                 if str(r['zwiftId']) not in manual_dqs
-                and str(r['zwiftId']) not in manual_declassifications)
+                and str(r['zwiftId']) not in manual_declassifications
+                and not is_category_transfer(r)
+            )
             last_place_points = self.finish_points_scheme[valid_riders_count] if valid_riders_count < len(self.finish_points_scheme) else 0
 
             for rider in riders:
@@ -202,7 +206,7 @@ class LeagueEngine:
                     continue
                 if zid in manual_dqs:
                     result[zid] = 0
-                elif zid in manual_declassifications:
+                elif is_category_transfer(rider) or zid in manual_declassifications:
                     result[zid] = last_place_points
                 else:
                     points = rider.get('totalPoints', 0)
@@ -250,6 +254,10 @@ class LeagueEngine:
 
             if zid in manual_dqs:
                 result[zid] = 0
+                continue
+
+            if is_category_transfer(rider):
+                declass_ids.append(zid)
                 continue
 
             has_finished = rider.get('finishTime', 0) > 0
@@ -305,6 +313,10 @@ class LeagueEngine:
 
             if zid in manual_dqs:
                 result[zid] = 0
+                continue
+
+            if is_category_transfer(rider):
+                declass_ids.append(zid)
                 continue
 
             has_finished = rider.get('finishTime', 0) > 0
@@ -396,6 +408,10 @@ class LeagueEngine:
 
             if zid in manual_dqs:
                 result[zid] = 0
+                continue
+
+            if is_category_transfer(rider):
+                declass_ids.append(zid)
                 continue
 
             has_finished = rider.get('finishTime', 0) > 0

@@ -249,6 +249,19 @@ export default function ResultsPage() {
         return map;
     }, [participantsQuery.data]);
 
+    const categoryByZwiftId = useMemo(() => {
+        const map = new Map<string, string>();
+        const participants = Array.isArray(participantsQuery.data) ? participantsQuery.data : [];
+        participants.forEach((participant: unknown) => {
+            const value = participant as { zwiftId?: string | number; category?: string };
+            const zwiftId = String(value?.zwiftId ?? '').trim();
+            const category = String(value?.category ?? '').trim();
+            if (!zwiftId || !category || category === 'N/A') return;
+            map.set(zwiftId, category);
+        });
+        return map;
+    }, [participantsQuery.data]);
+
     const writeUrl = useCallback((opts: {
         tab?: ResultsTab;
         eventId?: string;
@@ -541,8 +554,8 @@ export default function ResultsPage() {
     );
 
     const clubRows = useMemo(
-        () => buildClubStandings(standings, clubByZwiftId),
-        [standings, clubByZwiftId],
+        () => buildClubStandings(standings, clubByZwiftId, categoryByZwiftId),
+        [standings, clubByZwiftId, categoryByZwiftId],
     );
 
     const classificationJerseys = settingsQuery.data?.classificationJerseys;

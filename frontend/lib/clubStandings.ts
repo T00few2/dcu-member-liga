@@ -14,19 +14,27 @@ export type ClubStandingRow = {
 
 /**
  * Club score is the sum of the three riders with the most season points.
- * Riders are taken from every division. The same rider counts once, at their
- * higher total. Riders without a club are left out.
+ * Riders are taken from every division. The same rider counts once. A rider who
+ * has been moved counts only in the division they are in now. Everyone else
+ * counts at their higher total. Riders without a club are left out.
  */
 export function buildClubStandings(
     standings: Record<string, StandingEntry[] | undefined>,
     clubByZwiftId: Map<string, string>,
+    categoryByZwiftId?: Map<string, string>,
 ): ClubStandingRow[] {
     const bestByRider = new Map<string, { name: string; points: number }>();
-    for (const riders of Object.values(standings)) {
+    for (const [category, riders] of Object.entries(standings)) {
         for (const rider of riders || []) {
             const zwiftId = String(rider.zwiftId || '').trim();
             if (!zwiftId) continue;
             const points = Number(rider.totalPoints) || 0;
+            const currentCategory = categoryByZwiftId?.get(zwiftId);
+            if (currentCategory) {
+                if (category !== currentCategory) continue;
+                bestByRider.set(zwiftId, { name: rider.name || zwiftId, points });
+                continue;
+            }
             const current = bestByRider.get(zwiftId);
             if (!current || points > current.points) {
                 bestByRider.set(zwiftId, { name: rider.name || zwiftId, points });

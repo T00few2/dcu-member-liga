@@ -4,7 +4,8 @@ from collections import defaultdict
 from typing import Any
 
 from models import RaceConfig, RiderResult, SprintConfig
-from services.results.constants import RACE_STATUS_DNF, RACE_STATUS_FIN, RACE_STATUS_WC
+from services.category_transfer_logic import is_category_transfer
+from services.results.constants import RACE_STATUS_DNF, RACE_STATUS_FIN, RACE_STATUS_WC, RACE_STATUS_XFER
 
 
 class RaceScorer:
@@ -43,6 +44,7 @@ class RaceScorer:
         # 2. Metadata & Classification
         valid_riders = []
         declass_riders = []
+        transfer_riders = []
         dq_riders = []
 
         # Map for quick lookup
@@ -65,6 +67,8 @@ class RaceScorer:
                 rider['disqualified'] = True
                 rider['finishRank'] = 9999
                 dq_riders.append(rider)
+            elif is_category_transfer(rider):
+                transfer_riders.append(rider)
             elif zid in manual_declass:
                 rider['declassified'] = True
                 declass_riders.append(rider)
@@ -93,6 +97,12 @@ class RaceScorer:
             rider['finishRank'] = last_valid_rank + 1
             rider['finishPoints'] = last_place_points
 
+        for rider in transfer_riders:
+            rider['finishRank'] = last_valid_rank + 1
+            rider['finishPoints'] = last_place_points
+            rider['raceStatus'] = RACE_STATUS_XFER
+            rider['categoryTransfer'] = True
+
         # 4. Process Sprint Data (If fresh data provided)
         if segment_efforts_map:
             self._map_segment_efforts(active_riders, segment_efforts_map, race_config.get('sprints', []))
@@ -109,6 +119,13 @@ class RaceScorer:
         # DNF riders should be visible in results, but never earn points.
         # Also clear segment details so UI shows '-' across sprint/point columns.
         for rider in active_riders:
+            if is_category_transfer(rider):
+                rider['raceStatus'] = RACE_STATUS_XFER
+                rider['categoryTransfer'] = True
+                rider['sprintPoints'] = 0
+                rider['sprintData'] = {}
+                rider['sprintDetails'] = {}
+                continue
             if rider.get('finishTime', 0) > 0:
                 rider['raceStatus'] = str(rider.get('raceStatus') or RACE_STATUS_FIN)
                 continue

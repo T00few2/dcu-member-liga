@@ -217,11 +217,12 @@ export default function RaceResultsTable({
                             <tbody className="divide-y divide-border">
                                 {raceResults.map((rider, idx) => {
                                     const drVerification = drVerifications?.get(rider.zwiftId);
-                                    const isDnf = !rider.finishTime || rider.finishTime <= 0;
+                                    const isTransfer = String(rider.raceStatus || '').toUpperCase() === 'XFER' || rider.categoryTransfer === true;
+                                    const isDnf = !isTransfer && (!rider.finishTime || rider.finishTime <= 0);
                                     const isDeclassified = isRiderDeclassified(rider.zwiftId, selectedRace, rider);
                                     return (
                                     <tr key={rider.zwiftId} className="hover:bg-muted/20 transition odd:bg-transparent even:bg-[#f1efe7]">
-                                        <td className="px-4 py-3 text-center font-medium text-muted-foreground">{idx + 1}</td>
+                                        <td className="px-4 py-3 text-center font-medium text-muted-foreground">{isTransfer && rider.finishRank ? rider.finishRank : idx + 1}</td>
                                         <td className="px-4 py-3 font-medium text-card-foreground">
                                             <span className="inline-flex items-center">
                                                 {rider.name}

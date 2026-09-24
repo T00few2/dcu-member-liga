@@ -156,6 +156,9 @@ export interface ResultEntry {
     criticalP?: CriticalPower;
     dualRecordingVerification?: DualRecordingVerification;
     declassified?: boolean;
+    categoryTransfer?: boolean;
+    transferFromCategory?: string;
+    transferId?: string;
     disqualified?: boolean;
 }
 
