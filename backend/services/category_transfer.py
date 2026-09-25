@@ -499,9 +499,24 @@ def copy_category(value: dict[str, Any]) -> dict[str, Any]:
 
 
 def _refresh_standings(db: Any) -> None:
+    """Rebuild event overalls from the stored race rows, then the season table.
+
+    Season points for a one-day classic come from the event overall. A category
+    move only changes race rows, so that overall has to be rebuilt or the new
+    last-place credit never reaches the standings.
+    """
+    from services.results.stage_race_ops import (
+        load_races_by_id,
+        load_stage_races,
+        recompute_and_save_event_gc,
+    )
     from services.results_processor import ResultsProcessor
 
     try:
+        races_by_id = load_races_by_id(db)
+        settings = _scoring_settings(db)
+        for event in load_stage_races(db):
+            recompute_and_save_event_gc(db, event, races_by_id, settings)
         ResultsProcessor(db, None, None).save_league_standings()
     except Exception as exc:
         logger.error("Category transfer standings refresh failed: %s", exc)
