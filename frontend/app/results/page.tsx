@@ -28,12 +28,12 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import { sortCategoriesByRank } from '@/lib/categories';
 import { buildClubStandings } from '@/lib/clubStandings';
 import {
-    classificationLeaderIds,
     classificationRankKey,
     compareClassificationRank,
     latestClassificationRaceId,
     type ClassificationKind,
 } from '@/lib/classificationTiebreak';
+import { assignSeasonJerseys } from '@/lib/seasonJerseys';
 import {
     buildClassificationColumns,
     buildEventGcColumns,
@@ -544,15 +544,6 @@ export default function ResultsPage() {
             ));
     }, [categoryStandings, standingsClass, classificationColumns, lastClassificationRaceId]);
 
-    const sprintLeaderIds = useMemo(
-        () => classificationLeaderIds(categoryStandings, 'sprint', lastClassificationRaceId),
-        [categoryStandings, lastClassificationRaceId],
-    );
-    const komLeaderIds = useMemo(
-        () => classificationLeaderIds(categoryStandings, 'kom', lastClassificationRaceId),
-        [categoryStandings, lastClassificationRaceId],
-    );
-
     const clubRows = useMemo(
         () => buildClubStandings(standings, clubByZwiftId, categoryByZwiftId),
         [standings, clubByZwiftId, categoryByZwiftId],
@@ -570,6 +561,16 @@ export default function ResultsPage() {
     const komJersey = standingJersey(
         classificationJerseys?.kom,
         (name) => `Bjergtrøje i divisionen: ${name}`,
+    );
+    const komJerseyOn = Boolean(classificationJerseys?.kom?.imageUrl);
+    const sprintJerseyOn = Boolean(classificationJerseys?.sprint?.imageUrl);
+    const jerseyRoles = useMemo(
+        () => assignSeasonJerseys(categoryStandings, lastClassificationRaceId, {
+            individual: true,
+            kom: komJerseyOn,
+            sprint: sprintJerseyOn,
+        }),
+        [categoryStandings, lastClassificationRaceId, komJerseyOn, sprintJerseyOn],
     );
 
     const selectStandingsClass = (next: StandingsClass) => {
@@ -812,8 +813,7 @@ export default function ResultsPage() {
                                 leaderJersey={individualJersey ?? undefined}
                                 sprintJersey={sprintJersey}
                                 komJersey={komJersey}
-                                sprintLeaderIds={sprintLeaderIds}
-                                komLeaderIds={komLeaderIds}
+                                jerseyRoles={jerseyRoles}
                             />
                         ) : (
                             <StandingsTable
@@ -827,9 +827,11 @@ export default function ResultsPage() {
                                 title={standingsClass === 'sprint' ? 'Sprint' : 'KOM'}
                                 totalLabel={standingsClass === 'sprint' ? 'Sprintpoint' : 'KOM-point'}
                                 countingHint="Tæller med"
-                                showDivisionLeaderJersey={Boolean(standingsClass === 'sprint' ? sprintJersey : komJersey)}
-                                leaderJersey={(standingsClass === 'sprint' ? sprintJersey : komJersey) ?? undefined}
-                                leaderIds={standingsClass === 'sprint' ? sprintLeaderIds : komLeaderIds}
+                                showDivisionLeaderJersey
+                                leaderJersey={individualJersey ?? undefined}
+                                sprintJersey={sprintJersey}
+                                komJersey={komJersey}
+                                jerseyRoles={jerseyRoles}
                             />
                         )}
                     </div>

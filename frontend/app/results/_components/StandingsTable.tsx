@@ -4,6 +4,7 @@ import {
     columnMatchesResult,
     type SeasonStandingColumn,
 } from '@/lib/seasonUi';
+import type { SeasonJerseyMarks, SeasonJerseyRole } from '@/lib/seasonJerseys';
 
 const DIVISION_LEADER_JERSEY_URL =
     'https://cdn.zwift.com/static/zc/JERSEYS/DanishCyclingMember2019_thumb.png';
@@ -51,6 +52,11 @@ interface Props {
     komLeaderIds?: Set<string>;
     /** Classification-tab leaders. Falls back to equal totals when omitted. */
     leaderIds?: Set<string>;
+    /**
+     * Who rides each season jersey, and who only earned a lower one.
+     * When set, this replaces the equal-points leader check.
+     */
+    jerseyRoles?: Map<string, SeasonJerseyMarks>;
     totalLabel?: string;
 }
 
@@ -72,6 +78,7 @@ export default function StandingsTable({
     sprintLeaderIds,
     komLeaderIds,
     leaderIds,
+    jerseyRoles,
     totalLabel = 'Samlede point',
 }: Props) {
     const columns = columnsProp?.length
@@ -124,7 +131,18 @@ export default function StandingsTable({
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border">
-                                {currentStandings.map((rider, idx) => (
+                                {currentStandings.map((rider, idx) => {
+                                    const roles = jerseyRoles?.get(rider.zwiftId);
+                                    const individualRole = showDivisionLeaderJersey
+                                        ? slotRole(jerseyRoles, roles, 'individual', wearsJersey(rider, leaderIds, leaderPoints))
+                                        : undefined;
+                                    const komRole = komJersey
+                                        ? slotRole(jerseyRoles, roles, 'kom', wearsClassJersey(rider, komLeaderIds, 'komPoints', komLeaderPoints))
+                                        : undefined;
+                                    const sprintRole = sprintJersey
+                                        ? slotRole(jerseyRoles, roles, 'sprint', wearsClassJersey(rider, sprintLeaderIds, 'sprintPoints', sprintLeaderPoints))
+                                        : undefined;
+                                    return (
                                     <tr key={rider.zwiftId} className="hover:bg-muted/20 transition odd:bg-transparent even:bg-[#f1efe7]">
                                         <td className="px-4 py-3 text-center font-medium text-muted-foreground">
                                             {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
@@ -132,14 +150,14 @@ export default function StandingsTable({
                                         <td className="px-4 py-3 font-medium text-card-foreground whitespace-normal">
                                             <span className="flex flex-col items-start gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
                                                 <span>{rider.name}</span>
-                                                {showDivisionLeaderJersey && wearsJersey(rider, leaderIds, leaderPoints) && (
-                                                    <JerseyIcon jersey={individualJersey} />
+                                                {individualRole && (
+                                                    <JerseyIcon jersey={individualJersey} role={individualRole} roles={roles} />
                                                 )}
-                                                {sprintJersey && wearsClassJersey(rider, sprintLeaderIds, 'sprintPoints', sprintLeaderPoints) && (
-                                                    <JerseyIcon jersey={sprintJersey} />
+                                                {komRole && komJersey && (
+                                                    <JerseyIcon jersey={komJersey} role={komRole} roles={roles} />
                                                 )}
-                                                {komJersey && wearsClassJersey(rider, komLeaderIds, 'komPoints', komLeaderPoints) && (
-                                                    <JerseyIcon jersey={komJersey} />
+                                                {sprintRole && sprintJersey && (
+                                                    <JerseyIcon jersey={sprintJersey} role={sprintRole} roles={roles} />
                                                 )}
                                             </span>
                                         </td>
@@ -165,7 +183,8 @@ export default function StandingsTable({
                                         })}
                                         <td className="px-4 py-3 text-right font-bold text-foreground text-lg">{rider.calculatedTotal}</td>
                                     </tr>
-                                ))}
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
@@ -177,6 +196,16 @@ export default function StandingsTable({
             </div>
         </div>
     );
+}
+
+function slotRole(
+    jerseyRoles: Map<string, SeasonJerseyMarks> | undefined,
+    roles: SeasonJerseyMarks | undefined,
+    slot: keyof SeasonJerseyMarks,
+    fallback: boolean,
+): SeasonJerseyRole | undefined {
+    if (jerseyRoles) return roles?.[slot];
+    return fallback ? 'wear' : undefined;
 }
 
 function wearsJersey(rider: ProcessedRider, leaderIds: Set<string> | undefined, leaderPoints: number | undefined): boolean {
@@ -203,14 +232,33 @@ function maxPoints(riders: ProcessedRider[], field: 'sprintPoints' | 'komPoints'
     return max;
 }
 
-function JerseyIcon({ jersey }: { jersey: StandingJersey }) {
+function JerseyIcon({
+    jersey,
+    role,
+    roles,
+}: {
+    jersey: StandingJersey;
+    role: SeasonJerseyRole;
+    roles?: SeasonJerseyMarks;
+}) {
+    const faded = role === 'ghost';
     return (
         // eslint-disable-next-line @next/next/no-img-element
         <img
             src={jersey.src}
             alt={jersey.alt}
-            title={jersey.title}
-            className="w-8 h-8 sm:w-10 sm:h-10 object-contain shrink-0"
+            title={faded ? ghostTitle(jersey, roles) : jersey.title}
+            className={`w-8 h-8 sm:w-10 sm:h-10 object-contain shrink-0 ${faded ? 'opacity-40' : ''}`}
         />
     );
+}
+
+function ghostTitle(jersey: StandingJersey, roles?: SeasonJerseyMarks): string {
+    if (roles?.individual === 'wear') {
+        return `${jersey.alt}: har trøjen, men kører i førertrøjen`;
+    }
+    if (roles?.kom === 'wear') {
+        return `${jersey.alt}: har trøjen, men kører i bjergtrøjen`;
+    }
+    return `${jersey.alt}: har trøjen, men kører ikke i den`;
 }

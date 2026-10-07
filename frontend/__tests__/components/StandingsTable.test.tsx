@@ -97,4 +97,61 @@ describe('StandingsTable division leader jersey', () => {
         expect(screen.getAllByAltText('Sprint jersey')).toHaveLength(1);
         expect(screen.getByText('Tied').parentElement?.querySelector('img')).toBeNull();
     });
+
+    it('shows an earned jersey faded when a higher one is worn, and gives it to the next rider', () => {
+        const leader = {
+            src: 'https://cdn.example/leader.png',
+            alt: 'Førertrøje',
+            title: 'Fører',
+        };
+        const kom = {
+            src: 'https://cdn.example/kom.png',
+            alt: 'Bjergtrøje',
+            title: 'KOM',
+        };
+        const sprint = {
+            src: 'https://cdn.example/sprint.png',
+            alt: 'Spurttrøje',
+            title: 'Sprint',
+        };
+        const roles = new Map([
+            ['Leader', { individual: 'wear' as const, kom: 'ghost' as const, sprint: 'ghost' as const }],
+            ['NextKom', { kom: 'wear' as const }],
+            ['NextSprint', { sprint: 'wear' as const }],
+        ]);
+        render(
+            <StandingsTable
+                currentStandings={[rider('Leader', 40), rider('NextKom', 30), rider('NextSprint', 20)]}
+                availableStandingsCategories={['A']}
+                displayStandingsCategory="A"
+                standingsCategory="A"
+                setStandingsCategory={() => {}}
+                showDivisionLeaderJersey
+                leaderJersey={leader}
+                komJersey={kom}
+                sprintJersey={sprint}
+                jerseyRoles={roles}
+            />,
+        );
+
+        const leaderCell = screen.getByText('Leader').parentElement;
+        const leaderImages = leaderCell?.querySelectorAll('img') ?? [];
+        expect(Array.from(leaderImages).map((img) => img.alt)).toEqual([
+            'Førertrøje',
+            'Bjergtrøje',
+            'Spurttrøje',
+        ]);
+        expect(leaderImages[0].className).not.toContain('opacity-40');
+        expect(leaderImages[1].className).toContain('opacity-40');
+        expect(leaderImages[1]).toHaveAttribute('title', 'Bjergtrøje: har trøjen, men kører i førertrøjen');
+        expect(leaderImages[2].className).toContain('opacity-40');
+
+        const komImg = screen.getByText('NextKom').parentElement?.querySelector('img');
+        expect(komImg).toHaveAttribute('alt', 'Bjergtrøje');
+        expect(komImg?.className).not.toContain('opacity-40');
+
+        const sprintImg = screen.getByText('NextSprint').parentElement?.querySelector('img');
+        expect(sprintImg).toHaveAttribute('alt', 'Spurttrøje');
+        expect(sprintImg?.className).not.toContain('opacity-40');
+    });
 });
