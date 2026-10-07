@@ -564,13 +564,16 @@ export default function ResultsPage() {
     );
     const komJerseyOn = Boolean(classificationJerseys?.kom?.imageUrl);
     const sprintJerseyOn = Boolean(classificationJerseys?.sprint?.imageUrl);
+    const showSeasonJerseys = !womenOnly;
     const jerseyRoles = useMemo(
-        () => assignSeasonJerseys(categoryStandings, lastClassificationRaceId, {
-            individual: true,
-            kom: komJerseyOn,
-            sprint: sprintJerseyOn,
-        }),
-        [categoryStandings, lastClassificationRaceId, komJerseyOn, sprintJerseyOn],
+        () => (showSeasonJerseys
+            ? assignSeasonJerseys(categoryStandings, lastClassificationRaceId, {
+                individual: true,
+                kom: komJerseyOn,
+                sprint: sprintJerseyOn,
+            })
+            : new Map()),
+        [showSeasonJerseys, categoryStandings, lastClassificationRaceId, komJerseyOn, sprintJerseyOn],
     );
 
     const selectStandingsClass = (next: StandingsClass) => {
@@ -809,10 +812,10 @@ export default function ResultsPage() {
                                 countingHint={seasonMode
                                     ? 'Tæller ikke (uden for sæson best-X)'
                                     : 'Tæller ikke (uden for best-X)'}
-                                showDivisionLeaderJersey
+                                showDivisionLeaderJersey={showSeasonJerseys}
                                 leaderJersey={individualJersey ?? undefined}
-                                sprintJersey={sprintJersey}
-                                komJersey={komJersey}
+                                sprintJersey={showSeasonJerseys ? sprintJersey : null}
+                                komJersey={showSeasonJerseys ? komJersey : null}
                                 jerseyRoles={jerseyRoles}
                             />
                         ) : (
@@ -827,10 +830,10 @@ export default function ResultsPage() {
                                 title={standingsClass === 'sprint' ? 'Sprint' : 'KOM'}
                                 totalLabel={standingsClass === 'sprint' ? 'Sprintpoint' : 'KOM-point'}
                                 countingHint="Tæller med"
-                                showDivisionLeaderJersey
+                                showDivisionLeaderJersey={showSeasonJerseys}
                                 leaderJersey={individualJersey ?? undefined}
-                                sprintJersey={sprintJersey}
-                                komJersey={komJersey}
+                                sprintJersey={showSeasonJerseys ? sprintJersey : null}
+                                komJersey={showSeasonJerseys ? komJersey : null}
                                 jerseyRoles={jerseyRoles}
                             />
                         )}

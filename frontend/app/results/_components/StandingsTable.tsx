@@ -4,14 +4,15 @@ import {
     columnMatchesResult,
     type SeasonStandingColumn,
 } from '@/lib/seasonUi';
-import type { SeasonJerseyMarks, SeasonJerseyRole } from '@/lib/seasonJerseys';
-
-const DIVISION_LEADER_JERSEY_URL =
-    'https://cdn.zwift.com/static/zc/JERSEYS/DanishCyclingMember2019_thumb.png';
+import {
+    DEFAULT_DIVISION_LEADER_JERSEY,
+    type SeasonJerseyMarks,
+    type SeasonJerseyRole,
+} from '@/lib/seasonJerseys';
 
 const DEFAULT_LEADER_JERSEY: StandingJersey = {
-    src: DIVISION_LEADER_JERSEY_URL,
-    alt: 'Danish Cycling Member',
+    src: DEFAULT_DIVISION_LEADER_JERSEY.src,
+    alt: DEFAULT_DIVISION_LEADER_JERSEY.alt,
     title: 'Fører i divisionen må køre i Danish Cycling Member',
 };
 

@@ -3,11 +3,13 @@
 import { Suspense, useEffect, useMemo } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useRegistration } from '@/hooks/useRegistration';
-import { useLeagueSettingsQuery } from '@/hooks/queries/useLeagueSettingsQuery';
+import { useLeagueSettingsQuery, useLeagueStandingsQuery, useRacesQuery, useStageRacesQuery } from '@/hooks/queries';
 import RiderInfoForm from '@/components/register/RiderInfoForm';
 import ConnectionsForm from '@/components/register/ConnectionsForm';
 import AgreementsForm from '@/components/register/AgreementsForm';
 import CategoryTab from '@/components/register/CategoryTab';
+import { latestClassificationRaceId } from '@/lib/classificationTiebreak';
+import { wornSeasonJerseyForRider } from '@/lib/seasonJerseys';
 
 type RegisterTab = 'info' | 'kategori' | 'connections' | 'agreements';
 const REGISTER_TABS: RegisterTab[] = ['info', 'kategori', 'connections', 'agreements'];
@@ -44,9 +46,37 @@ function RegisterContent() {
         step0MissingItems, step1MissingItems, step2MissingItems,
         handleConnectStrava, handleDisconnectStrava, handleConnectZwift, handleDisconnectZwift, handleRequestTrainer, saveData,
         clubKit, dropLevel,
+        zwiftId,
     } = useRegistration();
 
     const { data: leagueSettings } = useLeagueSettingsQuery();
+    const standingsQuery = useLeagueStandingsQuery();
+    const racesQuery = useRacesQuery();
+    const stageRacesQuery = useStageRacesQuery();
+    const seasonJersey = useMemo(() => {
+        if (!zwiftId || !standingsQuery.data || racesQuery.isLoading || stageRacesQuery.isLoading) {
+            return null;
+        }
+        const stageRaces = stageRacesQuery.data ?? [];
+        return wornSeasonJerseyForRider(
+            zwiftId,
+            standingsQuery.data,
+            latestClassificationRaceId(
+                racesQuery.data ?? [],
+                new Set(stageRaces.map((event) => event.id)),
+                stageRaces.length > 0,
+            ),
+            leagueSettings?.classificationJerseys,
+        );
+    }, [
+        zwiftId,
+        standingsQuery.data,
+        racesQuery.data,
+        racesQuery.isLoading,
+        stageRacesQuery.data,
+        stageRacesQuery.isLoading,
+        leagueSettings?.classificationJerseys,
+    ]);
     const verificationCategoryNames = useMemo(
         () =>
             (leagueSettings?.ligaCategories || [])
@@ -88,6 +118,7 @@ function RegisterContent() {
         verificationCategoryNames,
         clubKit,
         dropLevel,
+        seasonJersey,
     };
 
     const setRegisterTab = (nextTab: RegisterTab) => {

@@ -18,6 +18,7 @@ import {
 } from '@/lib/ligaCategories';
 import type { Race } from '@/types/live';
 import type { StageRace } from '@/types/admin';
+import { DEFAULT_DIVISION_LEADER_JERSEY } from '@/lib/seasonJerseys';
 
 function useVerificationCategoryNames(): string[] {
     const { data: leagueSettings } = useLeagueSettingsQuery();
@@ -625,6 +626,75 @@ function DeltagendeHoldSection() {
     );
 }
 
+function SaesonTrojerSection() {
+    const { data: leagueSettings, isLoading } = useLeagueSettingsQuery();
+    const saved = leagueSettings?.classificationJerseys;
+    const leaderSrc = jerseyThumbUrl(saved?.individual?.imageUrl, saved?.individual?.imageName)
+        || DEFAULT_DIVISION_LEADER_JERSEY.src;
+    const komSrc = jerseyThumbUrl(saved?.kom?.imageUrl, saved?.kom?.imageName);
+    const sprintSrc = jerseyThumbUrl(saved?.sprint?.imageUrl, saved?.sprint?.imageName);
+    const cards = [
+        {
+            key: 'leader',
+            title: 'Førertrøje',
+            line: 'Divisionens fører kører i denne trøje.',
+            src: leaderSrc,
+            alt: saved?.individual?.jerseyName || DEFAULT_DIVISION_LEADER_JERSEY.alt,
+        },
+        ...(komSrc ? [{
+            key: 'kom',
+            title: 'Bjergtrøje',
+            line: 'KOM-føreren kører i denne trøje, medmindre hun allerede kører i førertrøjen.',
+            src: komSrc,
+            alt: saved?.kom?.jerseyName || 'Bjergtrøje',
+        }] : []),
+        ...(sprintSrc ? [{
+            key: 'sprint',
+            title: 'Spurttrøje',
+            line: 'Sprintføreren kører i denne trøje, medmindre hun allerede kører i fører- eller bjergtrøjen.',
+            src: sprintSrc,
+            alt: saved?.sprint?.jerseyName || 'Spurttrøje',
+        }] : []),
+    ];
+
+    if (isLoading) {
+        return <p className="text-slate-500 dark:text-slate-400">Indlæser sæsontrøjer...</p>;
+    }
+
+    return (
+        <div className="space-y-4">
+            <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
+                I hver division kan tre sæsontrøjer bæres, men en rytter kører kun i én.
+                Rækkefølgen er førertrøje, bjergtrøje og spurttrøje. Har hun optjent en lavere trøje,
+                går den til næste rytter i den stilling. På sæsonstillingen vises den trøje, hun har
+                optjent men ikke kører i, halvgennemsigtig. Kvindestillingen tildeler ikke sæsontrøjer.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-3">
+                {cards.map((card) => (
+                    <div
+                        key={card.key}
+                        className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 p-4"
+                    >
+                        <div className="w-16 h-16 mb-3 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden flex items-center justify-center">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={card.src} alt={card.alt} className="w-full h-full object-contain" />
+                        </div>
+                        <p className="font-semibold text-slate-900 dark:text-white">{card.title}</p>
+                        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{card.alt}</p>
+                        <p className="mt-2 text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{card.line}</p>
+                    </div>
+                ))}
+            </div>
+            <Link
+                href="/results"
+                className="inline-flex items-center gap-2 text-primary font-semibold hover:underline"
+            >
+                Se trøjerne i sæsonstillingen &rarr;
+            </Link>
+        </div>
+    );
+}
+
 function ReglerSection() {
     const verificationNames = useVerificationCategoryNames();
     const verificationLabel = joinDanishNames(verificationNames);
@@ -755,6 +825,18 @@ const chapters = [
         title: 'Deltagende hold',
         defaultOpen: false,
         content: <DeltagendeHoldSection />,
+    },
+    {
+        id: 'trojer',
+        icon: (
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4l3 2 4-1v5l-3 2v8H8v-8L5 10V5l4 1 3-2z" />
+            </svg>
+        ),
+        iconBg: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+        title: 'Sæsontrøjer',
+        defaultOpen: false,
+        content: <SaesonTrojerSection />,
     },
     {
         id: 'kategorier',

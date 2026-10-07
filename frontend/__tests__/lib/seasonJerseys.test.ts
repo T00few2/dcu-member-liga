@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assignSeasonJerseys, type SeasonJerseyRider } from '@/lib/seasonJerseys';
+import { assignSeasonJerseys, wornSeasonJerseyForRider, type SeasonJerseyRider } from '@/lib/seasonJerseys';
 
 function rider(
     zwiftId: string,
@@ -116,5 +116,51 @@ describe('assignSeasonJerseys', () => {
         });
         expect(role('BetterLastRace', marks)?.sprint).toBe('wear');
         expect(role('WorseLastRace', marks)?.sprint).toBeUndefined();
+    });
+});
+
+describe('wornSeasonJerseyForRider', () => {
+    const catalog = {
+        individual: { jerseyName: 'Førertrøje', imageUrl: 'https://cdn.example/leader.png' },
+        kom: { jerseyName: 'Bjergtrøje', imageUrl: 'https://cdn.example/kom.png' },
+        sprint: { jerseyName: 'Spurttrøje', imageUrl: 'https://cdn.example/sprint.png' },
+    };
+    const standings = {
+        A: [
+            rider('Leader', 40, 10, 10),
+            rider('NextKom', 30, 8, 8),
+            rider('NextSprint', 20, 6, 1),
+        ],
+    };
+
+    it('shows the jersey the rider will race in, not a lower one they also earned', () => {
+        expect(wornSeasonJerseyForRider('Leader', standings, 'last', catalog)).toMatchObject({
+            slot: 'individual',
+            src: catalog.individual.imageUrl,
+            alt: 'Førertrøje',
+            line: 'Du kører i førertrøjen.',
+        });
+        expect(wornSeasonJerseyForRider('NextKom', standings, 'last', catalog)?.slot).toBe('kom');
+        expect(wornSeasonJerseyForRider('NextSprint', standings, 'last', catalog)?.slot).toBe('sprint');
+    });
+
+    it('matches a numeric standings id to the profile id', () => {
+        const numeric = {
+            A: [{ ...rider('1', 40, 0, 9), zwiftId: 9 as unknown as string }],
+        };
+        expect(wornSeasonJerseyForRider('9', numeric, 'last', catalog)?.slot).toBe('individual');
+    });
+
+    it('returns nothing for a rider who does not wear a jersey', () => {
+        expect(wornSeasonJerseyForRider('Missing', standings, 'last', catalog)).toBeNull();
+    });
+
+    it('uses the default leader jersey when no individual image is saved', () => {
+        const worn = wornSeasonJerseyForRider('Leader', standings, 'last', {
+            kom: catalog.kom,
+            sprint: catalog.sprint,
+        });
+        expect(worn?.slot).toBe('individual');
+        expect(worn?.src).toContain('DanishCyclingMember2019_thumb.png');
     });
 });

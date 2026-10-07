@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react';
 import ClubKitCard from '@/components/register/ClubKitCard';
+import SeasonJerseyCard from '@/components/register/SeasonJerseyCard';
 import type { ClubKitPayload } from '@/lib/clubKitCopy';
+import type { WornSeasonJersey } from '@/lib/seasonJerseys';
 
 interface Club {
     name: string;
@@ -35,6 +37,7 @@ interface RiderInfoFormProps {
     readOnly?: boolean;
     clubKit?: ClubKitPayload | null;
     dropLevel?: number | null;
+    seasonJersey?: WornSeasonJersey | null;
 }
 
 function joinDanishNames(names: string[]): string {
@@ -55,6 +58,7 @@ export default function RiderInfoForm({
     readOnly = false,
     clubKit = null,
     dropLevel = null,
+    seasonJersey = null,
 }: RiderInfoFormProps) {
     const verificationLabel = joinDanishNames(verificationCategoryNames);
     // Club State
@@ -223,6 +227,10 @@ export default function RiderInfoForm({
                         </div>
                     )}
                 </div>
+
+                {seasonJersey && (
+                    <SeasonJerseyCard jersey={seasonJersey} />
+                )}
 
                 {clubKit?.jerseyName && (
                     <ClubKitCard clubKit={clubKit} dropLevel={dropLevel} />

@@ -9,6 +9,11 @@ import type { StandingEntry } from '@/types/live';
 /** Leader outranks KOM, which outranks sprint. */
 export const SEASON_JERSEY_PRIORITY = ['individual', 'kom', 'sprint'] as const;
 
+export const DEFAULT_DIVISION_LEADER_JERSEY = {
+    src: 'https://cdn.zwift.com/static/zc/JERSEYS/DanishCyclingMember2019_thumb.png',
+    alt: 'Danish Cycling Member',
+};
+
 export type SeasonJerseySlot = (typeof SEASON_JERSEY_PRIORITY)[number];
 export type SeasonJerseyRole = 'wear' | 'ghost';
 export type SeasonJerseyMarks = Partial<Record<SeasonJerseySlot, SeasonJerseyRole>>;
@@ -48,15 +53,20 @@ function points(rider: SeasonJerseyRider): number {
     return Number.isFinite(value) ? Number(value) : 0;
 }
 
+function riderId(zwiftId: string | number | null | undefined): string {
+    return String(zwiftId ?? '');
+}
+
 function setRole(
     marks: Map<string, SeasonJerseyMarks>,
     zwiftId: string,
     slot: SeasonJerseySlot,
     role: SeasonJerseyRole,
 ) {
-    const current = marks.get(zwiftId) ?? {};
+    const id = riderId(zwiftId);
+    const current = marks.get(id) ?? {};
     current[slot] = role;
-    marks.set(zwiftId, current);
+    marks.set(id, current);
 }
 
 function assignIndividual(
@@ -69,8 +79,9 @@ function assignIndividual(
     const top = points(ranked[0]);
     for (const rider of ranked) {
         if (points(rider) !== top) break;
-        setRole(marks, rider.zwiftId, 'individual', 'wear');
-        wearing.add(rider.zwiftId);
+        const id = riderId(rider.zwiftId);
+        setRole(marks, id, 'individual', 'wear');
+        wearing.add(id);
     }
 }
 
@@ -87,7 +98,7 @@ function assignClassification(
 ) {
     const ranked = riders
         .map((rider) => ({
-            zwiftId: rider.zwiftId,
+            zwiftId: riderId(rider.zwiftId),
             key: classificationRankKey(rider, kind, lastRaceId),
         }))
         .filter((row) => row.key.total > 0)
@@ -105,4 +116,67 @@ function assignClassification(
             setRole(marks, row.zwiftId, kind, 'ghost');
         }
     }
+}
+
+export type SeasonJerseyImage = {
+    jerseyName?: string | null;
+    imageUrl?: string | null;
+};
+
+export type SeasonJerseyCatalog = {
+    individual?: SeasonJerseyImage | null;
+    kom?: SeasonJerseyImage | null;
+    sprint?: SeasonJerseyImage | null;
+};
+
+export type WornSeasonJersey = {
+    slot: SeasonJerseySlot;
+    src: string;
+    alt: string;
+    line: string;
+};
+
+const WEAR_LINE: Record<SeasonJerseySlot, string> = {
+    individual: 'Du kører i førertrøjen.',
+    kom: 'Du kører i bjergtrøjen.',
+    sprint: 'Du kører i spurttrøjen.',
+};
+
+function jerseyImage(
+    slot: SeasonJerseySlot,
+    catalog: SeasonJerseyCatalog | null | undefined,
+): { src: string; alt: string } | null {
+    const row = catalog?.[slot];
+    const src = row?.imageUrl?.trim();
+    if (src) return { src, alt: row?.jerseyName?.trim() || WEAR_LINE[slot] };
+    if (slot === 'individual') return DEFAULT_DIVISION_LEADER_JERSEY;
+    return null;
+}
+
+/** The jersey this rider will race in. Earned jerseys they will not wear are omitted. */
+export function wornSeasonJerseyForRider(
+    zwiftId: string | number | null | undefined,
+    standings: Record<string, SeasonJerseyRider[] | null | undefined> | null | undefined,
+    lastRaceId: string | null,
+    catalog: SeasonJerseyCatalog | null | undefined,
+): WornSeasonJersey | null {
+    const id = riderId(zwiftId);
+    if (!id || !standings) return null;
+    const slots: SeasonJerseySlots = {
+        individual: true,
+        kom: Boolean(catalog?.kom?.imageUrl),
+        sprint: Boolean(catalog?.sprint?.imageUrl),
+    };
+    for (const riders of Object.values(standings)) {
+        if (!riders?.length) continue;
+        const marks = assignSeasonJerseys(riders, lastRaceId, slots).get(id);
+        if (!marks) continue;
+        for (const slot of SEASON_JERSEY_PRIORITY) {
+            if (marks[slot] !== 'wear') continue;
+            const image = jerseyImage(slot, catalog);
+            if (!image) continue;
+            return { slot, ...image, line: WEAR_LINE[slot] };
+        }
+    }
+    return null;
 }
