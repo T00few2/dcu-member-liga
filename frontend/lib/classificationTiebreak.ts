@@ -34,8 +34,13 @@ export function latestClassificationRaceId(
     return bestId;
 }
 
+export type ClassificationPointsRider = Pick<
+    StandingEntry,
+    'sprintPoints' | 'komPoints' | 'sprintResults' | 'komResults'
+>;
+
 export function classificationRankKey(
-    rider: StandingEntry,
+    rider: ClassificationPointsRider,
     kind: ClassificationKind,
     lastRaceId: string | null,
 ): ClassificationRankKey {
