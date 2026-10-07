@@ -644,14 +644,14 @@ function SaesonTrojerSection() {
         ...(komSrc ? [{
             key: 'kom',
             title: 'Bjergtrøje',
-            line: 'KOM-føreren kører i denne trøje, medmindre hun allerede kører i førertrøjen.',
+            line: 'KOM-føreren kører i denne trøje, medmindre rytteren allerede kører i førertrøjen.',
             src: komSrc,
             alt: saved?.kom?.jerseyName || 'Bjergtrøje',
         }] : []),
         ...(sprintSrc ? [{
             key: 'sprint',
             title: 'Spurttrøje',
-            line: 'Sprintføreren kører i denne trøje, medmindre hun allerede kører i fører- eller bjergtrøjen.',
+            line: 'Sprintføreren kører i denne trøje, medmindre rytteren allerede kører i fører- eller bjergtrøjen.',
             src: sprintSrc,
             alt: saved?.sprint?.jerseyName || 'Spurttrøje',
         }] : []),
@@ -665,8 +665,8 @@ function SaesonTrojerSection() {
         <div className="space-y-4">
             <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
                 I hver division kan tre sæsontrøjer bæres, men en rytter kører kun i én.
-                Rækkefølgen er førertrøje, bjergtrøje og spurttrøje. Har hun optjent en lavere trøje,
-                går den til næste rytter i den stilling. På sæsonstillingen vises den trøje, hun har
+                Rækkefølgen er førertrøje, bjergtrøje og spurttrøje. Har rytteren optjent en lavere trøje,
+                går den til næste rytter i den stilling. På sæsonstillingen vises den trøje, rytteren har
                 optjent men ikke kører i, halvgennemsigtig. Kvindestillingen tildeler ikke sæsontrøjer.
             </p>
             <div className="grid gap-3 sm:grid-cols-3">
