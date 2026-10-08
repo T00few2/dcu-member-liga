@@ -5,6 +5,10 @@ export interface Post {
     title: string;
     slug: string;
     coverImageUrl: string | null;
+    /** Horizontal crop anchor for the news card, 0–100. 50 is center. */
+    coverPositionX: number;
+    /** Vertical crop anchor for the news card, 0–100. 0 shows the top of the photo. */
+    coverPositionY: number;
     body: JSONContent;
     tags: string[];
     status: 'draft' | 'published';

@@ -300,6 +300,8 @@
       "title": "Race Preview: Example Classic",
       "slug": "race-preview-example-classic",
       "coverImageUrl": null,
+      "coverPositionX": 50,
+      "coverPositionY": 50,
       "body": {
         "type": "doc",
         "content": [

@@ -10,6 +10,8 @@ import { type PostAuthorValue } from '@/lib/postAuthorOptions';
 import { useAuth } from '@/lib/auth-context';
 import { usePosterAuthorDefault } from '@/hooks/usePosterAuthorDefault';
 import PostAuthorSelect from '@/components/admin/PostAuthorSelect';
+import CoverImagePositioner from '@/components/admin/CoverImagePositioner';
+import { DEFAULT_COVER_POSITION, type CoverPosition } from '@/lib/coverPosition';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '@/lib/firebase';
 
@@ -30,6 +32,7 @@ export default function EditPostPage() {
     const [tags, setTags] = useState('');
     const [status, setStatus] = useState<'draft' | 'published'>('draft');
     const [coverImageUrl, setCoverImageUrl] = useState<string | null>(null);
+    const [coverPosition, setCoverPosition] = useState<CoverPosition>(DEFAULT_COVER_POSITION);
     const [coverUploading, setCoverUploading] = useState(false);
     const [body, setBody] = useState<JSONContent>({ type: 'doc', content: [] });
     const [saving, setSaving] = useState(false);
@@ -46,6 +49,7 @@ export default function EditPostPage() {
             setTags(p.tags.join(', '));
             setStatus(p.status);
             setCoverImageUrl(p.coverImageUrl);
+            setCoverPosition({ x: p.coverPositionX, y: p.coverPositionY });
             setBody(p.body);
             setAuthor({
                 authorName: p.authorName,
@@ -68,6 +72,7 @@ export default function EditPostPage() {
             const storageRef = ref(storage, `posts/covers/${Date.now()}-${file.name}`);
             const snap = await uploadBytes(storageRef, file);
             setCoverImageUrl(await getDownloadURL(snap.ref));
+            setCoverPosition(DEFAULT_COVER_POSITION);
         } finally {
             setCoverUploading(false);
             e.target.value = '';
@@ -86,6 +91,8 @@ export default function EditPostPage() {
                 title: title.trim(),
                 slug: slug.trim(),
                 coverImageUrl,
+                coverPositionX: coverPosition.x,
+                coverPositionY: coverPosition.y,
                 body,
                 tags: tags.split(',').map(t => t.trim()).filter(Boolean),
                 status: saveStatus,
@@ -161,15 +168,15 @@ export default function EditPostPage() {
                 <div>
                     <label className="block text-sm font-medium text-foreground mb-1">Coverbillede</label>
                     {coverImageUrl ? (
-                        <div className="relative">
-                            <img src={coverImageUrl} alt="Cover" className="w-full max-h-48 object-cover rounded-lg border border-border" />
-                            <button
-                                onClick={() => setCoverImageUrl(null)}
-                                className="absolute top-2 right-2 bg-card border border-border rounded px-2 py-1 text-xs hover:bg-muted transition-colors"
-                            >
-                                Fjern
-                            </button>
-                        </div>
+                        <CoverImagePositioner
+                            src={coverImageUrl}
+                            position={coverPosition}
+                            onChange={setCoverPosition}
+                            onRemove={() => {
+                                setCoverImageUrl(null);
+                                setCoverPosition(DEFAULT_COVER_POSITION);
+                            }}
+                        />
                     ) : (
                         <label className="flex items-center justify-center w-full h-32 border-2 border-dashed border-border rounded-lg cursor-pointer hover:bg-muted/30 transition-colors text-sm text-muted-foreground">
                             {coverUploading ? 'Uploader...' : '+ Upload coverbillede'}

@@ -649,6 +649,14 @@
             "null"
           ]
         },
+        "coverPositionX": {
+          "type": "number",
+          "description": "Horizontal crop anchor for the news card, 0-100. 50 is center. Omitted posts stay centered."
+        },
+        "coverPositionY": {
+          "type": "number",
+          "description": "Vertical crop anchor for the news card, 0-100. 0 shows the top of the photo."
+        },
         "body": {
           "type": "object",
           "additionalProperties": true,

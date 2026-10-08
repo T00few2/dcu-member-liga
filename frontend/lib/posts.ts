@@ -18,6 +18,7 @@ import {
 import { db, auth } from './firebase';
 import { Post, Comment } from '@/types/posts';
 import { API_URL } from './api';
+import { parseCoverPercent } from './coverPosition';
 
 function tsToString(ts: unknown): string {
     if (ts instanceof Timestamp) return ts.toDate().toISOString();
@@ -31,6 +32,8 @@ function normalizePost(id: string, data: Record<string, unknown>): Post {
         title: String(data.title ?? ''),
         slug: String(data.slug ?? ''),
         coverImageUrl: data.coverImageUrl ? String(data.coverImageUrl) : null,
+        coverPositionX: parseCoverPercent(data.coverPositionX),
+        coverPositionY: parseCoverPercent(data.coverPositionY),
         body: (data.body as Post['body']) ?? { type: 'doc', content: [] },
         tags: Array.isArray(data.tags) ? data.tags.map(String) : [],
         status: data.status === 'published' ? 'published' : 'draft',
@@ -105,6 +108,8 @@ export interface PostInput {
     title: string;
     slug: string;
     coverImageUrl: string | null;
+    coverPositionX: number;
+    coverPositionY: number;
     body: Post['body'];
     tags: string[];
     status: 'draft' | 'published';

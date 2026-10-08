@@ -8,6 +8,7 @@ import { getPostBySlug, getLatestPublishedPost, getComments, addComment, deleteC
 import { Post, Comment } from '@/types/posts';
 import { useAuth } from '@/lib/auth-context';
 import { useUnreadNews } from '@/hooks/useUnreadNews';
+import { coverObjectPosition } from '@/lib/coverPosition';
 
 const PostBody = dynamic(() => import('@/components/blog/PostBody'), { ssr: false });
 
@@ -196,7 +197,12 @@ export default function PostPage() {
 
             {/* Cover */}
             {post.coverImageUrl && (
-                <img src={post.coverImageUrl} alt={post.title} className="w-full rounded-lg mb-6 object-cover max-h-72" />
+                <img
+                    src={post.coverImageUrl}
+                    alt={post.title}
+                    className="w-full h-48 sm:h-72 rounded-lg mb-6 object-cover"
+                    style={{ objectPosition: coverObjectPosition({ x: post.coverPositionX, y: post.coverPositionY }) }}
+                />
             )}
 
             {/* Meta */}

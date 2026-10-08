@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { getPublishedPosts } from '@/lib/posts';
 import { Post } from '@/types/posts';
 import { useUnreadNews } from '@/hooks/useUnreadNews';
+import { coverObjectPosition } from '@/lib/coverPosition';
 
 function formatDate(iso: string) {
     return new Date(iso).toLocaleDateString('da-DK', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -55,6 +56,7 @@ export default function NyhederPage() {
                                         src={post.coverImageUrl}
                                         alt={post.title}
                                         className="w-full h-48 object-cover"
+                                        style={{ objectPosition: coverObjectPosition({ x: post.coverPositionX, y: post.coverPositionY }) }}
                                     />
                                 )}
                                 <div className="p-5">
