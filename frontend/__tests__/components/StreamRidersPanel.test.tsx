@@ -21,29 +21,28 @@ const { default: StreamRidersPanel } = await import(
 );
 
 describe('StreamRidersPanel', () => {
-  it('lets you pick a race and shows sign-up fields', async () => {
+  it('signs riders up for every race', async () => {
     const user = userEvent.setup();
-    const onRaceChange = vi.fn();
+    mutateAsync.mockResolvedValue({ rider: { status: 'registered', registeredCount: 2 } });
 
     render(
-      <StreamRidersPanel
-        raceId="race-1"
-        raceName="Opening Race"
-        categoryOptions={['1. Division', '2. Division']}
-        races={[
-          { id: 'race-1', name: 'Opening Race' },
-          { id: 'race-2', name: 'eCKD løbet' },
-        ]}
-        onRaceChange={onRaceChange}
-      />,
+      <StreamRidersPanel categoryOptions={['1. Division', '2. Division']} />,
     );
 
     expect(screen.getByRole('heading', { name: 'Stream riders' })).toBeInTheDocument();
+    expect(screen.getByText(/upcoming race/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Race')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Zwift ID')).toBeInTheDocument();
     expect(screen.getByLabelText('Public UUID')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Sign up' })).toBeInTheDocument();
 
-    await user.selectOptions(screen.getByLabelText('Race'), 'race-2');
-    expect(onRaceChange).toHaveBeenCalledWith('race-2');
+    await user.type(screen.getByLabelText('Zwift ID'), '9990001');
+    await user.type(screen.getByLabelText('Public UUID'), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee');
+    await user.click(screen.getByRole('button', { name: 'Sign up' }));
+
+    expect(mutateAsync).toHaveBeenCalledWith({
+      zwiftId: '9990001',
+      publicId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      category: '1. Division',
+    });
   });
 });

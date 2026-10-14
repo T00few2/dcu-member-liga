@@ -67,18 +67,28 @@ class RaceSignupDoc(TypedDict, total=False):
     lastError: str
 
 
-class StreamRiderDoc(TypedDict, total=False):
-    """Stored in races/{raceId}/streamRiders/{zwiftId}. Zwift pen only; not a liga signup."""
-    zwiftId: str
-    raceId: str
-    publicId: str
-    category: str
-    status: str  # 'registered' | 'failed'
-    addedAt: str
-    zwiftRegisteredAt: str
+class StreamRiderRegistration(TypedDict, total=False):
+    """One race pen inside a league-wide stream rider."""
+    status: str  # 'registered' | 'failed' | 'skipped'
     subgroupId: str
     eventId: str
+    publicId: str
+    raceName: str
+    zwiftRegisteredAt: str
     lastError: str
+
+
+class StreamRiderDoc(TypedDict, total=False):
+    """Stored in streamRiders/{zwiftId}. Registered on every current and upcoming race; not a liga signup."""
+    zwiftId: str
+    publicId: str
+    category: str
+    status: str  # 'registered' | 'partial' | 'failed' | 'pending'
+    addedAt: str
+    registeredCount: int
+    raceCount: int
+    lastError: str
+    registrations: dict[str, StreamRiderRegistration]
 
 
 class DualRecordingVerification(TypedDict, total=False):

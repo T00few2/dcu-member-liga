@@ -711,6 +711,18 @@ def get_public_race_dr_verifications(race_id: str):
         logger.error(f"Public DR list error race={race_id}: {e}")
         return jsonify({'message': str(e)}), 500
 
+def _stream_rider_warnings(race_id: str, race_data: dict[str, Any]) -> list[str]:
+    """Register the league stream roster on this race. Failures stay warnings."""
+    try:
+        from services.stream_riders import apply_stream_riders_to_race
+
+        summary = apply_stream_riders_to_race(race_id, race_data) or {}
+    except Exception as exc:
+        logger.warning("Stream rider sync after save failed race=%s: %s", race_id, exc)
+        return [f"Stream riders: {exc}"]
+    return [f"Stream riders: {err}" for err in (summary.get("errors") or [])]
+
+
 @races_bp.route('/races', methods=['POST'])
 def create_race():
     try:
@@ -739,6 +751,7 @@ def create_race():
             warnings.extend(sync_summary['errors'])
         if sync_summary:
             body['signupSync'] = sync_summary
+        warnings.extend(_stream_rider_warnings(doc_ref.id, payload))
         if warnings:
             body['warnings'] = warnings
         return jsonify(body), 201
@@ -789,6 +802,7 @@ def update_race(race_id):
             warnings.extend(sync_summary['errors'])
         if sync_summary:
             body['signupSync'] = sync_summary
+        warnings.extend(_stream_rider_warnings(race_id, payload))
         if warnings:
             body['warnings'] = warnings
         return jsonify(body), 200

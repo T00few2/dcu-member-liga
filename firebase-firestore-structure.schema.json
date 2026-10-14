@@ -152,7 +152,7 @@
     },
     "streamRiders": {
       "type": "array",
-      "description": "Collection-group view of races/{raceId}/streamRiders documents. Zwift-only dummy accounts for streaming; not liga users or race signups.",
+      "description": "League-wide Zwift-only dummy accounts for streaming. One roster is registered on every current and upcoming race. Not liga users or race signups.",
       "items": {
         "$ref": "#/$defs/streamRiderDoc"
       }
@@ -972,16 +972,13 @@
     "streamRiderDoc": {
       "type": "object",
       "additionalProperties": true,
-      "description": "Stored at races/{raceId}/streamRiders/{zwiftId}. Zwift pen registration only.",
+      "description": "Stored at streamRiders/{zwiftId}. Zwift pen registration for every current and upcoming race.",
       "properties": {
         "_id": {
           "type": "string",
           "description": "Numeric Zwift profile id or public UUID"
         },
         "zwiftId": {
-          "type": "string"
-        },
-        "raceId": {
           "type": "string"
         },
         "publicId": {
@@ -994,22 +991,53 @@
         },
         "status": {
           "type": "string",
-          "enum": ["registered", "failed"]
+          "enum": ["registered", "partial", "failed", "pending"]
         },
         "addedAt": {
           "$ref": "#/$defs/timestampString"
         },
-        "zwiftRegisteredAt": {
-          "$ref": "#/$defs/timestampString"
+        "registeredCount": {
+          "type": "integer",
+          "description": "Races whose pen registration succeeded"
         },
-        "subgroupId": {
-          "type": "string"
-        },
-        "eventId": {
-          "type": "string"
+        "raceCount": {
+          "type": "integer",
+          "description": "Races that had a pen to register (skipped races with no event are excluded)"
         },
         "lastError": {
           "type": "string"
+        },
+        "registrations": {
+          "type": "object",
+          "description": "Per-race pen result, keyed by race id",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["registered", "failed", "skipped"]
+              },
+              "subgroupId": {
+                "type": "string"
+              },
+              "eventId": {
+                "type": "string"
+              },
+              "publicId": {
+                "type": "string"
+              },
+              "raceName": {
+                "type": "string"
+              },
+              "zwiftRegisteredAt": {
+                "$ref": "#/$defs/timestampString"
+              },
+              "lastError": {
+                "type": "string"
+              }
+            }
+          }
         }
       }
     },

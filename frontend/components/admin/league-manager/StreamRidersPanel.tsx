@@ -6,26 +6,27 @@ import {
   useRemoveStreamRiderMutation,
   useStreamRidersQuery,
 } from '@/hooks/queries/useStreamRidersQuery';
-
-interface StreamRaceOption {
-  id: string;
-  name: string;
-}
+import type { StreamRiderRow } from '@/hooks/queries/useStreamRidersQuery';
 
 interface StreamRidersPanelProps {
-  raceId: string;
-  raceName?: string;
   categoryOptions: string[];
-  races?: StreamRaceOption[];
-  onRaceChange?: (raceId: string) => void;
+}
+
+function statusLabel(rider: StreamRiderRow): string {
+  const registered = rider.registeredCount ?? 0;
+  const total = rider.raceCount ?? 0;
+  if (rider.status === 'registered' && registered > 0) {
+    return `registered · ${registered} ${registered === 1 ? 'race' : 'races'}`;
+  }
+  if (rider.status === 'partial' && total > 0) {
+    return `${registered}/${total} races`;
+  }
+  if (rider.status === 'pending') return 'saved · no race events yet';
+  return rider.status || '–';
 }
 
 export default function StreamRidersPanel({
-  raceId,
-  raceName,
   categoryOptions,
-  races,
-  onRaceChange,
 }: StreamRidersPanelProps) {
   const defaultCat = categoryOptions[0] || '';
   const [category, setCategory] = useState(defaultCat);
@@ -33,9 +34,9 @@ export default function StreamRidersPanel({
   const [publicId, setPublicId] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const { data: riders = [], isFetching } = useStreamRidersQuery(raceId);
-  const addMutation = useAddStreamRiderMutation(raceId);
-  const removeMutation = useRemoveStreamRiderMutation(raceId);
+  const { data: riders = [], isFetching } = useStreamRidersQuery();
+  const addMutation = useAddStreamRiderMutation();
+  const removeMutation = useRemoveStreamRiderMutation();
 
   const effectiveCategory = categoryOptions.includes(category) ? category : defaultCat;
 
@@ -49,11 +50,15 @@ export default function StreamRidersPanel({
       return;
     }
     try {
-      await addMutation.mutateAsync({
+      const data = await addMutation.mutateAsync({
         zwiftId: zid,
         publicId: pid || undefined,
         category: effectiveCategory || undefined,
       });
+      const rider = data?.rider as StreamRiderRow | undefined;
+      if (rider?.status === 'partial' && rider.lastError) {
+        setError(rider.lastError);
+      }
       setZwiftId('');
       setPublicId('');
     } catch (err) {
@@ -74,25 +79,12 @@ export default function StreamRidersPanel({
     <div className="bg-card p-6 rounded-lg shadow mb-8 border border-border">
       <h2 className="text-xl font-semibold text-card-foreground mb-1">Stream riders</h2>
       <p className="text-sm text-muted-foreground mb-4">
-        Register Zwift-only accounts onto a category pen for {raceName || 'this race'}.
+        Register Zwift-only accounts onto a category pen for every current and upcoming race.
         They stay off liga signups and are hidden on /live-race.
+        New races pick up this roster when they are saved.
       </p>
 
       <form onSubmit={handleAdd} className="flex flex-wrap items-end gap-2 mb-4">
-        {races && races.length > 0 && onRaceChange ? (
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            Race
-            <select
-              value={raceId}
-              onChange={e => onRaceChange(e.target.value)}
-              className="px-2 py-1.5 border border-input rounded bg-background text-foreground text-sm min-w-[12rem]"
-            >
-              {races.map(race => (
-                <option key={race.id} value={race.id}>{race.name}</option>
-              ))}
-            </select>
-          </label>
-        ) : null}
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           Category
           <select
@@ -125,7 +117,7 @@ export default function StreamRidersPanel({
         </label>
         <button
           type="submit"
-          disabled={addMutation.isPending || !effectiveCategory || !raceId}
+          disabled={addMutation.isPending || !effectiveCategory}
           className="px-3 py-1.5 rounded text-sm bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 font-medium"
         >
           {addMutation.isPending ? 'Signing up…' : 'Sign up'}
@@ -137,7 +129,7 @@ export default function StreamRidersPanel({
       {isFetching && riders.length === 0 ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : riders.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No stream riders on this race.</p>
+        <p className="text-sm text-muted-foreground">No stream riders.</p>
       ) : (
         <table className="w-full text-sm">
           <thead className="text-xs uppercase text-muted-foreground border-b border-border">
@@ -159,7 +151,7 @@ export default function StreamRidersPanel({
                 </td>
                 <td className="py-2">{r.category || '–'}</td>
                 <td className="py-2">
-                  {r.status || '–'}
+                  {statusLabel(r)}
                   {r.lastError ? (
                     <div className="text-xs text-red-600">{r.lastError}</div>
                   ) : null}

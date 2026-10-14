@@ -9,37 +9,38 @@ export interface StreamRiderRow {
     publicId?: string;
     category?: string;
     status?: string;
-    subgroupId?: string;
+    registeredCount?: number;
+    raceCount?: number;
     lastError?: string;
 }
 
-export function useStreamRidersQuery(raceId: string | null) {
+export function useStreamRidersQuery() {
     const { user } = useAuth();
 
     return useQuery<StreamRiderRow[]>({
-        queryKey: ['admin', 'stream-riders', raceId],
+        queryKey: ['admin', 'stream-riders'],
         queryFn: async () => {
             const token = await user!.getIdToken();
-            const res = await fetch(`${API_URL}/admin/races/${raceId}/stream-riders`, {
+            const res = await fetch(`${API_URL}/admin/stream-riders`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (!res.ok) throw new Error('Failed to fetch stream riders');
             const data = await res.json();
             return (data.riders ?? []) as StreamRiderRow[];
         },
-        enabled: !!user && !!raceId,
+        enabled: !!user,
         staleTime: 15_000,
     });
 }
 
-export function useAddStreamRiderMutation(raceId: string | null) {
+export function useAddStreamRiderMutation() {
     const { user } = useAuth();
     const queryClient = useQueryClient();
 
     return useMutation({
         mutationFn: async (body: { zwiftId: string; publicId?: string; category?: string }) => {
             const token = await user!.getIdToken();
-            const res = await fetch(`${API_URL}/admin/races/${raceId}/stream-riders`, {
+            const res = await fetch(`${API_URL}/admin/stream-riders`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -51,20 +52,20 @@ export function useAddStreamRiderMutation(raceId: string | null) {
             if (!res.ok) throw new Error(data.message || 'Sign up failed');
             return data;
         },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['admin', 'stream-riders', raceId] });
+        onSettled: () => {
+            queryClient.invalidateQueries({ queryKey: ['admin', 'stream-riders'] });
         },
     });
 }
 
-export function useRemoveStreamRiderMutation(raceId: string | null) {
+export function useRemoveStreamRiderMutation() {
     const { user } = useAuth();
     const queryClient = useQueryClient();
 
     return useMutation({
         mutationFn: async (zwiftId: string) => {
             const token = await user!.getIdToken();
-            const res = await fetch(`${API_URL}/admin/races/${raceId}/stream-riders/${zwiftId}`, {
+            const res = await fetch(`${API_URL}/admin/stream-riders/${zwiftId}`, {
                 method: 'DELETE',
                 headers: { Authorization: `Bearer ${token}` },
             });
@@ -72,8 +73,8 @@ export function useRemoveStreamRiderMutation(raceId: string | null) {
             if (!res.ok) throw new Error(data.message || 'Sign off failed');
             return data;
         },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['admin', 'stream-riders', raceId] });
+        onSettled: () => {
+            queryClient.invalidateQueries({ queryKey: ['admin', 'stream-riders'] });
         },
     });
 }

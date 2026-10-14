@@ -720,15 +720,24 @@
     {
       "_id": "9990001",
       "zwiftId": "9990001",
-      "raceId": "race_doc_example_001",
       "publicId": "00000000-0000-4000-8000-000000000001",
       "category": "1. Division",
       "status": "registered",
       "addedAt": "2026-09-10T12:00:00+00:00",
-      "zwiftRegisteredAt": "2026-09-10T12:00:01+00:00",
-      "subgroupId": "7340598",
-      "eventId": "5701604",
-      "lastError": ""
+      "registeredCount": 1,
+      "raceCount": 1,
+      "lastError": "",
+      "registrations": {
+        "race_doc_example_001": {
+          "status": "registered",
+          "subgroupId": "7340598",
+          "eventId": "5701604",
+          "publicId": "00000000-0000-4000-8000-000000000001",
+          "raceName": "Example Race",
+          "zwiftRegisteredAt": "2026-09-10T12:00:01+00:00",
+          "lastError": ""
+        }
+      }
     }
   ],
   "categoryTransfers": [

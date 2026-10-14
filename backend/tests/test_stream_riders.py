@@ -117,6 +117,7 @@ class FakeDB:
         self.race_docs: dict[str, MemDoc] = {}
         self.user_docs: dict[str, MemDoc] = {}
         self.stream_riders: dict[str, dict[str, MemDoc]] = {}
+        self.roster: dict[str, MemDoc] = {}
         self.league_settings: dict = {}
 
     def add_race(self, race_id: str, data: dict):
@@ -129,6 +130,8 @@ class FakeDB:
     def collection(self, name: str):
         if name == "users":
             return MemCol(self.user_docs)
+        if name == "streamRiders":
+            return MemCol(self.roster)
         if name == "league":
             col = MagicMock()
             settings = MemDoc("settings", self.league_settings, exists=bool(self.league_settings))
@@ -151,6 +154,9 @@ class FakeDB:
 
                     doc.collection = collection  # type: ignore[attr-defined]
                     return doc
+
+                def stream(self):
+                    return [d for d in parent.race_docs.values() if d.exists]
 
             return RacesCol()
         raise AssertionError(f"unexpected collection {name}")
@@ -185,20 +191,97 @@ def test_uuid_zwift_id_is_accepted_as_public_id() -> None:
 
 
 def test_add_routes_to_category_pen(fake_db: FakeDB) -> None:
-    fake_db.add_race("r1", THE_CLASSIC_RACE)
+    fake_db.add_race("r1", {**THE_CLASSIC_RACE, "name": "Opening"})
+    fake_db.add_race("r2", {**THE_CLASSIC_RACE, "name": "eCKD"})
     zwift = FakeZwift()
     payload = sr.add_stream_rider(
-        "r1",
         zwift_id="9990001",
         public_id="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
         category="Diamond",
         zwift_service=zwift,
     )
     assert payload["status"] == "registered"
-    assert payload["subgroupId"] == "7158672"
+    assert payload["registeredCount"] == 2
+    assert payload["registrations"]["r1"]["subgroupId"] == "7158672"
+    assert payload["registrations"]["r2"]["subgroupId"] == "7158672"
+    assert zwift.registered == [
+        ("7158672", ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"]),
+        ("7158672", ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"]),
+    ]
+    assert fake_db.roster["9990001"].exists
+
+
+def test_finished_races_are_left_alone(fake_db: FakeDB) -> None:
+    fake_db.add_race("old", {**THE_CLASSIC_RACE, "name": "Old", "date": "2020-01-01T18:00:00"})
+    fake_db.add_race("new", {**THE_CLASSIC_RACE, "name": "New", "date": "2026-12-01T18:00:00"})
+    zwift = FakeZwift()
+    payload = sr.add_stream_rider(
+        zwift_id="9990001",
+        public_id="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        category="Diamond",
+        zwift_service=zwift,
+    )
+    assert payload["status"] == "registered"
+    assert payload["registrations"]["old"]["status"] == "skipped"
+    assert payload["registrations"]["new"]["status"] == "registered"
     assert zwift.registered == [("7158672", ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"])]
-    assert "9990001" in fake_db.stream_riders["r1"]
-    assert fake_db.stream_riders["r1"]["9990001"].exists
+
+
+def test_add_skips_races_without_an_event(fake_db: FakeDB) -> None:
+    fake_db.add_race("r1", {**THE_CLASSIC_RACE, "name": "Opening"})
+    fake_db.add_race("r2", {"name": "Route TBD"})
+    zwift = FakeZwift()
+    payload = sr.add_stream_rider(
+        zwift_id="9990001",
+        public_id="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        category="Diamond",
+        zwift_service=zwift,
+    )
+    assert payload["status"] == "registered"
+    assert payload["registeredCount"] == 1
+    assert payload["registrations"]["r2"]["status"] == "skipped"
+    assert len(zwift.registered) == 1
+
+
+def test_new_race_picks_up_existing_roster(fake_db: FakeDB) -> None:
+    fake_db.add_race("r1", {**THE_CLASSIC_RACE, "name": "Opening"})
+    zwift = FakeZwift()
+    sr.add_stream_rider(
+        zwift_id="9990001",
+        public_id="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        category="Diamond",
+        zwift_service=zwift,
+    )
+    second = {**THE_CLASSIC_RACE, "name": "Finale"}
+    fake_db.add_race("r2", second)
+    summary = sr.apply_stream_riders_to_race("r2", second, zwift_service=zwift)
+    assert summary["registered"] == 1
+    stored = fake_db.roster["9990001"].to_dict()
+    assert stored["registrations"]["r2"]["status"] == "registered"
+    assert stored["registeredCount"] == 2
+
+
+def test_legacy_per_race_docs_are_registered_on_the_other_races(fake_db: FakeDB) -> None:
+    fake_db.add_race("r1", {**THE_CLASSIC_RACE, "name": "Opening"})
+    fake_db.add_race("r2", {**THE_CLASSIC_RACE, "name": "eCKD"})
+    fake_db.stream_riders["r1"]["9990001"] = MemDoc(
+        "9990001",
+        {
+            "zwiftId": "9990001",
+            "publicId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            "category": "Diamond",
+            "status": "registered",
+            "subgroupId": "7158672",
+            "eventId": "5593351",
+        },
+        exists=True,
+    )
+    zwift = FakeZwift()
+    rows = sr.list_stream_riders(zwift_service=zwift)
+    assert len(rows) == 1
+    assert rows[0]["registeredCount"] == 2
+    assert not fake_db.stream_riders["r1"]["9990001"].exists
+    assert zwift.registered == [("7158672", ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"])]
 
 
 def test_add_defaults_to_top_liga_category(fake_db: FakeDB) -> None:
@@ -211,13 +294,12 @@ def test_add_defaults_to_top_liga_category(fake_db: FakeDB) -> None:
     fake_db.add_race("r1", THE_CLASSIC_RACE)
     zwift = FakeZwift()
     payload = sr.add_stream_rider(
-        "r1",
         zwift_id="9990002",
         public_id="11111111-1111-1111-1111-111111111111",
         zwift_service=zwift,
     )
     assert payload["category"] == "Diamond"
-    assert payload["subgroupId"] == "7158672"
+    assert payload["registrations"]["r1"]["subgroupId"] == "7158672"
 
 
 def test_refuse_complete_liga_member(fake_db: FakeDB) -> None:
@@ -225,16 +307,13 @@ def test_refuse_complete_liga_member(fake_db: FakeDB) -> None:
     fake_db.add_user("15690", {"registration": {"status": "complete"}})
     with pytest.raises(sr.StreamRiderError) as exc:
         sr.add_stream_rider(
-            "r1",
             zwift_id="15690",
             public_id="094e4781-af17-4bde-b7bb-88692d5a8a2a",
             category="Diamond",
             zwift_service=FakeZwift(),
         )
     assert exc.value.status_code == 403
-    assert fake_db.stream_riders["r1"] == {} or not any(
-        d.exists for d in fake_db.stream_riders["r1"].values()
-    )
+    assert not any(d.exists for d in fake_db.roster.values())
 
 
 def test_unknown_public_id_fails(fake_db: FakeDB) -> None:
@@ -243,13 +322,12 @@ def test_unknown_public_id_fails(fake_db: FakeDB) -> None:
     zwift.unknown = ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"]
     with pytest.raises(sr.StreamRiderError):
         sr.add_stream_rider(
-            "r1",
             zwift_id="9990001",
             public_id="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
             category="Diamond",
             zwift_service=zwift,
         )
-    stored = fake_db.stream_riders["r1"]["9990001"].to_dict()
+    stored = fake_db.roster["9990001"].to_dict()
     assert stored["status"] == "failed"
 
 
@@ -257,22 +335,20 @@ def test_remove_unregisters_and_deletes(fake_db: FakeDB) -> None:
     fake_db.add_race("r1", THE_CLASSIC_RACE)
     zwift = FakeZwift()
     sr.add_stream_rider(
-        "r1",
         zwift_id="9990001",
         public_id="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
         category="Diamond",
         zwift_service=zwift,
     )
-    result = sr.remove_stream_rider("r1", "9990001", zwift_service=zwift)
+    result = sr.remove_stream_rider("9990001", zwift_service=zwift)
     assert result["status"] == "removed"
     assert zwift.unregistered == [("7158672", ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"])]
-    assert not fake_db.stream_riders["r1"]["9990001"].exists
+    assert not fake_db.roster["9990001"].exists
 
 
 def test_hide_ids_include_public_and_numeric(fake_db: FakeDB) -> None:
     fake_db.add_race("r1", THE_CLASSIC_RACE)
     sr.add_stream_rider(
-        "r1",
         zwift_id="9990001",
         public_id="AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE",
         category="Diamond",
