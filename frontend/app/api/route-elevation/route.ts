@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { resolveRaceRelativeProfileSegments } from '@/lib/routeProfileSegments';
+import {
+    mergeSplineProfileSegments,
+    normalizeProfileSegmentDirection,
+    normalizeProfileSegmentName,
+    resolveRaceRelativeProfileSegments,
+    type SplinePlacedSegment,
+} from '@/lib/routeProfileSegments';
 import { resolveZwiftRoute, zwiftCatalogSegments } from '@/lib/zwiftRouteCatalog';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -19,6 +25,51 @@ type ProfileSegment = {
     toKm: number;
     direction?: 'forward' | 'reverse';
 };
+
+function lookupCatalogSegment(name: string, direction?: string) {
+    const wantedName = normalizeProfileSegmentName(name);
+    const wantedDir = normalizeProfileSegmentDirection(direction, name);
+    return zwiftCatalogSegments.find((seg) => {
+        const dir = inferDirectionFromSegment(seg.slug, seg.name, seg.whatsOnZwiftUrl);
+        return (
+            normalizeProfileSegmentName(seg.name) === wantedName &&
+            normalizeProfileSegmentDirection(dir, seg.name) === wantedDir
+        );
+    });
+}
+
+function segmentTypeFor(name: string, direction?: string): ProfileSegment['type'] {
+    const hit = lookupCatalogSegment(name, direction);
+    if (hit?.type === 'sprint' || hit?.type === 'climb' || hit?.type === 'segment') return hit.type;
+    const normalized = normalizeProfileSegmentName(name);
+    if (normalized.includes('sprint')) return 'sprint';
+    if (normalized.includes('kom') || normalized.includes('climb')) return 'climb';
+    return 'segment';
+}
+
+async function fetchRouteSplineSegments(routeId: number, fresh: boolean): Promise<SplinePlacedSegment[]> {
+    try {
+        const res = await fetch(`${API_URL}/route-segment-spline?routeId=${routeId}`, fresh
+            ? { cache: 'no-store', signal: AbortSignal.timeout(4000) }
+            : { next: { revalidate: 86400 }, signal: AbortSignal.timeout(4000) }
+        );
+        if (!res.ok) return [];
+        const json = await res.json();
+        if (!Array.isArray(json?.segments)) return [];
+        return json.segments.flatMap((seg: SplinePlacedSegment) => {
+            if (!seg || typeof seg.name !== 'string') return [];
+            if (!Number.isFinite(seg.splineFrom) || !Number.isFinite(seg.splineTo)) return [];
+            const hit = lookupCatalogSegment(seg.name, seg.direction);
+            return [{
+                ...seg,
+                name: hit?.name || seg.name,
+                type: segmentTypeFor(seg.name, seg.direction),
+            }];
+        });
+    } catch {
+        return [];
+    }
+}
 
 function inferDirectionFromSegment(
     segmentSlug?: string | null,
@@ -115,11 +166,21 @@ export async function GET(req: NextRequest) {
     const cachedProfileSegments: ProfileSegment[] | null = Array.isArray(data?.profileSegments)
         ? data.profileSegments
         : null;
-    const singleLapProfileSegments = resolveRaceRelativeProfileSegments(
+    const resolvedProfileSegments = resolveRaceRelativeProfileSegments(
         cachedProfileSegments,
         catalogSegments,
         leadInKm,
         streamIncludesLeadIn,
+    );
+    // segmentsOnRoute omits segments that have no Strava id. The game still rides
+    // them (the setup list), so place those from the route manifest.
+    const splineSegments = match.id
+        ? await fetchRouteSplineSegments(match.id, fresh)
+        : [];
+    const singleLapProfileSegments = mergeSplineProfileSegments(
+        catalogSegments,
+        resolvedProfileSegments,
+        splineSegments,
     );
 
     let raceDistances = singleLapDistances;

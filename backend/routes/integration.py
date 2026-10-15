@@ -8,6 +8,7 @@ from extensions import db, strava_service, get_zwift_game_service, get_zwift_ser
 from config import FRONTEND_URL
 from authz import verify_user_token, AuthzError
 from services.club_kits import extract_game_client_fields, extract_level_fields
+from services.route_segment_spline import segment_spline_positions
 from services.zwift_drop_levels import ensure_drop_level_fields
 from services.schema_validation import with_schema_version
 from services.zwift_tokens import (
@@ -771,6 +772,14 @@ def get_segments():
     game_service = get_zwift_game_service()
     segments = game_service.get_event_segments(route_id, laps=int(laps))
     return jsonify({'segments': segments}), 200
+
+@integration_bp.route('/route-segment-spline', methods=['GET'])
+def get_route_segment_spline():
+    """Arc positions for every segment the route rides, including ones zwift-data cannot place."""
+    route_id = request.args.get('routeId')
+    if not route_id:
+        return jsonify({'message': 'Missing routeId'}), 400
+    return jsonify({'segments': segment_spline_positions(route_id)}), 200
 
 @integration_bp.route('/route-time-estimates', methods=['GET'])
 def get_route_time_estimates():

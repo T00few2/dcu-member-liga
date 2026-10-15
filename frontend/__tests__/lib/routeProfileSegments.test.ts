@@ -3,6 +3,7 @@ import {
     catalogSegmentsIncludeLeadIn,
     mergeElevationProfileWithLapBanners,
     mergeLapBannerProfileSegments,
+    mergeSplineProfileSegments,
     resolveRaceRelativeProfileSegments,
     shiftSegmentsByLeadIn,
     tileElevationArrays,
@@ -283,5 +284,59 @@ describe('tileElevationArrays / tileProfileSegments', () => {
         );
         expect(segs.map((s) => s.fromKm)).toEqual([1, 11]);
         expect(segs.map((s) => s.toKm)).toEqual([1.2, 11.2]);
+    });
+});
+
+describe('mergeSplineProfileSegments', () => {
+    const catalog = [
+        { name: 'Zwift KOM', type: 'climb' as const, fromKm: 0.831, toKm: 1.731, direction: 'forward' as const },
+        { name: 'Titans Grove KOM Rev.', type: 'climb' as const, fromKm: 15.13, toKm: 16.033, direction: 'reverse' as const },
+        { name: 'Mayan Mountainside KOM', type: 'climb' as const, fromKm: 39.743, toKm: 41.731, direction: 'forward' as const },
+        { name: 'Itza KOM', type: 'climb' as const, fromKm: 42.339, toKm: 46.098, direction: 'forward' as const },
+    ];
+    const spline = [
+        { name: 'Zwift KOM', direction: 'forward' as const, splineFrom: 77931, splineTo: 162693, lengthM: 913 },
+        { name: 'Titans Grove KOM Reverse', direction: 'reverse' as const, splineFrom: 1667703, splineTo: 1744334, lengthM: 897 },
+        { name: 'Woodland Sprint Reverse', direction: 'reverse' as const, splineFrom: 2687230, splineTo: 2736053, lengthM: 500, type: 'sprint' },
+        { name: 'Sasquatch Sprint Reverse', direction: 'reverse' as const, splineFrom: 3170433, splineTo: 3187464, lengthM: 350, type: 'sprint' },
+        { name: 'Acropolis Sprint Reverse', direction: 'reverse' as const, splineFrom: 3748065, splineTo: 3790110, lengthM: 450, type: 'sprint' },
+        { name: 'Stoneway Sprint Reverse', direction: 'reverse' as const, splineFrom: 4023563, splineTo: 4059262, lengthM: 400, type: 'sprint' },
+        { name: 'Mayan Mountainside KOM', direction: 'forward' as const, splineFrom: 4184285, splineTo: 4338711, lengthM: 2000 },
+        { name: 'Itza KOM', direction: 'forward' as const, splineFrom: 4393848, splineTo: 4821027, lengthM: 3750 },
+    ];
+
+    it('marks Itza Party sprints that segmentsOnRoute leaves out, without moving the climbs', () => {
+        const shift = 0.497;
+        const resolved = catalog.map((seg) => ({
+            ...seg,
+            fromKm: Math.round((seg.fromKm - shift) * 1000) / 1000,
+            toKm: Math.round((seg.toKm - shift) * 1000) / 1000,
+        }));
+        const out = mergeSplineProfileSegments(catalog, resolved, spline);
+
+        for (const climb of resolved) {
+            const kept = out.find((seg) => seg.name === climb.name);
+            expect(kept?.fromKm).toBe(climb.fromKm);
+            expect(kept?.toKm).toBe(climb.toKm);
+        }
+
+        const names = out.map((seg) => seg.name);
+        const woodland = names.indexOf('Woodland Sprint Reverse');
+        const sasquatch = names.indexOf('Sasquatch Sprint Reverse');
+        const acropolis = names.indexOf('Acropolis Sprint Reverse');
+        const stoneway = names.indexOf('Stoneway Sprint Reverse');
+        const mayan = names.indexOf('Mayan Mountainside KOM');
+        expect(woodland).toBeGreaterThan(names.indexOf('Titans Grove KOM Rev.'));
+        expect(sasquatch).toBeGreaterThan(woodland);
+        expect(acropolis).toBeGreaterThan(sasquatch);
+        expect(stoneway).toBeGreaterThan(acropolis);
+        expect(mayan).toBeGreaterThan(stoneway);
+
+        const byName = (name: string) => out.find((seg) => seg.name === name)!;
+        expect(byName('Woodland Sprint Reverse').toKm - byName('Woodland Sprint Reverse').fromKm).toBeCloseTo(0.475, 2);
+        expect(byName('Sasquatch Sprint Reverse').toKm - byName('Sasquatch Sprint Reverse').fromKm).toBeCloseTo(0.35, 2);
+        expect(byName('Sasquatch Sprint Reverse').type).toBe('sprint');
+        expect(byName('Stoneway Sprint Reverse').toKm).toBeLessThan(byName('Mayan Mountainside KOM').fromKm);
+        expect(byName('Woodland Sprint Reverse').fromKm).toBeCloseTo(25.197 - shift, 2);
     });
 });

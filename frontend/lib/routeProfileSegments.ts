@@ -338,3 +338,168 @@ export function resolveRaceRelativeProfileSegments<T extends ProfileSegmentLike>
 
     return cached;
 }
+
+export type SplinePlacedSegment = {
+    name: string;
+    direction?: string;
+    /** Arc position along the route manifest. Unitless; only differences matter. */
+    splineFrom: number;
+    splineTo: number;
+    /** Official segment length in metres, when the game data has one. */
+    lengthM?: number | null;
+    type?: string;
+};
+
+function profileSegmentKey(name?: string, direction?: string): string {
+    return `${normalizeProfileSegmentName(name)}::${normalizeProfileSegmentDirection(direction, name)}`;
+}
+
+function median(values: number[]): number {
+    if (values.length === 0) return 0;
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    if (sorted.length % 2 === 1) return sorted[mid];
+    return ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
+}
+
+function splineToKm(anchors: { spline: number; km: number }[], spline: number): number | null {
+    if (anchors.length < 2) return null;
+    const first = anchors[0];
+    const last = anchors[anchors.length - 1];
+    if (!first || !last) return null;
+
+    const scaleBetween = (a: { spline: number; km: number }, b: { spline: number; km: number }) => {
+        const span = b.spline - a.spline;
+        if (Math.abs(span) < 1e-9) return 0;
+        return (b.km - a.km) / span;
+    };
+
+    if (spline <= first.spline) {
+        const next = anchors[1];
+        if (!next) return first.km;
+        return first.km + (spline - first.spline) * scaleBetween(first, next);
+    }
+    if (spline >= last.spline) {
+        const prev = anchors[anchors.length - 2];
+        if (!prev) return last.km;
+        return last.km + (spline - last.spline) * scaleBetween(prev, last);
+    }
+    for (let i = 1; i < anchors.length; i++) {
+        const right = anchors[i];
+        const left = anchors[i - 1];
+        if (!right || !left || spline > right.spline) continue;
+        const span = right.spline - left.spline;
+        const t = span === 0 ? 0 : (spline - left.spline) / span;
+        return left.km + t * (right.km - left.km);
+    }
+    return null;
+}
+
+/**
+ * Add route segments that the game rides but zwift-data `segmentsOnRoute` has no
+ * coordinates for (no Strava id). Positions are interpolated in catalog kilometres
+ * between the segments that do have coordinates, then shifted into whatever frame
+ * `resolved` already uses so existing climb markers stay put.
+ */
+export function mergeSplineProfileSegments<T extends ProfileSegmentLike>(
+    catalog: T[],
+    resolved: T[],
+    splineSegments: SplinePlacedSegment[],
+): T[] {
+    if (splineSegments.length === 0 || catalog.length === 0) return resolved;
+
+    const catalogQueues = new Map<string, T[]>();
+    for (const seg of catalog) {
+        const key = profileSegmentKey(seg.name, seg.direction);
+        const queue = catalogQueues.get(key) ?? [];
+        queue.push(seg);
+        catalogQueues.set(key, queue);
+    }
+
+    const anchors: { spline: number; km: number }[] = [];
+    const unmatched: SplinePlacedSegment[] = [];
+    for (const spline of splineSegments) {
+        const key = profileSegmentKey(spline.name, spline.direction);
+        const queue = catalogQueues.get(key);
+        const match = queue?.shift();
+        if (!match) {
+            unmatched.push(spline);
+            continue;
+        }
+        const fromKm = Math.min(match.fromKm, match.toKm);
+        const toKm = Math.max(match.fromKm, match.toKm);
+        const splineFrom = Math.min(spline.splineFrom, spline.splineTo);
+        const splineTo = Math.max(spline.splineFrom, spline.splineTo);
+        anchors.push({ spline: splineFrom, km: fromKm }, { spline: splineTo, km: toKm });
+    }
+    anchors.sort((a, b) => a.spline - b.spline || a.km - b.km);
+    const increasing: { spline: number; km: number }[] = [];
+    for (const anchor of anchors) {
+        const prev = increasing[increasing.length - 1];
+        if (prev && anchor.km + 1e-6 < prev.km) continue;
+        if (prev && Math.abs(anchor.spline - prev.spline) < 1e-6) continue;
+        increasing.push(anchor);
+    }
+    if (increasing.length < 2 || unmatched.length === 0) return resolved;
+
+    const placedKeys = new Set<string>();
+    const placedCounts = new Map<string, number>();
+    for (const seg of resolved) {
+        const key = profileSegmentKey(seg.name, seg.direction);
+        const count = (placedCounts.get(key) ?? 0) + 1;
+        placedCounts.set(key, count);
+        placedKeys.add(`${key}::${count}`);
+    }
+
+    const catalogCounts = new Map<string, number>();
+    const shifts: number[] = [];
+    for (const seg of catalog) {
+        const key = profileSegmentKey(seg.name, seg.direction);
+        const count = (catalogCounts.get(key) ?? 0) + 1;
+        catalogCounts.set(key, count);
+        const resolvedMatch = resolved.filter((item) => profileSegmentKey(item.name, item.direction) === key);
+        const placed = resolvedMatch[count - 1];
+        if (!placed) continue;
+        shifts.push(Math.min(seg.fromKm, seg.toKm) - Math.min(placed.fromKm, placed.toKm));
+    }
+    const shift = median(shifts);
+
+    const addedCounts = new Map<string, number>();
+    const added: T[] = [];
+    for (const spline of unmatched) {
+        const key = profileSegmentKey(spline.name, spline.direction);
+        const already = placedCounts.get(key) ?? 0;
+        const extra = (addedCounts.get(key) ?? 0) + 1;
+        addedCounts.set(key, extra);
+        if (placedKeys.has(`${key}::${already + extra}`)) continue;
+
+        const splineFrom = Math.min(spline.splineFrom, spline.splineTo);
+        const splineTo = Math.max(spline.splineFrom, spline.splineTo);
+        let fromKm = splineToKm(increasing, splineFrom);
+        let toKm = splineToKm(increasing, splineTo);
+        if (fromKm == null || toKm == null) continue;
+        if (toKm < fromKm) [fromKm, toKm] = [toKm, fromKm];
+
+        const officialKm = Number(spline.lengthM);
+        const width = toKm - fromKm;
+        if (Number.isFinite(officialKm) && officialKm > 0) {
+            const official = officialKm / 1000;
+            if (width < official * 0.8 || width > official * 1.2) {
+                const mid = (fromKm + toKm) / 2;
+                fromKm = mid - official / 2;
+                toKm = mid + official / 2;
+            }
+        }
+
+        added.push({
+            name: spline.name,
+            type: spline.type || 'segment',
+            fromKm: roundKm(fromKm - shift),
+            toKm: roundKm(toKm - shift),
+            direction: normalizeProfileSegmentDirection(spline.direction, spline.name),
+        } as T);
+    }
+
+    if (added.length === 0) return resolved;
+    return [...resolved, ...added].sort((a, b) => a.fromKm - b.fromKm || a.toKm - b.toKm);
+}
