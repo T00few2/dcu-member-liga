@@ -191,7 +191,7 @@ Notes:
 - `ZOHO_SMTP_APP_PASSWORD` is generated in Zoho Security > App Passwords (2FA required).
 - In production, provide these via GitHub repo secrets so deploy writes them to Cloud Functions env.
 
-Campaign delivery (the admin **Campaign** choice) uses Zoho Campaigns, not the mailbox. Individual and Group still use the SMTP settings above. The free Campaigns plan allows 2,000 contacts and 6,000 emails a month (three campaigns).
+Campaign delivery (the admin **Campaign** choice) uses Zoho Campaigns, not the mailbox. Individual and Group still use the SMTP settings above. The free Campaigns plan allows 2,000 stored contacts and 6,000 emails per calendar month.
 
 ```env
 ZOHO_CAMPAIGNS_CLIENT_ID=self-client-id
@@ -204,7 +204,7 @@ ZOHO_CAMPAIGNS_TOPIC_ID=
 Notes:
 - Create a Self Client at `https://api-console.zoho.eu` and exchange an authorization code at `https://accounts.zoho.eu/oauth/v2/token`. Scopes: `ZohoCampaigns.campaign.CREATE`, `ZohoCampaigns.campaign.UPDATE`, `ZohoCampaigns.contact.CREATE`, `ZohoCampaigns.contact.UPDATE`, `ZohoCampaigns.contact.READ`.
 - `ZOHO_CAMPAIGNS_FROM_EMAIL` must be a verified Campaigns sender. The domain needs the Campaigns SPF include, DKIM, and a DMARC record.
-- Set `ZOHO_CAMPAIGNS_TOPIC_ID` only when the Campaigns account requires a topic on create.
+- If the account has one topic, the send uses it automatically. Set `ZOHO_CAMPAIGNS_TOPIC_ID` when there is more than one.
 - `BACKEND_URL` must be the public API URL. Campaigns fetches the message HTML from `{BACKEND_URL}/campaign-content/{token}` while the campaign is created.
 - Add the same values as repository secrets (Settings → Secrets and variables → Actions). The deploy job does not select a GitHub Environment, so secrets stored only on an Environment are empty in the workflow. The deploy fails and prints the missing names instead of uploading blank values. Values are written to an env file, so a comma or `#` in a secret no longer drops the variables that follow it.
 

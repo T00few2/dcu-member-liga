@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
@@ -141,13 +142,21 @@ def _raise_if_failed(payload: dict, action: str) -> dict:
     raise EmailSendError(message)
 
 
+def _response_snippet(text: str, limit: int = 180) -> str:
+    cleaned = re.sub(r"<[^>]+>", " ", text or "")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if len(cleaned) > limit:
+        cleaned = cleaned[:limit].rstrip() + "..."
+    return cleaned or "empty body"
+
+
 def _post_form(url: str, fields: dict, *, token: str | None = None, query: bool = False) -> dict:
     headers = {}
     if token:
         headers["Authorization"] = f"Zoho-oauthtoken {token}"
     request_kwargs = {"headers": headers, "timeout": HTTP_TIMEOUT_SECONDS}
-    # Campaigns v1.1 reads parameters from the query string. The token endpoint
-    # expects a form body.
+    # List calls accept a query string. createCampaign must be a form body:
+    # the same fields on the query string make Zoho return an HTML 500.
     if query:
         request_kwargs["params"] = fields
     else:
@@ -160,8 +169,9 @@ def _post_form(url: str, fields: dict, *, token: str | None = None, query: bool 
     try:
         payload = response.json()
     except ValueError as exc:
+        snippet = _response_snippet(response.text)
         raise EmailSendError(
-            f"Zoho Campaigns returned a non-JSON response ({response.status_code})."
+            f"Zoho Campaigns returned a non-JSON response ({response.status_code}): {snippet}"
         ) from exc
     if not isinstance(payload, dict):
         raise EmailSendError("Zoho Campaigns returned an unexpected response.")
@@ -196,9 +206,59 @@ def _access_token_value() -> str:
     return _access_token
 
 
-def _campaign_post(path: str, fields: dict, token: str) -> dict:
-    payload = _post_form(f"{CAMPAIGNS_API_BASE}/{path}", fields, token=token, query=True)
+def _campaign_post(path: str, fields: dict, token: str, *, query: bool = True) -> dict:
+    payload = _post_form(f"{CAMPAIGNS_API_BASE}/{path}", fields, token=token, query=query)
     return _raise_if_failed(payload, path)
+
+
+def _campaign_get(path: str, token: str) -> dict:
+    headers = {"Authorization": f"Zoho-oauthtoken {token}"}
+    try:
+        response = requests.get(
+            f"{CAMPAIGNS_API_BASE}/{path}",
+            params={"resfmt": "JSON"},
+            headers=headers,
+            timeout=HTTP_TIMEOUT_SECONDS,
+        )
+    except requests.RequestException as exc:
+        raise EmailSendError(f"Network error talking to Zoho Campaigns: {exc}") from exc
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        snippet = _response_snippet(response.text)
+        raise EmailSendError(
+            f"Zoho Campaigns returned a non-JSON response ({response.status_code}): {snippet}"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise EmailSendError("Zoho Campaigns returned an unexpected response.")
+    body = _unwrap(payload)
+    code = str(body.get("code") or body.get("Code") or "")
+    if code == "1004":
+        return {}
+    return _raise_if_failed(payload, path)
+
+
+def _topic_id(token: str) -> str | None:
+    if ZOHO_CAMPAIGNS_TOPIC_ID:
+        return ZOHO_CAMPAIGNS_TOPIC_ID
+    payload = _campaign_get("topics", token)
+    details = payload.get("topicDetails") or []
+    if not isinstance(details, list) or not details:
+        return None
+    topic_ids = [str(item.get("topicId") or "") for item in details if isinstance(item, dict)]
+    topic_ids = [item for item in topic_ids if item]
+    if len(topic_ids) == 1:
+        return topic_ids[0]
+    names = []
+    for item in details:
+        if not isinstance(item, dict):
+            continue
+        names.append(str(item.get("topicName") or item.get("topicId") or ""))
+    visible = ", ".join(name for name in names if name)
+    raise EmailSendError(
+        "Zoho Campaigns has more than one topic. Set ZOHO_CAMPAIGNS_TOPIC_ID to one of: "
+        + visible
+    )
 
 
 def _field(payload: dict, *names: str) -> str:
@@ -285,9 +345,10 @@ def send_zoho_campaign(
             "content_url": content_url,
             "list_details": json.dumps({listkey: []}, separators=(",", ":")),
         }
-        if ZOHO_CAMPAIGNS_TOPIC_ID:
-            create_fields["topicId"] = ZOHO_CAMPAIGNS_TOPIC_ID
-        created = _campaign_post("createCampaign", create_fields, token)
+        topic_id = _topic_id(token)
+        if topic_id:
+            create_fields["topicId"] = topic_id
+        created = _campaign_post("createCampaign", create_fields, token, query=False)
         campaign_key = _field(created, "campaignkey", "campaign_key", "campaignKey")
         if not campaign_key:
             raise EmailSendError("Zoho Campaigns did not return a campaign key.")

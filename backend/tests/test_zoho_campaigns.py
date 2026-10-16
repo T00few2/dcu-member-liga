@@ -35,11 +35,24 @@ def _credentials(monkeypatch):
     monkeypatch.setattr(campaigns, "BACKEND_URL", "https://api.example.com")
 
 
-def _install_api(monkeypatch, store: MemoryCampaignContentStore, *, fail_create: bool = False):
-    calls: list[tuple[str, dict]] = []
+def _install_api(
+    monkeypatch,
+    store: MemoryCampaignContentStore,
+    *,
+    fail_create: bool = False,
+    topics: list[dict] | None = None,
+):
+    calls: list[tuple[str, dict, str]] = []
+    topic_rows = topics if topics is not None else [{"topicId": "topic-1", "topicName": "Marketing"}]
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        calls.append((url, dict(params or {}), "get"))
+        if url.endswith("/topics"):
+            return _Response({"code": "200", "topicDetails": topic_rows, "message": "Success"})
+        raise AssertionError(url)
 
     def fake_post(url, data=None, params=None, headers=None, timeout=None):
-        calls.append((url, dict(params or data or {})))
+        calls.append((url, dict(params or data or {}), "params" if params else "data"))
         if url.endswith("/oauth/v2/token"):
             return _Response({"access_token": "access-token", "expires_in": 3600})
         if url.endswith("/addlistandcontacts"):
@@ -61,6 +74,7 @@ def _install_api(monkeypatch, store: MemoryCampaignContentStore, *, fail_create:
             return _Response({"code": "200", "campaign_status": "inprogress", "message": ""})
         raise AssertionError(url)
 
+    monkeypatch.setattr(campaigns.requests, "get", fake_get)
     monkeypatch.setattr(campaigns.requests, "post", fake_post)
     return calls
 
@@ -78,24 +92,28 @@ def test_send_creates_list_publishes_html_and_sends(monkeypatch):
 
     assert result == {"campaignKey": "camp-1", "campaignStatus": "inprogress"}
     assert store.docs == {}
-    paths = [url.rsplit("/", 1)[-1] for url, _ in calls]
+    paths = [url.rsplit("/", 1)[-1] for url, _, _ in calls]
     assert paths == [
         "token",
         "addlistandcontacts",
+        "topics",
         "createCampaign",
         "sendcampaign",
     ]
     created_list = calls[1][1]
+    assert calls[1][2] == "params"
     assert created_list["emailids"] == "Rider@Example.com,other@example.com"
     assert created_list["mode"] == "newlist"
-    created = calls[2][1]
+    created = calls[3][1]
+    assert calls[3][2] == "data"
     assert created["from_email"] == "info@example.com"
     assert created["from_name"] == "DCU Udvalg for e-cykling"
     assert created["subject"] == "Liga update"
+    assert created["topicId"] == "topic-1"
     assert '"list-1":[]' in created["list_details"]
     assert created["content_url"].startswith("https://api.example.com/campaign-content/")
     assert calls[1][0].startswith("https://campaigns.zoho.eu/api/v1.1/")
-    assert calls[3][1]["campaignkey"] == "camp-1"
+    assert calls[4][1]["campaignkey"] == "camp-1"
 
 
 def test_create_error_is_email_send_error_and_content_is_removed(monkeypatch):
@@ -111,11 +129,51 @@ def test_create_error_is_email_send_error_and_content_is_removed(monkeypatch):
         )
 
     assert store.docs == {}
-    assert [url.rsplit("/", 1)[-1] for url, _ in calls] == [
+    assert [url.rsplit("/", 1)[-1] for url, _, _ in calls] == [
         "token",
         "addlistandcontacts",
+        "topics",
         "createCampaign",
     ]
+
+
+def test_configured_topic_is_sent_without_looking_topics_up(monkeypatch):
+    store = MemoryCampaignContentStore()
+    calls = _install_api(monkeypatch, store)
+    monkeypatch.setattr(campaigns, "ZOHO_CAMPAIGNS_TOPIC_ID", "configured-topic")
+
+    send_zoho_campaign(
+        recipients=["rider@example.com"],
+        subject="Liga update",
+        html_body="<p>Hello riders</p>",
+        store=store,
+    )
+
+    assert "topics" not in [url.rsplit("/", 1)[-1] for url, _, _ in calls]
+    created = next(fields for url, fields, _ in calls if url.endswith("/createCampaign"))
+    assert created["topicId"] == "configured-topic"
+
+
+def test_multiple_topics_require_an_explicit_id(monkeypatch):
+    store = MemoryCampaignContentStore()
+    _install_api(
+        monkeypatch,
+        store,
+        topics=[
+            {"topicId": "topic-1", "topicName": "Marketing"},
+            {"topicId": "topic-2", "topicName": "News"},
+        ],
+    )
+
+    with pytest.raises(EmailSendError, match="ZOHO_CAMPAIGNS_TOPIC_ID"):
+        send_zoho_campaign(
+            recipients=["rider@example.com"],
+            subject="Liga update",
+            html_body="<p>Hello riders</p>",
+            store=store,
+        )
+
+    assert store.docs == {}
 
 
 def test_missing_credentials_raise_config_error(monkeypatch):
