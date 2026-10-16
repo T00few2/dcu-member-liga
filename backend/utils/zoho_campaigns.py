@@ -141,17 +141,19 @@ def _raise_if_failed(payload: dict, action: str) -> dict:
     raise EmailSendError(message)
 
 
-def _post_form(url: str, fields: dict, *, token: str | None = None) -> dict:
+def _post_form(url: str, fields: dict, *, token: str | None = None, query: bool = False) -> dict:
     headers = {}
     if token:
         headers["Authorization"] = f"Zoho-oauthtoken {token}"
+    request_kwargs = {"headers": headers, "timeout": HTTP_TIMEOUT_SECONDS}
+    # Campaigns v1.1 reads parameters from the query string. The token endpoint
+    # expects a form body.
+    if query:
+        request_kwargs["params"] = fields
+    else:
+        request_kwargs["data"] = fields
     try:
-        response = requests.post(
-            url,
-            data=fields,
-            headers=headers,
-            timeout=HTTP_TIMEOUT_SECONDS,
-        )
+        response = requests.post(url, **request_kwargs)
     except requests.RequestException as exc:
         raise EmailSendError(f"Network error talking to Zoho Campaigns: {exc}") from exc
 
@@ -195,7 +197,7 @@ def _access_token_value() -> str:
 
 
 def _campaign_post(path: str, fields: dict, token: str) -> dict:
-    payload = _post_form(f"{CAMPAIGNS_API_BASE}/{path}", fields, token=token)
+    payload = _post_form(f"{CAMPAIGNS_API_BASE}/{path}", fields, token=token, query=True)
     return _raise_if_failed(payload, path)
 
 
@@ -240,13 +242,15 @@ def send_zoho_campaign(
     token = _access_token_value()
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     suffix = secrets.token_hex(3)
+    first_batch = addresses[:BULK_SUBSCRIBE_BATCH]
     list_body = _campaign_post(
-        "addlist",
+        "addlistandcontacts",
         {
             "resfmt": "JSON",
             "listname": f"Liga {stamp} {suffix}",
             "signupform": "private",
             "mode": "newlist",
+            "emailids": ",".join(first_batch),
         },
         token,
     )
@@ -254,8 +258,9 @@ def send_zoho_campaign(
     if not listkey:
         raise EmailSendError("Zoho Campaigns did not return a mailing list key.")
 
-    for start in range(0, len(addresses), BULK_SUBSCRIBE_BATCH):
-        batch = addresses[start:start + BULK_SUBSCRIBE_BATCH]
+    rest = addresses[BULK_SUBSCRIBE_BATCH:]
+    for start in range(0, len(rest), BULK_SUBSCRIBE_BATCH):
+        batch = rest[start:start + BULK_SUBSCRIBE_BATCH]
         _campaign_post(
             "addlistsubscribersinbulk",
             {

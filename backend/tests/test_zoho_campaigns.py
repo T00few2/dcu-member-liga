@@ -38,18 +38,19 @@ def _credentials(monkeypatch):
 def _install_api(monkeypatch, store: MemoryCampaignContentStore, *, fail_create: bool = False):
     calls: list[tuple[str, dict]] = []
 
-    def fake_post(url, data=None, headers=None, timeout=None):
-        calls.append((url, dict(data or {})))
+    def fake_post(url, data=None, params=None, headers=None, timeout=None):
+        calls.append((url, dict(params or data or {})))
         if url.endswith("/oauth/v2/token"):
             return _Response({"access_token": "access-token", "expires_in": 3600})
-        if url.endswith("/addlist"):
-            return _Response({"code": "0", "listkey": "list-1", "message": "List created successfully"})
+        if url.endswith("/addlistandcontacts"):
+            return _Response({"code": "0", "status": "success", "listkey": "list-1", "message": "List created successfully"})
         if url.endswith("/addlistsubscribersinbulk"):
             return _Response({"code": "0", "status": "success", "message": "added"})
         if url.endswith("/createCampaign"):
             if fail_create:
                 return _Response({"code": "1004", "message": "Invalid URL for content import."})
-            token = str(data["content_url"]).rsplit("/", 1)[-1]
+            fields = params or data or {}
+            token = str(fields["content_url"]).rsplit("/", 1)[-1]
             assert store.get(token) == "<p>Hello riders</p>"
             return _Response({
                 "code": "200",
@@ -80,22 +81,21 @@ def test_send_creates_list_publishes_html_and_sends(monkeypatch):
     paths = [url.rsplit("/", 1)[-1] for url, _ in calls]
     assert paths == [
         "token",
-        "addlist",
-        "addlistsubscribersinbulk",
+        "addlistandcontacts",
         "createCampaign",
         "sendcampaign",
     ]
-    subscribe = calls[2][1]
-    assert subscribe["listkey"] == "list-1"
-    assert subscribe["emailids"] == "Rider@Example.com,other@example.com"
-    created = calls[3][1]
+    created_list = calls[1][1]
+    assert created_list["emailids"] == "Rider@Example.com,other@example.com"
+    assert created_list["mode"] == "newlist"
+    created = calls[2][1]
     assert created["from_email"] == "info@example.com"
     assert created["from_name"] == "DCU Udvalg for e-cykling"
     assert created["subject"] == "Liga update"
     assert '"list-1":[]' in created["list_details"]
     assert created["content_url"].startswith("https://api.example.com/campaign-content/")
     assert calls[1][0].startswith("https://campaigns.zoho.eu/api/v1.1/")
-    assert calls[4][1]["campaignkey"] == "camp-1"
+    assert calls[3][1]["campaignkey"] == "camp-1"
 
 
 def test_create_error_is_email_send_error_and_content_is_removed(monkeypatch):
@@ -113,8 +113,7 @@ def test_create_error_is_email_send_error_and_content_is_removed(monkeypatch):
     assert store.docs == {}
     assert [url.rsplit("/", 1)[-1] for url, _ in calls] == [
         "token",
-        "addlist",
-        "addlistsubscribersinbulk",
+        "addlistandcontacts",
         "createCampaign",
     ]
 
