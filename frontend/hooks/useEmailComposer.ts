@@ -4,7 +4,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { User } from 'firebase/auth';
 import { API_URL } from '@/lib/api';
 import type { RaceResult, DualRecordingVerification } from '@/types/admin';
-import type { EmailRecipientControlItem, EmailSendMode } from '@/components/admin/EmailRecipientControls';
+import { defaultSendMode, type EmailRecipientControlItem, type EmailSendMode } from '@/components/admin/EmailRecipientControls';
 import { withDcuSignature } from '@/lib/email-signature';
 
 export interface ComposeRecipient {
@@ -164,7 +164,7 @@ export function useEmailComposer({
         resetComposeState();
         setComposeTitle('Email til alle DR-ryttere');
         setComposeRecipients(drBulkRecipients);
-        setSendMode('campaign');
+        setSendMode(defaultSendMode(drBulkRecipients.length));
         setRecipientMode('to');
         setEmailSubject('Dual recording resultat er klar');
         setEmailMessage(body);

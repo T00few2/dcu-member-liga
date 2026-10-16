@@ -5,7 +5,7 @@ import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
 import { useUsersOverviewQuery } from '@/hooks/queries/useUsersOverviewQuery';
 import ComposeEmailModal from '@/components/admin/ComposeEmailModal';
-import EmailRecipientControls, { type EmailSendMode } from '@/components/admin/EmailRecipientControls';
+import EmailRecipientControls, { defaultSendMode, type EmailSendMode } from '@/components/admin/EmailRecipientControls';
 import { defaultDcuSignatureHtml, withDcuSignature } from '@/lib/email-signature';
 
 import UsersFilters from './users-overview/UsersFilters';
@@ -47,7 +47,7 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
     const [lastSendSummary, setLastSendSummary] = useState<EmailSendSummary | null>(null);
     const [lastSendResults, setLastSendResults] = useState<SendResult[]>([]);
     const [failedListOpen, setFailedListOpen] = useState(false);
-    const [sendMode, setSendMode] = useState<EmailSendMode>('campaign');
+    const [sendMode, setSendMode] = useState<EmailSendMode>('individual');
     const [recipientMode, setRecipientMode] = useState<'to' | 'cc' | 'bcc'>('bcc');
     const [manualTo, setManualTo] = useState('');
     const [manualCc, setManualCc] = useState('');
@@ -173,7 +173,7 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
     const openComposeModal = () => {
         setIsComposeOpen(true);
         setSendError(null);
-        setSendMode('campaign');
+        setSendMode(defaultSendMode(selectedCount));
         setRecipientMode('to');
         setEmailMessage(defaultDcuSignatureHtml());
         setManualTo('');

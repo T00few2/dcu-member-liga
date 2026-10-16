@@ -56,9 +56,11 @@ def _install_api(
         if url.endswith("/oauth/v2/token"):
             return _Response({"access_token": "access-token", "expires_in": 3600})
         if url.endswith("/addlistandcontacts"):
-            return _Response({"code": "0", "status": "success", "listkey": "list-1", "message": "List created successfully"})
+            return _Response({"code": "0", "status": "success", "listkey": "list1", "message": "List created successfully"})
         if url.endswith("/addlistsubscribersinbulk"):
             return _Response({"code": "0", "status": "success", "message": "added"})
+        if url.endswith("/listsubscribe"):
+            return _Response({"code": "0", "status": "success", "message": "updated"})
         if url.endswith("/createCampaign"):
             if fail_create:
                 return _Response({"code": "1004", "message": "Invalid URL for content import."})
@@ -97,6 +99,8 @@ def test_send_creates_list_publishes_html_and_sends(monkeypatch):
         "token",
         "addlistandcontacts",
         "topics",
+        "listsubscribe",
+        "listsubscribe",
         "createCampaign",
         "sendcampaign",
     ]
@@ -104,16 +108,23 @@ def test_send_creates_list_publishes_html_and_sends(monkeypatch):
     assert calls[1][2] == "params"
     assert created_list["emailids"] == "Rider@Example.com,other@example.com"
     assert created_list["mode"] == "newlist"
-    created = calls[3][1]
+    subscribed = [fields["contactinfo"] for url, fields, _ in calls if url.endswith("/listsubscribe")]
+    assert subscribed == [
+        '{"Contact Email": "Rider@Example.com"}',
+        '{"Contact Email": "other@example.com"}',
+    ]
+    assert calls[3][1]["topic_id"] == "topic-1"
     assert calls[3][2] == "data"
+    created = calls[5][1]
+    assert calls[5][2] == "data"
     assert created["from_email"] == "info@example.com"
     assert created["from_name"] == "DCU Udvalg for e-cykling"
     assert created["subject"] == "Liga update"
     assert created["topicId"] == "topic-1"
-    assert '"list-1":[]' in created["list_details"]
+    assert created["list_details"] == "{list1:[]}"
     assert created["content_url"].startswith("https://api.example.com/campaign-content/")
     assert calls[1][0].startswith("https://campaigns.zoho.eu/api/v1.1/")
-    assert calls[4][1]["campaignkey"] == "camp-1"
+    assert calls[6][1]["campaignkey"] == "camp-1"
 
 
 def test_create_error_is_email_send_error_and_content_is_removed(monkeypatch):
@@ -133,6 +144,7 @@ def test_create_error_is_email_send_error_and_content_is_removed(monkeypatch):
         "token",
         "addlistandcontacts",
         "topics",
+        "listsubscribe",
         "createCampaign",
     ]
 

@@ -2,6 +2,12 @@
 
 export type EmailSendMode = 'individual' | 'campaign' | 'group';
 
+export const INDIVIDUAL_RECIPIENT_LIMIT = 40;
+
+export function defaultSendMode(recipientCount: number): EmailSendMode {
+    return recipientCount > INDIVIDUAL_RECIPIENT_LIMIT ? 'campaign' : 'individual';
+}
+
 export interface EmailRecipientControlItem {
     id: string;
     name: string;

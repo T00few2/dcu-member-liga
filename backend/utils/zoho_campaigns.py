@@ -130,15 +130,21 @@ def _unwrap(payload: dict) -> dict:
 
 def _raise_if_failed(payload: dict, action: str) -> dict:
     body = _unwrap(payload)
-    if "error" in body and "access_token" not in body and "code" not in body:
+    if "error" in body and "access_token" not in body and "code" not in body and "Code" not in body:
         raise EmailConfigError(f"Zoho Campaigns {action} failed: {body.get('error')}")
     code = body.get("code")
+    if code is None and body.get("Code") is not None:
+        code = body.get("Code")
     status = str(body.get("status") or "").lower()
     if status == "success" or str(code) in {"0", "200"} or code in {0, 200}:
         return body
-    if code is None and not body.get("message"):
+    if code is None and not body.get("message") and not body.get("error") and status != "error":
         return body
-    message = str(body.get("message") or body.get("error") or f"Zoho Campaigns {action} failed.")
+    if str(code) == "UNABLE_TO_IMPORT":
+        raise EmailSendError(
+            "Zoho Campaigns could not read the message. The public content link did not return the email HTML."
+        )
+    message = str(body.get("message") or body.get("error") or code or f"Zoho Campaigns {action} failed.")
     raise EmailSendError(message)
 
 
@@ -261,6 +267,29 @@ def _topic_id(token: str) -> str | None:
     )
 
 
+def _list_details(listkey: str) -> str:
+    # Quoted JSON creates a draft that send then rejects with "no list selected".
+    # Zoho only stores the list when the key is unquoted, matching their sample.
+    if not re.fullmatch(r"[A-Za-z0-9]+", listkey):
+        raise EmailSendError("Zoho Campaigns returned an unexpected mailing list key.")
+    return "{" + listkey + ":[]}"
+
+
+def _associate_topic(listkey: str, addresses: list[str], topic_id: str, token: str) -> None:
+    for address in addresses:
+        _campaign_post(
+            "json/listsubscribe",
+            {
+                "resfmt": "JSON",
+                "listkey": listkey,
+                "contactinfo": json.dumps({"Contact Email": address}),
+                "topic_id": topic_id,
+            },
+            token,
+            query=False,
+        )
+
+
 def _field(payload: dict, *names: str) -> str:
     for name in names:
         value = payload.get(name)
@@ -331,6 +360,10 @@ def send_zoho_campaign(
             token,
         )
 
+    topic_id = _topic_id(token)
+    if topic_id:
+        _associate_topic(listkey, addresses, topic_id, token)
+
     content_token = secrets.token_urlsafe(32)
     expires_at = (datetime.now(timezone.utc) + CONTENT_TTL).isoformat()
     content_store.put(content_token, html_body, expires_at)
@@ -343,9 +376,8 @@ def send_zoho_campaign(
             "from_name": FROM_NAME,
             "subject": subject,
             "content_url": content_url,
-            "list_details": json.dumps({listkey: []}, separators=(",", ":")),
+            "list_details": _list_details(listkey),
         }
-        topic_id = _topic_id(token)
         if topic_id:
             create_fields["topicId"] = topic_id
         created = _campaign_post("createCampaign", create_fields, token, query=False)
