@@ -206,7 +206,7 @@ Notes:
 - `ZOHO_CAMPAIGNS_FROM_EMAIL` must be a verified Campaigns sender. The domain needs the Campaigns SPF include, DKIM, and a DMARC record.
 - Set `ZOHO_CAMPAIGNS_TOPIC_ID` only when the Campaigns account requires a topic on create.
 - `BACKEND_URL` must be the public API URL. Campaigns fetches the message HTML from `{BACKEND_URL}/campaign-content/{token}` while the campaign is created.
-- Add the same values as GitHub secrets so the deploy workflow writes them to the Cloud Function.
+- Add the same values as repository secrets (Settings → Secrets and variables → Actions). The deploy job does not select a GitHub Environment, so secrets stored only on an Environment are empty in the workflow. The deploy fails and prints the missing names instead of uploading blank values. Values are written to an env file, so a comma or `#` in a secret no longer drops the variables that follow it.
 
 ### 5) Start backend on port 8080
 
