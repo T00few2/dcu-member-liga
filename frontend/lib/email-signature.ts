@@ -1,8 +1,13 @@
 const SIGNATURE_MARKER = 'dcu udvalg for e-cykling';
 const SIGNATURE_HTML = '<p>Venlig hilsen</p><p><br></p><p>DCU Udvalg for e-cykling</p>';
+const CAMPAIGN_GREETING_HTML = '<p>Hej $[FNAME|]$</p><p><br></p>';
 
 export function defaultDcuSignatureHtml(): string {
     return SIGNATURE_HTML;
+}
+
+export function defaultCampaignMessageHtml(): string {
+    return CAMPAIGN_GREETING_HTML + SIGNATURE_HTML;
 }
 
 export function withDcuSignature(messageHtml: string): string {

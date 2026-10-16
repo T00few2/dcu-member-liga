@@ -122,7 +122,7 @@ export default function EmailRecipientControls({
                             </button>
                         </div>
                         {sendMode === 'campaign' && (
-                            <p className="text-xs text-muted-foreground">Each rider gets their own email through Zoho Campaigns, with an unsubscribe link. Extra addresses below are included as recipients.</p>
+                            <p className="text-xs text-muted-foreground">Each rider gets their own email through Zoho Campaigns, with an unsubscribe link. Hej $[FNAME|]$ becomes Hej plus the rider’s first name, or just Hej when the name is missing. Extra addresses below are included as recipients.</p>
                         )}
                         {sendMode === 'individual' && (
                             <p className="text-xs text-muted-foreground">Each message waits 5 seconds before the next, so the account is not shut down. Limited to 40 recipients.</p>

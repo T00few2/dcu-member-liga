@@ -86,7 +86,11 @@ def test_send_creates_list_publishes_html_and_sends(monkeypatch):
     calls = _install_api(monkeypatch, store)
 
     result = send_zoho_campaign(
-        recipients=["Rider@Example.com", "rider@example.com", "other@example.com"],
+        recipients=[
+            {"email": "Rider@Example.com", "first_name": "Christian"},
+            "rider@example.com",
+            {"email": "other@example.com"},
+        ],
         subject="Liga update",
         html_body="<p>Hello riders</p>",
         store=store,
@@ -110,7 +114,7 @@ def test_send_creates_list_publishes_html_and_sends(monkeypatch):
     assert created_list["mode"] == "newlist"
     subscribed = [fields["contactinfo"] for url, fields, _ in calls if url.endswith("/listsubscribe")]
     assert subscribed == [
-        '{"Contact Email": "Rider@Example.com"}',
+        '{"Contact Email": "Rider@Example.com", "First Name": "Christian"}',
         '{"Contact Email": "other@example.com"}',
     ]
     assert calls[3][1]["topic_id"] == "topic-1"

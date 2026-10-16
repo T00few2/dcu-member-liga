@@ -54,6 +54,11 @@ def _parse_manual_emails(raw: str) -> tuple[list[str], list[str]]:
     )
 
 
+def _first_name(name: str) -> str:
+    parts = str(name or "").strip().split()
+    return parts[0] if parts else ""
+
+
 def _chunks(values: list[str], size: int) -> list[list[str]]:
     return [values[i:i + size] for i in range(0, len(values), size)]
 
@@ -767,13 +772,25 @@ def send_email_to_selected_users():
         elif send_mode == 'campaign':
             try:
                 seen_campaign: set[str] = set()
-                campaign_recipients: list[str] = []
-                for addr in user_emails + manual_to_valid + manual_cc_valid + manual_bcc_valid:
+                campaign_recipients: list[dict[str, str]] = []
+                for result in results:
+                    if result.get('status') != 'resolved':
+                        continue
+                    addr = str(result.get('email') or '')
+                    key = addr.lower()
+                    if not addr or key in seen_campaign:
+                        continue
+                    seen_campaign.add(key)
+                    campaign_recipients.append({
+                        'email': addr,
+                        'first_name': _first_name(str(result.get('name') or '')),
+                    })
+                for addr in manual_to_valid + manual_cc_valid + manual_bcc_valid:
                     key = addr.lower()
                     if key in seen_campaign:
                         continue
                     seen_campaign.add(key)
-                    campaign_recipients.append(addr)
+                    campaign_recipients.append({'email': addr, 'first_name': ''})
 
                 campaign = send_zoho_campaign(
                     recipients=campaign_recipients,

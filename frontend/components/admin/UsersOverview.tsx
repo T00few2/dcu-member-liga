@@ -6,7 +6,7 @@ import { API_URL } from '@/lib/api';
 import { useUsersOverviewQuery } from '@/hooks/queries/useUsersOverviewQuery';
 import ComposeEmailModal from '@/components/admin/ComposeEmailModal';
 import EmailRecipientControls, { defaultSendMode, type EmailSendMode } from '@/components/admin/EmailRecipientControls';
-import { defaultDcuSignatureHtml, withDcuSignature } from '@/lib/email-signature';
+import { defaultCampaignMessageHtml, defaultDcuSignatureHtml, withDcuSignature } from '@/lib/email-signature';
 
 import UsersFilters from './users-overview/UsersFilters';
 import UsersTable from './users-overview/UsersTable';
@@ -42,6 +42,7 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
     const [isComposeOpen, setIsComposeOpen] = useState(false);
     const [emailSubject, setEmailSubject] = useState('');
     const [emailMessage, setEmailMessage] = useState('');
+    const [messageRevision, setMessageRevision] = useState(0);
     const [sendingEmail, setSendingEmail] = useState(false);
     const [sendError, setSendError] = useState<string | null>(null);
     const [lastSendSummary, setLastSendSummary] = useState<EmailSendSummary | null>(null);
@@ -171,11 +172,12 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
     };
 
     const openComposeModal = () => {
+        const mode = defaultSendMode(selectedCount);
         setIsComposeOpen(true);
         setSendError(null);
-        setSendMode(defaultSendMode(selectedCount));
+        setSendMode(mode);
         setRecipientMode('to');
-        setEmailMessage(defaultDcuSignatureHtml());
+        setEmailMessage(mode === 'campaign' ? defaultCampaignMessageHtml() : defaultDcuSignatureHtml());
         setManualTo('');
         setManualCc('');
         setManualBcc('');
@@ -183,6 +185,20 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
         setToError(null);
         setCcError(null);
         setBccError(null);
+    };
+
+    const changeSendMode = (mode: EmailSendMode) => {
+        setSendMode(mode);
+        const signature = defaultDcuSignatureHtml();
+        const campaign = defaultCampaignMessageHtml();
+        const next = mode === 'campaign' && emailMessage === signature
+            ? campaign
+            : mode !== 'campaign' && emailMessage === campaign
+                ? signature
+                : null;
+        if (!next) return;
+        setEmailMessage(next);
+        setMessageRevision(revision => revision + 1);
     };
 
     const isMessageEmpty = (html: string) =>
@@ -398,6 +414,7 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
                 onSubjectChange={setEmailSubject}
                 onMessageChange={setEmailMessage}
                 initialMessage={emailMessage}
+                editorKey={messageRevision}
                 onClose={closeComposeModal}
                 onSend={handleSendEmail}
                 sending={sendingEmail}
@@ -417,7 +434,7 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
                         selectedCount={selectedCount}
                         selectedWithoutEmail={selectedWithoutEmail}
                         sendMode={sendMode}
-                        onSendModeChange={setSendMode}
+                        onSendModeChange={changeSendMode}
                         recipientMode={recipientMode}
                         onRecipientModeChange={setRecipientMode}
                         manualTo={manualTo}

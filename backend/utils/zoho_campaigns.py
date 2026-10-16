@@ -275,14 +275,39 @@ def _list_details(listkey: str) -> str:
     return "{" + listkey + ":[]}"
 
 
-def _associate_topic(listkey: str, addresses: list[str], topic_id: str, token: str) -> None:
-    for address in addresses:
+def _contact_info(address: str, first_name: str) -> str:
+    info = {"Contact Email": address}
+    if first_name:
+        info["First Name"] = first_name
+    return json.dumps(info)
+
+
+def _recipient_rows(recipients: list) -> list[tuple[str, str]]:
+    rows: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for raw in recipients:
+        if isinstance(raw, str):
+            address, first_name = raw, ""
+        else:
+            address = str(raw.get("email") or "")
+            first_name = str(raw.get("first_name") or raw.get("firstName") or "").strip()
+        address = address.strip()
+        key = address.lower()
+        if not address or key in seen:
+            continue
+        seen.add(key)
+        rows.append((address, first_name))
+    return rows
+
+
+def _associate_topic(listkey: str, rows: list[tuple[str, str]], topic_id: str, token: str) -> None:
+    for address, first_name in rows:
         _campaign_post(
             "json/listsubscribe",
             {
                 "resfmt": "JSON",
                 "listkey": listkey,
-                "contactinfo": json.dumps({"Contact Email": address}),
+                "contactinfo": _contact_info(address, first_name),
                 "topic_id": topic_id,
             },
             token,
@@ -300,22 +325,20 @@ def _field(payload: dict, *names: str) -> str:
 
 def send_zoho_campaign(
     *,
-    recipients: list[str],
+    recipients: list,
     subject: str,
     html_body: str,
     store: CampaignContentStore | None = None,
 ) -> dict[str, str]:
-    """Create a list, import the HTML, and send. Returns campaign key and status."""
+    """Create a list, import the HTML, and send. Returns campaign key and status.
+
+    A recipient may be an email string or {"email", "first_name"}. The first name
+    is stored on the Zoho contact so $[FNAME|]$ in the message becomes that name,
+    and an empty name leaves the greeting as the text around the tag.
+    """
     _require_config()
-    addresses = []
-    seen: set[str] = set()
-    for raw in recipients:
-        address = (raw or "").strip()
-        key = address.lower()
-        if not address or key in seen:
-            continue
-        seen.add(key)
-        addresses.append(address)
+    rows = _recipient_rows(recipients)
+    addresses = [address for address, _ in rows]
     if not addresses:
         raise EmailSendError("At least one recipient is required.")
     subject = subject.strip()
@@ -362,7 +385,7 @@ def send_zoho_campaign(
 
     topic_id = _topic_id(token)
     if topic_id:
-        _associate_topic(listkey, addresses, topic_id, token)
+        _associate_topic(listkey, rows, topic_id, token)
 
     content_token = secrets.token_urlsafe(32)
     expires_at = (datetime.now(timezone.utc) + CONTENT_TTL).isoformat()

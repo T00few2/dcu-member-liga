@@ -28,6 +28,7 @@ interface ComposeEmailModalProps {
     sendingLabel?: string;
     error?: string | null;
     beforeSubject?: ReactNode;
+    editorKey?: string | number;
 }
 
 export default function ComposeEmailModal({
@@ -45,6 +46,7 @@ export default function ComposeEmailModal({
     sendingLabel = 'Sending…',
     error,
     beforeSubject,
+    editorKey,
 }: ComposeEmailModalProps) {
     if (!isOpen) return null;
 
@@ -80,7 +82,7 @@ export default function ComposeEmailModal({
                     <div className="space-y-2">
                         <label className="block text-sm font-medium">Message</label>
                         <RichTextEditor
-                            key={isOpen ? 'compose-open' : 'compose-closed'}
+                            key={editorKey ?? (isOpen ? 'compose-open' : 'compose-closed')}
                             onChange={onMessageChange}
                             initialContent={initialMessage}
                             disabled={sending}
