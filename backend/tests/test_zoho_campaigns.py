@@ -1,0 +1,147 @@
+"""Zoho Campaigns client: list, subscribe, content URL, create, and send."""
+
+from __future__ import annotations
+
+import os
+import sys
+
+import pytest
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+import utils.zoho_campaigns as campaigns  # noqa: E402
+from utils.email_sender import EmailConfigError, EmailSendError  # noqa: E402
+from utils.zoho_campaigns import MemoryCampaignContentStore, send_zoho_campaign  # noqa: E402
+
+
+class _Response:
+    def __init__(self, payload: dict, status_code: int = 200):
+        self._payload = payload
+        self.status_code = status_code
+        self.text = str(payload)
+
+    def json(self):
+        return self._payload
+
+
+@pytest.fixture(autouse=True)
+def _credentials(monkeypatch):
+    campaigns.clear_access_token_cache()
+    monkeypatch.setattr(campaigns, "ZOHO_CAMPAIGNS_CLIENT_ID", "client-id")
+    monkeypatch.setattr(campaigns, "ZOHO_CAMPAIGNS_CLIENT_SECRET", "client-secret")
+    monkeypatch.setattr(campaigns, "ZOHO_CAMPAIGNS_REFRESH_TOKEN", "refresh-token")
+    monkeypatch.setattr(campaigns, "ZOHO_CAMPAIGNS_FROM_EMAIL", "info@example.com")
+    monkeypatch.setattr(campaigns, "ZOHO_CAMPAIGNS_TOPIC_ID", None)
+    monkeypatch.setattr(campaigns, "BACKEND_URL", "https://api.example.com")
+
+
+def _install_api(monkeypatch, store: MemoryCampaignContentStore, *, fail_create: bool = False):
+    calls: list[tuple[str, dict]] = []
+
+    def fake_post(url, data=None, headers=None, timeout=None):
+        calls.append((url, dict(data or {})))
+        if url.endswith("/oauth/v2/token"):
+            return _Response({"access_token": "access-token", "expires_in": 3600})
+        if url.endswith("/addlist"):
+            return _Response({"code": "0", "listkey": "list-1", "message": "List created successfully"})
+        if url.endswith("/addlistsubscribersinbulk"):
+            return _Response({"code": "0", "status": "success", "message": "added"})
+        if url.endswith("/createCampaign"):
+            if fail_create:
+                return _Response({"code": "1004", "message": "Invalid URL for content import."})
+            token = str(data["content_url"]).rsplit("/", 1)[-1]
+            assert store.get(token) == "<p>Hello riders</p>"
+            return _Response({
+                "code": "200",
+                "campaignkey": "camp-1",
+                "message": "Campaign created successfully",
+            })
+        if url.endswith("/sendcampaign"):
+            return _Response({"code": "200", "campaign_status": "inprogress", "message": ""})
+        raise AssertionError(url)
+
+    monkeypatch.setattr(campaigns.requests, "post", fake_post)
+    return calls
+
+
+def test_send_creates_list_publishes_html_and_sends(monkeypatch):
+    store = MemoryCampaignContentStore()
+    calls = _install_api(monkeypatch, store)
+
+    result = send_zoho_campaign(
+        recipients=["Rider@Example.com", "rider@example.com", "other@example.com"],
+        subject="Liga update",
+        html_body="<p>Hello riders</p>",
+        store=store,
+    )
+
+    assert result == {"campaignKey": "camp-1", "campaignStatus": "inprogress"}
+    assert store.docs == {}
+    paths = [url.rsplit("/", 1)[-1] for url, _ in calls]
+    assert paths == [
+        "token",
+        "addlist",
+        "addlistsubscribersinbulk",
+        "createCampaign",
+        "sendcampaign",
+    ]
+    subscribe = calls[2][1]
+    assert subscribe["listkey"] == "list-1"
+    assert subscribe["emailids"] == "Rider@Example.com,other@example.com"
+    created = calls[3][1]
+    assert created["from_email"] == "info@example.com"
+    assert created["from_name"] == "DCU Udvalg for e-cykling"
+    assert created["subject"] == "Liga update"
+    assert '"list-1":[]' in created["list_details"]
+    assert created["content_url"].startswith("https://api.example.com/campaign-content/")
+    assert calls[1][0].startswith("https://campaigns.zoho.eu/api/v1.1/")
+    assert calls[4][1]["campaignkey"] == "camp-1"
+
+
+def test_create_error_is_email_send_error_and_content_is_removed(monkeypatch):
+    store = MemoryCampaignContentStore()
+    calls = _install_api(monkeypatch, store, fail_create=True)
+
+    with pytest.raises(EmailSendError, match="Invalid URL for content import"):
+        send_zoho_campaign(
+            recipients=["rider@example.com"],
+            subject="Liga update",
+            html_body="<p>Hello riders</p>",
+            store=store,
+        )
+
+    assert store.docs == {}
+    assert [url.rsplit("/", 1)[-1] for url, _ in calls] == [
+        "token",
+        "addlist",
+        "addlistsubscribersinbulk",
+        "createCampaign",
+    ]
+
+
+def test_missing_credentials_raise_config_error(monkeypatch):
+    monkeypatch.setattr(campaigns, "ZOHO_CAMPAIGNS_REFRESH_TOKEN", None)
+    with pytest.raises(EmailConfigError, match="ZOHO_CAMPAIGNS_REFRESH_TOKEN"):
+        send_zoho_campaign(
+            recipients=["rider@example.com"],
+            subject="Liga update",
+            html_body="<p>Hello</p>",
+            store=MemoryCampaignContentStore(),
+        )
+
+
+def test_content_route_serves_stored_html(monkeypatch):
+    from routes.admin_users import get_campaign_content
+
+    def fake_get(self, token: str):
+        return "<p>Hello riders</p>" if token == "a" * 32 else None
+
+    monkeypatch.setattr(
+        "routes.admin_users.FirestoreCampaignContentStore.get",
+        fake_get,
+    )
+    body, status, headers = get_campaign_content("a" * 32)
+    assert status == 200
+    assert body == "<p>Hello riders</p>"
+    assert headers["Content-Type"].startswith("text/html")
+    assert get_campaign_content("short") == ("Not found", 404)

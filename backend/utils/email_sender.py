@@ -1,4 +1,5 @@
 import smtplib
+import time
 from email.message import EmailMessage
 from html.parser import HTMLParser
 
@@ -13,6 +14,9 @@ from config import (
 
 SMTP_TIMEOUT_SECONDS = 20
 BCC_BATCH_SIZE = 50
+# Zoho blocks a mailbox that fires many personal messages back to back.
+INDIVIDUAL_SEND_DELAY_SECONDS = 5
+INDIVIDUAL_SEND_LIMIT = 40
 
 
 class _HTMLStripper(HTMLParser):
@@ -213,6 +217,8 @@ def send_html_emails_individually(
                     for addr in addresses[i:]:
                         outcomes.append((addr, f'Connection lost: {exc}'))
                     return outcomes
+                if i < len(addresses) - 1:
+                    time.sleep(INDIVIDUAL_SEND_DELAY_SECONDS)
 
     except smtplib.SMTPAuthenticationError as exc:
         raise EmailConfigError('SMTP authentication failed. Check Zoho SMTP credentials.') from exc

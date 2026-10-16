@@ -33,6 +33,13 @@ ZOHO_SMTP_USE_TLS = os.getenv('ZOHO_SMTP_USE_TLS', 'true').strip().lower() in {'
 ZOHO_SMTP_USER = os.getenv('ZOHO_SMTP_USER')
 ZOHO_SMTP_APP_PASSWORD = os.getenv('ZOHO_SMTP_APP_PASSWORD')
 
+# Zoho Campaigns API (EU). Used by the admin Campaign delivery mode.
+ZOHO_CAMPAIGNS_CLIENT_ID = os.getenv('ZOHO_CAMPAIGNS_CLIENT_ID')
+ZOHO_CAMPAIGNS_CLIENT_SECRET = os.getenv('ZOHO_CAMPAIGNS_CLIENT_SECRET')
+ZOHO_CAMPAIGNS_REFRESH_TOKEN = os.getenv('ZOHO_CAMPAIGNS_REFRESH_TOKEN')
+ZOHO_CAMPAIGNS_FROM_EMAIL = os.getenv('ZOHO_CAMPAIGNS_FROM_EMAIL', 'info@dansk-ecykling.dk')
+ZOHO_CAMPAIGNS_TOPIC_ID = os.getenv('ZOHO_CAMPAIGNS_TOPIC_ID') or None
+
 # Critical secrets — raise at startup so the app fails loudly.
 # In CI (GitHub Actions sets CI=true automatically), downgrade to a warning
 # so tests can run without real credentials.
@@ -58,6 +65,9 @@ for _name, _val, _hint in [
     ('ZR_AUTH_KEY', ZR_AUTH_KEY, 'ZwiftRacing integration will fail.'),
     ('ZOHO_SMTP_USER', ZOHO_SMTP_USER, 'Admin email sending will be unavailable.'),
     ('ZOHO_SMTP_APP_PASSWORD', ZOHO_SMTP_APP_PASSWORD, 'Admin email sending will be unavailable.'),
+    ('ZOHO_CAMPAIGNS_CLIENT_ID', ZOHO_CAMPAIGNS_CLIENT_ID, 'Campaign delivery will be unavailable.'),
+    ('ZOHO_CAMPAIGNS_CLIENT_SECRET', ZOHO_CAMPAIGNS_CLIENT_SECRET, 'Campaign delivery will be unavailable.'),
+    ('ZOHO_CAMPAIGNS_REFRESH_TOKEN', ZOHO_CAMPAIGNS_REFRESH_TOKEN, 'Campaign delivery will be unavailable.'),
 ]:
     if not _val:
         logger.warning(f"Optional config '{_name}' is not set. {_hint}")

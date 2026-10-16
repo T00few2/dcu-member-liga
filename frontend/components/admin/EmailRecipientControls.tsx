@@ -1,5 +1,7 @@
 'use client';
 
+export type EmailSendMode = 'individual' | 'campaign' | 'group';
+
 export interface EmailRecipientControlItem {
     id: string;
     name: string;
@@ -12,8 +14,8 @@ interface EmailRecipientControlsProps {
     recipients: EmailRecipientControlItem[];
     selectedCount: number;
     selectedWithoutEmail: number;
-    sendMode: 'individual' | 'group';
-    onSendModeChange: (mode: 'individual' | 'group') => void;
+    sendMode: EmailSendMode;
+    onSendModeChange: (mode: EmailSendMode) => void;
     recipientMode: 'to' | 'cc' | 'bcc';
     onRecipientModeChange: (mode: 'to' | 'cc' | 'bcc') => void;
     manualTo: string;
@@ -65,7 +67,11 @@ export default function EmailRecipientControls({
                 <span>Recipients</span>
                 <span className="flex items-center gap-2 text-muted-foreground font-normal">
                     <span>
-                        {sendMode === 'individual' ? 'Individual' : `Group (${recipientMode.toUpperCase()})`}
+                        {sendMode === 'individual'
+                            ? 'Individual'
+                            : sendMode === 'campaign'
+                            ? 'Campaign'
+                            : `Group (${recipientMode.toUpperCase()})`}
                         {' · '}{selectedCount} recipient(s)
                         {manualTo.trim() ? ` · +${manualToCount} To` : ''}
                         {manualCc.trim() ? ` · +${manualCcCount} CC` : ''}
@@ -80,7 +86,16 @@ export default function EmailRecipientControls({
                 <div className="border-t border-border space-y-3 p-3">
                     <div className="space-y-2">
                         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Delivery</p>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-3 gap-2">
+                            <button
+                                type="button"
+                                onClick={() => onSendModeChange('campaign')}
+                                disabled={sending}
+                                className={`text-left rounded-lg border px-3 py-2.5 transition ${sendMode === 'campaign' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'}`}
+                            >
+                                <div className="text-sm font-medium">Campaign</div>
+                                <div className="text-xs text-muted-foreground mt-0.5">Personal email per rider · Zoho Campaigns</div>
+                            </button>
                             <button
                                 type="button"
                                 onClick={() => onSendModeChange('individual')}
@@ -88,7 +103,7 @@ export default function EmailRecipientControls({
                                 className={`text-left rounded-lg border px-3 py-2.5 transition ${sendMode === 'individual' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'}`}
                             >
                                 <div className="text-sm font-medium">Individual</div>
-                                <div className="text-xs text-muted-foreground mt-0.5">Personal email per recipient · Best inbox delivery</div>
+                                <div className="text-xs text-muted-foreground mt-0.5">Personal email per recipient · 5s pause between each</div>
                             </button>
                             <button
                                 type="button"
@@ -100,6 +115,12 @@ export default function EmailRecipientControls({
                                 <div className="text-xs text-muted-foreground mt-0.5">One email to all · Choose address visibility</div>
                             </button>
                         </div>
+                        {sendMode === 'campaign' && (
+                            <p className="text-xs text-muted-foreground">Each rider gets their own email through Zoho Campaigns, with an unsubscribe link. Extra addresses below are included as recipients.</p>
+                        )}
+                        {sendMode === 'individual' && (
+                            <p className="text-xs text-muted-foreground">Each message waits 5 seconds before the next, so the account is not shut down. Limited to 40 recipients.</p>
+                        )}
                         {sendMode === 'group' && (
                             <div className="space-y-1.5 pt-0.5">
                                 <div className="flex items-center gap-4">

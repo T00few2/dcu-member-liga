@@ -11,13 +11,33 @@ from routes.admin import admin_bp
 from authz import require_admin, AuthzError
 from extensions import db
 from services.request_models import SendEmailRequest, parse_body
-from utils.email_sender import send_html_email, send_html_emails_individually, _strip_html, EmailConfigError, EmailSendError
+from utils.email_sender import (
+    send_html_email,
+    send_html_emails_individually,
+    _strip_html,
+    EmailConfigError,
+    EmailSendError,
+    INDIVIDUAL_SEND_LIMIT,
+)
+from utils.zoho_campaigns import FirestoreCampaignContentStore, send_zoho_campaign
 
 import logging
 
 logger = logging.getLogger(__name__)
 EMAIL_PATTERN = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
-MAX_EMAIL_RECIPIENTS = 200
+MAX_EMAIL_RECIPIENTS = 1000
+_CONTENT_TOKEN = re.compile(r'^[A-Za-z0-9_-]{20,}$')
+
+
+@admin_bp.route('/campaign-content/<token>', methods=['GET'])
+def get_campaign_content(token: str):
+    """Public HTML fetch used by Zoho Campaigns while a mailing is created."""
+    if not _CONTENT_TOKEN.match(token or ''):
+        return 'Not found', 404
+    html = FirestoreCampaignContentStore().get(token)
+    if not html:
+        return 'Not found', 404
+    return html, 200, {'Content-Type': 'text/html; charset=utf-8'}
 
 
 def _is_valid_email(email: str) -> bool:
@@ -541,8 +561,10 @@ def get_user_races(user_id):
 def send_email_to_selected_users():
     """Send email to admin-selected users (admin-only).
 
-    sendMode='individual': one personal To:<addr> email per recipient — better
-    inbox delivery, no visible recipient list.
+    sendMode='individual': one personal To:<addr> email per recipient, with a
+    pause between each so the mailbox is not blocked. Limited to
+    INDIVIDUAL_SEND_LIMIT recipients.
+    sendMode='campaign': one Zoho Campaigns mailing; each rider gets a personal email.
     sendMode='group': one email to all recipients; recipientMode controls
     whether user addresses appear in To, Cc, or Bcc.
     """
@@ -677,6 +699,7 @@ def send_email_to_selected_users():
 
         sent = 0
         failed = 0
+        campaign_info: dict[str, str] = {}
 
         if send_mode == 'individual':
             try:
@@ -686,6 +709,14 @@ def send_email_to_selected_users():
                     if addr not in seen:
                         seen.add(addr)
                         deduped.append(addr)
+
+                if len(deduped) > INDIVIDUAL_SEND_LIMIT:
+                    return jsonify({
+                        'error': (
+                            f'Individual delivery is limited to {INDIVIDUAL_SEND_LIMIT} recipients '
+                            'so the mailbox is not blocked. Choose Campaign for a larger mailing.'
+                        ),
+                    }), 400
 
                 outcomes = send_html_emails_individually(
                     addresses=deduped,
@@ -733,6 +764,42 @@ def send_email_to_selected_users():
                         r['status'] = 'failed'
                         r['reason'] = str(exc)
 
+        elif send_mode == 'campaign':
+            try:
+                seen_campaign: set[str] = set()
+                campaign_recipients: list[str] = []
+                for addr in user_emails + manual_to_valid + manual_cc_valid + manual_bcc_valid:
+                    key = addr.lower()
+                    if key in seen_campaign:
+                        continue
+                    seen_campaign.add(key)
+                    campaign_recipients.append(addr)
+
+                campaign = send_zoho_campaign(
+                    recipients=campaign_recipients,
+                    subject=subject,
+                    html_body=message,
+                )
+                campaign_info = campaign
+                sent = len(campaign_recipients)
+                for r in results:
+                    if r['status'] == 'resolved':
+                        r['status'] = 'sent'
+                logger.info(
+                    'Campaign email send accepted: sent=%d key=%s subject=%r',
+                    sent, campaign.get('campaignKey'), subject,
+                )
+            except EmailConfigError as exc:
+                logger.error('Email config error: %s', exc)
+                return jsonify({'error': str(exc)}), 503
+            except EmailSendError as exc:
+                failed = total_valid
+                logger.warning('Failed campaign email send: %s', exc)
+                for r in results:
+                    if r['status'] == 'resolved':
+                        r['status'] = 'failed'
+                        r['reason'] = str(exc)
+
         else:  # group
             if recipient_mode == 'to':
                 all_to, all_cc, all_bcc = user_emails + manual_to_valid, manual_cc_valid, manual_bcc_valid
@@ -770,6 +837,7 @@ def send_email_to_selected_users():
             'sent': sent,
             'failed': failed,
             'sendMode': send_mode,
+            **campaign_info,
         }
         return jsonify({'summary': summary, 'results': results}), 200
 

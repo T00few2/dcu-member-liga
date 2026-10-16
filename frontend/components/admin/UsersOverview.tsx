@@ -5,7 +5,7 @@ import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
 import { useUsersOverviewQuery } from '@/hooks/queries/useUsersOverviewQuery';
 import ComposeEmailModal from '@/components/admin/ComposeEmailModal';
-import EmailRecipientControls from '@/components/admin/EmailRecipientControls';
+import EmailRecipientControls, { type EmailSendMode } from '@/components/admin/EmailRecipientControls';
 import { defaultDcuSignatureHtml, withDcuSignature } from '@/lib/email-signature';
 
 import UsersFilters from './users-overview/UsersFilters';
@@ -17,7 +17,8 @@ interface EmailSendSummary {
     sent: number;
     failed: number;
     skipped: number;
-    sendMode?: 'individual' | 'group';
+    sendMode?: EmailSendMode;
+    campaignStatus?: string;
 }
 
 interface SendResult {
@@ -46,7 +47,7 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
     const [lastSendSummary, setLastSendSummary] = useState<EmailSendSummary | null>(null);
     const [lastSendResults, setLastSendResults] = useState<SendResult[]>([]);
     const [failedListOpen, setFailedListOpen] = useState(false);
-    const [sendMode, setSendMode] = useState<'individual' | 'group'>('individual');
+    const [sendMode, setSendMode] = useState<EmailSendMode>('campaign');
     const [recipientMode, setRecipientMode] = useState<'to' | 'cc' | 'bcc'>('bcc');
     const [manualTo, setManualTo] = useState('');
     const [manualCc, setManualCc] = useState('');
@@ -172,7 +173,7 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
     const openComposeModal = () => {
         setIsComposeOpen(true);
         setSendError(null);
-        setSendMode(selectedIds.size > 20 ? 'group' : 'individual');
+        setSendMode('campaign');
         setRecipientMode('to');
         setEmailMessage(defaultDcuSignatureHtml());
         setManualTo('');
@@ -314,9 +315,12 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
                         <div className="px-4 py-3 flex items-center gap-2 flex-wrap">
                             <span className="text-muted-foreground">Last send:</span>
                             {lastSendSummary.sendMode && (
-                                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${lastSendSummary.sendMode === 'individual' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
-                                    {lastSendSummary.sendMode === 'individual' ? 'Individual' : 'Group'}
+                                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${lastSendSummary.sendMode === 'individual' ? 'bg-blue-100 text-blue-700' : lastSendSummary.sendMode === 'campaign' ? 'bg-emerald-100 text-emerald-700' : 'bg-purple-100 text-purple-700'}`}>
+                                    {lastSendSummary.sendMode === 'individual' ? 'Individual' : lastSendSummary.sendMode === 'campaign' ? 'Campaign' : 'Group'}
                                 </span>
+                            )}
+                            {lastSendSummary.campaignStatus && (
+                                <span className="text-muted-foreground">Zoho status: {lastSendSummary.campaignStatus}</span>
                             )}
                             <span className="flex-1">
                                 {lastSendSummary.requested} requested, {lastSendSummary.skipped} skipped —{' '}
@@ -399,7 +403,7 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
                 sending={sendingEmail}
                 sendDisabled={selectedCount === 0}
                 sendLabel="Send email"
-                sendingLabel="Sending…"
+                sendingLabel={sendMode === 'individual' ? 'Sending with a pause…' : 'Sending…'}
                 error={sendError}
                 beforeSubject={(
                     <EmailRecipientControls

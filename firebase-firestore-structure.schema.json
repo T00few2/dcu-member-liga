@@ -25,6 +25,13 @@
         "$ref": "#/$defs/categoryTransferDoc"
       }
     },
+    "campaign_content": {
+      "type": "array",
+      "description": "Short-lived HTML documents fetched by Zoho Campaigns while an admin mailing is created. The document id is an unguessable token. Deleted after Campaigns imports the HTML.",
+      "items": {
+        "$ref": "#/$defs/campaignContentDoc"
+      }
+    },
     "elevation_cache": {
       "type": "array",
       "items": {
@@ -1975,6 +1982,16 @@
         "penErrors": { "type": "array", "items": { "type": "string" } },
         "createdAtIso": { "type": "string" },
         "revertedAtIso": { "type": "string" }
+      }
+    },
+    "campaignContentDoc": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "_id": { "type": "string", "description": "Unguessable URL token. Not a rider or campaign id." },
+        "html": { "type": "string" },
+        "createdAt": { "$ref": "#/$defs/timestampString" },
+        "expiresAt": { "$ref": "#/$defs/timestampString" }
       }
     }
   }

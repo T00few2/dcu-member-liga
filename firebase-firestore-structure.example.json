@@ -758,6 +758,14 @@
       "createdAtIso": "2026-05-21T08:00:00+00:00"
     }
   ],
+  "campaign_content": [
+    {
+      "_id": "exampleCampaignContentToken",
+      "html": "<p>Example announcement</p>",
+      "createdAt": "2026-10-16T14:00:00+00:00",
+      "expiresAt": "2026-10-16T15:00:00+00:00"
+    }
+  ],
   "weight_history": [
     {
       "_id": "wh_20260515T001500Z_100001",

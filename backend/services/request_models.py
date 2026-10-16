@@ -218,7 +218,7 @@ class SendEmailRequest(BaseModel):
     zwiftIds: list[str] = Field(default_factory=list)
     subject: str
     message: str
-    sendMode: Literal['individual', 'group'] = 'individual'
+    sendMode: Literal['individual', 'campaign', 'group'] = 'individual'
     recipientMode: Literal['to', 'cc', 'bcc'] = 'bcc'
     manualTo: str = ''
     manualCc: str = ''

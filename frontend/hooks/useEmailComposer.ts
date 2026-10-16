@@ -4,7 +4,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { User } from 'firebase/auth';
 import { API_URL } from '@/lib/api';
 import type { RaceResult, DualRecordingVerification } from '@/types/admin';
-import type { EmailRecipientControlItem } from '@/components/admin/EmailRecipientControls';
+import type { EmailRecipientControlItem, EmailSendMode } from '@/components/admin/EmailRecipientControls';
 import { withDcuSignature } from '@/lib/email-signature';
 
 export interface ComposeRecipient {
@@ -45,7 +45,7 @@ export function useEmailComposer({
     const [sendingEmail, setSendingEmail] = useState(false);
     const [sendError, setSendError] = useState<string | null>(null);
     const [sendStatus, setSendStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-    const [sendMode, setSendMode] = useState<'individual' | 'group'>('individual');
+    const [sendMode, setSendMode] = useState<EmailSendMode>('individual');
     const [recipientMode, setRecipientMode] = useState<'to' | 'cc' | 'bcc'>('to');
     const [manualTo, setManualToRaw] = useState('');
     const [manualCc, setManualCcRaw] = useState('');
@@ -164,7 +164,7 @@ export function useEmailComposer({
         resetComposeState();
         setComposeTitle('Email til alle DR-ryttere');
         setComposeRecipients(drBulkRecipients);
-        setSendMode('group');
+        setSendMode('campaign');
         setRecipientMode('to');
         setEmailSubject('Dual recording resultat er klar');
         setEmailMessage(body);
@@ -213,7 +213,9 @@ export function useEmailComposer({
             const summary = data.summary ?? {};
             setSendStatus({
                 type: 'success',
-                text: `Email sendt. ${summary.sent ?? 0} sendt, ${summary.skipped ?? 0} sprunget over, ${summary.failed ?? 0} fejlede.`,
+                text: summary.campaignStatus
+                    ? `Kampagne sendt til Zoho (${summary.campaignStatus}). ${summary.sent ?? 0} modtagere.`
+                    : `Email sendt. ${summary.sent ?? 0} sendt, ${summary.skipped ?? 0} sprunget over, ${summary.failed ?? 0} fejlede.`,
             });
             closeComposeModal();
         } catch (err) {
