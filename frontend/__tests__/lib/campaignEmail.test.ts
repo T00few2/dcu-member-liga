@@ -2,28 +2,38 @@ import { describe, expect, it } from 'vitest';
 import { buildRaceAnnouncementHtml, formatRaceWhen } from '@/lib/campaignEmail';
 
 describe('buildRaceAnnouncementHtml', () => {
-    it('includes the greeting, race details, and schedule link', () => {
+    it('includes the greeting, the next race card, and a link to the front page', () => {
         const date = '2026-10-18T17:00:00.000Z';
         const html = buildRaceAnnouncementHtml({
             siteUrl: 'https://www.dansk-ecykling.dk/',
             introHtml: '<p>Husk at tilmelde jer.</p>',
-            races: [{
+            race: {
                 name: 'Watopia Classic',
                 date,
+                map: 'Watopia',
                 routeName: 'Hilly Route',
                 laps: 3,
                 totalDistance: 42.4,
-            }],
+                totalElevation: 840,
+            },
         });
 
         expect(html).toContain('Hej $[FNAME|]$');
         expect(html).toContain('Watopia Classic');
         expect(html).toContain(formatRaceWhen(date));
+        expect(html).toContain('Watopia');
         expect(html).toContain('Hilly Route');
-        expect(html).toContain('3 omgange');
+        expect(html).toContain('Distance');
         expect(html).toContain('42,4 km');
+        expect(html).toContain('Højdemeter');
+        expect(html).toContain('840 m');
+        expect(html).toContain('Omgange');
+        expect(html).toContain('>3<');
         expect(html).toContain('Husk at tilmelde jer.');
-        expect(html).toContain('https://www.dansk-ecykling.dk/schedule');
+        expect(html).toContain('https://www.dansk-ecykling.dk/');
+        expect(html).toContain('Tilmeld dig');
+        expect(html).not.toContain('/schedule');
+        expect(html).toContain('prefers-color-scheme: dark');
         expect(html).toContain('https://www.dansk-ecykling.dk/brand/dcu-e-serien-logo-white.png');
         expect(html).toContain('Venlig hilsen');
         expect(html).not.toContain('https://www.dansk-ecykling.dk//');
@@ -33,7 +43,7 @@ describe('buildRaceAnnouncementHtml', () => {
         const html = buildRaceAnnouncementHtml({
             siteUrl: 'https://www.dansk-ecykling.dk',
             introHtml: '',
-            races: [{ name: '<script>', date: 'not-a-date' }],
+            race: { name: '<script>', date: 'not-a-date' },
         });
 
         expect(html).toContain('&lt;script&gt;');

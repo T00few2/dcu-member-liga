@@ -12,8 +12,8 @@ import {
     futureRaces,
     publicSiteUrl,
     RACE_ANNOUNCEMENT_INTRO_HTML,
-    RACE_ANNOUNCEMENT_SUBJECT,
     formatRaceWhen,
+    nextRaceSubject,
 } from '@/lib/campaignEmail';
 import { useRacesQuery } from '@/hooks/queries';
 import type { Race } from '@/types/live';
@@ -61,7 +61,6 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
     const [failedListOpen, setFailedListOpen] = useState(false);
     const [sendMode, setSendMode] = useState<EmailSendMode>('individual');
     const [campaignLayout, setCampaignLayout] = useState<'plain' | 'races'>('plain');
-    const [selectedRaceIds, setSelectedRaceIds] = useState<Set<string> | null>(null);
     const [recipientMode, setRecipientMode] = useState<'to' | 'cc' | 'bcc'>('bcc');
     const [manualTo, setManualTo] = useState('');
     const [manualCc, setManualCc] = useState('');
@@ -180,7 +179,6 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
         setEmailSubject('');
         setEmailMessage('');
         setCampaignLayout('plain');
-        setSelectedRaceIds(null);
         setManualTo('');
         setManualCc('');
         setManualBcc('');
@@ -196,7 +194,6 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
         setSendError(null);
         setSendMode(mode);
         setCampaignLayout('plain');
-        setSelectedRaceIds(null);
         setRecipientMode('to');
         setEmailSubject('');
         setEmailMessage(mode === 'campaign' ? defaultCampaignMessageHtml() : defaultDcuSignatureHtml());
@@ -227,12 +224,8 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
     const chooseCampaignLayout = (layout: 'plain' | 'races') => {
         setCampaignLayout(layout);
         if (layout === 'races') {
-            setSelectedRaceIds(prev => {
-                if (prev) return prev;
-                if (upcomingRaces.length === 0 && racesQuery.isLoading) return null;
-                return new Set(upcomingRaces.map(race => race.id));
-            });
-            if (!emailSubject.trim()) setEmailSubject(RACE_ANNOUNCEMENT_SUBJECT);
+            const upcoming = upcomingRaces[0];
+            if (!emailSubject.trim()) setEmailSubject(nextRaceSubject(upcoming?.name || ''));
             if (emailMessage === defaultCampaignMessageHtml() || emailMessage === defaultDcuSignatureHtml()) {
                 setEmailMessage(RACE_ANNOUNCEMENT_INTRO_HTML);
                 setMessageRevision(revision => revision + 1);
@@ -243,15 +236,6 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
             setEmailMessage(defaultCampaignMessageHtml());
             setMessageRevision(revision => revision + 1);
         }
-    };
-
-    const toggleRace = (raceId: string) => {
-        setSelectedRaceIds(prev => {
-            const next = new Set(prev ?? upcomingRaces.map(race => race.id));
-            if (next.has(raceId)) next.delete(raceId);
-            else next.add(raceId);
-            return next;
-        });
     };
 
     const isMessageEmpty = (html: string) =>
@@ -268,15 +252,13 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
         if (!user || selectedCount === 0 || sendingEmail) return;
         const subject = emailSubject.trim();
         const usingRaceLayout = sendMode === 'campaign' && campaignLayout === 'races';
-        const chosenRaces = usingRaceLayout
-            ? upcomingRaces.filter(race => (selectedRaceIds ?? new Set(upcomingRaces.map(item => item.id))).has(race.id))
-            : [];
+        const announcedRace = usingRaceLayout ? upcomingRaces[0] : undefined;
         if (!subject || (!usingRaceLayout && isMessageEmpty(emailMessage))) {
             setSendError('Subject and message are required.');
             return;
         }
-        if (usingRaceLayout && chosenRaces.length === 0) {
-            setSendError('Select at least one upcoming race.');
+        if (usingRaceLayout && !announcedRace) {
+            setSendError('There is no upcoming race to announce.');
             return;
         }
 
@@ -305,11 +287,11 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
                 body: JSON.stringify({
                     userIds: Array.from(selectedIds),
                     subject,
-                    message: usingRaceLayout
+                    message: usingRaceLayout && announcedRace
                         ? buildRaceAnnouncementHtml({
                             siteUrl: publicSiteUrl(),
                             introHtml: isMessageEmpty(emailMessage) ? '' : emailMessage,
-                            races: chosenRaces,
+                            race: announcedRace,
                         })
                         : withDcuSignature(emailMessage),
                     sendMode,
@@ -503,41 +485,28 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
                                     disabled={sendingEmail}
                                     className={`text-left rounded-lg border px-3 py-2.5 transition ${campaignLayout === 'races' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'}`}
                                 >
-                                    <div className="text-sm font-medium">Upcoming races</div>
+                                    <div className="text-sm font-medium">Next race</div>
                                     <div className="text-xs text-muted-foreground mt-0.5">Branded announcement</div>
                                 </button>
                             </div>
                         </div>
                         {campaignLayout === 'races' && (
                             <div className="space-y-2">
-                                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Races</p>
+                                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Next race</p>
                                 {racesQuery.isLoading ? (
                                     <p className="text-sm text-muted-foreground">Loading races…</p>
-                                ) : upcomingRaces.length === 0 ? (
-                                    <p className="text-sm text-muted-foreground">No upcoming races.</p>
+                                ) : !upcomingRaces[0] ? (
+                                    <p className="text-sm text-muted-foreground">No upcoming race.</p>
                                 ) : (
-                                    <div className="max-h-48 overflow-y-auto rounded-lg border border-border divide-y divide-border">
-                                        {upcomingRaces.map(race => {
-                                            const checked = (selectedRaceIds ?? new Set(upcomingRaces.map(item => item.id))).has(race.id);
-                                            return (
-                                                <label key={race.id} className="flex items-start gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-muted/40">
-                                                    <input
-                                                        type="checkbox"
-                                                        className="mt-1 accent-primary"
-                                                        checked={checked}
-                                                        disabled={sendingEmail}
-                                                        onChange={() => toggleRace(race.id)}
-                                                    />
-                                                    <span>
-                                                        <span className="font-medium">{race.name || 'Race'}</span>
-                                                        <span className="block text-xs text-muted-foreground">{formatRaceWhen(race.date)}</span>
-                                                    </span>
-                                                </label>
-                                            );
-                                        })}
+                                    <div className="rounded-lg border border-border bg-card px-3 py-2 text-sm">
+                                        <div className="font-medium text-foreground">{upcomingRaces[0].name || 'Race'}</div>
+                                        <div className="text-xs text-muted-foreground">{formatRaceWhen(upcomingRaces[0].date)}</div>
+                                        {upcomingRaces[0].routeName && (
+                                            <div className="text-xs text-muted-foreground">{upcomingRaces[0].routeName}</div>
+                                        )}
                                     </div>
                                 )}
-                                <p className="text-xs text-muted-foreground">The greeting, these races, and the sign-off are added around the intro.</p>
+                                <p className="text-xs text-muted-foreground">The greeting, this race, and the sign-off are added around the intro. The button opens the front page, where riders sign up.</p>
                             </div>
                         )}
                     </div>
