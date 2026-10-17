@@ -3,7 +3,7 @@ import { formatOmgangeDisplay } from '@/lib/raceLaps';
 import type { Race } from '@/types/live';
 
 export const RACE_ANNOUNCEMENT_SUBJECT = 'Næste løb i DCU E-serien';
-export const RACE_ANNOUNCEMENT_INTRO_HTML = '<p>Her er det næste løb.</p>';
+export const RACE_ANNOUNCEMENT_CLOSING_HTML = '<p>Er du allerede tilmeldt? Så er du klar. Ellers kan du stadig nå at melde dig.</p>';
 
 const SITE_URL = 'https://www.dansk-ecykling.dk';
 
@@ -29,6 +29,35 @@ export function futureRaces<T extends { date: string }>(races: T[], now = Date.n
 export function nextRaceSubject(name: string): string {
     const trimmed = name.trim();
     return trimmed ? `Næste løb: ${trimmed}` : RACE_ANNOUNCEMENT_SUBJECT;
+}
+
+function copenhagenPart(date: Date, type: Intl.DateTimeFormatPartTypes): string {
+    return new Intl.DateTimeFormat('da-DK', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+        timeZone: 'Europe/Copenhagen',
+    }).formatToParts(date).find((part) => part.type === type)?.value ?? '';
+}
+
+export function raceAnnouncementIntroHtml(race: Pick<AnnouncementRace, 'date' | 'routeName' | 'map'>): string {
+    const parsed = parsedDate(race.date);
+    const route = (race.routeName || '').trim();
+    const world = (race.map || '').trim();
+    const place = route && world
+        ? ` på ${escapeHtml(route)} i ${escapeHtml(world)}`
+        : route
+            ? ` på ${escapeHtml(route)}`
+            : world
+                ? ` i ${escapeHtml(world)}`
+                : '';
+    const opening = parsed
+        ? `På ${copenhagenPart(parsed, 'weekday').toLocaleLowerCase('da-DK')} d. ${copenhagenPart(parsed, 'day')}. ${copenhagenPart(parsed, 'month').toLocaleLowerCase('da-DK')} køres næste afdeling i DCU E-Serien klokken ${copenhagenPart(parsed, 'hour')}.${copenhagenPart(parsed, 'minute')}${place}.`
+        : `Næste afdeling i DCU E-Serien køres snart${place}.`;
+    return `<p>${opening}</p>${RACE_ANNOUNCEMENT_CLOSING_HTML}`;
 }
 
 function escapeHtml(value: string): string {
@@ -164,7 +193,7 @@ export function buildRaceAnnouncementHtml(options: {
 ${introRow}
 ${raceCard(options.race)}
 <tr><td align="center" style="padding:8px 32px 28px;">
-<a class="email-btn" href="${escapeHtml(homeUrl)}" style="display:inline-block;background:#c00418;color:#ffffff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;line-height:1;padding:14px 22px;border-radius:6px;">Tilmeld dig</a>
+<a class="email-btn" href="${escapeHtml(homeUrl)}" style="display:inline-block;background:#c00418;color:#ffffff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;line-height:1;padding:14px 22px;border-radius:6px;">Se løbet</a>
 </td></tr>
 <tr><td class="text-soft" style="padding:0 32px 32px;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;color:#313131;">Venlig hilsen<br><br>DCU Udvalg for e-cykling</td></tr>
 </table>

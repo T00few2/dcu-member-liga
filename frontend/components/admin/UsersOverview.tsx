@@ -11,9 +11,9 @@ import {
     buildRaceAnnouncementHtml,
     futureRaces,
     publicSiteUrl,
-    RACE_ANNOUNCEMENT_INTRO_HTML,
     formatRaceWhen,
     nextRaceSubject,
+    raceAnnouncementIntroHtml,
 } from '@/lib/campaignEmail';
 import { useRacesQuery } from '@/hooks/queries';
 import type { Race } from '@/types/live';
@@ -120,6 +120,14 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
         () => futureRaces((racesQuery.data ?? []) as Race[]),
         [racesQuery.data],
     );
+    const nextRaceIntro = upcomingRaces[0] ? raceAnnouncementIntroHtml(upcomingRaces[0]) : '';
+
+    useEffect(() => {
+        if (campaignLayout !== 'races' || !nextRaceIntro) return;
+        if (emailMessage !== defaultCampaignMessageHtml() && emailMessage !== defaultDcuSignatureHtml()) return;
+        setEmailMessage(nextRaceIntro);
+        setMessageRevision(revision => revision + 1);
+    }, [campaignLayout, nextRaceIntro, emailMessage]);
     const selectedFilteredCount = filteredIds.filter(id => selectedIds.has(id)).length;
     const allFilteredSelected = filteredIds.length > 0 && selectedFilteredCount === filteredIds.length;
     const someFilteredSelected = selectedFilteredCount > 0 && !allFilteredSelected;
@@ -213,7 +221,7 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
         const campaign = defaultCampaignMessageHtml();
         const next = mode === 'campaign' && emailMessage === signature
             ? campaign
-            : mode !== 'campaign' && (emailMessage === campaign || emailMessage === RACE_ANNOUNCEMENT_INTRO_HTML)
+            : mode !== 'campaign' && (emailMessage === campaign || (nextRaceIntro !== '' && emailMessage === nextRaceIntro))
                 ? signature
                 : null;
         if (!next) return;
@@ -226,13 +234,13 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
         if (layout === 'races') {
             const upcoming = upcomingRaces[0];
             if (!emailSubject.trim()) setEmailSubject(nextRaceSubject(upcoming?.name || ''));
-            if (emailMessage === defaultCampaignMessageHtml() || emailMessage === defaultDcuSignatureHtml()) {
-                setEmailMessage(RACE_ANNOUNCEMENT_INTRO_HTML);
+            if (nextRaceIntro && (emailMessage === defaultCampaignMessageHtml() || emailMessage === defaultDcuSignatureHtml())) {
+                setEmailMessage(nextRaceIntro);
                 setMessageRevision(revision => revision + 1);
             }
             return;
         }
-        if (emailMessage === RACE_ANNOUNCEMENT_INTRO_HTML) {
+        if (nextRaceIntro && emailMessage === nextRaceIntro) {
             setEmailMessage(defaultCampaignMessageHtml());
             setMessageRevision(revision => revision + 1);
         }
@@ -340,6 +348,17 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
             <button onClick={() => refetchUsers()} className="bg-primary text-primary-foreground px-4 py-2 rounded hover:opacity-90 text-sm font-medium">Retry</button>
         </div>
     );
+
+    const messageIsEmpty = emailMessage.replace(/<[^>]*>/g, '').trim().length === 0;
+    const campaignPreviewHtml = sendMode !== 'campaign'
+        ? undefined
+        : campaignLayout === 'races' && upcomingRaces[0]
+            ? buildRaceAnnouncementHtml({
+                siteUrl: publicSiteUrl(),
+                introHtml: messageIsEmpty ? '' : emailMessage,
+                race: upcomingRaces[0],
+            })
+            : withDcuSignature(emailMessage);
 
     return (
         <div className="space-y-4 pb-12">
@@ -506,11 +525,12 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
                                         )}
                                     </div>
                                 )}
-                                <p className="text-xs text-muted-foreground">The greeting, this race, and the sign-off are added around the intro. The button opens the front page, where riders sign up.</p>
+                                <p className="text-xs text-muted-foreground">The greeting, this race, and the sign-off are added around the intro. The button is the same for everyone and opens the front page, where riders who are not yet entered can sign up.</p>
                             </div>
                         )}
                     </div>
                 ) : undefined}
+                previewHtml={campaignPreviewHtml}
                 onClose={closeComposeModal}
                 onSend={handleSendEmail}
                 sending={sendingEmail}

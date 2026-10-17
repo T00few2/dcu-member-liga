@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { buildRaceAnnouncementHtml, formatRaceWhen } from '@/lib/campaignEmail';
+import { buildRaceAnnouncementHtml, formatRaceWhen, raceAnnouncementIntroHtml } from '@/lib/campaignEmail';
+
+describe('raceAnnouncementIntroHtml', () => {
+    it('names the weekday, date, time, route, and world', () => {
+        const html = raceAnnouncementIntroHtml({
+            date: '2026-10-18T17:00:00.000Z',
+            routeName: 'Hilly Route',
+            map: 'Watopia',
+        });
+
+        expect(html).toBe(
+            '<p>På søndag d. 18. oktober køres næste afdeling i DCU E-Serien klokken 19.00 på Hilly Route i Watopia.</p><p>Er du allerede tilmeldt? Så er du klar. Ellers kan du stadig nå at melde dig.</p>',
+        );
+    });
+});
 
 describe('buildRaceAnnouncementHtml', () => {
     it('includes the greeting, the next race card, and a link to the front page', () => {
@@ -31,7 +45,7 @@ describe('buildRaceAnnouncementHtml', () => {
         expect(html).toContain('>3<');
         expect(html).toContain('Husk at tilmelde jer.');
         expect(html).toContain('https://www.dansk-ecykling.dk/');
-        expect(html).toContain('Tilmeld dig');
+        expect(html).toContain('Se løbet');
         expect(html).not.toContain('/schedule');
         expect(html).toContain('prefers-color-scheme: dark');
         expect(html).toContain('https://www.dansk-ecykling.dk/brand/dcu-e-serien-logo-white.png');
