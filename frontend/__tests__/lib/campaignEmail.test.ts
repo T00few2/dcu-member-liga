@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildRaceAnnouncementHtml, formatRaceWhen, raceAnnouncementIntroHtml } from '@/lib/campaignEmail';
+import { buildRaceAnnouncementHtml, formatRaceWhen, nextRaceSubject, raceAnnouncementIntroHtml } from '@/lib/campaignEmail';
 
 describe('raceAnnouncementIntroHtml', () => {
     it('names the weekday, date, time, route, and world', () => {
@@ -10,8 +10,9 @@ describe('raceAnnouncementIntroHtml', () => {
         });
 
         expect(html).toBe(
-            '<p>På søndag d. 18. oktober køres næste afdeling i DCU E-Serien klokken 19.00 på Hilly Route i Watopia.</p><p>Er du allerede tilmeldt? Så er du klar. Ellers kan du stadig nå at melde dig.</p>',
+            '<p>På søndag d. 18. oktober køres næste afdeling i DCU E-Serien klokken 19.00 på Hilly Route i Watopia.</p><p>Er du ikke tilmeldt endnu? Du kan stadig nå det. Gå ind på løbet og tryk på “tilmeld”.</p>',
         );
+        expect(nextRaceSubject('DZR løbet')).toBe('DCU E-serien: DZR løbet');
     });
 });
 

@@ -7,8 +7,8 @@ import { formatOmgangeDisplay, getAllLapsValues } from '@/lib/raceLaps';
 import { lapLengthKmFromElevation, tileProfileSegments } from '@/lib/routeProfileSegments';
 import type { Race } from '@/types/live';
 
-export const RACE_ANNOUNCEMENT_SUBJECT = 'Næste løb i DCU E-serien';
-export const RACE_ANNOUNCEMENT_CLOSING_HTML = '<p>Er du allerede tilmeldt? Så er du klar. Ellers kan du stadig nå at melde dig.</p>';
+export const RACE_ANNOUNCEMENT_SUBJECT = 'DCU E-serien';
+export const RACE_ANNOUNCEMENT_CLOSING_HTML = '<p>Er du ikke tilmeldt endnu? Du kan stadig nå det. Gå ind på løbet og tryk på “tilmeld”.</p>';
 
 const SITE_URL = 'https://www.dansk-ecykling.dk';
 
@@ -48,7 +48,7 @@ export function futureRaces<T extends { date: string }>(races: T[], now = Date.n
 
 export function nextRaceSubject(name: string): string {
     const trimmed = name.trim();
-    return trimmed ? `Næste løb: ${trimmed}` : RACE_ANNOUNCEMENT_SUBJECT;
+    return trimmed ? `DCU E-serien: ${trimmed}` : RACE_ANNOUNCEMENT_SUBJECT;
 }
 
 function copenhagenPart(date: Date, type: Intl.DateTimeFormatPartTypes): string {
