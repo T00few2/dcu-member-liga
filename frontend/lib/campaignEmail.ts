@@ -230,9 +230,6 @@ function profileMarkup(race: AnnouncementRace, profile: AnnouncementProfile | nu
             starAt.add(Math.min(PROFILE_BARS - 1, Math.max(0, Math.floor((mid / maxKm) * PROFILE_BARS))));
         }
     }
-    const stars = samples.map((_, index) => starAt.has(index)
-        ? `<td class="elev-star" align="center" height="16" style="height:16px;padding:0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:16px;color:#d97706;">★</td>`
-        : `<td height="16" style="height:16px;padding:0;font-size:1px;line-height:1px;">&nbsp;</td>`).join('');
     const bars = samples.map((sample, index) => {
         const barStart = (maxKm * index) / PROFILE_BARS;
         const barEnd = (maxKm * (index + 1)) / PROFILE_BARS;
@@ -240,7 +237,10 @@ function profileMarkup(race: AnnouncementRace, profile: AnnouncementProfile | nu
         const marked = spans.some((span) => span.toKm >= barStart && span.fromKm <= barEnd);
         const color = marked ? '#56A845' : '#c00418';
         const barClass = marked ? 'elev-sprint' : 'elev-bar';
-        return `<td valign="bottom" height="${PROFILE_HEIGHT}" style="vertical-align:bottom;padding:0;font-size:0;line-height:0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td class="${barClass}" height="${height}" bgcolor="${color}" style="height:${height}px;background:${color};font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td>`;
+        const star = starAt.has(index)
+            ? `<tr><td class="elev-star" align="center" height="14" style="height:14px;padding:0 0 1px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:14px;color:#d97706;">★</td></tr>`
+            : '';
+        return `<td valign="bottom" style="vertical-align:bottom;padding:0;font-size:0;line-height:0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${star}<tr><td class="${barClass}" height="${height}" bgcolor="${color}" style="height:${height}px;background:${color};font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td>`;
     }).join('');
     const endLabel = `${new Intl.NumberFormat('da-DK', { maximumFractionDigits: 1 }).format(maxKm)} km`;
     return `<tr><td style="padding:4px 16px 8px;font-family:Arial,Helvetica,sans-serif;">
@@ -251,7 +251,6 @@ function profileMarkup(race: AnnouncementRace, profile: AnnouncementProfile | nu
 </td></tr>
 <tr><td style="padding:0 16px 2px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;table-layout:fixed;">
-<tr>${stars}</tr>
 <tr>${bars}</tr>
 </table>
 </td></tr>
