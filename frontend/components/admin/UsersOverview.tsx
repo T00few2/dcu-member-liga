@@ -7,6 +7,16 @@ import { useUsersOverviewQuery } from '@/hooks/queries/useUsersOverviewQuery';
 import ComposeEmailModal from '@/components/admin/ComposeEmailModal';
 import EmailRecipientControls, { defaultSendMode, type EmailSendMode } from '@/components/admin/EmailRecipientControls';
 import { defaultCampaignMessageHtml, defaultDcuSignatureHtml, withDcuSignature } from '@/lib/email-signature';
+import {
+    buildRaceAnnouncementHtml,
+    futureRaces,
+    publicSiteUrl,
+    RACE_ANNOUNCEMENT_INTRO_HTML,
+    RACE_ANNOUNCEMENT_SUBJECT,
+    formatRaceWhen,
+} from '@/lib/campaignEmail';
+import { useRacesQuery } from '@/hooks/queries';
+import type { Race } from '@/types/live';
 
 import UsersFilters from './users-overview/UsersFilters';
 import UsersTable from './users-overview/UsersTable';
@@ -32,6 +42,7 @@ interface SendResult {
 export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId: string) => void }) {
     const { user } = useAuth();
     const { data: rows = [], isLoading: loading, isFetching, error: queryError, refetch: refetchUsers } = useUsersOverviewQuery();
+    const racesQuery = useRacesQuery();
     const error = queryError ? (queryError instanceof Error ? queryError.message : 'Failed to load users') : null;
 
     const [search, setSearch] = useState('');
@@ -49,6 +60,8 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
     const [lastSendResults, setLastSendResults] = useState<SendResult[]>([]);
     const [failedListOpen, setFailedListOpen] = useState(false);
     const [sendMode, setSendMode] = useState<EmailSendMode>('individual');
+    const [campaignLayout, setCampaignLayout] = useState<'plain' | 'races'>('plain');
+    const [selectedRaceIds, setSelectedRaceIds] = useState<Set<string> | null>(null);
     const [recipientMode, setRecipientMode] = useState<'to' | 'cc' | 'bcc'>('bcc');
     const [manualTo, setManualTo] = useState('');
     const [manualCc, setManualCc] = useState('');
@@ -104,6 +117,10 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
     );
 
     const selectedCount = selectedIds.size;
+    const upcomingRaces = useMemo(
+        () => futureRaces((racesQuery.data ?? []) as Race[]),
+        [racesQuery.data],
+    );
     const selectedFilteredCount = filteredIds.filter(id => selectedIds.has(id)).length;
     const allFilteredSelected = filteredIds.length > 0 && selectedFilteredCount === filteredIds.length;
     const someFilteredSelected = selectedFilteredCount > 0 && !allFilteredSelected;
@@ -162,6 +179,8 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
         setSendError(null);
         setEmailSubject('');
         setEmailMessage('');
+        setCampaignLayout('plain');
+        setSelectedRaceIds(null);
         setManualTo('');
         setManualCc('');
         setManualBcc('');
@@ -176,7 +195,10 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
         setIsComposeOpen(true);
         setSendError(null);
         setSendMode(mode);
+        setCampaignLayout('plain');
+        setSelectedRaceIds(null);
         setRecipientMode('to');
+        setEmailSubject('');
         setEmailMessage(mode === 'campaign' ? defaultCampaignMessageHtml() : defaultDcuSignatureHtml());
         setManualTo('');
         setManualCc('');
@@ -189,16 +211,47 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
 
     const changeSendMode = (mode: EmailSendMode) => {
         setSendMode(mode);
+        if (mode !== 'campaign') setCampaignLayout('plain');
         const signature = defaultDcuSignatureHtml();
         const campaign = defaultCampaignMessageHtml();
         const next = mode === 'campaign' && emailMessage === signature
             ? campaign
-            : mode !== 'campaign' && emailMessage === campaign
+            : mode !== 'campaign' && (emailMessage === campaign || emailMessage === RACE_ANNOUNCEMENT_INTRO_HTML)
                 ? signature
                 : null;
         if (!next) return;
         setEmailMessage(next);
         setMessageRevision(revision => revision + 1);
+    };
+
+    const chooseCampaignLayout = (layout: 'plain' | 'races') => {
+        setCampaignLayout(layout);
+        if (layout === 'races') {
+            setSelectedRaceIds(prev => {
+                if (prev) return prev;
+                if (upcomingRaces.length === 0 && racesQuery.isLoading) return null;
+                return new Set(upcomingRaces.map(race => race.id));
+            });
+            if (!emailSubject.trim()) setEmailSubject(RACE_ANNOUNCEMENT_SUBJECT);
+            if (emailMessage === defaultCampaignMessageHtml() || emailMessage === defaultDcuSignatureHtml()) {
+                setEmailMessage(RACE_ANNOUNCEMENT_INTRO_HTML);
+                setMessageRevision(revision => revision + 1);
+            }
+            return;
+        }
+        if (emailMessage === RACE_ANNOUNCEMENT_INTRO_HTML) {
+            setEmailMessage(defaultCampaignMessageHtml());
+            setMessageRevision(revision => revision + 1);
+        }
+    };
+
+    const toggleRace = (raceId: string) => {
+        setSelectedRaceIds(prev => {
+            const next = new Set(prev ?? upcomingRaces.map(race => race.id));
+            if (next.has(raceId)) next.delete(raceId);
+            else next.add(raceId);
+            return next;
+        });
     };
 
     const isMessageEmpty = (html: string) =>
@@ -214,8 +267,16 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
     const handleSendEmail = async () => {
         if (!user || selectedCount === 0 || sendingEmail) return;
         const subject = emailSubject.trim();
-        if (!subject || isMessageEmpty(emailMessage)) {
+        const usingRaceLayout = sendMode === 'campaign' && campaignLayout === 'races';
+        const chosenRaces = usingRaceLayout
+            ? upcomingRaces.filter(race => (selectedRaceIds ?? new Set(upcomingRaces.map(item => item.id))).has(race.id))
+            : [];
+        if (!subject || (!usingRaceLayout && isMessageEmpty(emailMessage))) {
             setSendError('Subject and message are required.');
+            return;
+        }
+        if (usingRaceLayout && chosenRaces.length === 0) {
+            setSendError('Select at least one upcoming race.');
             return;
         }
 
@@ -244,7 +305,13 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
                 body: JSON.stringify({
                     userIds: Array.from(selectedIds),
                     subject,
-                    message: withDcuSignature(emailMessage),
+                    message: usingRaceLayout
+                        ? buildRaceAnnouncementHtml({
+                            siteUrl: publicSiteUrl(),
+                            introHtml: isMessageEmpty(emailMessage) ? '' : emailMessage,
+                            races: chosenRaces,
+                        })
+                        : withDcuSignature(emailMessage),
                     sendMode,
                     ...(sendMode === 'group' ? { recipientMode } : {}),
                     manualTo: manualTo.trim(),
@@ -415,6 +482,66 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
                 onMessageChange={setEmailMessage}
                 initialMessage={emailMessage}
                 editorKey={messageRevision}
+                messageLabel={sendMode === 'campaign' && campaignLayout === 'races' ? 'Intro' : 'Message'}
+                editorPrefix={sendMode === 'campaign' ? (
+                    <div className="space-y-3">
+                        <div className="space-y-2">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Layout</p>
+                            <div className="grid grid-cols-2 gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => chooseCampaignLayout('plain')}
+                                    disabled={sendingEmail}
+                                    className={`text-left rounded-lg border px-3 py-2.5 transition ${campaignLayout === 'plain' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'}`}
+                                >
+                                    <div className="text-sm font-medium">Plain</div>
+                                    <div className="text-xs text-muted-foreground mt-0.5">Greeting and sign-off</div>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => chooseCampaignLayout('races')}
+                                    disabled={sendingEmail}
+                                    className={`text-left rounded-lg border px-3 py-2.5 transition ${campaignLayout === 'races' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'}`}
+                                >
+                                    <div className="text-sm font-medium">Upcoming races</div>
+                                    <div className="text-xs text-muted-foreground mt-0.5">Branded announcement</div>
+                                </button>
+                            </div>
+                        </div>
+                        {campaignLayout === 'races' && (
+                            <div className="space-y-2">
+                                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Races</p>
+                                {racesQuery.isLoading ? (
+                                    <p className="text-sm text-muted-foreground">Loading races…</p>
+                                ) : upcomingRaces.length === 0 ? (
+                                    <p className="text-sm text-muted-foreground">No upcoming races.</p>
+                                ) : (
+                                    <div className="max-h-48 overflow-y-auto rounded-lg border border-border divide-y divide-border">
+                                        {upcomingRaces.map(race => {
+                                            const checked = (selectedRaceIds ?? new Set(upcomingRaces.map(item => item.id))).has(race.id);
+                                            return (
+                                                <label key={race.id} className="flex items-start gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-muted/40">
+                                                    <input
+                                                        type="checkbox"
+                                                        className="mt-1 accent-primary"
+                                                        checked={checked}
+                                                        disabled={sendingEmail}
+                                                        onChange={() => toggleRace(race.id)}
+                                                    />
+                                                    <span>
+                                                        <span className="font-medium">{race.name || 'Race'}</span>
+                                                        <span className="block text-xs text-muted-foreground">{formatRaceWhen(race.date)}</span>
+                                                    </span>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                                <p className="text-xs text-muted-foreground">The greeting, these races, and the sign-off are added around the intro.</p>
+                            </div>
+                        )}
+                    </div>
+                ) : undefined}
                 onClose={closeComposeModal}
                 onSend={handleSendEmail}
                 sending={sendingEmail}
