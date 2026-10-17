@@ -39,6 +39,11 @@ ZOHO_CAMPAIGNS_CLIENT_SECRET = os.getenv('ZOHO_CAMPAIGNS_CLIENT_SECRET')
 ZOHO_CAMPAIGNS_REFRESH_TOKEN = os.getenv('ZOHO_CAMPAIGNS_REFRESH_TOKEN')
 ZOHO_CAMPAIGNS_FROM_EMAIL = os.getenv('ZOHO_CAMPAIGNS_FROM_EMAIL', 'info@dansk-ecykling.dk')
 ZOHO_CAMPAIGNS_TOPIC_ID = os.getenv('ZOHO_CAMPAIGNS_TOPIC_ID') or None
+# Standing member list. A campaign to more than 40 people reuses it.
+ZOHO_CAMPAIGNS_LIST_KEY = os.getenv(
+    'ZOHO_CAMPAIGNS_LIST_KEY',
+    '3z21d63703c79531e4210b877af1342c35634aa0b61771f7e6ffd907e082b2e11f',
+) or None
 
 # Critical secrets — raise at startup so the app fails loudly.
 # In CI (GitHub Actions sets CI=true automatically), downgrade to a warning

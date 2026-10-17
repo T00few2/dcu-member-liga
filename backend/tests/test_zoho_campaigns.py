@@ -32,6 +32,7 @@ def _credentials(monkeypatch):
     monkeypatch.setattr(campaigns, "ZOHO_CAMPAIGNS_REFRESH_TOKEN", "refresh-token")
     monkeypatch.setattr(campaigns, "ZOHO_CAMPAIGNS_FROM_EMAIL", "info@example.com")
     monkeypatch.setattr(campaigns, "ZOHO_CAMPAIGNS_TOPIC_ID", None)
+    monkeypatch.setattr(campaigns, "ZOHO_CAMPAIGNS_LIST_KEY", None)
     monkeypatch.setattr(campaigns, "BACKEND_URL", "https://api.example.com")
 
 
@@ -41,6 +42,8 @@ def _install_api(
     *,
     fail_create: bool = False,
     topics: list[dict] | None = None,
+    subscribers: list[dict] | None = None,
+    reject_email: str | None = None,
 ):
     calls: list[tuple[str, dict, str]] = []
     topic_rows = topics if topics is not None else [{"topicId": "topic-1", "topicName": "Marketing"}]
@@ -49,6 +52,12 @@ def _install_api(
         calls.append((url, dict(params or {}), "get"))
         if url.endswith("/topics"):
             return _Response({"code": "200", "topicDetails": topic_rows, "message": "Success"})
+        if url.endswith("/getlistsubscribers"):
+            return _Response({
+                "code": "0",
+                "status": "success",
+                "list_of_details": list(subscribers or []),
+            })
         raise AssertionError(url)
 
     def fake_post(url, data=None, params=None, headers=None, timeout=None):
@@ -60,6 +69,13 @@ def _install_api(
         if url.endswith("/addlistsubscribersinbulk"):
             return _Response({"code": "0", "status": "success", "message": "added"})
         if url.endswith("/listsubscribe"):
+            fields = params or data or {}
+            if reject_email and reject_email in str(fields.get("contactinfo") or ""):
+                return _Response({
+                    "code": "1001",
+                    "status": "error",
+                    "message": "Ugyldig e-mailadresse for kontakt.",
+                })
             return _Response({"code": "0", "status": "success", "message": "updated"})
         if url.endswith("/createCampaign"):
             if fail_create:
@@ -101,15 +117,15 @@ def test_send_creates_list_publishes_html_and_sends(monkeypatch):
     paths = [url.rsplit("/", 1)[-1] for url, _, _ in calls]
     assert paths == [
         "token",
-        "addlistandcontacts",
         "topics",
+        "addlistandcontacts",
         "listsubscribe",
         "listsubscribe",
         "createCampaign",
         "sendcampaign",
     ]
-    created_list = calls[1][1]
-    assert calls[1][2] == "params"
+    created_list = calls[2][1]
+    assert calls[2][2] == "params"
     assert created_list["emailids"] == "Rider@Example.com,other@example.com"
     assert created_list["mode"] == "newlist"
     subscribed = [fields["contactinfo"] for url, fields, _ in calls if url.endswith("/listsubscribe")]
@@ -127,7 +143,7 @@ def test_send_creates_list_publishes_html_and_sends(monkeypatch):
     assert created["topicId"] == "topic-1"
     assert created["list_details"] == "{list1:[]}"
     assert created["content_url"].startswith("https://api.example.com/campaign-content/")
-    assert calls[1][0].startswith("https://campaigns.zoho.eu/api/v1.1/")
+    assert calls[2][0].startswith("https://campaigns.zoho.eu/api/v1.1/")
     assert calls[6][1]["campaignkey"] == "camp-1"
 
 
@@ -146,8 +162,8 @@ def test_create_error_is_email_send_error_and_content_is_removed(monkeypatch):
     assert store.docs == {}
     assert [url.rsplit("/", 1)[-1] for url, _, _ in calls] == [
         "token",
-        "addlistandcontacts",
         "topics",
+        "addlistandcontacts",
         "listsubscribe",
         "createCampaign",
     ]
@@ -190,6 +206,75 @@ def test_multiple_topics_require_an_explicit_id(monkeypatch):
         )
 
     assert store.docs == {}
+
+
+def test_large_send_reuses_standing_list_and_fills_blank_names(monkeypatch):
+    store = MemoryCampaignContentStore()
+    calls = _install_api(
+        monkeypatch,
+        store,
+        subscribers=[
+            {"contact_email": "known@example.com", "firstname": ""},
+            {"contact_email": "same@example.com", "firstname": "Anders"},
+        ],
+    )
+    monkeypatch.setattr(campaigns, "ZOHO_CAMPAIGNS_LIST_KEY", "standinglist1")
+    monkeypatch.setattr(campaigns, "STANDING_LIST_MIN_RECIPIENTS", 1)
+
+    send_zoho_campaign(
+        recipients=[
+            {"email": "known@example.com", "first_name": "Christian"},
+            {"email": "same@example.com", "first_name": "Anders"},
+        ],
+        subject="Liga update",
+        html_body="<p>Hello riders</p>",
+        store=store,
+    )
+
+    paths = [url.rsplit("/", 1)[-1] for url, _, _ in calls]
+    assert "addlistandcontacts" not in paths
+    assert paths == [
+        "token",
+        "topics",
+        "getlistsubscribers",
+        "listsubscribe",
+        "createCampaign",
+        "sendcampaign",
+    ]
+    subscribed = [fields["contactinfo"] for url, fields, _ in calls if url.endswith("/listsubscribe")]
+    assert subscribed == ['{"Contact Email": "known@example.com", "First Name": "Christian"}']
+    created = next(fields for url, fields, _ in calls if url.endswith("/createCampaign"))
+    assert created["list_details"] == "{standinglist1:[]}"
+
+
+def test_standing_list_skips_a_rejected_contact_and_still_sends(monkeypatch):
+    store = MemoryCampaignContentStore()
+    calls = _install_api(
+        monkeypatch,
+        store,
+        subscribers=[],
+        reject_email="bad@example.com",
+    )
+    monkeypatch.setattr(campaigns, "ZOHO_CAMPAIGNS_LIST_KEY", "standinglist1")
+    monkeypatch.setattr(campaigns, "STANDING_LIST_MIN_RECIPIENTS", 1)
+
+    result = send_zoho_campaign(
+        recipients=[
+            {"email": "bad@example.com", "first_name": "Bad"},
+            {"email": "good@example.com", "first_name": "Good"},
+        ],
+        subject="Liga update",
+        html_body="<p>Hello riders</p>",
+        store=store,
+    )
+
+    assert result["campaignKey"] == "camp-1"
+    subscribed = [fields["contactinfo"] for url, fields, _ in calls if url.endswith("/listsubscribe")]
+    assert subscribed == [
+        '{"Contact Email": "bad@example.com", "First Name": "Bad"}',
+        '{"Contact Email": "good@example.com", "First Name": "Good"}',
+    ]
+    assert any(url.endswith("/sendcampaign") for url, _, _ in calls)
 
 
 def test_missing_credentials_raise_config_error(monkeypatch):

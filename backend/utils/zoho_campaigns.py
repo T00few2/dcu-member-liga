@@ -22,6 +22,7 @@ from config import (
     ZOHO_CAMPAIGNS_CLIENT_ID,
     ZOHO_CAMPAIGNS_CLIENT_SECRET,
     ZOHO_CAMPAIGNS_FROM_EMAIL,
+    ZOHO_CAMPAIGNS_LIST_KEY,
     ZOHO_CAMPAIGNS_REFRESH_TOKEN,
     ZOHO_CAMPAIGNS_TOPIC_ID,
 )
@@ -34,6 +35,8 @@ ACCOUNTS_TOKEN_URL = "https://accounts.zoho.eu/oauth/v2/token"
 FROM_NAME = "DCU Udvalg for e-cykling"
 CONTENT_COLLECTION = "campaign_content"
 BULK_SUBSCRIBE_BATCH = 10
+# At or above this size, send to the standing list instead of uploading a new one.
+STANDING_LIST_MIN_RECIPIENTS = 41
 CONTENT_TTL = timedelta(hours=1)
 HTTP_TIMEOUT_SECONDS = 30
 MAX_HTML_CHARS = 300_000
@@ -300,19 +303,103 @@ def _recipient_rows(recipients: list) -> list[tuple[str, str]]:
     return rows
 
 
+def _subscribe_contact(listkey: str, address: str, first_name: str, topic_id: str, token: str) -> None:
+    fields = {
+        "resfmt": "JSON",
+        "listkey": listkey,
+        "contactinfo": _contact_info(address, first_name),
+    }
+    if topic_id:
+        fields["topic_id"] = topic_id
+    _campaign_post("json/listsubscribe", fields, token, query=False)
+
+
 def _associate_topic(listkey: str, rows: list[tuple[str, str]], topic_id: str, token: str) -> None:
     for address, first_name in rows:
-        _campaign_post(
-            "json/listsubscribe",
-            {
-                "resfmt": "JSON",
-                "listkey": listkey,
-                "contactinfo": _contact_info(address, first_name),
-                "topic_id": topic_id,
-            },
-            token,
-            query=False,
-        )
+        _subscribe_contact(listkey, address, first_name, topic_id, token)
+
+
+def _list_subscribers(listkey: str, token: str) -> dict[str, str]:
+    """Return lowercased email -> first name for everyone on the list."""
+    found: dict[str, str] = {}
+    index = 1
+    while True:
+        try:
+            response = requests.get(
+                f"{CAMPAIGNS_API_BASE}/getlistsubscribers",
+                params={
+                    "resfmt": "JSON",
+                    "listkey": listkey,
+                    "status": "active",
+                    "fromindex": index,
+                    "range": 200,
+                },
+                headers={"Authorization": f"Zoho-oauthtoken {token}"},
+                timeout=HTTP_TIMEOUT_SECONDS,
+            )
+        except requests.RequestException as exc:
+            raise EmailSendError(f"Network error talking to Zoho Campaigns: {exc}") from exc
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            snippet = _response_snippet(response.text)
+            raise EmailSendError(
+                f"Zoho Campaigns returned a non-JSON response ({response.status_code}): {snippet}"
+            ) from exc
+        if not isinstance(payload, dict):
+            raise EmailSendError("Zoho Campaigns returned an unexpected response.")
+        if response.status_code >= 400:
+            body = _unwrap(payload)
+            message = str(body.get("message") or body.get("error") or response.text)
+            if index > 1:
+                break
+            raise EmailSendError(f"Zoho Campaigns request failed: {message}")
+        try:
+            body = _raise_if_failed(payload, "getlistsubscribers")
+        except EmailSendError:
+            if index > 1:
+                break
+            raise
+        details = body.get("list_of_details") or []
+        if not isinstance(details, list) or not details:
+            break
+        for item in details:
+            if not isinstance(item, dict):
+                continue
+            email = str(item.get("contact_email") or "").strip()
+            if not email:
+                continue
+            found[email.lower()] = str(item.get("firstname") or "").strip()
+        if len(details) < 200:
+            break
+        index += len(details)
+    return found
+
+
+def _sync_standing_contacts(
+    listkey: str,
+    rows: list[tuple[str, str]],
+    token: str,
+    topic_id: str,
+) -> list[str]:
+    """Add missing contacts and fill first names that are blank or different.
+
+    One rejected address does not stop the others. Nobody is removed from the list.
+    """
+    existing = _list_subscribers(listkey, token)
+    rejected: list[str] = []
+    for address, first_name in rows:
+        current = existing.get(address.lower())
+        if current is not None and current == first_name:
+            continue
+        if current and not first_name:
+            continue
+        try:
+            _subscribe_contact(listkey, address, first_name, topic_id, token)
+        except EmailSendError as exc:
+            logger.warning("Zoho contact update skipped for %s: %s", address, exc)
+            rejected.append(address)
+    return rejected
 
 
 def _field(payload: dict, *names: str) -> str:
@@ -330,11 +417,16 @@ def send_zoho_campaign(
     html_body: str,
     store: CampaignContentStore | None = None,
 ) -> dict[str, str]:
-    """Create a list, import the HTML, and send. Returns campaign key and status.
+    """Import the HTML and send. Returns campaign key and status.
 
     A recipient may be an email string or {"email", "first_name"}. The first name
     is stored on the Zoho contact so $[FNAME|]$ in the message becomes that name,
     and an empty name leaves the greeting as the text around the tag.
+
+    A campaign to more than 40 people uses the standing list. Contacts already
+    on it stay there. Missing people are added, and a blank or changed first
+    name is written onto the contact. A smaller campaign creates a temporary
+    list so a test does not go to every rider.
     """
     _require_config()
     rows = _recipient_rows(recipients)
@@ -354,38 +446,51 @@ def send_zoho_campaign(
     token = _access_token_value()
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     suffix = secrets.token_hex(3)
-    first_batch = addresses[:BULK_SUBSCRIBE_BATCH]
-    list_body = _campaign_post(
-        "addlistandcontacts",
-        {
-            "resfmt": "JSON",
-            "listname": f"Liga {stamp} {suffix}",
-            "signupform": "private",
-            "mode": "newlist",
-            "emailids": ",".join(first_batch),
-        },
-        token,
-    )
-    listkey = _field(list_body, "listkey", "listKey")
-    if not listkey:
-        raise EmailSendError("Zoho Campaigns did not return a mailing list key.")
-
-    rest = addresses[BULK_SUBSCRIBE_BATCH:]
-    for start in range(0, len(rest), BULK_SUBSCRIBE_BATCH):
-        batch = rest[start:start + BULK_SUBSCRIBE_BATCH]
-        _campaign_post(
-            "addlistsubscribersinbulk",
+    standing_key = (ZOHO_CAMPAIGNS_LIST_KEY or "").strip()
+    topic_id = _topic_id(token)
+    if standing_key and len(rows) >= STANDING_LIST_MIN_RECIPIENTS:
+        if not re.fullmatch(r"[A-Za-z0-9]+", standing_key):
+            raise EmailSendError("Zoho Campaigns list key is not valid.")
+        listkey = standing_key
+        rejected = _sync_standing_contacts(listkey, rows, token, topic_id or "")
+        if rejected:
+            logger.warning(
+                "Zoho standing list kept %d address(es) unchanged: %s",
+                len(rejected),
+                ", ".join(rejected),
+            )
+    else:
+        first_batch = addresses[:BULK_SUBSCRIBE_BATCH]
+        list_body = _campaign_post(
+            "addlistandcontacts",
             {
                 "resfmt": "JSON",
-                "listkey": listkey,
-                "emailids": ",".join(batch),
+                "listname": f"Liga {stamp} {suffix}",
+                "signupform": "private",
+                "mode": "newlist",
+                "emailids": ",".join(first_batch),
             },
             token,
         )
+        listkey = _field(list_body, "listkey", "listKey")
+        if not listkey:
+            raise EmailSendError("Zoho Campaigns did not return a mailing list key.")
 
-    topic_id = _topic_id(token)
-    if topic_id:
-        _associate_topic(listkey, rows, topic_id, token)
+        rest = addresses[BULK_SUBSCRIBE_BATCH:]
+        for start in range(0, len(rest), BULK_SUBSCRIBE_BATCH):
+            batch = rest[start:start + BULK_SUBSCRIBE_BATCH]
+            _campaign_post(
+                "addlistsubscribersinbulk",
+                {
+                    "resfmt": "JSON",
+                    "listkey": listkey,
+                    "emailids": ",".join(batch),
+                },
+                token,
+            )
+
+        if topic_id:
+            _associate_topic(listkey, rows, topic_id, token)
 
     content_token = secrets.token_urlsafe(32)
     expires_at = (datetime.now(timezone.utc) + CONTENT_TTL).isoformat()

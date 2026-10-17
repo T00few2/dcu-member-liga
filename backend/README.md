@@ -199,12 +199,14 @@ ZOHO_CAMPAIGNS_CLIENT_SECRET=self-client-secret
 ZOHO_CAMPAIGNS_REFRESH_TOKEN=refresh-token
 ZOHO_CAMPAIGNS_FROM_EMAIL=info@dansk-ecykling.dk
 ZOHO_CAMPAIGNS_TOPIC_ID=
+ZOHO_CAMPAIGNS_LIST_KEY=
 ```
 
 Notes:
 - Create a Self Client at `https://api-console.zoho.eu` and exchange an authorization code at `https://accounts.zoho.eu/oauth/v2/token`. Scopes: `ZohoCampaigns.campaign.CREATE`, `ZohoCampaigns.campaign.UPDATE`, `ZohoCampaigns.contact.CREATE`, `ZohoCampaigns.contact.UPDATE`, `ZohoCampaigns.contact.READ`.
 - `ZOHO_CAMPAIGNS_FROM_EMAIL` must be a verified Campaigns sender. The domain needs the Campaigns SPF include, DKIM, and a DMARC record.
 - If the account has one topic, the send uses it automatically. Set `ZOHO_CAMPAIGNS_TOPIC_ID` when there is more than one.
+- A campaign to more than 40 people is sent to the standing list in `ZOHO_CAMPAIGNS_LIST_KEY`. Contacts already on that list are kept. Missing contacts are added, and a missing or changed first name is written onto the contact. Smaller campaigns still create a temporary list, so a test send does not go to every rider.
 - `BACKEND_URL` must be the public API URL. Campaigns fetches the message HTML from `{BACKEND_URL}/campaign-content/{token}` while the campaign is created.
 - Add the same values as repository secrets (Settings → Secrets and variables → Actions). The deploy job does not select a GitHub Environment, so secrets stored only on an Environment are empty in the workflow. The deploy fails and prints the missing names instead of uploading blank values. Values are written to an env file, so a comma or `#` in a secret no longer drops the variables that follow it.
 
