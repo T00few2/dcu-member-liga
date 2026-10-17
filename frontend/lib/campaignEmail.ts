@@ -160,8 +160,43 @@ function sprintRows(race: AnnouncementRace): SprintRow[] {
 }
 
 function sprintLabel(sprint: SprintRow): string {
+    const name = sprint.name.trim();
     const direction = (sprint.direction || '').trim().toLowerCase();
-    return direction === 'reverse' ? `${sprint.name} Reverse` : sprint.name;
+    const alreadyReverse = /\b(reverse|rev\.?)$/i.test(name);
+    return direction === 'reverse' && !alreadyReverse ? `${name} Reverse` : name;
+}
+
+interface SprintSpan {
+    sprint: SprintRow;
+    fromKm: number;
+    toKm: number;
+    displayFrom: number;
+    displayTo: number;
+}
+
+function sprintSpans(race: AnnouncementRace, profile: AnnouncementProfile | null | undefined, sprints: SprintRow[]): SprintSpan[] {
+    const lapCount = Math.max(1, ...getAllLapsValues(race as Race));
+    const lapKm = profile ? lapLengthKmFromElevation(profile, lapCount, 0) : 0;
+    const segments = profile
+        ? tileProfileSegments(profile.profileSegments ?? [], lapCount, lapKm)
+        : [];
+    const index = segments.length > 0 ? buildProfileSegmentIndex(segments) : null;
+    const leadIn = profile?.leadInDistance ?? 0;
+    return sprints.map((sprint) => {
+        const match = index ? matchSprintProfileSegment(index, sprint) : null;
+        if (!match) {
+            return { sprint, fromKm: Number.POSITIVE_INFINITY, toKm: Number.POSITIVE_INFINITY, displayFrom: Number.POSITIVE_INFINITY, displayTo: Number.POSITIVE_INFINITY };
+        }
+        const fromKm = Math.min(match.fromKm, match.toKm);
+        const toKm = Math.max(match.fromKm, match.toKm);
+        return {
+            sprint,
+            fromKm,
+            toKm,
+            displayFrom: fromKm + leadIn,
+            displayTo: toKm + leadIn,
+        };
+    });
 }
 
 function profileSamples(profile: AnnouncementProfile): { km: number; altitude: number }[] {
@@ -178,7 +213,7 @@ function profileSamples(profile: AnnouncementProfile): { km: number; altitude: n
     return samples;
 }
 
-function profileMarkup(profile: AnnouncementProfile | null | undefined, sprints: SprintRow[]): string {
+function profileMarkup(race: AnnouncementRace, profile: AnnouncementProfile | null | undefined, sprints: SprintRow[]): string {
     if (!profile) return '';
     const samples = profileSamples(profile);
     if (samples.length < 2) return '';
@@ -187,19 +222,15 @@ function profileMarkup(profile: AnnouncementProfile | null | undefined, sprints:
     const maxAlt = Math.max(...altitudes);
     const range = maxAlt - minAlt || 1;
     const maxKm = samples[samples.length - 1]?.km ?? 0;
-    const sprintBands = (profile.profileSegments || []).filter((segment) => segment.type === 'sprint' || sprints.some((sprint) => sprint.name === segment.name));
+    const spans = sprintSpans(race, profile, sprints).filter((span) => Number.isFinite(span.fromKm));
     const bars = samples.map((sample, index) => {
-        const nextKm = samples[index + 1]?.km ?? sample.km;
+        const barStart = (maxKm * index) / PROFILE_BARS;
+        const barEnd = (maxKm * (index + 1)) / PROFILE_BARS;
         const height = Math.max(4, Math.round(((sample.altitude - minAlt) / range) * (PROFILE_HEIGHT - 4)) + 4);
-        const marked = sprintBands.some((segment) => {
-            const from = Math.min(segment.fromKm, segment.toKm);
-            const to = Math.max(segment.fromKm, segment.toKm);
-            return to >= sample.km && from <= nextKm;
-        });
-        const cap = marked
-            ? `<tr><td class="elev-sprint" height="4" bgcolor="#d97706" style="height:4px;background:#d97706;font-size:1px;line-height:1px;">&nbsp;</td></tr>`
-            : '';
-        return `<td valign="bottom" height="${PROFILE_HEIGHT + 4}" style="vertical-align:bottom;padding:0;font-size:0;line-height:0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${cap}<tr><td class="elev-bar" height="${height}" bgcolor="#c00418" style="height:${height}px;background:#c00418;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td>`;
+        const marked = spans.some((span) => span.toKm >= barStart && span.fromKm <= barEnd);
+        const color = marked ? '#56A845' : '#c00418';
+        const barClass = marked ? 'elev-sprint' : 'elev-bar';
+        return `<td valign="bottom" height="${PROFILE_HEIGHT}" style="vertical-align:bottom;padding:0;font-size:0;line-height:0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td class="${barClass}" height="${height}" bgcolor="${color}" style="height:${height}px;background:${color};font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td>`;
     }).join('');
     const endLabel = `${new Intl.NumberFormat('da-DK', { maximumFractionDigits: 1 }).format(maxKm)} km`;
     return `<tr><td style="padding:4px 16px 8px;font-family:Arial,Helvetica,sans-serif;">
@@ -219,55 +250,41 @@ function profileMarkup(profile: AnnouncementProfile | null | undefined, sprints:
 </td></tr>`;
 }
 
+const SPRINT_RULE = 'border-bottom:1px solid #e9e9e9;';
+
 function sprintMarkup(race: AnnouncementRace, profile: AnnouncementProfile | null | undefined, sprints: SprintRow[]): string {
     if (sprints.length === 0) return '';
-    const lapCount = Math.max(1, ...getAllLapsValues(race as Race));
-    const lapKm = profile ? lapLengthKmFromElevation(profile, lapCount, 0) : 0;
-    const segments = profile
-        ? tileProfileSegments(profile.profileSegments ?? [], lapCount, lapKm)
-        : [];
-    const index = segments.length > 0 ? buildProfileSegmentIndex(segments) : null;
-    const leadIn = profile?.leadInDistance ?? 0;
-    const kmFor = (sprint: SprintRow) => {
-        if (!index) return null;
-        const match = matchSprintProfileSegment(index, sprint);
-        if (!match) return null;
-        return {
-            from: Math.min(match.fromKm, match.toKm) + leadIn,
-            to: Math.max(match.fromKm, match.toKm) + leadIn,
-        };
-    };
-    const rows = [...sprints].sort((a, b) => {
-        const aFrom = kmFor(a)?.from ?? Number.POSITIVE_INFINITY;
-        const bFrom = kmFor(b)?.from ?? Number.POSITIVE_INFINITY;
-        if (aFrom !== bFrom) return aFrom - bFrom;
-        return (a.lap || 1) - (b.lap || 1) || a.count - b.count;
+    const spans = [...sprintSpans(race, profile, sprints)].sort((a, b) => {
+        if (a.displayFrom !== b.displayFrom) return a.displayFrom - b.displayFrom;
+        return (a.sprint.lap || 1) - (b.sprint.lap || 1) || a.sprint.count - b.sprint.count;
     });
-    const hasKm = rows.some((sprint) => kmFor(sprint) !== null);
+    const hasKm = spans.some((span) => Number.isFinite(span.displayFrom));
+    const leadIn = profile?.leadInDistance ?? 0;
     const formatKmPoint = (km: number) => km.toFixed(1);
-    const body = rows.map((sprint) => {
-        const km = kmFor(sprint);
+    const cell = (text: string, align: 'left' | 'center' | 'right', extra = '') =>
+        `<td class="text-main" align="${align}" style="padding:6px 8px;${SPRINT_RULE}color:#212121;${extra}">${text}</td>`;
+    const head = (text: string, align: 'left' | 'center' | 'right') =>
+        `<th class="text-muted" align="${align}" style="padding:6px 8px;${SPRINT_RULE}font-size:11px;font-weight:bold;letter-spacing:0.04em;text-transform:uppercase;color:#313131;">${text}</th>`;
+    const body = spans.map((span) => {
         const kmCells = hasKm
-            ? `<td class="text-main" align="right" style="padding:6px 0 6px 8px;color:#212121;">${km ? formatKmPoint(km.from) : '—'}</td><td class="text-main" align="right" style="padding:6px 0 6px 8px;color:#212121;">${km ? formatKmPoint(km.to) : '—'}</td>`
+            ? `${cell(Number.isFinite(span.displayFrom) ? formatKmPoint(span.displayFrom) : '—', 'right')}${cell(Number.isFinite(span.displayTo) ? formatKmPoint(span.displayTo) : '—', 'right')}`
             : '';
         return `<tr>
-<td class="text-main" style="padding:6px 8px 6px 0;border-bottom:1px solid #e9e9e9;font-weight:bold;color:#212121;">${escapeHtml(sprintLabel(sprint))}</td>
-<td class="text-muted" align="center" style="padding:6px 8px;border-bottom:1px solid #e9e9e9;color:#313131;">${sprint.lap || 1}</td>
+${cell(escapeHtml(sprintLabel(span.sprint)), 'left', 'font-weight:bold;')}
+${cell(String(span.sprint.lap || 1), 'center')}
 ${kmCells}
 </tr>`;
     }).join('');
-    const kmHeads = hasKm
-        ? `<th class="text-muted" align="right" style="padding:6px 0 6px 8px;border-bottom:1px solid #e9e9e9;font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#313131;">Fra km</th><th class="text-muted" align="right" style="padding:6px 0 6px 8px;border-bottom:1px solid #e9e9e9;font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#313131;">Til km</th>`
-        : '';
+    const kmHeads = hasKm ? `${head('Fra km', 'right')}${head('Til km', 'right')}` : '';
     const leadNote = hasKm
         ? `<p class="text-muted" style="margin:8px 0 0;font-size:11px;color:#313131;">Distancer inkl lead-in${leadIn > 0 ? ` (${leadIn.toFixed(1)} km)` : ''}</p>`
         : '';
     return `<tr><td style="padding:4px 16px 16px;font-family:Arial,Helvetica,sans-serif;">
 <div class="text-main" style="margin-bottom:8px;font-size:14px;font-weight:bold;color:#212121;">Pointsprint</div>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;font-size:13px;">
 <tr>
-<th class="text-muted" align="left" style="padding:6px 8px 6px 0;border-bottom:1px solid #e9e9e9;font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#313131;">Sprint</th>
-<th class="text-muted" align="center" style="padding:6px 8px;border-bottom:1px solid #e9e9e9;font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#313131;">Omgang</th>
+${head('Sprint', 'left')}
+${head('Omgang', 'center')}
 ${kmHeads}
 </tr>
 ${body}
@@ -304,7 +321,7 @@ ${statCell('Omgange', laps)}
 </tr>
 </table>
 </td></tr>
-${profileMarkup(profile, sprintRows(race))}
+${profileMarkup(race, profile, sprintRows(race))}
 ${sprintMarkup(race, profile, sprintRows(race))}
 </table>
 </td></tr>`;
@@ -323,7 +340,7 @@ const DARK_STYLES = `
   .text-accent { color: #ff6b6b !important; }
   .email-btn, .email-btn span { background: #c00418 !important; color: #ffffff !important; }
   .elev-bar { background: #c00418 !important; background-color: #c00418 !important; }
-  .elev-sprint { background: #d97706 !important; background-color: #d97706 !important; }
+  .elev-sprint { background: #56A845 !important; background-color: #56A845 !important; }
 }
 [data-ogsc] .email-bg { background: #212121 !important; background-color: #212121 !important; }
 [data-ogsc] .email-card, [data-ogsc] .race-card { background: #313131 !important; background-color: #313131 !important; }
@@ -333,7 +350,7 @@ const DARK_STYLES = `
 [data-ogsc] .text-soft { color: #e9e9e9 !important; }
 [data-ogsc] .text-accent { color: #ff6b6b !important; }
 [data-ogsc] .elev-bar { background: #c00418 !important; background-color: #c00418 !important; }
-[data-ogsc] .elev-sprint { background: #d97706 !important; background-color: #d97706 !important; }
+[data-ogsc] .elev-sprint { background: #56A845 !important; background-color: #56A845 !important; }
 `;
 
 export function buildRaceAnnouncementHtml(options: {
