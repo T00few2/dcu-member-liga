@@ -15,7 +15,7 @@ import {
     nextRaceSubject,
     raceAnnouncementIntroHtml,
 } from '@/lib/campaignEmail';
-import { useRacesQuery } from '@/hooks/queries';
+import { useRacesQuery, useRouteElevationQuery } from '@/hooks/queries';
 import type { Race } from '@/types/live';
 
 import UsersFilters from './users-overview/UsersFilters';
@@ -121,6 +121,12 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
         [racesQuery.data],
     );
     const nextRaceIntro = upcomingRaces[0] ? raceAnnouncementIntroHtml(upcomingRaces[0]) : '';
+    const elevationQuery = useRouteElevationQuery(
+        upcomingRaces[0]?.map,
+        upcomingRaces[0]?.routeName,
+        1,
+        { enabled: Boolean(upcomingRaces[0]?.map && upcomingRaces[0]?.routeName) },
+    );
 
     useEffect(() => {
         if (campaignLayout !== 'races' || !nextRaceIntro) return;
@@ -300,6 +306,7 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
                             siteUrl: publicSiteUrl(),
                             introHtml: isMessageEmpty(emailMessage) ? '' : emailMessage,
                             race: announcedRace,
+                            profile: elevationQuery.data,
                         })
                         : withDcuSignature(emailMessage),
                     sendMode,
@@ -357,6 +364,7 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
                 siteUrl: publicSiteUrl(),
                 introHtml: messageIsEmpty ? '' : emailMessage,
                 race: upcomingRaces[0],
+                profile: elevationQuery.data,
             })
             : withDcuSignature(emailMessage);
 
@@ -522,6 +530,9 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
                                         <div className="text-xs text-muted-foreground">{formatRaceWhen(upcomingRaces[0].date)}</div>
                                         {upcomingRaces[0].routeName && (
                                             <div className="text-xs text-muted-foreground">{upcomingRaces[0].routeName}</div>
+                                        )}
+                                        {elevationQuery.isLoading && (
+                                            <div className="text-xs text-muted-foreground">Loading route profile…</div>
                                         )}
                                     </div>
                                 )}

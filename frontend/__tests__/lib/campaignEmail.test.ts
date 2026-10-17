@@ -45,12 +45,37 @@ describe('buildRaceAnnouncementHtml', () => {
         expect(html).toContain('>3<');
         expect(html).toContain('Husk at tilmelde jer.');
         expect(html).toContain('https://www.dansk-ecykling.dk/');
-        expect(html).toContain('Se løbet');
+        expect(html).toContain('Gå til løbet');
         expect(html).not.toContain('/schedule');
         expect(html).toContain('prefers-color-scheme: dark');
         expect(html).toContain('https://www.dansk-ecykling.dk/brand/dcu-e-serien-logo-white.png');
         expect(html).toContain('Venlig hilsen');
         expect(html).not.toContain('https://www.dansk-ecykling.dk//');
+    });
+
+    it('includes the route profile and sprint list', () => {
+        const html = buildRaceAnnouncementHtml({
+            siteUrl: 'https://www.dansk-ecykling.dk',
+            introHtml: '',
+            race: {
+                name: 'Watopia Classic',
+                date: '2026-10-18T17:00:00.000Z',
+                sprints: [{ id: 'sprint-1', name: 'Fuego Flats', count: 1, lap: 1 }],
+            },
+            profile: {
+                distance: [0, 1000, 2000],
+                altitude: [10, 40, 20],
+                leadInDistance: 0.4,
+                profileSegments: [{ name: 'Fuego Flats', type: 'sprint', fromKm: 1, toKm: 1.4 }],
+            },
+        });
+
+        expect(html).toContain('Ruteprofil');
+        expect(html).toContain('Pointsprint');
+        expect(html).toContain('Fuego Flats');
+        expect(html).toContain('Fra km');
+        expect(html).toContain('1.4');
+        expect(html).toContain('Gå til løbet');
     });
 
     it('escapes race names', () => {

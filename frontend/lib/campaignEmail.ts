@@ -1,5 +1,10 @@
+import {
+    buildProfileSegmentIndex,
+    matchSprintProfileSegment,
+} from '@/components/races/SprintsByLap';
 import { fromTimestamp } from '@/lib/formatDate';
-import { formatOmgangeDisplay } from '@/lib/raceLaps';
+import { formatOmgangeDisplay, getAllLapsValues } from '@/lib/raceLaps';
+import { lapLengthKmFromElevation, tileProfileSegments } from '@/lib/routeProfileSegments';
 import type { Race } from '@/types/live';
 
 export const RACE_ANNOUNCEMENT_SUBJECT = 'Næste løb i DCU E-serien';
@@ -9,8 +14,23 @@ const SITE_URL = 'https://www.dansk-ecykling.dk';
 
 export type AnnouncementRace = Pick<
     Race,
-    'name' | 'date' | 'routeName' | 'map' | 'laps' | 'totalDistance' | 'totalElevation' | 'eventMode' | 'eventConfiguration' | 'raceGroups' | 'singleModeCategories'
+    'name' | 'date' | 'routeName' | 'map' | 'laps' | 'totalDistance' | 'totalElevation' | 'eventMode' | 'eventConfiguration' | 'raceGroups' | 'singleModeCategories' | 'sprints'
 >;
+
+export interface AnnouncementProfileSegment {
+    name: string;
+    type: string;
+    fromKm: number;
+    toKm: number;
+    direction?: string;
+}
+
+export interface AnnouncementProfile {
+    distance: number[];
+    altitude: number[];
+    leadInDistance?: number;
+    profileSegments?: AnnouncementProfileSegment[];
+}
 
 export function publicSiteUrl(): string {
     const configured = process.env.NEXT_PUBLIC_SITE_URL || SITE_URL;
@@ -108,7 +128,155 @@ function statCell(label: string, value: string): string {
 </td>`;
 }
 
-function raceCard(race: AnnouncementRace): string {
+const PROFILE_BARS = 80;
+const PROFILE_HEIGHT = 72;
+
+interface SprintRow {
+    name: string;
+    count: number;
+    lap?: number;
+    direction?: string;
+}
+
+function sprintRows(race: AnnouncementRace): SprintRow[] {
+    const grouped = race.eventMode === 'grouped' ? race.raceGroups?.[0]?.sprints : undefined;
+    const configured = race.eventConfiguration?.[0]?.sprints;
+    const single = race.singleModeCategories?.[0]?.sprints;
+    const chosen = (grouped && grouped.length > 0)
+        ? grouped
+        : (configured && configured.length > 0)
+            ? configured
+            : (single && single.length > 0)
+                ? single
+                : race.sprints;
+    return (chosen || [])
+        .filter((sprint) => sprint?.name)
+        .map((sprint) => ({
+            name: sprint.name,
+            count: sprint.count || 1,
+            lap: sprint.lap,
+            direction: sprint.direction,
+        }));
+}
+
+function sprintLabel(sprint: SprintRow): string {
+    const direction = (sprint.direction || '').trim().toLowerCase();
+    return direction === 'reverse' ? `${sprint.name} Reverse` : sprint.name;
+}
+
+function profileSamples(profile: AnnouncementProfile): { km: number; altitude: number }[] {
+    const count = Math.min(profile.distance.length, profile.altitude.length);
+    if (count < 2) return [];
+    const samples: { km: number; altitude: number }[] = [];
+    for (let i = 0; i < PROFILE_BARS; i++) {
+        const index = Math.min(count - 1, Math.floor((i * count) / PROFILE_BARS));
+        samples.push({
+            km: (profile.distance[index] ?? 0) / 1000,
+            altitude: profile.altitude[index] ?? 0,
+        });
+    }
+    return samples;
+}
+
+function profileMarkup(profile: AnnouncementProfile | null | undefined, sprints: SprintRow[]): string {
+    if (!profile) return '';
+    const samples = profileSamples(profile);
+    if (samples.length < 2) return '';
+    const altitudes = samples.map((sample) => sample.altitude);
+    const minAlt = Math.min(...altitudes);
+    const maxAlt = Math.max(...altitudes);
+    const range = maxAlt - minAlt || 1;
+    const maxKm = samples[samples.length - 1]?.km ?? 0;
+    const sprintBands = (profile.profileSegments || []).filter((segment) => segment.type === 'sprint' || sprints.some((sprint) => sprint.name === segment.name));
+    const bars = samples.map((sample, index) => {
+        const nextKm = samples[index + 1]?.km ?? sample.km;
+        const height = Math.max(4, Math.round(((sample.altitude - minAlt) / range) * (PROFILE_HEIGHT - 4)) + 4);
+        const marked = sprintBands.some((segment) => {
+            const from = Math.min(segment.fromKm, segment.toKm);
+            const to = Math.max(segment.fromKm, segment.toKm);
+            return to >= sample.km && from <= nextKm;
+        });
+        const cap = marked
+            ? `<tr><td class="elev-sprint" height="4" bgcolor="#d97706" style="height:4px;background:#d97706;font-size:1px;line-height:1px;">&nbsp;</td></tr>`
+            : '';
+        return `<td valign="bottom" height="${PROFILE_HEIGHT + 4}" style="vertical-align:bottom;padding:0;font-size:0;line-height:0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${cap}<tr><td class="elev-bar" height="${height}" bgcolor="#c00418" style="height:${height}px;background:#c00418;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td>`;
+    }).join('');
+    const endLabel = `${new Intl.NumberFormat('da-DK', { maximumFractionDigits: 1 }).format(maxKm)} km`;
+    return `<tr><td style="padding:4px 16px 8px;font-family:Arial,Helvetica,sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+<td class="text-main" style="font-size:14px;font-weight:bold;color:#212121;">Ruteprofil</td>
+<td class="text-muted" align="right" style="font-size:11px;color:#d97706;">★ Pointspurt</td>
+</tr></table>
+</td></tr>
+<tr><td style="padding:0 16px 2px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>${bars}</tr></table>
+</td></tr>
+<tr><td style="padding:2px 16px 12px;font-family:Arial,Helvetica,sans-serif;font-size:11px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+<td class="text-muted" style="color:#313131;">0</td>
+<td class="text-muted" align="right" style="color:#313131;">${escapeHtml(endLabel)}</td>
+</tr></table>
+</td></tr>`;
+}
+
+function sprintMarkup(race: AnnouncementRace, profile: AnnouncementProfile | null | undefined, sprints: SprintRow[]): string {
+    if (sprints.length === 0) return '';
+    const lapCount = Math.max(1, ...getAllLapsValues(race as Race));
+    const lapKm = profile ? lapLengthKmFromElevation(profile, lapCount, 0) : 0;
+    const segments = profile
+        ? tileProfileSegments(profile.profileSegments ?? [], lapCount, lapKm)
+        : [];
+    const index = segments.length > 0 ? buildProfileSegmentIndex(segments) : null;
+    const leadIn = profile?.leadInDistance ?? 0;
+    const kmFor = (sprint: SprintRow) => {
+        if (!index) return null;
+        const match = matchSprintProfileSegment(index, sprint);
+        if (!match) return null;
+        return {
+            from: Math.min(match.fromKm, match.toKm) + leadIn,
+            to: Math.max(match.fromKm, match.toKm) + leadIn,
+        };
+    };
+    const rows = [...sprints].sort((a, b) => {
+        const aFrom = kmFor(a)?.from ?? Number.POSITIVE_INFINITY;
+        const bFrom = kmFor(b)?.from ?? Number.POSITIVE_INFINITY;
+        if (aFrom !== bFrom) return aFrom - bFrom;
+        return (a.lap || 1) - (b.lap || 1) || a.count - b.count;
+    });
+    const hasKm = rows.some((sprint) => kmFor(sprint) !== null);
+    const formatKmPoint = (km: number) => km.toFixed(1);
+    const body = rows.map((sprint) => {
+        const km = kmFor(sprint);
+        const kmCells = hasKm
+            ? `<td class="text-main" align="right" style="padding:6px 0 6px 8px;color:#212121;">${km ? formatKmPoint(km.from) : '—'}</td><td class="text-main" align="right" style="padding:6px 0 6px 8px;color:#212121;">${km ? formatKmPoint(km.to) : '—'}</td>`
+            : '';
+        return `<tr>
+<td class="text-main" style="padding:6px 8px 6px 0;border-bottom:1px solid #e9e9e9;font-weight:bold;color:#212121;">${escapeHtml(sprintLabel(sprint))}</td>
+<td class="text-muted" align="center" style="padding:6px 8px;border-bottom:1px solid #e9e9e9;color:#313131;">${sprint.lap || 1}</td>
+${kmCells}
+</tr>`;
+    }).join('');
+    const kmHeads = hasKm
+        ? `<th class="text-muted" align="right" style="padding:6px 0 6px 8px;border-bottom:1px solid #e9e9e9;font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#313131;">Fra km</th><th class="text-muted" align="right" style="padding:6px 0 6px 8px;border-bottom:1px solid #e9e9e9;font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#313131;">Til km</th>`
+        : '';
+    const leadNote = hasKm
+        ? `<p class="text-muted" style="margin:8px 0 0;font-size:11px;color:#313131;">Distancer inkl lead-in${leadIn > 0 ? ` (${leadIn.toFixed(1)} km)` : ''}</p>`
+        : '';
+    return `<tr><td style="padding:4px 16px 16px;font-family:Arial,Helvetica,sans-serif;">
+<div class="text-main" style="margin-bottom:8px;font-size:14px;font-weight:bold;color:#212121;">Pointsprint</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;">
+<tr>
+<th class="text-muted" align="left" style="padding:6px 8px 6px 0;border-bottom:1px solid #e9e9e9;font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#313131;">Sprint</th>
+<th class="text-muted" align="center" style="padding:6px 8px;border-bottom:1px solid #e9e9e9;font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#313131;">Omgang</th>
+${kmHeads}
+</tr>
+${body}
+</table>
+${leadNote}
+</td></tr>`;
+}
+
+function raceCard(race: AnnouncementRace, profile?: AnnouncementProfile | null): string {
     const route = (race.routeName || '').trim();
     const map = (race.map || '').trim();
     const distance = race.totalDistance && race.totalDistance > 0 ? formatKm(race.totalDistance) : '–';
@@ -136,6 +304,8 @@ ${statCell('Omgange', laps)}
 </tr>
 </table>
 </td></tr>
+${profileMarkup(profile, sprintRows(race))}
+${sprintMarkup(race, profile, sprintRows(race))}
 </table>
 </td></tr>`;
 }
@@ -152,6 +322,8 @@ const DARK_STYLES = `
   .text-soft { color: #e9e9e9 !important; }
   .text-accent { color: #ff6b6b !important; }
   .email-btn, .email-btn span { background: #c00418 !important; color: #ffffff !important; }
+  .elev-bar { background: #c00418 !important; background-color: #c00418 !important; }
+  .elev-sprint { background: #d97706 !important; background-color: #d97706 !important; }
 }
 [data-ogsc] .email-bg { background: #212121 !important; background-color: #212121 !important; }
 [data-ogsc] .email-card, [data-ogsc] .race-card { background: #313131 !important; background-color: #313131 !important; }
@@ -160,12 +332,15 @@ const DARK_STYLES = `
 [data-ogsc] .text-muted { color: #e7e3d6 !important; }
 [data-ogsc] .text-soft { color: #e9e9e9 !important; }
 [data-ogsc] .text-accent { color: #ff6b6b !important; }
+[data-ogsc] .elev-bar { background: #c00418 !important; background-color: #c00418 !important; }
+[data-ogsc] .elev-sprint { background: #d97706 !important; background-color: #d97706 !important; }
 `;
 
 export function buildRaceAnnouncementHtml(options: {
     siteUrl: string;
     introHtml: string;
     race: AnnouncementRace;
+    profile?: AnnouncementProfile | null;
 }): string {
     const siteUrl = options.siteUrl.replace(/\/$/, '');
     const logoUrl = `${siteUrl}/brand/dcu-e-serien-logo-white.png`;
@@ -191,9 +366,9 @@ export function buildRaceAnnouncementHtml(options: {
 </td></tr>
 <tr><td class="text-main" style="padding:28px 32px 8px;font-family:Arial,Helvetica,sans-serif;font-size:18px;line-height:1.4;color:#212121;">Hej $[FNAME|]$</td></tr>
 ${introRow}
-${raceCard(options.race)}
+${raceCard(options.race, options.profile)}
 <tr><td align="center" style="padding:8px 32px 28px;">
-<a class="email-btn" href="${escapeHtml(homeUrl)}" style="display:inline-block;background:#c00418;color:#ffffff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;line-height:1;padding:14px 22px;border-radius:6px;">Se løbet</a>
+<a class="email-btn" href="${escapeHtml(homeUrl)}" style="display:inline-block;background:#c00418;color:#ffffff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;line-height:1;padding:14px 22px;border-radius:6px;">Gå til løbet</a>
 </td></tr>
 <tr><td class="text-soft" style="padding:0 32px 32px;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;color:#313131;">Venlig hilsen<br><br>DCU Udvalg for e-cykling</td></tr>
 </table>
