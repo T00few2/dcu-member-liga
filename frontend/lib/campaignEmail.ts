@@ -223,11 +223,19 @@ function profileMarkup(race: AnnouncementRace, profile: AnnouncementProfile | nu
     const range = maxAlt - minAlt || 1;
     const maxKm = samples[samples.length - 1]?.km ?? 0;
     const spans = sprintSpans(race, profile, sprints).filter((span) => Number.isFinite(span.fromKm));
-    const starAt = new Set<number>();
+    const starAt = new Map<number, 'center' | 'right-edge'>();
     if (maxKm > 0) {
         for (const span of spans) {
-            const mid = (span.fromKm + span.toKm) / 2;
-            starAt.add(Math.min(PROFILE_BARS - 1, Math.max(0, Math.floor((mid / maxKm) * PROFILE_BARS))));
+            const covered: number[] = [];
+            for (let index = 0; index < PROFILE_BARS; index++) {
+                const barStart = (maxKm * index) / PROFILE_BARS;
+                const barEnd = (maxKm * (index + 1)) / PROFILE_BARS;
+                if (span.toKm >= barStart && span.fromKm <= barEnd) covered.push(index);
+            }
+            if (covered.length === 0) continue;
+            const center = (covered[0] + covered[covered.length - 1]) / 2;
+            const index = Math.floor(center);
+            starAt.set(index, center === index ? 'center' : 'right-edge');
         }
     }
     const bars = samples.map((sample, index) => {
@@ -237,28 +245,22 @@ function profileMarkup(race: AnnouncementRace, profile: AnnouncementProfile | nu
         const marked = spans.some((span) => span.toKm >= barStart && span.fromKm <= barEnd);
         const color = marked ? '#56A845' : '#c00418';
         const barClass = marked ? 'elev-sprint' : 'elev-bar';
-        const star = starAt.has(index)
-            ? `<tr><td class="elev-star" align="center" height="14" style="height:14px;padding:0 0 1px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:14px;color:#d97706;">★</td></tr>`
+        const anchor = starAt.get(index);
+        const star = anchor
+            ? `<tr><td height="14" style="height:14px;padding:0;position:relative;"><div class="elev-star" style="position:absolute;left:${anchor === 'right-edge' ? '100%' : '50%'};width:16px;margin-left:-8px;text-align:center;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:14px;color:#d97706;">★</div></td></tr><tr><td height="22" style="height:22px;font-size:1px;line-height:22px;">&nbsp;</td></tr>`
             : '';
-        return `<td valign="bottom" style="vertical-align:bottom;padding:0;font-size:0;line-height:0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${star}<tr><td class="${barClass}" height="${height}" bgcolor="${color}" style="height:${height}px;background:${color};font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td>`;
+        return `<td valign="bottom" style="vertical-align:bottom;padding:0;font-size:0;line-height:0;overflow:visible;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${star}<tr><td class="${barClass}" height="${height}" bgcolor="${color}" style="height:${height}px;background:${color};font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td>`;
     }).join('');
-    const endLabel = `${new Intl.NumberFormat('da-DK', { maximumFractionDigits: 1 }).format(maxKm)} km`;
     return `<tr><td style="padding:4px 16px 8px;font-family:Arial,Helvetica,sans-serif;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
 <td class="text-main" style="font-size:14px;font-weight:bold;color:#212121;">Ruteprofil</td>
-<td class="text-muted" align="right" style="font-size:11px;color:#d97706;">★ Pointspurt</td>
+<td align="right" style="font-family:Arial,Helvetica,sans-serif;font-size:11px;"><span class="elev-star" style="color:#d97706;">★</span> <span class="text-muted" style="color:#313131;">Pointspurt</span></td>
 </tr></table>
 </td></tr>
-<tr><td style="padding:0 16px 2px;">
+<tr><td style="padding:0 16px 12px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;table-layout:fixed;">
 <tr>${bars}</tr>
 </table>
-</td></tr>
-<tr><td style="padding:2px 16px 12px;font-family:Arial,Helvetica,sans-serif;font-size:11px;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-<td class="text-muted" style="color:#313131;">0</td>
-<td class="text-muted" align="right" style="color:#313131;">${escapeHtml(endLabel)}</td>
-</tr></table>
 </td></tr>`;
 }
 
