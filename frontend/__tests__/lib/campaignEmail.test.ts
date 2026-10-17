@@ -78,6 +78,7 @@ describe('buildRaceAnnouncementHtml', () => {
         expect(html).not.toContain('Reverse Reverse');
         expect(html).toContain('1.4');
         expect(html).toContain('1.8');
+        expect(html.match(/★/g)).toHaveLength(2);
         const sprintBars = html.match(/class="elev-sprint"/g) ?? [];
         expect(sprintBars.length).toBeGreaterThan(0);
         expect(sprintBars.length).toBeLessThan(25);

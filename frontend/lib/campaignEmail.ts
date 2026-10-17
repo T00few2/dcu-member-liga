@@ -223,6 +223,16 @@ function profileMarkup(race: AnnouncementRace, profile: AnnouncementProfile | nu
     const range = maxAlt - minAlt || 1;
     const maxKm = samples[samples.length - 1]?.km ?? 0;
     const spans = sprintSpans(race, profile, sprints).filter((span) => Number.isFinite(span.fromKm));
+    const starAt = new Set<number>();
+    if (maxKm > 0) {
+        for (const span of spans) {
+            const mid = (span.fromKm + span.toKm) / 2;
+            starAt.add(Math.min(PROFILE_BARS - 1, Math.max(0, Math.floor((mid / maxKm) * PROFILE_BARS))));
+        }
+    }
+    const stars = samples.map((_, index) => starAt.has(index)
+        ? `<td class="elev-star" align="center" height="16" style="height:16px;padding:0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:16px;color:#d97706;">★</td>`
+        : `<td height="16" style="height:16px;padding:0;font-size:1px;line-height:1px;">&nbsp;</td>`).join('');
     const bars = samples.map((sample, index) => {
         const barStart = (maxKm * index) / PROFILE_BARS;
         const barEnd = (maxKm * (index + 1)) / PROFILE_BARS;
@@ -240,7 +250,10 @@ function profileMarkup(race: AnnouncementRace, profile: AnnouncementProfile | nu
 </tr></table>
 </td></tr>
 <tr><td style="padding:0 16px 2px;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>${bars}</tr></table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;table-layout:fixed;">
+<tr>${stars}</tr>
+<tr>${bars}</tr>
+</table>
 </td></tr>
 <tr><td style="padding:2px 16px 12px;font-family:Arial,Helvetica,sans-serif;font-size:11px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
@@ -341,6 +354,7 @@ const DARK_STYLES = `
   .email-btn, .email-btn span { background: #c00418 !important; color: #ffffff !important; }
   .elev-bar { background: #c00418 !important; background-color: #c00418 !important; }
   .elev-sprint { background: #56A845 !important; background-color: #56A845 !important; }
+  .elev-star { color: #d97706 !important; }
 }
 [data-ogsc] .email-bg { background: #212121 !important; background-color: #212121 !important; }
 [data-ogsc] .email-card, [data-ogsc] .race-card { background: #313131 !important; background-color: #313131 !important; }
@@ -351,6 +365,7 @@ const DARK_STYLES = `
 [data-ogsc] .text-accent { color: #ff6b6b !important; }
 [data-ogsc] .elev-bar { background: #c00418 !important; background-color: #c00418 !important; }
 [data-ogsc] .elev-sprint { background: #56A845 !important; background-color: #56A845 !important; }
+[data-ogsc] .elev-star { color: #d97706 !important; }
 `;
 
 export function buildRaceAnnouncementHtml(options: {
