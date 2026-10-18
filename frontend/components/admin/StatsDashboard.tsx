@@ -99,17 +99,48 @@ const STATUS_COLORS: Record<string, string> = {
     none:      '#6b7280',
 };
 
+function isBlankInk(color: unknown): boolean {
+    if (typeof color !== 'string') return true;
+    const c = color.trim().toLowerCase();
+    return c === '' || c === '#fff' || c === '#ffffff' || c === 'white' || c === 'transparent' || c === 'none';
+}
+
+/** Line series default to a white fill, which hides tooltip text on a light card. */
+function seriesInk(entry: { color?: string; stroke?: string; fill?: string }): string | undefined {
+    for (const candidate of [entry.color, entry.stroke, entry.fill]) {
+        if (!isBlankInk(candidate)) return candidate;
+    }
+    return undefined;
+}
+
+function seriesValue(entry: { value?: unknown; dataKey?: unknown; payload?: Record<string, unknown> }) {
+    if (entry.value != null && entry.value !== '') return entry.value;
+    const key = entry.dataKey;
+    if ((typeof key === 'string' || typeof key === 'number') && entry.payload && key in entry.payload) {
+        return entry.payload[key];
+    }
+    return '–';
+}
+
 // Custom tooltip for recharts
 function ChartTip({ active, payload, label }: any) {
     if (!active || !payload?.length) return null;
     return (
-        <div className="bg-card border border-border rounded-lg px-3 py-2 shadow text-sm">
-            <p className="font-medium text-foreground mb-1">{label}</p>
-            {payload.map((p: any) => (
-                <p key={p.dataKey} style={{ color: p.fill || p.color }}>
-                    {p.name ?? p.dataKey}: <strong>{p.value}</strong>
-                </p>
-            ))}
+        <div className="bg-card border border-border rounded-lg px-3 py-2 shadow text-sm text-foreground">
+            <p className="font-medium mb-1">{label}</p>
+            {payload.map((p: any) => {
+                const ink = seriesInk(p);
+                return (
+                    <p key={p.dataKey ?? p.name} className="flex items-center gap-2">
+                        <span
+                            className="inline-block h-2 w-2 shrink-0 rounded-full"
+                            style={{ background: ink ?? 'currentColor' }}
+                        />
+                        <span>{p.name ?? p.dataKey}</span>
+                        <strong>{seriesValue(p)}</strong>
+                    </p>
+                );
+            })}
         </div>
     );
 }
