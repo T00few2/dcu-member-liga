@@ -113,12 +113,17 @@ function seriesInk(entry: { color?: string; stroke?: string; fill?: string }): s
     return undefined;
 }
 
-function seriesValue(entry: { value?: unknown; dataKey?: unknown; payload?: Record<string, unknown> }) {
-    if (entry.value != null && entry.value !== '') return entry.value;
-    const key = entry.dataKey;
-    if ((typeof key === 'string' || typeof key === 'number') && entry.payload && key in entry.payload) {
-        return entry.payload[key];
-    }
+function seriesValue(entry: { value?: unknown; dataKey?: unknown; payload?: Record<string, unknown> }): string | number {
+    const raw = (() => {
+        if (entry.value != null && entry.value !== '') return entry.value;
+        const key = entry.dataKey;
+        if ((typeof key === 'string' || typeof key === 'number') && entry.payload && key in entry.payload) {
+            return entry.payload[key];
+        }
+        return undefined;
+    })();
+    if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+    if (typeof raw === 'string' && raw !== '') return raw;
     return '–';
 }
 
