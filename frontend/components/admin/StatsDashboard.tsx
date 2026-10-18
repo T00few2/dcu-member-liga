@@ -1,8 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import { useAdminStatsQuery } from '@/hooks/queries';
+import { useMemo, useState } from 'react';
+import { useAdminStatsQuery, useRacesQuery } from '@/hooks/queries';
 import type { DualRecordingBucket, StatsData } from '@/hooks/queries';
+import RaceSignupSelect from '@/components/RaceSignupSelect';
+import type { Race } from '@/types/live';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     PieChart, Pie, Cell, Legend,
@@ -74,6 +76,8 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
         <h2 className="text-lg font-semibold text-foreground mb-4">{children}</h2>
     );
 }
+
+type GrowthPoint = { date: string; signups: number; clubs: number };
 
 const STATUS_LABELS: Record<string, string> = {
     draft: 'Draft',
@@ -183,61 +187,7 @@ export default function StatsDashboard() {
                 <StatCard label="Race-Locked" value={stats.lockedCount} sub="locked after first race" />
             </div>
 
-            {/* ── Signup Growth ── */}
-            {stats.growthSeries.length > 0 && (
-                <div className="bg-card rounded-xl border border-border p-6 shadow-sm">
-                    <SectionTitle>Signup Growth Over Time</SectionTitle>
-                    <ResponsiveContainer width="100%" height={280}>
-                        <LineChart data={stats.growthSeries} margin={{ top: 4, right: 40, left: 0, bottom: 4 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                            <XAxis
-                                dataKey="date"
-                                tick={{ fill: 'var(--color-muted-foreground)', fontSize: 11 }}
-                                tickFormatter={(d) => {
-                                    const [, m, day] = d.split('-');
-                                    return `${day}/${m}`;
-                                }}
-                                interval="preserveStartEnd"
-                            />
-                            <YAxis
-                                yAxisId="signups"
-                                allowDecimals={false}
-                                tick={{ fill: 'var(--color-muted-foreground)', fontSize: 11 }}
-                                label={{ value: 'Signups', angle: -90, position: 'insideLeft', offset: 10, style: { fill: 'var(--color-muted-foreground)', fontSize: 11 } }}
-                            />
-                            <YAxis
-                                yAxisId="clubs"
-                                orientation="right"
-                                allowDecimals={false}
-                                tick={{ fill: 'var(--color-muted-foreground)', fontSize: 11 }}
-                                label={{ value: 'Clubs', angle: 90, position: 'insideRight', offset: 10, style: { fill: 'var(--color-muted-foreground)', fontSize: 11 } }}
-                            />
-                            <Tooltip content={<ChartTip />} />
-                            <Legend wrapperStyle={{ fontSize: 12 }} />
-                            <Line
-                                yAxisId="signups"
-                                type="monotone"
-                                dataKey="signups"
-                                name="Completed Signups"
-                                stroke="#c00418"
-                                strokeWidth={2}
-                                dot={false}
-                                activeDot={{ r: 4 }}
-                            />
-                            <Line
-                                yAxisId="clubs"
-                                type="monotone"
-                                dataKey="clubs"
-                                name="Unique Clubs"
-                                stroke="#122f3b"
-                                strokeWidth={2}
-                                dot={false}
-                                activeDot={{ r: 4 }}
-                            />
-                        </LineChart>
-                    </ResponsiveContainer>
-                </div>
-            )}
+            <SignupGrowth stats={stats} />
 
             {/* ── Kategori Distribution ── */}
             <div className="bg-card rounded-xl border border-border p-6 shadow-sm">
@@ -400,6 +350,109 @@ export default function StatsDashboard() {
                 </div>
             </div>
 
+        </div>
+    );
+}
+
+// ── Signup growth (league total or one race) ─────────────────────────────────
+
+function SignupGrowth({ stats }: { stats: StatsData }) {
+    const [raceId, setRaceId] = useState('');
+    const racesQuery = useRacesQuery();
+    const races = (racesQuery.data ?? []) as Race[];
+
+    const seriesByRace = useMemo(() => {
+        const map = new Map<string, GrowthPoint[]>();
+        for (const row of stats.raceGrowth ?? []) {
+            map.set(row.raceId, row.series);
+        }
+        return map;
+    }, [stats.raceGrowth]);
+
+    const isRace = raceId !== '';
+    const selectedRace = races.find(r => r.id === raceId);
+    const series = isRace ? (seriesByRace.get(raceId) ?? []) : stats.growthSeries;
+    const latest = series.length > 0 ? series[series.length - 1] : null;
+    const raceHistoryMissing = isRace && stats.raceGrowth == null;
+
+    return (
+        <div className="bg-card rounded-xl border border-border p-6 shadow-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+                <div>
+                    <h2 className="text-lg font-semibold text-foreground">Signup Growth Over Time</h2>
+                    {isRace && latest && (
+                        <p className="text-sm text-muted-foreground mt-0.5">
+                            {selectedRace?.name ?? 'Race'} · {latest.signups} signups · {latest.clubs} clubs
+                        </p>
+                    )}
+                </div>
+                <RaceSignupSelect
+                    races={races}
+                    value={raceId}
+                    onChange={setRaceId}
+                    label="Signed up for"
+                    allLabel="Total signups"
+                />
+            </div>
+            {raceHistoryMissing ? (
+                <p className="text-muted-foreground text-sm">
+                    Race signup history is not in this stats response yet — hit Refresh to reload it.
+                </p>
+            ) : series.length === 0 ? (
+                <p className="text-muted-foreground text-sm">
+                    {isRace ? 'No signups for this race yet.' : 'No signup data yet.'}
+                </p>
+            ) : (
+                <ResponsiveContainer width="100%" height={280}>
+                    <LineChart key={raceId || 'total'} data={series} margin={{ top: 4, right: 40, left: 0, bottom: 4 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+                        <XAxis
+                            dataKey="date"
+                            tick={{ fill: 'var(--color-muted-foreground)', fontSize: 11 }}
+                            tickFormatter={(d) => {
+                                const [, m, day] = d.split('-');
+                                return `${day}/${m}`;
+                            }}
+                            interval="preserveStartEnd"
+                        />
+                        <YAxis
+                            yAxisId="signups"
+                            allowDecimals={false}
+                            tick={{ fill: 'var(--color-muted-foreground)', fontSize: 11 }}
+                            label={{ value: 'Signups', angle: -90, position: 'insideLeft', offset: 10, style: { fill: 'var(--color-muted-foreground)', fontSize: 11 } }}
+                        />
+                        <YAxis
+                            yAxisId="clubs"
+                            orientation="right"
+                            allowDecimals={false}
+                            tick={{ fill: 'var(--color-muted-foreground)', fontSize: 11 }}
+                            label={{ value: 'Clubs', angle: 90, position: 'insideRight', offset: 10, style: { fill: 'var(--color-muted-foreground)', fontSize: 11 } }}
+                        />
+                        <Tooltip content={<ChartTip />} />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                        <Line
+                            yAxisId="signups"
+                            type="monotone"
+                            dataKey="signups"
+                            name={isRace ? 'Signups' : 'Completed Signups'}
+                            stroke="#c00418"
+                            strokeWidth={2}
+                            dot={false}
+                            activeDot={{ r: 4 }}
+                        />
+                        <Line
+                            yAxisId="clubs"
+                            type="monotone"
+                            dataKey="clubs"
+                            name="Unique Clubs"
+                            stroke="#122f3b"
+                            strokeWidth={2}
+                            dot={false}
+                            activeDot={{ r: 4 }}
+                        />
+                    </LineChart>
+                </ResponsiveContainer>
+            )}
         </div>
     );
 }

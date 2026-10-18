@@ -7,7 +7,10 @@ import userEvent from '@testing-library/user-event';
 vi.mock('@/lib/firebase', () => ({ app: {}, auth: {}, db: {}, storage: {} }));
 
 const useAdminStatsQuery = vi.fn();
-vi.mock('@/hooks/queries', () => ({ useAdminStatsQuery: () => useAdminStatsQuery() }));
+vi.mock('@/hooks/queries', () => ({
+    useAdminStatsQuery: () => useAdminStatsQuery(),
+    useRacesQuery: () => ({ data: [], isLoading: false }),
+}));
 
 const { default: StatsDashboard } = await import('@/components/admin/StatsDashboard');
 
@@ -111,7 +114,7 @@ describe('StatsDashboard trainer analysis', () => {
         useAdminStatsQuery.mockReturnValue({ isLoading: false, isError: false, data: STATS });
         render(<StatsDashboard />);
 
-        await user.selectOptions(screen.getByRole('combobox'), 'Diamond');
+        await user.selectOptions(screen.getByLabelText('Kategori'), 'Diamond');
 
         const trainers = within(card('Trainer Types'));
         expect(trainers.getByText('Diamond · 2 models')).toBeInTheDocument();

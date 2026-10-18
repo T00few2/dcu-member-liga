@@ -41,7 +41,12 @@ def _user(doc_id: str, category: str, trainer: str | None) -> MagicMock:
     )
 
 
-def _make_db(users: list[MagicMock], trainers: list[MagicMock], settings: dict) -> MagicMock:
+def _make_db(
+    users: list[MagicMock],
+    trainers: list[MagicMock],
+    settings: dict,
+    signups: list[MagicMock] | None = None,
+) -> MagicMock:
     users_col = MagicMock()
     users_col.stream.return_value = users
 
@@ -59,6 +64,7 @@ def _make_db(users: list[MagicMock], trainers: list[MagicMock], settings: dict) 
         "trainers": trainers_col,
         "league": league_col,
     }[name]
+    db.collection_group.return_value.stream.return_value = signups or []
     return db
 
 
@@ -136,4 +142,67 @@ def test_dual_recording_by_category(stats: dict) -> None:
     assert stats["dualRecordingByCategory"] == [
         {"category": "Diamond", "required": 2, "notRequired": 1, "unknown": 0, "total": 3},
         {"category": "Gold", "required": 1, "notRequired": 0, "unknown": 2, "total": 3},
+    ]
+
+
+def test_race_growth_empty_without_signups(stats: dict) -> None:
+    assert stats["raceGrowth"] == []
+
+
+def test_race_growth_is_cumulative_per_race(app: Flask, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(admin_stats, "require_admin", lambda _req: None)
+    monkeypatch.setattr(
+        admin_stats,
+        "db",
+        _make_db([], [], {"ligaCategories": []}, signups=[
+            _doc("s1", {
+                "raceId": "r1",
+                "status": "registered",
+                "signedUpAt": "2026-04-03T10:00:00+00:00",
+                "club": "Club A",
+            }),
+            _doc("s2", {
+                "raceId": "r1",
+                "status": "pending",
+                "signedUpAt": "2026-04-03T18:00:00+00:00",
+                "club": "Club B",
+            }),
+            _doc("s3", {
+                "raceId": "r1",
+                "status": "registered",
+                "signedUpAt": "2026-04-05T10:00:00+00:00",
+                "club": "Club A",
+            }),
+            # Failed attempts are not on the roster.
+            _doc("s4", {
+                "raceId": "r1",
+                "status": "failed",
+                "signedUpAt": "2026-04-04T10:00:00+00:00",
+                "club": "Club C",
+            }),
+            # Missing timestamp cannot be placed on the curve.
+            _doc("s5", {
+                "raceId": "r1",
+                "status": "registered",
+                "club": "Club D",
+            }),
+            _doc("s6", {
+                "raceId": "r2",
+                "status": "registered",
+                "signedUpAt": "2026-05-01T08:00:00+00:00",
+                "club": "",
+            }),
+        ]),
+    )
+
+    with app.test_request_context("/admin/stats"):
+        response = admin_stats.get_league_stats()
+
+    by_race = {row["raceId"]: row["series"] for row in response.get_json()["raceGrowth"]}
+    assert by_race["r1"] == [
+        {"date": "2026-04-03", "signups": 2, "clubs": 2},
+        {"date": "2026-04-05", "signups": 3, "clubs": 2},
+    ]
+    assert by_race["r2"] == [
+        {"date": "2026-05-01", "signups": 1, "clubs": 0},
     ]

@@ -6,6 +6,7 @@ Registered on admin_bp (defined in routes/admin.py).
 """
 from flask import request, jsonify
 from collections import Counter, defaultdict
+from datetime import date, datetime
 
 from routes.admin import admin_bp
 from authz import require_admin, AuthzError
@@ -14,6 +15,9 @@ from extensions import db
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Race roster rows that still count as a signup. Failed attempts are excluded.
+ACTIVE_SIGNUP_STATUSES = {'pending', 'registered'}
 
 # Dual-recording buckets used by the trainer analysis breakdowns.
 DR_REQUIRED = 'required'
@@ -24,6 +28,84 @@ DR_UNKNOWN = 'unknown'
 def _normalize_trainer_name(name: str) -> str:
     """Normalize trainer names so user equipment matches the trainers catalog."""
     return ' '.join((name or '').strip().lower().split())
+
+
+def _to_day(value) -> str | None:
+    """Calendar day (YYYY-MM-DD) from an ISO string, datetime, or unix timestamp."""
+    if value is None or value == '':
+        return None
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, str):
+        text = value.strip()
+        if len(text) < 10:
+            return None
+        try:
+            return date.fromisoformat(text[:10]).isoformat()
+        except ValueError:
+            return None
+    if hasattr(value, 'date') and callable(value.date):
+        try:
+            return value.date().isoformat()
+        except Exception:
+            return None
+    try:
+        return date.fromtimestamp(int(value)).isoformat()
+    except (TypeError, ValueError, OSError):
+        return None
+
+
+def _growth_series(daily: dict) -> list:
+    """Cumulative signups and unique clubs, one point per day that had a signup."""
+    seen_clubs: set = set()
+    cumulative_signups = 0
+    series = []
+    for day in sorted(daily):
+        cumulative_signups += daily[day]['signups']
+        seen_clubs |= daily[day]['clubs']
+        series.append({
+            'date': day,
+            'signups': cumulative_signups,
+            'clubs': len(seen_clubs),
+        })
+    return series
+
+
+def _race_id_from_signup(doc, data: dict) -> str:
+    race_id = str(data.get('raceId') or '').strip()
+    if race_id:
+        return race_id
+    try:
+        return str(doc.reference.parent.parent.id or '').strip()
+    except Exception:
+        return ''
+
+
+def _race_growth_series() -> list:
+    """Per-race cumulative signup curves from races/{raceId}/signups."""
+    per_race: dict = {}
+    for doc in db.collection_group('signups').stream():
+        data = doc.to_dict() or {}
+        if str(data.get('status') or '') not in ACTIVE_SIGNUP_STATUSES:
+            continue
+        race_id = _race_id_from_signup(doc, data)
+        if not race_id:
+            continue
+        day = _to_day(data.get('signedUpAt'))
+        if not day:
+            continue
+        daily = per_race.setdefault(race_id, {})
+        slot = daily.setdefault(day, {'signups': 0, 'clubs': set()})
+        slot['signups'] += 1
+        club = (data.get('club') or '').strip()
+        if club:
+            slot['clubs'].add(club)
+    return [
+        {'raceId': race_id, 'series': _growth_series(daily)}
+        for race_id, daily in sorted(per_race.items())
+    ]
 
 
 def _load_trainer_dual_recording_map() -> dict:
@@ -94,21 +176,14 @@ def get_league_stats():
             # (createdAt is not reliably set on user docs; acceptedAt is always present
             # for completed signups since accepting the data policy is required)
             accepted_at = (data.get('registration') or {}).get('dataPolicy', {}).get('acceptedAt')
-            if accepted_at is not None:
-                try:
-                    import datetime
-                    if hasattr(accepted_at, 'date'):
-                        day = accepted_at.date().isoformat()
-                    else:
-                        day = datetime.date.fromtimestamp(int(accepted_at)).isoformat()
-                    if day not in daily:
-                        daily[day] = {'signups': 0, 'clubs': set()}
-                    daily[day]['signups'] += 1
-                    club_val = (data.get('club') or '').strip()
-                    if club_val:
-                        daily[day]['clubs'].add(club_val)
-                except Exception:
-                    logger.warning('Failed to parse acceptedAt for user %s', doc.id, exc_info=True)
+            day = _to_day(accepted_at)
+            if day:
+                if day not in daily:
+                    daily[day] = {'signups': 0, 'clubs': set()}
+                daily[day]['signups'] += 1
+                club_val = (data.get('club') or '').strip()
+                if club_val:
+                    daily[day]['clubs'].add(club_val)
 
             # Club
             club = (data.get('club') or '').strip()
@@ -253,22 +328,18 @@ def get_league_stats():
             key=lambda x: -x['count']
         )
 
-        # Build cumulative time series sorted by date
-        seen_clubs: set = set()
-        cumulative_signups = 0
-        growth_series = []
-        for day in sorted(daily.keys()):
-            cumulative_signups += daily[day]['signups']
-            seen_clubs |= daily[day]['clubs']
-            growth_series.append({
-                'date': day,
-                'signups': cumulative_signups,
-                'clubs': len(seen_clubs),
-            })
+        growth_series = _growth_series(daily)
+
+        try:
+            race_growth = _race_growth_series()
+        except Exception:
+            logger.warning('Failed to build per-race signup growth', exc_info=True)
+            race_growth = None
 
         return jsonify({
             'total': total,
             'growthSeries': growth_series,
+            'raceGrowth': race_growth,
             'registrationStatus': [
                 {'status': k, 'count': v}
                 for k, v in reg_status_counter.most_common()

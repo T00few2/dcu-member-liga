@@ -20,6 +20,7 @@ export interface StatsData {
     leagueName?: string;
     seasonStart?: string;
     growthSeries: { date: string; signups: number; clubs: number }[];
+    raceGrowth?: { raceId: string; series: { date: string; signups: number; clubs: number }[] }[] | null;
     registrationStatus: { status: string; count: number }[];
     categoryDistribution: { category: string; count: number }[];
     clubDistribution: { club: string; count: number }[];
