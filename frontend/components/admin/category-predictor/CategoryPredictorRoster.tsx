@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import CategoryBadge from './CategoryBadge';
 import {
   Participant,
@@ -12,7 +12,11 @@ import {
   predictionFromStravaCache,
   riderAssignedCategory,
   formatVeloValue,
+  parseVeloField,
 } from './shared';
+
+type RosterSortKey = 'name' | 'current' | 'max30' | 'zrs' | 'zwiftRides' | 'stravaRides';
+type SortDir = 'asc' | 'desc';
 
 export interface CategoryPredictorRosterProps {
   riders: Participant[];
@@ -52,6 +56,74 @@ function rideCountTitle(count: number | null | undefined): string | undefined {
   return count === 1 ? '1 ride' : `${count} rides`;
 }
 
+function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
+  const path = !active
+    ? 'M7 10l5-5 5 5zM7 14l5 5 5-5z'
+    : dir === 'asc'
+      ? 'M7 14l5-5 5 5z'
+      : 'M7 10l5 5 5-5z';
+  return (
+    <svg
+      aria-hidden="true"
+      className={`inline shrink-0 ${active ? '' : 'opacity-30'}`}
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+    >
+      <path d={path} />
+    </svg>
+  );
+}
+
+function SortableTh({
+  label,
+  column,
+  activeKey,
+  dir,
+  onSort,
+  rowSpan,
+  className,
+  ariaLabel,
+}: {
+  label: string;
+  column: RosterSortKey;
+  activeKey: RosterSortKey;
+  dir: SortDir;
+  onSort: (column: RosterSortKey) => void;
+  rowSpan?: number;
+  className: string;
+  ariaLabel?: string;
+}) {
+  const active = activeKey === column;
+  return (
+    <th
+      rowSpan={rowSpan}
+      aria-sort={active ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+      className="p-0"
+    >
+      <button
+        type="button"
+        aria-label={ariaLabel}
+        onClick={() => onSort(column)}
+        className={`cursor-pointer select-none hover:bg-muted/60 ${className}`}
+      >
+        {label}
+        <SortIcon active={active} dir={dir} />
+      </button>
+    </th>
+  );
+}
+
+function stravaRideCount(entry: StravaRiderCache | undefined): number | null {
+  if (!entry || entry.error || entry.activityCount == null) return null;
+  return entry.activityCount;
+}
+
+function compareNames(a: Participant, b: Participant): number {
+  return a.name.localeCompare(b.name);
+}
+
 export default function CategoryPredictorRoster({
   riders,
   model,
@@ -79,6 +151,54 @@ export default function CategoryPredictorRoster({
   categories = ZR_CATEGORY_DEFAULTS,
 }: CategoryPredictorRosterProps) {
   const [choices, setChoices] = useState<Record<string, string>>({});
+  const [sortKey, setSortKey] = useState<RosterSortKey>('name');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+
+  function handleSort(column: RosterSortKey) {
+    if (sortKey === column) {
+      setSortDir(dir => (dir === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortKey(column);
+    setSortDir(column === 'name' ? 'asc' : 'desc');
+  }
+
+  const sortedRiders = useMemo(() => {
+    const numericValue = (p: Participant): number | null => {
+      switch (sortKey) {
+        case 'current':
+          return parseVeloField(p.rating);
+        case 'max30':
+          return parseVeloField(p.max30Rating);
+        case 'zrs':
+          return parseVeloField(p.racingScore);
+        case 'zwiftRides':
+          return p.zwiftActivityCount == null ? null : p.zwiftActivityCount;
+        case 'stravaRides':
+          return stravaRideCount(stravaByRider[p.zwiftId]);
+        default:
+          return null;
+      }
+    };
+
+    return [...riders].sort((a, b) => {
+      if (sortKey === 'name') {
+        const cmp = compareNames(a, b);
+        return sortDir === 'asc' ? cmp : -cmp;
+      }
+      const av = numericValue(a);
+      const bv = numericValue(b);
+      if (av == null && bv == null) return compareNames(a, b);
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      if (av !== bv) {
+        const cmp = av < bv ? -1 : 1;
+        return sortDir === 'asc' ? cmp : -cmp;
+      }
+      return compareNames(a, b);
+    });
+  }, [riders, sortKey, sortDir, stravaByRider]);
+
   const pendingStrava = riders.filter(p => {
     if (loadingStravaIds[p.zwiftId]) return false;
     const entry = stravaByRider[p.zwiftId];
@@ -158,10 +278,42 @@ export default function CategoryPredictorRoster({
         <table className="w-full text-sm text-left">
           <thead className="sticky top-0 bg-card z-10">
             <tr className="text-xs uppercase text-muted-foreground border-b border-border">
-              <th rowSpan={2} className="px-3 py-2 font-medium text-foreground normal-case text-sm whitespace-nowrap">Rider</th>
-              <th rowSpan={2} className="px-3 py-2 font-medium text-center whitespace-nowrap">Current</th>
-              <th rowSpan={2} className="px-3 py-2 font-medium text-center whitespace-nowrap">30d max</th>
-              <th rowSpan={2} className="px-3 py-2 font-medium text-center whitespace-nowrap">ZRS</th>
+              <SortableTh
+                label="Rider"
+                column="name"
+                activeKey={sortKey}
+                dir={sortDir}
+                onSort={handleSort}
+                rowSpan={2}
+                className="inline-flex w-full items-center gap-0.5 px-3 py-2 text-left text-sm font-medium normal-case text-foreground whitespace-nowrap hover:text-foreground"
+              />
+              <SortableTh
+                label="Current"
+                column="current"
+                activeKey={sortKey}
+                dir={sortDir}
+                onSort={handleSort}
+                rowSpan={2}
+                className="inline-flex w-full items-center justify-center gap-0.5 px-3 py-2 font-medium whitespace-nowrap hover:text-foreground"
+              />
+              <SortableTh
+                label="30d max"
+                column="max30"
+                activeKey={sortKey}
+                dir={sortDir}
+                onSort={handleSort}
+                rowSpan={2}
+                className="inline-flex w-full items-center justify-center gap-0.5 px-3 py-2 font-medium whitespace-nowrap hover:text-foreground"
+              />
+              <SortableTh
+                label="ZRS"
+                column="zrs"
+                activeKey={sortKey}
+                dir={sortDir}
+                onSort={handleSort}
+                rowSpan={2}
+                className="inline-flex w-full items-center justify-center gap-0.5 px-3 py-2 font-medium whitespace-nowrap hover:text-foreground"
+              />
               <th rowSpan={2} className="px-3 py-2 font-medium text-center whitespace-nowrap">Category</th>
               <th colSpan={3} className="px-3 py-2 font-medium text-center border-l border-border">Zwift predicted</th>
               <th colSpan={3} className="px-3 py-2 font-medium text-center border-l border-border">Strava predicted</th>
@@ -172,10 +324,26 @@ export default function CategoryPredictorRoster({
             <tr className="text-xs text-muted-foreground border-b border-border">
               <th className="px-3 py-1 font-medium text-center border-l border-border whitespace-nowrap">Lower</th>
               <th className="px-3 py-1 font-medium text-center whitespace-nowrap">Upper</th>
-              <th className="px-3 py-1 font-medium text-center whitespace-nowrap">Rides</th>
+              <SortableTh
+                label="Rides"
+                ariaLabel="Zwift rides"
+                column="zwiftRides"
+                activeKey={sortKey}
+                dir={sortDir}
+                onSort={handleSort}
+                className="inline-flex w-full items-center justify-center gap-0.5 px-3 py-1 font-medium whitespace-nowrap hover:text-foreground"
+              />
               <th className="px-3 py-1 font-medium text-center border-l border-border whitespace-nowrap">Lower</th>
               <th className="px-3 py-1 font-medium text-center whitespace-nowrap">Upper</th>
-              <th className="px-3 py-1 font-medium text-center whitespace-nowrap">Rides</th>
+              <SortableTh
+                label="Rides"
+                ariaLabel="Strava rides"
+                column="stravaRides"
+                activeKey={sortKey}
+                dir={sortDir}
+                onSort={handleSort}
+                className="inline-flex w-full items-center justify-center gap-0.5 px-3 py-1 font-medium whitespace-nowrap hover:text-foreground"
+              />
             </tr>
           </thead>
           <tbody>
@@ -186,7 +354,7 @@ export default function CategoryPredictorRoster({
                 </td>
               </tr>
             )}
-            {riders.map(p => {
+            {sortedRiders.map(p => {
               const zwiftPred = predictionFromInputs(model, inputsFromParticipant(p));
               const stravaEntry = stravaByRider[p.zwiftId];
               const stravaPred = predictionFromStravaCache(model, p, stravaEntry);

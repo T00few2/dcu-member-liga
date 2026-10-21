@@ -81,6 +81,8 @@ describe('CategoryPredictorRoster', () => {
     expect(screen.getAllByText('Amethyst').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole('button', { name: 'Load' })).toBeInTheDocument();
     expect(screen.getAllByRole('columnheader', { name: 'Rides' })).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Zwift rides' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Strava rides' })).toBeInTheDocument();
     expect(screen.getByText('12')).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Assign as' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Assign' })).toBeInTheDocument();
@@ -138,6 +140,59 @@ describe('CategoryPredictorRoster', () => {
     expect(screen.getByText('0')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Bea' }));
     expect(props.onSelectRider).toHaveBeenCalledWith('9');
+  });
+
+  it('sorts numeric columns with the largest values first and blanks last', async () => {
+    const user = userEvent.setup();
+    const bea: Participant = {
+      ...ada,
+      name: 'Bea',
+      zwiftId: '2',
+      rating: 2000,
+      max30Rating: 900,
+      racingScore: 100,
+      zwiftActivityCount: 3,
+    };
+    const cal: Participant = {
+      ...ada,
+      name: 'Cal',
+      zwiftId: '3',
+      rating: null,
+      max30Rating: 1500,
+      racingScore: 800,
+      zwiftActivityCount: null,
+    };
+    renderRoster({
+      riders: [cal, ada, bea],
+      stravaByRider: {
+        '1': { power: { ...EMPTY_POWER, wkg20m: 4.4 }, activityCount: 8 },
+        '3': { power: EMPTY_POWER, activityCount: 0 },
+      },
+    });
+
+    const order = () => screen.getAllByRole('row').slice(2).map(row => within(row).getAllByRole('button')[0].textContent);
+
+    expect(order()).toEqual(['Ada', 'Bea', 'Cal']);
+
+    await user.click(screen.getByRole('button', { name: 'Current' }));
+    expect(order()).toEqual(['Bea', 'Ada', 'Cal']);
+    await user.click(screen.getByRole('button', { name: 'Current' }));
+    expect(order()).toEqual(['Ada', 'Bea', 'Cal']);
+
+    await user.click(screen.getByRole('button', { name: '30d max' }));
+    expect(order()).toEqual(['Cal', 'Ada', 'Bea']);
+
+    await user.click(screen.getByRole('button', { name: 'ZRS' }));
+    expect(order()).toEqual(['Cal', 'Ada', 'Bea']);
+
+    await user.click(screen.getByRole('button', { name: 'Zwift rides' }));
+    expect(order()).toEqual(['Ada', 'Bea', 'Cal']);
+
+    await user.click(screen.getByRole('button', { name: 'Strava rides' }));
+    expect(order()).toEqual(['Ada', 'Cal', 'Bea']);
+
+    await user.click(screen.getByRole('button', { name: 'Rider' }));
+    expect(order()).toEqual(['Ada', 'Bea', 'Cal']);
   });
 
   it('loads Strava for all visible riders', async () => {
