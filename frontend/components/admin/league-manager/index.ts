@@ -11,3 +11,4 @@ export { default as EventsTab } from './EventsTab';
 export { default as ResultsTab } from './ResultsTab';
 export { default as RoutePlanningTab } from './RoutePlanningTab';
 export { default as ClubKitsTab } from './ClubKitsTab';
+export { default as ClubApiTab } from './ClubApiTab';

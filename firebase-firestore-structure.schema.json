@@ -32,6 +32,13 @@
         "$ref": "#/$defs/campaignContentDoc"
       }
     },
+    "clubApiClients": {
+      "type": "array",
+      "description": "One API login per club. Document id is the username. The secret is stored only as a PBKDF2-SHA256 hash.",
+      "items": {
+        "$ref": "#/$defs/clubApiClientDoc"
+      }
+    },
     "elevation_cache": {
       "type": "array",
       "items": {
@@ -1992,6 +1999,32 @@
         "html": { "type": "string" },
         "createdAt": { "$ref": "#/$defs/timestampString" },
         "expiresAt": { "$ref": "#/$defs/timestampString" }
+      }
+    },
+    "clubApiClientDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Stored at clubApiClients/{username}. Username is lowercase and has no colon. secretHash is PBKDF2-SHA256 of the secret; the plaintext secret is never stored.",
+      "properties": {
+        "_id": { "type": "string", "description": "Username" },
+        "schemaVersion": { "type": "integer" },
+        "username": { "type": "string" },
+        "club": { "type": "string", "description": "Club name as stored on rider profiles" },
+        "clubKey": { "type": "string", "description": "Casefolded club name, used so a club has only one client" },
+        "secretHash": { "type": "string" },
+        "salt": { "type": "string" },
+        "revoked": { "type": "boolean" },
+        "createdAt": { "$ref": "#/$defs/timestampString" },
+        "updatedAt": { "$ref": "#/$defs/timestampString" },
+        "lastUsedAt": {
+          "description": "ISO-8601 timestamp of the last successful API call, or null before the first call",
+          "type": ["string", "null"]
+        },
+        "requestTimes": {
+          "type": "array",
+          "description": "ISO timestamps of calls inside the current 60-second limit. Older entries are dropped. The 61st call in that minute is rejected.",
+          "items": { "$ref": "#/$defs/timestampString" }
+        }
       }
     }
   }

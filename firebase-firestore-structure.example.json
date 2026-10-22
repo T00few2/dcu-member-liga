@@ -766,6 +766,22 @@
       "expiresAt": "2026-10-16T15:00:00+00:00"
     }
   ],
+  "clubApiClients": [
+    {
+      "_id": "example-club",
+      "schemaVersion": 1,
+      "username": "example-club",
+      "club": "Example Cycling Club",
+      "clubKey": "example cycling club",
+      "secretHash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "salt": "00000000000000000000000000000000",
+      "revoked": false,
+      "createdAt": "2026-10-22T18:00:00+00:00",
+      "updatedAt": "2026-10-22T18:00:00+00:00",
+      "lastUsedAt": null,
+      "requestTimes": []
+    }
+  ],
   "weight_history": [
     {
       "_id": "wh_20260515T001500Z_100001",

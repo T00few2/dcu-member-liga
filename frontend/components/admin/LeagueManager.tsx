@@ -14,22 +14,24 @@ import {
     RawDataViewer,
     RoutePlanningTab,
     ClubKitsTab,
+    ClubApiTab,
 } from './league-manager';
 
-export type LeagueManagerTab = 'races' | 'season' | 'results' | 'settings' | 'kits' | 'testing' | 'rawdata' | 'planning';
+export type LeagueManagerTab = 'races' | 'season' | 'results' | 'settings' | 'kits' | 'clubapi' | 'testing' | 'rawdata' | 'planning';
 
 interface LeagueManagerProps {
     initialActiveTab?: LeagueManagerTab;
     onTabChange?: (tab: LeagueManagerTab) => void;
 }
 
-const TABS: LeagueManagerTab[] = ['races', 'season', 'results', 'settings', 'kits', 'testing', 'rawdata', 'planning'];
+const TABS: LeagueManagerTab[] = ['races', 'season', 'results', 'settings', 'kits', 'clubapi', 'testing', 'rawdata', 'planning'];
 const TAB_LABELS: Record<LeagueManagerTab, string> = {
     races: 'Races',
     season: 'Season',
     results: 'Results',
     settings: 'Scoring Settings',
     kits: 'Klubtrøjer',
+    clubapi: 'Club API',
     testing: 'Testing',
     rawdata: 'Results Editor',
     planning: 'Route Planning',
@@ -156,6 +158,10 @@ export default function LeagueManager({ initialActiveTab = 'races', onTabChange 
 
             {activeTab === 'kits' && (
                 <ClubKitsTab user={user} />
+            )}
+
+            {activeTab === 'clubapi' && (
+                <ClubApiTab user={user} />
             )}
 
             {activeTab === 'testing' && (

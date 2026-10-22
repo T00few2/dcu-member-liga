@@ -13,6 +13,7 @@ from routes.integration import integration_bp
 from routes.seed import seed_bp
 from routes.policy import policy_bp
 from routes.posts import posts_bp
+from routes.club_api import club_api_bp
 from utils.logging_setup import configure_logging
 
 # ---------------------------------------------------------------------------
@@ -88,6 +89,7 @@ def create_app():
     from routes.verification import verification_bp
     app.register_blueprint(verification_bp)
     app.register_blueprint(posts_bp)
+    app.register_blueprint(club_api_bp)
 
     @app.after_request
     def after_request(response):

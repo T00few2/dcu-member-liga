@@ -81,6 +81,26 @@ def validate_stage_race_doc(payload: Mapping[str, Any], *, partial: bool = False
     return issues
 
 
+def validate_club_api_client_doc(payload: Mapping[str, Any], *, partial: bool = False) -> list[str]:
+    issues: list[str] = []
+    if not partial:
+        if not payload.get("username"):
+            issues.append("missing username")
+        if not payload.get("club"):
+            issues.append("missing club")
+        if not payload.get("secretHash"):
+            issues.append("missing secretHash")
+        if not payload.get("salt"):
+            issues.append("missing salt")
+    if "revoked" in payload and not isinstance(payload.get("revoked"), bool):
+        issues.append("revoked should be bool")
+    if "secret" in payload:
+        issues.append("plaintext secret must not be stored")
+    if "schemaVersion" in payload and not isinstance(payload.get("schemaVersion"), int):
+        issues.append("schemaVersion should be int")
+    return issues
+
+
 def validate_league_standings_doc(payload: Mapping[str, Any], *, partial: bool = False) -> list[str]:
     del partial  # Intentionally unused for now.
     issues: list[str] = []
