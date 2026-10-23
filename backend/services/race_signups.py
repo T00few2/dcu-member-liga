@@ -661,3 +661,168 @@ def maybe_sync_after_race_save(race_id: str, race_data: dict[str, Any]) -> dict[
     except Exception as e:
         logger.warning("Signup sync after save failed race=%s: %s", race_id, e)
         return {"registered": 0, "failed": 0, "skipped": 0, "moved": 0, "errors": [str(e)]}
+
+
+def _race_id_from_signup(doc: Any, data: dict[str, Any]) -> str:
+    race_id = str(data.get("raceId") or "").strip()
+    if race_id:
+        return race_id
+    try:
+        return str(doc.reference.parent.parent.id)
+    except Exception:
+        return ""
+
+
+def _join_race_names(rows: list[dict[str, Any]]) -> str:
+    names = [str(row.get("raceName") or "løbet") for row in rows]
+    if len(names) <= 1:
+        return names[0] if names else "løbet"
+    if len(names) == 2:
+        return f"{names[0]} og {names[1]}"
+    return ", ".join(names[:-1]) + f" og {names[-1]}"
+
+
+def category_change_message(category: str, summary: dict[str, Any]) -> str:
+    """Danish confirmation after a rider changes division."""
+    parts = [f"Kategori opdateret til {category}."]
+    moved = [row for row in (summary.get("moved") or []) if row.get("penChanged")]
+    kept = list(summary.get("kept") or [])
+    failed = list(summary.get("failed") or [])
+    if moved:
+        parts.append(f"Zwift-starten er flyttet for {_join_race_names(moved)}.")
+    if len(kept) == 1:
+        parts.append(
+            f"{_join_race_names(kept)} er allerede startet, så du bliver i den start, og løbet tæller der."
+        )
+    elif kept:
+        parts.append(
+            f"{_join_race_names(kept)} er allerede startet, så du bliver i de starter, og løbene tæller der."
+        )
+    if len(failed) == 1:
+        parts.append(
+            f"Zwift afviste flytningen for {_join_race_names(failed)}, så du bliver i den start, og løbet tæller der."
+        )
+    elif failed:
+        parts.append(
+            f"Zwift afviste flytningen for {_join_race_names(failed)}, så du bliver i de starter, og løbene tæller der."
+        )
+    return " ".join(parts)
+
+
+def reroute_open_signups(
+    zwift_id: str,
+    category: str,
+    *,
+    zwift_service: Any | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Move Zwift pens for races that have not started.
+
+    A race that has started, or a Zwift register that fails, keeps its current
+    pen and signup division. Results follow that signup.
+    """
+    summary: dict[str, list[dict[str, Any]]] = {"moved": [], "kept": [], "failed": []}
+    if not db or not str(zwift_id or "").strip() or not str(category or "").strip():
+        return summary
+
+    service = zwift_service
+    if service is None:
+        try:
+            service = get_zwift_service()
+        except Exception as exc:
+            logger.warning("Zwift unavailable for pen reroute: %s", exc)
+            service = None
+
+    try:
+        docs = list(db.collection_group("signups").where("zwiftId", "==", str(zwift_id)).stream())
+    except Exception as exc:
+        logger.warning("Could not list signups for %s: %s", zwift_id, exc)
+        summary["failed"].append({"raceId": "", "raceName": "kommende løb", "reason": str(exc)})
+        return summary
+
+    for doc in docs:
+        data = doc.to_dict() or {}
+        if str(data.get("zwiftId") or doc.id) != str(zwift_id):
+            continue
+        status = str(data.get("status") or "")
+        if status not in {SIGNUP_PENDING, SIGNUP_REGISTERED, SIGNUP_FAILED}:
+            continue
+        race_id = _race_id_from_signup(doc, data)
+        if not race_id:
+            continue
+        race_doc = db.collection("races").document(race_id).get()
+        if not getattr(race_doc, "exists", False):
+            continue
+        race_data = race_doc.to_dict() or {}
+        race_name = str(race_data.get("name") or race_id)
+        entry = {"raceId": race_id, "raceName": race_name}
+        if is_race_past(race_data, now):
+            summary["kept"].append({**entry, "reason": "started"})
+            continue
+
+        current_sg = str(data.get("subgroupId") or "").strip()
+        public_id = str(data.get("zwiftUserId") or "").strip()
+        if status == SIGNUP_REGISTERED and service is None:
+            summary["failed"].append({**entry, "reason": "Zwift er ikke tilgængelig"})
+            continue
+
+        try:
+            subgroup_id, event_id, error = resolve_target(race_data, category, service)
+        except Exception as exc:
+            logger.warning("Could not resolve pen for %s on %s: %s", zwift_id, race_id, exc)
+            if status == SIGNUP_REGISTERED:
+                summary["failed"].append({**entry, "reason": str(exc)})
+                continue
+            subgroup_id, event_id, error = None, None, str(exc)
+
+        target_sg = str(subgroup_id or "").strip()
+        if status == SIGNUP_REGISTERED and target_sg and target_sg != current_sg:
+            if not public_id:
+                summary["failed"].append({**entry, "reason": "Mangler Zwift-bruger"})
+                continue
+            status_code, payload = _batch_register(service, target_sg, [public_id])
+            if status_code != 200:
+                reason = _extract_zwift_message(payload) or f"Zwift signup failed ({status_code})"
+                summary["failed"].append({**entry, "reason": reason})
+                continue
+            warning = ""
+            if current_sg:
+                old_code, old_payload = _batch_unregister(service, current_sg, [public_id])
+                if old_code != 200:
+                    warning = _extract_zwift_message(old_payload) or f"Zwift unregister failed ({old_code})"
+                    logger.warning(
+                        "Moved %s onto %s but old pen %s stayed: %s",
+                        zwift_id,
+                        target_sg,
+                        current_sg,
+                        warning,
+                    )
+            _write_signup(
+                race_id,
+                str(zwift_id),
+                {
+                    "ligaCategory": category,
+                    "subgroupId": target_sg,
+                    "eventId": str(event_id or data.get("eventId") or ""),
+                    "status": SIGNUP_REGISTERED,
+                    "lastError": warning,
+                    "zwiftRegisteredAt": _iso_now(),
+                },
+            )
+            summary["moved"].append({**entry, "penChanged": True, "subgroupId": target_sg})
+            continue
+
+        if status == SIGNUP_REGISTERED and current_sg and not target_sg:
+            summary["failed"].append({**entry, "reason": error or "Kunne ikke finde Zwift-starten"})
+            continue
+
+        pen_changed = bool(target_sg and current_sg and target_sg != current_sg and status == SIGNUP_REGISTERED)
+        update: dict[str, Any] = {"ligaCategory": category}
+        if target_sg:
+            update["subgroupId"] = target_sg
+        if event_id:
+            update["eventId"] = str(event_id)
+        _write_signup(race_id, str(zwift_id), update)
+        summary["moved"].append({**entry, "penChanged": pen_changed, "subgroupId": target_sg or current_sg})
+
+    return summary

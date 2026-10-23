@@ -190,6 +190,7 @@ class ResultsProcessor:
                 registered_riders[str(conn_user_id)] = data
 
         logger.info(f"Found {len(registered_riders)} registered riders in database.")
+        signup_categories = self._load_signup_categories(race_id)
 
         # 4. Process Each Source
         all_results: RaceResults = race_data.get('results', {})
@@ -211,6 +212,7 @@ class ResultsProcessor:
                 normalized_phase,
                 race_id,
                 collected_subgroup_ids=collected_subgroup_ids,
+                signup_categories=signup_categories,
             )
             if ok:
                 processed_sources += 1
@@ -677,6 +679,7 @@ class ResultsProcessor:
         results_phase: str,
         race_id: str,
         collected_subgroup_ids: list[str] | None = None,
+        signup_categories: dict[str, str] | None = None,
     ) -> bool:
         event_id = source.get('id')
         direct_subgroup_id = source.get('subgroupId')
@@ -710,6 +713,7 @@ class ResultsProcessor:
         custom_cat_segment_efforts: dict[str | int, Any] = {}
         grouped_finishers_by_category: dict[str, list[Any]] = defaultdict(list)
         protected_transfer_ids = protected_zwift_ids(self.db, race_id)
+        signup_categories = signup_categories or {}
         grouped_segment_efforts: dict[str | int, list[Any]] = {}
         grouped_sprints_union = self._merge_grouped_sprints(source)
 
@@ -818,35 +822,25 @@ class ResultsProcessor:
                     if isinstance(efforts, list):
                         existing.extend(efforts)
                 for finisher in finishers:
-                    rider_doc = registered_riders.get(str(finisher.get('zwiftId') or '').strip())
-                    registered_category = self._effective_registered_category(rider_doc)
                     zid = str(finisher.get('zwiftId') or '').strip()
-                    if (
-                        zid
-                        and zid in protected_transfer_ids
-                        and subgroup_expected_category
-                    ):
-                        grouped_finishers_by_category[subgroup_expected_category].append(finisher)
-                        continue
-                    if (
-                        subgroup_expected_category
-                        and registered_category
-                        and subgroup_expected_category != registered_category
-                        and registered_category in configured_categories
-                    ):
-                        wc_finisher = dict(finisher)
-                        wc_finisher['raceStatus'] = RACE_STATUS_WC
-                        grouped_finishers_by_category[registered_category].append(wc_finisher)
-                        continue
-                    mapped_category = self._resolve_grouped_category(
-                        finisher,
-                        registered_riders,
-                        configured_categories,
-                        category_label,
+                    rider_doc = registered_riders.get(zid)
+                    placed_category, placed_status = self._place_grouped_finisher(
+                        zid=zid,
+                        rider_doc=rider_doc,
+                        signup_categories=signup_categories,
+                        configured_categories=configured_categories,
+                        subgroup_expected_category=subgroup_expected_category,
+                        subgroup_label=category_label,
+                        registered_riders=registered_riders,
+                        protected=bool(zid and zid in protected_transfer_ids),
                     )
-                    if not mapped_category:
+                    if not placed_category:
                         continue
-                    grouped_finishers_by_category[mapped_category].append(finisher)
+                    row = finisher
+                    if placed_status == RACE_STATUS_WC:
+                        row = dict(finisher)
+                        row['raceStatus'] = RACE_STATUS_WC
+                    grouped_finishers_by_category[placed_category].append(row)
             elif custom_category:
                 custom_cat_finishers.extend(finishers)
                 custom_cat_segment_efforts.update(segment_efforts)
@@ -1074,6 +1068,94 @@ class ResultsProcessor:
                     merged.append(sprint)
                     seen.add(key)
         return merged
+
+    def _load_signup_categories(self, race_id: str) -> dict[str, str]:
+        """Division stored on this race's signup. That is the pen the result follows."""
+        out: dict[str, str] = {}
+        if not self.db or not race_id:
+            return out
+        try:
+            docs = self.db.collection("races").document(race_id).collection("signups").stream()
+        except Exception as exc:
+            logger.warning("Could not load signups for race %s: %s", race_id, exc)
+            return out
+        try:
+            iterator = iter(docs)
+        except TypeError:
+            return out
+        for doc in iterator:
+            data = doc.to_dict() if hasattr(doc, "to_dict") else None
+            if not isinstance(data, dict):
+                continue
+            status = str(data.get("status") or "")
+            if status not in {"registered", "pending"}:
+                continue
+            zid = str(data.get("zwiftId") or getattr(doc, "id", "") or "").strip()
+            category = str(data.get("ligaCategory") or "").strip()
+            if zid and category:
+                out[zid] = category
+        return out
+
+    def _category_for_grouped_finisher(
+        self,
+        zid: str,
+        rider_doc: dict[str, Any] | None,
+        signup_categories: dict[str, str] | None,
+        configured_categories: list[str],
+    ) -> str | None:
+        """Signup division wins over the live profile, so a pen that could not move still scores there."""
+        configured_map = {
+            str(c).strip().lower(): str(c).strip()
+            for c in configured_categories
+            if str(c).strip()
+        }
+        signup_category = str((signup_categories or {}).get(zid) or "").strip()
+        if signup_category:
+            matched = configured_map.get(signup_category.lower())
+            if matched:
+                return matched
+        profile_category = self._effective_registered_category(rider_doc)
+        if not profile_category:
+            return None
+        return configured_map.get(profile_category.strip().lower()) or profile_category
+
+    def _place_grouped_finisher(
+        self,
+        *,
+        zid: str,
+        rider_doc: dict[str, Any] | None,
+        signup_categories: dict[str, str] | None,
+        configured_categories: list[str],
+        subgroup_expected_category: str | None,
+        subgroup_label: str | None,
+        registered_riders: dict[str, Any],
+        protected: bool,
+    ) -> tuple[str | None, str | None]:
+        """Return (division, WC or None). A matching signup pen is a normal result in that division."""
+        if protected and subgroup_expected_category:
+            return subgroup_expected_category, None
+        registered_category = self._category_for_grouped_finisher(
+            zid,
+            rider_doc,
+            signup_categories,
+            configured_categories,
+        )
+        if (
+            subgroup_expected_category
+            and registered_category
+            and subgroup_expected_category != registered_category
+            and registered_category in configured_categories
+        ):
+            return registered_category, RACE_STATUS_WC
+        if registered_category and registered_category in configured_categories:
+            return registered_category, None
+        mapped = self._resolve_grouped_category(
+            {"zwiftId": zid},
+            registered_riders,
+            configured_categories,
+            subgroup_label,
+        )
+        return mapped, None
 
     def _resolve_grouped_category(
         self,

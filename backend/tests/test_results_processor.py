@@ -87,6 +87,7 @@ def build_process_results_db(race_data, users=None, settings=None):
     race_doc_ref = MagicMock()
     race_doc_ref.get.return_value = race_doc
     race_doc_ref.update = MagicMock()
+    race_doc_ref.collection.return_value.stream.return_value = iter([])
 
     races_collection = MagicMock()
     races_collection.document.return_value = race_doc_ref
@@ -179,6 +180,41 @@ class TestGroupedCategoryResolution:
             subgroup_label='A',
         )
         assert resolved == 'Diamond'
+
+    def test_signup_division_scores_with_the_pen_when_profile_has_moved(self):
+        from services.results_processor import ResultsProcessor
+        rp = ResultsProcessor(MagicMock(), MagicMock(), MagicMock())
+        category, status = rp._place_grouped_finisher(
+            zid='5956994',
+            rider_doc={'ligaCategory': {'locked': True, 'category': '4. Division'}},
+            signup_categories={'5956994': '5. Division'},
+            configured_categories=['4. Division', '5. Division'],
+            subgroup_expected_category='5. Division',
+            subgroup_label='B',
+            registered_riders={},
+            protected=False,
+        )
+        assert category == '5. Division'
+        assert status is None
+
+    def test_wrong_pen_still_scores_in_the_signup_division(self):
+        from services.results.constants import RACE_STATUS_WC
+        from services.results_processor import ResultsProcessor
+        rp = ResultsProcessor(MagicMock(), MagicMock(), MagicMock())
+        category, status = rp._place_grouped_finisher(
+            zid='5956994',
+            rider_doc={'ligaCategory': {'locked': True, 'category': '4. Division'}},
+            signup_categories={'5956994': '4. Division'},
+            configured_categories=['4. Division', '5. Division'],
+            subgroup_expected_category='5. Division',
+            subgroup_label='B',
+            registered_riders={
+                '5956994': {'ligaCategory': {'locked': True, 'category': '4. Division'}},
+            },
+            protected=False,
+        )
+        assert category == '4. Division'
+        assert status == RACE_STATUS_WC
 
     def test_prefers_manual_push_up_over_auto_category(self):
         from services.category_engine import cats_from_defs

@@ -925,5 +925,22 @@ def select_category():
         }
     )
 
-    return jsonify({"message": f"Kategori opdateret til {chosen}", "ligaCategory": chosen}), 200
+    from services.race_signups import category_change_message, reroute_open_signups
+
+    zwift_id = str(getattr(user, "zwift_id", None) or user._data.get("zwiftId") or doc_id)
+    try:
+        summary = reroute_open_signups(zwift_id, chosen)
+    except Exception as exc:
+        logger.exception("Pen reroute failed for %s: %s", zwift_id, exc)
+        summary = {
+            "moved": [],
+            "kept": [],
+            "failed": [{"raceId": "", "raceName": "kommende løb", "reason": str(exc)}],
+        }
+
+    return jsonify({
+        "message": category_change_message(chosen, summary),
+        "ligaCategory": chosen,
+        "signupReroute": summary,
+    }), 200
 

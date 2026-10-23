@@ -401,6 +401,81 @@ def test_signup_counts_route(monkeypatch: pytest.MonkeyPatch) -> None:
     assert response.get_json()["counts"] == {"r1": 1}
 
 
+class RecordingZwift(FakeZwiftService):
+    def __init__(self, register_status: int = 200):
+        self.calls: list[tuple] = []
+        self.register_status = register_status
+
+    def batch_register_participants(self, event_subgroup_id, public_ids):
+        self.calls.append(("register", event_subgroup_id, list(public_ids)))
+        return self.register_status, {}
+
+    def batch_unregister_participants(self, event_subgroup_id, public_ids):
+        self.calls.append(("unregister", event_subgroup_id, list(public_ids)))
+        return 200, {}
+
+
+def test_reroute_moves_a_future_pen_and_leaves_a_started_race(fake_db: FakeDB) -> None:
+    fake_db.add_race("future", {**THE_CLASSIC_RACE, "name": "Næste", "date": _future_date()})
+    fake_db.add_race("started", {**THE_CLASSIC_RACE, "name": "I gang", "date": _past_date()})
+    signup = {
+        "status": "registered",
+        "ligaCategory": "Diamond",
+        "subgroupId": "7158672",
+        "zwiftUserId": "uuid-1",
+        "eventId": "5593351",
+    }
+    fake_db.add_signup("future", "100", dict(signup))
+    fake_db.add_signup("started", "100", dict(signup))
+
+    summary = rs.reroute_open_signups("100", "Ruby", zwift_service=RecordingZwift())
+
+    assert summary["moved"] == [{
+        "raceId": "future",
+        "raceName": "Næste",
+        "penChanged": True,
+        "subgroupId": "7158673",
+    }]
+    assert summary["kept"][0]["raceId"] == "started"
+    assert summary["failed"] == []
+    moved = fake_db.signups["future"]["100"].to_dict()
+    assert moved["ligaCategory"] == "Ruby"
+    assert moved["subgroupId"] == "7158673"
+    stayed = fake_db.signups["started"]["100"].to_dict()
+    assert stayed["ligaCategory"] == "Diamond"
+    assert stayed["subgroupId"] == "7158672"
+
+
+def test_reroute_keeps_the_pen_when_zwift_refuses(fake_db: FakeDB) -> None:
+    fake_db.add_race("future", {**THE_CLASSIC_RACE, "name": "Næste", "date": _future_date()})
+    fake_db.add_signup("future", "100", {
+        "status": "registered",
+        "ligaCategory": "Diamond",
+        "subgroupId": "7158672",
+        "zwiftUserId": "uuid-1",
+        "eventId": "5593351",
+    })
+
+    summary = rs.reroute_open_signups("100", "Ruby", zwift_service=RecordingZwift(register_status=409))
+
+    assert summary["moved"] == []
+    assert summary["failed"][0]["raceId"] == "future"
+    stayed = fake_db.signups["future"]["100"].to_dict()
+    assert stayed["ligaCategory"] == "Diamond"
+    assert stayed["subgroupId"] == "7158672"
+
+
+def test_category_change_message_names_moved_and_started_races() -> None:
+    message = rs.category_change_message("4. Division", {
+        "moved": [{"raceName": "Næste", "penChanged": True}],
+        "kept": [{"raceName": "I gang"}],
+        "failed": [],
+    })
+    assert message.startswith("Kategori opdateret til 4. Division.")
+    assert "Zwift-starten er flyttet for Næste." in message
+    assert "I gang er allerede startet" in message
+
+
 def test_signup_route_returns_pending(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(races, "verify_user_token", lambda _req: {"uid": "auth1"})
     monkeypatch.setattr(races, "resolve_user_doc_id_from_auth_uid", lambda _uid: "100001")

@@ -159,7 +159,7 @@ export default function CategoryTab() {
             setToast({ msg: 'Netværksfejl – prøv igen', ok: false });
         } finally {
             setSaving(false);
-            setTimeout(() => setToast(null), 4000);
+            setTimeout(() => setToast(null), 8000);
         }
     };
 
@@ -256,6 +256,7 @@ export default function CategoryTab() {
                     <h2 className="text-base font-semibold mb-1">Vælg kategori</h2>
                     <p className="text-sm text-muted-foreground mb-4">
                         Din kategori opdateres automatisk dagligt frem til dit første løb. Du kan vælge din auto-tildelte kategori eller en højere kategori.
+                        For løb der ikke er startet, flyttes din Zwift-start med. Et løb der allerede er i gang bliver i den nuværende start og tæller der.
                     </p>
 
                     {upgradeOptions.length === 0 ? (
@@ -309,7 +310,7 @@ export default function CategoryTab() {
             {/* Toast */}
             {toast && (
                 <div
-                    className={`fixed bottom-6 left-1/2 -translate-x-1/2 px-5 py-3 rounded-lg shadow-lg text-sm font-medium z-50 transition ${
+                    className={`fixed bottom-6 left-1/2 -translate-x-1/2 max-w-md px-5 py-3 rounded-lg shadow-lg text-sm font-medium z-50 text-center transition ${
                         toast.ok ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
                     }`}
                 >

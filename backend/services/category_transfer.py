@@ -151,9 +151,11 @@ def _public_transfer(doc: dict[str, Any]) -> dict[str, Any]:
 def _planned_signups(db: Any, races: list[dict[str, Any]], zwift_id: str, to_category: str) -> list[dict[str, Any]]:
     from routes import races as races_mod
 
+    from services.race_signups import is_race_past
+
     planned: list[dict[str, Any]] = []
     for race in races:
-        if race_has_results(race):
+        if race_has_results(race) or is_race_past(race):
             continue
         race_id = str(race.get("id") or "")
         snap = db.collection("races").document(race_id).collection("signups").document(str(zwift_id)).get()
@@ -350,27 +352,31 @@ def _move_pens(db: Any, signups: list[dict[str, Any]], *, restore: bool = False)
                 target_subgroup = resolved
             elif resolve_error:
                 errors.append(f"{race_id}: {resolve_error}")
-        if (
+        needs_zwift_move = (
             status == "registered"
-            and zwift_service is not None
-            and target_subgroup
-            and current_subgroup
+            and bool(target_subgroup)
+            and bool(current_subgroup)
             and target_subgroup != current_subgroup
-            and zwift_user_id
-        ):
+        )
+        if needs_zwift_move:
+            # A refused move leaves the rider on the pen they already have.
+            # Scoring follows that signup, so the category label must stay too.
+            if zwift_service is None or not zwift_user_id:
+                errors.append(f"{race_id}: Zwift signup service unavailable")
+                continue
             status_code, _payload = _batch_register(zwift_service, target_subgroup, [zwift_user_id])
             if status_code != 200:
                 errors.append(f"{race_id}: Zwift register failed ({status_code})")
-            else:
-                old_code, _old_payload = _batch_unregister(zwift_service, current_subgroup, [zwift_user_id])
-                if old_code != 200:
-                    errors.append(
-                        f"{race_id}: registered on the new pen, unregister of the old pen failed ({old_code})"
-                    )
-                update["subgroupId"] = target_subgroup
-                update["status"] = "registered"
-                update["lastError"] = ""
-                signup["appliedSubgroupId"] = target_subgroup
+                continue
+            old_code, _old_payload = _batch_unregister(zwift_service, current_subgroup, [zwift_user_id])
+            if old_code != 200:
+                errors.append(
+                    f"{race_id}: registered on the new pen, unregister of the old pen failed ({old_code})"
+                )
+            update["subgroupId"] = target_subgroup
+            update["status"] = "registered"
+            update["lastError"] = ""
+            signup["appliedSubgroupId"] = target_subgroup
         elif target_subgroup:
             update["subgroupId"] = target_subgroup
             signup["appliedSubgroupId"] = target_subgroup
