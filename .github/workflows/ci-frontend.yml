@@ -4,9 +4,11 @@ on:
   push:
     paths:
       - 'frontend/**'
+      - '.github/workflows/ci-frontend.yml'
   pull_request:
     paths:
       - 'frontend/**'
+      - '.github/workflows/ci-frontend.yml'
 
 jobs:
   lint-typecheck:
@@ -35,4 +37,4 @@ jobs:
         run: npx tsc --noEmit
 
       - name: Dependency audit
-        run: npm audit --audit-level=high
+        run: node scripts/audit-high.mjs
