@@ -62,6 +62,52 @@ SETTINGS = {
 }
 
 
+class TestZeroPointStarts:
+    def test_finish_outside_the_points_is_zero_and_a_miss_stays_absent(self):
+        rows = [
+            {"zwiftId": str(i), "name": f"R{i}", "totalPoints": 200 - i}
+            for i in range(1, 63)
+        ]
+        event = {
+            "id": "dzr",
+            "seasonClass": "wt_classic",
+            "resultsPhase": "finalized",
+            "date": "2026-10-22T19:00",
+            "standings": {"A": rows},
+        }
+        outside = make_rider(62, total_points=1, finish_rank=62, finish_time=4000000)
+        outside["raceStatus"] = "FIN"
+        dnf = make_rider(99, finish_time=0)
+        dnf["raceStatus"] = "DNF"
+        dnf["name"] = "Did not finish"
+        transfer = make_rider(100)
+        transfer["categoryTransfer"] = True
+        transfer["raceStatus"] = "XFER"
+        stage = make_stage(
+            "dzr-race",
+            event_id="dzr",
+            index=1,
+            phase="finalized",
+            results={"A": [outside, dnf, transfer]},
+        )
+        standings = SeasonEngine(SETTINGS).calculate_standings([event], {"dzr-race": stage})
+        by_id = {e["zwiftId"]: e for e in standings["A"]}
+
+        assert by_id["1"]["totalPoints"] == points_for_place(
+            DEFAULT_SEASON_RANK_POINTS["wt_classic"], 1
+        )
+        outside_row = by_id["62"]
+        assert outside_row["totalPoints"] == 0
+        assert outside_row["results"] == [{
+            "raceId": None,
+            "stageRaceId": "dzr",
+            "source": "gc",
+            "points": 0,
+        }]
+        assert "99" not in by_id
+        assert "100" not in by_id
+
+
 class TestPointsForPlace:
     def test_by_place_and_range(self):
         table = DEFAULT_SEASON_RANK_POINTS["monument"]

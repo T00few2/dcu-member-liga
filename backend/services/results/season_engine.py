@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Any
 
 from models import LeagueStandings
+from services.category_transfer_logic import is_category_transfer
 from services.results.constants import RESULTS_PHASE_FINALIZED
 from services.results.league_engine import LeagueEngine
 from services.results.ranking import competition_places
@@ -96,7 +97,7 @@ class SeasonEngine:
                     SEASON_CLASS_WT_CLASSIC: "wt_classic",
                 }.get(season_class)
                 if scheme_key:
-                    self._add_event_gc_points(table, event, event_id, scheme_key)
+                    self._add_event_gc_points(table, event, event_id, scheme_key, stages)
 
         return self._finalize_table(table)
 
@@ -126,10 +127,17 @@ class SeasonEngine:
                 manual_declass,
                 manual_excl,
             )
-            name_by_id = {str(r.get("zwiftId")): str(r.get("name") or "") for r in riders}
+            name_by_id = {str(r.get("zwiftId")): str(r.get("name") or "") for r in riders if isinstance(r, dict)}
+            riders_by_id = {
+                str(r.get("zwiftId")): r for r in riders if isinstance(r, dict) and r.get("zwiftId")
+            }
+            credited: set[str] = set()
             for zid, place in places.items():
+                rider = riders_by_id.get(zid)
+                if _rider_dnf(rider):
+                    continue
                 pts = points_for_place(scheme, place)
-                if pts <= 0:
+                if pts <= 0 and not _rider_finished(rider):
                     continue
                 self._credit(
                     table,
@@ -142,6 +150,21 @@ class SeasonEngine:
                     source="stage",
                     race_date=race_date,
                 )
+                credited.add(zid)
+            for zid, rider in riders_by_id.items():
+                if zid in credited or not _rider_finished(rider):
+                    continue
+                self._credit(
+                    table,
+                    category=category,
+                    zwift_id=zid,
+                    name=name_by_id.get(zid, ""),
+                    points=0,
+                    race_id=race_id,
+                    stage_race_id=event_id,
+                    source="stage",
+                    race_date=race_date,
+                )
 
     def _add_event_gc_points(
         self,
@@ -149,12 +172,14 @@ class SeasonEngine:
         event: dict[str, Any],
         event_id: str,
         scheme_key: str,
+        stages: list[dict[str, Any]],
     ) -> None:
         scheme = self.season_rank_points.get(scheme_key) or {}
         standings = event.get("standings") or {}
         if not isinstance(standings, dict):
             return
         event_date = self._race_dt(event)
+        finished = _finishers_by_category(stages)
 
         for category, entries in standings.items():
             if not isinstance(entries, list):
@@ -175,19 +200,58 @@ class SeasonEngine:
                 name_by_id[zid] = str(entry.get("name") or "")
 
             places = competition_places(scored)
+            credited: set[str] = set()
+            cat_key = str(category)
             for zid, _gc_pts in scored:
                 place = places.get(zid)
                 if not place:
                     continue
                 pts = points_for_place(scheme, place)
-                if pts <= 0:
+                # A 0 is a finish outside the points table. A DNF stays off
+                # the row, so the cell stays "-".
+                if _only_dnf(stages, cat_key, zid):
+                    continue
+                if pts <= 0 and zid not in finished.get(cat_key, {}):
                     continue
                 self._credit(
                     table,
-                    category=category,
+                    category=cat_key,
                     zwift_id=zid,
-                    name=name_by_id.get(zid, ""),
+                    name=name_by_id.get(zid) or finished.get(cat_key, {}).get(zid, ""),
                     points=pts,
+                    race_id=None,
+                    stage_race_id=event_id,
+                    source="gc",
+                    race_date=event_date,
+                )
+                credited.add(zid)
+
+            for zid, name in finished.get(cat_key, {}).items():
+                if zid in credited:
+                    continue
+                self._credit(
+                    table,
+                    category=cat_key,
+                    zwift_id=zid,
+                    name=name,
+                    points=0,
+                    race_id=None,
+                    stage_race_id=event_id,
+                    source="gc",
+                    race_date=event_date,
+                )
+
+        listed = {str(category) for category in standings}
+        for cat_key, riders in finished.items():
+            if cat_key in listed:
+                continue
+            for zid, name in riders.items():
+                self._credit(
+                    table,
+                    category=cat_key,
+                    zwift_id=zid,
+                    name=name,
+                    points=0,
                     race_id=None,
                     stage_race_id=event_id,
                     source="gc",
@@ -266,6 +330,63 @@ class SeasonEngine:
             return parse_dt(raw)
         except Exception:
             return None
+
+
+def _rider_dnf(rider: dict[str, Any] | None) -> bool:
+    if not isinstance(rider, dict) or is_category_transfer(rider):
+        return False
+    return str(rider.get("raceStatus") or "").upper() == "DNF"
+
+
+def _rider_finished(rider: dict[str, Any] | None) -> bool:
+    """True for a finish, including one outside the points table. A DNF is not a finish."""
+    if not isinstance(rider, dict) or is_category_transfer(rider) or _rider_dnf(rider):
+        return False
+    status = str(rider.get("raceStatus") or "").upper()
+    if status in {"FIN", "WC"}:
+        return True
+    try:
+        return int(rider.get("finishTime") or 0) > 0
+    except (TypeError, ValueError):
+        return False
+
+
+def _only_dnf(stages: list[dict[str, Any]], category: str, zwift_id: str) -> bool:
+    """True when this rider's rows in the category are DNFs and none is a finish."""
+    saw_dnf = False
+    for stage in stages:
+        riders = (stage.get("results") or {}).get(category) or []
+        if not isinstance(riders, list):
+            continue
+        for rider in riders:
+            if str(rider.get("zwiftId") or "").strip() != zwift_id:
+                continue
+            if _rider_finished(rider):
+                return False
+            if _rider_dnf(rider):
+                saw_dnf = True
+    return saw_dnf
+
+
+def _finishers_by_category(stages: list[dict[str, Any]]) -> dict[str, dict[str, str]]:
+    """category -> zwiftId -> name for riders who finished a stage of the event."""
+    finished: dict[str, dict[str, str]] = {}
+    for stage in stages:
+        results = stage.get("results") or {}
+        if not isinstance(results, dict):
+            continue
+        for category, riders in results.items():
+            if not isinstance(riders, list):
+                continue
+            bucket = finished.setdefault(str(category), {})
+            for rider in riders:
+                if not _rider_finished(rider):
+                    continue
+                zid = str(rider.get("zwiftId") or "").strip()
+                if not zid:
+                    continue
+                bucket.setdefault(zid, str(rider.get("name") or ""))
+    return finished
 
 
 def season_mode_enabled(settings: dict[str, Any] | None, stage_race_count: int) -> bool:
