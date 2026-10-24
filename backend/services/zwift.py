@@ -252,6 +252,10 @@ class ZwiftService:
     # Subscriptions / webhooks
     # ------------------------------------------------------------------
 
+    def get_activity_subscription(self, user_access_token: str) -> tuple[int, dict[str, Any]]:
+        response = self._api_get("/api/thirdparty/activity/subscribe", token=user_access_token)
+        return response.status_code, self._safe_json(response)
+
     def subscribe_activity(self, user_access_token: str) -> tuple[int, dict[str, Any]]:
         response = self._api_post("/api/thirdparty/activity/subscribe", token=user_access_token)
         return response.status_code, self._safe_json(response)

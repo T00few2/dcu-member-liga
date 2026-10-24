@@ -1,8 +1,8 @@
-import logging
 import datetime
+import logging
 import threading
 
-from flask import Blueprint, request, jsonify, redirect
+from flask import Blueprint, jsonify, request, redirect
 from firebase_admin import firestore
 from extensions import db, strava_service, get_zwift_game_service, get_zwift_service, get_zwift_insider_service
 from config import FRONTEND_URL
@@ -21,6 +21,7 @@ from services.zwift_tokens import (
     upsert_from_token_response,
 )
 from services.weight_history import append_weight_history_entry
+from utils.rate_limit import allow, client_ip
 import secrets
 import requests
 from bs4 import BeautifulSoup
@@ -600,10 +601,25 @@ def _try_link_and_verify_activity(
         logger.error('_try_link_and_verify_activity(%s): %s', activity_id, exc)
 
 
+def _zwift_subscription_ended(zwift_service, access_token: str | None) -> bool:
+    """True only when Zwift says the activity subscription is gone."""
+    if not access_token:
+        return False
+    try:
+        status, _payload = zwift_service.get_activity_subscription(access_token)
+    except Exception as exc:
+        logger.warning("Zwift subscription check failed: %s", exc)
+        return False
+    return status in (404, 410)
+
+
 @integration_bp.route('/zwift/webhook', methods=['POST'])
 def zwift_webhook():
     if not db:
         return jsonify({'error': 'DB not available'}), 500
+
+    if not allow(f"zwift-webhook:{client_ip()}", limit=30, window_seconds=60):
+        return jsonify({'message': 'Too many requests'}), 429
 
     payload = request.get_json(silent=True) or {}
     notification_id = payload.get('notificationId')
@@ -730,6 +746,14 @@ def zwift_webhook():
             if token_doc:
                 token_owner_id = token_doc.id
                 user_doc_id = resolve_canonical_user_doc_id(token_owner_id) or token_owner_id
+                zwift_service = get_zwift_service()
+                access_token = get_valid_access_token(token_owner_id, zwift_service)
+                if not _zwift_subscription_ended(zwift_service, access_token):
+                    logger.info(
+                        "Ignored UserDisconnected for user %s; subscription still active or unverified",
+                        user_doc_id,
+                    )
+                    return '', 204
                 delete_token_doc(token_owner_id)
                 if token_owner_id != user_doc_id:
                     delete_token_doc(user_doc_id)

@@ -74,8 +74,7 @@ jobs:
                   if name in optional and not value:
                       continue
                   handle.write(f"{name}: {json.dumps(value)}\n")
-              handle.write('SEED_ENABLED: "true"\n')
-          print("Wrote env file with keys: " + ", ".join(required[1:] + optional + ["SEED_ENABLED"]))
+          print("Wrote env file with keys: " + ", ".join(required[1:] + optional))
           PY
           gcloud functions deploy dcu_api \
             --gen2 \

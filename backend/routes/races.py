@@ -14,6 +14,7 @@ from services.liga_categories_core import _load_liga_settings, _resolve_categori
 from services.schema_validation import log_schema_issues, validate_race_doc, with_schema_version
 from datetime import datetime, timedelta, timezone
 from authz import require_admin, require_scheduler, verify_user_token, AuthzError
+from utils.rate_limit import allow, client_ip
 from services.dual_recording.scope import public_dr_row_visible
 from services.dual_recording_admin_core import get_dual_recording_result, DualRecordingError
 from services.zwift_tokens import resolve_user_doc_id_from_auth_uid
@@ -1164,6 +1165,9 @@ def get_route_elevation(segment_id):
     cached = cache_ref.get()
     if cached.exists:
         return jsonify(cached.to_dict())
+
+    if not allow(f"elevation-miss:{client_ip()}", limit=20, window_seconds=60):
+        return jsonify({'error': 'Too many requests'}), 429
 
     streams = strava_service.get_segment_streams(segment_id)
     if not streams:

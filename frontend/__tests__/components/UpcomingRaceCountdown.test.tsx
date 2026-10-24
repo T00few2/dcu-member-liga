@@ -10,6 +10,7 @@ vi.mock('@/lib/firebase', () => ({ app: {}, auth: {}, db: {}, storage: {} }));
 vi.mock('@/hooks/queries', () => ({
     useRouteElevationQuery: () => ({ data: { leadInDistance: 1.1 } }),
     useRaceSegmentsQuery: () => ({ data: null }),
+    useRegisteredClubsQuery: () => ({ data: {} }),
 }));
 
 vi.mock('@/components/races/RouteElevationChart', () => ({

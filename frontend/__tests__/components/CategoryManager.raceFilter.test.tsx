@@ -16,6 +16,7 @@ vi.mock('@/lib/auth-context', () => ({
 
 vi.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ invalidateQueries: vi.fn(), setQueryData: vi.fn() }),
+  useQuery: () => ({ data: [], isLoading: false, isError: false }),
 }));
 
 vi.mock('@/hooks/queries/useLigaCategoriesQuery', () => ({

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 
 from flask import jsonify, request
 
@@ -87,9 +88,6 @@ def get_participants():
                         "zmap": zpro.get("zmap", "N/A"),
                         "zwiftCategory": zpro.get("category", "N/A"),
                         "male": zpro.get("male") if isinstance(zpro.get("male"), bool) else None,
-                        # competitionMetrics weight is what Zwift divides by for its own
-                        # wattsKg, so preferring it keeps our W/kg equal to Zwift's.
-                        "weightInGrams": zpro.get("weightInGrams") or zpro.get("weight"),
                         "cp5s": cp5s,
                         "cp5sEstimated": cp5s_estimated,
                         "cp15s": cp(15),
@@ -122,13 +120,23 @@ def get_participants():
         return jsonify({"message": str(e)}), 500
 
 
+_member_count_cache: dict[str, float | int | None] = {"value": None, "at": 0.0}
+
+
 @users_bp.route("/public/member-count", methods=["GET"])
 def get_public_member_count():
     if not db:
         return jsonify({"error": "DB not available"}), 500
     try:
+        now = time.monotonic()
+        cached = _member_count_cache["value"]
+        cached_at = float(_member_count_cache["at"] or 0)
+        if cached is not None and now - cached_at < 300:
+            return jsonify({"memberCount": cached}), 200
         docs = db.collection("users").where("registration.status", "==", "complete").stream()
         count = sum(1 for _ in docs)
+        _member_count_cache["value"] = count
+        _member_count_cache["at"] = now
         return jsonify({"memberCount": count}), 200
     except Exception as e:
         logger.error("Member count error: %s", e)

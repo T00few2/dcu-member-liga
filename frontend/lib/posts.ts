@@ -91,7 +91,12 @@ export async function getAllPosts(): Promise<Post[]> {
 }
 
 export async function getPostBySlug(slug: string): Promise<Post | null> {
-    const q = query(collection(db, 'posts'), where('slug', '==', slug), limit(1));
+    const q = query(
+        collection(db, 'posts'),
+        where('slug', '==', slug),
+        where('status', '==', 'published'),
+        limit(1)
+    );
     const snap = await getDocs(q);
     if (snap.empty) return null;
     const d = snap.docs[0];

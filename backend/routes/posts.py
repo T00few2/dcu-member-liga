@@ -7,6 +7,7 @@ from firebase_admin import firestore
 
 from authz import AuthzError, verify_user_token
 from extensions import db
+from services.user_service import UserService
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,8 @@ def create_comment(post_id: str):
         return jsonify({"message": f"Comment must be at most {MAX_COMMENT_LENGTH} characters"}), 400
 
     uid = decoded_token["uid"]
-    display_name = (data.get("displayName") or "").strip() or "Anonym"
+    profile = UserService.get_user_by_auth_uid(uid)
+    display_name = (profile.name if profile else "").strip() or "Anonym"
     parent_id = data.get("parentId") or None
 
     post_ref = db.collection("posts").document(post_id)

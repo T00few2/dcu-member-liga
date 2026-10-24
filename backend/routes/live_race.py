@@ -13,6 +13,7 @@ from flask import Blueprint, jsonify, request
 
 from extensions import db, get_zwift_service, get_zwift_game_service
 from routes.races import resolve_signup_subgroup_id
+from utils.rate_limit import allow, client_ip
 from services.stream_riders import stream_rider_hide_ids
 from services.results.constants import (
     AUTO_ACTIVATE_LEAD_MINUTES,
@@ -412,6 +413,9 @@ def get_live_race_clubs():
 def refresh_active_race_results():
     if not db:
         return jsonify({'error': 'DB not available'}), 500
+
+    if not allow(f"live-refresh:{client_ip()}", limit=20, window_seconds=60):
+        return jsonify({'status': 'skipped'}), 200
 
     race_id = _get_active_race_id()
     if not race_id:

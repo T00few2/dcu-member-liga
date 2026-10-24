@@ -53,9 +53,20 @@ export default function BlogEditor({ initialContent, onChange, disabled = false 
         if (url === null) return;
         if (url === '') {
             editor.chain().focus().extendMarkRange('link').unsetLink().run();
-        } else {
-            editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+            return;
         }
+        let allowed = false;
+        try {
+            const parsed = new URL(url);
+            allowed = parsed.protocol === 'https:' || parsed.protocol === 'mailto:';
+        } catch {
+            allowed = false;
+        }
+        if (!allowed) {
+            window.alert('Brug et https- eller mailto-link.');
+            return;
+        }
+        editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
     }, [editor]);
 
     if (!editor) return null;

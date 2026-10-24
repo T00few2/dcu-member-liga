@@ -66,9 +66,7 @@ def _fetch(app: Flask, monkeypatch: pytest.MonkeyPatch, users: list) -> list:
     return response.get_json()["participants"]
 
 
-def test_prefers_the_competition_weight_zwift_divides_by(app, monkeypatch):
-    # Zwift computes its own wattsKg from competitionMetrics weightInGrams, so
-    # preferring it keeps our W/kg equal to what the rider sees in Zwift.
+def test_does_not_publish_rider_weight(app, monkeypatch):
     rider = _user(
         "15690",
         {"weight": 76500, "weightInGrams": 77105},
@@ -77,7 +75,7 @@ def test_prefers_the_competition_weight_zwift_divides_by(app, monkeypatch):
 
     [participant] = _fetch(app, monkeypatch, [rider])
 
-    assert participant["weightInGrams"] == 77105
+    assert "weightInGrams" not in participant
     assert participant["male"] is None
 
 
@@ -86,7 +84,7 @@ def test_falls_back_to_profile_weight_when_competition_weight_is_missing(app, mo
 
     [participant] = _fetch(app, monkeypatch, [rider])
 
-    assert participant["weightInGrams"] == 76500
+    assert "weightInGrams" not in participant
 
 
 def test_repairs_a_padded_5s_effort_and_keeps_the_other_durations(app, monkeypatch):
