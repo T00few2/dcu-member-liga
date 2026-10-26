@@ -497,7 +497,9 @@
     {
       "_id": "strava_service_token",
       "expires_at": 1773495028,
-      "refresh_token": "REDACTED_SERVICE_REFRESH_TOKEN"
+      "refresh_token": "REDACTED_SERVICE_REFRESH_TOKEN",
+      "access_token": "REDACTED_SERVICE_ACCESS_TOKEN",
+      "refresh_lock_until": 0
     }
   ],
   "trainer_requests": [

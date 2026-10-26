@@ -1390,10 +1390,19 @@
           "type": "string"
         },
         "expires_at": {
-          "type": "integer"
+          "type": "integer",
+          "description": "Unix seconds when the stored Strava access token expires"
         },
         "refresh_token": {
           "type": "string"
+        },
+        "access_token": {
+          "type": "string",
+          "description": "Current Strava access token. Other instances reuse it instead of rotating the refresh token."
+        },
+        "refresh_lock_until": {
+          "type": "integer",
+          "description": "Unix seconds. While this is in the future, one instance is refreshing the service token."
         }
       }
     },

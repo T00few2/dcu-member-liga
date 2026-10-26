@@ -8,6 +8,13 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# One instance refreshes the shared Strava token. Others wait, then reuse the
+# access token it stored. The lock expires so a crashed holder does not block forever.
+_SERVICE_TOKEN_LOCK_SECONDS = 20
+_SERVICE_TOKEN_WAIT_SECONDS = 3.0
+_SERVICE_TOKEN_POLL_SECONDS = 0.25
+_SERVICE_TOKEN_EXPIRY_SKEW_SECONDS = 300
+
 class StravaService:
     def __init__(self, db):
         self.db = db
@@ -219,39 +226,56 @@ class StravaService:
             logger.error(f"Error fetching streams: {e}")
             return None
 
-    def _get_service_token(self):
-        """Get a service-level Strava access token for fetching public data (e.g. segment streams)."""
+    def _service_token_ref(self):
+        return self.db.collection('system').document('strava_service_token')
+
+    def _cached_service_access_token(self):
         if self._service_access_token and time.time() < self._service_token_expiry:
             return self._service_access_token
+        return None
 
-        # Prefer the refresh token stored in Firestore (handles rotation), fall back to env
-        refresh_token = None
-        if self.db:
-            try:
-                doc = self.db.collection('system').document('strava_service_token').get()
-                if doc.exists:
-                    refresh_token = doc.to_dict().get('refresh_token')
-            except Exception as e:
-                logger.warning(f"Could not read service token from Firestore: {e}")
+    def _read_service_token_doc(self):
+        try:
+            snap = self._service_token_ref().get()
+            if not snap.exists:
+                return {}
+            return snap.to_dict() or {}
+        except Exception as exc:
+            logger.warning(f"Could not read service token from Firestore: {exc}")
+            return {}
 
-        if not refresh_token:
-            refresh_token = STRAVA_SERVICE_REFRESH_TOKEN
-
-        # Last resort: borrow any connected user's refresh token — segment streams
-        # are public data, so any authenticated Strava user can fetch them.
-        if not refresh_token and self.db:
-            try:
-                docs = self.db.collection('strava_tokens').limit(1).stream()
-                for doc in docs:
-                    refresh_token = doc.to_dict().get('refresh_token')
-                    break
-            except Exception as e:
-                logger.warning(f"Could not find fallback user token: {e}")
-
-        if not refresh_token:
-            logger.warning("No Strava token available for segment stream fetch.")
+    def _remember_stored_access_token(self, data):
+        """Reuse an access token another instance already refreshed."""
+        if not data:
             return None
+        access_token = data.get('access_token')
+        try:
+            expires_at = float(data.get('expires_at'))
+        except (TypeError, ValueError):
+            return None
+        if not access_token or time.time() >= expires_at - _SERVICE_TOKEN_EXPIRY_SKEW_SECONDS:
+            return None
+        self._service_access_token = access_token
+        self._service_token_expiry = expires_at - _SERVICE_TOKEN_EXPIRY_SKEW_SECONDS
+        return access_token
 
+    def _borrow_user_refresh_token(self):
+        """Last resort when no service refresh token exists. Segment streams are public."""
+        try:
+            docs = self.db.collection('strava_tokens').limit(1).stream()
+            for doc in docs:
+                return (doc.to_dict() or {}).get('refresh_token')
+        except Exception as exc:
+            logger.warning(f"Could not find fallback user token: {exc}")
+        return None
+
+    def _select_refresh_token(self, stored):
+        refresh_token = (stored or {}).get('refresh_token') or STRAVA_SERVICE_REFRESH_TOKEN
+        if refresh_token or not self.db:
+            return refresh_token
+        return self._borrow_user_refresh_token()
+
+    def _exchange_service_refresh_token(self, refresh_token):
         try:
             res = requests.post('https://www.strava.com/oauth/token', data={
                 'client_id': STRAVA_CLIENT_ID,
@@ -259,28 +283,138 @@ class StravaService:
                 'grant_type': 'refresh_token',
                 'refresh_token': refresh_token,
             })
-            data = res.json()
-            if res.status_code != 200:
-                logger.error(f"Service token refresh failed: {res.status_code} {data}")
-                return None
-
-            self._service_access_token = data['access_token']
-            self._service_token_expiry = data['expires_at'] - 300
-
-            # Persist the (possibly rotated) refresh token back to Firestore
-            if self.db:
-                try:
-                    self.db.collection('system').document('strava_service_token').set({
-                        'refresh_token': data['refresh_token'],
-                        'expires_at': data['expires_at'],
-                    }, merge=True)
-                except Exception as e:
-                    logger.warning(f"Could not persist rotated service token: {e}")
-
-            return self._service_access_token
-        except Exception as e:
-            logger.error(f"Error obtaining service token: {e}")
+            data = res.json() if res.content else {}
+        except Exception as exc:
+            logger.error(f"Error obtaining service token: {exc}")
             return None
+        if res.status_code != 200 or not data.get('access_token') or not data.get('refresh_token'):
+            code = None
+            errors = data.get('errors') if isinstance(data, dict) else None
+            if isinstance(errors, list) and errors and isinstance(errors[0], dict):
+                code = errors[0].get('code')
+            logger.warning(f"Service token refresh rejected: {res.status_code} {code}")
+            return None
+        return data
+
+    def _persist_service_token(self, data):
+        self._service_access_token = data['access_token']
+        self._service_token_expiry = float(data['expires_at']) - _SERVICE_TOKEN_EXPIRY_SKEW_SECONDS
+        if not self.db:
+            return
+        try:
+            self._service_token_ref().set({
+                'access_token': data['access_token'],
+                'refresh_token': data['refresh_token'],
+                'expires_at': data['expires_at'],
+                'refresh_lock_until': 0,
+            }, merge=True)
+        except Exception as exc:
+            logger.warning(f"Could not persist rotated service token: {exc}")
+
+    def _claim_refresh_lock(self):
+        """Return the lock deadline when this instance holds it, else None."""
+        ref = self._service_token_ref()
+        owned_until = int(time.time()) + _SERVICE_TOKEN_LOCK_SECONDS
+
+        @firestore.transactional
+        def _claim(transaction):
+            snap = ref.get(transaction=transaction)
+            data = snap.to_dict() if snap.exists else {}
+            locked_until = float(data.get('refresh_lock_until') or 0)
+            if locked_until > time.time():
+                return None
+            transaction.set(ref, {'refresh_lock_until': owned_until}, merge=True)
+            return owned_until
+
+        try:
+            return _claim(self.db.transaction())
+        except Exception as exc:
+            logger.warning(f"Could not claim service token refresh lock: {exc}")
+            return None
+
+    def _release_refresh_lock(self, owned_until):
+        ref = self._service_token_ref()
+
+        @firestore.transactional
+        def _release(transaction):
+            snap = ref.get(transaction=transaction)
+            data = snap.to_dict() if snap.exists else {}
+            if float(data.get('refresh_lock_until') or 0) != float(owned_until):
+                return
+            transaction.set(ref, {'refresh_lock_until': 0}, merge=True)
+
+        try:
+            _release(self.db.transaction())
+        except Exception as exc:
+            logger.warning(f"Could not release service token refresh lock: {exc}")
+
+    def _wait_for_service_access_token(self):
+        deadline = time.time() + _SERVICE_TOKEN_WAIT_SECONDS
+        while True:
+            live = self._remember_stored_access_token(self._read_service_token_doc())
+            if live:
+                return live
+            if time.time() >= deadline:
+                return None
+            time.sleep(_SERVICE_TOKEN_POLL_SECONDS)
+
+    def _refresh_service_token_locked(self):
+        owned_until = self._claim_refresh_lock()
+        if not owned_until:
+            live = self._wait_for_service_access_token()
+            if live:
+                return live
+            owned_until = self._claim_refresh_lock()
+            if not owned_until:
+                logger.error("Service token refresh lock held; skipping Strava refresh")
+                return None
+        try:
+            stored = self._read_service_token_doc()
+            live = self._remember_stored_access_token(stored)
+            if live:
+                return live
+            refresh_token = self._select_refresh_token(stored)
+            if not refresh_token:
+                logger.warning("No Strava token available for segment stream fetch.")
+                return None
+            exchanged = self._exchange_service_refresh_token(refresh_token)
+            if exchanged is None:
+                stored = self._read_service_token_doc()
+                live = self._remember_stored_access_token(stored)
+                if live:
+                    return live
+                newer = (stored or {}).get('refresh_token')
+                if newer and newer != refresh_token:
+                    exchanged = self._exchange_service_refresh_token(newer)
+                if exchanged is None:
+                    logger.error("Service token refresh failed after retry")
+                    return None
+            self._persist_service_token(exchanged)
+            return self._service_access_token
+        finally:
+            if owned_until:
+                self._release_refresh_lock(owned_until)
+
+    def _get_service_token(self):
+        """Get a service-level Strava access token for fetching public data (e.g. segment streams)."""
+        cached = self._cached_service_access_token()
+        if cached:
+            return cached
+
+        if not self.db:
+            if not STRAVA_SERVICE_REFRESH_TOKEN:
+                logger.warning("No Strava token available for segment stream fetch.")
+                return None
+            exchanged = self._exchange_service_refresh_token(STRAVA_SERVICE_REFRESH_TOKEN)
+            if exchanged is None:
+                return None
+            self._persist_service_token(exchanged)
+            return self._service_access_token
+
+        live = self._remember_stored_access_token(self._read_service_token_doc())
+        if live:
+            return live
+        return self._refresh_service_token_locked()
 
     def get_activities_for_matching(self, rider_id, per_page=30):
         """
