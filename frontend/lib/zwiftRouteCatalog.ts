@@ -40,7 +40,12 @@ export function resolveZwiftRoute(
     const routeSlug = slugifyZwiftName(route);
     if (!worldSlug || !routeSlug) return null;
 
-    const match = zwiftRoutes.find((r) => r.world === worldSlug && r.slug === routeSlug);
+    const inWorld = zwiftRoutes.filter((r) => r.world === worldSlug);
+    // zwift-data keeps historical slugs after Zwift renames a route
+    // ("Richmond UCI Worlds" is still slug 2015-uci-worlds-course).
+    const match =
+        inWorld.find((r) => r.slug === routeSlug) ??
+        inWorld.find((r) => slugifyZwiftName(r.name) === routeSlug);
     if (!match) return null;
 
     const stravaSegmentId = match.stravaSegmentId ?? STRAVA_SEGMENT_OVERRIDES[match.slug];

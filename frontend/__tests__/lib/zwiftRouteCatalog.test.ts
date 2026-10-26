@@ -24,6 +24,13 @@ describe('resolveZwiftRoute', () => {
         expect(hudson?.stravaSegmentId).toBe(40654556);
     });
 
+    it('resolves routes whose display name no longer matches the catalog slug', () => {
+        const richmond = resolveZwiftRoute('RICHMOND', 'Richmond UCI Worlds');
+        expect(richmond?.id).toBe(2196019512);
+        expect(richmond?.slug).toBe('2015-uci-worlds-course');
+        expect(richmond?.stravaSegmentId).toBe(12128718);
+    });
+
     it('uses upstream Paris segmentsOnRoute from zwift-data', () => {
         const boucle = resolveZwiftRoute('PARIS', 'La Boucle');
         expect(boucle?.segmentsOnRoute?.map((s) => s.segment)).toEqual([
