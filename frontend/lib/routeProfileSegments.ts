@@ -315,8 +315,13 @@ export function resolveRaceRelativeProfileSegments<T extends ProfileSegmentLike>
     const effectiveLeadInKm = catalogHasLeadIn ? leadInKm : 0;
     const raceRelativeCatalog = shiftSegmentsByLeadIn(catalog, effectiveLeadInKm);
 
-    if (!cached?.length) {
+    // null/undefined: nothing saved yet, so use the catalog.
+    // []: an admin saved an empty list and that choice should stick.
+    if (cached == null) {
         return raceRelativeCatalog;
+    }
+    if (cached.length === 0) {
+        return [];
     }
 
     if (!(effectiveLeadInKm > 0) || !catalog.length) {
@@ -502,4 +507,27 @@ export function mergeSplineProfileSegments<T extends ProfileSegmentLike>(
 
     if (added.length === 0) return resolved;
     return [...resolved, ...added].sort((a, b) => a.fromKm - b.fromKm || a.toKm - b.toKm);
+}
+
+/**
+ * Saved elevation_cache profileSegments are the overlay. Catalog and game arches
+ * fill in only when nothing has been saved, so an admin delete is not put back
+ * on the next load.
+ */
+export function composeRouteProfileSegments<T extends ProfileSegmentLike>(
+    cached: T[] | null | undefined,
+    catalog: T[],
+    splineSegments: SplinePlacedSegment[],
+    leadInKm: number,
+    streamIncludesLeadIn?: boolean,
+): T[] {
+    const curated = Array.isArray(cached);
+    const resolved = resolveRaceRelativeProfileSegments(
+        curated ? cached : null,
+        catalog,
+        leadInKm,
+        streamIncludesLeadIn,
+    );
+    if (curated) return resolved;
+    return mergeSplineProfileSegments(catalog, resolved, splineSegments);
 }

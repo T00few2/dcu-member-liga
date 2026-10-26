@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     catalogSegmentsIncludeLeadIn,
+    composeRouteProfileSegments,
     mergeElevationProfileWithLapBanners,
     mergeLapBannerProfileSegments,
     mergeSplineProfileSegments,
@@ -267,6 +268,11 @@ describe('resolveRaceRelativeProfileSegments', () => {
         const out = resolveRaceRelativeProfileSegments(null, inclusive, 3.077, false);
         expect(out[0].fromKm).toBe(3.532);
     });
+
+    it('keeps an explicitly empty saved list empty', () => {
+        const out = resolveRaceRelativeProfileSegments([], catalog, 0);
+        expect(out).toEqual([]);
+    });
 });
 
 describe('tileElevationArrays / tileProfileSegments', () => {
@@ -338,5 +344,29 @@ describe('mergeSplineProfileSegments', () => {
         expect(byName('Sasquatch Sprint Reverse').type).toBe('sprint');
         expect(byName('Stoneway Sprint Reverse').toKm).toBeLessThan(byName('Mayan Mountainside KOM').fromKm);
         expect(byName('Woodland Sprint Reverse').fromKm).toBeCloseTo(25.197 - shift, 2);
+    });
+});
+
+describe('composeRouteProfileSegments', () => {
+    const catalog = [
+        { name: 'Richmond KOM', type: 'climb' as const, fromKm: 11.956, toKm: 12.579, direction: 'forward' as const },
+        { name: 'Richmond UCI Cource', type: 'segment' as const, fromKm: 0, toKm: 16.215, direction: 'forward' as const },
+    ];
+    const spline = [
+        { name: 'KOM', direction: 'forward' as const, splineFrom: 1, splineTo: 2, lengthM: 644, type: 'climb' },
+        { name: 'Richmond KOM', direction: 'forward' as const, splineFrom: 3, splineTo: 4, lengthM: 623, type: 'climb' },
+    ];
+
+    it('does not put removed game arches back onto a saved list', () => {
+        const saved = [
+            { name: 'Richmond KOM', type: 'climb' as const, fromKm: 11.956, toKm: 12.579, direction: 'forward' as const },
+        ];
+        const out = composeRouteProfileSegments(saved, catalog, spline, 0.284, false);
+        expect(out.map((seg) => seg.name)).toEqual(['Richmond KOM']);
+    });
+
+    it('still fills unsaved routes from the catalog and game arches', () => {
+        const out = composeRouteProfileSegments(null, catalog, spline, 0, false);
+        expect(out.map((seg) => seg.name)).toEqual(['Richmond UCI Cource', 'KOM', 'Richmond KOM']);
     });
 });

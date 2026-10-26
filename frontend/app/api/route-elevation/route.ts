@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-    mergeSplineProfileSegments,
+    composeRouteProfileSegments,
     normalizeProfileSegmentDirection,
     normalizeProfileSegmentName,
-    resolveRaceRelativeProfileSegments,
     type SplinePlacedSegment,
 } from '@/lib/routeProfileSegments';
 import { resolveZwiftRoute, zwiftCatalogSegments } from '@/lib/zwiftRouteCatalog';
@@ -166,21 +165,17 @@ export async function GET(req: NextRequest) {
     const cachedProfileSegments: ProfileSegment[] | null = Array.isArray(data?.profileSegments)
         ? data.profileSegments
         : null;
-    const resolvedProfileSegments = resolveRaceRelativeProfileSegments(
+    // A saved list is the overlay. Game arches are only filled in when nothing
+    // has been saved, otherwise an admin delete comes back on the next load.
+    const splineSegments = cachedProfileSegments || !match.id
+        ? []
+        : await fetchRouteSplineSegments(match.id, fresh);
+    const singleLapProfileSegments = composeRouteProfileSegments(
         cachedProfileSegments,
         catalogSegments,
+        splineSegments,
         leadInKm,
         streamIncludesLeadIn,
-    );
-    // segmentsOnRoute omits segments that have no Strava id. The game still rides
-    // them (the setup list), so place those from the route manifest.
-    const splineSegments = match.id
-        ? await fetchRouteSplineSegments(match.id, fresh)
-        : [];
-    const singleLapProfileSegments = mergeSplineProfileSegments(
-        catalogSegments,
-        resolvedProfileSegments,
-        splineSegments,
     );
 
     let raceDistances = singleLapDistances;
