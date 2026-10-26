@@ -24,13 +24,13 @@ export function groupSegmentsByLap(segments: Segment[]): Record<number, Segment[
     }, {} as Record<number, Segment[]>);
 }
 
-/** Key of the calculated finish banner: last race-lap segment (lap >= 1). */
+/** Key of the banner that ends the race lap. Other segments are not the finish. */
 export function getFinishSegmentKey(segments: Segment[], maxLaps?: number): string | null {
     const raceLapSegments = segments.filter((seg) => {
         const lap = seg.lap ?? 1;
         if (lap < 1) return false;
         if (maxLaps != null && lap > maxLaps) return false;
-        return true;
+        return seg.isFinish === true;
     });
     const finish = raceLapSegments[raceLapSegments.length - 1];
     if (!finish?.id) return null;

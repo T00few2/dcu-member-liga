@@ -52,6 +52,30 @@ class EventSegmentFilterTests(unittest.TestCase):
         from services.results.finish_selector import last_race_lap_banner
 
         self.assertEqual(last_race_lap_banner(segments), (CHAMPS_ELYSEES_ID, 3))
+        self.assertTrue(champs[-1].get("isFinish"))
+        self.assertEqual(
+            [str(segment.get("id")) for segment in segments if segment.get("isFinish")],
+            [CHAMPS_ELYSEES_ID],
+        )
+
+    def test_picker_does_not_mark_the_last_climb_as_finish(self):
+        game = ZwiftGameService()
+        segments = game.get_event_segments("2196019512", laps=1)
+        names = [segment.get("name") for segment in segments]
+        self.assertIn("23RD ST.", names)
+        self.assertNotIn("UCI COURSE", names)
+        self.assertFalse(any(segment.get("isFinish") for segment in segments))
+
+    def test_richmond_finish_banner_is_the_uci_course(self):
+        game = ZwiftGameService()
+        segments = game.get_event_segments(
+            "2196019512",
+            laps=1,
+            include_lap_banners=True,
+        )
+        finish = [segment for segment in segments if segment.get("isFinish")]
+        self.assertEqual(len(finish), 1)
+        self.assertEqual(finish[0].get("name"), "UCI COURSE")
 
 
 if __name__ == "__main__":

@@ -21,6 +21,8 @@ export interface Segment {
     count: number;
     direction: string;
     lap: number;
+    /** Set on the banner that ends the last race lap, when that banner is in this list. */
+    isFinish?: boolean;
 }
 
 export interface SelectedSegment extends Segment {

@@ -170,6 +170,9 @@ class ZwiftGameService:
         Pass include_lap_banners=True for finish detection: the last race-lap
         banner is still the intended finish even when it is absent from
         segment-results.
+
+        The segment that ends the last race lap is marked isFinish. A hidden
+        lap banner keeps that mark off the earlier sprint or climb.
         """
         # Resolve data files relative to backend/services, regardless of process CWD.
         # This avoids intermittent "missing segments" when the app is started from
@@ -248,16 +251,10 @@ class ZwiftGameService:
                 order_counter += 1
 
         # Pre-index segments by roadId for faster lookup.
-        # Sprint pickers omit lap/loop banners (null archId or requiresAllCheckpoints).
-        # Finish detection keeps them so the last race-lap arch can fall back to
-        # official race-results when Zwift omits it (e.g. Champs-Élysées).
+        # Always place lap/loop banners so the real finish can be identified.
+        # The picker drops them again below; finish detection keeps them.
         segments_by_road = defaultdict(list)
         for seg in segments_data:
-            if not include_lap_banners:
-                if seg.get("archId") is None:
-                    continue
-                if seg.get("requiresAllCheckpoints"):
-                    continue
             road_id = seg.get("roadId")
             if road_id is not None:
                 segments_by_road[road_id].append(seg)
@@ -280,6 +277,9 @@ class ZwiftGameService:
                 seg_copy["lap"] = current_lap
                 seg_copy["direction"] = direction
                 seg_copy["id"] = seg_id
+                seg_copy["lapBanner"] = (
+                    seg_data.get("archId") is None or bool(seg_data.get("requiresAllCheckpoints"))
+                )
                 # Use finish order with a within-entry ratio to keep chronological ordering
                 # when multiple segments finish in the same route entry.
                 seg_copy["order"] = current_order + max(0.0, min(1.0, float(finish_ratio)))
@@ -335,15 +335,12 @@ class ZwiftGameService:
                 if not seg_id or s_start is None or s_finish is None:
                     continue
 
-                # Check if points are within the road interval we traversed
-                # We use a small epsilon for float comparisons if needed, but simple <= is usually ok.
-                # We relax strict inequality to handle boundary conditions.
-                
-                # Is Start point in this entry?
-                has_start = (min_p <= s_start <= max_p)
-                
-                # Is Finish point in this entry?
-                has_finish = (min_p <= s_finish <= max_p)
+                # Road fractions in the manifest and the segment file do not always
+                # meet exactly. Richmond's finish banner sits a few millionths past
+                # the last manifest endpoint.
+                road_epsilon = 1e-5
+                has_start = (min_p - road_epsilon) <= s_start <= (max_p + road_epsilon)
+                has_finish = (min_p - road_epsilon) <= s_finish <= (max_p + road_epsilon)
                 
                 finish_ratio = 0.5
                 if has_finish:
@@ -457,9 +454,20 @@ class ZwiftGameService:
             segment_counts[seg_id] += 1
             seg["count"] = segment_counts[seg_id]
 
-        result = []
+        finish_seg = None
         for seg in all_found_segments:
-            result.append({
+            if int(seg.get("lap") or 0) >= 1:
+                finish_seg = seg
+        if finish_seg is not None:
+            finish_seg["isFinish"] = True
+
+        visible_segments = all_found_segments
+        if not include_lap_banners:
+            visible_segments = [seg for seg in all_found_segments if not seg.get("lapBanner")]
+
+        result = []
+        for seg in visible_segments:
+            item = {
                 "name": (
                     seg.get("nameReverse")
                     if seg.get("direction") == "reverse" and seg.get("nameReverse")
@@ -468,7 +476,10 @@ class ZwiftGameService:
                 "direction": seg.get("direction"),
                 "count": seg.get("count"), # Occurrence number (1st time, 2nd time...)
                 "id": seg.get("id"),
-                "lap": seg.get("lap")
-            })
+                "lap": seg.get("lap"),
+            }
+            if seg.get("isFinish"):
+                item["isFinish"] = True
+            result.append(item)
 
         return result
