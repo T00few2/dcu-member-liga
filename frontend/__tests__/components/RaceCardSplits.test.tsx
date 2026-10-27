@@ -44,11 +44,13 @@ const stage1 = {
     selectedSegments: [],
     raceGroups: [
         {
+            id: 'division-1-3',
             name: 'Division 1-3',
+            eventId: '',
             segmentType: 'split',
             sprints: [
-                { id: '5338791988', key: '5338791988_1', name: 'SPRINT', count: 1, lap: 1 },
-                { id: '13937662126', key: '13937662126_1', name: 'BROAD ST.', count: 1, lap: 1 },
+                { id: '5338791988', key: '5338791988_1', name: 'SPRINT', count: 1, lap: 1, direction: 'forward' },
+                { id: '13937662126', key: '13937662126_1', name: 'BROAD ST.', count: 1, lap: 1, direction: 'forward' },
             ],
             categories: [{ category: 'A' }],
         },
