@@ -5,6 +5,7 @@ import {
 import { fromTimestamp } from '@/lib/formatDate';
 import { formatOmgangeDisplay, getAllLapsValues } from '@/lib/raceLaps';
 import { lapLengthKmFromElevation, tileProfileSegments } from '@/lib/routeProfileSegments';
+import { segmentModeForDisplay } from '@/lib/racePointsSplit';
 import type { Race } from '@/types/live';
 
 export const RACE_ANNOUNCEMENT_SUBJECT = 'DCU E-serien';
@@ -14,7 +15,7 @@ const SITE_URL = 'https://www.dansk-ecykling.dk';
 
 export type AnnouncementRace = Pick<
     Race,
-    'name' | 'date' | 'routeName' | 'map' | 'laps' | 'totalDistance' | 'totalElevation' | 'eventMode' | 'eventConfiguration' | 'raceGroups' | 'singleModeCategories' | 'sprints'
+    'name' | 'date' | 'routeName' | 'map' | 'laps' | 'totalDistance' | 'totalElevation' | 'eventMode' | 'eventConfiguration' | 'raceGroups' | 'singleModeCategories' | 'sprints' | 'segmentType'
 >;
 
 export interface AnnouncementProfileSegment {
@@ -254,7 +255,7 @@ function profileMarkup(race: AnnouncementRace, profile: AnnouncementProfile | nu
     return `<tr><td style="padding:4px 16px 8px;font-family:Arial,Helvetica,sans-serif;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
 <td class="text-main" style="font-size:14px;font-weight:bold;color:#212121;">Ruteprofil</td>
-<td align="right" style="font-family:Arial,Helvetica,sans-serif;font-size:11px;"><span class="elev-star" style="color:#d97706;">★</span> <span class="text-muted" style="color:#313131;">Pointspurt</span></td>
+<td align="right" style="font-family:Arial,Helvetica,sans-serif;font-size:11px;"><span class="elev-star" style="color:#d97706;">★</span> <span class="text-muted" style="color:#313131;">${segmentModeForDisplay(race) === 'split' ? 'Splittid' : 'Pointspurt'}</span></td>
 </tr></table>
 </td></tr>
 <tr><td style="padding:0 16px 12px;">
@@ -293,11 +294,12 @@ ${kmCells}
     const leadNote = hasKm
         ? `<p class="text-muted" style="margin:8px 0 0;font-size:11px;color:#313131;">Distancer inkl lead-in${leadIn > 0 ? ` (${leadIn.toFixed(1)} km)` : ''}</p>`
         : '';
+    const splits = segmentModeForDisplay(race) === 'split';
     return `<tr><td style="padding:4px 16px 16px;font-family:Arial,Helvetica,sans-serif;">
-<div class="text-main" style="margin-bottom:8px;font-size:14px;font-weight:bold;color:#212121;">Pointsprint</div>
+<div class="text-main" style="margin-bottom:8px;font-size:14px;font-weight:bold;color:#212121;">${splits ? 'Splittider' : 'Pointsprint'}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;font-size:13px;">
 <tr>
-${head('Sprint', 'left')}
+${head(splits ? 'Split' : 'Sprint', 'left')}
 ${head('Omgang', 'center')}
 ${kmHeads}
 </tr>

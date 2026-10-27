@@ -11,6 +11,7 @@ import SprintsByLap, {
 import { mergeElevationProfileWithLapBanners } from '@/lib/routeProfileSegments';
 import { formatTime, formatGap } from '@/app/results/_components/formatTime';
 import { getConfiguredSprintsForCategory, resolveSprintColumns } from '@/lib/sprintColumns';
+import { segmentModeForDisplay } from '@/lib/racePointsSplit';
 import DeclassifiedBadge, { isRiderDeclassified } from '@/components/DeclassifiedBadge';
 
 interface Props {
@@ -268,12 +269,14 @@ export function InfoView({
     routeId,
     worldName,
     routeName,
+    splits = false,
 }: {
     sprints: Sprint[];
     laps: number;
     routeId?: string | number;
     worldName?: string;
     routeName?: string;
+    splits?: boolean;
 }) {
     const hasSprints = sprints.length > 0;
 
@@ -324,15 +327,19 @@ export function InfoView({
     if (!hasSprints) {
         return (
             <p className="text-sm text-muted-foreground">
-                Ingen pointsprint for denne kategori.
+                {splits ? 'Ingen splittider for denne kategori.' : 'Ingen pointsprint for denne kategori.'}
             </p>
         );
     }
 
     return (
         <div className="space-y-2">
-            <h4 className="text-sm font-semibold text-card-foreground">Pointsprint</h4>
-            <SprintsByLap sprints={resolvedSprints} profileData={profileData} />
+            <h4 className="text-sm font-semibold text-card-foreground">{splits ? 'Splittider' : 'Pointsprint'}</h4>
+            <SprintsByLap
+                sprints={resolvedSprints}
+                profileData={profileData}
+                nameHeading={splits ? 'Split' : 'Sprint'}
+            />
         </div>
     );
 }
@@ -396,6 +403,7 @@ export default function LiveRaceResultsTable({
                     routeId={routeId}
                     worldName={worldName}
                     routeName={routeName}
+                    splits={!!race && segmentModeForDisplay(race, category) === 'split'}
                 />
             )}
         </section>

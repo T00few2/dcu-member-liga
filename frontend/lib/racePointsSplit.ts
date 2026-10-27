@@ -7,6 +7,8 @@ type SegmentRef = {
 type SegmentConfig = {
     segmentType?: 'sprint' | 'split';
     sprints?: SegmentRef[];
+    category?: string;
+    customCategory?: string;
 };
 
 type RaceGroupConfig = {
@@ -17,6 +19,7 @@ type RaceGroupConfig = {
 
 type RacePointsInput = {
     segmentType?: 'sprint' | 'split';
+    eventMode?: string;
     sprints?: SegmentRef[];
     selectedSegments?: string[];
     singleModeCategories?: SegmentConfig[];
@@ -41,6 +44,40 @@ const getSegmentKey = (seg: SegmentRef): string | null => {
 };
 
 const sum = (vals: number[]) => vals.reduce((acc, n) => acc + n, 0);
+
+/** How the segments shown for this category are used: points, or time-trial splits. */
+export const segmentModeForDisplay = (
+    race: RacePointsInput,
+    category?: string | null,
+): 'sprint' | 'split' => {
+    const fallback: 'sprint' | 'split' = race.segmentType === 'split' ? 'split' : 'sprint';
+
+    if (race.eventMode === 'grouped' && race.raceGroups?.length) {
+        const group = (category
+            ? race.raceGroups.find((g) => (g.categories || []).some((c) => c.category === category))
+            : undefined) ?? race.raceGroups[0];
+        const cat = category
+            ? (group?.categories || []).find((c) => c.category === category)
+            : undefined;
+        return (cat?.segmentType || group?.segmentType || fallback) === 'split' ? 'split' : 'sprint';
+    }
+
+    if (race.eventMode === 'multi' && race.eventConfiguration?.length) {
+        const cfg = (category
+            ? race.eventConfiguration.find((c) => c.customCategory === category)
+            : undefined) ?? race.eventConfiguration[0];
+        return (cfg?.segmentType || fallback) === 'split' ? 'split' : 'sprint';
+    }
+
+    if (race.eventMode === 'single' && race.singleModeCategories?.length) {
+        const cfg = (category
+            ? race.singleModeCategories.find((c) => c.category === category)
+            : undefined) ?? race.singleModeCategories[0];
+        return (cfg?.segmentType || fallback) === 'split' ? 'split' : 'sprint';
+    }
+
+    return fallback;
+};
 
 export const getSprintSegmentCountForPoints = (race: RacePointsInput): number => {
     const segmentKeys = new Set<string>();

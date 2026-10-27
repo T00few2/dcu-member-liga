@@ -18,6 +18,7 @@ import { useRouteElevationQuery, useRaceSegmentsQuery, useMyRaceSignupsQuery, us
 import { useAuth } from '@/lib/auth-context';
 import { scaleRaceDistanceKm } from '@/hooks/useLeagueData';
 import { formatOmgangeDisplay } from '@/lib/raceLaps';
+import { segmentModeForDisplay } from '@/lib/racePointsSplit';
 import { mergeElevationProfileWithLapBanners, tileProfileSegments, lapLengthKmFromElevation } from '@/lib/routeProfileSegments';
 import { useInViewOnce } from '@/hooks/useInViewOnce';
 
@@ -186,6 +187,8 @@ export default function RaceCard({
     const resolvedSprintsToShow = sprintsToShow.length > 0
         ? sprintsToShow
         : fallbackSprintsFromSelectedKeys(race.selectedSegments);
+
+    const showingSplits = segmentModeForDisplay(race, isPublicVariant ? undefined : userCategory) === 'split';
 
     const hasSprintsAndRoute = resolvedSprintsToShow.length > 0;
 
@@ -426,7 +429,7 @@ export default function RaceCard({
                             {resolvedSprintsToShow.length > 0 && (
                                 <span className="text-xs text-muted-foreground">
                                     <span className="text-amber-600 mr-1">★</span>
-                                    Pointspurt
+                                    {showingSplits ? 'Splittid' : 'Pointspurt'}
                                 </span>
                             )}
                         </div>
@@ -441,7 +444,7 @@ export default function RaceCard({
                     </div>
                 )}
 
-                {!isPublicVariant && !isPast && showPointsSplit && leagueSettings && (
+                {!isPublicVariant && !isPast && !showingSplits && showPointsSplit && leagueSettings && (
                     <div className="border-t border-border pt-4 mb-6">
                         <h4 className="text-sm font-semibold text-card-foreground mb-2">Pointfordeling</h4>
                         <PointsSplitBadge
@@ -454,8 +457,14 @@ export default function RaceCard({
 
                 {!isPublicVariant && resolvedSprintsToShow.length > 0 && (
                     <div className="border-t border-border pt-4 mb-6">
-                        <h4 className="text-sm font-semibold text-card-foreground mb-3">Pointsprint</h4>
-                        <SprintsByLap sprints={resolvedProfileSprintsToShow} profileData={profileData} />
+                        <h4 className="text-sm font-semibold text-card-foreground mb-3">
+                            {showingSplits ? 'Splittider' : 'Pointsprint'}
+                        </h4>
+                        <SprintsByLap
+                            sprints={resolvedProfileSprintsToShow}
+                            profileData={profileData}
+                            nameHeading={showingSplits ? 'Split' : 'Sprint'}
+                        />
                     </div>
                 )}
 

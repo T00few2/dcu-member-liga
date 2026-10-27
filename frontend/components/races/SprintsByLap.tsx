@@ -77,9 +77,11 @@ export function matchSprintProfileSegment(
 interface Props {
     sprints: Sprint[];
     profileData: SprintsByLapProfileData | null;
+    /** Column heading for the segment name. Time trials use "Split". */
+    nameHeading?: string;
 }
 
-export default function SprintsByLap({ sprints, profileData }: Props) {
+export default function SprintsByLap({ sprints, profileData, nameHeading = 'Sprint' }: Props) {
     const sprintLabel = (seg: Sprint) => {
         const isReverse = normalize(seg.direction) === 'reverse';
         return isReverse ? `${seg.name} Reverse` : seg.name;
@@ -124,7 +126,7 @@ export default function SprintsByLap({ sprints, profileData }: Props) {
                 <table className="w-full text-sm border-collapse">
                     <thead>
                         <tr className="border-b border-border">
-                            <th className="text-left py-1.5 pr-4 font-medium text-muted-foreground text-xs uppercase tracking-wide">Sprint</th>
+                            <th className="text-left py-1.5 pr-4 font-medium text-muted-foreground text-xs uppercase tracking-wide">{nameHeading}</th>
                             <th className="text-center py-1.5 px-3 font-medium text-muted-foreground text-xs uppercase tracking-wide whitespace-nowrap">Omgang</th>
                             {hasKmData && (
                                 <>
