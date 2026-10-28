@@ -1,0 +1,4 @@
+# Test and lint tools for CI, pinned so a new release cannot break CI on its own.
+# Dependabot opens a PR when a new version is out (see .github/dependabot.yml).
+pytest==9.2.0
+flake8==7.4.1

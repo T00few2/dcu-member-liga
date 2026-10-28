@@ -1,0 +1,10 @@
+version: 2
+updates:
+  # Only the pinned test tools: a PR per new version, and its CI run shows whether it still passes.
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+    allow:
+      - dependency-name: pytest
+      - dependency-name: flake8
