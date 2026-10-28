@@ -1,6 +1,7 @@
 """Service Strava token refresh is single-flight and reusable across instances."""
 import os
 import sys
+from types import SimpleNamespace
 import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -54,7 +55,7 @@ def _identity(fn):
 
 
 def _service(monkeypatch, ref=None):
-    monkeypatch.setattr("services.strava.firestore.transactional", _identity)
+    monkeypatch.setattr("services.strava.firestore", SimpleNamespace(transactional=_identity))
     return StravaService(_DB(ref or _Ref()))
 
 
@@ -72,7 +73,7 @@ def test_reuses_stored_access_token_without_calling_strava(monkeypatch):
         called["n"] += 1
         raise AssertionError("Strava refresh should not run")
 
-    monkeypatch.setattr("services.strava.requests.post", _post)
+    monkeypatch.setattr("services.strava.requests", SimpleNamespace(post=_post))
     assert svc._get_service_token() == "access-live"
     assert called["n"] == 0
 
@@ -98,8 +99,8 @@ def test_waiter_uses_token_saved_by_the_lock_holder(monkeypatch):
 
     monkeypatch.setattr(svc, "_read_service_token_doc", _read)
     monkeypatch.setattr(
-        "services.strava.requests.post",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("waiter must not refresh")),
+        "services.strava.requests",
+        SimpleNamespace(post=lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("waiter must not refresh"))),
     )
     assert svc._get_service_token() == "access-from-peer"
 
@@ -137,7 +138,7 @@ def test_rejected_refresh_retries_the_token_a_peer_saved(monkeypatch):
             "expires_at": time.time() + 3600,
         })
 
-    monkeypatch.setattr("services.strava.requests.post", _post)
+    monkeypatch.setattr("services.strava.requests", SimpleNamespace(post=_post))
     assert svc._get_service_token() == "access-new"
     assert calls == ["refresh-old", "refresh-new"]
     assert ref.data["refresh_token"] == "refresh-newer"
@@ -165,7 +166,7 @@ def test_same_rejected_token_is_not_sent_twice(monkeypatch):
         calls["n"] += 1
         return _Res()
 
-    monkeypatch.setattr("services.strava.requests.post", _post)
+    monkeypatch.setattr("services.strava.requests", SimpleNamespace(post=_post))
     assert svc._get_service_token() is None
     assert calls["n"] == 1
 

@@ -1,5 +1,6 @@
 import os
 import sys
+from types import SimpleNamespace
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -178,7 +179,7 @@ def _service_with_activities(monkeypatch, pages):
         payload = pages[len(calls) - 1] if len(calls) <= len(pages) else []
         return _FakeResponse(payload)
 
-    monkeypatch.setattr(strava_module.requests, 'get', fake_get)
+    monkeypatch.setattr(strava_module, 'requests', SimpleNamespace(get=fake_get))
     return service, calls
 
 
@@ -271,7 +272,7 @@ def test_get_power_activities_returns_what_it_has_on_a_failed_page(monkeypatch):
             return _FakeResponse([_activity(i, days_ago=i + 1) for i in range(200)])
         return _FakeResponse({'message': 'Rate Limit Exceeded'}, status_code=429)
 
-    monkeypatch.setattr(strava_module.requests, 'get', fake_get)
+    monkeypatch.setattr(strava_module, 'requests', SimpleNamespace(get=fake_get))
 
     after_ts = int((datetime.now(timezone.utc) - timedelta(days=365)).timestamp())
     result = service.get_power_activities('rider', after_ts, max_activities=250)

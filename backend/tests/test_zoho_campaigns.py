@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -12,6 +13,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import utils.zoho_campaigns as campaigns  # noqa: E402
 from utils.email_sender import EmailConfigError, EmailSendError  # noqa: E402
 from utils.zoho_campaigns import MemoryCampaignContentStore, send_zoho_campaign  # noqa: E402
+
+
+class _RequestException(Exception):
+    pass
 
 
 class _Response:
@@ -92,8 +97,11 @@ def _install_api(
             return _Response({"code": "200", "campaign_status": "inprogress", "message": ""})
         raise AssertionError(url)
 
-    monkeypatch.setattr(campaigns.requests, "get", fake_get)
-    monkeypatch.setattr(campaigns.requests, "post", fake_post)
+    # Other test modules stub requests with a MagicMock, and pytest 9.2 will not patch attributes a
+    # MagicMock has not created yet, so the client gets its own stand-in.
+    monkeypatch.setattr(campaigns, "requests", SimpleNamespace(
+        get=fake_get, post=fake_post, RequestException=_RequestException,
+    ))
     return calls
 
 
