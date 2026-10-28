@@ -393,7 +393,9 @@ def test_rate_limit_allows_sixty_calls_in_a_minute(api) -> None:
     username, secret = _create(client)
     now = datetime.now(timezone.utc).replace(microsecond=0)
     database.store["clubApiClients"][username]["requestTimes"] = [
-        (now - timedelta(seconds=index)).isoformat() for index in range(60)
+        # Two calls a second over the last 30 seconds: whole-second stamps right at the window edge
+        # drop out when the request lands a second later.
+        (now - timedelta(seconds=index // 2)).isoformat() for index in range(60)
     ]
 
     blocked = client.get("/club-api", headers=_basic(username, secret))
