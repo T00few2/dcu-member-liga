@@ -4,7 +4,9 @@ import {
     composeRouteProfileSegments,
     mergeElevationProfileWithLapBanners,
     mergeLapBannerProfileSegments,
+    mergeMeasuredProfileSegments,
     mergeSplineProfileSegments,
+    omitWholeLapProfileSegments,
     resolveRaceRelativeProfileSegments,
     shiftSegmentsByLeadIn,
     tileElevationArrays,
@@ -344,6 +346,28 @@ describe('mergeSplineProfileSegments', () => {
         expect(byName('Sasquatch Sprint Reverse').type).toBe('sprint');
         expect(byName('Stoneway Sprint Reverse').toKm).toBeLessThan(byName('Mayan Mountainside KOM').fromKm);
         expect(byName('Woodland Sprint Reverse').fromKm).toBeCloseTo(25.197 - shift, 2);
+    });
+});
+
+describe('mergeMeasuredProfileSegments', () => {
+    const catalog = [
+        { name: 'Tower Sprint', type: 'sprint' as const, fromKm: 2.527, toKm: 2.842, direction: 'forward' as const },
+        { name: 'Rooftop KOM', type: 'climb' as const, fromKm: 9.435, toKm: 11.314, direction: 'forward' as const },
+        { name: 'Richmond UCI Cource', type: 'segment' as const, fromKm: 0, toKm: 16.2, direction: 'forward' as const },
+    ];
+
+    it('drops a segment that spans the lap', () => {
+        const kept = omitWholeLapProfileSegments(catalog, 16.2);
+        expect(kept.map((seg) => seg.name)).toEqual(['Tower Sprint', 'Rooftop KOM']);
+    });
+
+    it('keeps the catalog name when Sauce sits on the same marker', () => {
+        const measured = [
+            { name: 'TOWER SPRINT', type: 'sprint' as const, fromKm: 2.54, toKm: 2.847, direction: 'forward' as const },
+            { name: 'Boardwalk Sprint', type: 'sprint' as const, fromKm: 25.386, toKm: 25.622, direction: 'forward' as const },
+        ];
+        const out = mergeMeasuredProfileSegments(omitWholeLapProfileSegments(catalog, 16.2), measured);
+        expect(out.map((seg) => seg.name)).toEqual(['Tower Sprint', 'Rooftop KOM', 'Boardwalk Sprint']);
     });
 });
 

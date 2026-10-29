@@ -509,6 +509,44 @@ export function mergeSplineProfileSegments<T extends ProfileSegmentLike>(
     return [...resolved, ...added].sort((a, b) => a.fromKm - b.fromKm || a.toKm - b.toKm);
 }
 
+/** Drop a bar that covers most of the lap, such as the full Richmond UCI course segment. */
+export function omitWholeLapProfileSegments<T extends ProfileSegmentLike>(
+    segments: T[],
+    lapKm: number,
+): T[] {
+    if (!(lapKm > 0)) return segments;
+    const limit = lapKm * 0.7;
+    return segments.filter((seg) => Math.abs(seg.toKm - seg.fromKm) <= limit);
+}
+
+function profileRangesOverlap(left: ProfileSegmentLike, right: ProfileSegmentLike): boolean {
+    const leftStart = Math.min(left.fromKm, left.toKm);
+    const leftEnd = Math.max(left.fromKm, left.toKm);
+    const rightStart = Math.min(right.fromKm, right.toKm);
+    const rightEnd = Math.max(right.fromKm, right.toKm);
+    const overlap = Math.min(leftEnd, rightEnd) - Math.max(leftStart, rightStart);
+    if (overlap > 0.02) return true;
+    return Math.abs(leftStart - rightStart) < 0.12;
+}
+
+/**
+ * Add Sauce-measured segments that zwift-data did not place.
+ * An overlap keeps the catalog marker, including its name.
+ * Both lists are kilometres from the race start.
+ */
+export function mergeMeasuredProfileSegments<T extends ProfileSegmentLike>(
+    catalog: T[],
+    measured: T[],
+): T[] {
+    const merged = [...catalog];
+    for (const segment of measured) {
+        if (segment.type !== 'sprint' && segment.type !== 'climb') continue;
+        if (merged.some((current) => profileRangesOverlap(current, segment))) continue;
+        merged.push(segment);
+    }
+    return merged.sort((a, b) => a.fromKm - b.fromKm || a.toKm - b.toKm || a.name.localeCompare(b.name));
+}
+
 /**
  * Saved elevation_cache profileSegments are the overlay. Catalog and game arches
  * fill in only when nothing has been saved, so an admin delete is not put back

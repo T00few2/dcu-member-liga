@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-    composeRouteProfileSegments,
+    mergeMeasuredProfileSegments,
     normalizeProfileSegmentDirection,
     normalizeProfileSegmentName,
-    type SplinePlacedSegment,
+    omitWholeLapProfileSegments,
+    resolveRaceRelativeProfileSegments,
 } from '@/lib/routeProfileSegments';
 import { resolveZwiftRoute, zwiftCatalogSegments } from '@/lib/zwiftRouteCatalog';
 
@@ -25,45 +26,55 @@ type ProfileSegment = {
     direction?: 'forward' | 'reverse';
 };
 
-function lookupCatalogSegment(name: string, direction?: string) {
+const GENERIC_SEGMENT_NAMES = new Set(['sprint', 'kom', 'climb']);
+
+function classifyMeasuredSegment(name: string, direction?: string): ProfileSegment | null {
     const wantedName = normalizeProfileSegmentName(name);
     const wantedDir = normalizeProfileSegmentDirection(direction, name);
-    return zwiftCatalogSegments.find((seg) => {
-        const dir = inferDirectionFromSegment(seg.slug, seg.name, seg.whatsOnZwiftUrl);
-        return (
-            normalizeProfileSegmentName(seg.name) === wantedName &&
-            normalizeProfileSegmentDirection(dir, seg.name) === wantedDir
-        );
-    });
+    if (!wantedName || GENERIC_SEGMENT_NAMES.has(wantedName)) return null;
+
+    const hits = zwiftCatalogSegments.filter(
+        (seg) => normalizeProfileSegmentName(seg.name) === wantedName,
+    );
+    const directed = hits.filter(
+        (seg) => inferDirectionFromSegment(seg.slug, seg.name, seg.whatsOnZwiftUrl) === wantedDir,
+    );
+    const hit = directed[0] ?? (hits.length === 1 ? hits[0] : undefined);
+    if (hit?.type === 'sprint' || hit?.type === 'climb') {
+        return {
+            name: hit.name,
+            type: hit.type,
+            fromKm: 0,
+            toKm: 0,
+            direction: inferDirectionFromSegment(hit.slug, hit.name, hit.whatsOnZwiftUrl),
+        };
+    }
+    if (wantedName.includes('sprint')) {
+        return { name, type: 'sprint', fromKm: 0, toKm: 0, direction: wantedDir };
+    }
+    if (wantedName.includes('kom') || wantedName.includes('climb')) {
+        return { name, type: 'climb', fromKm: 0, toKm: 0, direction: wantedDir };
+    }
+    return null;
 }
 
-function segmentTypeFor(name: string, direction?: string): ProfileSegment['type'] {
-    const hit = lookupCatalogSegment(name, direction);
-    if (hit?.type === 'sprint' || hit?.type === 'climb' || hit?.type === 'segment') return hit.type;
-    const normalized = normalizeProfileSegmentName(name);
-    if (normalized.includes('sprint')) return 'sprint';
-    if (normalized.includes('kom') || normalized.includes('climb')) return 'climb';
-    return 'segment';
-}
-
-async function fetchRouteSplineSegments(routeId: number, fresh: boolean): Promise<SplinePlacedSegment[]> {
+async function fetchMeasuredProfileSegments(routeId: number, fresh: boolean): Promise<ProfileSegment[]> {
     try {
-        const res = await fetch(`${API_URL}/route-segment-spline?routeId=${routeId}`, fresh
+        const res = await fetch(`${API_URL}/route-profile-segments?routeId=${routeId}`, fresh
             ? { cache: 'no-store', signal: AbortSignal.timeout(4000) }
             : { next: { revalidate: 86400 }, signal: AbortSignal.timeout(4000) }
         );
         if (!res.ok) return [];
         const json = await res.json();
         if (!Array.isArray(json?.segments)) return [];
-        return json.segments.flatMap((seg: SplinePlacedSegment) => {
+        return json.segments.flatMap((seg: { name?: string; direction?: string; fromKm?: number; toKm?: number }) => {
             if (!seg || typeof seg.name !== 'string') return [];
-            if (!Number.isFinite(seg.splineFrom) || !Number.isFinite(seg.splineTo)) return [];
-            const hit = lookupCatalogSegment(seg.name, seg.direction);
-            return [{
-                ...seg,
-                name: hit?.name || seg.name,
-                type: segmentTypeFor(seg.name, seg.direction),
-            }];
+            const fromKm = Number(seg.fromKm);
+            const toKm = Number(seg.toKm);
+            if (!Number.isFinite(fromKm) || !Number.isFinite(toKm)) return [];
+            const classified = classifyMeasuredSegment(seg.name, seg.direction);
+            if (!classified) return [];
+            return [{ ...classified, fromKm, toKm }];
         });
     } catch {
         return [];
@@ -155,28 +166,36 @@ export async function GET(req: NextRequest) {
         singleLapDistances.length > 1 &&
         Math.abs(endM - (catalogLapM + leadInM)) <= Math.abs(endM - catalogLapM);
 
-    const catalogSegments: ProfileSegment[] = routeSegments.map((seg) => ({
-        name: seg.name,
-        type: seg.type,
-        fromKm: seg.from,
-        toKm: seg.to,
-        direction: seg.direction,
-    }));
+    const catalogSegments: ProfileSegment[] = omitWholeLapProfileSegments(
+        routeSegments.map((seg) => ({
+            name: seg.name,
+            type: seg.type,
+            fromKm: seg.from,
+            toKm: seg.to,
+            direction: seg.direction,
+        })),
+        Number(match.distance) || 0,
+    );
     const cachedProfileSegments: ProfileSegment[] | null = Array.isArray(data?.profileSegments)
         ? data.profileSegments
         : null;
-    // A saved list is the overlay. Game arches are only filled in when nothing
-    // has been saved, otherwise an admin delete comes back on the next load.
-    const splineSegments = cachedProfileSegments || !match.id
-        ? []
-        : await fetchRouteSplineSegments(match.id, fresh);
-    const singleLapProfileSegments = composeRouteProfileSegments(
-        cachedProfileSegments,
+    // A saved list is the overlay. Measured Sauce segments fill gaps only when
+    // nothing has been saved, otherwise an admin delete comes back on the next load.
+    // Sauce offsets are already from the start banner, so they are not shifted.
+    // Catalog coordinates are shifted only when the Strava stream included the lead-in.
+    const saved = Array.isArray(cachedProfileSegments);
+    const raceCatalog = resolveRaceRelativeProfileSegments(
+        saved ? cachedProfileSegments : null,
         catalogSegments,
-        splineSegments,
         leadInKm,
         streamIncludesLeadIn,
     );
+    const measured = saved || !match.id
+        ? []
+        : await fetchMeasuredProfileSegments(match.id, fresh);
+    const singleLapProfileSegments = saved
+        ? raceCatalog
+        : mergeMeasuredProfileSegments(raceCatalog, measured);
 
     let raceDistances = singleLapDistances;
     let raceAltitudes = singleLapAltitudes;
