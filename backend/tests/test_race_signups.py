@@ -332,6 +332,38 @@ def test_sync_moves_registered_when_category_changes(fake_db: FakeDB, zwift: Fak
     assert stored["status"] == "registered"
 
 
+def test_sync_splits_batch_when_zwift_reports_profile_cap(fake_db: FakeDB, zwift: FakeZwiftService) -> None:
+    fake_db.add_race(
+        "r1",
+        {
+            "name": "Race",
+            "date": _future_date(),
+            "eventMode": "single",
+            "eventId": "555",
+            "subgroupId": "sg-1",
+        },
+    )
+
+    def register(event_subgroup_id, public_ids):
+        if len(public_ids) > 1 or public_ids == ["uuid-1"]:
+            return 500, {"message": "max.batch.signup.profiles.exceeded"}
+        return 200, {"unknownPublicIds": []}
+
+    zwift.batch_register_participants.side_effect = register
+    for uid in ("1", "2", "3", "4"):
+        fake_db.add_user(uid, _user(zwiftId=uid, zwiftUserId=f"uuid-{uid}"))
+        fake_db.add_signup("r1", uid, {"status": "pending", "zwiftUserId": f"uuid-{uid}"})
+
+    summary = rs.sync_race_signups("r1")
+    assert summary["registered"] == 3
+    assert summary["failed"] == 1
+    assert fake_db.signups["r1"]["1"].to_dict()["status"] == "failed"
+    assert fake_db.signups["r1"]["2"].to_dict()["status"] == "registered"
+    sizes = [len(call.kwargs["public_ids"]) for call in zwift.batch_register_participants.call_args_list]
+    assert sizes[0] == 4
+    assert 1 in sizes
+
+
 def test_sync_skips_registered_when_subgroup_unchanged(fake_db: FakeDB, zwift: FakeZwiftService) -> None:
     race = {**THE_CLASSIC_RACE, "name": "Classic", "date": _future_date()}
     fake_db.add_race("r1", race)

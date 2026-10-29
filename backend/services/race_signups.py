@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 
 _COPENHAGEN_TZ = pytz.timezone("Europe/Copenhagen")
 _BATCH_SIZE = 250
+# Zwift documents max 250 publicIds per call, but also returns this on smaller
+# batches (HTTP 500). Splitting the same IDs succeeds.
+_PROFILE_CAP_ERROR = "max.batch.signup.profiles.exceeded"
 SIGNUP_PENDING = "pending"
 SIGNUP_REGISTERED = "registered"
 SIGNUP_FAILED = "failed"
@@ -135,22 +138,86 @@ def _needs_category_for_event(race_data: dict[str, Any]) -> bool:
     return event_mode(race_data) in {"multi", "grouped"}
 
 
+def _is_profile_cap(status: int, payload: dict[str, Any]) -> bool:
+    if status == 200:
+        return False
+    return (_extract_zwift_message(payload) or "") == _PROFILE_CAP_ERROR
+
+
+def _merge_register_halves(
+    left_status: int,
+    left_payload: dict[str, Any],
+    left_ids: list[str],
+    right_status: int,
+    right_payload: dict[str, Any],
+    right_ids: list[str],
+) -> tuple[int, dict[str, Any]]:
+    unknown: list[str] = []
+    rejected: list[str] = []
+    for status, payload, ids in (
+        (left_status, left_payload, left_ids),
+        (right_status, right_payload, right_ids),
+    ):
+        if status == 200:
+            found = payload.get("unknownPublicIds")
+            if isinstance(found, list):
+                unknown.extend(str(x) for x in found)
+            found_rejected = payload.get("rejectedPublicIds")
+            if isinstance(found_rejected, list):
+                rejected.extend(str(x) for x in found_rejected)
+            continue
+        if _is_profile_cap(status, payload):
+            rejected.extend(ids)
+            continue
+        return status, payload
+    result: dict[str, Any] = {"unknownPublicIds": unknown}
+    if rejected:
+        result["rejectedPublicIds"] = rejected
+    return 200, result
+
+
+def _register_chunk(zwift_service, subgroup_id: str, public_ids: list[str]) -> tuple[int, dict[str, Any]]:
+    """Register one chunk, splitting if Zwift rejects the batch as too large."""
+    if not public_ids:
+        return 200, {"unknownPublicIds": []}
+    status, payload = zwift_service.batch_register_participants(
+        event_subgroup_id=subgroup_id,
+        public_ids=public_ids,
+    )
+    payload = payload if isinstance(payload, dict) else {}
+    if status == 200 or len(public_ids) == 1 or not _is_profile_cap(status, payload):
+        return status, payload
+    mid = len(public_ids) // 2
+    left_status, left_payload = _register_chunk(zwift_service, subgroup_id, public_ids[:mid])
+    right_status, right_payload = _register_chunk(zwift_service, subgroup_id, public_ids[mid:])
+    return _merge_register_halves(
+        left_status,
+        left_payload,
+        public_ids[:mid],
+        right_status,
+        right_payload,
+        public_ids[mid:],
+    )
+
+
 def _batch_register(zwift_service, subgroup_id: str, public_ids: list[str]) -> tuple[int, dict[str, Any]]:
     unknown: list[str] = []
-    last_status = 200
-    last_payload: dict[str, Any] = {}
+    rejected: list[str] = []
     for i in range(0, len(public_ids), _BATCH_SIZE):
         chunk = public_ids[i:i + _BATCH_SIZE]
-        last_status, last_payload = zwift_service.batch_register_participants(
-            event_subgroup_id=subgroup_id,
-            public_ids=chunk,
-        )
-        if last_status != 200:
-            return last_status, last_payload if isinstance(last_payload, dict) else {}
-        ids = last_payload.get("unknownPublicIds") if isinstance(last_payload, dict) else None
+        status, payload = _register_chunk(zwift_service, subgroup_id, chunk)
+        if status != 200:
+            return status, payload if isinstance(payload, dict) else {}
+        ids = payload.get("unknownPublicIds") if isinstance(payload, dict) else None
         if isinstance(ids, list):
             unknown.extend(str(x) for x in ids)
-    return 200, {"unknownPublicIds": unknown}
+        capped = payload.get("rejectedPublicIds") if isinstance(payload, dict) else None
+        if isinstance(capped, list):
+            rejected.extend(str(x) for x in capped)
+    result: dict[str, Any] = {"unknownPublicIds": unknown}
+    if rejected:
+        result["rejectedPublicIds"] = rejected
+    return 200, result
 
 
 def _batch_unregister(zwift_service, subgroup_id: str, public_ids: list[str]) -> tuple[int, dict[str, Any]]:
@@ -578,6 +645,8 @@ def sync_race_signups(race_id: str, *, include_reroutes: bool = True) -> dict[st
         status_code, payload = _batch_register(zwift_service, new_sg, ids)
         unknown = payload.get("unknownPublicIds") if isinstance(payload, dict) else None
         unknown_set = {str(x) for x in unknown} if isinstance(unknown, list) else set()
+        rejected = payload.get("rejectedPublicIds") if isinstance(payload, dict) else None
+        rejected_set = {str(x) for x in rejected} if isinstance(rejected, list) else set()
         now = _iso_now()
         if status_code != 200:
             err = _extract_zwift_message(payload) or f"Zwift signup failed ({status_code})"
@@ -596,6 +665,21 @@ def sync_race_signups(race_id: str, *, include_reroutes: bool = True) -> dict[st
                 errors.append(f"{zwift_id}: {err}")
             continue
         for zwift_id, public_id, meta, _sg in riders:
+            if public_id in rejected_set:
+                err = _PROFILE_CAP_ERROR
+                _write_signup(
+                    race_id,
+                    zwift_id,
+                    {
+                        **meta["data"],
+                        "status": SIGNUP_FAILED,
+                        "lastError": err,
+                        "ligaCategory": meta["category"],
+                    },
+                )
+                failed += 1
+                errors.append(f"{zwift_id}: {err}")
+                continue
             if public_id in unknown_set:
                 err = "Zwift did not recognize public ID"
                 _write_signup(
