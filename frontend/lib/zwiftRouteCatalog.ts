@@ -31,12 +31,30 @@ export type ZwiftCatalogRoute = (typeof zwiftRoutes)[number] & {
     stravaSegmentUrl: string;
 };
 
+const catalogWorldSlugs = new Set<string>(zwiftRoutes.map((route) => route.world));
+
+/**
+ * Map a Zwift world name onto a zwift-data world slug.
+ * Game map codes omit spaces (`NEWYORK`, `MAKURIISLANDS`, `CRITCITY`).
+ * Spaced names already slugify to the catalog slug, so those stay as-is.
+ */
+export function catalogWorldSlug(world?: string | null): string {
+    const slug = slugifyZwiftName(world);
+    if (!slug || catalogWorldSlugs.has(slug)) return slug;
+
+    const compact = slug.replace(/-/g, '');
+    const matches = [...catalogWorldSlugs].filter(
+        (candidate) => candidate.replace(/-/g, '') === compact,
+    );
+    return matches.length === 1 ? matches[0] : slug;
+}
+
 /** Resolve a zwift-data route, applying local Strava ID overrides when needed. */
 export function resolveZwiftRoute(
     world?: string | null,
     route?: string | null,
 ): ZwiftCatalogRoute | null {
-    const worldSlug = slugifyZwiftName(world);
+    const worldSlug = catalogWorldSlug(world);
     const routeSlug = slugifyZwiftName(route);
     if (!worldSlug || !routeSlug) return null;
 

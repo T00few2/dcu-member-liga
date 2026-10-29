@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveZwiftRoute, slugifyZwiftName } from '@/lib/zwiftRouteCatalog';
+import { catalogWorldSlug, resolveZwiftRoute, slugifyZwiftName } from '@/lib/zwiftRouteCatalog';
 
 describe('slugifyZwiftName', () => {
     it('strips diacritics so Paris names match zwift-data slugs', () => {
@@ -39,5 +39,22 @@ describe('resolveZwiftRoute', () => {
             'montmartre-kom',
             'tchou-tchou-sprint',
         ]);
+    });
+
+    it('maps Zwift map codes that omit spaces onto catalog world slugs', () => {
+        expect(catalogWorldSlug('NEWYORK')).toBe('new-york');
+        expect(catalogWorldSlug('MAKURIISLANDS')).toBe('makuri-islands');
+        expect(catalogWorldSlug('CRITCITY')).toBe('crit-city');
+        expect(catalogWorldSlug('NEW YORK')).toBe('new-york');
+        expect(catalogWorldSlug('WATOPIA')).toBe('watopia');
+        expect(catalogWorldSlug('PARIS')).toBe('paris');
+
+        expect(resolveZwiftRoute('MAKURIISLANDS', 'Neon Shore Loop')?.id).toBe(3600776267);
+        expect(resolveZwiftRoute('NEWYORK', 'No Sleep Till Brooklyn')?.id).toBe(104170948);
+        expect(resolveZwiftRoute('NEWYORK', 'Stay Puft Pursuit')?.id).toBe(3079921742);
+        expect(resolveZwiftRoute('CRITCITY', 'Downtown Dolphin')?.id).toBe(947394567);
+        expect(resolveZwiftRoute('Makuri Islands', 'Neon Shore Loop')?.world).toBe('makuri-islands');
+        expect(resolveZwiftRoute('WATOPIA', 'Itza Party')?.id).toBe(4131664304);
+        expect(resolveZwiftRoute('NOTAWORLD', 'Tempus Fugit')).toBeNull();
     });
 });
