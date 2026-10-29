@@ -161,7 +161,14 @@ def segment_spline_positions(route_id: int | str) -> list[dict[str, Any]]:
             seg_finish_f = float(seg_finish)
             if not (lo <= seg_start_f <= hi and lo <= seg_finish_f <= hi):
                 continue
-            if seg_start_f != seg_finish_f:
+            if seg_start_f == seg_finish_f:
+                # Point arch. Match the sprint picker: count it only when this
+                # road slice arrives at the arch. Departing past the finish
+                # point of a sprint ridden the other way is not a segment
+                # (Neon Shore Loop clips Railway Sprint this way).
+                if abs(seg_finish_f - travel_to) > abs(seg_finish_f - travel_from):
+                    continue
+            else:
                 riding_forward = seg_start_f < seg_finish_f
                 if reverse and riding_forward:
                     continue

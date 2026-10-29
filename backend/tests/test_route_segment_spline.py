@@ -41,3 +41,17 @@ class RouteSegmentSplineTests(unittest.TestCase):
         self.assertAlmostEqual(woodland["lengthM"], 500.02, places=1)
         self.assertAlmostEqual(sasquatch["lengthM"], 350, places=0)
         self.assertGreater(sasquatch["splineFrom"] - woodland["splineTo"], 0)
+
+    def test_neon_shore_loop_does_not_place_railway_sprint(self):
+        rows = segment_spline_positions(3600776267)
+        names = [row["name"] for row in rows]
+        self.assertNotIn("RAILWAY SPRINT", names)
+        self.assertEqual(
+            names,
+            [
+                "TOWER SPRINT",
+                "ROOFTOP KOM",
+                "BOARDWALK SPRINT",
+                "ALLEY SPRINT Reverse",
+            ],
+        )
