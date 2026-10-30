@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { db } from '@/lib/firebase';
 import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { useAuth } from '@/lib/auth-context';
+import { API_URL } from '@/lib/api';
 import { useLeagueSettingsQuery } from '@/hooks/queries';
 import { categoryRankOrder } from '@/lib/ligaCategories';
 import type {
@@ -12,6 +13,7 @@ import type {
     LoadingStatus,
     DualRecordingVerification,
     WeightVerificationRecord,
+    RiderVeloChange,
 } from '@/types/admin';
 import { useAdminVerifications } from '@/hooks/useAdminVerifications';
 import { useEmailComposer } from '@/hooks/useEmailComposer';
@@ -56,6 +58,67 @@ export default function ResultsModal({ race, status, onClose, onRaceUpdate, embe
         drVerifications: verifications.drVerifications,
         raceResults: race?.results || {},
     });
+
+    const [veloRunning, setVeloRunning] = useState(false);
+    const [veloStatus, setVeloStatus] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+    const veloCancelRef = useRef(false);
+    const raceId = race?.id;
+
+    // Stop an in-flight vELO run when the admin switches race or leaves the tab.
+    useEffect(() => {
+        veloCancelRef.current = false;
+        return () => { veloCancelRef.current = true; };
+    }, [raceId]);
+
+    // ZwiftRacing allows 1 results call/minute: fetch one event per call and
+    // wait between calls until every event of the race has been fetched.
+    const handleRefreshVelo = useCallback(async () => {
+        if (!raceId || !user) return;
+        veloCancelRef.current = false;
+        setVeloRunning(true);
+        setVeloStatus(null);
+        const done = new Set<string>();
+        let total = 0;
+        let attempts = 0;
+        try {
+            while (!veloCancelRef.current) {
+                attempts += 1;
+                const token = await user.getIdToken();
+                const res = await fetch(`${API_URL}/races/${raceId}/velo-changes/refresh`, {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ maxEvents: 1 }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    setVeloStatus({ type: 'error', text: data.message || 'vELO fetch failed' });
+                    return;
+                }
+                const eventIds: string[] = data.eventIds || [];
+                total = eventIds.length;
+                (data.fetchedEvents || []).forEach((id: string) => done.add(id));
+                const remaining = eventIds.filter(id => !done.has(id));
+                const flagged = data.veloChanges?.flaggedCount ?? 0;
+                const riders = Object.keys(data.veloChanges?.riders || {}).length;
+                if (remaining.length === 0) {
+                    setVeloStatus({ type: 'success', text: `vELO hentet for ${total} event(s): ${riders} ryttere, ${flagged} flagget.` });
+                    return;
+                }
+                if (attempts > total * 3 + 2) {
+                    setVeloStatus({ type: 'error', text: `Stoppede efter ${done.size}/${total} events — prøv igen senere.` });
+                    return;
+                }
+                for (let s = 61; s > 0 && !veloCancelRef.current; s--) {
+                    setVeloStatus({ type: 'info', text: `${done.size}/${total} events hentet. Næste event om ${s}s (ZwiftRacing: 1 kald/minut)...` });
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+            }
+        } catch {
+            setVeloStatus({ type: 'error', text: `vELO fetch failed (${done.size}/${total} events hentet)` });
+        } finally {
+            setVeloRunning(false);
+        }
+    }, [raceId, user]);
 
     // ── DQ / DC / EX handlers ────────────────────────────────────────────────
 
@@ -153,7 +216,38 @@ export default function ResultsModal({ race, status, onClose, onRaceUpdate, embe
                         Email alle DR-ryttere
                     </button>
                     <span className="text-xs text-muted-foreground">{email.drBulkRecipients.length} DR-ryttere i dette løb</span>
+                    <button
+                        onClick={handleRefreshVelo}
+                        className="text-sm border border-border px-3 py-1.5 rounded hover:bg-muted/50 disabled:opacity-60"
+                        disabled={veloRunning}
+                        title="Hent vELO før/efter fra ZwiftRacing for løbets events"
+                    >
+                        {veloRunning ? 'Henter vELO...' : 'Hent vELO-ændringer'}
+                    </button>
+                    {veloRunning && (
+                        <button
+                            onClick={() => { veloCancelRef.current = true; }}
+                            className="text-xs text-muted-foreground underline hover:text-foreground"
+                        >
+                            Stop
+                        </button>
+                    )}
+                    {race.veloChanges?.updatedAt && (
+                        <span className="text-xs text-muted-foreground">
+                            Opdateret {formatDisplayDate(race.veloChanges.updatedAt)}
+                            {(race.veloChanges.flaggedCount ?? 0) > 0 && (
+                                <span className="ml-1 font-semibold text-orange-600 dark:text-orange-400">
+                                    · {race.veloChanges.flaggedCount} flagget
+                                </span>
+                            )}
+                        </span>
+                    )}
                 </div>
+                {veloStatus && (
+                    <p className={`text-xs ${veloStatus.type === 'success' ? 'text-green-600 dark:text-green-400' : veloStatus.type === 'info' ? 'text-muted-foreground' : 'text-red-600 dark:text-red-400'}`}>
+                        {veloStatus.text}
+                    </p>
+                )}
                 {email.sendStatus && (
                     <p className={`text-xs ${email.sendStatus.type === 'success' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                         {email.sendStatus.text}
@@ -195,6 +289,8 @@ export default function ResultsModal({ race, status, onClose, onRaceUpdate, embe
                                 drVerifications={verifications.drVerifications}
                                 usersByZwiftId={verifications.usersByZwiftId}
                                 weightVerifications={verifications.weightVerifications}
+                                veloChanges={race.veloChanges?.riders || {}}
+                                veloThreshold={race.veloChanges?.threshold ?? 50}
                                 onToggleDQ={handleToggleDQ}
                                 onToggleDeclass={handleToggleDeclass}
                                 onToggleExclude={handleToggleExclude}
@@ -285,6 +381,8 @@ interface CategoryResultsTableProps {
     drVerifications: Map<string, DualRecordingVerification>;
     usersByZwiftId: Map<string, { userId: string; zwiftId: string; name: string; email: string; trainer?: string }>;
     weightVerifications: Map<string, WeightVerificationRecord>;
+    veloChanges: Record<string, RiderVeloChange>;
+    veloThreshold: number;
     onToggleDQ: (zwiftId: string, isCurrentlyDQ: boolean) => void;
     onToggleDeclass: (zwiftId: string, isCurrentlyDeclass: boolean) => void;
     onToggleExclude: (zwiftId: string, isCurrentlyExcluded: boolean) => void;
@@ -294,7 +392,7 @@ interface CategoryResultsTableProps {
 
 function CategoryResultsTable({
     category, results, manualDQs, manualDeclassifications, manualExclusions,
-    drVerifications, usersByZwiftId, weightVerifications,
+    drVerifications, usersByZwiftId, weightVerifications, veloChanges, veloThreshold,
     onToggleDQ, onToggleDeclass, onToggleExclude, onOpenDR, onOpenEmail,
 }: CategoryResultsTableProps) {
     return (
@@ -309,6 +407,7 @@ function CategoryResultsTable({
                         <th className="px-4 py-2 text-center w-24">Time</th>
                         <th className="px-4 py-2 text-right">Pts</th>
                         <th className="px-4 py-2 text-center w-16">Flags</th>
+                        <th className="px-4 py-2 text-center w-20" title={`vELO-ændring i løbet. ⚠ = steg mere end ${veloThreshold} point og endte over grace-zonen`}>vELO</th>
                         <th className="px-4 py-2 text-center w-[4.5rem]" title="Dual Recording — påkrævet kan give DC, frivillig er kun til information">DR</th>
                         <th className="px-4 py-2 text-center w-14" title="Weight Verification">WV</th>
                         <th className="px-4 py-2 text-center w-14" title="Sticky Watts">SW</th>
@@ -329,10 +428,13 @@ function CategoryResultsTable({
                         const statusLabel = isEX ? 'EX' : isDQ ? 'DQ' : isDC ? 'DC' : raceStatus;
                         const hidePoints = statusLabel === 'DNF' || statusLabel === 'EX';
 
+                        const veloFlagged = Boolean(veloChanges[zwiftId]?.flagged);
+
                         let rowClass = 'hover:bg-muted/10';
                         if (isEX) rowClass += ' bg-slate-50 dark:bg-slate-900/30';
                         else if (isFlagged || isDQ) rowClass += ' bg-red-50 dark:bg-red-950/20';
                         else if (isDC) rowClass += ' bg-yellow-50 dark:bg-yellow-950/20';
+                        else if (veloFlagged) rowClass += ' bg-orange-50 dark:bg-orange-950/20';
 
                         return (
                             <tr key={zwiftId} className={rowClass}>
@@ -345,6 +447,7 @@ function CategoryResultsTable({
                                     {isEX && <div className="text-[10px] text-slate-600 font-bold mt-0.5">EXCLUDED</div>}
                                     {isDQ && <div className="text-[10px] text-red-600 font-bold mt-0.5">DISQUALIFIED</div>}
                                     {isDC && <div className="text-[10px] text-yellow-600 font-bold mt-0.5">DECLASSIFIED</div>}
+                                    {veloFlagged && <div className="text-[10px] text-orange-600 font-bold mt-0.5">vELO OVER GRACE</div>}
                                     <button type="button" onClick={() => onOpenEmail(rider)} className="mt-1 inline-flex text-[11px] px-2 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted/40">
                                         Email
                                     </button>
@@ -361,6 +464,9 @@ function CategoryResultsTable({
                                 </td>
                                 <td className="px-4 py-2 text-center">
                                     {isFlagged ? <span className="text-xl" title="Flagged">🚩</span> : <span className="text-muted-foreground">-</span>}
+                                </td>
+                                <td className="px-4 py-2 text-center">
+                                    <VeloChangeCell change={veloChanges[zwiftId]} />
                                 </td>
                                 <td className="px-4 py-2 text-center">
                                     {drVerifications.has(zwiftId) ? (
@@ -408,5 +514,27 @@ function CategoryResultsTable({
                 </tbody>
             </table>
         </div>
+    );
+}
+
+// ── VeloChangeCell ───────────────────────────────────────────────────────────
+
+function VeloChangeCell({ change }: { change?: RiderVeloChange }) {
+    if (!change || change.delta == null) return <span className="text-muted-foreground">-</span>;
+    const delta = Math.round(change.delta);
+    const fmt = (v: number | null | undefined) => (v == null ? '?' : Math.round(v));
+    const title = [
+        `${fmt(change.before)} → ${fmt(change.after)}`,
+        change.graceLimit != null ? `Grace-grænse (${change.category}): ${change.graceLimit}` : change.category ? `${change.category}: ingen grace-grænse` : '',
+        change.flagged ? 'Over grace-zonen efter løbet' : '',
+    ].filter(Boolean).join('\n');
+    const color = change.flagged
+        ? 'text-orange-600 dark:text-orange-400 font-bold'
+        : delta > 0 ? 'text-green-600 dark:text-green-400' : delta < 0 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground';
+    return (
+        <span className={`font-mono text-xs ${color}`} title={title}>
+            {change.flagged && '⚠ '}{delta > 0 ? '+' : ''}{delta}
+            <span className="block text-[10px] text-muted-foreground font-normal">{fmt(change.after)}</span>
+        </span>
     );
 }

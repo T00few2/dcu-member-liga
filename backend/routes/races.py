@@ -1,7 +1,8 @@
 from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
-from extensions import db, get_zwift_service, get_zwift_game_service, strava_service
+from extensions import db, get_zwift_service, get_zwift_game_service, strava_service, zr_service
 from services.results_processor import ResultsProcessor
+from services.velo_changes import collect_race_event_ids, refresh_race_velo_changes
 from services.results.constants import (
     CATEGORY_FILTER_ALL,
     FETCH_MODE_FINISHERS,
@@ -1081,6 +1082,76 @@ def audit_finish_results(race_id):
     except Exception as e:
         logger.error(f"Finish audit unexpected error: {e}")
         return jsonify({'message': str(e)}), 500
+
+
+def _load_users_by_zwift_id(zwift_ids) -> dict[str, dict[str, Any]]:
+    ids = [str(z) for z in zwift_ids if z]
+    out: dict[str, dict[str, Any]] = {}
+    for i in range(0, len(ids), 30):
+        for user_doc in db.collection('users').where('zwiftId', 'in', ids[i:i + 30]).stream():
+            data = user_doc.to_dict() or {}
+            zid = str(data.get('zwiftId') or '').strip()
+            if zid:
+                out[zid] = data
+    return out
+
+
+@races_bp.route('/races/<race_id>/velo-changes/refresh', methods=['POST'])
+def refresh_velo_changes(race_id):
+    """Fetch per-rider vELO before/after from ZwiftRacing results and store on the race."""
+    try:
+        verify_admin_auth()
+    except AuthzError as e:
+        return jsonify({'message': e.message}), e.status_code
+
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    race_ref = db.collection('races').document(race_id)
+    race_doc = race_ref.get()
+    if not race_doc.exists:
+        return jsonify({'message': 'Race not found'}), 404
+    race_data = race_doc.to_dict() or {}
+    if not collect_race_event_ids(race_data):
+        return jsonify({'message': 'Race has no Zwift event ids'}), 422
+
+    body = request.get_json(silent=True) or {}
+    max_events = body.get('maxEvents')
+    max_events = int(max_events) if isinstance(max_events, int) and max_events > 0 else None
+
+    try:
+        settings = _load_liga_settings(db)
+        outcome = refresh_race_velo_changes(
+            race_data,
+            zr_service.get_results,
+            _load_users_by_zwift_id,
+            int(settings.get('gracePeriod', 35)),
+            _resolve_categories(settings),
+            max_events=max_events,
+        )
+        race_ref.update({'veloChanges': outcome['veloChanges']})
+    except Exception as e:
+        logger.error(f"vELO change refresh failed for race {race_id}: {e}")
+        return jsonify({'message': str(e)}), 500
+
+    velo = outcome['veloChanges']
+    pending = outcome['pendingEvents']
+    message = (
+        f"vELO updated for {len(velo['riders'])} rider(s), {velo['flaggedCount']} flagged."
+    )
+    if pending:
+        message += (
+            f" {len(pending)} event(s) not fetched yet (ZwiftRacing allows 1 results call/minute) "
+            "— run again in a minute."
+        )
+    return jsonify({
+        'message': message,
+        'veloChanges': velo,
+        'eventIds': outcome['eventIds'],
+        'fetchedEvents': outcome['fetchedEvents'],
+        'pendingEvents': pending,
+        'rateLimited': outcome['rateLimited'],
+    }), 200
 
 
 @races_bp.route('/admin/races/results/finalize-pending', methods=['POST'])

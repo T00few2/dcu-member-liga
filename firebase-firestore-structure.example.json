@@ -397,6 +397,18 @@
         "subgroupCount": 1,
         "issues": []
       },
+      "veloChanges": {
+        "updatedAt": "2026-05-20T21:10:00+00:00",
+        "threshold": 50,
+        "flaggedCount": 1,
+        "events": {
+          "1234567": { "fetchedAt": "2026-05-20T21:10:00+00:00", "riderCount": 2, "available": true }
+        },
+        "riders": {
+          "100001": { "before": 1630.2, "after": 1701.5, "delta": 71.3, "eventId": "1234567", "category": "Sapphire", "graceLimit": 1685, "flagged": true },
+          "100002": { "before": 2101.0, "after": 2088.4, "delta": -12.6, "eventId": "1234567", "category": "Ruby", "graceLimit": 2235, "flagged": false }
+        }
+      },
       "resultsAutomation": {
         "automationEnabled": false,
         "pollingIntervalSeconds": 30,
