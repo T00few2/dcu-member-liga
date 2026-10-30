@@ -187,6 +187,56 @@ export function tileElevationArrays(
     return { distance: tiledDistance, altitude: tiledAltitude };
 }
 
+export interface LeadInProfile {
+    distance: number[];
+    altitude: number[];
+}
+
+/** Metres from the pens to the banner. Zero when the profile is missing or too short to draw. */
+export function leadInLengthMetres(profile?: LeadInProfile | null): number {
+    const distance = profile?.distance;
+    if (!distance || distance.length < 2) return 0;
+    const end = distance[distance.length - 1] ?? 0;
+    return end > 1 ? end : 0;
+}
+
+/**
+ * Draw the lead-in once in front of an already-tiled lap.
+ * Sauce heights are shifted so the banner meets the first lap sample.
+ */
+export function withLeadInElevation(
+    distance: number[],
+    altitude: number[],
+    profile?: LeadInProfile | null,
+): { distance: number[]; altitude: number[]; leadInM: number } {
+    const leadInM = leadInLengthMetres(profile);
+    const leadDistance = profile?.distance ?? [];
+    const leadAltitude = profile?.altitude ?? [];
+    if (
+        !(leadInM > 1) ||
+        distance.length === 0 ||
+        leadDistance.length !== leadAltitude.length
+    ) {
+        return { distance, altitude, leadInM: 0 };
+    }
+
+    const lapStartAlt = altitude[0] ?? 0;
+    const delta = lapStartAlt - (leadAltitude[leadAltitude.length - 1] ?? lapStartAlt);
+    const joinedDistance: number[] = [];
+    const joinedAltitude: number[] = [];
+    for (let i = 0; i < leadDistance.length; i++) {
+        const metres = leadDistance[i] ?? 0;
+        if (metres >= leadInM - 0.5) break;
+        joinedDistance.push(metres);
+        joinedAltitude.push((leadAltitude[i] ?? 0) + delta);
+    }
+    for (let i = 0; i < distance.length; i++) {
+        joinedDistance.push((distance[i] ?? 0) + leadInM);
+        joinedAltitude.push(altitude[i] ?? 0);
+    }
+    return { distance: joinedDistance, altitude: joinedAltitude, leadInM };
+}
+
 export function tileProfileSegments<T extends ProfileSegmentLike>(
     segments: T[],
     laps: number,

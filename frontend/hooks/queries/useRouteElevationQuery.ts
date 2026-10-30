@@ -22,6 +22,8 @@ export interface RouteElevationData {
     distance: number[];
     altitude: number[];
     leadInDistance?: number;
+    /** Metres from the pens to the banner. Drawn on the race card only. */
+    leadInProfile?: { distance: number[]; altitude: number[] } | null;
     segments?: RouteSegment[];
     profileSegments?: ProfileSegment[];
 }

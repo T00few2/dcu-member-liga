@@ -440,6 +440,7 @@ export default function RaceCard({
                             routeId={race.routeId}
                             pointSegments={resolvedProfileSprintsToShow}
                             enabled={elevationEnabled}
+                            showLeadIn
                         />
                     </div>
                 )}

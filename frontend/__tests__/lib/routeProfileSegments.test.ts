@@ -11,6 +11,7 @@ import {
     shiftSegmentsByLeadIn,
     tileElevationArrays,
     tileProfileSegments,
+    withLeadInElevation,
 } from '@/lib/routeProfileSegments';
 
 describe('shiftSegmentsByLeadIn', () => {
@@ -292,6 +293,25 @@ describe('tileElevationArrays / tileProfileSegments', () => {
         );
         expect(segs.map((s) => s.fromKm)).toEqual([1, 11]);
         expect(segs.map((s) => s.toKm)).toEqual([1.2, 11.2]);
+    });
+});
+
+describe('withLeadInElevation', () => {
+    it('places the lead-in once in front of the lap and meets the banner height', () => {
+        const joined = withLeadInElevation(
+            [0, 1000, 2000],
+            [40, 50, 45],
+            { distance: [0, 500, 1100], altitude: [10, 20, 12] },
+        );
+        expect(joined.leadInM).toBe(1100);
+        expect(joined.distance).toEqual([0, 500, 1100, 2100, 3100]);
+        expect(joined.altitude).toEqual([38, 48, 40, 50, 45]);
+    });
+
+    it('leaves a lap unchanged when there is no lead-in', () => {
+        const joined = withLeadInElevation([0, 1000], [10, 12], { distance: [], altitude: [] });
+        expect(joined.leadInM).toBe(0);
+        expect(joined.distance).toEqual([0, 1000]);
     });
 });
 

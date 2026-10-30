@@ -58,6 +58,29 @@ function classifyMeasuredSegment(name: string, direction?: string): ProfileSegme
     return null;
 }
 
+async function fetchLeadInProfile(
+    routeId: number,
+    fresh: boolean,
+): Promise<{ distance: number[]; altitude: number[] } | null> {
+    try {
+        const res = await fetch(`${API_URL}/route-leadin-elevation?routeId=${routeId}`, fresh
+            ? { cache: 'no-store', signal: AbortSignal.timeout(4000) }
+            : { next: { revalidate: 86400 }, signal: AbortSignal.timeout(4000) }
+        );
+        if (!res.ok) return null;
+        const json = await res.json();
+        const distance = Array.isArray(json?.distance) ? json.distance.map(Number) : [];
+        const altitude = Array.isArray(json?.altitude) ? json.altitude.map(Number) : [];
+        if (distance.length < 2 || distance.length !== altitude.length) return null;
+        if (!distance.every(Number.isFinite) || !altitude.every(Number.isFinite)) return null;
+        const end = distance[distance.length - 1] ?? 0;
+        if (!(end > 1)) return null;
+        return { distance, altitude };
+    } catch {
+        return null;
+    }
+}
+
 async function fetchMeasuredProfileSegments(routeId: number, fresh: boolean): Promise<ProfileSegment[]> {
     try {
         const res = await fetch(`${API_URL}/route-profile-segments?routeId=${routeId}`, fresh
@@ -199,10 +222,17 @@ export async function GET(req: NextRequest) {
 
     let raceDistances = singleLapDistances;
     let raceAltitudes = singleLapAltitudes;
+    let leadInProfile: { distance: number[]; altitude: number[] } | null = null;
     if (streamIncludesLeadIn) {
         let startIdx = singleLapDistances.findIndex((d) => d >= leadInM);
         if (startIdx < 0) startIdx = 0;
         if (startIdx > 0) {
+            const prefix = downsampleElevation(
+                singleLapDistances.slice(0, startIdx + 1),
+                singleLapAltitudes.slice(0, startIdx + 1),
+                80,
+            );
+            if (prefix.distance.length >= 2) leadInProfile = prefix;
             raceDistances = singleLapDistances
                 .slice(startIdx)
                 .map((d) => Math.max(0, d - leadInM));
@@ -212,6 +242,8 @@ export async function GET(req: NextRequest) {
                 raceAltitudes = [raceAltitudes[0] ?? 0, ...raceAltitudes];
             }
         }
+    } else if (Number(match.id) > 0) {
+        leadInProfile = await fetchLeadInProfile(Number(match.id), fresh);
     }
 
     const downsampled = downsampleElevation(raceDistances, raceAltitudes, 400);
@@ -232,6 +264,7 @@ export async function GET(req: NextRequest) {
             segments: raceRelativeRouteSegments,
             profileSegments: singleLapProfileSegments,
             leadInDistance: leadInKm > 0 ? leadInKm : (data?.leadInDistance ?? undefined),
+            leadInProfile,
             stravaSegmentId: match.stravaSegmentId,
             stravaSegmentUrl: match.stravaSegmentUrl || `https://www.strava.com/segments/${match.stravaSegmentId}`,
         },

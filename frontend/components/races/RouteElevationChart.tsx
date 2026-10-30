@@ -18,7 +18,7 @@ import {
 } from 'recharts';
 import type { Sprint } from '@/types/live';
 import { useRaceSegmentsQuery, useRouteElevationQuery } from '@/hooks/queries';
-import { mergeElevationProfileWithLapBanners, tileElevationArrays, tileProfileSegments } from '@/lib/routeProfileSegments';
+import { leadInLengthMetres, mergeElevationProfileWithLapBanners, tileElevationArrays, tileProfileSegments, withLeadInElevation } from '@/lib/routeProfileSegments';
 
 interface RouteSegment {
     from: number;
@@ -68,6 +68,8 @@ interface Props {
     height?: number;
     /** When false, skip the elevation fetch (e.g. schedule cards below the fold). */
     enabled?: boolean;
+    /** Draw the pens-to-banner stretch once, in front of the lap. */
+    showLeadIn?: boolean;
 }
 
 interface DataPoint {
@@ -353,6 +355,64 @@ function LapDivisionLayer({
     return <g className="lap-guides">{nodes}</g>;
 }
 
+function LeadInMark({ leadInKm }: { leadInKm: number }): ReactNode {
+    const plotArea = usePlotArea();
+    const xDomain = useXAxisDomain(0);
+
+    if (!plotArea || !isNumericDomain(xDomain) || !(leadInKm > 0)) return null;
+
+    const [xMin, xMax] = xDomain;
+    const xSpan = xMax - xMin || 1;
+    const xScale = (km: number) => plotArea.x + ((km - xMin) / xSpan) * plotArea.width;
+    const x1 = xScale(Math.max(xMin, 0));
+    const xBanner = xScale(leadInKm);
+    const width = xBanner - x1;
+    if (width < 2) return null;
+
+    const showLabel = width >= 16;
+    const horizontal = width >= 56;
+    const labelX = horizontal ? (x1 + xBanner) / 2 : (x1 + xBanner) / 2;
+    const labelY = horizontal ? plotArea.y + 11 : plotArea.y + plotArea.height * 0.38;
+
+    return (
+        <g className="lead-in-mark" pointerEvents="none">
+            <rect
+                x={x1}
+                y={plotArea.y}
+                width={width}
+                height={plotArea.height}
+                fill="hsl(var(--muted-foreground))"
+                fillOpacity={0.1}
+            />
+            <line
+                x1={xBanner}
+                x2={xBanner}
+                y1={plotArea.y}
+                y2={plotArea.y + plotArea.height}
+                stroke="hsl(var(--muted-foreground))"
+                strokeOpacity={0.55}
+                strokeWidth={1}
+                strokeDasharray="3 3"
+            />
+            {showLabel && (
+                <text
+                    x={labelX}
+                    y={labelY}
+                    textAnchor="middle"
+                    dominantBaseline={horizontal ? 'hanging' : 'central'}
+                    fontSize={9}
+                    fontWeight={600}
+                    fill="hsl(var(--muted-foreground))"
+                    fillOpacity={0.8}
+                    transform={horizontal ? undefined : `rotate(-90, ${labelX}, ${labelY})`}
+                >
+                    Lead-in
+                </text>
+            )}
+        </g>
+    );
+}
+
 function ElevationOverlayHost({
     overlay,
     data,
@@ -432,6 +492,7 @@ export default function RouteElevationChart({
     overlay,
     height = CHART_HEIGHT,
     enabled = true,
+    showLeadIn = false,
 }: Props) {
     const { data: json, isLoading: loading } = useRouteElevationQuery(worldName, routeName, laps, { enabled });
     const { data: eventSegments = [] } = useRaceSegmentsQuery(
@@ -440,15 +501,20 @@ export default function RouteElevationChart({
         !!routeId && pointSegments.length > 0,
     );
 
+    const leadInM = showLeadIn ? leadInLengthMetres(json?.leadInProfile) : 0;
+
     const data: DataPoint[] | null = (() => {
         if (!json?.distance?.length || !json?.altitude?.length) return null;
         const tiled = tileElevationArrays(json.distance, json.altitude, laps);
-        const n = Math.max(1, Math.floor(tiled.distance.length / TARGET_POINTS));
-        const raw = tiled.distance
+        const joined = leadInM > 0
+            ? withLeadInElevation(tiled.distance, tiled.altitude, json?.leadInProfile)
+            : tiled;
+        const n = Math.max(1, Math.floor(joined.distance.length / TARGET_POINTS));
+        const raw = joined.distance
             .filter((_, i) => i % n === 0)
             .map((d, i) => ({
                 distance: d / 1_000,
-                altitude: tiled.altitude[i * n],
+                altitude: joined.altitude[i * n],
             }));
         return raw.map((pt, i) => ({
             ...pt,
@@ -483,12 +549,22 @@ export default function RouteElevationChart({
         );
         const fromRouteProfile: RouteSegment[] = mergedProfile.map(toRouteSegment);
         const extras = extraProfileSegments.map(toRouteSegment);
-        const combined = [...fromRouteProfile, ...extras].sort(
-            (a, b) => a.from - b.from || a.to - b.to,
-        );
+        const shiftKm = leadInM / 1000;
+        const combined = [...fromRouteProfile, ...extras]
+            .map((seg) => (
+                shiftKm > 0
+                    ? { ...seg, from: seg.from + shiftKm, to: seg.to + shiftKm }
+                    : seg
+            ))
+            .sort((a, b) => a.from - b.from || a.to - b.to);
         if (combined.length > 0) return combined;
-        return (json?.segments ?? []).map((seg) => toRouteSegment(seg));
-    }, [json, extraProfileSegments, pointSegments, eventSegments, laps]);
+        return (json?.segments ?? []).map((seg) => {
+            const placed = toRouteSegment(seg);
+            return shiftKm > 0
+                ? { ...placed, from: placed.from + shiftKm, to: placed.to + shiftKm }
+                : placed;
+        });
+    }, [json, extraProfileSegments, pointSegments, eventSegments, laps, leadInM]);
 
     if (!enabled || loading) {
         return (
@@ -682,6 +758,10 @@ export default function RouteElevationChart({
                             dot={false}
                             isAnimationActive={false}
                         />
+
+                        {leadInM > 0 && (
+                            <Customized component={<LeadInMark leadInKm={leadInM / 1000} />} />
+                        )}
 
                         {laps > 1 && (
                             <Customized

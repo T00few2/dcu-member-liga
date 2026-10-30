@@ -8,6 +8,7 @@ from extensions import db, strava_service, get_zwift_game_service, get_zwift_ser
 from config import FRONTEND_URL
 from authz import verify_user_token, AuthzError
 from services.club_kits import extract_game_client_fields, extract_level_fields
+from services.leadin_elevation import leadin_elevation
 from services.route_segment_spline import segment_spline_positions
 from services.sauce_profile_segments import measured_profile_segments
 from services.zwift_drop_levels import ensure_drop_level_fields
@@ -805,6 +806,14 @@ def get_route_profile_segments():
     if not route_id:
         return jsonify({'message': 'Missing routeId'}), 400
     return jsonify({'segments': measured_profile_segments(route_id)}), 200
+
+@integration_bp.route('/route-leadin-elevation', methods=['GET'])
+def get_route_leadin_elevation():
+    """Pens-to-banner elevation. Distances are metres from the pens."""
+    route_id = request.args.get('routeId')
+    if not route_id:
+        return jsonify({'message': 'Missing routeId'}), 400
+    return jsonify(leadin_elevation(route_id)), 200
 
 @integration_bp.route('/route-segment-spline', methods=['GET'])
 def get_route_segment_spline():
