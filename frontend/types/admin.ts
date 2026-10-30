@@ -108,8 +108,29 @@ export interface Race {
     finalizedAt?: string;
     finalizeRunId?: string;
     finishAudit?: FinishAudit;
+    veloChanges?: RaceVeloChanges;
     resultsAutomation?: ResultsAutomationConfig;
     preRegisterAllowed?: boolean;
+}
+
+/** Per-rider vELO change from ZwiftRacing results for one race event. */
+export interface RiderVeloChange {
+    before: number | null;
+    after: number | null;
+    delta: number | null;
+    eventId?: string;
+    category?: string | null;
+    graceLimit?: number | null;
+    /** Change > threshold and ended above the grace limit of `category`. */
+    flagged?: boolean;
+}
+
+export interface RaceVeloChanges {
+    updatedAt?: string;
+    threshold?: number;
+    flaggedCount?: number;
+    events?: Record<string, { fetchedAt?: string; riderCount?: number; available?: boolean }>;
+    riders?: Record<string, RiderVeloChange>;
 }
 
 export type FinishAuditStatus = 'aligned' | 'mismatch' | 'unavailable';

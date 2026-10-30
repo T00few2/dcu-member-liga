@@ -907,6 +907,44 @@
             }
           }
         },
+        "veloChanges": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Per-rider vELO before/after from ZwiftRacing GET /public/results/{eventId}. Written by POST /races/{raceId}/velo-changes/refresh (admin).",
+          "properties": {
+            "updatedAt": { "type": "string" },
+            "threshold": { "type": "integer", "description": "Points; a rider is flagged when delta > threshold and after > graceLimit" },
+            "flaggedCount": { "type": "integer" },
+            "events": {
+              "type": "object",
+              "description": "Keyed by Zwift eventId",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "fetchedAt": { "type": "string" },
+                  "riderCount": { "type": "integer" },
+                  "available": { "type": "boolean" }
+                }
+              }
+            },
+            "riders": {
+              "type": "object",
+              "description": "Keyed by zwiftId",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "before": { "type": ["number", "null"] },
+                  "after": { "type": ["number", "null"] },
+                  "delta": { "type": ["number", "null"] },
+                  "eventId": { "type": "string" },
+                  "category": { "type": ["string", "null"], "description": "Liga category the rider was scored in" },
+                  "graceLimit": { "type": ["integer", "null"], "description": "Category upper boundary + gracePeriod; null for top category" },
+                  "flagged": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
         "resultsAutomation": {
           "type": "object",
           "additionalProperties": true,
