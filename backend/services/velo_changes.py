@@ -161,11 +161,13 @@ def refresh_race_velo_changes(
     grace_period: int,
     categories: CategoryList | None,
     now: datetime | None = None,
+    max_events: int | None = None,
 ) -> dict[str, Any]:
     """Fetch ZR results for the race's events and return the updated ``veloChanges`` doc.
 
-    Returns a dict with keys ``veloChanges`` (to store), ``fetchedEvents``,
-    ``pendingEvents`` and ``rateLimited``.
+    ``max_events`` caps ZR calls per run (ZR results allow 1 call/minute).
+    Returns a dict with keys ``veloChanges`` (to store), ``eventIds`` (all race
+    events), ``fetchedEvents``, ``pendingEvents`` and ``rateLimited``.
     """
     now_iso = (now or datetime.now(timezone.utc)).isoformat()
     existing = race_data.get("veloChanges") or {}
@@ -181,6 +183,8 @@ def refresh_race_velo_changes(
     rate_limited = False
 
     for event_id in event_ids:
+        if max_events is not None and len(fetched) >= max_events:
+            break
         try:
             payload = fetch_results(event_id)
         except RateLimitError:
@@ -227,6 +231,7 @@ def refresh_race_velo_changes(
             "events": events_meta,
             "riders": riders,
         },
+        "eventIds": event_ids,
         "fetchedEvents": fetched,
         "pendingEvents": pending,
         "rateLimited": rate_limited,

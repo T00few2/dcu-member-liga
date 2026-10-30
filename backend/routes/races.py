@@ -1115,6 +1115,10 @@ def refresh_velo_changes(race_id):
     if not collect_race_event_ids(race_data):
         return jsonify({'message': 'Race has no Zwift event ids'}), 422
 
+    body = request.get_json(silent=True) or {}
+    max_events = body.get('maxEvents')
+    max_events = int(max_events) if isinstance(max_events, int) and max_events > 0 else None
+
     try:
         settings = _load_liga_settings(db)
         outcome = refresh_race_velo_changes(
@@ -1123,6 +1127,7 @@ def refresh_velo_changes(race_id):
             _load_users_by_zwift_id,
             int(settings.get('gracePeriod', 35)),
             _resolve_categories(settings),
+            max_events=max_events,
         )
         race_ref.update({'veloChanges': outcome['veloChanges']})
     except Exception as e:
@@ -1142,6 +1147,7 @@ def refresh_velo_changes(race_id):
     return jsonify({
         'message': message,
         'veloChanges': velo,
+        'eventIds': outcome['eventIds'],
         'fetchedEvents': outcome['fetchedEvents'],
         'pendingEvents': pending,
         'rateLimited': outcome['rateLimited'],
