@@ -114,3 +114,22 @@ def test_refresh_without_results_keeps_members_only_using_profile_category():
     riders = out["veloChanges"]["riders"]
     assert set(riders) == {"5"}
     assert riders["5"]["category"] == "Sapphire" and riders["5"]["flagged"] is True
+
+
+def test_max_events_limits_calls_and_reports_all_event_ids():
+    race = {"eventConfiguration": [{"eventId": "A"}, {"eventId": "B"}, {"eventId": "C"}]}
+    calls: list[str] = []
+
+    def fetch(eid):
+        calls.append(eid)
+        return []
+
+    out = refresh_race_velo_changes(race, fetch, lambda _ids: {}, 35, CATS, max_events=1)
+    assert calls == ["A"]
+    assert out["eventIds"] == ["A", "B", "C"]
+    assert out["fetchedEvents"] == ["A"]
+
+    race["veloChanges"] = out["veloChanges"]
+    calls.clear()
+    refresh_race_velo_changes(race, fetch, lambda _ids: {}, 35, CATS, max_events=1)
+    assert calls == ["B"]  # never-fetched events go first

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { db } from '@/lib/firebase';
 import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { useAuth } from '@/lib/auth-context';
@@ -60,26 +60,65 @@ export default function ResultsModal({ race, status, onClose, onRaceUpdate, embe
     });
 
     const [veloRunning, setVeloRunning] = useState(false);
-    const [veloStatus, setVeloStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [veloStatus, setVeloStatus] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+    const veloCancelRef = useRef(false);
+    const raceId = race?.id;
 
+    // Stop an in-flight vELO run when the admin switches race or leaves the tab.
+    useEffect(() => {
+        veloCancelRef.current = false;
+        return () => { veloCancelRef.current = true; };
+    }, [raceId]);
+
+    // ZwiftRacing allows 1 results call/minute: fetch one event per call and
+    // wait between calls until every event of the race has been fetched.
     const handleRefreshVelo = useCallback(async () => {
-        if (!race || !user) return;
+        if (!raceId || !user) return;
+        veloCancelRef.current = false;
         setVeloRunning(true);
         setVeloStatus(null);
+        const done = new Set<string>();
+        let total = 0;
+        let attempts = 0;
         try {
-            const token = await user.getIdToken();
-            const res = await fetch(`${API_URL}/races/${race.id}/velo-changes/refresh`, {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            const data = await res.json().catch(() => ({}));
-            setVeloStatus({ type: res.ok ? 'success' : 'error', text: data.message || (res.ok ? 'vELO updated' : 'vELO fetch failed') });
+            while (!veloCancelRef.current) {
+                attempts += 1;
+                const token = await user.getIdToken();
+                const res = await fetch(`${API_URL}/races/${raceId}/velo-changes/refresh`, {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ maxEvents: 1 }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    setVeloStatus({ type: 'error', text: data.message || 'vELO fetch failed' });
+                    return;
+                }
+                const eventIds: string[] = data.eventIds || [];
+                total = eventIds.length;
+                (data.fetchedEvents || []).forEach((id: string) => done.add(id));
+                const remaining = eventIds.filter(id => !done.has(id));
+                const flagged = data.veloChanges?.flaggedCount ?? 0;
+                const riders = Object.keys(data.veloChanges?.riders || {}).length;
+                if (remaining.length === 0) {
+                    setVeloStatus({ type: 'success', text: `vELO hentet for ${total} event(s): ${riders} ryttere, ${flagged} flagget.` });
+                    return;
+                }
+                if (attempts > total * 3 + 2) {
+                    setVeloStatus({ type: 'error', text: `Stoppede efter ${done.size}/${total} events — prøv igen senere.` });
+                    return;
+                }
+                for (let s = 61; s > 0 && !veloCancelRef.current; s--) {
+                    setVeloStatus({ type: 'info', text: `${done.size}/${total} events hentet. Næste event om ${s}s (ZwiftRacing: 1 kald/minut)...` });
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+            }
         } catch {
-            setVeloStatus({ type: 'error', text: 'vELO fetch failed' });
+            setVeloStatus({ type: 'error', text: `vELO fetch failed (${done.size}/${total} events hentet)` });
         } finally {
             setVeloRunning(false);
         }
-    }, [race, user]);
+    }, [raceId, user]);
 
     // ── DQ / DC / EX handlers ────────────────────────────────────────────────
 
@@ -185,6 +224,14 @@ export default function ResultsModal({ race, status, onClose, onRaceUpdate, embe
                     >
                         {veloRunning ? 'Henter vELO...' : 'Hent vELO-ændringer'}
                     </button>
+                    {veloRunning && (
+                        <button
+                            onClick={() => { veloCancelRef.current = true; }}
+                            className="text-xs text-muted-foreground underline hover:text-foreground"
+                        >
+                            Stop
+                        </button>
+                    )}
                     {race.veloChanges?.updatedAt && (
                         <span className="text-xs text-muted-foreground">
                             Opdateret {formatDisplayDate(race.veloChanges.updatedAt)}
@@ -197,7 +244,7 @@ export default function ResultsModal({ race, status, onClose, onRaceUpdate, embe
                     )}
                 </div>
                 {veloStatus && (
-                    <p className={`text-xs ${veloStatus.type === 'success' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                    <p className={`text-xs ${veloStatus.type === 'success' ? 'text-green-600 dark:text-green-400' : veloStatus.type === 'info' ? 'text-muted-foreground' : 'text-red-600 dark:text-red-400'}`}>
                         {veloStatus.text}
                     </p>
                 )}
