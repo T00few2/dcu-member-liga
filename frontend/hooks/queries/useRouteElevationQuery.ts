@@ -34,21 +34,24 @@ export function useRouteElevationQuery(
     worldName: string | undefined,
     routeName: string | undefined,
     _laps: number,
-    options?: { enabled?: boolean },
+    options?: { enabled?: boolean; routeId?: string | number },
 ) {
     const enabled = options?.enabled ?? true;
+    const routeId = options?.routeId != null && options.routeId !== ''
+        ? String(options.routeId)
+        : undefined;
     return useQuery<RouteElevationData | null>({
-        queryKey: ['route-elevation', worldName, routeName],
+        queryKey: ['route-elevation', routeId, worldName, routeName],
         queryFn: async () => {
-            const params = new URLSearchParams({
-                world: worldName!,
-                route: routeName!,
-            });
+            const params = new URLSearchParams();
+            if (routeId) params.set('routeId', routeId);
+            if (worldName) params.set('world', worldName);
+            if (routeName) params.set('route', routeName);
             const res = await fetch(`/api/route-elevation?${params}`);
             if (!res.ok) return null;
             return res.json();
         },
-        enabled: enabled && !!worldName && !!routeName,
+        enabled: enabled && (!!routeId || (!!worldName && !!routeName)),
         staleTime: ELEVATION_STALE_MS,
         gcTime: ELEVATION_STALE_MS,
     });

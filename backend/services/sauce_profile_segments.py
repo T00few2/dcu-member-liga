@@ -1,8 +1,8 @@
-"""Race-relative sprint and climb positions from Sauce route.segments.
+"""Race-relative segment markers from the game dictionary, placed by Sauce.
 
 Offsets in routes.json are metres from the start banner. A negative offset, or
-leadinOnly, is the ride from the pens and is not part of the lap. The road-walk
-spline is not used: it invents markers for arches the route only clips.
+leadinOnly, is the ride from the pens and is not part of the lap. The marker
+type is the dictionary jersey. A saved elevation overlay does not replace this.
 """
 
 from __future__ import annotations
@@ -11,6 +11,13 @@ import json
 import os
 from functools import lru_cache
 from typing import Any
+
+from services.sauce_elevation import banner_distance_m
+from services.zwift_game import (
+    ZwiftGameService,
+    dictionary_segment_name,
+    jersey_marker,
+)
 
 _BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -47,11 +54,39 @@ def _round_km(metres: float) -> float:
     return round(metres / 1000.0, 3)
 
 
-def measured_profile_segments(route_id: int | str) -> list[dict[str, Any]]:
-    """Sprints and climbs on one race lap, in ride order, kilometres from the banner.
+def _marker_row(
+    *,
+    name: str,
+    marker: str,
+    direction: str,
+    from_m: float,
+    length_m: float,
+    lap_km: float,
+) -> dict[str, Any] | None:
+    if from_m < 0:
+        return None
+    # A lap banner stores the whole-loop length. The arch itself is a point.
+    if lap_km > 0 and length_m > lap_km * 1000 * 0.7:
+        length_m = 0.0
+    from_km = _round_km(from_m)
+    if lap_km > 0 and from_km > lap_km + 0.15:
+        return None
+    to_km = _round_km(from_m + max(0.0, length_m))
+    return {
+        "name": name,
+        "type": marker if marker in {"sprint", "climb", "segment"} else "segment",
+        "fromKm": from_km,
+        "toKm": max(from_km, to_km),
+        "direction": direction,
+    }
 
-    Lap banners and a segment that covers most of the lap are omitted. Naming and
-    sprint/climb type are finished by the caller against zwift-data.
+
+def measured_profile_segments(route_id: int | str) -> list[dict[str, Any]]:
+    """Dictionary segments on one race lap, in ride order, kilometres from the banner.
+
+    Sauce ``route.segments`` supplies the offset. A dictionary arch that list
+    omits is placed from its road percent on the lap manifest. Lead-in rows are
+    not part of the lap line.
     """
     route = next((item for item in _routes() if str(item.get("id")) == str(route_id)), None)
     if not route:
@@ -59,13 +94,21 @@ def measured_profile_segments(route_id: int | str) -> list[dict[str, Any]]:
     world_id = route.get("worldId") or route.get("courseId")
     if world_id is None:
         return []
+    dictionary = ZwiftGameService().segments_on_route(route_id)
+    if not dictionary:
+        return []
     by_id = _segments_by_id(int(world_id))
     lap_m = float(route.get("distanceInMeters") or 0)
     lap_km = lap_m / 1000.0 if lap_m > 0 else 0.0
     placed: list[dict[str, Any]] = []
+    placed_ids: set[str] = set()
 
     for entry in route.get("segments") or []:
         if not isinstance(entry, dict) or entry.get("leadinOnly"):
+            continue
+        seg_id = str(entry.get("id"))
+        row = dictionary.get(seg_id)
+        if row is None:
             continue
         try:
             offset_m = float(entry.get("offset"))
@@ -74,31 +117,55 @@ def measured_profile_segments(route_id: int | str) -> list[dict[str, Any]]:
             continue
         if offset_m < 0:
             continue
-        if lap_m > 0 and length_m > lap_m * 0.7:
+        found = by_id.get(seg_id)
+        direction = found[1] if found else (row.get("direction") or "forward")
+        marker = _marker_row(
+            name=dictionary_segment_name(row),
+            marker=jersey_marker(row.get("jerseyIconPath")),
+            direction=str(direction),
+            from_m=offset_m,
+            length_m=length_m,
+            lap_km=lap_km,
+        )
+        if marker is None:
             continue
-        from_km = _round_km(offset_m)
-        if lap_km > 0 and from_km > lap_km + 0.15:
+        placed.append(marker)
+        placed_ids.add(seg_id)
+
+    for seg_id, row in dictionary.items():
+        if seg_id in placed_ids:
             continue
-        found = by_id.get(str(entry.get("id")))
+        found = by_id.get(seg_id)
         if not found:
             continue
         segment, direction = found
-        if segment.get("archId") is None or segment.get("requiresAllCheckpoints"):
+        road_id = segment.get("roadId")
+        percent = segment.get("roadFinish")
+        if road_id is None or percent is None:
             continue
-        name = segment.get("nameReverse") if direction == "reverse" else segment.get("nameForward")
-        if not name:
-            name = segment.get("nameForward") or segment.get("nameReverse")
-        if not name:
-            continue
-        to_km = _round_km(offset_m + max(0.0, length_m))
-        placed.append(
-            {
-                "name": str(name),
-                "fromKm": from_km,
-                "toKm": max(from_km, to_km),
-                "direction": direction,
-            }
+        banner_m = banner_distance_m(
+            route_id,
+            int(road_id),
+            float(percent),
+            reverse=(direction == "reverse"),
         )
+        if banner_m is None:
+            continue
+        length_key = "distanceReverse" if direction == "reverse" else "distanceForward"
+        try:
+            length_m = float(segment.get(length_key) or 0)
+        except (TypeError, ValueError):
+            length_m = 0.0
+        marker = _marker_row(
+            name=dictionary_segment_name(row),
+            marker=jersey_marker(row.get("jerseyIconPath")),
+            direction=direction,
+            from_m=max(0.0, banner_m - max(0.0, length_m)),
+            length_m=length_m,
+            lap_km=lap_km,
+        )
+        if marker is not None:
+            placed.append(marker)
 
     placed.sort(key=lambda row: (row["fromKm"], row["toKm"], row["name"]))
     return placed

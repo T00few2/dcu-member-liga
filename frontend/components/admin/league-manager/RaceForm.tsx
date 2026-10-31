@@ -168,15 +168,16 @@ export default function RaceForm({
             const params = new URLSearchParams({
                 world: selectedRoute.map,
                 route: selectedRoute.name,
+                routeId: String(selectedRoute.id),
                 fresh: '1',
             });
             const res = await fetch(`/api/route-elevation?${params}`, { cache: 'no-store' });
             if (!res.ok) throw new Error(`Failed to load route profile (${res.status})`);
             const json = await res.json();
 
-            const sid = Number(json?.stravaSegmentId);
+            const sid = Number(json?.routeId ?? selectedRoute.id);
             if (!Number.isFinite(sid) || sid <= 0) {
-                throw new Error('Could not resolve Strava segment ID for route');
+                throw new Error('Could not resolve the route');
             }
 
             const formatKm = (value: unknown): string => {

@@ -90,6 +90,7 @@ export function useLiveRaceView({
         race?.map,
         race?.routeName,
         laps,
+        { routeId: race?.routeId },
     );
     const leadInKm = Number(elevationData?.leadInDistance) || 0;
 

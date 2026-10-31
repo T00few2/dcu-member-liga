@@ -1,0 +1,1002 @@
+import * as Locale from '../../shared/sauce/locale.mjs';
+import * as Common from './common.mjs';
+import {Color} from './color.mjs';
+import * as EC from '../deps/src/echarts.mjs';
+import * as Theme from './echarts-sauce-theme.mjs';
+
+EC.registerTheme('sauce', Theme.getTheme('dynamic'));
+
+const H = Locale.human;
+
+
+function getSubgroupLazy(id) {
+    const sg = Common.getEventSubgroup(id);
+    if (!sg || sg instanceof Promise) {
+        return null;
+    }
+    return sg;
+}
+
+
+export class SauceElevationProfile {
+
+    leadinColor = '#37f';
+    weldColor = '#fa0';
+
+    constructor({el, worldList, preferRoute, showMaxLine, disableAthletePoints, refresh=1000}) {
+        this.el = el;
+        this.worldList = worldList;
+        this.preferRoute = preferRoute;
+        this.showMaxLine = showMaxLine;
+        this.disableAthletePoints = disableAthletePoints;
+        this.refresh = refresh;
+        this._lastRender = 0;
+        this._refreshTimeout = null;
+        this._setRoadOrRoute = Common.asyncSerialize((fn, args) => fn.apply(this, args));
+        el.classList.add('sauce-elevation-profile-container');
+        this.chart = EC.init(el, 'sauce', {renderer: 'svg'});
+        this.chart.setOption({
+            animation: false,
+            tooltip: {
+                transitionDuration: 0,
+                trigger: 'axis',
+                formatter: series => {
+                    if (!series[0] || !series[0].value) {
+                        return '';
+                    }
+                    const value = series[0].value;
+                    let segmentHtml = '';
+                    for (const x of series.filter(x => x.seriesId.startsWith('segment-'))) {
+                        const meta = x.data[2];
+                        segmentHtml += `<br/>${meta.segment.name}: ` +
+                            H.distance(meta.segment.distance, {suffix: true, html: true});
+                    }
+                    let sectorHtml = '';
+                    const sectorSeries = series.find(x => x.seriesId.startsWith('sector-'));
+                    if (sectorSeries) {
+                        const sector = sectorSeries.data[2];
+                        sectorHtml = `<br/>${sector.name}: ` +
+                            H.distance(sector.distance, {suffix: true, html: true});
+                    }
+                    const dist = value[0];
+                    return `Dist: ${H.distance(dist, {suffix: true})}, ` +
+                        `<ms large>landscape</ms>${H.elevation(value[1], {suffix: true})} ` +
+                        `<small>(${H.number(value[2] * 100, {suffix: '%'})})</small>` +
+                        segmentHtml +
+                        sectorHtml;
+                },
+                axisPointer: {z: -1},
+            },
+            xAxis: {
+                type: 'value',
+                boundaryGap: false,
+                show: false,
+                min: 'dataMin',
+                max: 'dataMax',
+            },
+            yAxis: {
+                show: false,
+                type: 'value',
+            },
+            // Must stub out some basic series data to handle early onResize (pre-data)
+            series: [{
+                id: 'elevation',
+                type: 'line'
+            }, {
+                id: 'mark-points',
+                type: 'custom',
+                renderItem: () => {}
+            }],
+        });
+        this.courseId = null;
+        this.athleteId = null;
+        this.watchingId = null;
+        this.roads = null;
+        this.marks = new Map();
+        this._statesQueue = [];
+        this._busy = false;
+        this.onResize();
+        this._resizeObserver = new ResizeObserver(() => this.onResize());
+        this._resizeObserver.observe(this.el);
+        this._resizeObserver.observe(document.documentElement);
+    }
+
+    destroy() {
+        this._resizeObserver.disconnect();
+        this.chart.dispose();
+        this.el.remove();
+    }
+
+    _updateFontSizes() {
+        this._docFontSize = Number(getComputedStyle(document.documentElement).fontSize.slice(0, -2));
+        this._elFontSize = Number(getComputedStyle(this.el).fontSize.slice(0, -2));
+    }
+
+    em(scale) {
+        return this._elFontSize * scale;
+    }
+
+    rem(scale) {
+        return this._docFontSize * scale;
+    }
+
+    onResize() {
+        this._updateFontSizes();
+        this.chart.resize();
+        const axisPad = this.em(0.2);
+        const tooltipSize = 0.5;
+        const topMargin = this.disableAthletePoints ? 0.1 : 1;
+        this.chart.setOption({
+            grid: {top: this.em(topMargin), right: 0, bottom: 0, left: 0},
+            series: [{
+                id: 'elevation',
+                markLine: {
+                    label: {
+                        fontSize: this.em(0.4),
+                        distance: this.em(0.18 * 0.4)
+                    }
+                }
+            },{
+                id: 'mark-points',
+                data: [], // Only known way to get custom series to resize things
+            }],
+            tooltip: {
+                position: ([x, y], params, dom, rect, size) => {
+                    if (x > size.viewSize[0] / 2) {
+                        return [x - size.contentSize[0] - axisPad, axisPad];
+                    } else {
+                        return [x + axisPad, axisPad];
+                    }
+                },
+                textStyle: {
+                    fontSize: this.em(tooltipSize),
+                    lineHeight: this.em(tooltipSize * 1.15),
+                },
+                padding: [this.em(0.1 * tooltipSize), this.em(0.5 * tooltipSize)],
+            },
+        });
+        this.renderAthleteStates([], /*force*/ true);
+    }
+
+    setCourse = Common.asyncSerialize(async function(id) {
+        if (id === this.courseId) {
+            return;
+        }
+        this.courseId = id;
+        this.road = null;
+        this.route = null;
+        this.routeId = null;
+        this.marks.clear();
+        this.roads = (await Common.getRoads(id)).concat(await Common.getRoads('portal'));
+    });
+
+    setAthlete(id) {
+        if (id === this.athleteId) {
+            return;
+        }
+        console.debug("Setting self-athlete:", id);
+        if (this.athleteId != null && this.marks.has(this.athleteId)) {
+            this.marks.get(this.athleteId).self = false;
+        }
+        this.athleteId = id;
+        if (id != null && this.marks.has(id)) {
+            const mark = this.marks.get(id);
+            mark.watching = false;
+            mark.self = true;
+        }
+    }
+
+    setWatching(id) {
+        if (id === this.watchingId) {
+            return;
+        }
+        console.debug("Setting watching-athlete:", id);
+        if (this.watchingId != null && this.marks.has(this.watchingId)) {
+            this.marks.get(this.watchingId).watching = false;
+        }
+        this.watchingId = id;
+        if (id != null && id !== this.athleteId && this.marks.has(id)) {
+            this.marks.get(id).watching = true;
+        }
+    }
+
+    _resetPath() {
+        this.curvePath = null;
+        this._distances = null;
+        this._elevations = null;
+        this._grades = null;
+        this._roadReverse = null;
+        this.road = null;
+        this.route = null;
+        this.routeId = null;
+        this.routePrelude = null;
+        this.eventSubgroupId = null;
+        this.lapStartIndex = null;
+        this.routeLaps = null;
+    }
+
+    clear() {
+        this._resetPath();
+        this.setData([], [], []);
+    }
+
+    setRoad(...args) {
+        return this._setRoadOrRoute(this._setRoad, args);
+    }
+
+    async _setRoad(id, reverse=false) {
+        this._resetPath();
+        this.road = this.roads ? this.roads.find(x => x.id === id) : null;
+        if (!this.road) {
+            console.warn("Road not found:", id);
+            return;
+        }
+        this._roadReverse = reverse;
+        const roadDist = this.road.distances.at(-1);
+        const innerRoadDist = this.road.curvePath.subpathAtRoadPercents(0, 1).distance() / 100;
+        let distances, elevations, grades;
+        if (reverse) {
+            distances = this.road.distances.toReversed().map(x => roadDist - x);
+            elevations = this.road.elevations.toReversed();
+            grades = this.road.grades.slice(1).toReversed().map(x => -x);
+            grades.unshift(grades[0]);
+            this.curvePath = this.road.curvePath.toReversed();
+        } else {
+            distances = this.road.distances.slice();
+            elevations = this.road.elevations.slice();
+            grades = this.road.grades.slice();
+            this.curvePath = this.road.curvePath;
+        }
+        const dirSegments = this.road.segments ?
+            this.road.segments.filter(x => !!x.reverse === !!reverse) :
+            [];
+        const segmentMap = new Map((await Common.getSegments(dirSegments.map(x => x.id)))
+            .map(x => [x.id, x]));
+        const arches = dirSegments.map(x => {
+            // some segments start at end and loop..
+            const modDist = (x.offset + x.distance) % innerRoadDist;
+            return {
+                givesPowerUp: segmentMap.get(x.id).givesPowerUp,
+                segmentId: x.id,
+                segment: segmentMap.get(x.id),
+                index: Common.binarySearchClosest(distances, modDist),
+            };
+        });
+        const segments = dirSegments.filter(x => !segmentMap.get(x.id).loop).map(x => {
+            const start = Common.binarySearchClosest(distances, x.offset);
+            const end = Common.binarySearchClosest(distances, x.offset + x.distance);
+            return {...x, start, end, segment: segmentMap.get(x.id)};
+        });
+        this.setData(distances, elevations, grades, {arches, segments});
+    }
+
+    setRoute(...args) {
+        return this._setRoadOrRoute(this._setRoute, args);
+    }
+
+    async _setRoute(id, {laps=1, distance, eventSubgroupId, hideLaps, prelude='leadin'}={}) {
+        this._resetPath();
+        let eventSubgroup;
+        if (eventSubgroupId) {
+            eventSubgroup = await Common.getEventSubgroup(eventSubgroupId);
+            if (!eventSubgroup) {
+                console.warn('Event subgroup not found:', eventSubgroupId);
+                return;
+            }
+            this.eventSubgroupId = eventSubgroupId;
+            this.routeId = eventSubgroup.routeId;
+            laps = eventSubgroup.laps;
+            distance = eventSubgroup.distanceInMeters;
+        } else {
+            this.routeId = id;
+        }
+        this.route = await Common.getRoute(this.routeId, {prelude});
+        if (!this.route) {
+            console.warn("Route not found:", this.routeId);
+            this.routeId = null;
+            return;
+        }
+        const segmentIds = new Set(this.route.segments.map(x => x.id)
+            .concat(this.route.arches.map(x => x.segmentId)));
+        const segmentMap = new Map((await Common.getSegments(Array.from(segmentIds))).map(x => [x.id, x]));
+        this.routePrelude = prelude;
+        this.curvePath = this.route.curvePath.slice(); // XXX kill
+        if (distance) {
+            laps = this.route.supportedLaps ? 1e4 : 1;
+        }
+        const distances = Array.from(this.route.distances);
+        const elevations = Array.from(this.route.elevations);
+        const grades = Array.from(this.route.grades);
+        const lapOffsets = [];
+        const lapSectIdx = this.route.sections.findIndex(x => !x.leadin && !x.weld);
+        this.lapStartIndex = this.curvePath.nodes.findIndex(x => x.index === lapSectIdx);
+        const preludeDist = distances[this.lapStartIndex];
+        const allSegments = this.route.segments.map(x => {
+            const start = Common.binarySearchClosest(distances, x.offset + preludeDist);
+            const end = Common.binarySearchClosest(distances, x.offset + preludeDist + x.distance);
+            return {...x, start, end, segment: segmentMap.get(x.id)};
+        });
+        const allArches = this.route.arches.map(x => ({
+            ...x,
+            segment: segmentMap.get(x.segmentId),
+            index: Common.binarySearchClosest(distances, x.offset + preludeDist),
+        }));
+        const sectors = [];
+        if (this.lapStartIndex) {
+            if (!hideLaps) {
+                lapOffsets.push(preludeDist);
+            }
+            sectors.push({
+                name: prelude === 'leadin' ? 'Leadin' : 'Interlude',
+                color: prelude === 'leadin' ? this.leadinColor : this.weldColor,
+                start: 0,
+                end: this.lapStartIndex - 1,
+                distance: preludeDist,
+            });
+        }
+        this.routeLaps = [{
+            lap: 0,
+            index: 0,
+            offsetDistance: 0,
+            distance: distances.at(-1),
+        }];
+        const segments = allSegments.filter(x => prelude === 'leadin' ? !x.weldOnly : !x.leadinOnly);
+        const arches = allArches.filter(x => prelude === 'leadin' ? !x.weldOnly : !x.leadinOnly);
+        if (laps > 1) {
+            const lapSlice = this.route.curvePath.slice(this.lapStartIndex);
+            const lapDistances = this.route.distances.slice(this.lapStartIndex).map(x => x - preludeDist);
+            const lapElevations = this.route.elevations.slice(this.lapStartIndex);
+            const lapGrades = this.route.grades.slice(this.lapStartIndex);
+            for (let lap = 1; lap < laps; lap++) {
+                const lapEntry = {
+                    lap,
+                    index: distances.length,
+                    offsetDistance: distances.at(-1),
+                };
+                this.routeLaps.push(lapEntry);
+                if (!hideLaps) {
+                    lapOffsets.push(distances.at(-1));
+                }
+                if (this.route.lapWeldPath) {
+                    const dOfft = distances.at(-1);
+                    const weld = this.route.lapWeldData;
+                    sectors.push({
+                        name: 'Interlude',
+                        color: this.weldColor,
+                        start: distances.length,
+                        end: distances.length + weld.distances.length - 1,
+                        distance: weld.distances.at(-1),
+                    });
+                    for (let i = 0; i < weld.distances.length; i++) {
+                        distances.push(dOfft + weld.distances[i]);
+                        elevations.push(weld.elevations[i]);
+                        grades.push(weld.grades[i]);
+                    }
+                    this.curvePath.extend(this.route.lapWeldPath);  // NOTE: has no nodes[].index values
+                }
+                for (const x of allSegments) {
+                    if (!x.leadinOnly) {
+                        segments.push({
+                            ...x,
+                            start: distances.length + x.start - this.lapStartIndex,
+                            end: distances.length + x.end - this.lapStartIndex,
+                        });
+                    }
+                }
+                for (const x of allArches) {
+                    if (!x.leadinOnly) {
+                        arches.push({...x, index: distances.length + x.index - this.lapStartIndex});
+                    }
+                }
+                this.curvePath.extend(lapSlice);
+                const dOfft = distances.at(-1);
+                for (let i = 0; i < lapDistances.length; i++) {
+                    distances.push(dOfft + lapDistances[i]);
+                    elevations.push(lapElevations[i]);
+                    grades.push(lapGrades[i]);
+                }
+                lapEntry.distance = distances.at(-1) - lapEntry.offsetDistance;
+                if (distance && distances.at(-1) >= distance) {
+                    break;
+                }
+            }
+        }
+        if (distance) {
+            while (distances[distances.length - 1] > distance) {
+                distances.pop();
+                elevations.pop();
+                grades.pop();
+            }
+            while (segments.length && segments.at(-1).end >= distances.length) {
+                segments.pop();
+            }
+            while (arches.length && arches.at(-1).index >= distances.length) {
+                arches.pop();
+            }
+            const lapEntry = this.routeLaps.at(-1);
+            lapEntry.distance = distances.at(-1) - lapEntry.offsetDistance;
+            this.curvePath = this.curvePath.slice(0, distances.length); // XXX KILL
+        }
+        const len = distances.length;
+        if (this.curvePath.nodes.length !== len || elevations.length !== len || grades.length !== len) {
+            console.error('Internal Alignment Error');
+        }
+        this.setData(distances, elevations, grades, {lapOffsets, segments, sectors, arches});
+        return this.route;
+    }
+
+    setData(distances, elevations, grades, options={}) {
+        this._distances = distances;
+        this._elevations = elevations;
+        this._grades = grades;
+        this._yMax = Math.max(...elevations);
+        this._yMin = Math.min(...elevations);
+        const minEl = Math.max(this._yMin + 200, this._yMax);
+        const vRange = minEl - this._yMin;
+        // Echarts bug requires floor/ceil to avoid missing markLines
+        this._yAxisMin = Math.floor(this._yMin - (vRange * 0.10));
+        this._yAxisMax = Math.ceil(minEl + (vRange * 0.10));
+        const commonSeriesOptions = {
+            type: 'line',
+            symbol: 'none',
+        };
+        const markLineData = [];
+        if (options.lapOffsets) {
+            for (const [i, distance] of options.lapOffsets.entries()) {
+                markLineData.push([{
+                    xAxis: distance,
+                    yAxis: this._yAxisMin,
+                    symbol: 'none',
+                    lineStyle: {
+                        width: this.em(0.12),
+                        type: 'solid',
+                        color: '#dd9c',
+                        cap: 'butt',
+                    },
+                    name: `LAP ${i + 1}`,
+                    label: {
+                        show: false,
+                        position: 'insideStartEnd', // must be here first
+                    },
+                    emphasis: {
+                        lineStyle: {color: '#dd9'},
+                        label: {
+                            show: true,
+                            fontSize: '0.4em',
+                            offset: [0, -10],
+                            position: 'insideStartEnd', // and also here
+                            rotate: 0,
+                        }
+                    },
+                }, {
+                    symbol: 'none',
+                    xAxis: distance,
+                    yAxis: elevations[Common.binarySearchClosest(distances, distance)],
+                    emphasis: {
+                        lineStyle: {width: 5},
+                        label: {fontSize: '0.5em'}
+                    },
+                }]);
+            }
+        }
+        if (this.showMaxLine) {
+            const distance = distances[elevations.indexOf(this._yMax)];
+            const relOffset = distance / distances.at(-1);
+            markLineData.push([{
+                xAxis: distance,
+                yAxis: this._yMax,
+                emphasis: {disabled: true},
+                lineStyle: {
+                    width: this.em(0.05),
+                    color: '#fff6',
+                },
+                label: {
+                    opacity: 0.8,
+                    offset: [(relOffset> 0.5 ? -1 : 1) * this.em(0.05), this.em(-0.08)],
+                    fontSize: '0.45em',
+                    formatter: x => H.elevation(this._yMax, {suffix: true}),
+                    position: 'insideEndTop',
+                },
+            }, {
+                xAxis: relOffset > 0.5 ? distances.at(-1) : 0,
+                yAxis: this._yMax,
+            }]);
+        }
+        if (options.markLines) {
+            markLineData.push(...options.markLines);
+        }
+        const seriesExtra = [];
+        if (options.sectors) {
+            for (const sector of options.sectors) {
+                seriesExtra.push({
+                    ...commonSeriesOptions,
+                    zlevel: seriesExtra.length + 2,
+                    id: `sector-${sector.name}-${seriesExtra.length}`,
+                    name: sector.name,
+                    lineStyle: {width: 0},
+                    emphasis: {
+                        areaStyle: {
+                            opacity: sector.opacity != null ? sector.opacity + 0.1 : 0.5,
+                        },
+                    },
+                    areaStyle: {
+                        color: sector.color,
+                        opacity: sector.opacity ?? 0.4,
+                        origin: 'start',
+                    },
+                    data: distances.slice(sector.start, sector.end + 1)
+                        .map((x, i) => [x, elevations.at(i + sector.start), sector]),
+                });
+            }
+        }
+        if (options.segments) {
+            const loopSegmentHeight = vRange * 0.08 + this._yAxisMin;
+            for (const x of options.segments) {
+                const loop = x.segment.loop || Math.abs(x.segment.roadFinish - x.segment.roadStart) > 0.98;
+                seriesExtra.push({
+                    ...commonSeriesOptions,
+                    zlevel: (loop ? 0 : 1) + (seriesExtra.length + 2),
+                    id: `segment-${x.id}-${seriesExtra.length}`,
+                    name: x.segment.name,
+                    emphasis: {
+                        areaStyle: {
+                            opacity: 0.5,
+                        },
+                    },
+                    lineStyle: loop ? {
+                        width: 2,
+                        type: 'dotted',
+                        color: '#fff',
+                        opacity: 0.6,
+                    } : {
+                        width: 0
+                    },
+                    areaStyle: loop ? {
+                        color: '#5a6',
+                        opacity: 0.6,
+                        origin: 'start',
+                    } : {
+                        color: '#0f0',
+                        opacity: 0.4,
+                        origin: 'start',
+                    },
+                    data: loop ?
+                        distances.slice(x.start, x.end + 1).map((xx, i) =>
+                            [xx, Math.min(loopSegmentHeight, elevations.at(i + x.start)), x]) :
+                        distances.slice(x.start, x.end + 1).map((xx, i) =>
+                            [xx, elevations.at(i + x.start), x]),
+                });
+            }
+        }
+        if (options.arches) {
+            for (const arch of options.arches) {
+                if (!arch.givesPowerUp) {
+                    continue;
+                }
+                const position = arch.index > distances.length * 0.75 ? 'insideEndTop' :
+                    arch.index < distances.length * 0.25 ? 'insideStartTop' : 'end';
+                markLineData.push([{
+                    xAxis: distances[arch.index],
+                    yAxis: this._yAxisMin,
+                    symbol: 'none',
+                    lineStyle: {
+                        width: this.em(0.05),
+                        type: 'solid',
+                        color: '#dddc',
+                    },
+                    name: `PowerUp Arch\n\n${arch.segment.name}`,
+                    label: {
+                        show: false,
+                        position, // echarts is buggy, if we don't put position here first..
+                    },
+                    emphasis: {
+                        lineStyle: {color: '#eee'},
+                        label: {
+                            show: true,
+                            fontSize: '0.33em',
+                            offset: [0, -10],
+                            rotate: 0,
+                            position, // required here too
+                        }
+                    },
+                }, {
+                    symbol: 'circle',
+                    symbolSize: this.em(0.2),
+                    xAxis: distances[arch.index],
+                    yAxis: Math.min(this._yAxisMax, elevations[arch.index] + (vRange * 0.18)),
+                }]);
+            }
+        }
+        this.chart.dispatchAction({type: 'hideTip'}); // prevents errors if tooltip is visible
+        this.chart.setOption({
+            dataZoom: {type: 'inside'},
+            xAxis: {},
+            yAxis: {
+                min: this._yAxisMin,
+                max: this._yAxisMax,
+            },
+            series: [{
+                ...commonSeriesOptions,
+                name: 'Elevation',
+                id: 'elevation',
+                emphasis: {disabled: true},
+                encode: {
+                    x: 0,
+                    y: 1,
+                    tooltip: [0, 1, 2]
+                },
+                areaStyle: {
+                    origin: 'start',
+                    color:  {
+                        type: 'linear',
+                        x: 0,
+                        y: 0,
+                        x2: 1,
+                        y2: 0,
+                        colorStops: distances.map((x, i) => {
+                            const steepness = Math.abs(grades[i] / 0.12);
+                            const color = Color.fromRGB(steepness, 0.4, 0.5 * steepness)
+                                .lighten(-0.25)
+                                .saturate(steepness - 0.33);
+                            return {
+                                offset: x / (distances[distances.length - 1] - distances[0]),
+                                color: color.toString(),
+                            };
+                        }),
+                    },
+                },
+                markLine: {
+                    symbol: 'none',
+                    emphasis: {disabled: false},
+                    data: markLineData,
+                },
+                data: distances.map((x, i) => [x, elevations[i], grades[i]]),
+            }, {
+                id: 'mark-points',
+                type: 'custom',
+                z: 5,
+                renderItem: (param, api) => {
+                    const distance = api.value(0);
+                    const elevation = api.value(1);
+                    const visualGrade = api.value(2);
+                    const isWatching = api.value(3);
+                    const deemphasize = api.value(4);
+                    const ghost = api.value(5);
+                    const category = api.value(6);
+                    const size = this.em(isWatching ? 0.9 : deemphasize ? 0.26 : 0.38);
+                    const catColor = category && {
+                        'A': '#d93826',
+                        'B': '#44d926',
+                        'C': '#19e5e6',
+                        'D': '#e5e619',
+                        'E': '#7f19e6',
+                    }[category];
+                    return {
+                        type: 'path',
+                        shape: {
+                            pathData: 'M87.084,192 c-0.456-5.272-0.688-10.6-0.688-16' +
+                                'C86.404,78.8,162.34,0,256.004,0 s169.6,78.8,169.6,176' +
+                                'c0,5.392-0.232,10.728-0.688,16 h0.688 c0,96.184-169.6,320-169.6,320' +
+                                's-169.6-223.288-169.6-320 H87.084z' +
+                                'M256.004,224 c36.392,1.024,66.744-27.608,67.84-64' +
+                                'c-1.096-36.392-31.448-65.024-67.84-64' +
+                                'c-36.392-1.024-66.744,27.608-67.84,64' +
+                                'C189.26,196.392,219.612,225.024,256.004,224z',
+                            x: -size / 2,
+                            y: -size,
+                            width: size,
+                            height: size
+                        },
+                        rotation: Math.atan(visualGrade),
+                        position: api.coord([distance, elevation]),
+                        style: {
+                            opacity: ghost ? 0.6 : 1,
+                            stroke: deemphasize ? '#0007' : '#000b',
+                            lineWidth: isWatching ? 1 : 0.5,
+                            fill: isWatching ? {
+                                type: 'linear',
+                                x: 0,
+                                y: 1,
+                                x2: 0,
+                                y2: 0,
+                                colorStops: [{
+                                    offset: 0,
+                                    color: '#ff0',
+                                }, {
+                                    offset: 0.5,
+                                    color: '#e03c',
+                                }],
+                            } : catColor ? {
+                                type: 'radial',
+                                x: 0.5,
+                                y: 0.3,
+                                r: 1.68,
+                                colorStops: [{
+                                    offset: 0,
+                                    color: deemphasize ? '#fff5' : '#fffa',
+                                }, {
+                                    offset: 0.22,
+                                    color: deemphasize ? '#eee7' : '#eeed',
+                                }, {
+                                    offset: 0.26,
+                                    color: Color.fromHex(catColor).alpha(deemphasize ? 0.7 : 0.9).toString(),
+                                }],
+                            } : '#eeeb',
+                        }
+                    };
+                },
+                tooltip: {
+                    trigger: 'item',
+                    formatter: params => {
+                        const mark = this.marks.get(+params.name);
+                        if (!mark) {
+                            return;
+                        }
+                        const ad = Common.getAthleteDataCacheEntry(mark.athleteId, {maxAge: 1e9});
+                        const name = ad?.athlete?.fLast || `ID: ${mark.athleteId}`;
+                        return `${name}, ${H.power(mark.state.power, {suffix: true})}`;
+                    }
+                },
+                data: [],
+            }, ...seriesExtra]
+        }, {replaceMerge: 'series'});
+    }
+
+    async renderAthleteStates(states, force) {
+        if (this.watchingId == null || this._busy) {
+            return;
+        }
+        this._busy = true;
+        try {
+            return await this._renderAthleteStates(states, force);
+        } finally {
+            this._busy = false;
+        }
+    }
+
+    async _renderAthleteStates(states, force) {
+        const watching = states.find(x => x.athleteId === this.watchingId);
+        if (!watching && (this.courseId == null || (!this.road && !this.route))) {
+            return;
+        } else if (watching) {
+            if (watching.courseId !== this.courseId) {
+                await this.setCourse(watching.courseId);
+            }
+            if (this.preferRoute) {
+                if (watching.eventSubgroupId) {
+                    if (this.eventSubgroupId !== watching.eventSubgroupId) {
+                        await this.setRoute(null, {eventSubgroupId: watching.eventSubgroupId});
+                    }
+                } else if (watching.routeId) {
+                    const prelude = (watching.laps ||
+                        (watching.routeDistance &&
+                         watching.routeDistance / watching.routeEnd > 0.5)) ? 'weld' : 'leadin';
+                    if (this.routeId !== watching.routeId ||
+                        this.eventSubgroupId ||
+                        this.routePrelude !== prelude) {
+                        await this.setRoute(watching.routeId, {prelude});
+                    }
+                } else {
+                    this.route = null;
+                    this.routeId = null;
+                }
+            }
+            if (!this.routeId) {
+                if (!this.road || this.road.id !== watching.roadId ||
+                    this._roadReverse !== watching.reverse) {
+                    await this.setRoad(watching.roadId, watching.reverse);
+                }
+            }
+        }
+        const now = Date.now();
+        for (const state of states) {
+            if (!this.marks.has(state.athleteId)) {
+                this.marks.set(state.athleteId, {
+                    athleteId: state.athleteId,
+                    state,
+                    smoothGrade: Common.expWeightedAvg(10),
+                });
+            }
+            const mark = this.marks.get(state.athleteId);
+            mark.state = state;
+            mark.lastSeen = now;
+        }
+        if (!force && now - this._lastRender < this.refresh) {
+            clearTimeout(this._refreshTimeout);
+            this._refreshTimeout = setTimeout(() => {
+                requestAnimationFrame(() => this.renderAthleteStates([]));
+            }, this.refresh - (now - this._lastRender));
+            return;
+        }
+        if (!force && !Common.isVisible()) {
+            cancelAnimationFrame(this._visAnimFrame);
+            this._visAnimFrame = requestAnimationFrame(() => this.renderAthleteStates([]));
+            return;
+        }
+        this._lastRender = now;
+        if (!this._distances || this._distances.length < 2) {
+            return;
+        }
+        if (states.length) {
+            Common.idle().then(() => this._updateAthleteDetails(states.map(x => x.athleteId)));
+        }
+        const x1 = this.chart.convertToPixel({xAxisIndex: 0}, 0);
+        const x2 = this.chart.convertToPixel({xAxisIndex: 0}, 1);
+        const y1 = this.chart.convertToPixel({yAxisIndex: 0}, 0);
+        const y2 = this.chart.convertToPixel({yAxisIndex: 0}, -1);
+        const chartAspectRatio = (y2 - y1) / (x2 - x1);
+        const marks = Array.from(this.marks.values());
+        marks.sort((a, b) => a.athleteId === this.watchingId ? 1 : b.athleteId === this.watchingId ? -1 : 0);
+        const data = marks.map(mark => {
+            let state = mark.state;
+            let xIdxFloat = this.findMarkPosition(state);
+            let ghost;
+            if (xIdxFloat == null && mark.lastVisualState && now - mark.lastVisualTS < 5000) {
+                xIdxFloat = this.findMarkPosition(mark.lastVisualState);
+                state = mark.lastVisualState;
+                ghost = true;
+            }
+            if (xIdxFloat == null || isNaN(xIdxFloat)) {
+                return;
+            }
+            const xIdx = xIdxFloat | 0;
+            const xRem = xIdxFloat % 1;
+            let xCoord;
+            let yCoord;
+            let grade;
+            if (xRem) {
+                const dDelta = this._distances[xIdx + 1] - this._distances[xIdx];
+                const eDelta = this._elevations[xIdx + 1] - this._elevations[xIdx];
+                xCoord = this._distances[xIdx] + dDelta * xRem;
+                yCoord = this._elevations[xIdx] + eDelta * xRem;
+                grade = eDelta / dDelta;
+            } else {
+                xCoord = this._distances[xIdx];
+                yCoord = this._elevations[xIdx];
+                const lowerIdx = (xIdx < this._elevations.length - 1) ? xIdx : this._elevations.length - 2;
+                grade = (this._elevations[lowerIdx + 1] - this._elevations[lowerIdx]) /
+                        (this._distances[lowerIdx + 1] - this._distances[lowerIdx]);
+            }
+            if (isNaN(grade) || grade < -1 || grade > 1) {
+                grade = state.grade;
+            }
+            const smoothGrade = mark.smoothGrade(grade);
+            const maxExaggeration = 30;
+            const visualGrade = Math.min(chartAspectRatio, maxExaggeration) * smoothGrade * 0.5;
+            const isWatching = state.athleteId === this.watchingId;
+            let category;
+            let deemphasize;
+            if (this.eventSubgroupId) {
+                deemphasize = this.eventSubgroupId !== state.eventSubgroupId;
+                if (state.eventSubgroupId) {
+                    const sg = getSubgroupLazy(state.eventSubgroupId);
+                    category = sg?.subgroupLabel;
+                }
+            } else if (this.routeId != null) {
+                deemphasize = this.routeId !== state.routeId;
+            }
+            if (state !== mark.lastVisualState) {
+                mark.lastVisualState = state;
+                mark.lastVisualTS = now;
+            }
+            if (isWatching) {
+                this._lastWatchingMeta = {
+                    state,
+                    ts: now,
+                    xIdxFloat,
+                };
+            }
+            return {
+                name: state.athleteId,
+                value: [xCoord, yCoord, visualGrade, isWatching, deemphasize, ghost, category]
+            };
+        }).filter(x => x);
+        // echarts merge algo is quite broken.. must reset data.
+        this.chart.setOption({series: {id: 'mark-points', data: []}});
+        this.chart.setOption({series: {id: 'mark-points', data}});
+        for (const [athleteId, mark] of this.marks.entries()) {
+            if (now - mark.lastSeen > 15000) {
+                this.marks.delete(athleteId);
+            }
+        }
+    }
+
+    findMarkPosition(state) {
+        if (this.routeId != null) {
+            let profileDistance;
+            if (state.routeId !== this.routeId) {
+                // Not on our route but perhaps nearby..
+                if (!this._lastWatchingMeta) {
+                    return;
+                }
+                const ourIdx = this._lastWatchingMeta.xIdxFloat | 0;
+                const startSectionIdx = this.route.curvePath.nodes[ourIdx]?.index;
+                if (startSectionIdx == null) {
+                    return;
+                }
+                const lws = this._lastWatchingMeta.state;
+                let sectionMatch;
+                // middle out search for matching road section...
+                for (let i = 0; i <= this.route.sections.length / 2; i++) {
+                    let leftIdx = startSectionIdx - i;
+                    if (leftIdx < 0) {
+                        leftIdx = this.route.sections.length + leftIdx;
+                    }
+                    const s = this.route.sections[leftIdx];
+                    if (s.roadId === state.roadId && !s.reverse === !state.reverse &&
+                        (!s.leadin || this.routePrelude === 'leadin') &&
+                        (!s.weld || this.routePrelude === 'weld') &&
+                        s.roadCurvePath.includesRoadTime(state.roadTime)) {
+                        sectionMatch = s;
+                        break;
+                    }
+                    if (i) {
+                        const rightIdx = (startSectionIdx + i) % this.route.sections.length;
+                        const s = this.route.sections[rightIdx];
+                        if (s.roadId === state.roadId && !s.reverse === !state.reverse &&
+                            (!s.leadin || this.routePrelude === 'leadin') &&
+                            (!s.weld || this.routePrelude === 'weld') &&
+                            s.roadCurvePath.includesRoadTime(state.roadTime)) {
+                            sectionMatch = s;
+                            break;
+                        }
+                    }
+                }
+                if (sectionMatch) {
+                    const lapEntry = this.routeLaps[lws.laps] || this.routeLaps.at(-1);
+                    const preludeDist = this.routePrelude === 'leadin' && lapEntry.index === 0 ?
+                        this.route.meta.leadinDistance :
+                        this.route.meta.weldDistance;
+                    profileDistance = lapEntry.offsetDistance +
+                        ((!sectionMatch.leadin && !sectionMatch.weld) ? preludeDist : 0) +
+                        sectionMatch.blockOffsetDistance +
+                        sectionMatch.roadCurvePath.distanceAtRoadTime(state.roadTime, 1/20) / 100;
+                }
+            } else if (state.routeDistance != null) {
+                // Adjust state.routeDistance prelude to match our visual prelude..
+                // Easiest way to think of this is we calculate the distance remaining
+                // in the lap and subtract that from our visual depection because the
+                // lap finish line never changes but the start line can.
+                const lapEntry = this.routeLaps[state.laps] || this.routeLaps.at(-1);
+                const adjDist = lapEntry.distance - (state.routeEnd - state.routeDistance);
+                profileDistance = lapEntry.offsetDistance + adjDist;
+            }
+            if (profileDistance == null || Number.isNaN(profileDistance)) {
+                return;
+            }
+            const nearIdx = Common.binarySearchClosest(this._distances, profileDistance);
+            if (nearIdx === -1 || nearIdx == null) {
+                return;
+            }
+            const diff = profileDistance - this._distances[nearIdx];
+            let left;
+            if (diff >= 0) {
+                left = nearIdx;
+            } else {
+                left = nearIdx - 1;
+            }
+            return left + (profileDistance - this._distances[left]) /
+                           (this._distances[left + 1] - this._distances[left]);
+        } else if (this.road && this.road.id === state.roadId && !!this._roadReverse === !!state.reverse) {
+            const p = (state.roadTime - 5000) / 1e6;
+            return this.road.curvePath.roadPercentToOffset(state.reverse ? 1 - p : p);
+        }
+    }
+
+    onMarkEmphasisLabel(params) {
+        if (!params || !params.data || !params.data.name) {
+            return;
+        }
+        const mark = this.marks.get(params.data.name);
+        if (!mark) {
+            return;
+        }
+        const ad = Common.getAthleteDataCacheEntry(mark.athleteId);
+        const name = ad?.athlete?.fLast || `ID: ${mark.athleteId}`;
+        return `${name}, ${H.power(mark.state.power, {suffix: true})}`;
+    }
+
+    async _updateAthleteDetails(ids) {
+        await Common.getAthletesDataCached(ids);
+    }
+}

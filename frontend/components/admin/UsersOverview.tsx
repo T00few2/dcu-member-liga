@@ -125,7 +125,10 @@ export default function UsersOverview({ onUserSelect }: { onUserSelect?: (userId
         upcomingRaces[0]?.map,
         upcomingRaces[0]?.routeName,
         1,
-        { enabled: Boolean(upcomingRaces[0]?.map && upcomingRaces[0]?.routeName) },
+        {
+            enabled: Boolean(upcomingRaces[0]?.routeId || (upcomingRaces[0]?.map && upcomingRaces[0]?.routeName)),
+            routeId: upcomingRaces[0]?.routeId,
+        },
     );
 
     useEffect(() => {

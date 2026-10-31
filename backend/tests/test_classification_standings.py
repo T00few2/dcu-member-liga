@@ -49,6 +49,21 @@ SPRINTS = [
 ]
 
 
+def test_stored_marker_wins_and_old_rows_keep_the_profile_lookup():
+    index = index_profile_segments([
+        {"name": "Breakaway Brae", "type": "sprint", "direction": "forward"},
+    ])
+    assert banner_class(
+        {"name": "Breakaway Brae", "direction": "forward", "marker": "climb"},
+        index,
+    ) == "kom"
+    assert banner_class({"name": "Breakaway Brae", "direction": "forward"}, index) == "sprint"
+    assert banner_class(
+        {"name": "Volcano KOM", "direction": "forward", "marker": "segment"},
+        index,
+    ) is None
+
+
 def test_banner_class_uses_profile_type_not_the_name():
     index = index_profile_segments(PARIS)
     assert banner_class({"name": "Montmartre KOM", "direction": "forward"}, index) == "kom"

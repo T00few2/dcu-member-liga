@@ -494,7 +494,7 @@ export default function RouteElevationChart({
     enabled = true,
     showLeadIn = false,
 }: Props) {
-    const { data: json, isLoading: loading } = useRouteElevationQuery(worldName, routeName, laps, { enabled });
+    const { data: json, isLoading: loading } = useRouteElevationQuery(worldName, routeName, laps, { enabled, routeId });
     const { data: eventSegments = [] } = useRaceSegmentsQuery(
         routeId,
         laps,

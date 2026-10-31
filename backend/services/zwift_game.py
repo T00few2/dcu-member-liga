@@ -16,6 +16,41 @@ _JERSEY_CDN_TEMPLATES = (
 _JERSEY_IMAGE_TEMPLATE: str | None | bool = False
 
 
+def on_route_ids(raw) -> set[str]:
+    """Route ids from a dictionary ``onRoutes`` value.
+
+    The field is one comma-separated string. Iterating it yields characters.
+    """
+    return {part.strip() for part in str(raw or "").split(",") if part.strip()}
+
+
+def dictionary_segment_name(row: dict) -> str:
+    """Zwift arch name for one dictionary segment row."""
+    direction = str(row.get("direction") or "")
+    if direction == "reverse":
+        name = row.get("archFriendlyNameR") or row.get("archFriendlyName")
+    else:
+        name = row.get("archFriendlyName") or row.get("archFriendlyNameR")
+    if not name:
+        name = str(row.get("name") or "").replace("_", " ")
+    return str(name).strip()
+
+
+def jersey_marker(icon_path: str | None) -> str:
+    """Sprint, climb, or segment from the dictionary jersey file name.
+
+    The folder is WhiteOrangeTheme for every icon. Green and the Fuego Flats
+    desert jersey are sprints. Polka art, including the Titans Grove jersey, is
+    a KOM. Orange, badges, purple intervals, and a missing icon are segments.
+    """
+    file_name = (icon_path or "").rsplit("/", 1)[-1]
+    if file_name.startswith("Green") or file_name.startswith("Desert"):
+        return "sprint"
+    if "Polka" in file_name or file_name.startswith("NationalForest"):
+        return "climb"
+    return "segment"
+
+
 def jersey_image_url(image_name: str | None) -> str | None:
     """First CDN template that returned an image, applied to imageName."""
     name = (image_name or "").strip()
@@ -114,6 +149,55 @@ class ZwiftGameService:
         # Sort by Map then Name
         return sorted(routes, key=lambda x: (x['map'], x['name']))
 
+    def find_route_id(self, world: str | None, name: str | None) -> str | None:
+        """Dictionary route id for a map and route name."""
+        world_key = (world or "").strip().casefold()
+        name_key = (name or "").strip().casefold()
+        if not world_key or not name_key:
+            return None
+        for route in self.get_routes():
+            if (
+                str(route.get("map") or "").casefold() == world_key
+                and str(route.get("name") or "").casefold() == name_key
+            ):
+                return str(route.get("id"))
+        return None
+
+    def route_record(self, route_id) -> dict | None:
+        wanted = str(route_id)
+        for route in self.get_routes():
+            if str(route.get("id")) == wanted:
+                return route
+        return None
+
+    def segments_on_route(self, route_id) -> dict[str, dict]:
+        """Dictionary segments whose ``onRoutes`` contains this route id.
+
+        The key is ``signature``. An empty dict means the dictionary could not
+        be loaded, or this route has no segments.
+        """
+        game_dict = self.get_game_dictionary()
+        if not game_dict:
+            return {}
+        raw = game_dict.get("SEGMENTS") or {}
+        rows = raw.get("SEGMENT") if isinstance(raw, dict) else raw
+        if isinstance(rows, dict):
+            rows = [rows]
+        if not isinstance(rows, list):
+            return {}
+        wanted = str(route_id)
+        found: dict[str, dict] = {}
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            if wanted not in on_route_ids(row.get("onRoutes")):
+                continue
+            signature = row.get("signature")
+            if signature is None:
+                continue
+            found[str(signature)] = row
+        return found
+
     def get_jerseys(self, query: str | None = None, limit: int | None = 50):
         """Public JERSEYS catalog: signature, name, imageName, imageUrl."""
         game_dict = self.get_game_dictionary()
@@ -165,15 +249,18 @@ class ZwiftGameService:
         Given a route ID and a number of laps, load the route manifest and segments,
         and return a list of segment dictionaries that the route travels through.
 
-        Lap/finish banners (null archId or requiresAllCheckpoints) are omitted by
-        default so the sprint picker cannot select arches Zwift does not score.
-        Pass include_lap_banners=True for finish detection: the last race-lap
-        banner is still the intended finish even when it is absent from
-        segment-results.
+        The list is the game-dictionary segments whose onRoutes contains this
+        route. Sauce places them. Orange jerseys and lap badges stay when the
+        dictionary lists them. include_lap_banners is accepted and ignored:
+        a banner Zwift did not assign to this route is not added.
 
-        The segment that ends the last race lap is marked isFinish. A hidden
-        lap banner keeps that mark off the earlier sprint or climb.
+        isFinish is set when the arch that ends the lap is one of those
+        dictionary segments. La Boucle ends at Champs-Élysées, which is not a
+        La Boucle segment, so that checklist has no finish row.
         """
+        # Membership is onRoutes. The flag used to add banners the dictionary
+        # does not assign to this route.
+        _ = include_lap_banners
         # Resolve data files relative to backend/services, regardless of process CWD.
         # This avoids intermittent "missing segments" when the app is started from
         # different working directories.
@@ -443,40 +530,73 @@ class ZwiftGameService:
         # Sort by appearance order
         all_found_segments.sort(key=lambda s: s.get("order", 0))
 
-        # ----------------------------
-        # Compute occurrence counts after sorting so count order matches what users see.
-        segment_counts = {}
+        dictionary = self.segments_on_route(route_id)
+        if not dictionary:
+            return []
+
+        # The arch that ends the lap may be a banner the dictionary does not
+        # assign to this route. Only a dictionary segment can be the finish row.
+        finish_id = None
         for seg in all_found_segments:
-            seg_id = seg.get("id")
-            if seg_id is None:
+            if int(seg.get("lap") or 0) >= 1:
+                finish_id = str(seg.get("id"))
+
+        kept = [
+            seg for seg in all_found_segments
+            if str(seg.get("id")) in dictionary
+        ]
+        found_ids = {str(seg.get("id")) for seg in kept}
+        lap_count = max(1, int(laps))
+        for entry in route.get("segments") or []:
+            if not isinstance(entry, dict) or entry.get("id") is None:
                 continue
+            seg_id = str(entry.get("id"))
+            if seg_id not in dictionary or seg_id in found_ids:
+                continue
+            try:
+                offset = float(entry.get("offset"))
+            except (TypeError, ValueError):
+                offset = 0.0
+            leadin = bool(entry.get("leadinOnly")) or offset < 0
+            row = dictionary[seg_id]
+            direction = row.get("direction") or "forward"
+            laps_for_entry = [0] if leadin else list(range(1, lap_count + 1))
+            for lap in laps_for_entry:
+                kept.append({
+                    "id": seg_id,
+                    "direction": direction,
+                    "lap": lap,
+                    "order": (lap * 1_000_000) + offset,
+                })
+            found_ids.add(seg_id)
+
+        kept.sort(key=lambda s: (int(s.get("lap") or 0), float(s.get("order") or 0)))
+
+        segment_counts = {}
+        for seg in kept:
+            seg_id = str(seg.get("id"))
             segment_counts.setdefault(seg_id, 0)
             segment_counts[seg_id] += 1
             seg["count"] = segment_counts[seg_id]
 
         finish_seg = None
-        for seg in all_found_segments:
-            if int(seg.get("lap") or 0) >= 1:
-                finish_seg = seg
+        if finish_id in dictionary:
+            for seg in kept:
+                if str(seg.get("id")) == finish_id and int(seg.get("lap") or 0) >= 1:
+                    finish_seg = seg
         if finish_seg is not None:
             finish_seg["isFinish"] = True
 
-        visible_segments = all_found_segments
-        if not include_lap_banners:
-            visible_segments = [seg for seg in all_found_segments if not seg.get("lapBanner")]
-
         result = []
-        for seg in visible_segments:
+        for seg in kept:
+            row = dictionary.get(str(seg.get("id"))) or {}
             item = {
-                "name": (
-                    seg.get("nameReverse")
-                    if seg.get("direction") == "reverse" and seg.get("nameReverse")
-                    else seg.get("nameForward")
-                ),
-                "direction": seg.get("direction"),
-                "count": seg.get("count"), # Occurrence number (1st time, 2nd time...)
+                "name": dictionary_segment_name(row) or seg.get("nameForward"),
+                "direction": seg.get("direction") or row.get("direction"),
+                "count": seg.get("count"),
                 "id": seg.get("id"),
                 "lap": seg.get("lap"),
+                "marker": jersey_marker(row.get("jerseyIconPath")),
             }
             if seg.get("isFinish"):
                 item["isFinish"] = True

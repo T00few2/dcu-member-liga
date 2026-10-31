@@ -116,7 +116,18 @@ def choose_profile_index(
 
 
 def banner_class(sprint: dict[str, Any], index: dict[tuple[str, str], str]) -> str | None:
-    """Return 'sprint', 'kom', or None (segment / unmatched)."""
+    """Return 'sprint', 'kom', or None (segment / unmatched).
+
+    A marker stored on the ticked row wins. Rows saved before that field
+    existed keep the profile-name lookup.
+    """
+    marker = str(sprint.get("marker") or "").strip().lower()
+    if marker == "sprint":
+        return "sprint"
+    if marker == "climb":
+        return "kom"
+    if marker in {"segment", "interval"}:
+        return None
     name = normalize_profile_name(sprint.get("name"))
     if not name or not index:
         return None

@@ -10,6 +10,7 @@ from authz import verify_user_token, AuthzError
 from services.club_kits import extract_game_client_fields, extract_level_fields
 from services.leadin_elevation import leadin_elevation
 from services.route_segment_spline import segment_spline_positions
+from services.sauce_elevation import route_elevation, route_leadin_profile
 from services.sauce_profile_segments import measured_profile_segments
 from services.zwift_drop_levels import ensure_drop_level_fields
 from services.schema_validation import with_schema_version
@@ -798,6 +799,39 @@ def get_segments():
     game_service = get_zwift_game_service()
     segments = game_service.get_event_segments(route_id, laps=int(laps))
     return jsonify({'segments': segments}), 200
+
+@integration_bp.route('/route-sauce-profile', methods=['GET'])
+def get_route_sauce_profile():
+    """Sauce elevation line and dictionary segment markers for one route."""
+    game_service = get_zwift_game_service()
+    route_id = request.args.get('routeId')
+    if not route_id:
+        route_id = game_service.find_route_id(
+            request.args.get('world'),
+            request.args.get('route'),
+        )
+    if not route_id:
+        return jsonify({'error': 'Route not found'}), 404
+
+    lap = route_elevation(route_id)
+    if len(lap.get('distance') or []) < 2:
+        return jsonify({'error': 'No Sauce profile for this route'}), 404
+
+    lead = route_leadin_profile(route_id)
+    record = game_service.route_record(route_id) or {}
+    lead_in_km = record.get('leadinDistance')
+    segments = measured_profile_segments(route_id)
+    lead_profile = None
+    if len(lead.get('distance') or []) >= 2:
+        lead_profile = {'distance': lead['distance'], 'altitude': lead['altitude']}
+    return jsonify({
+        'routeId': str(route_id),
+        'distance': lap['distance'],
+        'altitude': lap['altitude'],
+        'leadInDistance': lead_in_km,
+        'leadInProfile': lead_profile,
+        'profileSegments': segments,
+    }), 200
 
 @integration_bp.route('/route-profile-segments', methods=['GET'])
 def get_route_profile_segments():

@@ -35,6 +35,13 @@ class MeasuredProfileSegmentTests(unittest.TestCase):
         self.assertIn("sprint", rows[0]["name"].lower())
         self.assertAlmostEqual(rows[0]["fromKm"], 2.742, places=2)
 
+    def test_richmond_uci_course_is_a_point_not_the_whole_lap(self):
+        rows = measured_profile_segments(2196019512)
+        uci = next(row for row in rows if row["name"] == "UCI COURSE")
+        self.assertEqual(uci["type"], "segment")
+        self.assertAlmostEqual(uci["fromKm"], uci["toKm"], places=3)
+        self.assertLess(uci["fromKm"], 1)
+
     def test_itza_party_includes_the_reverse_sprints(self):
         rows = measured_profile_segments(4131664304)
         names = [row["name"].lower() for row in rows]

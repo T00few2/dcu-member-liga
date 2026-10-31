@@ -23,6 +23,8 @@ export interface Segment {
     lap: number;
     /** Set on the banner that ends the last race lap, when that banner is in this list. */
     isFinish?: boolean;
+    /** Dictionary jersey. Not the points-versus-FAL `type` field. */
+    marker?: 'sprint' | 'climb' | 'segment';
 }
 
 export interface SelectedSegment extends Segment {

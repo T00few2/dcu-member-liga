@@ -50,7 +50,7 @@ export default function UpcomingRaceCountdown({
     const minutes = Math.floor((secondsLeft % 3600) / 60);
     const seconds = secondsLeft % 60;
 
-    const { data: elevationData } = useRouteElevationQuery(race.map, race.routeName, laps);
+    const { data: elevationData } = useRouteElevationQuery(race.map, race.routeName, laps, { routeId: race.routeId });
     const leadInKm = Number(elevationData?.leadInDistance) || 0;
 
     // totalDistance includes lead-in once; scale laps without multiplying lead-in.

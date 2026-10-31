@@ -569,32 +569,16 @@ export function omitWholeLapProfileSegments<T extends ProfileSegmentLike>(
     return segments.filter((seg) => Math.abs(seg.toKm - seg.fromKm) <= limit);
 }
 
-function profileRangesOverlap(left: ProfileSegmentLike, right: ProfileSegmentLike): boolean {
-    const leftStart = Math.min(left.fromKm, left.toKm);
-    const leftEnd = Math.max(left.fromKm, left.toKm);
-    const rightStart = Math.min(right.fromKm, right.toKm);
-    const rightEnd = Math.max(right.fromKm, right.toKm);
-    const overlap = Math.min(leftEnd, rightEnd) - Math.max(leftStart, rightStart);
-    if (overlap > 0.02) return true;
-    return Math.abs(leftStart - rightStart) < 0.12;
-}
-
 /**
- * Add Sauce-measured segments that zwift-data did not place.
- * An overlap keeps the catalog marker, including its name.
- * Both lists are kilometres from the race start.
+ * Markers on an unsaved profile are the Sauce segments only.
+ * A zwift-data segment the game route does not list is left off the chart.
  */
 export function mergeMeasuredProfileSegments<T extends ProfileSegmentLike>(
-    catalog: T[],
     measured: T[],
 ): T[] {
-    const merged = [...catalog];
-    for (const segment of measured) {
-        if (segment.type !== 'sprint' && segment.type !== 'climb') continue;
-        if (merged.some((current) => profileRangesOverlap(current, segment))) continue;
-        merged.push(segment);
-    }
-    return merged.sort((a, b) => a.fromKm - b.fromKm || a.toKm - b.toKm || a.name.localeCompare(b.name));
+    return measured
+        .filter((segment) => segment.type === 'sprint' || segment.type === 'climb')
+        .sort((a, b) => a.fromKm - b.fromKm || a.toKm - b.toKm || a.name.localeCompare(b.name));
 }
 
 /**

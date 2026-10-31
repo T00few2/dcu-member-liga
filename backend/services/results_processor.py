@@ -756,8 +756,7 @@ class ResultsProcessor:
             )
 
             # Finish times come from official race-results. Segment-results
-            # crossings are for sprint/KOM/FAL only.
-            route_segments = self._resolve_route_segments(race_data, subgroup)
+            # crossings are for the sprint ids stored on the race.
             all_crossings_raw = self._prefetch_subgroup_crossings_if_needed(
                 subgroup_id=subgroup_id,
                 event_secret=event_secret,
@@ -771,7 +770,7 @@ class ResultsProcessor:
                 event_secret,
                 fetch_mode,
                 registered_riders,
-                route_segments=route_segments,
+                route_segments=None,
                 configured_sprints=category_sprints,
                 subgroup_start_time=start_time,
                 all_results_raw=all_crossings_raw,
@@ -1013,26 +1012,6 @@ class ResultsProcessor:
             if cat_cfg.get('segmentType'):
                 category_segment_type = cat_cfg['segmentType']
         return category_sprints, category_segment_type
-
-    def _resolve_route_segments(
-        self,
-        race_data: dict[str, Any],
-        subgroup: dict[str, Any],
-    ) -> list[dict[str, Any]]:
-        route_segments: list[dict[str, Any]] = []
-        route_id = race_data.get('routeId') or subgroup.get('routeId')
-        route_laps = subgroup.get('laps') or race_data.get('laps') or 1
-        if route_id:
-            try:
-                route_segs = self.game.get_event_segments(
-                    str(route_id),
-                    int(route_laps),
-                    include_lap_banners=True,
-                )
-                route_segments = [s for s in route_segs if isinstance(s, dict)]
-            except Exception as e:
-                logger.warning(f"Could not resolve route segments for {route_id}: {e}")
-        return route_segments
 
     def _prefetch_subgroup_crossings_if_needed(
         self,

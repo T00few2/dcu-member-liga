@@ -6,7 +6,7 @@ import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from services.zwift_game import ZwiftGameService
+from services.zwift_game import ZwiftGameService, jersey_marker, on_route_ids
 
 LA_BOUCLE_ROUTE_ID = "870135081"
 CHAMPS_ELYSEES_ID = "1056322864"
@@ -16,6 +16,25 @@ EVENT_SPRINT_IDS = {
     "1055881124",  # Montmartre KOM
     "-9223372035804541048",  # Tchou Tchou Reverse Sprint
 }
+
+
+class JerseyMarkerTests(unittest.TestCase):
+    def test_on_routes_is_split_on_commas(self):
+        self.assertEqual(
+            on_route_ids("3364574135,2818536273"),
+            {"3364574135", "2818536273"},
+        )
+        self.assertNotIn("870135081", on_route_ids("3364574135,2818536273"))
+
+    def test_jersey_file_is_the_marker(self):
+        self.assertEqual(jersey_marker("UI/WhiteOrangeTheme/HUD/GreenJersey_Icon.tga"), "sprint")
+        self.assertEqual(jersey_marker("UI/WhiteOrangeTheme/HUD/DesertJersey_Icon.tga"), "sprint")
+        self.assertEqual(jersey_marker("UI/WhiteOrangeTheme/HUD/PolkaJersey_Icon.tga"), "climb")
+        self.assertEqual(jersey_marker("UI/WhiteOrangeTheme/HUD/PolkaJerseyAlpez_Icon.tga"), "climb")
+        self.assertEqual(jersey_marker("UI/WhiteOrangeTheme/HUD/NationalForest_Jersey_Icon.tga"), "climb")
+        self.assertEqual(jersey_marker("UI/WhiteOrangeTheme/HUD/OrangeJersey_Icon.tga"), "segment")
+        self.assertEqual(jersey_marker("UI/WhiteOrangeTheme/HUD/Badge_Volcano.tga"), "segment")
+        self.assertEqual(jersey_marker(None), "segment")
 
 
 class EventSegmentFilterTests(unittest.TestCase):
@@ -34,37 +53,50 @@ class EventSegmentFilterTests(unittest.TestCase):
             )
             self.assertEqual(laps, [1, 2, 3], sprint_id)
 
-    def test_la_boucle_finish_detection_keeps_champs_banner(self):
+    def test_la_boucle_has_no_finish_row(self):
         game = ZwiftGameService()
         segments = game.get_event_segments(
             LA_BOUCLE_ROUTE_ID,
             laps=3,
             include_lap_banners=True,
         )
-        champs = [
-            segment
-            for segment in segments
-            if str(segment.get("id")) == CHAMPS_ELYSEES_ID
-        ]
-        self.assertEqual([segment.get("count") for segment in champs], [1, 2, 3], champs)
-        self.assertEqual(champs[-1].get("lap"), 3)
-
-        from services.results.finish_selector import last_race_lap_banner
-
-        self.assertEqual(last_race_lap_banner(segments), (CHAMPS_ELYSEES_ID, 3))
-        self.assertTrue(champs[-1].get("isFinish"))
+        self.assertNotIn(CHAMPS_ELYSEES_ID, {str(segment.get("id")) for segment in segments})
+        self.assertFalse(any(segment.get("isFinish") for segment in segments))
+        names = {segment.get("name") for segment in segments if segment.get("lap") == 1}
         self.assertEqual(
-            [str(segment.get("id")) for segment in segments if segment.get("isFinish")],
-            [CHAMPS_ELYSEES_ID],
+            names,
+            {"Lutece Sprint", "Monceau Sprint", "Montmartre KOM", "Tchou Tchou Sprint"},
         )
 
-    def test_picker_does_not_mark_the_last_climb_as_finish(self):
+    def test_no_sleep_does_not_offer_the_hill_stub(self):
+        game = ZwiftGameService()
+        segments = game.get_event_segments("104170948", laps=1)
+        names = [segment.get("name") for segment in segments]
+        self.assertEqual(
+            names,
+            [
+                "Manhattan Sprint",
+                "Center Sprint Reverse",
+                "Manhattan Sprint",
+                "Brooklyn Bridge KOM",
+            ],
+        )
+        reverse = [segment for segment in segments if segment.get("direction") == "reverse"]
+        self.assertEqual(
+            [segment.get("name") for segment in reverse],
+            ["Center Sprint Reverse", "Manhattan Sprint"],
+        )
+        self.assertTrue(segments[-1].get("isFinish"))
+
+    def test_richmond_uci_course_is_the_finish(self):
         game = ZwiftGameService()
         segments = game.get_event_segments("2196019512", laps=1)
         names = [segment.get("name") for segment in segments]
         self.assertIn("23RD ST.", names)
-        self.assertNotIn("UCI COURSE", names)
-        self.assertFalse(any(segment.get("isFinish") for segment in segments))
+        self.assertIn("UCI COURSE", names)
+        finish = [segment for segment in segments if segment.get("isFinish")]
+        self.assertEqual(len(finish), 1)
+        self.assertEqual(finish[0].get("name"), "UCI COURSE")
 
     def test_richmond_finish_banner_is_the_uci_course(self):
         game = ZwiftGameService()

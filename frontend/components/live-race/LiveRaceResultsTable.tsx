@@ -284,6 +284,7 @@ export function InfoView({
         hasSprints ? worldName : undefined,
         hasSprintsAndRouteName(hasSprints, routeName) ? routeName : undefined,
         laps,
+        { routeId: hasSprints ? routeId : undefined, enabled: hasSprints && (!!routeId || !!routeName) },
     );
     const { data: eventSegments = [] } = useRaceSegmentsQuery(routeId, laps, hasSprints && !!routeId);
 

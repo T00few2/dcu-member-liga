@@ -381,13 +381,13 @@ describe('mergeMeasuredProfileSegments', () => {
         expect(kept.map((seg) => seg.name)).toEqual(['Tower Sprint', 'Rooftop KOM']);
     });
 
-    it('keeps the catalog name when Sauce sits on the same marker', () => {
+    it('draws only the segments Sauce lists', () => {
         const measured = [
             { name: 'TOWER SPRINT', type: 'sprint' as const, fromKm: 2.54, toKm: 2.847, direction: 'forward' as const },
             { name: 'Boardwalk Sprint', type: 'sprint' as const, fromKm: 25.386, toKm: 25.622, direction: 'forward' as const },
         ];
-        const out = mergeMeasuredProfileSegments(omitWholeLapProfileSegments(catalog, 16.2), measured);
-        expect(out.map((seg) => seg.name)).toEqual(['Tower Sprint', 'Rooftop KOM', 'Boardwalk Sprint']);
+        const out = mergeMeasuredProfileSegments(measured);
+        expect(out.map((seg) => seg.name)).toEqual(['TOWER SPRINT', 'Boardwalk Sprint']);
     });
 });
 

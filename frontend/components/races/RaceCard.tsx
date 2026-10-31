@@ -196,7 +196,7 @@ export default function RaceCard({
         race.map && race.routeName ? race.map : undefined,
         race.map && race.routeName ? race.routeName : undefined,
         lapsToShow,
-        { enabled: elevationEnabled },
+        { enabled: elevationEnabled, routeId: race.routeId },
     );
 
     const leadInKm = Number(elevationData?.leadInDistance) || 0;
