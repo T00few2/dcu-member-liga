@@ -14,6 +14,9 @@ _JERSEY_CDN_TEMPLATES = (
     "https://cdn-l-static.zwift.com/images/clothing/Jerseys/{name}.png",
 )
 _JERSEY_IMAGE_TEMPLATE: str | None | bool = False
+_SEGMENT_SNAPSHOT = os.path.join(
+    os.path.dirname(__file__), "..", "data", "game_dictionary_segments.json"
+)
 
 
 def on_route_ids(raw) -> set[str]:
@@ -34,6 +37,16 @@ def dictionary_segment_name(row: dict) -> str:
     if not name:
         name = str(row.get("name") or "").replace("_", " ")
     return str(name).strip()
+
+
+def snapshot_segment_rows() -> list:
+    """Last fetched dictionary segments, used when Zwift cannot be reached."""
+    try:
+        with open(_SEGMENT_SNAPSHOT, encoding="utf-8") as handle:
+            rows = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return []
+    return rows if isinstance(rows, list) else []
 
 
 def jersey_marker(icon_path: str | None) -> str:
@@ -170,21 +183,23 @@ class ZwiftGameService:
                 return route
         return None
 
-    def segments_on_route(self, route_id) -> dict[str, dict]:
-        """Dictionary segments whose ``onRoutes`` contains this route id.
-
-        The key is ``signature``. An empty dict means the dictionary could not
-        be loaded, or this route has no segments.
-        """
+    def _live_segment_rows(self) -> list:
         game_dict = self.get_game_dictionary()
         if not game_dict:
-            return {}
+            return []
         raw = game_dict.get("SEGMENTS") or {}
         rows = raw.get("SEGMENT") if isinstance(raw, dict) else raw
         if isinstance(rows, dict):
             rows = [rows]
-        if not isinstance(rows, list):
-            return {}
+        return rows if isinstance(rows, list) else []
+
+    def segments_on_route(self, route_id) -> dict[str, dict]:
+        """Dictionary segments whose ``onRoutes`` contains this route id.
+
+        The key is ``signature``. The live dictionary wins. The saved snapshot
+        is used when that fetch fails, so CI and a Zwift outage still have a list.
+        """
+        rows = self._live_segment_rows() or snapshot_segment_rows()
         wanted = str(route_id)
         found: dict[str, dict] = {}
         for row in rows:

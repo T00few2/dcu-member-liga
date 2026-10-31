@@ -26,6 +26,16 @@ class JerseyMarkerTests(unittest.TestCase):
         )
         self.assertNotIn("870135081", on_route_ids("3364574135,2818536273"))
 
+    def test_snapshot_supplies_segments_when_zwift_is_unreachable(self):
+        game = ZwiftGameService()
+        game.get_game_dictionary = lambda: None
+        segments = game.get_event_segments(LA_BOUCLE_ROUTE_ID, laps=1)
+        names = {segment.get("name") for segment in segments}
+        self.assertEqual(
+            names,
+            {"Lutece Sprint", "Monceau Sprint", "Montmartre KOM", "Tchou Tchou Sprint"},
+        )
+
     def test_jersey_file_is_the_marker(self):
         self.assertEqual(jersey_marker("UI/WhiteOrangeTheme/HUD/GreenJersey_Icon.tga"), "sprint")
         self.assertEqual(jersey_marker("UI/WhiteOrangeTheme/HUD/DesertJersey_Icon.tga"), "sprint")
