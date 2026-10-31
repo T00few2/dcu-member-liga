@@ -36,26 +36,6 @@ jobs:
       - name: Lint (flake8)
         run: flake8 .
 
-      - name: Probe Zwift game dictionary
-        run: |
-          python - <<'PY'
-          import requests
-          url = "https://www.zwift.com/zwift-web-pages/gamedictionaryextended"
-          headers = {"Accept": "application/json", "Source": "zwift-web"}
-          try:
-              resp = requests.get(url, headers=headers, timeout=20)
-          except Exception as exc:
-              print(f"FETCH FAILED {type(exc).__name__}: {exc}")
-          else:
-              body = resp.text[:240].replace("\n", " ")
-              print(
-                  f"status={resp.status_code} "
-                  f"type={resp.headers.get('Content-Type')} "
-                  f"bytes={len(resp.content)}"
-              )
-              print(f"body={body}")
-          PY
-
       - name: Run tests
         run: python -m pytest tests/ -v
 

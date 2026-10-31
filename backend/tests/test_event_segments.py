@@ -27,6 +27,11 @@ class JerseyMarkerTests(unittest.TestCase):
         )
         self.assertNotIn("870135081", on_route_ids("3364574135,2818536273"))
 
+    def test_live_dictionary_has_segments(self):
+        game = ZwiftGameService()
+        data = game.get_game_dictionary()
+        self.assertTrue(data and "SEGMENTS" in data, game.dictionary_error)
+
     def test_failed_fetch_does_not_invent_segments(self):
         game = ZwiftGameService()
         game.get_game_dictionary = lambda: None
