@@ -7,6 +7,7 @@ import unittest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from services.zwift_game import ZwiftGameService, jersey_marker, on_route_ids
+from tests.dictionary_fixture import patch_game_dictionary
 
 LA_BOUCLE_ROUTE_ID = "870135081"
 CHAMPS_ELYSEES_ID = "1056322864"
@@ -26,15 +27,10 @@ class JerseyMarkerTests(unittest.TestCase):
         )
         self.assertNotIn("870135081", on_route_ids("3364574135,2818536273"))
 
-    def test_snapshot_supplies_segments_when_zwift_is_unreachable(self):
+    def test_failed_fetch_does_not_invent_segments(self):
         game = ZwiftGameService()
         game.get_game_dictionary = lambda: None
-        segments = game.get_event_segments(LA_BOUCLE_ROUTE_ID, laps=1)
-        names = {segment.get("name") for segment in segments}
-        self.assertEqual(
-            names,
-            {"Lutece Sprint", "Monceau Sprint", "Montmartre KOM", "Tchou Tchou Sprint"},
-        )
+        self.assertEqual(game.get_event_segments(LA_BOUCLE_ROUTE_ID, laps=1), [])
 
     def test_jersey_file_is_the_marker(self):
         self.assertEqual(jersey_marker("UI/WhiteOrangeTheme/HUD/GreenJersey_Icon.tga"), "sprint")
@@ -48,6 +44,15 @@ class JerseyMarkerTests(unittest.TestCase):
 
 
 class EventSegmentFilterTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._dictionary = patch_game_dictionary()
+        cls._dictionary.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._dictionary.stop()
+
     def test_la_boucle_excludes_champs_elysees_banner(self):
         game = ZwiftGameService()
         segments = game.get_event_segments(LA_BOUCLE_ROUTE_ID, laps=3)

@@ -7,9 +7,19 @@ import unittest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from services.sauce_profile_segments import measured_profile_segments
+from tests.dictionary_fixture import patch_game_dictionary
 
 
 class MeasuredProfileSegmentTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._dictionary = patch_game_dictionary()
+        cls._dictionary.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._dictionary.stop()
+
     def test_neon_shore_loop_matches_the_lap_picker(self):
         rows = measured_profile_segments(3600776267)
         names = [row["name"].lower() for row in rows]

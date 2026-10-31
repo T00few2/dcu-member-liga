@@ -14,9 +14,6 @@ _JERSEY_CDN_TEMPLATES = (
     "https://cdn-l-static.zwift.com/images/clothing/Jerseys/{name}.png",
 )
 _JERSEY_IMAGE_TEMPLATE: str | None | bool = False
-_SEGMENT_SNAPSHOT = os.path.join(
-    os.path.dirname(__file__), "..", "data", "game_dictionary_segments.json"
-)
 
 
 def on_route_ids(raw) -> set[str]:
@@ -37,16 +34,6 @@ def dictionary_segment_name(row: dict) -> str:
     if not name:
         name = str(row.get("name") or "").replace("_", " ")
     return str(name).strip()
-
-
-def snapshot_segment_rows() -> list:
-    """Last fetched dictionary segments, used when Zwift cannot be reached."""
-    try:
-        with open(_SEGMENT_SNAPSHOT, encoding="utf-8") as handle:
-            rows = json.load(handle)
-    except (OSError, json.JSONDecodeError):
-        return []
-    return rows if isinstance(rows, list) else []
 
 
 def jersey_marker(icon_path: str | None) -> str:
@@ -113,6 +100,7 @@ class ZwiftGameService:
         self._cache = None
         self._cache_time = 0
         self._cache_duration = 3600 * 24  # Cache for 24 hours
+        self.dictionary_error = None
 
     def get_game_dictionary(self):
         # Return cached data if valid
@@ -129,13 +117,27 @@ class ZwiftGameService:
             resp = requests.get(url, headers=headers, timeout=20)
             resp.raise_for_status()
             data = resp.json()
-            
-            self._cache = data
-            self._cache_time = time.time()
-            return data
         except Exception as e:
-            print(f"Error fetching Zwift dictionary: {e}")
+            detail = str(e)
+            response = getattr(e, "response", None)
+            if response is not None:
+                detail = f"{detail} body={response.text[:200]!r}"
+            print(f"Error fetching Zwift dictionary: {detail}")
+            self.dictionary_error = detail
             return None
+        if not isinstance(data, dict) or "SEGMENTS" not in data:
+            detail = (
+                f"HTTP {resp.status_code} {resp.headers.get('Content-Type')} "
+                f"has no SEGMENTS list, body={resp.text[:200]!r}"
+            )
+            print(f"Error fetching Zwift dictionary: {detail}")
+            self.dictionary_error = detail
+            return None
+
+        self._cache = data
+        self._cache_time = time.time()
+        self.dictionary_error = None
+        return data
 
     def get_routes(self):
         game_dict = self.get_game_dictionary()
@@ -196,10 +198,10 @@ class ZwiftGameService:
     def segments_on_route(self, route_id) -> dict[str, dict]:
         """Dictionary segments whose ``onRoutes`` contains this route id.
 
-        The key is ``signature``. The live dictionary wins. The saved snapshot
-        is used when that fetch fails, so CI and a Zwift outage still have a list.
+        The key is ``signature``. Only the live dictionary is used. A failed
+        fetch returns an empty dict; it does not substitute a saved copy.
         """
-        rows = self._live_segment_rows() or snapshot_segment_rows()
+        rows = self._live_segment_rows()
         wanted = str(route_id)
         found: dict[str, dict] = {}
         for row in rows:

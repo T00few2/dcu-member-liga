@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from services.pen_exit_routing import synthesize_leadin_entries
 from services.zwift_game import ZwiftGameService
+from tests.dictionary_fixture import patch_game_dictionary
 
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -25,6 +26,15 @@ def _load_route(name: str) -> dict:
 
 
 class PenExitRoutingTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._dictionary = patch_game_dictionary()
+        cls._dictionary.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._dictionary.stop()
+
     def test_mayan_mash_synthesizes_leadin_manifest(self):
         route = _load_route("Mayan Mash")
         leadin = synthesize_leadin_entries(route, BASE_DIR)
