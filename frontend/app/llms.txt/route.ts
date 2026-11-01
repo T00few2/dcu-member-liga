@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { API_URL } from '@/lib/api';
 import { buildLlmsTxt, type LlmsLeagueSettings, type LlmsStageRace } from '@/lib/llmsTxt';
+import { loadPublishedPosts } from '@/lib/postsServer';
+import { buildNewsLlmsSection } from '@/lib/newsFeed';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,12 +35,19 @@ export async function GET() {
         );
     }
 
-    const stageBody = await loadJson<{ stageRaces?: LlmsStageRace[] }>('/stage-races');
-    const body = buildLlmsTxt({
+    const [stageBody, posts] = await Promise.all([
+        loadJson<{ stageRaces?: LlmsStageRace[] }>('/stage-races'),
+        loadPublishedPosts(20),
+    ]);
+    const rules = buildLlmsTxt({
         siteUrl: SITE_URL,
         settings,
         stageRaces: stageBody ? (stageBody.stageRaces ?? []) : null,
     });
+    // The news section is left out when Firestore cannot be reached; the rules above still load.
+    const body = posts && posts.length
+        ? `${rules.replace(/\s*$/, '')}\n\n${buildNewsLlmsSection(posts, SITE_URL)}\n`
+        : rules;
 
     return new NextResponse(body, {
         headers: {
