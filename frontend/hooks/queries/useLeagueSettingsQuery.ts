@@ -3,10 +3,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
+import { useSeededLeagueSettings } from '@/components/public/PublicSnapshotSeed';
 import type { LeagueSettings } from '@/types/admin';
 
 export function useLeagueSettingsQuery() {
     const { user } = useAuth();
+    const seeded = useSeededLeagueSettings();
 
     return useQuery({
         queryKey: ['league', 'settings', user ? 'auth' : 'public'],
@@ -20,6 +22,7 @@ export function useLeagueSettingsQuery() {
             const data = await res.json();
             return (data.settings ?? {}) as LeagueSettings;
         },
+        initialData: !user && seeded ? seeded : undefined,
         staleTime: 5 * 60_000,
     });
 }

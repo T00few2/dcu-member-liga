@@ -106,18 +106,15 @@ export default function PointPage() {
                 ))}
             </div>
 
-            {tab === 'race-day' && (
-                <div className="space-y-3">
+            <div className={tab === 'race-day' ? 'space-y-3' : 'hidden'}>
                     <p className="text-sm text-muted-foreground">
                         Point for mål og FAL-spurter (først over stregen) i det enkelte løb. Den samlede
                         score afgør dagens placering.
                     </p>
                     <PointsPlaceTable columns={raceDayColumns} readOnly />
                 </div>
-            )}
 
-            {tab === 'tour-gc' && (
-                <div className="space-y-3">
+            <div className={tab === 'tour-gc' ? 'space-y-3' : 'hidden'}>
                     <p className="text-sm text-muted-foreground">
                         Klassikere scores som beskrevet under Løbspoint. I Touren omsættes hver etapes
                         placering til GC-point med tabellen herunder, som summeres på tværs af etaperne.
@@ -136,10 +133,8 @@ export default function PointPage() {
                     )}
                     <PointsPlaceTable columns={tourGcColumns} readOnly />
                 </div>
-            )}
 
-            {tab === 'season' && (
-                <div className="space-y-3">
+            <div className={tab === 'season' ? 'space-y-3' : 'hidden'}>
                     <p className="text-sm text-muted-foreground">
                         Sæsonpoint for Tour (samlet + etape) og Klassikere — tæller til Sæsonstillingen,
                         ikke til Tourens interne GC.
@@ -151,7 +146,6 @@ export default function PointPage() {
                     )}
                     <PointsPlaceTable columns={seasonColumns} readOnly />
                 </div>
-            )}
 
             <p className="mt-8 text-sm text-muted-foreground">
                 Se også{' '}

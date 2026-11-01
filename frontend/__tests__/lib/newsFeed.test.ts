@@ -34,9 +34,11 @@ describe('buildNewsRss', () => {
 });
 
 describe('buildNewsLlmsSection', () => {
-    it('links each post with its date and a summary', () => {
+    it('includes the post text, not only a short teaser', () => {
         const text = buildNewsLlmsSection([post], 'https://www.dansk-ecykling.dk');
         expect(text).toContain('## Nyheder');
-        expect(text).toContain('- [Race Preview: DZR løbet & co](https://www.dansk-ecykling.dk/nyheder/race-preview-dzr-loebet) (2026-10-15): Torsdag køres DZR løbet. ]]> ok');
+        expect(text).toContain('### Race Preview: DZR løbet & co');
+        expect(text).toContain('2026-10-15 — https://www.dansk-ecykling.dk/nyheder/race-preview-dzr-loebet');
+        expect(text).toContain('Torsdag køres DZR løbet. ]]> ok');
     });
 });

@@ -71,6 +71,7 @@ export default function RootLayout({
   return (
     <html lang="da">
       <head>
+        <link rel="alternate" type="text/plain" href="/llms.txt" title="DCU E-serien for sprogmodeller" />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}

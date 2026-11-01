@@ -1,28 +1,20 @@
 import { NextResponse } from 'next/server';
-import { API_URL } from '@/lib/api';
-import { buildLlmsTxt, type LlmsLeagueSettings, type LlmsStageRace } from '@/lib/llmsTxt';
+import { buildLlmsTxt } from '@/lib/llmsTxt';
 import { loadPublishedPosts } from '@/lib/postsServer';
 import { buildNewsLlmsSection } from '@/lib/newsFeed';
+import { loadPublicSnapshot } from '@/lib/publicSnapshot';
 
 export const dynamic = 'force-dynamic';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.dansk-ecykling.dk';
 
-async function loadJson<T>(path: string): Promise<T | null> {
-    try {
-        const res = await fetch(`${API_URL}${path}`, { cache: 'no-store' });
-        if (!res.ok) return null;
-        return (await res.json()) as T;
-    } catch {
-        return null;
-    }
-}
-
 export async function GET() {
-    const settingsBody = await loadJson<{ settings?: LlmsLeagueSettings }>('/league/settings');
-    const settings = settingsBody?.settings;
-    if (!settings) {
-        const siteUrl = SITE_URL.replace(/\/$/, '');
+    const siteUrl = SITE_URL.replace(/\/$/, '');
+    const [snapshot, posts] = await Promise.all([
+        loadPublicSnapshot(),
+        loadPublishedPosts(20),
+    ]);
+    if (!snapshot.settings) {
         return new NextResponse(
             `# DCU E-serien\n\nLigaens aktuelle regler kunne ikke hentes. Se ${siteUrl}/info\n`,
             {
@@ -35,16 +27,11 @@ export async function GET() {
         );
     }
 
-    const [stageBody, posts] = await Promise.all([
-        loadJson<{ stageRaces?: LlmsStageRace[] }>('/stage-races'),
-        loadPublishedPosts(20),
-    ]);
     const rules = buildLlmsTxt({
         siteUrl: SITE_URL,
-        settings,
-        stageRaces: stageBody ? (stageBody.stageRaces ?? []) : null,
+        settings: snapshot.settings,
+        stageRaces: snapshot.stageRaces,
     });
-    // The news section is left out when Firestore cannot be reached; the rules above still load.
     const body = posts && posts.length
         ? `${rules.replace(/\s*$/, '')}\n\n${buildNewsLlmsSection(posts, SITE_URL)}\n`
         : rules;

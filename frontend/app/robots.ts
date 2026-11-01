@@ -9,6 +9,10 @@ export default function robots(): MetadataRoute.Robots {
         allow: [
           "/",
           "/info",
+          "/llms.txt",
+          "/nyheder",
+          "/point",
+          "/verification",
           "/historik",
           "/register",
           "/datapolitik",

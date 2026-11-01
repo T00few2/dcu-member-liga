@@ -20,9 +20,9 @@ import type { Race } from '@/types/live';
 import type { StageRace } from '@/types/admin';
 import { DEFAULT_DIVISION_LEADER_JERSEY } from '@/lib/seasonJerseys';
 
-function useVerificationCategoryNames(): string[] {
+function useVerificationCategoryNames(): { names: string[]; ready: boolean } {
     const { data: leagueSettings } = useLeagueSettingsQuery();
-    return useMemo(
+    const names = useMemo(
         () =>
             (leagueSettings?.ligaCategories || [])
                 .filter((c) => c.requiresVerification === true)
@@ -30,6 +30,7 @@ function useVerificationCategoryNames(): string[] {
                 .filter(Boolean),
         [leagueSettings?.ligaCategories],
     );
+    return { names, ready: leagueSettings !== undefined };
 }
 
 function joinDanishNames(names: string[]): string {
@@ -41,8 +42,12 @@ function joinDanishNames(names: string[]): string {
 
 function LigaCategoryInfoTable() {
     const { data: leagueSettings } = useLeagueSettingsQuery();
+    const stored = leagueSettings?.ligaCategories;
+    if (!Array.isArray(stored) || stored.length < 2) {
+        return <p className="text-slate-500 dark:text-slate-400">Kategorierne hentes fra ligaens indstillinger.</p>;
+    }
     const cats = effectiveLigaCategories(leagueSettings);
-    const grace = leagueSettings?.gracePeriod ?? 35;
+    const grace = Number(leagueSettings?.gracePeriod) > 0 ? Number(leagueSettings?.gracePeriod) : 35;
     return (
         <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
             <table className="w-full text-sm">
@@ -149,7 +154,7 @@ function TrainerStatusBadge({ trainer }: { trainer: Trainer }) {
 }
 
 function UdstyrSection() {
-    const verificationNames = useVerificationCategoryNames();
+    const { names: verificationNames, ready: rulesReady } = useVerificationCategoryNames();
     const verificationLabel = joinDanishNames(verificationNames);
     const [trainers, setTrainers] = useState<Trainer[]>([]);
     const [loading, setLoading] = useState(true);
@@ -198,9 +203,11 @@ function UdstyrSection() {
                     { label: 'Cykel', desc: 'Racer, mountainbike eller gravel – så længe den passer på hometraineren.' },
                     {
                         label: 'Smart hometrainer',
-                        desc: verificationLabel
-                            ? `I ${verificationLabel} kræves godkendt hometrainer – eller dual recording med separat wattmåler og Strava-forbindelse.`
-                            : 'Godkendt hometrainer. Dual recording kræves ikke for nogen kategorier i øjeblikket.',
+                        desc: !rulesReady
+                            ? 'Krav til hometrainer og dual recording følger rytterens kategori.'
+                            : verificationLabel
+                                ? `I ${verificationLabel} kræves godkendt hometrainer – eller dual recording med separat wattmåler og Strava-forbindelse.`
+                                : 'Godkendt hometrainer. Dual recording kræves ikke for nogen kategorier i øjeblikket.',
                     },
                 ].map((item, i) => (
                     <div key={i} className="flex items-start gap-3 p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800">
@@ -251,25 +258,25 @@ function UdstyrSection() {
                                     onClick={() => setFilter('all')}
                                     className={`px-2.5 py-1 rounded-full font-medium transition-colors ${filter === 'all' ? 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-100' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
                                 >
-                                    Alle ({trainers.length})
+                                    Alle{loading ? '' : ` (${trainers.length})`}
                                 </button>
                                 <button
                                     onClick={() => setFilter('approved')}
                                     className={`px-2.5 py-1 rounded-full font-medium transition-colors ${filter === 'approved' ? 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
                                 >
-                                    Godkendt ({approvedCount})
+                                    Godkendt{loading ? '' : ` (${approvedCount})`}
                                 </button>
                                 <button
                                     onClick={() => setFilter('dual')}
                                     className={`px-2.5 py-1 rounded-full font-medium transition-colors ${filter === 'dual' ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
                                 >
-                                    Dual recording ({dualCount})
+                                    Dual recording{loading ? '' : ` (${dualCount})`}
                                 </button>
                                 <button
                                     onClick={() => setFilter('not_approved')}
                                     className={`px-2.5 py-1 rounded-full font-medium transition-colors ${filter === 'not_approved' ? 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
                                 >
-                                    Ikke godkendt ({notApprovedCount})
+                                    Ikke godkendt{loading ? '' : ` (${notApprovedCount})`}
                                 </button>
                             </div>
                             <input
@@ -339,48 +346,48 @@ function SaesonformatSection() {
         [stageRaces],
     );
 
-    const tourPhrase =
-        tours.length > 0
-            ? joinDanishNames(tours.map((t) => t.name))
-            : '1 Tour';
-    const klassikerLabel = klassikerCount === 1 ? '1 Klassiker' : `${klassikerCount || 5} Klassikere`;
+    if (stageRacesQuery.data === undefined) {
+        return <p className="text-slate-500 dark:text-slate-400">Sæsonens løb hentes...</p>;
+    }
+
+    const tourPhrase = tours.length > 0 ? joinDanishNames(tours.map((t) => t.name)) : '';
+    const klassikerLabel = klassikerCount === 1 ? '1 Klassiker' : `${klassikerCount} Klassikere`;
+
+    const seasonLine = tourPhrase && klassikerCount > 0
+        ? <>Sæsonen i <strong className="text-slate-800 dark:text-white">DCU E-serien</strong> bygges op af <strong className="text-slate-800 dark:text-white">{tourPhrase}</strong> (etaper og samlet stilling) og <strong className="text-slate-800 dark:text-white">{klassikerLabel}</strong>.</>
+        : tourPhrase
+            ? <>Sæsonen i <strong className="text-slate-800 dark:text-white">DCU E-serien</strong> bygges op af <strong className="text-slate-800 dark:text-white">{tourPhrase}</strong> (etaper og samlet stilling).</>
+            : klassikerCount > 0
+                ? <>Sæsonen i <strong className="text-slate-800 dark:text-white">DCU E-serien</strong> bygges op af <strong className="text-slate-800 dark:text-white">{klassikerLabel}</strong>.</>
+                : <>Ingen tourer eller klassikere er offentliggjort endnu.</>;
 
     return (
         <div className="space-y-5">
             <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-lg">
-                Sæsonen i <strong className="text-slate-800 dark:text-white">DCU E-serien</strong> bygges op af{' '}
-                <strong className="text-slate-800 dark:text-white">{tourPhrase}</strong>
-                {' '}(flere etaper + samlet GC) og{' '}
-                <strong className="text-slate-800 dark:text-white">{klassikerLabel}</strong>.
+                {seasonLine}
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {(tours.length > 0
-                    ? tours.map((tour) => ({
-                        key: tour.id,
-                        title: tour.name,
-                        sub: 'etaper + samlet stilling',
-                        kind: 'tour' as const,
-                    }))
-                    : [{ key: 'tour-fallback', title: 'Tour', sub: 'etaper + samlet stilling', kind: 'tour' as const }]
-                ).map((card) => (
+                {tours.map((tour) => (
                     <div
-                        key={card.key}
+                        key={tour.id}
                         className="text-center p-5 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800"
                     >
                         <div className="text-xl sm:text-2xl font-extrabold text-primary mb-1 leading-snug">
-                            {card.title}
+                            {tour.name}
                         </div>
                         <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">
                             Tour
                         </div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400">{card.sub}</div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400">etaper + samlet stilling</div>
                     </div>
                 ))}
-                <div className="text-center p-5 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800">
-                    <div className="text-4xl font-extrabold text-primary mb-1">{klassikerCount || 5}</div>
-                    <div className="font-semibold text-slate-800 dark:text-slate-100">Klassikere</div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400">enkeltdagsløb</div>
-                </div>
+                {klassikerCount > 0 && (
+                    <div className="text-center p-5 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800">
+                        <div className="text-4xl font-extrabold text-primary mb-1">{klassikerCount}</div>
+                        <div className="font-semibold text-slate-800 dark:text-slate-100">Klassikere</div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400">enkeltdagsløb</div>
+                    </div>
+                )}
             </div>
             <div className="space-y-3">
                 <h4 className="font-bold text-slate-800 dark:text-white text-lg">Sådan fungerer point</h4>
@@ -696,7 +703,7 @@ function SaesonTrojerSection() {
 }
 
 function ReglerSection() {
-    const verificationNames = useVerificationCategoryNames();
+    const { names: verificationNames, ready: rulesReady } = useVerificationCategoryNames();
     const verificationLabel = joinDanishNames(verificationNames);
     const { data: leagueSettings } = useLeagueSettingsQuery();
     const weightValidDays = Number(leagueSettings?.weightVerificationValidDays) > 0
@@ -716,9 +723,11 @@ function ReglerSection() {
                 <div className="pl-4 border-l-4 border-tertiary">
                     <h4 className="font-bold text-slate-900 dark:text-white mb-1">Stikprøvekontrol (Weight Verification)</h4>
                     <p className="text-slate-600 dark:text-slate-400 mb-2">
-                        {verificationLabel
-                            ? `For ryttere i ${verificationLabel} vil der fra tid til anden blive krævet videodokumentation af den aktuelle vægt.`
-                            : 'Der kræves i øjeblikket ikke vægtverifikation for nogen kategorier.'}
+                        {!rulesReady
+                            ? 'Om vægtverifikation kræves, følger rytterens kategori.'
+                            : verificationLabel
+                                ? `For ryttere i ${verificationLabel} vil der fra tid til anden blive krævet videodokumentation af den aktuelle vægt.`
+                                : 'Der kræves i øjeblikket ikke vægtverifikation for nogen kategorier.'}
                     </p>
                     <p className="text-slate-600 dark:text-slate-400">
                         Alle ryttere kan også indsende en vægtvideo frivilligt under <Link href="/verification" className="text-primary underline hover:no-underline">Verifikation</Link>.
@@ -733,7 +742,11 @@ function ReglerSection() {
                 </div>
                 <div className="pl-4 border-l-4 border-orange-400">
                     <h4 className="font-bold text-slate-900 dark:text-white mb-1">Godkendt hometrainer eller dual recording</h4>
-                    {verificationLabel ? (
+                    {!rulesReady ? (
+                        <p className="text-slate-600 dark:text-slate-400">
+                            Om dual recording kræves, følger rytterens kategori.
+                        </p>
+                    ) : verificationLabel ? (
                         <>
                             <p className="text-slate-600 dark:text-slate-400 mb-2">
                                 Ryttere i <strong>{verificationLabel}</strong> skal enten benytte en <strong>godkendt hometrainer</strong> eller foretage <strong>dual recording</strong> med en separat wattmåler.
@@ -763,6 +776,15 @@ function ReglerSection() {
             </div>
         </div>
     );
+}
+
+function GracePeriodCopy() {
+    const { data: leagueSettings } = useLeagueSettingsQuery();
+    if (!leagueSettings) {
+        return <>Grace-perioden ligger over kategoriens øvre grænse. Inden for den grænse fuldføres sæsonen i den nuværende kategori, men du bør forberede dig på oprykning til næste sæson.</>;
+    }
+    const grace = Number(leagueSettings.gracePeriod) > 0 ? Number(leagueSettings.gracePeriod) : 35;
+    return <>Har dit max30-rating passeret din kategoris øvre grænse, men er du stadig inden for grace-grænsen (+{grace} vELO), er du i &quot;grace&quot;. Du fuldfører sæsonen i din nuværende kategori, men bør forberede dig på oprykning til næste sæson.</>;
 }
 
 const chapters = [
@@ -878,8 +900,8 @@ const chapters = [
                         {
                             step: '3',
                             color: 'bg-amber-500',
-                            title: 'Grace-periode (+35 vELO)',
-                            desc: 'Har dit max30-rating passeret din kategoris øvre grænse, men er du stadig inden for grace-grænsen (+35 vELO), er du i "grace". Du fuldfører sæsonen i din nuværende kategori, men bør forberede dig på oprykning til næste sæson.',
+                            title: 'Grace-periode',
+                            desc: '',
                         },
                         {
                             step: '4',
@@ -894,7 +916,9 @@ const chapters = [
                             </div>
                             <div>
                                 <p className="font-semibold text-slate-800 dark:text-slate-100 mb-0.5">{item.title}</p>
-                                <p className="text-slate-600 dark:text-slate-400 text-sm">{item.desc}</p>
+                                <p className="text-slate-600 dark:text-slate-400 text-sm">
+                                    {item.step === '3' ? <GracePeriodCopy /> : item.desc}
+                                </p>
                             </div>
                         </div>
                     ))}

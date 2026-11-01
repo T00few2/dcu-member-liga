@@ -53,7 +53,7 @@ export default function Home() {
           }
         : null;
 
-    if (loading) {
+    if (loading && user) {
         return (
             <div className="min-h-screen flex items-center justify-center">
                 <div className="animate-pulse flex flex-col items-center gap-4">

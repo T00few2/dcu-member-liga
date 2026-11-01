@@ -1,4 +1,8 @@
 import type { Metadata } from 'next';
+import { PublicSnapshotSeed } from '@/components/public/PublicSnapshotSeed';
+import { loadPublicSnapshot } from '@/lib/publicSnapshot';
+
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
     title: 'Point',
@@ -10,6 +14,11 @@ export const metadata: Metadata = {
     },
 };
 
-export default function PointLayout({ children }: { children: React.ReactNode }) {
-    return children;
+export default async function PointLayout({ children }: { children: React.ReactNode }) {
+    const snapshot = await loadPublicSnapshot();
+    return (
+        <PublicSnapshotSeed settings={snapshot.settings} stageRaces={snapshot.stageRaces}>
+            {children}
+        </PublicSnapshotSeed>
+    );
 }

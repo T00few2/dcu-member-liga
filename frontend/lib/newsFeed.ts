@@ -1,5 +1,5 @@
 import type { Post } from '@/types/posts';
-import { escapeHtml, postExcerpt, renderPostHtml } from './postHtml';
+import { escapeHtml, postExcerpt, postPlainText, renderPostHtml } from './postHtml';
 
 /** RSS 2.0 for /nyheder/rss.xml: title, link, date, summary and the full post as HTML. */
 export function buildNewsRss(posts: Post[], siteUrl: string): string {
@@ -37,19 +37,27 @@ export function buildNewsRss(posts: Post[], siteUrl: string): string {
     ].join('\n');
 }
 
-/** The "Nyheder" section appended to /llms.txt: the newest posts with a link and a summary. */
+const LLMS_POST_CHARS = 20000;
+
+/** The "Nyheder" section appended to /llms.txt, with the post text and not only a teaser. */
 export function buildNewsLlmsSection(posts: Post[], siteUrl: string, max = 20): string {
     const site = siteUrl.replace(/\/$/, '');
     const lines = [
         '## Nyheder',
         '',
-        `Race previews, analyser og nyt fra ligaen. Alle indlæg: ${site}/nyheder (RSS: ${site}/nyheder/rss.xml)`,
+        `Race previews, analyser og nyt fra ligaen. Teksten herunder er indlæggene. Alle indlæg: ${site}/nyheder (RSS: ${site}/nyheder/rss.xml)`,
         '',
     ];
     for (const post of posts.slice(0, max)) {
+        const url = `${site}/nyheder/${encodeURIComponent(post.slug)}`;
         const date = post.publishedAt ? post.publishedAt.slice(0, 10) : '';
-        const summary = postExcerpt(post.body, 160);
-        lines.push(`- [${post.title}](${site}/nyheder/${encodeURIComponent(post.slug)})${date ? ` (${date})` : ''}${summary ? `: ${summary}` : ''}`);
+        const text = postPlainText(post.body);
+        const body = text.length > LLMS_POST_CHARS ? `${text.slice(0, LLMS_POST_CHARS).trimEnd()}…` : text;
+        lines.push(`### ${post.title}`);
+        lines.push(date ? `${date} — ${url}` : url);
+        if (body) lines.push('', body);
+        if (text.length > LLMS_POST_CHARS) lines.push('', `Hele indlægget: ${url}`);
+        lines.push('');
     }
-    return lines.join('\n');
+    return lines.join('\n').trimEnd();
 }
