@@ -31,6 +31,7 @@ describe('buildLlmsTxt', () => {
 
         expect(text).toContain('1. Division: vELO ≥ 2200');
         expect(text).toContain('verifikation kræves');
+        expect(text).toContain('Verifikation er obligatorisk i 1. Division.');
         expect(text).toContain('Ryttere i 1. Division skal bruge en godkendt hometrainer eller dual recording');
         expect(text).not.toContain('ikke for nogen kategorier');
         expect(text).not.toContain('A, B, C, D');
@@ -48,7 +49,7 @@ describe('buildLlmsTxt', () => {
             stageRaces,
         });
 
-        expect(text).toContain('Dual recording kræves i øjeblikket ikke for nogen kategorier.');
+        expect(text).toContain('Ingen af de aktuelle kategorier har verifikation slået til.');
     });
 
     it('uses the published season, including when every result counts', () => {

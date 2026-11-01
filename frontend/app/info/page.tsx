@@ -19,6 +19,8 @@ import {
 import type { Race } from '@/types/live';
 import type { StageRace } from '@/types/admin';
 import { DEFAULT_DIVISION_LEADER_JERSEY } from '@/lib/seasonJerseys';
+import { verificationRuleLines } from '@/lib/verificationCopy';
+import VerificationRuleNotice from '@/components/public/VerificationRuleNotice';
 
 function useVerificationCategoryNames(): { names: string[]; ready: boolean } {
     const { data: leagueSettings } = useLeagueSettingsQuery();
@@ -154,8 +156,7 @@ function TrainerStatusBadge({ trainer }: { trainer: Trainer }) {
 }
 
 function UdstyrSection() {
-    const { names: verificationNames, ready: rulesReady } = useVerificationCategoryNames();
-    const verificationLabel = joinDanishNames(verificationNames);
+    const { data: leagueSettings } = useLeagueSettingsQuery();
     const [trainers, setTrainers] = useState<Trainer[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
@@ -203,11 +204,9 @@ function UdstyrSection() {
                     { label: 'Cykel', desc: 'Racer, mountainbike eller gravel – så længe den passer på hometraineren.' },
                     {
                         label: 'Smart hometrainer',
-                        desc: !rulesReady
-                            ? 'Krav til hometrainer og dual recording følger rytterens kategori.'
-                            : verificationLabel
-                                ? `I ${verificationLabel} kræves godkendt hometrainer – eller dual recording med separat wattmåler og Strava-forbindelse.`
-                                : 'Godkendt hometrainer. Dual recording kræves ikke for nogen kategorier i øjeblikket.',
+                        desc: verificationRuleLines(leagueSettings)?.[1]
+                            ?? verificationRuleLines(leagueSettings)?.[0]
+                            ?? 'Kravet til hometrainer og dual recording følger ligaens kategorier.',
                     },
                 ].map((item, i) => (
                     <div key={i} className="flex items-start gap-3 p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800">
@@ -703,7 +702,7 @@ function SaesonTrojerSection() {
 }
 
 function ReglerSection() {
-    const { names: verificationNames, ready: rulesReady } = useVerificationCategoryNames();
+    const { names: verificationNames } = useVerificationCategoryNames();
     const verificationLabel = joinDanishNames(verificationNames);
     const { data: leagueSettings } = useLeagueSettingsQuery();
     const weightValidDays = Number(leagueSettings?.weightVerificationValidDays) > 0
@@ -723,11 +722,8 @@ function ReglerSection() {
                 <div className="pl-4 border-l-4 border-tertiary">
                     <h4 className="font-bold text-slate-900 dark:text-white mb-1">Stikprøvekontrol (Weight Verification)</h4>
                     <p className="text-slate-600 dark:text-slate-400 mb-2">
-                        {!rulesReady
-                            ? 'Om vægtverifikation kræves, følger rytterens kategori.'
-                            : verificationLabel
-                                ? `For ryttere i ${verificationLabel} vil der fra tid til anden blive krævet videodokumentation af den aktuelle vægt.`
-                                : 'Der kræves i øjeblikket ikke vægtverifikation for nogen kategorier.'}
+                        {verificationRuleLines(leagueSettings)?.[0]
+                            ?? 'Vægtverifikation følger ligaens kategorier.'}
                     </p>
                     <p className="text-slate-600 dark:text-slate-400">
                         Alle ryttere kan også indsende en vægtvideo frivilligt under <Link href="/verification" className="text-primary underline hover:no-underline">Verifikation</Link>.
@@ -742,11 +738,10 @@ function ReglerSection() {
                 </div>
                 <div className="pl-4 border-l-4 border-orange-400">
                     <h4 className="font-bold text-slate-900 dark:text-white mb-1">Godkendt hometrainer eller dual recording</h4>
-                    {!rulesReady ? (
-                        <p className="text-slate-600 dark:text-slate-400">
-                            Om dual recording kræves, følger rytterens kategori.
-                        </p>
-                    ) : verificationLabel ? (
+                    {verificationRuleLines(leagueSettings)?.map((line) => (
+                        <p key={line} className="text-slate-600 dark:text-slate-400 mb-2">{line}</p>
+                    ))}
+                    {verificationLabel ? (
                         <>
                             <p className="text-slate-600 dark:text-slate-400 mb-2">
                                 Ryttere i <strong>{verificationLabel}</strong> skal enten benytte en <strong>godkendt hometrainer</strong> eller foretage <strong>dual recording</strong> med en separat wattmåler.
@@ -760,14 +755,7 @@ function ReglerSection() {
                                 Et godkendt tjek kan vises på resultater. Et underkendt tjek ses kun af rytteren og administratorer og deklassificerer ikke automatisk.
                             </p>
                         </>
-                    ) : (
-                        <p className="text-slate-600 dark:text-slate-400">
-                            Dual recording kræves i øjeblikket ikke for nogen kategorier.
-                            Alle ryttere kan stadig tilmelde sig tjekket frivilligt under{' '}
-                            <Link href="/verification" className="text-primary underline hover:no-underline">Verifikation</Link>.
-                            Et underkendt tjek er ikke offentligt og deklassificerer ikke automatisk.
-                        </p>
-                    )}
+                    ) : null}
                 </div>
                 <div className="pl-4 border-l-4 border-slate-400">
                     <h4 className="font-bold text-slate-900 dark:text-white mb-1">Yderligere regler</h4>
@@ -833,7 +821,7 @@ const chapters = [
         ),
         iconBg: 'bg-green-500/10 text-green-600 dark:text-green-400',
         title: 'Deltagelse og Regler',
-        defaultOpen: false,
+        defaultOpen: true,
         content: <ReglerSection />,
     },
     {
@@ -1079,6 +1067,8 @@ export default function InfoPage() {
                         {allOpen ? 'Luk alle' : 'Åbn alle'}
                     </button>
                 </div>
+
+                <VerificationRuleNotice />
 
                 <div className="space-y-3">
                     {chapters.map(chapter => (

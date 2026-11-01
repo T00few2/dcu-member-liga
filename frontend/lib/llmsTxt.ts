@@ -6,6 +6,7 @@ import {
     type SeasonPointTableKey,
 } from '@/lib/seasonPointsDefaults';
 import { isOneDaySeasonClass, tourEvents, tourGcCountingSentence } from '@/lib/seasonUi';
+import { verificationRuleLines } from '@/lib/verificationCopy';
 import type { SeasonRankPointTable, SeasonRankPoints, StageRace } from '@/types/admin';
 
 export type LlmsLeagueSettings = {
@@ -73,15 +74,6 @@ export function buildLlmsTxt(input: {
     const settings = input.settings;
     const cats = effectiveLigaCategories(settings);
     const grace = Number(settings.gracePeriod) > 0 ? Number(settings.gracePeriod) : 35;
-    const verificationNames = cats
-        .filter((cat) => cat.requiresVerification === true)
-        .map((cat) => cat.name)
-        .filter(Boolean);
-    const verificationLabel = joinDanish(verificationNames);
-    const weightDays = Number(settings.weightVerificationValidDays) > 0
-        ? Number(settings.weightVerificationValidDays)
-        : 30;
-
     const stageRaces = input.stageRaces ?? [];
     const tours = tourEvents(stageRaces as StageRace[]);
     const classicCount = stageRaces.filter((event) => isOneDaySeasonClass(event.seasonClass)).length;
@@ -136,19 +128,8 @@ export function buildLlmsTxt(input: {
         '',
     );
 
-    if (verificationLabel) {
-        lines.push(
-            `Ryttere i ${verificationLabel} skal bruge en godkendt hometrainer eller dual recording med en separat wattmåler og Strava-forbindelse.`,
-            `For ryttere i ${verificationLabel} kan der kræves videodokumentation af vægten. En godkendt indvejning gælder i ${weightDays} dage fra indvejningsdatoen.`,
-            'Ryttere i de øvrige kategorier kan tilmelde sig dual recording og vægtvideo frivilligt.',
-        );
-    } else {
-        lines.push(
-            'Dual recording kræves i øjeblikket ikke for nogen kategorier.',
-            'Vægtverifikation kræves i øjeblikket ikke for nogen kategorier.',
-            'Alle ryttere kan tilmelde sig begge tjek frivilligt.',
-        );
-    }
+    const rule = verificationRuleLines(settings);
+    if (rule) lines.push(...rule);
 
     lines.push(
         '',
