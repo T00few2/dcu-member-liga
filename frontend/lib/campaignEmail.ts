@@ -1,5 +1,6 @@
 import {
     buildProfileSegmentIndex,
+    formatSprintLabel,
     matchSprintProfileSegment,
 } from '@/components/races/SprintsByLap';
 import { fromTimestamp } from '@/lib/formatDate';
@@ -161,10 +162,7 @@ function sprintRows(race: AnnouncementRace): SprintRow[] {
 }
 
 function sprintLabel(sprint: SprintRow): string {
-    const name = sprint.name.trim();
-    const direction = (sprint.direction || '').trim().toLowerCase();
-    const alreadyReverse = /\b(reverse|rev\.?)$/i.test(name);
-    return direction === 'reverse' && !alreadyReverse ? `${name} Reverse` : name;
+    return formatSprintLabel(sprint.name, sprint.direction);
 }
 
 interface SprintSpan {

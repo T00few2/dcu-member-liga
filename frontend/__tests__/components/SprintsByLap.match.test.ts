@@ -1,9 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import {
     buildProfileSegmentIndex,
+    formatSprintLabel,
     matchSprintProfileSegment,
     sprintProfileOccurrence,
 } from '@/components/races/SprintsByLap';
+
+describe('formatSprintLabel', () => {
+    it('adds Reverse once when the Zwift name does not already include it', () => {
+        expect(formatSprintLabel('Woodland Sprint', 'reverse')).toBe('Woodland Sprint Reverse');
+        expect(formatSprintLabel('Breakaway Brae', 'reverse')).toBe('Breakaway Brae Reverse');
+    });
+
+    it('keeps a name that already ends in Reverse', () => {
+        expect(formatSprintLabel('Titans Grove KOM Reverse', 'reverse')).toBe('Titans Grove KOM Reverse');
+        expect(formatSprintLabel('Woodland Sprint Reverse', 'reverse')).toBe('Woodland Sprint Reverse');
+        expect(formatSprintLabel('Breakaway Brae Reverse', 'forward')).toBe('Breakaway Brae Reverse');
+    });
+});
 
 describe('sprintProfileOccurrence', () => {
     it('prefers count over lap', () => {

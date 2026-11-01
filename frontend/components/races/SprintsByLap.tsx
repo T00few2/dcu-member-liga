@@ -17,6 +17,14 @@ export interface SprintsByLapProfileData {
 
 const normalize = (value?: string | null) => (value || '').trim().toLowerCase();
 
+/** Direction suffix only when the Zwift name does not already say Reverse. */
+export function formatSprintLabel(name: string, direction?: string | null): string {
+    const trimmed = (name || '').trim();
+    const isReverse = normalize(direction) === 'reverse';
+    const alreadyReverse = /\b(reverse|rev\.?)$/i.test(trimmed);
+    return isReverse && !alreadyReverse ? `${trimmed} Reverse` : trimmed;
+}
+
 export function normalizeSprintNameForMatch(name?: string): string {
     return (name || '')
         .normalize('NFD')
@@ -82,10 +90,7 @@ interface Props {
 }
 
 export default function SprintsByLap({ sprints, profileData, nameHeading = 'Sprint' }: Props) {
-    const sprintLabel = (seg: Sprint) => {
-        const isReverse = normalize(seg.direction) === 'reverse';
-        return isReverse ? `${seg.name} Reverse` : seg.name;
-    };
+    const sprintLabel = (seg: Sprint) => formatSprintLabel(seg.name, seg.direction);
 
     const profileIndex = profileData ? buildProfileSegmentIndex(profileData.profileSegments) : null;
     const leadIn = profileData?.leadInDistance ?? 0;

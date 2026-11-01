@@ -720,7 +720,7 @@ export default function RouteElevationChart({
                                                     },
                                                     label,
                                                     color,
-                                                    isPointSegment || isPointBanner,
+                                                    isPointSegment,
                                                 )
                                             }
                                         />
