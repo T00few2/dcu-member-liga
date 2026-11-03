@@ -15,7 +15,7 @@ through `queued -> running -> done | failed | timed_out`. They are processed by
 `POST /admin/predictor/research/process` (scheduler or admin) so a long run
 never blocks a page request.
 
-Privacy: the uploaded CSVs hold power numbers, weight, ZRS, phenotype and ride
+Privacy: the uploaded CSVs hold power numbers, weight, phenotype and ride
 counts only. Riders are keyed by a salted hash; the hash -> Zwift ID map stays in
 the run document and is never sent to Anthropic.
 """
@@ -102,8 +102,8 @@ their vELO from power data — mainly Strava (outdoor) power. Your job: find a b
 **division** from Strava power, using the data files in your sandbox, and report honestly.
 
 Files (uploaded to your sandbox):
-- training.csv — every league rider with a real vELO: Zwift power (watts), weight, ZRS, phenotype,
-  realVelo. Column `fold` is set for riders that are also in eval.csv, empty otherwise.
+- training.csv — every league rider with a real vELO: Zwift power (watts), weight, phenotype,
+  zwiftActivityCount, realVelo. Column `fold` is set for riders that are also in eval.csv, empty otherwise.
 - eval.csv — riders whose vELO is reliable AND who have a Strava power curve. Strava peak watts per window
   (strava{days}_w5 ... _w1200, strava{days}_activities), their `fold`, realVelo, realDivision, and the
   current production model's out-of-fold prediction (baselinePredVelo, baselinePredDivision).
@@ -111,16 +111,19 @@ Files (uploaded to your sandbox):
 
 Evaluation protocol (must match production exactly):
 1. For each fold k: train on training.csv rows whose fold != k (rows with empty fold are always training),
-   then predict the eval.csv riders with fold == k from their Strava data (and weight / ZRS).
+   then predict the eval.csv riders with fold == k from their Strava data (and weight).
 2. Division accuracy = percent of eval riders whose predicted vELO falls in the same division as realVelo.
    This is the main metric. MAE in vELO points is secondary.
 3. First reproduce the baseline: accuracy of baselinePredDivision vs realDivision.
 
 Ideas worth trying: feature combinations from the available durations (5s-20min), power ratios,
 absolute vs per-kg power, outdoor->indoor scaling of Strava power, phenotype, ridge strength, robust
-fitting / outlier handling, choice of Strava window. Prefer simple linear models: the production
-predictor is pure Python (no numpy) and fits a linear regression on features computed from
-weight, ZRS and 5s/1min/5min/20min power, so an improvement only helps if it can be written that way.
+fitting / outlier handling, choice of Strava window, training only on riders whose vELO is reliable
+(e.g. zwiftActivityCount >= 15). Prefer simple linear models: the production predictor is pure Python
+(no numpy) and fits a linear regression on features computed from weight and 5s/1min/5min/20min power,
+so an improvement only helps if it can be written that way.
+Do NOT use the Zwift Racing Score (ZRS) or any Zwift race result: the riders the league predicts for have
+few Zwift rides, so their ZRS is as unreliable as their vELO. It is deliberately not in the data.
 Guard against overfitting: with few riders, a tiny gain is noise — say so.
 
 When done, call submit_findings once. Keep the summary short, concrete and in plain English."""
@@ -193,7 +196,6 @@ def build_dataset(
             "rider": anon(zid),
             "fold": fold_of.get(zid, ""),
             "weightKg": round(kg, 2),
-            "racingScore": vp.to_float(p.get("racingScore")) or "",
             "phenotype": p.get("phenotype") if p.get("phenotype") not in (None, "N/A") else "",
             "zwiftActivityCount": p.get("zwiftActivityCount") if p.get("zwiftActivityCount") is not None else "",
             "cp5s": p.get("cp5s") or "",
@@ -203,7 +205,7 @@ def build_dataset(
             "cp20min": p.get("cp20min") or "",
             "realVelo": velo,
         })
-    training_cols = ["rider", "fold", "weightKg", "racingScore", "phenotype", "zwiftActivityCount",
+    training_cols = ["rider", "fold", "weightKg", "phenotype", "zwiftActivityCount",
                      "cp5s", "cp15s", "cp1min", "cp5min", "cp20min", "realVelo"]
 
     by_zid = {str(p.get("zwiftId")): p for p in participants}
@@ -217,7 +219,6 @@ def build_dataset(
             "rider": anon(r.zwiftId),
             "fold": fold_of.get(r.zwiftId, ""),
             "weightKg": round(r.weightKg, 2),
-            "racingScore": r.racingScore or "",
             "phenotype": p.get("phenotype") if p.get("phenotype") not in (None, "N/A") else "",
             "realVelo": r.realVelo,
             "realDivision": r.realCategory,
@@ -232,7 +233,7 @@ def build_dataset(
         row["baselinePredVelo"] = base.get("predictedVelo", "")
         row["baselinePredDivision"] = base.get("predictedCategory", "")
         eval_rows.append(row)
-    eval_cols = ["rider", "fold", "weightKg", "racingScore", "phenotype"] + strava_cols + [
+    eval_cols = ["rider", "fold", "weightKg", "phenotype"] + strava_cols + [
         "realVelo", "realDivision", "baselinePredVelo", "baselinePredDivision"]
 
     cats = categories or ZR_CATEGORIES

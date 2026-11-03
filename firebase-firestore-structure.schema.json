@@ -118,7 +118,7 @@
     },
     "strava_rate_usage": {
       "type": "array",
-      "description": "Admin-only. Single doc 'current': the latest app-wide Strava read limits and usage from Strava's X-ReadRateLimit-* headers, shared between function instances. The Strava cache warm-up keeps usage under 75% of both limits.",
+      "description": "Admin-only. Single doc 'current': the latest app-wide Strava read limits and usage from Strava's X-ReadRateLimit-* headers, plus the app's own count of Strava requests (the header undercounts), shared between function instances. Usage = max(header, own count); the Strava cache warm-up keeps it under 75% of both limits.",
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -128,7 +128,11 @@
           "limitDay": { "type": "integer" },
           "usage15": { "type": "integer", "description": "Reads in the 15-minute window containing 'at'" },
           "usageDay": { "type": "integer", "description": "Reads on the UTC day containing 'at'" },
-          "at": { "type": "string", "format": "date-time" }
+          "at": { "type": "string", "format": "date-time" },
+          "ownDay": { "type": "string", "description": "UTC day (YYYY-MM-DD) of ownCountDay" },
+          "ownCountDay": { "type": "integer", "description": "Strava requests the app made on ownDay (every function instance adds its own)" },
+          "ownQuarter": { "type": "string", "description": "UTC quarter hour of ownCount15, e.g. 2026-11-03T19:2 (minutes 30-44)" },
+          "ownCount15": { "type": "integer", "description": "Strava requests the app made in ownQuarter" }
         }
       }
     },
@@ -2133,7 +2137,8 @@
             "wkg20m": { "type": "number" }
           }
         },
-        "minStravaActivities": { "type": "integer", "description": "Fewer Strava rides than this marks a Strava prediction low-confidence" }
+        "minStravaActivities": { "type": "integer", "description": "Fewer Strava rides than this marks a Strava prediction low-confidence" },
+        "trainingMinRides": { "type": "integer", "description": "Train only on riders with a reliable vELO (at least this many Zwift rides in 90 days and a stable rating); 0 = every rider with a vELO. Tuning tries 0 and minZwiftRides." }
       }
     },
     "predictorSettingsDoc": {

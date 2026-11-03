@@ -28,9 +28,18 @@ from services.category_engine import ZR_CATEGORIES, get_zr_category
 MIN_EVAL_RIDERS = 40
 MIN_IMPROVEMENT_PP = 2.0
 DEFAULT_FOLDS = 5
-STABLE_RATING_TOLERANCE = 0.10
+STABLE_RATING_TOLERANCE = vp.STABLE_RATING_TOLERANCE
 MAX_GREEDY_FEATURES = 6
 RIDGE_LAMBDAS = (0.01, 0.1, 1.0)
+# Never tried or proposed by tuning. ZRS is as unreliable as vELO for riders with few
+# Zwift rides (exactly the riders the predictor is for), but the eval riders all have
+# many rides, so ZRS would look far better here than it is in real use. The admin page
+# can still switch it on by hand.
+TUNING_EXCLUDED_FEATURES = frozenset({"zrs"})
+
+
+def _without_excluded(features: dict[str, bool]) -> dict[str, bool]:
+    return {k: (v and k not in TUNING_EXCLUDED_FEATURES) for k, v in features.items()}
 
 
 # ---------------------------------------------------------------------------
@@ -52,16 +61,7 @@ class EvalRider:
 
 def reliable_velo(p: dict, min_rides: int) -> float | None:
     """30-day max vELO when it can be trusted as ground truth, else None."""
-    max30 = vp.to_float(p.get("max30Rating"))
-    current = vp.to_float(p.get("rating"))
-    rides = p.get("zwiftActivityCount")
-    if not max30 or max30 <= 0 or not current or current <= 0:
-        return None
-    if not isinstance(rides, int) or rides < min_rides:
-        return None
-    if abs(current - max30) > STABLE_RATING_TOLERANCE * max30:
-        return None
-    return max30
+    return vp.reliable_velo(p, min_rides)
 
 
 def build_eval_set(
@@ -292,7 +292,7 @@ def greedy_features(
     while len(chosen) < max_features:
         step_best: tuple[Candidate, str] | None = None
         for key in vp.FEATURE_BY_KEY:
-            if key in chosen:
+            if key in chosen or key in TUNING_EXCLUDED_FEATURES:
                 continue
             feats = {k: (k in chosen or k == key) for k in vp.FEATURE_BY_KEY}
             cand = _evaluate(participants, riders, _with(base, features=feats), categories, folds, False)
@@ -302,7 +302,7 @@ def greedy_features(
             break
         best, added = step_best
         chosen.append(added)
-    return {k: k in chosen for k in vp.FEATURE_BY_KEY} if chosen else dict(base.features)
+    return {k: k in chosen for k in vp.FEATURE_BY_KEY} if chosen else _without_excluded(base.features)
 
 
 @dataclass
@@ -362,7 +362,7 @@ def tune(
             ),
         )
 
-    feature_sets = [dict(current.features)]
+    feature_sets = [_without_excluded(current.features)]
     greedy = greedy_features(participants, riders, current, categories=categories, folds=folds)
     if greedy != feature_sets[0]:
         feature_sets.append(greedy)
@@ -374,13 +374,15 @@ def tune(
                 continue
             regs = [("ols", 0.0)] + [("ridge", lam) for lam in RIDGE_LAMBDAS]
             for regression, lam in regs:
-                for fit_scale in (False, True):
-                    cfg = _with(current, features=feats, regression=regression, ridgeLambda=lam,
-                                stravaWindowDays=days,
-                                stravaPowerScale={k: 1.0 for k in vp.POWER_FIELDS})
-                    cand = _evaluate(participants, riders, cfg, categories, folds, fit_scale)
-                    if cand and cand.score.key() > best.score.key():
-                        best = cand
+                # Train on every rider with a vELO, or only on riders whose vELO is reliable.
+                for train_min in sorted({0, min_rides}):
+                    for fit_scale in (False, True):
+                        cfg = _with(current, features=feats, regression=regression, ridgeLambda=lam,
+                                    stravaWindowDays=days, trainingMinRides=train_min,
+                                    stravaPowerScale={k: 1.0 for k in vp.POWER_FIELDS})
+                        cand = _evaluate(participants, riders, cfg, categories, folds, fit_scale)
+                        if cand and cand.score.key() > best.score.key():
+                            best = cand
 
     improvement = round(best.score.divisionAccuracy - baseline.score.divisionAccuracy, 1)
     if best is baseline or improvement < min_improvement_pp:

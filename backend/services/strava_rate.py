@@ -6,6 +6,12 @@ Strava reports the app-wide read limits and usage on every API response:
 midnight. `record()` keeps the latest values in memory; `persist()`/`load()` share
 them through `strava_rate_usage/current` so a fresh Cloud Function instance knows
 the usage before it makes its first request.
+
+Strava's usage header turned out to undercount badly (it reported 75 reads for a day
+in which the app downloaded ~2,800 activity streams), so the app also counts its own
+requests: `count_request()` is called for every Strava GET, `persist()` adds this
+instance's new requests to shared per-quarter-hour and per-day counters, and
+`current_usage()` reports the higher of the header and the app's own count.
 """
 from __future__ import annotations
 
@@ -21,6 +27,31 @@ DEFAULT_LIMIT_DAILY = 1000
 
 _lock = threading.Lock()
 _state: dict[str, Any] = {}
+# Requests made by this instance and not yet added to the shared counters:
+# {"day": {"YYYY-MM-DD": n}, "quarter": {"YYYY-MM-DDTHH:q": n}}
+_pending: dict[str, dict[str, int]] = {"day": {}, "quarter": {}}
+
+
+def _day_key(now: datetime) -> str:
+    return now.astimezone(timezone.utc).strftime("%Y-%m-%d")
+
+
+def _quarter_key(now: datetime) -> str:
+    utc = now.astimezone(timezone.utc)
+    return f"{utc.strftime('%Y-%m-%dT%H')}:{utc.minute // 15}"
+
+
+def count_request(now: datetime | None = None) -> None:
+    """Count one Strava API request made by this instance."""
+    now = now or datetime.now(timezone.utc)
+    with _lock:
+        for kind, key in (("day", _day_key(now)), ("quarter", _quarter_key(now))):
+            _pending[kind][key] = _pending[kind].get(key, 0) + 1
+
+
+def pending() -> dict[str, dict[str, int]]:
+    with _lock:
+        return {k: dict(v) for k, v in _pending.items()}
 
 
 def _pair(value: str | None) -> tuple[int, int] | None:
@@ -60,6 +91,8 @@ def snapshot() -> dict:
 def clear() -> None:
     with _lock:
         _state.clear()
+        _pending["day"].clear()
+        _pending["quarter"].clear()
 
 
 def _parse(at: Any) -> datetime | None:
@@ -83,35 +116,79 @@ def _is_newer(candidate: dict, stored: dict | None) -> bool:
     return cand_at is not None and (stored_at is None or cand_at > stored_at)
 
 
-def persist(db: Any) -> bool:
-    """Store this instance's latest usage, but never over newer usage from another instance.
+def _merged(stored: dict | None, current: dict, counts: dict[str, dict[str, int]], now: datetime) -> dict:
+    """The doc to write: newer header values plus this instance's request counts added."""
+    stored = dict(stored or {})
+    out = dict(stored)
+    if current and _is_newer(current, stored):
+        out.update(current)
+    day, quarter = _day_key(now), _quarter_key(now)
+    own_day = int(stored.get("ownCountDay") or 0) if stored.get("ownDay") == day else 0
+    own_q = int(stored.get("ownCount15") or 0) if stored.get("ownQuarter") == quarter else 0
+    out.update({
+        "ownDay": day,
+        "ownCountDay": own_day + counts["day"].get(day, 0),
+        "ownQuarter": quarter,
+        "ownCount15": own_q + counts["quarter"].get(quarter, 0),
+    })
+    return out
 
-    Uses a Firestore transaction when available so two instances writing at the same
-    time cannot leave the older value behind. Returns True when something was written.
+
+def _forget(counts: dict[str, dict[str, int]]) -> None:
+    """Drop the counts that were just written (new requests made meanwhile stay pending)."""
+    with _lock:
+        for kind, by_key in counts.items():
+            for key, n in by_key.items():
+                left = _pending[kind].get(key, 0) - n
+                if left > 0:
+                    _pending[kind][key] = left
+                else:
+                    _pending[kind].pop(key, None)
+
+
+def persist(db: Any, now: datetime | None = None) -> bool:
+    """Share this instance's usage: newer header values and its own request counts.
+
+    Header values never overwrite newer ones from another instance; request counts are
+    added to the shared per-day / per-quarter-hour counters. Runs in a Firestore
+    transaction when available so concurrent instances never lose each other's counts.
+    Returns True when something was written.
     """
+    now = now or datetime.now(timezone.utc)
     current = snapshot()
-    if not current:
+    counts = pending()
+    has_counts = any(counts["day"].values()) or any(counts["quarter"].values())
+    if not current and not has_counts:
         return False
     ref = db.collection(COLLECTION).document(DOC)
+
+    def build(stored: dict | None) -> dict | None:
+        if not has_counts and not _is_newer(current, stored):
+            return None
+        return _merged(stored, current, counts, now)
+
     if hasattr(db, "transaction"):
         from firebase_admin import firestore
 
         @firestore.transactional
         def _write(tx):
             snap = ref.get(transaction=tx)
-            stored = (snap.to_dict() or {}) if getattr(snap, "exists", False) else None
-            if not _is_newer(current, stored):
+            doc = build((snap.to_dict() or {}) if getattr(snap, "exists", False) else None)
+            if doc is None:
                 return False
-            tx.set(ref, current)
+            tx.set(ref, doc)
             return True
 
-        return bool(_write(db.transaction()))
-    snap = ref.get()
-    stored = (snap.to_dict() or {}) if getattr(snap, "exists", False) else None
-    if not _is_newer(current, stored):
-        return False
-    ref.set(current)
-    return True
+        wrote = bool(_write(db.transaction()))
+    else:
+        snap = ref.get()
+        doc = build((snap.to_dict() or {}) if getattr(snap, "exists", False) else None)
+        wrote = doc is not None
+        if wrote:
+            ref.set(doc)
+    if wrote:
+        _forget(counts)
+    return wrote
 
 
 def latest(*snapshots: dict) -> dict:
@@ -125,28 +202,52 @@ def latest(*snapshots: dict) -> dict:
 
 
 def current_usage(snap: dict, now: datetime | None = None) -> dict:
-    """Usage in the *current* windows (counters from an earlier window count as 0)."""
+    """Usage in the *current* windows (counters from an earlier window count as 0).
+
+    The higher of Strava's header and the app's own request count (shared counters in
+    `snap` plus this instance's requests not yet persisted).
+    """
     now = now or datetime.now(timezone.utc)
     at = _parse(snap.get("at"))
     same_day = bool(at and at.date() == now.date())
     same_quarter = bool(same_day and at.hour == now.hour and at.minute // 15 == now.minute // 15)
+    day, quarter = _day_key(now), _quarter_key(now)
+    local = pending()
+    own_day = (int(snap.get("ownCountDay") or 0) if snap.get("ownDay") == day else 0) + local["day"].get(day, 0)
+    own_15 = (int(snap.get("ownCount15") or 0) if snap.get("ownQuarter") == quarter else 0) \
+        + local["quarter"].get(quarter, 0)
     return {
         "limit15": int(snap.get("limit15") or DEFAULT_LIMIT_15MIN),
         "limitDay": int(snap.get("limitDay") or DEFAULT_LIMIT_DAILY),
-        "usage15": int(snap.get("usage15") or 0) if same_quarter else 0,
-        "usageDay": int(snap.get("usageDay") or 0) if same_day else 0,
+        "usage15": max(int(snap.get("usage15") or 0) if same_quarter else 0, own_15),
+        "usageDay": max(int(snap.get("usageDay") or 0) if same_day else 0, own_day),
         "known": bool(snap.get("limitDay")),
     }
+
+
+def combined(stored: dict | None) -> dict:
+    """The newest header values (stored or this instance's) plus the shared own counts."""
+    stored = stored or {}
+    best = dict(latest(stored, snapshot()))
+    for key in ("ownDay", "ownCountDay", "ownQuarter", "ownCount15"):
+        if key in stored:
+            best[key] = stored[key]
+    return best
 
 
 def within_budget(snap: dict, cost: int, fraction: float, now: datetime | None = None) -> bool:
     """True when spending `cost` more requests keeps both windows under `fraction` of the limit.
 
     With no information yet (no response seen), one unit of work is allowed so the
-    real limits can be learned from Strava's headers.
+    real limits can be learned from Strava's headers. A single job bigger than the whole
+    15-minute share is allowed in an otherwise unused quarter hour (if the day has room),
+    so a rider with many rides is never stuck forever.
     """
     u = current_usage(snap, now)
     if not u["known"]:
         return True
-    return (u["usage15"] + cost <= u["limit15"] * fraction
-            and u["usageDay"] + cost <= u["limitDay"] * fraction)
+    day_ok = u["usageDay"] + cost <= u["limitDay"] * fraction
+    share15 = u["limit15"] * fraction
+    if cost > share15 and u["usage15"] == 0:
+        return day_ok
+    return u["usage15"] + cost <= share15 and day_ok

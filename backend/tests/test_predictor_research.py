@@ -68,6 +68,9 @@ def test_dataset_is_anonymized_and_keeps_folds_and_baseline():
     training_rows = _parse_csv(ds["files"]["training.csv"])
     assert not ({r["rider"] for r in eval_rows + training_rows} & ids)  # riders keyed by hash only
     assert "name" not in eval_rows[0] and "zwiftId" not in eval_rows[0]
+    # ZRS is as unreliable as vELO for the riders we predict for, so it is never sent.
+    assert "racingScore" not in eval_rows[0] and "racingScore" not in training_rows[0]
+    assert "Do NOT use the Zwift Racing Score" in research.SYSTEM_PROMPT
     assert len(eval_rows) == 50 and ds["counts"]["eval"] == 50
     assert {r["fold"] for r in eval_rows} == {"0", "1", "2", "3", "4"}
     assert all(r["baselinePredDivision"] for r in eval_rows)
