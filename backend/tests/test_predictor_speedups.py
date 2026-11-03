@@ -5,16 +5,20 @@ import os
 import sys
 from datetime import datetime, timedelta, timezone
 
+from unittest.mock import MagicMock
+
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from services import predictor_service as ps  # noqa: E402
 from services import predictor_tuning_runs as runs  # noqa: E402
+from services import strava_cache_warmer as warmer  # noqa: E402
 from services import strava_power_curve as spc  # noqa: E402
 from tests.test_admin_predictor_routes import FakeDb  # noqa: E402
 from tests.test_predictor_research import QueryDb  # noqa: E402
 from tests.test_predictor_tuning import _rider  # noqa: E402
+from tests.test_strava_cache_warmer import _rider as _warm_rider  # noqa: E402
 
 
 # --- one-query cache reads ------------------------------------------------------------
@@ -29,6 +33,15 @@ def test_cached_reader_reads_every_curve_in_one_query():
     assert read("docA", 90)["curve"] == {"w5": 1.0}
     assert read("doc_with_underscore", 180)["curve"] == {"w5": 2.0}
     assert read("docA", 180) is None
+
+
+def test_a_failed_cache_query_is_an_error_not_an_empty_cache():
+    db = MagicMock()
+    db.collection.return_value.stream.side_effect = RuntimeError("firestore down")
+    with pytest.raises(RuntimeError):
+        spc.cached_reader(db)
+    with pytest.raises(RuntimeError):  # the warm-up must not refetch every rider
+        warmer.warm(db, MagicMock(), [_warm_rider(1)], min_rides=15, days=90, compute_curve=MagicMock())
 
 
 # --- background tuning ------------------------------------------------------------------
@@ -70,7 +83,8 @@ def test_a_failing_computation_is_recorded(tune_db, monkeypatch):
 def test_a_run_killed_with_its_request_is_marked_failed(tune_db):
     old = (datetime.now(timezone.utc) - timedelta(minutes=45)).isoformat()
     tune_db.store[f"{runs.COLLECTION}/r0"] = {"runId": "r0", "status": "running", "createdAt": old}
-    assert runs.list_runs(tune_db)[0]["status"] == "failed"
+    expired = runs.list_runs(tune_db)[0]
+    assert expired["status"] == "failed" and "time limit" in expired["error"]  # shown on the same poll
     assert runs.start_run(tune_db, started_by="admin")["status"] == "running"  # no longer blocked
 
 

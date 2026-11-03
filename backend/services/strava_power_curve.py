@@ -60,12 +60,13 @@ def read_all_cached(db: Any) -> dict[tuple[str, int], dict]:
 
 
 def cached_reader(db: Any) -> Callable[[str, int], dict | None]:
-    """A `read_curve(user_doc_id, days)` function backed by one `read_all_cached` query."""
-    try:
-        cache = read_all_cached(db)
-    except Exception as exc:
-        logger.warning("strava curve cache query failed: %s", exc)
-        cache = {}
+    """A `read_curve(user_doc_id, days)` function backed by one `read_all_cached` query.
+
+    A failed query raises instead of looking like an empty cache: otherwise the
+    warm-up would refetch (and overwrite) every rider's curve and tuning would
+    report "insufficient data" instead of failing.
+    """
+    cache = read_all_cached(db)
     return lambda user_doc_id, days: cache.get((str(user_doc_id), int(days)))
 
 

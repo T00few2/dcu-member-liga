@@ -74,9 +74,9 @@ def _expire_stale(db: Any, runs: list[dict]) -> None:
     for run in runs:
         created = _parse(run.get("createdAt"))
         if run.get("status") == "running" and created and created < limit:
-            db.collection(COLLECTION).document(run["runId"]).set(
-                {"status": "failed", "error": "Run stopped (server time limit).", "finishedAt": _now()}, merge=True)
-            run["status"] = "failed"
+            update = {"status": "failed", "error": "Run stopped (server time limit).", "finishedAt": _now()}
+            db.collection(COLLECTION).document(run["runId"]).set(update, merge=True)
+            run.update(update)
 
 
 def start_run(db: Any, *, started_by: str) -> dict:
