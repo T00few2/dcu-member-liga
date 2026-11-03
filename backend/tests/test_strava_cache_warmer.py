@@ -15,6 +15,7 @@ from routes import admin_predictor_routes as routes  # noqa: E402
 from routes.admin import admin_bp  # noqa: E402
 from services import predictor_service as ps  # noqa: E402
 from services import strava_cache_warmer as warmer  # noqa: E402
+from services import strava_rate  # noqa: E402
 from tests.test_admin_predictor_routes import FakeDb  # noqa: E402
 
 
@@ -71,19 +72,26 @@ def test_riders_without_power_rides_do_not_count_as_cached():
     assert [r["zwiftId"] for r in status["missing"]] == ["1"]  # retried after a week
 
 
-def test_warm_fetches_at_most_two_riders_per_call():
+@pytest.fixture(autouse=True)
+def _fresh_rate_state():
+    strava_rate.clear()
+    yield
+    strava_rate.clear()
+
+
+def test_warm_fetches_at_most_three_riders_per_call():
     db = FakeDb()
     compute = MagicMock(return_value={"w5": 900.0})
     riders = [_rider(i) for i in range(5)]
 
     first = warmer.warm(db, _strava(), riders, min_rides=15, days=90, compute_curve=compute)
 
-    assert len(first["warmed"]) == 2
-    assert first["remaining"] == 3
-    assert first["cached"] == 2
-    assert compute.call_count == 2
+    assert len(first["warmed"]) == 3
+    assert first["remaining"] == 2
+    assert first["cached"] == 3
+    assert compute.call_count == 3
 
-    for _ in range(3):
+    for _ in range(2):
         warmer.warm(db, _strava(), riders, min_rides=15, days=90, compute_curve=compute)
     done = warmer.warm(db, _strava(), riders, min_rides=15, days=90, compute_curve=compute)
     assert done["warmed"] == [] and done["remaining"] == 0 and done["cached"] == 5
@@ -120,7 +128,8 @@ def test_scheduler_token_can_warm(client, monkeypatch):
     res = client.post("/admin/predictor/strava-cache/warm", json={})
     assert res.status_code == 200
     body = res.get_json()
-    assert body["warmed"] == 2 and body["remaining"] == 1 and body["minEvalRiders"] == 40
+    assert body["warmed"] == 3 and body["remaining"] == 0 and body["minEvalRiders"] == 40
+    assert body["rateLimited"] is False
     assert "zwiftId" not in res.get_data(as_text=True)  # scheduler logs are public: counts only
 
 
@@ -141,4 +150,63 @@ def test_warm_without_scheduler_token_needs_admin(client, monkeypatch):
 def test_status_endpoint(client, monkeypatch):
     monkeypatch.setattr(routes, "require_admin", lambda _req: {"admin": True})
     body = client.get("/admin/predictor/strava-cache/status").get_json()
+    usage = body.pop("stravaUsage")
     assert body == {"days": 90, "eligible": 3, "cached": 0, "noPowerData": 0, "remaining": 3, "minEvalRiders": 40}
+    assert usage["cacheBudgetFraction"] == 0.5 and usage["known"] is False
+
+
+# --- Strava rate budget ------------------------------------------------------------
+
+
+NOW = datetime(2026, 11, 3, 14, 40, tzinfo=timezone.utc)
+
+
+def _usage(u15, uday, at=NOW, l15=300, lday=3000):
+    return {"limit15": l15, "limitDay": lday, "usage15": u15, "usageDay": uday, "at": at.isoformat()}
+
+
+def test_headers_are_recorded_and_windows_reset():
+    strava_rate.record({"X-ReadRateLimit-Limit": "300,3000", "X-ReadRateLimit-Usage": "12,345"}, now=NOW)
+    snap = strava_rate.snapshot()
+    assert strava_rate.current_usage(snap, NOW) == {
+        "limit15": 300, "limitDay": 3000, "usage15": 12, "usageDay": 345, "known": True}
+    # Next quarter hour: 15-minute counter resets, daily does not.
+    assert strava_rate.current_usage(snap, NOW + timedelta(minutes=10))["usage15"] == 0
+    assert strava_rate.current_usage(snap, NOW + timedelta(minutes=10))["usageDay"] == 345
+    # Next UTC day: both reset.
+    assert strava_rate.current_usage(snap, NOW + timedelta(hours=10))["usageDay"] == 0
+    strava_rate.record(None)
+    strava_rate.record({"X-ReadRateLimit-Usage": "garbage"})
+    assert strava_rate.snapshot() == snap  # bad or missing headers are ignored
+
+
+def test_budget_keeps_half_of_both_limits_free():
+    assert strava_rate.within_budget(_usage(80, 1000), 60, 0.5, NOW)          # 140 <= 150, 1060 <= 1500
+    assert not strava_rate.within_budget(_usage(100, 1000), 60, 0.5, NOW)     # 160 > 150 in 15 min
+    assert not strava_rate.within_budget(_usage(0, 1450), 60, 0.5, NOW)       # daily share used up
+    assert strava_rate.within_budget({}, 60, 0.5, NOW)  # nothing known yet: one rider to learn limits
+
+
+def test_warm_stops_when_the_budget_is_used(monkeypatch):
+    db = FakeDb()
+    db.store[f"{strava_rate.COLLECTION}/{strava_rate.DOC}"] = _usage(0, 1460)
+    compute = MagicMock(return_value={"w5": 1.0})
+    result = warmer.warm(db, _strava(), [_rider(i) for i in range(3)], min_rides=15, days=90,
+                         compute_curve=compute, now=lambda: NOW)
+    assert result["rateLimited"] is True and result["warmed"] == [] and compute.call_count == 0
+
+
+def test_warm_learns_usage_from_responses_and_stops_mid_batch():
+    db = FakeDb()
+    service = MagicMock()
+
+    def activities(*_a, **_k):
+        # Each Strava response reports the app's usage; this one nearly fills the 15-min share.
+        strava_rate.record({"X-ReadRateLimit-Limit": "300,3000", "X-ReadRateLimit-Usage": "100,500"}, now=NOW)
+        return [{"id": 1}]
+
+    service.get_power_activities.side_effect = activities
+    result = warmer.warm(db, service, [_rider(i) for i in range(3)], min_rides=15, days=90,
+                         compute_curve=MagicMock(return_value={"w5": 1.0}), now=lambda: NOW)
+    assert len(result["warmed"]) == 1 and result["rateLimited"] is True
+    assert db.store[f"{strava_rate.COLLECTION}/{strava_rate.DOC}"]["usage15"] == 100  # shared with other instances

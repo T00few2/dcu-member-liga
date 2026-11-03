@@ -92,13 +92,29 @@
     },
     "strava_power_curves": {
       "type": "array",
-      "description": "Cached Strava peak-power curves per rider and window. Doc id {userDocId}_{days}. Reused for 24 h by the admin predictor; tuning reads the cache only and never calls Strava. Filled for tuning-eligible riders by POST /admin/predictor/strava-cache/warm (2 riders per call, every 20 min via strava-cache-warm.yml); curves older than 30 days are refetched.",
+      "description": "Cached Strava peak-power curves per rider and window. Doc id {userDocId}_{days}. Reused for 24 h by the admin predictor; tuning reads the cache only and never calls Strava. Filled for tuning-eligible riders by POST /admin/predictor/strava-cache/warm (up to 3 riders per call, every 20 min via strava-cache-warm.yml, paused while Strava read usage is above half of either limit); curves older than 30 days are refetched.",
       "items": { "$ref": "#/$defs/stravaPowerCurveDoc" }
     },
     "predictor_settings": {
       "type": "array",
       "description": "Admin-only (default-deny in firestore.rules; backend Admin SDK only). Single doc 'current' with the active vELO predictor config, its metrics and change history. Kept out of the public league/settings because history names the admin who made each change.",
       "items": { "$ref": "#/$defs/predictorSettingsDoc" }
+    },
+    "strava_rate_usage": {
+      "type": "array",
+      "description": "Admin-only. Single doc 'current': the latest app-wide Strava read limits and usage from Strava's X-ReadRateLimit-* headers, shared between function instances. The Strava cache warm-up keeps usage under half of both limits.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "_id": { "type": "string", "const": "current" },
+          "limit15": { "type": "integer" },
+          "limitDay": { "type": "integer" },
+          "usage15": { "type": "integer", "description": "Reads in the 15-minute window containing 'at'" },
+          "usageDay": { "type": "integer", "description": "Reads on the UTC day containing 'at'" },
+          "at": { "type": "string", "format": "date-time" }
+        }
+      }
     },
     "predictor_research_runs": {
       "type": "array",

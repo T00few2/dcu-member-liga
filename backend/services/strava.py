@@ -3,6 +3,7 @@ import time
 from datetime import datetime
 from config import STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, BACKEND_URL, STRAVA_SERVICE_REFRESH_TOKEN
 from firebase_admin import firestore
+from services import strava_rate
 
 import logging
 
@@ -14,6 +15,13 @@ _SERVICE_TOKEN_LOCK_SECONDS = 20
 _SERVICE_TOKEN_WAIT_SECONDS = 3.0
 _SERVICE_TOKEN_POLL_SECONDS = 0.25
 _SERVICE_TOKEN_EXPIRY_SKEW_SECONDS = 300
+
+def _strava_get(*args, **kwargs):
+    """requests.get that also records Strava's rate-limit headers (see services/strava_rate.py)."""
+    res = requests.get(*args, **kwargs)
+    strava_rate.record(getattr(res, "headers", None))
+    return res
+
 
 class StravaService:
     def __init__(self, db):
@@ -156,7 +164,7 @@ class StravaService:
         
         if access_token:
             try:
-                acts_res = requests.get(
+                acts_res = _strava_get(
                     "https://www.strava.com/api/v3/athlete/activities?per_page=10",
                     headers={'Authorization': f"Bearer {access_token}"}
                 )
@@ -211,7 +219,7 @@ class StravaService:
             if resolution:
                 params['resolution'] = resolution
                 params['series_type'] = series_type
-            res = requests.get(
+            res = _strava_get(
                 url,
                 params=params,
                 headers={'Authorization': f"Bearer {access_token}"},
@@ -425,7 +433,7 @@ class StravaService:
         if not access_token:
             return []
         try:
-            res = requests.get(
+            res = _strava_get(
                 f"https://www.strava.com/api/v3/athlete/activities?per_page={per_page}",
                 headers={'Authorization': f'Bearer {access_token}'},
                 timeout=15,
@@ -510,7 +518,7 @@ class StravaService:
             if cursor is not None:
                 params['before'] = cursor
             try:
-                res = requests.get(
+                res = _strava_get(
                     "https://www.strava.com/api/v3/athlete/activities",
                     params=params,
                     headers={'Authorization': f'Bearer {access_token}'},
@@ -574,7 +582,7 @@ class StravaService:
                 f"https://www.strava.com/api/v3/segments/{segment_id}/streams"
                 f"?keys=distance,altitude&key_by_type=true"
             )
-            res = requests.get(url, headers={'Authorization': f'Bearer {access_token}'})
+            res = _strava_get(url, headers={'Authorization': f'Bearer {access_token}'})
             if res.status_code == 200:
                 data = res.json()
                 return {

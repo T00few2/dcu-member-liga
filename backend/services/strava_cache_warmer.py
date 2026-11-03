@@ -12,11 +12,17 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 from services import predictor_tuning as pt
+from services import strava_rate
 from services.strava_power_curve import get_strava_power_curve, read_cached_curve
 
 logger = logging.getLogger(__name__)
 
-WARM_BATCH = 2
+WARM_BATCH = 3
+# A curve costs about 1 activity page plus one stream request per ride (max 50).
+REQUESTS_PER_RIDER = 60
+# The cache never uses more than this share of Strava's 15-minute and daily read limits,
+# so the rest of the app (predictor page, verification, rider features) always has room.
+BUDGET_FRACTION = 0.5
 REFRESH_AFTER_DAYS = 30
 # A rider whose Strava has no power rides gets an empty curve. Count it as "no
 # power data" (not cached, not usable for tuning) and retry only after a week.
@@ -96,12 +102,26 @@ def warm(
     days: int,
     compute_curve: Callable[[str, list], dict],
     limit: int = WARM_BATCH,
+    now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
 ) -> dict:
-    """Fetch Strava curves for up to `limit` eligible riders without a fresh cached curve."""
+    """Fetch Strava curves for up to `limit` eligible riders without a fresh cached curve.
+
+    Stops early when the next rider would take Strava usage above `BUDGET_FRACTION` of
+    either the 15-minute or the daily read limit (`rateLimited` is then true).
+    """
     status = cache_status(db, participants, min_rides=min_rides, days=days)
+    try:
+        stored = strava_rate.load(db)
+    except Exception:
+        stored = {}
     warmed, failed = [], []
     new_cached = new_empty = 0
+    rate_limited = False
     for p in status["missing"][: max(0, limit)]:
+        usage = strava_rate.latest(stored, strava_rate.snapshot())
+        if not strava_rate.within_budget(usage, REQUESTS_PER_RIDER, BUDGET_FRACTION, now()):
+            rate_limited = True
+            break
         try:
             entry = get_strava_power_curve(
                 db, strava_service, p["userDocId"], days, compute_curve=compute_curve, refresh=True,
@@ -114,6 +134,10 @@ def warm(
         except Exception as exc:
             logger.warning("strava cache warm failed for %s: %s", p.get("zwiftId"), exc)
             failed.append(str(p.get("zwiftId")))
+    try:
+        strava_rate.persist(db)
+    except Exception as exc:
+        logger.warning("could not store Strava usage: %s", exc)
     remaining = max(0, len(status["missing"]) - len(warmed))
     return {
         "days": days,
@@ -123,4 +147,17 @@ def warm(
         "warmed": warmed,
         "failed": failed,
         "remaining": remaining,
+        "rateLimited": rate_limited,
+        "stravaUsage": strava_rate.current_usage(strava_rate.latest(stored, strava_rate.snapshot()), now()),
     }
+
+
+def strava_usage(db: Any) -> dict:
+    """Current Strava read usage and limits, plus the share the cache may use."""
+    try:
+        stored = strava_rate.load(db)
+    except Exception:
+        stored = {}
+    usage = strava_rate.current_usage(strava_rate.latest(stored, strava_rate.snapshot()))
+    return {**usage, "cacheBudgetFraction": BUDGET_FRACTION}
+
