@@ -27,17 +27,22 @@ const pendingRun = {
 
 const user = { getIdToken: vi.fn().mockResolvedValue('t') } as unknown as User;
 let fetchMock: ReturnType<typeof vi.fn>;
+let tuneRuns: unknown[] = [];
 
 beforeEach(() => {
+  tuneRuns = [pendingRun];
   fetchMock = vi.fn(async (url: string) => {
     if (String(url).endsWith('/admin/predictor/tune/runs')) {
-      return new Response(JSON.stringify({ runs: [pendingRun] }), { status: 200 });
+      return new Response(JSON.stringify({ runs: tuneRuns }), { status: 200 });
     }
     if (String(url).endsWith('/admin/predictor/strava-cache/status')) {
       return new Response(JSON.stringify({
         days: 90, eligible: 70, cached: 12, remaining: 58, minEvalRiders: 40,
         stravaUsage: { usage15: 40, limit15: 300, usageDay: 900, limitDay: 3000, known: true, cacheBudgetFraction: 0.5 },
       }), { status: 200 });
+    }
+    if (String(url).endsWith('/admin/predictor/tune')) {
+      return new Response(JSON.stringify({ runId: 'new1', status: 'running' }), { status: 200 });
     }
     return new Response(JSON.stringify({ message: 'ok' }), { status: 200 });
   });
@@ -87,5 +92,29 @@ describe('CategoryPredictorTuning', () => {
     await waitFor(() => {
       expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/admin/predictor/strava-cache/warm'))).toBe(true);
     });
+  });
+
+  it('starts tuning in the background and processes it without waiting', async () => {
+    const u = userEvent.setup();
+    renderPanel();
+    await u.click(await screen.findByRole('button', { name: 'Run tuning' }));
+    await waitFor(() => {
+      const urls = fetchMock.mock.calls.map(([url]) => String(url));
+      expect(urls.some(url => url.endsWith('/admin/predictor/tune'))).toBe(true);
+      expect(urls.some(url => url.endsWith('/admin/predictor/tune/new1/process'))).toBe(true);
+    });
+  });
+
+  it('shows a running run and a failed run', async () => {
+    tuneRuns = [{ runId: 'r9', createdAt: '2026-11-03T17:00:00Z', status: 'running' }];
+    renderPanel();
+    expect(await screen.findByText(/Running in the background/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Running…' })).toBeDisabled();
+  });
+
+  it('shows what the last Strava fetch did', async () => {
+    renderPanel();
+    expect(await screen.findByText(/of 70 eligible riders/)).toBeInTheDocument();
+    expect(screen.queryByText(/riders an hour/)).not.toBeInTheDocument();
   });
 });

@@ -36,7 +36,7 @@ from services import predictor_service as ps
 from services import predictor_tuning as pt
 from services import velo_predictor as vp
 from services.category_engine import ZR_CATEGORIES
-from services.strava_power_curve import read_cached_curve
+from services.strava_power_curve import cached_reader
 
 logger = logging.getLogger(__name__)
 
@@ -525,12 +525,7 @@ def _execute(db: Any, *, client_factory, deadline: float, clock) -> dict:
     config = ps.load_config(db)
     min_rides = ps.division_agent_settings(db)["minZwiftRides"]
 
-    def read_curve(doc_id: str, days: int) -> dict | None:
-        try:
-            return read_cached_curve(db, doc_id, days)
-        except Exception:
-            return None
-
+    read_curve = cached_reader(db)
     all_riders = pt.build_eval_set(participants, read_curve, min_rides=min_rides, categories=categories)
     # Exactly the riders the baseline is scored on (cross_validate only uses riders with a curve
     # for the active Strava window), so the folds and baseline columns Claude gets match ours.

@@ -19,8 +19,9 @@ interface TuningRun {
   runId: string;
   createdAt: string;
   startedBy?: string;
-  status: 'pending' | 'report' | 'applied' | 'rejected';
-  result: {
+  status: 'running' | 'pending' | 'report' | 'applied' | 'rejected' | 'failed';
+  error?: string;
+  result?: {
     status: 'insufficient_data' | 'no_improvement' | 'improved';
     evalRiders: number;
     current: { score: Score } | null;
@@ -39,6 +40,13 @@ interface CacheStatus {
   noPowerData?: number;
   remaining: number;
   minEvalRiders: number;
+  lastWarm?: {
+    at: string;
+    warmed: number;
+    noPowerData: number;
+    failed: number;
+    rateLimited: boolean;
+  } | null;
   stravaUsage?: {
     usage15: number;
     limit15: number;
@@ -81,8 +89,12 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
     },
     enabled: !!user,
     staleTime: 60_000,
+    // While a run is being computed in the background, check every 5 s.
+    refetchInterval: query => ((query.state.data as TuningRun[] | undefined)?.[0]?.status === 'running' ? 5_000 : false),
   });
   const latest = runs?.[0];
+  const r = latest?.result;
+  const [warmPollUntil, setWarmPollUntil] = useState(0);
 
   const { data: cache } = useQuery<CacheStatus>({
     queryKey: ['predictor', 'strava-cache'],
@@ -94,6 +106,8 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
     },
     enabled: !!user,
     staleTime: 60_000,
+    // After Fill now, refresh every 10 s for a few minutes to show progress.
+    refetchInterval: () => (Date.now() < warmPollUntil ? 10_000 : false),
   });
 
   async function call(path: string, body: unknown, label: string) {
@@ -117,7 +131,58 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
     }
   }
 
+  /** Start a long backend job without waiting for it (the page polls for progress). */
+  async function fireAndForget(path: string): Promise<void> {
+    const token = await user!.getIdToken();
+    void fetch(`${API_URL}${path}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: '{}',
+    })
+      .catch(() => undefined)
+      .finally(() => { void queryClient.invalidateQueries({ queryKey: ['predictor'] }); });
+  }
+
+  async function startTuning() {
+    if (!user) return;
+    setBusy('tune');
+    setError('');
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch(`${API_URL}/admin/predictor/tune`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.message ?? 'Could not start tuning');
+        return;
+      }
+      await fireAndForget(`/admin/predictor/tune/${data.runId}/process`);
+      void queryClient.invalidateQueries({ queryKey: ['predictor', 'tune-runs'] });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not start tuning');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function startWarm() {
+    if (!user) return;
+    setError('');
+    setWarmPollUntil(Date.now() + 4 * 60_000);
+    try {
+      await fireAndForget('/admin/predictor/strava-cache/warm');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not start the Strava fetch');
+    }
+    void queryClient.invalidateQueries({ queryKey: ['predictor', 'strava-cache'] });
+  }
+
   const metrics = config?.metrics as Score | null | undefined;
+  const tuningRunning = latest?.status === 'running';
+  const warming = Date.now() < warmPollUntil;
 
   return (
     <div className="bg-card border border-border rounded-lg p-6 space-y-4">
@@ -132,11 +197,11 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
         </div>
         <button
           type="button"
-          onClick={() => void call('/admin/predictor/tune', {}, 'tune')}
-          disabled={busy !== null || !user}
+          onClick={() => void startTuning()}
+          disabled={busy !== null || !user || tuningRunning}
           className="px-3 py-1.5 text-sm rounded bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
         >
-          {busy === 'tune' ? 'Running…' : 'Run tuning'}
+          {busy === 'tune' || tuningRunning ? 'Running…' : 'Run tuning'}
         </button>
       </div>
 
@@ -149,8 +214,16 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
             {cache.eligible} eligible riders
             {(cache.noPowerData ?? 0) > 0 ? ` · ${cache.noPowerData} without Strava power data` : ''}
             {cache.cached < cache.minEvalRiders
-              ? ` · tuning needs ${cache.minEvalRiders}; filled automatically, ~6 riders an hour`
+              ? ` · tuning needs ${cache.minEvalRiders}`
               : ' · enough to tune'}
+            {cache.lastWarm && (
+              <span className="block text-xs">
+                Last fetch {new Date(cache.lastWarm.at).toLocaleTimeString()}: +{cache.lastWarm.warmed} riders
+                {cache.lastWarm.noPowerData > 0 ? ` (${cache.lastWarm.noPowerData} without power data)` : ''}
+                {cache.lastWarm.failed > 0 ? `, ${cache.lastWarm.failed} failed` : ''}
+                {cache.lastWarm.rateLimited ? ' · paused: Strava budget reached, continues in the next window' : ''}
+              </span>
+            )}
             {cache.stravaUsage?.known && (
               <span className="block text-xs">
                 Strava reads today: {cache.stravaUsage.usageDay.toLocaleString()} of{' '}
@@ -164,12 +237,12 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
           {cache.remaining > 0 && (
             <button
               type="button"
-              onClick={() => void call('/admin/predictor/strava-cache/warm', {}, 'warm')}
-              disabled={busy !== null || !user}
+              onClick={() => void startWarm()}
+              disabled={!user || warming}
               className="px-2.5 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground disabled:opacity-50"
-              title="Fetches 2 riders now (about 100 Strava requests)"
+              title="Fetches up to 10 riders now, within the Strava budget"
             >
-              {busy === 'warm' ? 'Filling…' : 'Fill now'}
+              {warming ? 'Fetching…' : 'Fill now'}
             </button>
           )}
         </div>
@@ -180,26 +253,33 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
       {latest && (
         <div className="border border-border rounded p-4 space-y-2">
           <div className="text-xs text-muted-foreground">
-            Latest run {new Date(latest.createdAt).toLocaleString()} · {latest.result.evalRiders} eval riders · status{' '}
+            Latest run {new Date(latest.createdAt).toLocaleString()}
+            {r ? ` · ${r.evalRiders} eval riders` : ''} · status{' '}
             <span className="font-medium text-foreground">{latest.status}</span>
           </div>
-          <p className="text-sm text-foreground">{latest.result.message}</p>
-          <ScoreLine label="Current settings" score={latest.result.current?.score} />
-          {latest.result.best && <ScoreLine label="Proposed settings" score={latest.result.best.score} />}
-          {latest.result.pastPredictions.n > 0 && (
+          {latest.status === 'running' && (
+            <p className="text-sm text-muted-foreground">Running in the background… this usually takes under a minute.</p>
+          )}
+          {latest.error && <p className="text-sm text-red-600">{latest.error}</p>}
+          {r && (
+          <>
+          <p className="text-sm text-foreground">{r.message}</p>
+          <ScoreLine label="Current settings" score={r.current?.score} />
+          {r.best && <ScoreLine label="Proposed settings" score={r.best.score} />}
+          {r.pastPredictions.n > 0 && (
             <p className="text-sm text-muted-foreground">
-              Earlier predicted placements, now that those riders race: {latest.result.pastPredictions.divisionAccuracy}% right
-              division, MAE {latest.result.pastPredictions.maeVelo} pts, bias {latest.result.pastPredictions.meanBias} pts
-              (n={latest.result.pastPredictions.n}).
+              Earlier predicted placements, now that those riders race: {r.pastPredictions.divisionAccuracy}% right
+              division, MAE {r.pastPredictions.maeVelo} pts, bias {r.pastPredictions.meanBias} pts
+              (n={r.pastPredictions.n}).
             </p>
           )}
-          {latest.result.changedRiders.length > 0 && (
+          {r.changedRiders.length > 0 && (
             <details className="text-sm">
               <summary className="cursor-pointer text-muted-foreground">
-                {latest.result.changedRiders.length} eval riders would get a different predicted division
+                {r.changedRiders.length} eval riders would get a different predicted division
               </summary>
               <ul className="mt-1 space-y-0.5">
-                {latest.result.changedRiders.map(r => (
+                {r.changedRiders.map(r => (
                   <li key={r.zwiftId} className="font-mono text-xs">
                     {r.zwiftId}: {r.before} → {r.after} (real {r.realCategory})
                   </li>
@@ -207,11 +287,13 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
               </ul>
             </details>
           )}
-          {latest.result.best && (
+          {r.best && (
             <details className="text-sm">
               <summary className="cursor-pointer text-muted-foreground">Proposed settings</summary>
-              <pre className="mt-1 text-xs overflow-x-auto">{JSON.stringify(latest.result.best.config, null, 2)}</pre>
+              <pre className="mt-1 text-xs overflow-x-auto">{JSON.stringify(r.best.config, null, 2)}</pre>
             </details>
+          )}
+          </>
           )}
           {latest.status === 'pending' && (
             <div className="flex gap-2 pt-1">

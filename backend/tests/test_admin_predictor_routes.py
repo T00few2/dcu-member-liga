@@ -19,9 +19,10 @@ from services import velo_predictor as vp  # noqa: E402
 
 
 class FakeSnap:
-    def __init__(self, data):
+    def __init__(self, data, doc_id=None):
         self._data = data
         self.exists = data is not None
+        self.id = doc_id
 
     def to_dict(self):
         return dict(self._data) if self._data is not None else None
@@ -59,6 +60,11 @@ class FakeCollection:
 
     def document(self, doc_id):
         return FakeDoc(self.store, f"{self.name}/{doc_id}")
+
+    def stream(self):
+        prefix = f"{self.name}/"
+        return [FakeSnap(v, k[len(prefix):]) for k, v in self.store.items()
+                if k.startswith(prefix) and "/" not in k[len(prefix):]]
 
 
 class FakeDb:

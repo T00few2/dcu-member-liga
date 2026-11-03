@@ -92,7 +92,7 @@
     },
     "strava_power_curves": {
       "type": "array",
-      "description": "Cached Strava peak-power curves per rider and window. Doc id {userDocId}_{days}. Reused for 24 h by the admin predictor; tuning reads the cache only and never calls Strava. Filled for tuning-eligible riders by POST /admin/predictor/strava-cache/warm (up to 3 riders per call, every 20 min via strava-cache-warm.yml, paused while Strava read usage is above half of either limit); curves older than 30 days are refetched.",
+      "description": "Cached Strava peak-power curves per rider and window. Doc id {userDocId}_{days}. Reused for 24 h by the admin predictor; tuning reads the cache only and never calls Strava. Filled for tuning-eligible riders by POST /admin/predictor/strava-cache/warm (up to 10 riders per call, every 20 min via strava-cache-warm.yml or Fill now, paused while Strava read usage is above 75% of either limit); curves older than 30 days are refetched.",
       "items": { "$ref": "#/$defs/stravaPowerCurveDoc" }
     },
     "predictor_settings": {
@@ -100,9 +100,25 @@
       "description": "Admin-only (default-deny in firestore.rules; backend Admin SDK only). Single doc 'current' with the active vELO predictor config, its metrics and change history. Kept out of the public league/settings because history names the admin who made each change.",
       "items": { "$ref": "#/$defs/predictorSettingsDoc" }
     },
+    "strava_cache_warm": {
+      "type": "array",
+      "description": "Admin-only. Single doc 'last': counts from the most recent Strava cache warm-up call, shown on the Tuning panel.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "_id": { "type": "string", "const": "last" },
+          "at": { "type": "string", "format": "date-time" },
+          "warmed": { "type": "integer", "description": "Riders whose curve now has power data" },
+          "noPowerData": { "type": "integer" },
+          "failed": { "type": "integer" },
+          "rateLimited": { "type": "boolean", "description": "Stopped because the Strava budget (75% of the read limits) was reached" }
+        }
+      }
+    },
     "strava_rate_usage": {
       "type": "array",
-      "description": "Admin-only. Single doc 'current': the latest app-wide Strava read limits and usage from Strava's X-ReadRateLimit-* headers, shared between function instances. The Strava cache warm-up keeps usage under half of both limits.",
+      "description": "Admin-only. Single doc 'current': the latest app-wide Strava read limits and usage from Strava's X-ReadRateLimit-* headers, shared between function instances. The Strava cache warm-up keeps usage under 75% of both limits.",
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -2157,7 +2173,8 @@
           "description": "Peak watts keyed w{seconds}: w5, w15, w30, w60, w120, w300, w1200",
           "additionalProperties": { "type": "number" }
         },
-        "activityCount": { "type": "integer" },
+        "activityCount": { "type": "integer", "description": "Power rides in the window" },
+        "streamsFetched": { "type": "integer", "description": "Rides whose streams were downloaded (top by max power, by weighted power on 20+ min rides, and the most recent; at most 17)" },
         "computedAt": { "type": "string", "format": "date-time" }
       }
     },
@@ -2222,7 +2239,9 @@
         "runId": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" },
         "startedBy": { "type": "string" },
-        "status": { "type": "string", "enum": ["pending", "report", "applied", "rejected"] },
+        "status": { "type": "string", "enum": ["running", "pending", "report", "applied", "rejected", "failed"], "description": "running while POST /admin/predictor/tune/<runId>/process computes it in the background" },
+        "error": { "type": "string" },
+        "finishedAt": { "type": "string", "format": "date-time" },
         "result": {
           "type": "object",
           "additionalProperties": true,

@@ -79,23 +79,23 @@ def _fresh_rate_state():
     strava_rate.clear()
 
 
-def test_warm_fetches_at_most_three_riders_per_call():
+def test_warm_fetches_at_most_ten_riders_per_call():
     db = FakeDb()
     compute = MagicMock(return_value={"w5": 900.0})
-    riders = [_rider(i) for i in range(5)]
+    riders = [_rider(i) for i in range(12)]
 
     first = warmer.warm(db, _strava(), riders, min_rides=15, days=90, compute_curve=compute)
 
-    assert len(first["warmed"]) == 3
+    assert len(first["warmed"]) == 10
     assert first["remaining"] == 2
-    assert first["cached"] == 3
-    assert compute.call_count == 3
+    assert first["cached"] == 10
+    assert compute.call_count == 10
+    assert db.store[f"{warmer.LAST_WARM_COLLECTION}/{warmer.LAST_WARM_DOC}"]["warmed"] == 10
 
-    for _ in range(2):
-        warmer.warm(db, _strava(), riders, min_rides=15, days=90, compute_curve=compute)
+    warmer.warm(db, _strava(), riders, min_rides=15, days=90, compute_curve=compute)
     done = warmer.warm(db, _strava(), riders, min_rides=15, days=90, compute_curve=compute)
-    assert done["warmed"] == [] and done["remaining"] == 0 and done["cached"] == 5
-    assert compute.call_count == 5  # a full cache costs no further Strava requests
+    assert done["warmed"] == [] and done["remaining"] == 0 and done["cached"] == 12
+    assert compute.call_count == 12  # a full cache costs no further Strava requests
 
 
 def test_a_failing_rider_does_not_stop_the_batch():
@@ -151,8 +151,9 @@ def test_status_endpoint(client, monkeypatch):
     monkeypatch.setattr(routes, "require_admin", lambda _req: {"admin": True})
     body = client.get("/admin/predictor/strava-cache/status").get_json()
     usage = body.pop("stravaUsage")
+    assert body.pop("lastWarm") is None
     assert body == {"days": 90, "eligible": 3, "cached": 0, "noPowerData": 0, "remaining": 3, "minEvalRiders": 40}
-    assert usage["cacheBudgetFraction"] == 0.5 and usage["known"] is False
+    assert usage["cacheBudgetFraction"] == 0.75 and usage["known"] is False
 
 
 # --- Strava rate budget ------------------------------------------------------------
@@ -189,7 +190,7 @@ def test_budget_keeps_half_of_both_limits_free():
 
 def test_warm_stops_when_the_budget_is_used(monkeypatch):
     db = FakeDb()
-    db.store[f"{strava_rate.COLLECTION}/{strava_rate.DOC}"] = _usage(0, 1460)
+    db.store[f"{strava_rate.COLLECTION}/{strava_rate.DOC}"] = _usage(0, 2240)  # 75% of 3,000 is 2,250
     compute = MagicMock(return_value={"w5": 1.0})
     result = warmer.warm(db, _strava(), [_rider(i) for i in range(3)], min_rides=15, days=90,
                          compute_curve=compute, now=lambda: NOW)
@@ -201,15 +202,15 @@ def test_warm_learns_usage_from_responses_and_stops_mid_batch():
     service = MagicMock()
 
     def activities(*_a, **_k):
-        # Each Strava response reports the app's usage; this one nearly fills the 15-min share.
-        strava_rate.record({"X-ReadRateLimit-Limit": "300,3000", "X-ReadRateLimit-Usage": "100,500"}, now=NOW)
+        # Each Strava response reports the app's usage; this one nearly fills the 15-min share (225).
+        strava_rate.record({"X-ReadRateLimit-Limit": "300,3000", "X-ReadRateLimit-Usage": "210,500"}, now=NOW)
         return [{"id": 1}]
 
     service.get_power_activities.side_effect = activities
     result = warmer.warm(db, service, [_rider(i) for i in range(3)], min_rides=15, days=90,
                          compute_curve=MagicMock(return_value={"w5": 1.0}), now=lambda: NOW)
     assert len(result["warmed"]) == 1 and result["rateLimited"] is True
-    assert db.store[f"{strava_rate.COLLECTION}/{strava_rate.DOC}"]["usage15"] == 100  # shared with other instances
+    assert db.store[f"{strava_rate.COLLECTION}/{strava_rate.DOC}"]["usage15"] == 210  # shared with other instances
 
 
 def test_older_usage_never_overwrites_newer_usage():
@@ -231,7 +232,7 @@ def test_older_usage_never_overwrites_newer_usage():
 def test_a_paused_run_does_not_write_usage(monkeypatch):
     db = FakeDb()
     key = f"{strava_rate.COLLECTION}/{strava_rate.DOC}"
-    db.store[key] = _usage(0, 1460, at=NOW)  # shared doc: daily share used up
+    db.store[key] = _usage(0, 2240, at=NOW)  # shared doc: daily share used up
     strava_rate.record({"X-ReadRateLimit-Limit": "300,3000", "X-ReadRateLimit-Usage": "0,100"},
                        now=NOW - timedelta(minutes=30))  # this instance's older reading
     writes = []
@@ -239,4 +240,4 @@ def test_a_paused_run_does_not_write_usage(monkeypatch):
     result = warmer.warm(db, _strava(), [_rider(1)], min_rides=15, days=90,
                          compute_curve=MagicMock(), now=lambda: NOW)
     assert result["rateLimited"] is True and result["warmed"] == []
-    assert writes == [] and db.store[key]["usageDay"] == 1460
+    assert writes == [] and db.store[key]["usageDay"] == 2240
