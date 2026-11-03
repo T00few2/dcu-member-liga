@@ -1,6 +1,7 @@
 name: Strava Cache Warm-up (predictor tuning)
 
-# Fills the Strava power-curve cache up to 10 riders per run (~60 Strava reads each,
+# Backup trigger: Google Cloud Scheduler calls the same endpoint every 15 minutes
+# (set up by deploy-backend.yml). Fills the Strava power-curve cache up to 10 riders per run (~60 Strava reads each,
 # one per power ride), so predictor tuning has riders to measure against. The backend reads Strava's own usage headers and pauses
 # while usage is above 75% of the app's 15-minute or daily
 # read limit, so the rest of the app always has room. Once every eligible rider has a
