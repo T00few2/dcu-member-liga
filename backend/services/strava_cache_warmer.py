@@ -134,10 +134,11 @@ def warm(
         except Exception as exc:
             logger.warning("strava cache warm failed for %s: %s", p.get("zwiftId"), exc)
             failed.append(str(p.get("zwiftId")))
-    try:
-        strava_rate.persist(db)
-    except Exception as exc:
-        logger.warning("could not store Strava usage: %s", exc)
+    if warmed or failed:  # only runs that called Strava have new usage to share
+        try:
+            strava_rate.persist(db)
+        except Exception as exc:
+            logger.warning("could not store Strava usage: %s", exc)
     remaining = max(0, len(status["missing"]) - len(warmed))
     return {
         "days": days,

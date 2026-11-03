@@ -210,3 +210,33 @@ def test_warm_learns_usage_from_responses_and_stops_mid_batch():
                          compute_curve=MagicMock(return_value={"w5": 1.0}), now=lambda: NOW)
     assert len(result["warmed"]) == 1 and result["rateLimited"] is True
     assert db.store[f"{strava_rate.COLLECTION}/{strava_rate.DOC}"]["usage15"] == 100  # shared with other instances
+
+
+def test_older_usage_never_overwrites_newer_usage():
+    db = FakeDb()
+    key = f"{strava_rate.COLLECTION}/{strava_rate.DOC}"
+    db.store[key] = _usage(10, 1400, at=NOW)
+    # This instance last saw Strava 30 minutes earlier, with lower usage.
+    strava_rate.record({"X-ReadRateLimit-Limit": "300,3000", "X-ReadRateLimit-Usage": "5,600"},
+                       now=NOW - timedelta(minutes=30))
+    assert strava_rate.persist(db) is False
+    assert db.store[key]["usageDay"] == 1400
+
+    strava_rate.record({"X-ReadRateLimit-Limit": "300,3000", "X-ReadRateLimit-Usage": "20,1450"},
+                       now=NOW + timedelta(minutes=1))
+    assert strava_rate.persist(db) is True
+    assert db.store[key]["usageDay"] == 1450
+
+
+def test_a_paused_run_does_not_write_usage(monkeypatch):
+    db = FakeDb()
+    key = f"{strava_rate.COLLECTION}/{strava_rate.DOC}"
+    db.store[key] = _usage(0, 1460, at=NOW)  # shared doc: daily share used up
+    strava_rate.record({"X-ReadRateLimit-Limit": "300,3000", "X-ReadRateLimit-Usage": "0,100"},
+                       now=NOW - timedelta(minutes=30))  # this instance's older reading
+    writes = []
+    monkeypatch.setattr(strava_rate, "persist", lambda _db: writes.append(1))
+    result = warmer.warm(db, _strava(), [_rider(1)], min_rides=15, days=90,
+                         compute_curve=MagicMock(), now=lambda: NOW)
+    assert result["rateLimited"] is True and result["warmed"] == []
+    assert writes == [] and db.store[key]["usageDay"] == 1460

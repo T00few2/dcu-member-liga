@@ -77,10 +77,41 @@ def load(db: Any) -> dict:
     return (snap.to_dict() or {}) if getattr(snap, "exists", False) else {}
 
 
-def persist(db: Any) -> None:
+def _is_newer(candidate: dict, stored: dict | None) -> bool:
+    cand_at = _parse(candidate.get("at"))
+    stored_at = _parse((stored or {}).get("at"))
+    return cand_at is not None and (stored_at is None or cand_at > stored_at)
+
+
+def persist(db: Any) -> bool:
+    """Store this instance's latest usage, but never over newer usage from another instance.
+
+    Uses a Firestore transaction when available so two instances writing at the same
+    time cannot leave the older value behind. Returns True when something was written.
+    """
     current = snapshot()
-    if current:
-        db.collection(COLLECTION).document(DOC).set(current)
+    if not current:
+        return False
+    ref = db.collection(COLLECTION).document(DOC)
+    if hasattr(db, "transaction"):
+        from firebase_admin import firestore
+
+        @firestore.transactional
+        def _write(tx):
+            snap = ref.get(transaction=tx)
+            stored = (snap.to_dict() or {}) if getattr(snap, "exists", False) else None
+            if not _is_newer(current, stored):
+                return False
+            tx.set(ref, current)
+            return True
+
+        return bool(_write(db.transaction()))
+    snap = ref.get()
+    stored = (snap.to_dict() or {}) if getattr(snap, "exists", False) else None
+    if not _is_newer(current, stored):
+        return False
+    ref.set(current)
+    return True
 
 
 def latest(*snapshots: dict) -> dict:
