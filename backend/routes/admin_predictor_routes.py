@@ -12,6 +12,7 @@ from flask import jsonify, request
 from authz import AuthzError, require_admin, require_scheduler
 from extensions import db, strava_service
 from routes.admin import admin_bp
+from services import predictor_research as research
 from services import predictor_service as ps
 from services import predictor_tuning_runs as runs
 from services import strava_cache_warmer as warmer
@@ -288,8 +289,81 @@ def predictor_strava_cache_warm():
             db, strava_service, participants,
             min_rides=min_rides, days=days, compute_curve=_compute_strava_power_curve,
         )
-        result["minEvalRiders"] = MIN_EVAL_RIDERS
-        return jsonify(result), 200
+        # Counts only: the scheduled workflow's logs are public, so no rider IDs.
+        return jsonify({
+            "days": result["days"],
+            "eligible": result["eligible"],
+            "cached": result["cached"],
+            "noPowerData": result["noPowerData"],
+            "warmed": len(result["warmed"]),
+            "failed": len(result["failed"]),
+            "remaining": result["remaining"],
+            "minEvalRiders": MIN_EVAL_RIDERS,
+        }), 200
     except Exception as e:
         logger.error("predictor_strava_cache_warm error: %s", e)
+        return jsonify({"message": str(e)}), 500
+
+
+# --- Claude sandbox research -----------------------------------------------------
+
+
+@admin_bp.route("/admin/predictor/research", methods=["POST"])
+def predictor_research_queue():
+    """Queue a sandbox research run; it is processed by .../research/process."""
+    decoded, err = _admin()
+    if err:
+        return err
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+    try:
+        return jsonify(research.queue_run(db, started_by=_who(decoded))), 200
+    except research.ResearchError as e:
+        return jsonify({"message": e.message}), e.status_code
+    except Exception as e:
+        logger.error("predictor_research_queue error: %s", e)
+        return jsonify({"message": str(e)}), 500
+
+
+@admin_bp.route("/admin/predictor/research/process", methods=["POST"])
+def predictor_research_process():
+    """Run the oldest queued research run (scheduler or admin). Can take up to ~13 minutes.
+
+    Body: `{autoQueueIfOlderThanDays?: int}` queues a run first when none was
+    created in that many days (the monthly schedule uses this).
+    """
+    try:
+        require_scheduler(request)
+    except AuthzError:
+        _, err = _admin()
+        if err:
+            return err
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+    body = request.get_json(silent=True) or {}
+    try:
+        days = body.get("autoQueueIfOlderThanDays")
+        queued = False
+        if isinstance(days, int) and not isinstance(days, bool) and days > 0:
+            queued = research.auto_queue_due(db, older_than_days=days)
+        run = research.process_next(db)
+        # Only a minimal summary: the scheduled workflow's logs are public. The admin page
+        # reads the full run (without the id map) from /research/runs.
+        return jsonify({**research.public_summary(run), "autoQueued": queued}), 200
+    except Exception as e:
+        logger.error("predictor_research_process error: %s", e)
+        return jsonify({"message": str(e)}), 500
+
+
+@admin_bp.route("/admin/predictor/research/runs", methods=["GET"])
+def predictor_research_runs():
+    _, err = _admin()
+    if err:
+        return err
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+    try:
+        return jsonify({"runs": research.list_runs(db)}), 200
+    except Exception as e:
+        logger.error("predictor_research_runs error: %s", e)
         return jsonify({"message": str(e)}), 500

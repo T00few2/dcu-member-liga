@@ -120,7 +120,8 @@ def test_scheduler_token_can_warm(client, monkeypatch):
     res = client.post("/admin/predictor/strava-cache/warm", json={})
     assert res.status_code == 200
     body = res.get_json()
-    assert len(body["warmed"]) == 2 and body["remaining"] == 1 and body["minEvalRiders"] == 40
+    assert body["warmed"] == 2 and body["remaining"] == 1 and body["minEvalRiders"] == 40
+    assert "zwiftId" not in res.get_data(as_text=True)  # scheduler logs are public: counts only
 
 
 def test_warm_without_scheduler_token_needs_admin(client, monkeypatch):

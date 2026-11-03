@@ -887,5 +887,37 @@
       },
       "updatedAt": "2026-11-01T09:00:00+00:00"
     }
+  ],
+  "predictor_research_runs": [
+    {
+      "_id": "example_research_001",
+      "runId": "example_research_001",
+      "createdAt": "2026-12-02T04:41:00+00:00",
+      "startedBy": "schedule",
+      "status": "done",
+      "startedAt": "2026-12-02T05:07:02+00:00",
+      "finishedAt": "2026-12-02T05:15:40+00:00",
+      "model": "claude-opus-5-5",
+      "usage": { "inputTokens": 182000, "outputTokens": 21000, "turns": 9 },
+      "evalRiders": 52,
+      "trainingRiders": 310,
+      "baseline": { "n": 52, "divisionAccuracy": 63.5, "adjacentAccuracy": 98.1, "maeVelo": 71.2, "zwiftDivisionAccuracy": 78.8 },
+      "idMap": { "3f9a1c0b7d22": "100001" },
+      "findings": {
+        "baselineDivisionAccuracy": 63.5,
+        "bestDivisionAccuracy": 67.3,
+        "baselineMaeVelo": 71.2,
+        "bestMaeVelo": 66.0,
+        "improved": true,
+        "summary": "Example: adding the 1min/20min power ratio helped sprinters; phenotype did not.",
+        "method": "Ridge (lambda 0.1) on weight, 20min W/kg, 5min compound and wkg1m/wkg20m.",
+        "proposedCode": "FeatureDef(\"ratio1m20m\", ...)",
+        "caveats": "52 riders; gain is 2 riders.",
+        "ridersChanged": 2
+      },
+      "baselineReproduced": true,
+      "improvementPP": 3.8,
+      "outcome": "proposal"
+    }
   ]
 }

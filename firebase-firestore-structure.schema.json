@@ -100,6 +100,24 @@
       "description": "Admin-only (default-deny in firestore.rules; backend Admin SDK only). Single doc 'current' with the active vELO predictor config, its metrics and change history. Kept out of the public league/settings because history names the admin who made each change.",
       "items": { "$ref": "#/$defs/predictorSettingsDoc" }
     },
+    "predictor_research_runs": {
+      "type": "array",
+      "description": "Admin-only. Claude code-execution sandbox research on anonymized tuning data (queued -> running -> done|failed|timed_out). Processed by POST /admin/predictor/research/process via predictor-research.yml. Proposed code is never run in production.",
+      "items": { "$ref": "#/$defs/predictorResearchRunDoc" }
+    },
+    "predictor_research_lock": {
+      "type": "array",
+      "description": "Admin-only. Single doc 'current' {owner, at} created atomically while a research run is processed, so two workers never run (and bill) the same run. Taken over after 20 minutes.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "_id": { "type": "string", "const": "current" },
+          "owner": { "type": "string" },
+          "at": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
     "predictor_tuning_runs": {
       "type": "array",
       "description": "vELO predictor tuning runs. A run that finds better settings is pending until an admin applies or rejects it.",
@@ -388,7 +406,8 @@
           "description": "Division agent settings. minZwiftRides: riders with fewer Zwift rides in the CP window are not trusted as vELO ground truth and are reviewed by the agent.",
           "additionalProperties": true,
           "properties": {
-            "minZwiftRides": { "type": "integer", "default": 15 }
+            "minZwiftRides": { "type": "integer", "default": 15 },
+            "tuneModel": { "type": "string", "default": "claude-opus-5-5", "description": "Claude model for predictor sandbox research" }
           }
         },
         "ligaCategories": {
@@ -2124,6 +2143,59 @@
         },
         "activityCount": { "type": "integer" },
         "computedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "predictorResearchRunDoc": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "_id": { "type": "string" },
+        "runId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "startedBy": { "type": "string", "description": "Admin email/uid, or 'schedule' for the monthly run" },
+        "status": { "type": "string", "enum": ["queued", "running", "done", "failed", "timed_out"] },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "finishedAt": { "type": "string", "format": "date-time" },
+        "model": { "type": "string" },
+        "usage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "inputTokens": { "type": "integer" },
+            "outputTokens": { "type": "integer" },
+            "turns": { "type": "integer" }
+          }
+        },
+        "evalRiders": { "type": "integer" },
+        "trainingRiders": { "type": "integer" },
+        "baseline": { "type": "object", "additionalProperties": true, "description": "Our own cross-validated score of the active config (n, divisionAccuracy, adjacentAccuracy, maeVelo, zwiftDivisionAccuracy)" },
+        "config": { "$ref": "#/$defs/predictorConfig" },
+        "idMap": {
+          "type": "object",
+          "description": "Salted rider hash -> zwiftId. Private: never sent to Anthropic, stripped from API responses.",
+          "additionalProperties": { "type": "string" }
+        },
+        "findings": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "baselineDivisionAccuracy": { "type": "number" },
+            "bestDivisionAccuracy": { "type": "number" },
+            "baselineMaeVelo": { "type": "number" },
+            "bestMaeVelo": { "type": "number" },
+            "improved": { "type": "boolean" },
+            "summary": { "type": "string" },
+            "method": { "type": "string" },
+            "proposedCode": { "type": "string" },
+            "caveats": { "type": "string" },
+            "ridersChanged": { "type": "integer" }
+          }
+        },
+        "baselineReproduced": { "type": "boolean", "description": "Claude's baseline accuracy within 1 pp of ours" },
+        "improvementPP": { "type": "number" },
+        "outcome": { "type": "string", "enum": ["proposal", "report"] },
+        "error": { "type": "string" },
+        "lastText": { "type": "string" }
       }
     },
     "predictorTuningRunDoc": {
