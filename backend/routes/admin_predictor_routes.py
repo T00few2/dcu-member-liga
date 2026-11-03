@@ -296,8 +296,9 @@ def predictor_strava_cache_status():
 def predictor_strava_cache_warm():
     """Fetch Strava curves for a couple of eligible riders (scheduler or admin).
 
-    Called every 20 minutes by `.github/workflows/strava-cache-warm.yml`; a no-op
-    once every eligible rider has a fresh curve.
+    Called every 15 minutes by Cloud Scheduler (see `deploy-backend.yml`); a no-op
+    once every eligible rider has a fresh curve, and `busy` when another call is
+    still running.
     """
     try:
         require_scheduler(request)
@@ -313,6 +314,8 @@ def predictor_strava_cache_warm():
             db, strava_service, participants,
             min_rides=min_rides, days=days, compute_curve=_compute_strava_power_curve,
         )
+        if result.get("busy"):
+            return jsonify({"busy": True, "warmed": 0, "rateLimited": False}), 200
         # Counts only: the scheduled workflow's logs are public, so no rider IDs.
         return jsonify({
             "days": result["days"],

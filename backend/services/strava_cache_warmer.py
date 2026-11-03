@@ -1,14 +1,16 @@
 """Fill the Strava power-curve cache a few riders at a time, for predictor tuning.
 
 Tuning needs a cached Strava curve for riders whose vELO is reliable. Building
-one curve costs about 50 Strava requests and Strava allows roughly 100 read
-requests per 15 minutes, so a scheduled job warms at most `WARM_BATCH` riders
-per call (called every 20 minutes by `.github/workflows/strava-cache-warm.yml`).
+one curve costs up to about 60 Strava requests, so each call warms at most
+`WARM_BATCH` riders and stops at `BUDGET_FRACTION` of Strava's read limits. Google
+Cloud Scheduler calls it every 15 minutes (set up by `deploy-backend.yml`); only one
+call runs at a time.
 """
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
 from services import predictor_tuning as pt
@@ -25,6 +27,12 @@ REQUESTS_PER_RIDER = 60
 BUDGET_FRACTION = 0.75
 LAST_WARM_COLLECTION = "strava_cache_warm"
 LAST_WARM_DOC = "last"
+# One warm-up at a time: Cloud Scheduler, a manual workflow run and "Fill now" may
+# overlap, and two runs would each pass the budget check before either has spent
+# anything. A lock older than the function timeout belongs to a killed run.
+LOCK_COLLECTION = "strava_cache_warm_lock"
+LOCK_DOC = "current"
+LOCK_STALE_MINUTES = 16
 REFRESH_AFTER_DAYS = 30
 # A rider whose Strava has no power rides gets an empty curve. Count it as "no
 # power data" (not cached, not usable for tuning) and retry only after a week.
@@ -93,7 +101,81 @@ def cache_status(
     }
 
 
+def _parse_iso(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _lock_is_held(snap: Any, now: datetime) -> bool:
+    if not getattr(snap, "exists", False):
+        return False
+    held_at = _parse_iso((snap.to_dict() or {}).get("at"))
+    return bool(held_at and held_at > now - timedelta(minutes=LOCK_STALE_MINUTES))
+
+
+def _acquire_lock(db: Any, owner: str, now: datetime) -> bool:
+    """Claim the warm-up slot: free or stale lock -> ours, in one Firestore transaction.
+
+    Read-check-write inside a transaction means two callers that both find a stale
+    lock cannot both take it: the second transaction retries and sees the new lock.
+    """
+    ref = db.collection(LOCK_COLLECTION).document(LOCK_DOC)
+    record = {"owner": owner, "at": now.isoformat()}
+    if hasattr(db, "transaction"):
+        from firebase_admin import firestore
+
+        @firestore.transactional
+        def _claim(tx):
+            if _lock_is_held(ref.get(transaction=tx), now):
+                return False
+            tx.set(ref, record)
+            return True
+
+        return bool(_claim(db.transaction()))
+    if _lock_is_held(ref.get(), now):  # test fakes without transactions
+        return False
+    ref.set(record)
+    return True
+
+
+def _release_lock(db: Any, owner: str) -> None:
+    ref = db.collection(LOCK_COLLECTION).document(LOCK_DOC)
+    try:
+        snap = ref.get()
+        if getattr(snap, "exists", False) and (snap.to_dict() or {}).get("owner") == owner:
+            ref.delete()
+    except Exception as exc:
+        logger.warning("could not release Strava warm-up lock: %s", exc)
+
+
 def warm(
+    db: Any,
+    strava_service: Any,
+    participants: list[dict],
+    *,
+    min_rides: int,
+    days: int,
+    compute_curve: Callable[[str, list], dict],
+    limit: int = WARM_BATCH,
+    now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+) -> dict:
+    """Run one warm-up unless another is already running (then `busy` is true)."""
+    owner = uuid.uuid4().hex
+    if not _acquire_lock(db, owner, now()):
+        return {"days": days, "busy": True, "warmed": [], "failed": [], "rateLimited": False}
+    try:
+        return {**_warm(db, strava_service, participants, min_rides=min_rides, days=days,
+                        compute_curve=compute_curve, limit=limit, now=now), "busy": False}
+    finally:
+        _release_lock(db, owner)
+
+
+def _warm(
     db: Any,
     strava_service: Any,
     participants: list[dict],
