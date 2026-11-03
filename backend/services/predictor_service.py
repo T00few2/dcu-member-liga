@@ -1,9 +1,15 @@
 """Loads data for the vELO predictor and keeps its settings in Firestore.
 
-`league/settings` fields owned here:
-- `predictorConfig`: the active `PredictorConfig` (replaces `predictorFeatures`)
-- `predictorConfigHistory`: earlier configs, newest first, so a change can be rolled back
-- `predictorMetrics`: the latest tuning metrics for the active config
+Predictor settings live in the admin-only document `predictor_settings/current`
+(not in the public `league/settings`, because history entries name the admin who
+made each change):
+- `config`: the active `PredictorConfig`
+- `history`: earlier configs, newest first, so a change can be rolled back
+- `metrics`: the latest tuning metrics for the active config
+- `updatedAt`
+
+The legacy `league/settings.predictorFeatures` map is only read, as a fallback
+before the first save.
 """
 from __future__ import annotations
 
@@ -33,7 +39,20 @@ def load_categories(db: Any) -> Any:
     return _resolve_categories(_load_liga_settings(db))
 
 
+SETTINGS_COLLECTION = "predictor_settings"
+SETTINGS_DOC = "current"
+
+
+def predictor_settings(db: Any) -> dict:
+    """The admin-only predictor settings document (empty dict before the first save)."""
+    snap = db.collection(SETTINGS_COLLECTION).document(SETTINGS_DOC).get()
+    return (snap.to_dict() or {}) if getattr(snap, "exists", False) else {}
+
+
 def load_config(db: Any) -> vp.PredictorConfig:
+    saved = predictor_settings(db).get("config")
+    if isinstance(saved, dict):
+        return vp.PredictorConfig.from_dict(saved)
     return vp.PredictorConfig.from_settings(league_settings(db))
 
 
@@ -116,29 +135,28 @@ def save_config(
     reason: str = "",
     metrics: dict | None = None,
 ) -> dict:
-    """Save a new active config; the previous one is pushed onto the history."""
-    settings = league_settings(db)
-    previous = settings.get("predictorConfig")
-    if not isinstance(previous, dict):
-        previous = vp.PredictorConfig.from_settings(settings).to_dict()
-    history = settings.get("predictorConfigHistory")
+    """Save a new active config; the previous one is pushed onto the history.
+
+    Writes only `predictor_settings/current`, never the public `league/settings`.
+    """
+    current = predictor_settings(db)
+    previous = load_config(db).to_dict()
+    history = current.get("history")
     history = list(history) if isinstance(history, list) else []
     now = datetime.now(timezone.utc).isoformat()
     history.insert(0, {
         "config": previous,
-        "metrics": settings.get("predictorMetrics"),
+        "metrics": current.get("metrics"),
         "replacedAt": now,
         "replacedBy": saved_by,
         "reason": reason,
     })
-    update = {
-        "predictorConfig": config.to_dict(),
-        "predictorConfigHistory": history[:HISTORY_LIMIT],
-        # Keep the legacy field in step until nothing reads it any more.
-        "predictorFeatures": dict(config.features),
-        "predictorConfigUpdatedAt": now,
+    doc = {
+        "config": config.to_dict(),
+        "history": history[:HISTORY_LIMIT],
+        "metrics": metrics,
+        "updatedAt": now,
     }
-    update["predictorMetrics"] = metrics if metrics is not None else None
-    db.collection("league").document("settings").set(update, merge=True)
+    db.collection(SETTINGS_COLLECTION).document(SETTINGS_DOC).set(doc)
     vp.clear_model_cache()
-    return update
+    return doc

@@ -123,12 +123,12 @@ def get_predictor_config():
     if not db:
         return jsonify({"error": "DB not available"}), 500
     try:
-        settings = ps.league_settings(db)
+        saved = ps.predictor_settings(db)
         return jsonify({
-            "config": vp.PredictorConfig.from_settings(settings).to_dict(),
-            "metrics": settings.get("predictorMetrics"),
-            "history": settings.get("predictorConfigHistory") or [],
-            "updatedAt": settings.get("predictorConfigUpdatedAt"),
+            "config": ps.load_config(db).to_dict(),
+            "metrics": saved.get("metrics"),
+            "history": saved.get("history") or [],
+            "updatedAt": saved.get("updatedAt"),
         }), 200
     except Exception as e:
         logger.error("get_predictor_config error: %s", e)
@@ -148,7 +148,7 @@ def save_predictor_config():
         saved_by = _who(decoded)
         if "rollbackIndex" in body:
             idx = body.get("rollbackIndex")
-            history = ps.league_settings(db).get("predictorConfigHistory") or []
+            history = ps.predictor_settings(db).get("history") or []
             if not isinstance(idx, int) or isinstance(idx, bool) or not 0 <= idx < len(history):
                 return jsonify({"message": "rollbackIndex is out of range"}), 400
             entry = history[idx] or {}

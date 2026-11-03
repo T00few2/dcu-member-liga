@@ -158,10 +158,12 @@ def test_run_is_stored_pending_and_apply_saves_the_config(run_db):
 
     applied = runs.apply_run(run_db, run["runId"], decided_by="admin@example.com")
 
-    settings = run_db.store["league/settings"]
-    assert settings["predictorConfig"] == applied["config"]
-    assert settings["predictorMetrics"]["runId"] == run["runId"]
-    assert settings["predictorConfigHistory"][0]["config"] == vp.PredictorConfig().to_dict()
+    saved = run_db.store["predictor_settings/current"]
+    assert saved["config"] == applied["config"]
+    assert saved["metrics"]["runId"] == run["runId"]
+    assert saved["history"][0]["config"] == vp.PredictorConfig().to_dict()
+    assert saved["history"][0]["replacedBy"] == "admin@example.com"
+    assert "league/settings" not in run_db.store  # public doc never written
     assert run_db.store[f"{runs.COLLECTION}/{run['runId']}"]["status"] == "applied"
     with pytest.raises(runs.TuningRunError):
         runs.apply_run(run_db, run["runId"], decided_by="admin@example.com")
@@ -170,7 +172,7 @@ def test_run_is_stored_pending_and_apply_saves_the_config(run_db):
 def test_reject_keeps_the_config(run_db):
     run = runs.run_tuning(run_db, started_by="admin")
     runs.reject_run(run_db, run["runId"], decided_by="admin", note="Not convinced")
-    assert "league/settings" not in run_db.store
+    assert "predictor_settings/current" not in run_db.store
     assert run_db.store[f"{runs.COLLECTION}/{run['runId']}"]["decisionNote"] == "Not convinced"
 
 

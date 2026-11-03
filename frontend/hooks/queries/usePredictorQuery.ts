@@ -12,7 +12,7 @@ import type {
     PredictionMap,
 } from '@/components/admin/category-predictor/shared';
 
-/** Saved predictor settings (`league/settings.predictorConfig`). */
+/** Saved predictor settings (admin-only `predictor_settings/current.config`). */
 export interface PredictorConfig {
     features: Record<FeatureKey, boolean>;
     regression: 'ols' | 'ridge';

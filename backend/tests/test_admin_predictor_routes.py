@@ -108,11 +108,11 @@ def test_model_previews_an_unsaved_config(client, fake_db):
     features["wkg20m"] = True
     res = client.post("/admin/predictor/model", json={"config": {"features": features}})
     assert res.get_json()["model"]["activeFeatureKeys"] == ["wkg20m"]
-    assert "league/settings" not in fake_db.store  # preview never saves
+    assert "predictor_settings/current" not in fake_db.store  # preview never saves
 
 
 def test_predict_batches_rows_and_applies_strava_settings(client, fake_db):
-    fake_db.store["league/settings"] = {"predictorConfig": {"minStravaActivities": 4}}
+    fake_db.store["predictor_settings/current"] = {"config": {"minStravaActivities": 4}}
     inputs = {"weightKg": 75, "racingScore": 0, "wkg5s": 12, "wkg1m": 6.5, "wkg5m": 4.4, "wkg20m": 3.7}
     res = client.post("/admin/predictor/predict", json={"rows": [
         {"id": "zwift", "inputs": inputs},
@@ -137,20 +137,36 @@ def test_save_keeps_history_and_rollback_restores(client, fake_db):
     client.post("/admin/predictor/config", json={"config": {"features": second, "regression": "ridge",
                                                              "ridgeLambda": 0.1}})
 
-    settings = fake_db.store["league/settings"]
-    assert settings["predictorConfig"]["regression"] == "ridge"
-    assert settings["predictorFeatures"] == second
-    assert settings["predictorConfigHistory"][0]["config"]["features"] == first
-    assert settings["predictorConfigHistory"][0]["replacedBy"] == "admin@example.com"
+    saved = fake_db.store["predictor_settings/current"]
+    assert saved["config"]["regression"] == "ridge"
+    assert saved["config"]["features"] == second
+    assert saved["history"][0]["config"]["features"] == first
+    assert saved["history"][0]["replacedBy"] == "admin@example.com"
 
     res = client.post("/admin/predictor/config", json={"rollbackIndex": 0})
     assert res.status_code == 200
-    assert fake_db.store["league/settings"]["predictorConfig"]["features"] == first
-    assert fake_db.store["league/settings"]["predictorConfig"]["regression"] == "ols"
+    assert fake_db.store["predictor_settings/current"]["config"]["features"] == first
+    assert fake_db.store["predictor_settings/current"]["config"]["regression"] == "ols"
+    # league/settings is world-readable: admin emails and reasons must never land there.
+    assert "league/settings" not in fake_db.store
 
     got = client.get("/admin/predictor/config").get_json()
     assert got["config"]["features"] == first
     assert len(got["history"]) == 3
+
+
+def test_legacy_public_feature_map_is_used_until_the_first_save(client, fake_db):
+    legacy = {k: False for k in vp.DEFAULT_FEATURES}
+    legacy["wkg20m"] = True
+    fake_db.store["league/settings"] = {"predictorFeatures": legacy}
+    assert client.get("/admin/predictor/config").get_json()["config"]["features"] == legacy
+
+    client.post("/admin/predictor/config", json={"config": {"features": dict(legacy, wkg5m=True)}})
+
+    assert fake_db.store["league/settings"] == {"predictorFeatures": legacy}  # untouched
+    got = client.get("/admin/predictor/config").get_json()
+    assert got["config"]["features"]["wkg5m"] is True
+    assert got["history"][0]["config"]["features"] == legacy
 
 
 def test_save_refuses_an_empty_feature_set(client, fake_db):

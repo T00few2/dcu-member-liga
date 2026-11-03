@@ -95,6 +95,11 @@
       "description": "Cached Strava peak-power curves per rider and window. Doc id {userDocId}_{days}. Reused for 24 h by the admin predictor; tuning reads the cache only and never calls Strava. Filled for tuning-eligible riders by POST /admin/predictor/strava-cache/warm (2 riders per call, every 20 min via strava-cache-warm.yml); curves older than 30 days are refetched.",
       "items": { "$ref": "#/$defs/stravaPowerCurveDoc" }
     },
+    "predictor_settings": {
+      "type": "array",
+      "description": "Admin-only (default-deny in firestore.rules; backend Admin SDK only). Single doc 'current' with the active vELO predictor config, its metrics and change history. Kept out of the public league/settings because history names the admin who made each change.",
+      "items": { "$ref": "#/$defs/predictorSettingsDoc" }
+    },
     "predictor_tuning_runs": {
       "type": "array",
       "description": "vELO predictor tuning runs. A run that finds better settings is pending until an admin applies or rejects it.",
@@ -373,42 +378,11 @@
           "type": "integer",
           "description": "Approved weigh-in remains valid this many days from weighInDate; default 30"
         },
-        "predictorConfig": { "$ref": "#/$defs/predictorConfig" },
         "predictorFeatures": {
           "type": "object",
-          "description": "Legacy vELO predictor feature map (featureKey -> enabled). Kept in step with predictorConfig.features; read only as a fallback when predictorConfig is missing.",
+          "description": "Legacy vELO predictor feature map (featureKey -> enabled). Read-only fallback before predictor_settings/current exists; no longer written.",
           "additionalProperties": { "type": "boolean" }
         },
-        "predictorConfigHistory": {
-          "type": "array",
-          "description": "Earlier predictor configs, newest first (max 20), so a change can be rolled back from the admin predictor page.",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "config": { "$ref": "#/$defs/predictorConfig" },
-              "metrics": { "type": ["object", "null"], "description": "predictorMetrics at the time the config was replaced" },
-              "replacedAt": { "type": "string", "format": "date-time" },
-              "replacedBy": { "type": "string", "description": "Admin email/uid or script name" },
-              "reason": { "type": "string" }
-            }
-          }
-        },
-        "predictorMetrics": {
-          "type": ["object", "null"],
-          "description": "Cross-validated Strava-to-division accuracy of the active predictor config, from the tuning run that produced it. Null after a manual save.",
-          "additionalProperties": true,
-          "properties": {
-            "n": { "type": "integer" },
-            "divisionAccuracy": { "type": "number", "description": "Percent of eval riders predicted into their real division" },
-            "adjacentAccuracy": { "type": "number", "description": "Percent within one division" },
-            "maeVelo": { "type": "number" },
-            "zwiftDivisionAccuracy": { "type": "number" },
-            "runId": { "type": "string" },
-            "measuredAt": { "type": "string", "format": "date-time" }
-          }
-        },
-        "predictorConfigUpdatedAt": { "type": "string", "format": "date-time" },
         "divisionAgent": {
           "type": "object",
           "description": "Division agent settings. minZwiftRides: riders with fewer Zwift rides in the CP window are not trusted as vELO ground truth and are reviewed by the agent.",
@@ -2073,7 +2047,7 @@
     },
     "predictorConfig": {
       "type": "object",
-      "description": "vELO predictor settings (backend/services/velo_predictor.py PredictorConfig). The admin predictor page, division agent and tuning all use this one config.",
+      "description": "vELO predictor settings (backend/services/velo_predictor.py PredictorConfig), stored at predictor_settings/current.config. The admin predictor page, division agent and tuning all use this one config.",
       "additionalProperties": false,
       "properties": {
         "features": {
@@ -2096,6 +2070,44 @@
           }
         },
         "minStravaActivities": { "type": "integer", "description": "Fewer Strava rides than this marks a Strava prediction low-confidence" }
+      }
+    },
+    "predictorSettingsDoc": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "_id": { "type": "string", "const": "current" },
+        "config": { "$ref": "#/$defs/predictorConfig" },
+        "history": {
+          "type": "array",
+          "description": "Earlier predictor configs, newest first (max 20), so a change can be rolled back from the admin predictor page.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "config": { "$ref": "#/$defs/predictorConfig" },
+              "metrics": { "type": ["object", "null"], "description": "metrics at the time the config was replaced" },
+              "replacedAt": { "type": "string", "format": "date-time" },
+              "replacedBy": { "type": "string", "description": "Admin email/uid or script name" },
+              "reason": { "type": "string" }
+            }
+          }
+        },
+        "metrics": {
+          "type": ["object", "null"],
+          "description": "Cross-validated Strava-to-division accuracy of the active config, from the tuning run that produced it. Null after a manual save.",
+          "additionalProperties": true,
+          "properties": {
+            "n": { "type": "integer" },
+            "divisionAccuracy": { "type": "number", "description": "Percent of eval riders predicted into their real division" },
+            "adjacentAccuracy": { "type": "number", "description": "Percent within one division" },
+            "maeVelo": { "type": "number" },
+            "zwiftDivisionAccuracy": { "type": "number" },
+            "runId": { "type": "string" },
+            "measuredAt": { "type": "string", "format": "date-time" }
+          }
+        },
+        "updatedAt": { "type": "string", "format": "date-time" }
       }
     },
     "stravaPowerCurveDoc": {

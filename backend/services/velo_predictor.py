@@ -6,8 +6,9 @@ every registered rider who has a real vELO. The admin UI no longer fits its own
 model; it calls the endpoints in `routes/admin_predictor_routes.py`, which use
 this module.
 
-Settings live in `league/settings.predictorConfig` (see `PredictorConfig`). The
-legacy `league/settings.predictorFeatures` map is still read as a fallback.
+Settings live in the admin-only `predictor_settings/current.config` (see
+`PredictorConfig` and `services/predictor_service.py`). The legacy
+`league/settings.predictorFeatures` map is still read as a fallback.
 """
 from __future__ import annotations
 
