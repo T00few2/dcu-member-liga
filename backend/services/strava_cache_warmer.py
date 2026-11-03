@@ -13,16 +13,18 @@ from typing import Any, Callable
 
 from services import predictor_tuning as pt
 from services import strava_rate
-from services.strava_power_curve import get_strava_power_curve, read_cached_curve
+from services.strava_power_curve import cached_reader, get_strava_power_curve
 
 logger = logging.getLogger(__name__)
 
-WARM_BATCH = 3
+WARM_BATCH = 10
 # A curve costs about 1 activity page plus one stream request per ride (max 50).
 REQUESTS_PER_RIDER = 60
 # The cache never uses more than this share of Strava's 15-minute and daily read limits,
 # so the rest of the app (predictor page, verification, rider features) always has room.
-BUDGET_FRACTION = 0.5
+BUDGET_FRACTION = 0.75
+LAST_WARM_COLLECTION = "strava_cache_warm"
+LAST_WARM_DOC = "last"
 REFRESH_AFTER_DAYS = 30
 # A rider whose Strava has no power rides gets an empty curve. Count it as "no
 # power data" (not cached, not usable for tuning) and retry only after a week.
@@ -68,13 +70,11 @@ def cache_status(
     """
     now = datetime.now(timezone.utc)
     eligible = eligible_riders(participants, min_rides)
+    read_curve = cached_reader(db)
     missing: list[tuple[int, dict]] = []
     cached = no_power = 0
     for p in eligible:
-        try:
-            entry = read_cached_curve(db, p["userDocId"], days)
-        except Exception:
-            entry = None
+        entry = read_curve(p["userDocId"], days)
         has_power = bool(entry and entry.get("curve"))
         if has_power and _is_fresh(entry, now, max_age_days):
             cached += 1
@@ -140,6 +140,16 @@ def warm(
         except Exception as exc:
             logger.warning("could not store Strava usage: %s", exc)
     remaining = max(0, len(status["missing"]) - len(warmed))
+    try:
+        db.collection(LAST_WARM_COLLECTION).document(LAST_WARM_DOC).set({
+            "at": now().isoformat(),
+            "warmed": new_cached,
+            "noPowerData": new_empty,
+            "failed": len(failed),
+            "rateLimited": rate_limited,
+        })
+    except Exception as exc:
+        logger.warning("could not store last warm-up summary: %s", exc)
     return {
         "days": days,
         "eligible": status["eligible"],
@@ -161,4 +171,13 @@ def strava_usage(db: Any) -> dict:
         stored = {}
     usage = strava_rate.current_usage(strava_rate.latest(stored, strava_rate.snapshot()))
     return {**usage, "cacheBudgetFraction": BUDGET_FRACTION}
+
+
+def last_warm(db: Any) -> dict | None:
+    """Counts from the most recent warm-up call (for the Tuning panel)."""
+    try:
+        snap = db.collection(LAST_WARM_COLLECTION).document(LAST_WARM_DOC).get()
+    except Exception:
+        return None
+    return (snap.to_dict() or None) if getattr(snap, "exists", False) else None
 

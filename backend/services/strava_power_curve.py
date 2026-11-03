@@ -36,6 +36,40 @@ def read_cached_curve(db: Any, user_doc_id: str, days: int) -> dict | None:
     return data
 
 
+def read_all_cached(db: Any) -> dict[tuple[str, int], dict]:
+    """Every cached curve in one query, keyed by (userDocId, days).
+
+    Much faster than one read per rider and window: tuning, research and the cache
+    status line read hundreds of riders at a time.
+    """
+    out: dict[tuple[str, int], dict] = {}
+    for snap in db.collection(COLLECTION).stream():
+        data = snap.to_dict() or {}
+        if not isinstance(data.get("curve"), dict):
+            continue
+        user_doc_id, days = data.get("userDocId"), data.get("days")
+        if (not user_doc_id or not isinstance(days, int)) and isinstance(getattr(snap, "id", None), str):
+            # Doc id is "{userDocId}_{days}" (see cache_doc_id).
+            head, _, tail = snap.id.rpartition("_")
+            if head and tail.isdigit():
+                user_doc_id, days = head, int(tail)
+        if not user_doc_id or not isinstance(days, int):
+            continue
+        out[(str(user_doc_id), int(days))] = data
+    return out
+
+
+def cached_reader(db: Any) -> Callable[[str, int], dict | None]:
+    """A `read_curve(user_doc_id, days)` function backed by one `read_all_cached` query.
+
+    A failed query raises instead of looking like an empty cache: otherwise the
+    warm-up would refetch (and overwrite) every rider's curve and tuning would
+    report "insufficient data" instead of failing.
+    """
+    cache = read_all_cached(db)
+    return lambda user_doc_id, days: cache.get((str(user_doc_id), int(days)))
+
+
 def _age_hours(entry: dict, now: datetime) -> float | None:
     raw = entry.get("computedAt")
     if not isinstance(raw, str):

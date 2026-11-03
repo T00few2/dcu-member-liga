@@ -177,21 +177,43 @@ def save_predictor_config():
 
 @admin_bp.route("/admin/predictor/tune", methods=["POST"])
 def predictor_tune():
-    """Measure Strava→division accuracy and search for better settings.
+    """Start a tuning run (returns at once with status `running`).
 
-    Body: `{save?: bool}` (default true). Uses only cached Strava curves.
+    The work is done by POST /admin/predictor/tune/<runId>/process. Uses only cached
+    Strava curves.
     """
     decoded, err = _admin()
     if err:
         return err
     if not db:
         return jsonify({"error": "DB not available"}), 500
-    body = request.get_json(silent=True) or {}
     try:
-        run = runs.run_tuning(db, started_by=_who(decoded), save=body.get("save", True) is not False)
-        return jsonify(run), 200
+        return jsonify(runs.start_run(db, started_by=_who(decoded))), 200
+    except runs.TuningRunError as e:
+        return jsonify({"message": e.message}), e.status_code
     except Exception as e:
         logger.error("predictor_tune error: %s", e)
+        return jsonify({"message": str(e)}), 500
+
+
+@admin_bp.route("/admin/predictor/tune/<run_id>/process", methods=["POST"])
+def predictor_tune_process(run_id: str):
+    """Do the work for a run created by POST /admin/predictor/tune.
+
+    The admin page calls this without waiting; it polls /tune/runs for the result.
+    """
+    _, err = _admin()
+    if err:
+        return err
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+    try:
+        run = runs.process_run(db, run_id)
+        return jsonify({"runId": run.get("runId"), "status": run.get("status")}), 200
+    except runs.TuningRunError as e:
+        return jsonify({"message": e.message}), e.status_code
+    except Exception as e:
+        logger.error("predictor_tune_process error: %s", e)
         return jsonify({"message": str(e)}), 500
 
 
@@ -263,6 +285,7 @@ def predictor_strava_cache_status():
             "remaining": len(status["missing"]),
             "minEvalRiders": MIN_EVAL_RIDERS,
             "stravaUsage": warmer.strava_usage(db),
+            "lastWarm": warmer.last_warm(db),
         }), 200
     except Exception as e:
         logger.error("predictor_strava_cache_status error: %s", e)
