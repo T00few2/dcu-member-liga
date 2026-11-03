@@ -155,7 +155,7 @@ def test_loop_stops_at_the_deadline_and_on_refusal():
     ticks = iter([0, 10, 1000])
     out = research.run_claude(client, model="m", file_ids=[], baseline_note="", deadline=100,
                               clock=lambda: next(ticks))
-    assert out["status"] == "timed_out" and out["usage"]["turns"] == 2
+    assert out["status"] == "timed_out" and out["usage"]["turns"] == 1  # 2nd turn would start past the deadline
 
     client, _ = _client([_resp("refusal", [])])
     assert research.run_claude(client, model="m", file_ids=[], baseline_note="",
@@ -253,3 +253,64 @@ def test_routes_queue_list_and_idle_process(monkeypatch):
     assert queued["status"] == "queued" and queued["startedBy"] == "a@example.com"
     assert client.post("/admin/predictor/research", json={}).status_code == 400
     assert client.get("/admin/predictor/research/runs").get_json()["runs"][0]["runId"] == queued["runId"]
+
+
+# --- review fixes -------------------------------------------------------------------
+
+
+def test_only_riders_with_the_active_strava_window_are_sent(run_db, monkeypatch):
+    # 15 of 60 riders only have a 180-day curve; the active window is 90 days.
+    for i in range(15):
+        doc = f"doc{i}"
+        run_db.store[f"strava_power_curves/{doc}_180"] = run_db.store.pop(f"strava_power_curves/{doc}_90")
+    research.queue_run(run_db, started_by="admin")
+    client, _ = _client([_resp("tool_use", [_submit(FINDINGS)])])
+    done = research.process_next(run_db, client_factory=lambda: client)
+    assert done["evalRiders"] == 45 == done["baseline"]["n"]
+
+
+def test_a_second_worker_cannot_claim_a_run_that_is_being_processed(run_db):
+    research.queue_run(run_db, started_by="admin")
+    assert research._acquire_lock(run_db, "other-worker") is True
+    assert research.process_next(run_db, client_factory=lambda: pytest.fail("must not run")) is None
+    research._release_lock(run_db, "other-worker")
+
+    # A lock left behind by a killed worker is taken over after the stale window.
+    old = (datetime.now(timezone.utc) - timedelta(minutes=45)).isoformat()
+    run_db.store[f"{research.LOCK_COLLECTION}/{research.LOCK_DOC}"] = {"owner": "dead", "at": old}
+    client, _ = _client([_resp("tool_use", [_submit(FINDINGS)])])
+    assert research.process_next(run_db, client_factory=lambda: client)["status"] == "done"
+    assert f"{research.LOCK_COLLECTION}/{research.LOCK_DOC}" not in run_db.store  # released
+
+
+def test_a_slow_call_is_bounded_by_the_deadline():
+    class Timeout(Exception):
+        pass
+
+    Timeout.__name__ = "APITimeoutError"
+    seen = {}
+
+    def create(**kwargs):
+        raise Timeout("slow")
+
+    def with_options(timeout, max_retries):
+        seen.update(timeout=timeout, max_retries=max_retries)
+        return SimpleNamespace(beta=SimpleNamespace(messages=SimpleNamespace(create=create)))
+
+    client = SimpleNamespace(with_options=with_options)
+    ticks = iter([0, 0, 0])
+    out = research.run_claude(client, model="m", file_ids=[], baseline_note="", deadline=300,
+                              clock=lambda: next(ticks))
+    assert out["status"] == "timed_out"
+    assert seen == {"timeout": 300, "max_retries": 0}
+
+    # Too little time left for another turn: stop before calling.
+    out = research.run_claude(client, model="m", file_ids=[], baseline_note="", deadline=30, clock=lambda: 0)
+    assert out["status"] == "timed_out"
+
+
+def test_scheduler_response_has_no_private_fields():
+    run = {"runId": "r", "status": "done", "outcome": "report", "improvementPP": 0.5,
+           "startedBy": "admin@example.com", "lastText": "model text", "error": "x", "findings": {}}
+    assert research.public_summary(run) == {"runId": "r", "status": "done", "outcome": "report",
+                                           "improvementPP": 0.5}

@@ -41,6 +41,16 @@ class FakeDoc:
         else:
             self.store[self.path] = dict(data)
 
+    def create(self, data):
+        from google.api_core.exceptions import AlreadyExists
+
+        if self.path in self.store:
+            raise AlreadyExists(self.path)
+        self.store[self.path] = dict(data)
+
+    def delete(self):
+        self.store.pop(self.path, None)
+
 
 class FakeCollection:
     def __init__(self, store, name):

@@ -46,6 +46,7 @@ MAX_TURNS = 24
 MAX_TOKENS = 16000
 # The Cloud Function times out after 900 s; stop well before that and keep what we have.
 DEFAULT_DEADLINE_SECONDS = 780
+MIN_CALL_SECONDS = 60
 STALE_RUNNING_MINUTES = 20
 FILE_TTL_SECONDS = 24 * 3600
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
@@ -300,7 +301,18 @@ def run_claude(
         )
         if container_id:
             kwargs["container"] = container_id
-        resp = client.beta.messages.create(**kwargs)
+        remaining = deadline - clock()
+        if remaining < MIN_CALL_SECONDS:
+            return {"status": "timed_out", "usage": usage, "lastText": last_text}
+        # One attempt, bounded by the time left, so a slow turn can never outlive the
+        # Cloud Function: the run is then recorded as timed_out with what we have.
+        api = client.with_options(timeout=remaining, max_retries=0) if hasattr(client, "with_options") else client
+        try:
+            resp = api.beta.messages.create(**kwargs)
+        except Exception as exc:
+            if "timeout" in type(exc).__name__.lower():
+                return {"status": "timed_out", "usage": usage, "lastText": last_text}
+            raise
         usage["turns"] += 1
         u = getattr(resp, "usage", None)
         usage["inputTokens"] += int(getattr(u, "input_tokens", 0) or 0)
@@ -420,6 +432,42 @@ def _client_from_env() -> Any:
     return anthropic.Anthropic(max_retries=2, timeout=600)
 
 
+LOCK_COLLECTION = "predictor_research_lock"
+LOCK_DOC = "current"
+
+
+def _acquire_lock(db: Any, owner: str) -> bool:
+    """Atomically claim the single research slot (Firestore `create` fails if it exists).
+
+    A lock older than STALE_RUNNING_MINUTES belongs to a run the platform killed and is
+    taken over.
+    """
+    from google.api_core.exceptions import AlreadyExists
+
+    ref = db.collection(LOCK_COLLECTION).document(LOCK_DOC)
+    for _ in range(2):
+        try:
+            ref.create({"owner": owner, "at": _iso()})
+            return True
+        except AlreadyExists:
+            snap = ref.get()
+            held_at = _parse((snap.to_dict() or {}).get("at")) if getattr(snap, "exists", False) else None
+            if held_at and held_at > _now() - timedelta(minutes=STALE_RUNNING_MINUTES):
+                return False
+            ref.delete()
+    return False
+
+
+def _release_lock(db: Any, owner: str) -> None:
+    ref = db.collection(LOCK_COLLECTION).document(LOCK_DOC)
+    try:
+        snap = ref.get()
+        if getattr(snap, "exists", False) and (snap.to_dict() or {}).get("owner") == owner:
+            ref.delete()
+    except Exception as exc:
+        logger.warning("could not release research lock: %s", exc)
+
+
 def process_next(
     db: Any,
     *,
@@ -427,27 +475,48 @@ def process_next(
     deadline_seconds: float = DEFAULT_DEADLINE_SECONDS,
     clock: Callable[[], float] = time.monotonic,
 ) -> dict | None:
-    """Run the oldest queued research run. Returns the finished run, or None when idle."""
-    runs = _runs(db, 10)
-    _expire_stale(db, runs)
-    queued = sorted((r for r in runs if r.get("status") == "queued"), key=lambda r: r.get("createdAt") or "")
-    if not queued or any(r.get("status") == "running" for r in runs):
-        return None
-    run = queued[0]
-    ref = db.collection(COLLECTION).document(run["runId"])
-    ref.set({"status": "running", "startedAt": _iso()}, merge=True)
-    deadline = clock() + deadline_seconds
+    """Run the oldest queued research run. Returns the finished run, or None when idle or busy.
 
+    Only one worker at a time: the admin page and the schedule may both call this, and the
+    lock makes sure a run is never processed (and billed) twice.
+    """
+    deadline = clock() + deadline_seconds
+    owner = uuid.uuid4().hex
+    if not _acquire_lock(db, owner):
+        return None
     try:
-        result = _execute(db, client_factory=client_factory, deadline=deadline, clock=clock)
-    except ResearchError as e:
-        result = {"status": "failed", "error": e.message}
-    except Exception as e:  # keep the run record honest whatever happens
-        logger.error("predictor research failed: %s", e)
-        result = {"status": "failed", "error": f"{type(e).__name__}: {e}"}
-    result["finishedAt"] = _iso()
-    ref.set(result, merge=True)
-    return {**run, **result}
+        runs = _runs(db, 10)
+        _expire_stale(db, runs)
+        queued = sorted((r for r in runs if r.get("status") == "queued"), key=lambda r: r.get("createdAt") or "")
+        if not queued:
+            return None
+        run = queued[0]
+        ref = db.collection(COLLECTION).document(run["runId"])
+        ref.set({"status": "running", "startedAt": _iso()}, merge=True)
+        try:
+            result = _execute(db, client_factory=client_factory, deadline=deadline, clock=clock)
+        except ResearchError as e:
+            result = {"status": "failed", "error": e.message}
+        except Exception as e:  # keep the run record honest whatever happens
+            logger.error("predictor research failed: %s", e)
+            result = {"status": "failed", "error": f"{type(e).__name__}: {e}"}
+        result["finishedAt"] = _iso()
+        ref.set(result, merge=True)
+        return {**run, **result}
+    finally:
+        _release_lock(db, owner)
+
+
+def public_summary(run: dict | None) -> dict:
+    """What the scheduler endpoint returns: no emails, model text or rider data (logs are public)."""
+    if not run:
+        return {"idle": True}
+    return {
+        "runId": run.get("runId"),
+        "status": run.get("status"),
+        "outcome": run.get("outcome"),
+        "improvementPP": run.get("improvementPP"),
+    }
 
 
 def _execute(db: Any, *, client_factory, deadline: float, clock) -> dict:
@@ -462,11 +531,14 @@ def _execute(db: Any, *, client_factory, deadline: float, clock) -> dict:
         except Exception:
             return None
 
-    riders = pt.build_eval_set(participants, read_curve, min_rides=min_rides, categories=categories)
+    all_riders = pt.build_eval_set(participants, read_curve, min_rides=min_rides, categories=categories)
+    # Exactly the riders the baseline is scored on (cross_validate only uses riders with a curve
+    # for the active Strava window), so the folds and baseline columns Claude gets match ours.
+    riders = [r for r in all_riders if config.stravaWindowDays in r.strava]
     if len(riders) < pt.MIN_EVAL_RIDERS:
         return {"status": "failed", "error": (
-            f"Only {len(riders)} riders have a reliable vELO and a cached Strava curve "
-            f"(need {pt.MIN_EVAL_RIDERS}). Let the Strava cache fill first.")}
+            f"Only {len(riders)} riders have a reliable vELO and a cached {config.stravaWindowDays}-day "
+            f"Strava curve (need {pt.MIN_EVAL_RIDERS}). Let the Strava cache fill first.")}
     baseline, per_rider = pt.cross_validate(participants, riders, config, categories=categories)
     if baseline is None:
         return {"status": "failed", "error": "Could not measure the current settings (no model)."}

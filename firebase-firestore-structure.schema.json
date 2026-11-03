@@ -105,6 +105,19 @@
       "description": "Admin-only. Claude code-execution sandbox research on anonymized tuning data (queued -> running -> done|failed|timed_out). Processed by POST /admin/predictor/research/process via predictor-research.yml. Proposed code is never run in production.",
       "items": { "$ref": "#/$defs/predictorResearchRunDoc" }
     },
+    "predictor_research_lock": {
+      "type": "array",
+      "description": "Admin-only. Single doc 'current' {owner, at} created atomically while a research run is processed, so two workers never run (and bill) the same run. Taken over after 20 minutes.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "_id": { "type": "string", "const": "current" },
+          "owner": { "type": "string" },
+          "at": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
     "predictor_tuning_runs": {
       "type": "array",
       "description": "vELO predictor tuning runs. A run that finds better settings is pending until an admin applies or rejects it.",

@@ -289,8 +289,17 @@ def predictor_strava_cache_warm():
             db, strava_service, participants,
             min_rides=min_rides, days=days, compute_curve=_compute_strava_power_curve,
         )
-        result["minEvalRiders"] = MIN_EVAL_RIDERS
-        return jsonify(result), 200
+        # Counts only: the scheduled workflow's logs are public, so no rider IDs.
+        return jsonify({
+            "days": result["days"],
+            "eligible": result["eligible"],
+            "cached": result["cached"],
+            "noPowerData": result["noPowerData"],
+            "warmed": len(result["warmed"]),
+            "failed": len(result["failed"]),
+            "remaining": result["remaining"],
+            "minEvalRiders": MIN_EVAL_RIDERS,
+        }), 200
     except Exception as e:
         logger.error("predictor_strava_cache_warm error: %s", e)
         return jsonify({"message": str(e)}), 500
@@ -338,10 +347,9 @@ def predictor_research_process():
         if isinstance(days, int) and not isinstance(days, bool) and days > 0:
             queued = research.auto_queue_due(db, older_than_days=days)
         run = research.process_next(db)
-        if run is None:
-            return jsonify({"idle": True, "autoQueued": queued}), 200
-        run.pop("idMap", None)
-        return jsonify(run), 200
+        # Only a minimal summary: the scheduled workflow's logs are public. The admin page
+        # reads the full run (without the id map) from /research/runs.
+        return jsonify({**research.public_summary(run), "autoQueued": queued}), 200
     except Exception as e:
         logger.error("predictor_research_process error: %s", e)
         return jsonify({"message": str(e)}), 500
