@@ -562,11 +562,6 @@ class StravaService:
                         'id': act_id,
                         'name': a.get('name'),
                         'startDate': a.get('start_date'),
-                        # Summary numbers from the list response (no extra request); used to
-                        # pick which rides' streams can contain the peak efforts.
-                        'maxWatts': a.get('max_watts'),
-                        'weightedAverageWatts': a.get('weighted_average_watts'),
-                        'movingTime': a.get('moving_time'),
                     })
 
             if reached_window_start or len(batch) < per_page or new_ids == 0 or oldest_epoch is None:

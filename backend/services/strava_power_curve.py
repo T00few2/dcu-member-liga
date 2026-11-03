@@ -17,14 +17,6 @@ COLLECTION = "strava_power_curves"
 ALLOWED_DAYS = (30, 90, 180, 360)
 DEFAULT_MAX_AGE_HOURS = 24
 
-# Which rides' second-by-second streams to download. Strava has no power-curve API,
-# so every ride costs one request; picking the rides that can hold the peaks keeps
-# the curve the same at about a third of the requests.
-TOP_BY_MAX_WATTS = 6        # 5 s / 1 min peaks live in rides with the highest max power
-TOP_BY_WEIGHTED_POWER = 8   # 5 / 20 min peaks live in hard rides of at least 20 minutes
-MOST_RECENT = 3             # safety net for rides whose summary lacks power numbers
-LONG_RIDE_SECONDS = 20 * 60
-
 
 def cache_doc_id(user_doc_id: str, days: int) -> str:
     return f"{user_doc_id}_{int(days)}"
@@ -42,35 +34,6 @@ def read_cached_curve(db: Any, user_doc_id: str, days: int) -> dict | None:
     if not isinstance(data.get("curve"), dict):
         return None
     return data
-
-
-def _num(value: Any) -> float:
-    try:
-        return float(value) if value is not None else 0.0
-    except (TypeError, ValueError):
-        return 0.0
-
-
-def select_peak_rides(activities: list[dict]) -> list[dict]:
-    """The rides worth downloading streams for (see the constants above).
-
-    Rides without summary numbers fall back to the most recent ones, so a missing
-    field never drops a rider's data entirely.
-    """
-    if len(activities) <= TOP_BY_MAX_WATTS + TOP_BY_WEIGHTED_POWER + MOST_RECENT:
-        return list(activities)
-    by_recent = sorted(activities, key=lambda a: a.get("startDate") or "", reverse=True)[:MOST_RECENT]
-    by_max = sorted(activities, key=lambda a: _num(a.get("maxWatts")), reverse=True)[:TOP_BY_MAX_WATTS]
-    long_rides = [a for a in activities if _num(a.get("movingTime")) >= LONG_RIDE_SECONDS] or activities
-    by_weighted = sorted(long_rides, key=lambda a: _num(a.get("weightedAverageWatts")),
-                         reverse=True)[:TOP_BY_WEIGHTED_POWER]
-    chosen: list[dict] = []
-    seen: set = set()
-    for a in by_max + by_weighted + by_recent:
-        if a.get("id") not in seen:
-            seen.add(a.get("id"))
-            chosen.append(a)
-    return chosen
 
 
 def read_all_cached(db: Any) -> dict[tuple[str, int], dict]:
@@ -156,14 +119,12 @@ def get_strava_power_curve(
 
     after_ts = int((now - timedelta(days=days)).timestamp())
     activities = strava_service.get_power_activities(str(user_doc_id), after_ts)
-    rides = select_peak_rides(activities or [])
-    curve = compute_curve(str(user_doc_id), rides) if rides else {}
+    curve = compute_curve(str(user_doc_id), activities) if activities else {}
     entry = {
         "userDocId": str(user_doc_id),
         "days": int(days),
         "curve": {str(k): float(v) for k, v in (curve or {}).items()},
         "activityCount": len(activities or []),
-        "streamsFetched": len(rides),
         "computedAt": now.isoformat(),
     }
     try:

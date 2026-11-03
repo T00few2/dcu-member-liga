@@ -18,9 +18,8 @@ from services.strava_power_curve import cached_reader, get_strava_power_curve
 logger = logging.getLogger(__name__)
 
 WARM_BATCH = 10
-# A curve costs one or two activity-list pages plus one stream request per selected
-# ride (at most 17, see strava_power_curve.select_peak_rides).
-REQUESTS_PER_RIDER = 20
+# A curve costs about 1 activity page plus one stream request per ride (max 50).
+REQUESTS_PER_RIDER = 60
 # The cache never uses more than this share of Strava's 15-minute and daily read limits,
 # so the rest of the app (predictor page, verification, rider features) always has room.
 BUDGET_FRACTION = 0.75

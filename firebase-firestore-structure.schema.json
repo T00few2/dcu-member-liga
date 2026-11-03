@@ -2174,7 +2174,6 @@
           "additionalProperties": { "type": "number" }
         },
         "activityCount": { "type": "integer", "description": "Power rides in the window" },
-        "streamsFetched": { "type": "integer", "description": "Rides whose streams were downloaded (top by max power, by weighted power on 20+ min rides, and the most recent; at most 17)" },
         "computedAt": { "type": "string", "format": "date-time" }
       }
     },
