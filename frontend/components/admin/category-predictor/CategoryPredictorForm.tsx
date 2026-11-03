@@ -8,13 +8,14 @@ import {
   PowerInputs,
   SharedInputs,
   Participant,
-  ModelResult,
+  PredictionMap,
   PredictionSnapshot,
   FeatureKey,
-  FEATURE_DEFS,
+  FeatureMeta,
+  featureLabel,
+  predictionFor,
   predictorFormLayout,
   impliedCategoryFromParticipant,
-  predictedCategoryFromParticipant,
   ZR_CATEGORY_DEFAULTS,
   filterPredictorRiders,
 } from './shared';
@@ -58,8 +59,14 @@ export interface CategoryPredictorFormProps {
   /** Strava 90-day power values. */
   stravaPower: PowerInputs;
   onSetPowerInput: (source: 'zwift' | 'strava', field: PowerField, value: string) => void;
-  /** Fitted OLS model — used for the RMSE band. */
-  model: ModelResult | null;
+  /** Model RMSE (vELO points) for the ± band, or null when there is no model. */
+  rmse: number | null;
+  /** Feature metadata from the backend predictor. */
+  featureDefs: FeatureMeta[];
+  /** Backend Zwift-power predictions keyed by Zwift ID (for the mismatch filter). */
+  zwiftPredictions?: PredictionMap;
+  /** Strava window the predictor uses (days). */
+  stravaWindowDays?: number;
   /** Feature keys currently in the fitted (or selected) model. */
   activeFeatureKeys: FeatureKey[];
   zwiftPrediction: PredictionSnapshot;
@@ -107,11 +114,11 @@ function DerivedCell({ value, active }: { value: number; active: boolean }) {
 
 function PredictionCell({
   pred,
-  model,
+  rmse,
   categories,
 }: {
   pred: PredictionSnapshot;
-  model: ModelResult | null;
+  rmse: number | null;
   categories?: typeof ZR_CATEGORY_DEFAULTS;
 }) {
   return (
@@ -129,9 +136,12 @@ function PredictionCell({
           </>
         )}
       </div>
-      {pred.low != null && pred.high != null && model && (
+      {pred.confidence === 'low' && (
+        <div className="text-xs text-amber-700">Low confidence — few rides</div>
+      )}
+      {pred.low != null && pred.high != null && rmse != null && (
         <div className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
-          <span>±{model.rmse} pts → {pred.low.toLocaleString()}–{pred.high.toLocaleString()}</span>
+          <span>±{rmse} pts → {pred.low.toLocaleString()}–{pred.high.toLocaleString()}</span>
           {pred.catLow && pred.catHigh && (
             <>
               <span>(</span>
@@ -191,7 +201,10 @@ export default function CategoryPredictorForm({
   zwiftPower,
   stravaPower,
   onSetPowerInput,
-  model,
+  rmse,
+  featureDefs,
+  zwiftPredictions,
+  stravaWindowDays = 90,
   activeFeatureKeys,
   zwiftPrediction,
   stravaPrediction,
@@ -217,12 +230,10 @@ export default function CategoryPredictorForm({
     : Boolean(assignChoice);
 
   const layout = predictorFormLayout(activeFeatureKeys);
-  const modelLabels = activeFeatureKeys
-    .map(k => FEATURE_DEFS.find(f => f.key === k)?.label)
-    .filter((label): label is string => Boolean(label));
+  const modelLabels = activeFeatureKeys.map(k => featureLabel(featureDefs, k));
 
   const riderOptions = useMemo(() => {
-    return filterPredictorRiders(participants, model, {
+    return filterPredictorRiders(participants, zwiftPredictions, {
       unassignedOnly: showUnassignedOnly,
       mismatchOnly: showMismatchOnly,
       zeroVeloOnly: showZeroVeloOnly,
@@ -231,7 +242,7 @@ export default function CategoryPredictorForm({
     })
       .map(p => {
         const implied = impliedCategoryFromParticipant(p);
-        const predicted = predictedCategoryFromParticipant(model, p);
+        const predicted = predictionFor(zwiftPredictions, p.zwiftId).category;
         const mismatch = implied != null && predicted != null && implied !== predicted;
         let label = p.name;
         const assigned = p.ligaCategory?.category;
@@ -241,14 +252,14 @@ export default function CategoryPredictorForm({
         if (mismatch) label += ` · vELO ${implied} ≠ ${predicted}`;
         return { zwiftId: p.zwiftId, label };
       });
-  }, [participants, showUnassignedOnly, showMismatchOnly, showZeroVeloOnly, showNo30dVeloOnly, model, assignedOverlay]);
+  }, [participants, showUnassignedOnly, showMismatchOnly, showZeroVeloOnly, showNo30dVeloOnly, zwiftPredictions, assignedOverlay]);
 
   return (
     <div id="predictor-detail" className="bg-card border border-border rounded-lg p-6">
       <h2 className="text-xl font-semibold text-foreground mb-1">Predict &amp; Assign</h2>
       <p className="text-sm text-muted-foreground mb-4">
         All riders are shown in the dropdown, including locked riders. Selecting a rider pre-fills their Zwift power.
-        Click <strong>Load</strong> in the Strava column to pull 90-day outdoor power — useful for riders who train
+        Click <strong>Load</strong> in the Strava column to pull {stravaWindowDays}-day outdoor power — useful for riders who train
         outdoors but race on Zwift. Both columns stay visible so you can compare predictions directly.
         Fields follow the regressors currently checked above; predictions update live.
         <br />
@@ -379,7 +390,7 @@ export default function CategoryPredictorForm({
                   <span>
                     <span className="text-sm font-semibold text-foreground">Strava</span>
                     <span className="ml-1.5 text-xs font-normal text-muted-foreground">
-                      90d{rideCountSuffix(stravaRideCount)}
+                      {stravaWindowDays}d{rideCountSuffix(stravaRideCount)}
                     </span>
                   </span>
                   {layout.usesPower && (
@@ -438,10 +449,10 @@ export default function CategoryPredictorForm({
             <tr>
               <td className="text-sm text-foreground pr-4 pt-3 align-top whitespace-nowrap">Predicted vELO</td>
               <td className={`${columnCellClass(zwiftActive)} pt-3 align-top`}>
-                <PredictionCell pred={zwiftPrediction} model={model} categories={categories} />
+                <PredictionCell pred={zwiftPrediction} rmse={rmse} categories={categories} />
               </td>
               <td className={`${columnCellClass(stravaActive)} pt-3 align-top`}>
-                <PredictionCell pred={stravaPrediction} model={model} categories={categories} />
+                <PredictionCell pred={stravaPrediction} rmse={rmse} categories={categories} />
               </td>
             </tr>
           </tbody>

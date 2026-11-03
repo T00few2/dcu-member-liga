@@ -3,7 +3,7 @@ Admin verification routes: rider profile and activity listing endpoints.
 """
 
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 import logging
 
 from flask import jsonify, request
@@ -16,6 +16,7 @@ from services.dual_recording_core import (
     _extract_zwift_activity_fields,
     _iter_activities_for_user_ids,
 )
+from services.strava_power_curve import get_strava_power_curve
 from services.user_service import UserService
 from services.weight_history import list_weight_history_entries
 from services.zwift_tokens import get_token_doc, get_valid_access_token
@@ -209,13 +210,21 @@ def strava_power_curve(rider_id):
         if not user:
             return jsonify({"message": "User not found"}), 404
 
-        after_ts = int((datetime.now(timezone.utc) - timedelta(days=days)).timestamp())
-        activities = strava_service.get_power_activities(str(user.id), after_ts)
-        if not activities:
-            return jsonify({"curve": {}, "activityCount": 0, "days": days}), 200
-
-        curve = _compute_strava_power_curve(str(user.id), activities)
-        return jsonify({"curve": curve, "activityCount": len(activities), "days": days}), 200
+        entry = get_strava_power_curve(
+            db,
+            strava_service,
+            str(user.id),
+            days,
+            compute_curve=_compute_strava_power_curve,
+            refresh=request.args.get("refresh") in ("1", "true"),
+        )
+        return jsonify({
+            "curve": entry["curve"],
+            "activityCount": entry["activityCount"],
+            "days": days,
+            "computedAt": entry.get("computedAt"),
+            "cached": entry.get("cached", False),
+        }), 200
     except Exception as exc:
         logger.error("strava_power_curve error: %s", exc)
         return jsonify({"message": str(exc)}), 500

@@ -1,27 +1,24 @@
 import { describe, it, expect } from 'vitest';
 import {
-  combineInputs,
   inputsFromParticipant,
-  predictionFromInputs,
   predictorFormLayout,
   hasPredictedVsImpliedMismatch,
   filterPredictorRiders,
   formatVeloValue,
   powerFromStravaCurve,
+  predictionFor,
+  stravaInputsForRider,
   EMPTY_POWER,
   EMPTY_PREDICTION,
-  type ModelResult,
   type Participant,
+  type PredictionMap,
+  type PredictionSnapshot,
 } from '@/components/admin/category-predictor/shared';
 
-const MODEL: ModelResult = {
-  coeffs: [200, 250],
-  r2: 1,
-  rmse: 40,
-  n: 10,
-  activeFeatureKeys: ['wkg20m'],
-  trainingPoints: [],
-};
+/** Backend predictions are plain data; the frontend only looks them up. */
+function pred(velo: number, category: string): PredictionSnapshot {
+  return { ...EMPTY_PREDICTION, velo, category, low: velo - 10, high: velo + 10, catLow: category, catHigh: category };
+}
 
 describe('inputsFromParticipant', () => {
   it('converts Zwift CP watts to W/kg', () => {
@@ -48,22 +45,31 @@ describe('inputsFromParticipant', () => {
   });
 });
 
-describe('predictionFromInputs', () => {
-  it('returns empty when power inputs are missing', () => {
-    expect(predictionFromInputs(MODEL, combineInputs({ weightKg: 70, racingScore: 500 }, EMPTY_POWER)))
-      .toEqual(EMPTY_PREDICTION);
+describe('predictionFor', () => {
+  it('returns the backend prediction for a rider, or an empty one', () => {
+    const map: PredictionMap = { '1': pred(1200, 'Platinum') };
+    expect(predictionFor(map, '1').velo).toBe(1200);
+    expect(predictionFor(map, '2')).toEqual(EMPTY_PREDICTION);
+    expect(predictionFor(undefined, '1')).toEqual(EMPTY_PREDICTION);
+  });
+});
+
+describe('stravaInputsForRider', () => {
+  const rider: Participant = {
+    name: 'Test', zwiftId: '1', weightInGrams: 70000, cp5s: null, cp1min: null, cp5min: null, cp20min: null,
+    racingScore: 500, max30Rating: 1100, ligaCategory: null,
+  };
+
+  it('combines profile weight and ZRS with the loaded Strava power', () => {
+    const power = { ...EMPTY_POWER, wkg20m: 4.2 };
+    expect(stravaInputsForRider(rider, { power, activityCount: 12 })).toEqual({
+      weightKg: 70, racingScore: 500, wkg5s: 0, wkg1m: 0, wkg5m: 0, wkg20m: 4.2,
+    });
   });
 
-  it('produces independent Zwift and Strava predictions from the same model', () => {
-    const shared = { weightKg: 70, racingScore: 500 };
-    const zwift = predictionFromInputs(MODEL, combineInputs(shared, { ...EMPTY_POWER, wkg20m: 4.0 }));
-    const strava = predictionFromInputs(MODEL, combineInputs(shared, { ...EMPTY_POWER, wkg20m: 4.4 }));
-
-    expect(zwift.velo).toBe(1200);
-    expect(strava.velo).toBe(1300);
-    expect(zwift.category).toBe('Platinum');
-    expect(strava.category).toBe('Amethyst');
-    expect(zwift.velo).not.toBe(strava.velo);
+  it('is null when Strava is not loaded or failed', () => {
+    expect(stravaInputsForRider(rider, undefined)).toBeNull();
+    expect(stravaInputsForRider(rider, { power: EMPTY_POWER, activityCount: null, error: 'x' })).toBeNull();
   });
 });
 
@@ -111,13 +117,9 @@ describe('powerFromStravaCurve', () => {
 });
 
 describe('filterPredictorRiders', () => {
-  const model: ModelResult = {
-    coeffs: [0, 300],
-    r2: 1,
-    rmse: 10,
-    n: 10,
-    activeFeatureKeys: ['wkg20m'],
-    trainingPoints: [],
+  // Every rider's Zwift power predicts 1200 → Platinum.
+  const model: PredictionMap = {
+    '1': pred(1200, 'Platinum'), '2': pred(1200, 'Platinum'), '3': pred(1200, 'Platinum'),
   };
   const base = {
     weightInGrams: 70000,
@@ -181,14 +183,7 @@ describe('formatVeloValue', () => {
 });
 
 describe('hasPredictedVsImpliedMismatch', () => {
-  const model: ModelResult = {
-    coeffs: [0, 300],
-    r2: 1,
-    rmse: 10,
-    n: 10,
-    activeFeatureKeys: ['wkg20m'],
-    trainingPoints: [],
-  };
+  const predictions: PredictionMap = { '1': pred(1200, 'Platinum') };
 
   function rider(max30Rating: number): Participant {
     return {
@@ -206,16 +201,20 @@ describe('hasPredictedVsImpliedMismatch', () => {
   }
 
   it('is true when predicted category differs from the vELO-implied category', () => {
-    // 4.0 W/kg × 300 = 1200 → Platinum; 900 → Silver
-    expect(hasPredictedVsImpliedMismatch(model, rider(900))).toBe(true);
+    // predicted 1200 → Platinum; actual 900 → Silver
+    expect(hasPredictedVsImpliedMismatch(rider(900), predictions)).toBe(true);
   });
 
   it('is false when predicted and implied categories match', () => {
-    expect(hasPredictedVsImpliedMismatch(model, rider(1200))).toBe(false);
+    expect(hasPredictedVsImpliedMismatch(rider(1200), predictions)).toBe(false);
   });
 
   it('is false when the rider has no actual vELO', () => {
-    expect(hasPredictedVsImpliedMismatch(model, rider(0))).toBe(false);
-    expect(hasPredictedVsImpliedMismatch(model, { ...rider(1200), max30Rating: 'N/A' })).toBe(false);
+    expect(hasPredictedVsImpliedMismatch(rider(0), predictions)).toBe(false);
+    expect(hasPredictedVsImpliedMismatch({ ...rider(1200), max30Rating: 'N/A' }, predictions)).toBe(false);
+  });
+
+  it('is false when the backend has no prediction for the rider', () => {
+    expect(hasPredictedVsImpliedMismatch(rider(900), {})).toBe(false);
   });
 });

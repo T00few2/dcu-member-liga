@@ -90,6 +90,16 @@
         "$ref": "#/$defs/raceDoc"
       }
     },
+    "strava_power_curves": {
+      "type": "array",
+      "description": "Cached Strava peak-power curves per rider and window. Doc id {userDocId}_{days}. Reused for 24 h by the admin predictor; tuning reads the cache only and never calls Strava.",
+      "items": { "$ref": "#/$defs/stravaPowerCurveDoc" }
+    },
+    "predictor_tuning_runs": {
+      "type": "array",
+      "description": "vELO predictor tuning runs. A run that finds better settings is pending until an admin applies or rejects it.",
+      "items": { "$ref": "#/$defs/predictorTuningRunDoc" }
+    },
     "strava_oauth_states": {
       "type": "array",
       "items": {
@@ -362,6 +372,50 @@
         "weightVerificationValidDays": {
           "type": "integer",
           "description": "Approved weigh-in remains valid this many days from weighInDate; default 30"
+        },
+        "predictorConfig": { "$ref": "#/$defs/predictorConfig" },
+        "predictorFeatures": {
+          "type": "object",
+          "description": "Legacy vELO predictor feature map (featureKey -> enabled). Kept in step with predictorConfig.features; read only as a fallback when predictorConfig is missing.",
+          "additionalProperties": { "type": "boolean" }
+        },
+        "predictorConfigHistory": {
+          "type": "array",
+          "description": "Earlier predictor configs, newest first (max 20), so a change can be rolled back from the admin predictor page.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "config": { "$ref": "#/$defs/predictorConfig" },
+              "metrics": { "type": ["object", "null"], "description": "predictorMetrics at the time the config was replaced" },
+              "replacedAt": { "type": "string", "format": "date-time" },
+              "replacedBy": { "type": "string", "description": "Admin email/uid or script name" },
+              "reason": { "type": "string" }
+            }
+          }
+        },
+        "predictorMetrics": {
+          "type": ["object", "null"],
+          "description": "Cross-validated Strava-to-division accuracy of the active predictor config, from the tuning run that produced it. Null after a manual save.",
+          "additionalProperties": true,
+          "properties": {
+            "n": { "type": "integer" },
+            "divisionAccuracy": { "type": "number", "description": "Percent of eval riders predicted into their real division" },
+            "adjacentAccuracy": { "type": "number", "description": "Percent within one division" },
+            "maeVelo": { "type": "number" },
+            "zwiftDivisionAccuracy": { "type": "number" },
+            "runId": { "type": "string" },
+            "measuredAt": { "type": "string", "format": "date-time" }
+          }
+        },
+        "predictorConfigUpdatedAt": { "type": "string", "format": "date-time" },
+        "divisionAgent": {
+          "type": "object",
+          "description": "Division agent settings. minZwiftRides: riders with fewer Zwift rides in the CP window are not trusted as vELO ground truth and are reviewed by the agent.",
+          "additionalProperties": true,
+          "properties": {
+            "minZwiftRides": { "type": "integer", "default": 15 }
+          }
         },
         "ligaCategories": {
           "type": "array",
@@ -2015,6 +2069,70 @@
           "type": "boolean",
           "description": "When true and raceId is empty, auto-activation is skipped for races whose live window already started at activatedAt. A later race (window start after activatedAt) still auto-activates."
         }
+      }
+    },
+    "predictorConfig": {
+      "type": "object",
+      "description": "vELO predictor settings (backend/services/velo_predictor.py PredictorConfig). The admin predictor page, division agent and tuning all use this one config.",
+      "additionalProperties": false,
+      "properties": {
+        "features": {
+          "type": "object",
+          "description": "featureKey -> enabled (weight_kg, zrs, wkg5s, wkg1m, wkg5m, wkg20m, watts*, compound*)",
+          "additionalProperties": { "type": "boolean" }
+        },
+        "regression": { "type": "string", "enum": ["ols", "ridge"] },
+        "ridgeLambda": { "type": "number", "minimum": 0, "description": "Ridge strength on standardized features, scaled by row count" },
+        "stravaWindowDays": { "type": "integer", "enum": [90, 180, 360] },
+        "stravaPowerScale": {
+          "type": "object",
+          "description": "Multiplier per W/kg input applied to Strava (outdoor) power before predicting; 1.0 = no correction. Range 0.5-1.5.",
+          "additionalProperties": false,
+          "properties": {
+            "wkg5s": { "type": "number" },
+            "wkg1m": { "type": "number" },
+            "wkg5m": { "type": "number" },
+            "wkg20m": { "type": "number" }
+          }
+        },
+        "minStravaActivities": { "type": "integer", "description": "Fewer Strava rides than this marks a Strava prediction low-confidence" }
+      }
+    },
+    "stravaPowerCurveDoc": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "_id": { "type": "string", "description": "{userDocId}_{days}" },
+        "userDocId": { "type": "string" },
+        "days": { "type": "integer", "enum": [30, 90, 180, 360] },
+        "curve": {
+          "type": "object",
+          "description": "Peak watts keyed w{seconds}: w5, w15, w30, w60, w120, w300, w1200",
+          "additionalProperties": { "type": "number" }
+        },
+        "activityCount": { "type": "integer" },
+        "computedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "predictorTuningRunDoc": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "_id": { "type": "string" },
+        "runId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "startedBy": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "report", "applied", "rejected"] },
+        "result": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "status (insufficient_data|no_improvement|improved), evalRiders, current/best {config?, fitScale, score}, improvementPP, changedRiders [{zwiftId, realCategory, before, after}], pastPredictions, windowsAvailable, message"
+        },
+        "currentConfig": { "$ref": "#/$defs/predictorConfig" },
+        "minZwiftRides": { "type": "integer" },
+        "decidedBy": { "type": "string" },
+        "decidedAt": { "type": "string", "format": "date-time" },
+        "decisionNote": { "type": "string" }
       }
     },
     "categoryTransferDoc": {

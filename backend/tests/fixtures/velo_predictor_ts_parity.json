@@ -1,0 +1,764 @@
+{
+ "participants": [
+  {
+   "name": "Rider 0",
+   "zwiftId": "1000",
+   "weightInGrams": 81204,
+   "cp5s": 1393,
+   "cp1min": 582,
+   "cp5min": 364,
+   "cp20min": 303,
+   "racingScore": 564,
+   "max30Rating": "N/A",
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 1",
+   "zwiftId": "1001",
+   "weightInGrams": 78450,
+   "cp5s": 631,
+   "cp1min": 353,
+   "cp5min": 243,
+   "cp20min": 214,
+   "racingScore": 748,
+   "max30Rating": 1439,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 2",
+   "zwiftId": "1002",
+   "weightInGrams": 85212,
+   "cp5s": 940,
+   "cp1min": 445,
+   "cp5min": 344,
+   "cp20min": 281,
+   "racingScore": 660,
+   "max30Rating": 1678,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 3",
+   "zwiftId": "1003",
+   "weightInGrams": 75305,
+   "cp5s": null,
+   "cp1min": 359,
+   "cp5min": 279,
+   "cp20min": 232,
+   "racingScore": 728,
+   "max30Rating": 1590,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 4",
+   "zwiftId": "1004",
+   "weightInGrams": 60177,
+   "cp5s": 796,
+   "cp1min": 302,
+   "cp5min": 220,
+   "cp20min": 194,
+   "racingScore": 453,
+   "max30Rating": 1636,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 5",
+   "zwiftId": "1005",
+   "weightInGrams": 67212,
+   "cp5s": 716,
+   "cp1min": 464,
+   "cp5min": 294,
+   "cp20min": 250,
+   "racingScore": 541,
+   "max30Rating": 1797,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 6",
+   "zwiftId": "1006",
+   "weightInGrams": 93413,
+   "cp5s": 1394,
+   "cp1min": 847,
+   "cp5min": 489,
+   "cp20min": 423,
+   "racingScore": 701,
+   "max30Rating": 1949,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 7",
+   "zwiftId": "1007",
+   "weightInGrams": 93091,
+   "cp5s": 835,
+   "cp1min": 521,
+   "cp5min": 317,
+   "cp20min": 289,
+   "racingScore": 242,
+   "max30Rating": 1632,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 8",
+   "zwiftId": "1008",
+   "weightInGrams": 65841,
+   "cp5s": 848,
+   "cp1min": 409,
+   "cp5min": 248,
+   "cp20min": 211,
+   "racingScore": 634,
+   "max30Rating": 1585,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 9",
+   "zwiftId": "1009",
+   "weightInGrams": 82901,
+   "cp5s": 713,
+   "cp1min": 332,
+   "cp5min": 259,
+   "cp20min": 212,
+   "racingScore": 736,
+   "max30Rating": "N/A",
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 10",
+   "zwiftId": "1010",
+   "weightInGrams": 65762,
+   "cp5s": null,
+   "cp1min": 526,
+   "cp5min": 330,
+   "cp20min": 298,
+   "racingScore": 166,
+   "max30Rating": 1952,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 11",
+   "zwiftId": "1011",
+   "weightInGrams": 71006,
+   "cp5s": 1279,
+   "cp1min": 475,
+   "cp5min": 309,
+   "cp20min": 269,
+   "racingScore": 363,
+   "max30Rating": 1805,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 12",
+   "zwiftId": "1012",
+   "weightInGrams": 73704,
+   "cp5s": 751,
+   "cp1min": 310,
+   "cp5min": 212,
+   "cp20min": 175,
+   "racingScore": 253,
+   "max30Rating": 1304,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 13",
+   "zwiftId": "1013",
+   "weightInGrams": 78843,
+   "cp5s": 1405,
+   "cp1min": 624,
+   "cp5min": 400,
+   "cp20min": 347,
+   "racingScore": 291,
+   "max30Rating": 1869,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 14",
+   "zwiftId": "1014",
+   "weightInGrams": 69818,
+   "cp5s": 901,
+   "cp1min": 552,
+   "cp5min": 321,
+   "cp20min": 264,
+   "racingScore": 507,
+   "max30Rating": 1669,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 15",
+   "zwiftId": "1015",
+   "weightInGrams": 97901,
+   "cp5s": 1527,
+   "cp1min": 610,
+   "cp5min": 424,
+   "cp20min": 382,
+   "racingScore": 649,
+   "max30Rating": 1856,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 16",
+   "zwiftId": "1016",
+   "weightInGrams": 75932,
+   "cp5s": 1377,
+   "cp1min": 681,
+   "cp5min": 386,
+   "cp20min": 337,
+   "racingScore": 227,
+   "max30Rating": 1996,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 17",
+   "zwiftId": "1017",
+   "weightInGrams": 58045,
+   "cp5s": null,
+   "cp1min": 535,
+   "cp5min": 324,
+   "cp20min": 277,
+   "racingScore": 191,
+   "max30Rating": 2027,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 18",
+   "zwiftId": "1018",
+   "weightInGrams": 79230,
+   "cp5s": 1307,
+   "cp1min": 431,
+   "cp5min": 345,
+   "cp20min": 280,
+   "racingScore": 711,
+   "max30Rating": "N/A",
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 19",
+   "zwiftId": "1019",
+   "weightInGrams": 82438,
+   "cp5s": 1273,
+   "cp1min": 590,
+   "cp5min": 386,
+   "cp20min": 330,
+   "racingScore": 289,
+   "max30Rating": 1780,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 20",
+   "zwiftId": "1020",
+   "weightInGrams": 59205,
+   "cp5s": 903,
+   "cp1min": 359,
+   "cp5min": 215,
+   "cp20min": 190,
+   "racingScore": 571,
+   "max30Rating": 1511,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 21",
+   "zwiftId": "1021",
+   "weightInGrams": 86830,
+   "cp5s": 1374,
+   "cp1min": 640,
+   "cp5min": 481,
+   "cp20min": 410,
+   "racingScore": 611,
+   "max30Rating": 2146,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 22",
+   "zwiftId": "1022",
+   "weightInGrams": 65863,
+   "cp5s": 1345,
+   "cp1min": 469,
+   "cp5min": 318,
+   "cp20min": 289,
+   "racingScore": 296,
+   "max30Rating": 1911,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 23",
+   "zwiftId": "1023",
+   "weightInGrams": 75310,
+   "cp5s": 966,
+   "cp1min": 374,
+   "cp5min": 247,
+   "cp20min": 224,
+   "racingScore": 270,
+   "max30Rating": 1435,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 24",
+   "zwiftId": "1024",
+   "weightInGrams": 56995,
+   "cp5s": null,
+   "cp1min": 524,
+   "cp5min": 286,
+   "cp20min": 259,
+   "racingScore": 571,
+   "max30Rating": 1968,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 25",
+   "zwiftId": "1025",
+   "weightInGrams": 90045,
+   "cp5s": 1024,
+   "cp1min": 526,
+   "cp5min": 331,
+   "cp20min": 286,
+   "racingScore": 566,
+   "max30Rating": 1606,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 26",
+   "zwiftId": "1026",
+   "weightInGrams": 85197,
+   "cp5s": 1009,
+   "cp1min": 546,
+   "cp5min": 353,
+   "cp20min": 292,
+   "racingScore": 699,
+   "max30Rating": 1615,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 27",
+   "zwiftId": "1027",
+   "weightInGrams": 57442,
+   "cp5s": 656,
+   "cp1min": 265,
+   "cp5min": 170,
+   "cp20min": 144,
+   "racingScore": 688,
+   "max30Rating": "N/A",
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 28",
+   "zwiftId": "1028",
+   "weightInGrams": 92061,
+   "cp5s": 1904,
+   "cp1min": 656,
+   "cp5min": 486,
+   "cp20min": 422,
+   "racingScore": 390,
+   "max30Rating": 1945,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 29",
+   "zwiftId": "1029",
+   "weightInGrams": 76283,
+   "cp5s": 1278,
+   "cp1min": 637,
+   "cp5min": 378,
+   "cp20min": 317,
+   "racingScore": 549,
+   "max30Rating": 1787,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 30",
+   "zwiftId": "1030",
+   "weightInGrams": 91918,
+   "cp5s": 1219,
+   "cp1min": 573,
+   "cp5min": 396,
+   "cp20min": 354,
+   "racingScore": 161,
+   "max30Rating": 1716,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 31",
+   "zwiftId": "1031",
+   "weightInGrams": 86748,
+   "cp5s": null,
+   "cp1min": 419,
+   "cp5min": 243,
+   "cp20min": 218,
+   "racingScore": 255,
+   "max30Rating": 1187,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 32",
+   "zwiftId": "1032",
+   "weightInGrams": 61557,
+   "cp5s": 1216,
+   "cp1min": 489,
+   "cp5min": 327,
+   "cp20min": 284,
+   "racingScore": 562,
+   "max30Rating": 2040,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 33",
+   "zwiftId": "1033",
+   "weightInGrams": 83173,
+   "cp5s": 1566,
+   "cp1min": 667,
+   "cp5min": 416,
+   "cp20min": 379,
+   "racingScore": 177,
+   "max30Rating": 1935,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 34",
+   "zwiftId": "1034",
+   "weightInGrams": 70920,
+   "cp5s": 846,
+   "cp1min": 516,
+   "cp5min": 316,
+   "cp20min": 264,
+   "racingScore": 384,
+   "max30Rating": 1648,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 35",
+   "zwiftId": "1035",
+   "weightInGrams": 67523,
+   "cp5s": 988,
+   "cp1min": 377,
+   "cp5min": 277,
+   "cp20min": 233,
+   "racingScore": 661,
+   "max30Rating": 1636,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 36",
+   "zwiftId": "1036",
+   "weightInGrams": 94559,
+   "cp5s": 1050,
+   "cp1min": 397,
+   "cp5min": 309,
+   "cp20min": 251,
+   "racingScore": 464,
+   "max30Rating": "N/A",
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 37",
+   "zwiftId": "1037",
+   "weightInGrams": 88413,
+   "cp5s": 1101,
+   "cp1min": 535,
+   "cp5min": 342,
+   "cp20min": 278,
+   "racingScore": 190,
+   "max30Rating": 1428,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 38",
+   "zwiftId": "1038",
+   "weightInGrams": 78953,
+   "cp5s": null,
+   "cp1min": 404,
+   "cp5min": 293,
+   "cp20min": 247,
+   "racingScore": 255,
+   "max30Rating": 1474,
+   "ligaCategory": null
+  },
+  {
+   "name": "Rider 39",
+   "zwiftId": "1039",
+   "weightInGrams": 80878,
+   "cp5s": 929,
+   "cp1min": 502,
+   "cp5min": 326,
+   "cp20min": 281,
+   "racingScore": 214,
+   "max30Rating": 1692,
+   "ligaCategory": null
+  }
+ ],
+ "cases": {
+  "default": {
+   "features": {
+    "weight_kg": true,
+    "zrs": false,
+    "wkg5s": false,
+    "wkg1m": true,
+    "wkg5m": false,
+    "wkg20m": true,
+    "watts5s": false,
+    "watts1m": false,
+    "watts5m": false,
+    "watts20m": false,
+    "compound5s": false,
+    "compound1m": false,
+    "compound5m": true,
+    "compound20m": false
+   },
+   "model": {
+    "coeffs": [
+     520.2506702004824,
+     -0.055388632367372875,
+     -39.064215635940386,
+     399.34439186490476,
+     -0.01608385722721074
+    ],
+    "r2": 0.9278752896205457,
+    "rmse": 59,
+    "n": 35,
+    "activeFeatureKeys": [
+     "weight_kg",
+     "wkg1m",
+     "wkg20m",
+     "compound5m"
+    ]
+   },
+   "predictions": [
+    {
+     "inputs": {
+      "weightKg": 72,
+      "racingScore": 420,
+      "wkg5s": 13.1,
+      "wkg1m": 7.4,
+      "wkg5m": 4.6,
+      "wkg20m": 3.9
+     },
+     "prediction": {
+      "velo": 1760,
+      "category": "Emerald",
+      "low": 1701,
+      "high": 1819,
+      "catLow": "Emerald",
+      "catHigh": "Emerald"
+     }
+    },
+    {
+     "inputs": {
+      "weightKg": 88.4,
+      "racingScore": 250,
+      "wkg5s": 11.2,
+      "wkg1m": 6.1,
+      "wkg5m": 3.7,
+      "wkg20m": 3.05
+     },
+     "prediction": {
+      "velo": 1476,
+      "category": "Sapphire",
+      "low": 1417,
+      "high": 1535,
+      "catLow": "Amethyst",
+      "catHigh": "Sapphire"
+     }
+    },
+    {
+     "inputs": {
+      "weightKg": 61,
+      "racingScore": 600,
+      "wkg5s": 15,
+      "wkg1m": 8.8,
+      "wkg5m": 5.6,
+      "wkg20m": 4.75
+     },
+     "prediction": {
+      "velo": 2039,
+      "category": "Ruby",
+      "low": 1980,
+      "high": 2098,
+      "catLow": "Ruby",
+      "catHigh": "Ruby"
+     }
+    }
+   ]
+  },
+  "wkg_only": {
+   "features": {
+    "weight_kg": false,
+    "zrs": false,
+    "wkg5s": false,
+    "wkg1m": false,
+    "wkg5m": true,
+    "wkg20m": true,
+    "watts5s": false,
+    "watts1m": false,
+    "watts5m": false,
+    "watts20m": false,
+    "compound5s": false,
+    "compound1m": false,
+    "compound5m": false,
+    "compound20m": false
+   },
+   "model": {
+    "coeffs": [
+     549.158458250554,
+     -14.282302682206126,
+     330.8242057041379
+    ],
+    "r2": 0.9167181581922303,
+    "rmse": 64,
+    "n": 35,
+    "activeFeatureKeys": [
+     "wkg5m",
+     "wkg20m"
+    ]
+   },
+   "predictions": [
+    {
+     "inputs": {
+      "weightKg": 72,
+      "racingScore": 420,
+      "wkg5s": 13.1,
+      "wkg1m": 7.4,
+      "wkg5m": 4.6,
+      "wkg20m": 3.9
+     },
+     "prediction": {
+      "velo": 1774,
+      "category": "Emerald",
+      "low": 1710,
+      "high": 1838,
+      "catLow": "Emerald",
+      "catHigh": "Emerald"
+     }
+    },
+    {
+     "inputs": {
+      "weightKg": 88.4,
+      "racingScore": 250,
+      "wkg5s": 11.2,
+      "wkg1m": 6.1,
+      "wkg5m": 3.7,
+      "wkg20m": 3.05
+     },
+     "prediction": {
+      "velo": 1505,
+      "category": "Sapphire",
+      "low": 1441,
+      "high": 1569,
+      "catLow": "Amethyst",
+      "catHigh": "Sapphire"
+     }
+    },
+    {
+     "inputs": {
+      "weightKg": 61,
+      "racingScore": 600,
+      "wkg5s": 15,
+      "wkg1m": 8.8,
+      "wkg5m": 5.6,
+      "wkg20m": 4.75
+     },
+     "prediction": {
+      "velo": 2041,
+      "category": "Ruby",
+      "low": 1977,
+      "high": 2105,
+      "catLow": "Ruby",
+      "catHigh": "Ruby"
+     }
+    }
+   ]
+  },
+  "with_sprint_zrs": {
+   "features": {
+    "weight_kg": true,
+    "zrs": true,
+    "wkg5s": true,
+    "wkg1m": true,
+    "wkg5m": false,
+    "wkg20m": true,
+    "watts5s": false,
+    "watts1m": false,
+    "watts5m": false,
+    "watts20m": false,
+    "compound5s": true,
+    "compound1m": false,
+    "compound5m": true,
+    "compound20m": false
+   },
+   "model": {
+    "coeffs": [
+     172.54018236002594,
+     2.0706243063900085,
+     0.09195937720411736,
+     -6.656464838398955,
+     -42.98255559299858,
+     522.5262375324585,
+     -0.002016279690284151,
+     -0.12041148763250908
+    ],
+    "r2": 0.9397199319503162,
+    "rmse": 49,
+    "n": 29,
+    "activeFeatureKeys": [
+     "weight_kg",
+     "zrs",
+     "wkg5s",
+     "wkg1m",
+     "wkg20m",
+     "compound5s",
+     "compound5m"
+    ]
+   },
+   "predictions": [
+    {
+     "inputs": {
+      "weightKg": 72,
+      "racingScore": 420,
+      "wkg5s": 13.1,
+      "wkg1m": 7.4,
+      "wkg5m": 4.6,
+      "wkg20m": 3.9
+     },
+     "prediction": {
+      "velo": 1784,
+      "category": "Emerald",
+      "low": 1735,
+      "high": 1833,
+      "catLow": "Emerald",
+      "catHigh": "Emerald"
+     }
+    },
+    {
+     "inputs": {
+      "weightKg": 88.4,
+      "racingScore": 250,
+      "wkg5s": 11.2,
+      "wkg1m": 6.1,
+      "wkg5m": 3.7,
+      "wkg20m": 3.05
+     },
+     "prediction": {
+      "velo": 1467,
+      "category": "Sapphire",
+      "low": 1418,
+      "high": 1516,
+      "catLow": "Amethyst",
+      "catHigh": "Sapphire"
+     }
+    },
+    {
+     "inputs": {
+      "weightKg": 61,
+      "racingScore": 600,
+      "wkg5s": 15,
+      "wkg1m": 8.8,
+      "wkg5m": 5.6,
+      "wkg20m": 4.75
+     },
+     "prediction": {
+      "velo": 2100,
+      "category": "Ruby",
+      "low": 2051,
+      "high": 2149,
+      "catLow": "Ruby",
+      "catHigh": "Ruby"
+     }
+    }
+   ]
+  }
+ }
+}

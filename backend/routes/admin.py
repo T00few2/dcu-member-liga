@@ -13,7 +13,8 @@ admin_verification_profile_routes – /admin/verification/* rider/profile/activi
 admin_verification_dual_routes    – /admin/verification/* dual-recording + race batch endpoints
 admin_trainers        – /trainers/* (CRUD + approval workflow)
 admin_liga_categories_refresh_routes – refresh/sync endpoints for ZR + Zwift profile
-admin_liga_categories_management_routes – liga category config/assign/reassign/predictor endpoints
+admin_liga_categories_management_routes – liga category config/assign/reassign endpoints
+admin_predictor_routes – /admin/predictor/* vELO predictor model, predictions and settings
 admin_season          – /admin/archive-season, /admin/reset-season
 """
 from flask import Blueprint
@@ -27,6 +28,7 @@ import routes.admin_verification_dual_routes  # noqa: E402, F401
 import routes.admin_trainers        # noqa: E402, F401
 import routes.admin_liga_categories_refresh_routes  # noqa: E402, F401
 import routes.admin_liga_categories_management_routes  # noqa: E402, F401
+import routes.admin_predictor_routes  # noqa: E402, F401
 import routes.admin_category_transfers  # noqa: E402, F401
 import routes.admin_race_structure_routes  # noqa: E402, F401
 import routes.admin_season          # noqa: E402, F401

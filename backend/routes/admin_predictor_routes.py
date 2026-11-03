@@ -1,0 +1,230 @@
+"""Admin endpoints for the vELO predictor.
+
+The admin predictor page has no model code of its own: it gets the fitted model,
+every rider's prediction and predictions for typed or Strava inputs from here.
+"""
+from __future__ import annotations
+
+import logging
+
+from flask import jsonify, request
+
+from authz import AuthzError, require_admin
+from extensions import db
+from routes.admin import admin_bp
+from services import predictor_service as ps
+from services import predictor_tuning_runs as runs
+from services import velo_predictor as vp
+
+logger = logging.getLogger(__name__)
+
+MAX_PREDICT_ROWS = 2000
+
+
+def _admin():
+    try:
+        return require_admin(request), None
+    except AuthzError as e:
+        return None, (jsonify({"message": e.message}), e.status_code)
+
+
+def _who(decoded: dict | None) -> str:
+    decoded = decoded or {}
+    return str(decoded.get("email") or decoded.get("uid") or "admin")
+
+
+def _config_from_body(body: dict) -> vp.PredictorConfig | None:
+    """Optional unsaved config from the page (e.g. features being toggled), merged over the saved one."""
+    raw = body.get("config")
+    if not isinstance(raw, dict):
+        return None
+    merged = {**ps.load_config(db).to_dict(), **raw}
+    return vp.PredictorConfig.from_dict(merged)
+
+
+def _feature_defs() -> list[dict]:
+    return [f.public() for f in vp.FEATURE_DEFS]
+
+
+@admin_bp.route("/admin/predictor/model", methods=["POST"])
+def predictor_model():
+    """Fitted model + every rider's Zwift-power prediction.
+
+    Body: `{config?: {...}}` to preview an unsaved config; omitted = saved config.
+    """
+    _, err = _admin()
+    if err:
+        return err
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+    try:
+        body = request.get_json(silent=True) or {}
+        config = _config_from_body(body) or ps.load_config(db)
+        model, participants, cats = ps.get_model(db, config)
+        return jsonify({
+            "model": model.to_dict() if model else None,
+            "config": config.to_dict(),
+            "defaultFeatures": dict(vp.DEFAULT_FEATURES),
+            "features": _feature_defs(),
+            "predictions": ps.zwift_predictions(model, participants, cats),
+        }), 200
+    except Exception as e:
+        logger.error("predictor_model error: %s", e)
+        return jsonify({"message": str(e)}), 500
+
+
+@admin_bp.route("/admin/predictor/predict", methods=["POST"])
+def predictor_predict():
+    """Predictions for a batch of input rows.
+
+    Body: `{config?, rows: [{id, inputs: {weightKg, racingScore, wkg5s, wkg1m, wkg5m, wkg20m},
+    source?: "zwift"|"strava", activityCount?}]}` → `{predictions: {id: prediction}}`.
+    """
+    _, err = _admin()
+    if err:
+        return err
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+    body = request.get_json(silent=True) or {}
+    rows = body.get("rows")
+    if not isinstance(rows, list) or len(rows) > MAX_PREDICT_ROWS:
+        return jsonify({"message": f"rows must be a list of at most {MAX_PREDICT_ROWS} items"}), 400
+    try:
+        config = _config_from_body(body) or ps.load_config(db)
+        model, _, cats = ps.get_model(db, config)
+        out = {}
+        for row in rows:
+            if not isinstance(row, dict) or row.get("id") is None:
+                continue
+            source = "strava" if row.get("source") == "strava" else "zwift"
+            count = row.get("activityCount")
+            out[str(row["id"])] = vp.predict_inputs(
+                model,
+                row.get("inputs") if isinstance(row.get("inputs"), dict) else {},
+                cats,
+                source=source,
+                activity_count=count if isinstance(count, int) and not isinstance(count, bool) else None,
+            )
+        return jsonify({"predictions": out}), 200
+    except Exception as e:
+        logger.error("predictor_predict error: %s", e)
+        return jsonify({"message": str(e)}), 500
+
+
+@admin_bp.route("/admin/predictor/config", methods=["GET"])
+def get_predictor_config():
+    """Active config, its latest tuning metrics and the change history."""
+    _, err = _admin()
+    if err:
+        return err
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+    try:
+        settings = ps.league_settings(db)
+        return jsonify({
+            "config": vp.PredictorConfig.from_settings(settings).to_dict(),
+            "metrics": settings.get("predictorMetrics"),
+            "history": settings.get("predictorConfigHistory") or [],
+            "updatedAt": settings.get("predictorConfigUpdatedAt"),
+        }), 200
+    except Exception as e:
+        logger.error("get_predictor_config error: %s", e)
+        return jsonify({"message": str(e)}), 500
+
+
+@admin_bp.route("/admin/predictor/config", methods=["POST"])
+def save_predictor_config():
+    """Save a new active config (body `{config, reason?}`) or roll back (`{rollbackIndex}`)."""
+    decoded, err = _admin()
+    if err:
+        return err
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+    body = request.get_json(silent=True) or {}
+    try:
+        saved_by = _who(decoded)
+        if "rollbackIndex" in body:
+            idx = body.get("rollbackIndex")
+            history = ps.league_settings(db).get("predictorConfigHistory") or []
+            if not isinstance(idx, int) or isinstance(idx, bool) or not 0 <= idx < len(history):
+                return jsonify({"message": "rollbackIndex is out of range"}), 400
+            entry = history[idx] or {}
+            config = vp.PredictorConfig.from_dict(entry.get("config"))
+            ps.save_config(db, config, saved_by=saved_by, reason=f"Rollback to version from {entry.get('replacedAt')}",
+                           metrics=entry.get("metrics"))
+            return jsonify({"config": config.to_dict(), "message": "Rolled back"}), 200
+
+        raw = body.get("config")
+        if not isinstance(raw, dict):
+            return jsonify({"message": "config must be an object"}), 400
+        config = vp.PredictorConfig.from_dict({**ps.load_config(db).to_dict(), **raw})
+        if not config.active_features():
+            return jsonify({"message": "Select at least one feature"}), 400
+        reason = body.get("reason") if isinstance(body.get("reason"), str) else "Saved from admin page"
+        ps.save_config(db, config, saved_by=saved_by, reason=reason[:500])
+        return jsonify({"config": config.to_dict(), "message": "Saved"}), 200
+    except Exception as e:
+        logger.error("save_predictor_config error: %s", e)
+        return jsonify({"message": str(e)}), 500
+
+
+# --- Tuning ------------------------------------------------------------------
+
+
+@admin_bp.route("/admin/predictor/tune", methods=["POST"])
+def predictor_tune():
+    """Measure Strava→division accuracy and search for better settings.
+
+    Body: `{save?: bool}` (default true). Uses only cached Strava curves.
+    """
+    decoded, err = _admin()
+    if err:
+        return err
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+    body = request.get_json(silent=True) or {}
+    try:
+        run = runs.run_tuning(db, started_by=_who(decoded), save=body.get("save", True) is not False)
+        return jsonify(run), 200
+    except Exception as e:
+        logger.error("predictor_tune error: %s", e)
+        return jsonify({"message": str(e)}), 500
+
+
+@admin_bp.route("/admin/predictor/tune/runs", methods=["GET"])
+def predictor_tune_runs():
+    _, err = _admin()
+    if err:
+        return err
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+    try:
+        return jsonify({"runs": runs.list_runs(db)}), 200
+    except Exception as e:
+        logger.error("predictor_tune_runs error: %s", e)
+        return jsonify({"message": str(e)}), 500
+
+
+@admin_bp.route("/admin/predictor/tune/<run_id>/decision", methods=["POST"])
+def predictor_tune_decision(run_id: str):
+    """Apply or reject a tuning proposal. Body: `{action: "apply"|"reject", note?}`."""
+    decoded, err = _admin()
+    if err:
+        return err
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+    body = request.get_json(silent=True) or {}
+    action = body.get("action")
+    try:
+        if action == "apply":
+            return jsonify(runs.apply_run(db, run_id, decided_by=_who(decoded))), 200
+        if action == "reject":
+            note = body.get("note") if isinstance(body.get("note"), str) else ""
+            runs.reject_run(db, run_id, decided_by=_who(decoded), note=note)
+            return jsonify({"message": "Rejected"}), 200
+        return jsonify({"message": "action must be apply or reject"}), 400
+    except runs.TuningRunError as e:
+        return jsonify({"message": e.message}), e.status_code
+    except Exception as e:
+        logger.error("predictor_tune_decision error: %s", e)
+        return jsonify({"message": str(e)}), 500

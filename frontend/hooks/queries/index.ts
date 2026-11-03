@@ -25,7 +25,19 @@ export { usePoliciesMetaQuery, usePoliciesVersionsQuery } from './usePoliciesQue
 export type { PolicyVersion, PolicyMeta, PolicyMetaResult, PolicyVersionsResult } from './usePoliciesQuery';
 export { usePolicyDocQuery } from './usePolicyDocQuery';
 export type { PolicyDoc } from './usePolicyDocQuery';
-export { usePredictorConfigQuery } from './usePredictorConfigQuery';
+export {
+    usePredictorConfigQuery,
+    usePredictorModelQuery,
+    usePredictionsQuery,
+    useDebouncedValue,
+} from './usePredictorQuery';
+export type {
+    PredictorConfig,
+    PredictorConfigResponse,
+    PredictorHistoryEntry,
+    PredictorModelResponse,
+    PredictRow,
+} from './usePredictorQuery';
 export { useMemberCountQuery } from './useMemberCountQuery';
 export { useCurrentLiveRaceQuery } from './useCurrentLiveRaceQuery';
 export { useUpcomingRaceQuery } from './useUpcomingRaceQuery';

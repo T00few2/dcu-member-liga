@@ -4,19 +4,23 @@ import { useState, useEffect, useMemo } from 'react';
 import { User } from 'firebase/auth';
 import { useQueryClient } from '@tanstack/react-query';
 import { API_URL } from '@/lib/api';
-import { useParticipantsQuery, usePredictorConfigQuery, useLeagueSettingsQuery } from '@/hooks/queries';
+import {
+  useParticipantsQuery,
+  usePredictorConfigQuery,
+  usePredictorModelQuery,
+  usePredictionsQuery,
+  useDebouncedValue,
+  useLeagueSettingsQuery,
+  type PredictRow,
+} from '@/hooks/queries';
 import { effectiveLigaCategories } from '@/lib/ligaCategories';
 import {
-  ALL_ON,
-  mergeFeatures,
-  buildModel,
   veloForCategory,
   inputsFromParticipant,
   combineInputs,
-  predictionFromInputs,
-  predictionFromStravaCache,
+  predictionFor,
+  stravaInputsForRider,
   actualVeloFromParticipant,
-  FEATURE_DEFS,
   EMPTY_POWER,
   EMPTY_SHARED,
   Participant,
@@ -32,6 +36,7 @@ import {
 import CategoryPredictorResults from './category-predictor/CategoryPredictorResults';
 import CategoryPredictorForm from './category-predictor/CategoryPredictorForm';
 import CategoryPredictorRoster from './category-predictor/CategoryPredictorRoster';
+import CategoryPredictorTuning from './category-predictor/CategoryPredictorTuning';
 
 interface CategoryPredictorProps {
   user: User | null;
@@ -51,19 +56,27 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   const { data: leagueSettings } = useLeagueSettingsQuery();
   const ligaCats = useMemo(() => effectiveLigaCategories(leagueSettings), [leagueSettings]);
 
-  const [selectedFeatures, setSelectedFeatures] = useState<Record<FeatureKey, boolean>>(ALL_ON);
+  // The model lives in the backend (single source of truth). Toggling features
+  // previews an unsaved selection; "Save as default" stores it for everyone,
+  // including the division agent.
+  const [selectedFeatures, setSelectedFeatures] = useState<Record<FeatureKey, boolean> | null>(null);
   const [savedFeedback, setSavedFeedback] = useState(false);
 
   useEffect(() => {
-    if (predictorConfig?.features && typeof predictorConfig.features === 'object') {
-      setSelectedFeatures(mergeFeatures(predictorConfig.features));
+    if (selectedFeatures === null && predictorConfig?.config?.features) {
+      setSelectedFeatures(predictorConfig.config.features);
     }
-  }, [predictorConfig]);
+  }, [predictorConfig, selectedFeatures]);
 
-  const model = useMemo(() => buildModel(participants, selectedFeatures, ligaCats), [participants, selectedFeatures, ligaCats]);
+  const featuresForModel = useDebouncedValue(selectedFeatures, 300);
+  const { data: modelData, isLoading: loadingModel, error: modelError } = usePredictorModelQuery(featuresForModel);
+  const model = modelData?.model ?? null;
+  const featureDefs = useMemo(() => modelData?.features ?? [], [modelData]);
+  const zwiftPredictions = modelData?.predictions;
+  const stravaWindowDays = predictorConfig?.config?.stravaWindowDays ?? 90;
   const activeFeatureKeys = useMemo(
-    () => FEATURE_DEFS.filter(f => selectedFeatures[f.key]).map(f => f.key),
-    [selectedFeatures],
+    () => featureDefs.filter(f => selectedFeatures?.[f.key]).map(f => f.key),
+    [featureDefs, selectedFeatures],
   );
 
   const [selectedZwiftId, setSelectedZwiftId] = useState('');
@@ -87,27 +100,42 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   const selectedStrava = selectedZwiftId ? stravaByRider[selectedZwiftId] : undefined;
   const stravaPower = selectedStrava?.power ?? EMPTY_POWER;
 
-  const zwiftPrediction = useMemo(
-    () => predictionFromInputs(model, combineInputs(shared, zwiftPower), ligaCats),
-    [model, shared, zwiftPower, ligaCats],
-  );
-  const stravaPrediction = useMemo(
-    () => predictionFromInputs(model, combineInputs(shared, stravaPower), ligaCats),
-    [model, shared, stravaPower, ligaCats],
-  );
+  // Form predictions (editable inputs) — debounced so typing does not fire a request per key.
+  const formRows = useMemo<PredictRow[]>(() => [
+    { id: 'zwift', inputs: combineInputs(shared, zwiftPower) },
+    {
+      id: 'strava',
+      inputs: combineInputs(shared, stravaPower),
+      source: 'strava',
+      activityCount: selectedStrava?.activityCount ?? null,
+    },
+  ], [shared, zwiftPower, stravaPower, selectedStrava?.activityCount]);
+  const debouncedFormRows = useDebouncedValue(formRows, 300);
+  const { data: formPredictions } = usePredictionsQuery(debouncedFormRows, featuresForModel);
+  const zwiftPrediction = predictionFor(formPredictions, 'zwift');
+  const stravaPrediction = predictionFor(formPredictions, 'strava');
+
+  // Strava predictions for every rider whose Strava power has been loaded.
+  const stravaRows = useMemo<PredictRow[]>(() => participants.flatMap(p => {
+    const inputs = stravaInputsForRider(p, stravaByRider[p.zwiftId]);
+    return inputs
+      ? [{ id: p.zwiftId, inputs, source: 'strava' as const, activityCount: stravaByRider[p.zwiftId]?.activityCount ?? null }]
+      : [];
+  }), [participants, stravaByRider]);
+  const { data: stravaPredictions } = usePredictionsQuery(stravaRows, featuresForModel);
 
   const selectedParticipant = participants.find(p => p.zwiftId === selectedZwiftId) ?? null;
   const actualVelo = selectedParticipant ? actualVeloFromParticipant(selectedParticipant) : null;
 
   const visibleRiders = useMemo(
-    () => filterPredictorRiders(participants, model, {
+    () => filterPredictorRiders(participants, zwiftPredictions, {
       unassignedOnly: showUnassignedOnly,
       mismatchOnly: showMismatchOnly,
       zeroVeloOnly: showZeroVeloOnly,
       no30dVeloOnly: showNo30dVeloOnly,
       assignedOverlay,
     }),
-    [participants, model, showUnassignedOnly, showMismatchOnly, showZeroVeloOnly, showNo30dVeloOnly, assignedOverlay],
+    [participants, zwiftPredictions, showUnassignedOnly, showMismatchOnly, showZeroVeloOnly, showNo30dVeloOnly, assignedOverlay],
   );
 
   function handleSelectRider(zwiftId: string, scrollToDetail = false) {
@@ -136,7 +164,7 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
     setLoadingStravaIds(prev => ({ ...prev, [zwiftId]: true }));
     try {
       const token = await user.getIdToken();
-      const res = await fetch(`${API_URL}/admin/verification/strava-power-curve/${zwiftId}?days=90`, {
+      const res = await fetch(`${API_URL}/admin/verification/strava-power-curve/${zwiftId}?days=${stravaWindowDays}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -260,9 +288,9 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
     if (!p) return;
     let veloToSend: number | null = null;
     if (choice === 'zwift') {
-      veloToSend = predictionFromInputs(model, inputsFromParticipant(p), ligaCats).velo;
+      veloToSend = predictionFor(zwiftPredictions, zwiftId).velo;
     } else if (choice === 'strava') {
-      veloToSend = predictionFromStravaCache(model, p, stravaByRider[zwiftId]).velo;
+      veloToSend = predictionFor(stravaPredictions, zwiftId).velo;
     } else {
       veloToSend = veloForCategory(choice, ligaCats);
     }
@@ -339,17 +367,18 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   }
 
   async function handleSaveDefaults() {
-    if (!user) return;
+    if (!user || !selectedFeatures) return;
     try {
       const token = await user.getIdToken();
-      const res = await fetch(`${API_URL}/admin/predictor-config`, {
+      const res = await fetch(`${API_URL}/admin/predictor/config`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ features: selectedFeatures }),
+        body: JSON.stringify({ config: { features: selectedFeatures }, reason: 'Regressors saved from predictor page' }),
       });
       if (res.ok) {
         setSavedFeedback(true);
         setTimeout(() => setSavedFeedback(false), 2000);
+        void queryClient.invalidateQueries({ queryKey: ['predictor'] });
       }
     } catch { /* ignore */ }
   }
@@ -359,8 +388,9 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
       <div className="bg-muted/40 border border-border rounded-lg p-4 text-sm text-muted-foreground space-y-1">
         <p>
           <span className="font-medium text-foreground">What this tool does:</span> Riders with thin Zwift profiles
-          may not have a ZwiftRacing vELO score, so the automatic category assignment can&apos;t place them. This tool
-          fits a linear model from riders <em>who do</em> have vELO scores, then uses it to predict a vELO for
+          may not have a ZwiftRacing vELO score, so the automatic category assignment can&apos;t place them. The
+          backend predictor (the same one the division agent uses) fits a linear model from riders <em>who do</em>
+          have vELO scores, then uses it to predict a vELO for
           any rider based on their power data — from Zwift and from Strava side by side — and assigns them a starting
           category using the same engine as the nightly job.
         </p>
@@ -374,20 +404,27 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
       </div>
 
       <CategoryPredictorResults
-        loadingParticipants={loadingParticipants}
+        loadingParticipants={loadingParticipants || loadingModel}
         model={model}
-        selectedFeatures={selectedFeatures}
+        modelError={modelError instanceof Error ? modelError.message : ''}
+        featureDefs={featureDefs}
+        selectedFeatures={selectedFeatures ?? {}}
         onToggleFeature={(key, enabled) =>
-          setSelectedFeatures(prev => ({ ...prev, [key]: enabled }))
+          setSelectedFeatures(prev => ({ ...(prev ?? modelData?.config.features ?? {}), [key]: enabled }) as Record<FeatureKey, boolean>)
         }
         onSaveDefaults={handleSaveDefaults}
         savedFeedback={savedFeedback}
-        onResetFeatures={() => setSelectedFeatures({ ...ALL_ON })}
+        onResetFeatures={() => {
+          if (modelData?.defaultFeatures) setSelectedFeatures({ ...modelData.defaultFeatures });
+        }}
       />
+
+      <CategoryPredictorTuning user={user} config={predictorConfig} />
 
       <CategoryPredictorRoster
         riders={visibleRiders}
-        model={model}
+        zwiftPredictions={zwiftPredictions}
+        stravaPredictions={stravaPredictions}
         selectedZwiftId={selectedZwiftId}
         onSelectRider={zwiftId => handleSelectRider(zwiftId, true)}
         showUnassignedOnly={showUnassignedOnly}
@@ -438,7 +475,10 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
         zwiftPower={zwiftPower}
         stravaPower={stravaPower}
         onSetPowerInput={handleSetPowerInput}
-        model={model}
+        rmse={model?.rmse ?? null}
+        featureDefs={featureDefs}
+        zwiftPredictions={zwiftPredictions}
+        stravaWindowDays={stravaWindowDays}
         activeFeatureKeys={activeFeatureKeys}
         zwiftPrediction={zwiftPrediction}
         stravaPrediction={stravaPrediction}

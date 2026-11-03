@@ -4,12 +4,10 @@ import { useMemo, useState } from 'react';
 import CategoryBadge from './CategoryBadge';
 import {
   Participant,
-  ModelResult,
+  PredictionMap,
   StravaRiderCache,
   ZR_CATEGORY_DEFAULTS,
-  predictionFromInputs,
-  inputsFromParticipant,
-  predictionFromStravaCache,
+  predictionFor,
   riderAssignedCategory,
   formatVeloValue,
   parseVeloField,
@@ -20,7 +18,10 @@ type SortDir = 'asc' | 'desc';
 
 export interface CategoryPredictorRosterProps {
   riders: Participant[];
-  model: ModelResult | null;
+  /** Backend Zwift-power predictions keyed by Zwift ID. */
+  zwiftPredictions?: PredictionMap;
+  /** Backend Strava predictions for riders whose Strava power is loaded. */
+  stravaPredictions?: PredictionMap;
   selectedZwiftId: string;
   onSelectRider: (zwiftId: string) => void;
   showUnassignedOnly: boolean;
@@ -126,7 +127,8 @@ function compareNames(a: Participant, b: Participant): number {
 
 export default function CategoryPredictorRoster({
   riders,
-  model,
+  zwiftPredictions,
+  stravaPredictions,
   selectedZwiftId,
   onSelectRider,
   showUnassignedOnly,
@@ -355,9 +357,11 @@ export default function CategoryPredictorRoster({
               </tr>
             )}
             {sortedRiders.map(p => {
-              const zwiftPred = predictionFromInputs(model, inputsFromParticipant(p));
+              const zwiftPred = predictionFor(zwiftPredictions, p.zwiftId);
               const stravaEntry = stravaByRider[p.zwiftId];
-              const stravaPred = predictionFromStravaCache(model, p, stravaEntry);
+              const stravaPred = stravaEntry && !stravaEntry.error
+                ? predictionFor(stravaPredictions, p.zwiftId)
+                : predictionFor(undefined, p.zwiftId);
               const stravaLoading = Boolean(loadingStravaIds[p.zwiftId]);
               const currentVelo = formatVeloValue(p.rating);
               const max30Velo = formatVeloValue(p.max30Rating);

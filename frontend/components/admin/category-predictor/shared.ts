@@ -39,14 +39,12 @@ export type FeatureKey = 'weight_kg' | 'zrs' | 'wkg5s' | 'wkg1m' | 'wkg5m' | 'wk
   | 'watts5s' | 'watts1m' | 'watts5m' | 'watts20m'
   | 'compound5s' | 'compound1m' | 'compound5m' | 'compound20m';
 
-export interface FeatureDef {
+/** Feature metadata served by the backend predictor (`GET /admin/predictor/model`). */
+export interface FeatureMeta {
   key: FeatureKey;
   label: string;
   description: string;
   requires: CPField[];
-  // args: kg, cp5s, cp1min, cp5min, cp20min, racingScore
-  fromCP: (kg: number, c5s: number, c1: number, c5: number, c20: number, zrs: number) => number;
-  fromInputs: (inp: Inputs) => number;
 }
 
 export interface ModelResult {
@@ -116,103 +114,6 @@ export function inputsFromParticipant(p: Participant): Inputs {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Feature definitions
-// ---------------------------------------------------------------------------
-
-export const FEATURE_DEFS: FeatureDef[] = [
-  {
-    key: 'weight_kg', label: 'Weight (kg)', requires: [],
-    description: 'Raw rider weight. Lets the model reward heavier riders at the same W/kg — on flat terrain, absolute watts matter.',
-    fromCP: (kg) => kg,
-    fromInputs: (inp) => inp.weightKg,
-  },
-  {
-    key: 'zrs', label: 'ZRS', requires: ['racingScore'],
-    description: "Zwift Racing Score — Zwift's in-game ranking. Directly comparable to vELO and often the strongest single predictor.",
-    fromCP: (_kg, _s, _1, _5, _20, zrs) => zrs,
-    fromInputs: (inp) => inp.racingScore,
-  } as FeatureDef,
-  {
-    key: 'wkg5s', label: '5s W/kg', requires: ['cp5s'],
-    description: '5-second peak power per kg — pure neuromuscular / sprint ceiling.',
-    fromCP: (kg, c5s) => c5s / kg,
-    fromInputs: (inp) => inp.wkg5s,
-  },
-  {
-    key: 'wkg1m', label: '1min W/kg', requires: ['cp1min'],
-    description: '1-minute power per kg — anaerobic capacity.',
-    fromCP: (kg, _s, c1) => c1 / kg,
-    fromInputs: (inp) => inp.wkg1m,
-  },
-  {
-    key: 'wkg5m', label: '5min W/kg', requires: ['cp5min'],
-    description: '5-minute power per kg — VO₂max proxy.',
-    fromCP: (kg, _s, _1, c5) => c5 / kg,
-    fromInputs: (inp) => inp.wkg5m,
-  },
-  {
-    key: 'wkg20m', label: '20min W/kg', requires: ['cp20min'],
-    description: 'Sustained aerobic ceiling (FTP proxy) — typically the strongest single predictor of vELO.',
-    fromCP: (kg, _s, _1, _5, c20) => c20 / kg,
-    fromInputs: (inp) => inp.wkg20m,
-  },
-  {
-    key: 'watts5s', label: '5s watts', requires: ['cp5s'],
-    description: 'Absolute 5-second peak watts. Scale-free on flat sprints.',
-    fromCP: (_kg, c5s) => c5s,
-    fromInputs: (inp) => inp.wkg5s * inp.weightKg,
-  },
-  {
-    key: 'watts1m', label: '1min watts', requires: ['cp1min'],
-    description: 'Absolute 1-minute watts.',
-    fromCP: (_kg, _s, c1) => c1,
-    fromInputs: (inp) => inp.wkg1m * inp.weightKg,
-  },
-  {
-    key: 'watts5m', label: '5min watts', requires: ['cp5min'],
-    description: 'Absolute 5-minute watts.',
-    fromCP: (_kg, _s, _1, c5) => c5,
-    fromInputs: (inp) => inp.wkg5m * inp.weightKg,
-  },
-  {
-    key: 'watts20m', label: '20min watts', requires: ['cp20min'],
-    description: 'Absolute 20-minute watts (FTP in absolute terms).',
-    fromCP: (_kg, _s, _1, _5, c20) => c20,
-    fromInputs: (inp) => inp.wkg20m * inp.weightKg,
-  },
-  {
-    key: 'compound5s', label: '5s²/kg', requires: ['cp5s'],
-    description: '5s watts² ÷ weight. Sprint compound score — rewards heavier sprinters.',
-    fromCP: (kg, c5s) => (c5s * c5s) / kg,
-    fromInputs: (inp) => inp.weightKg > 0 ? (inp.wkg5s * inp.weightKg) ** 2 / inp.weightKg : 0,
-  },
-  {
-    key: 'compound1m', label: '1m²/kg', requires: ['cp1min'],
-    description: '1min watts² ÷ weight. Anaerobic compound score.',
-    fromCP: (kg, _s, c1) => (c1 * c1) / kg,
-    fromInputs: (inp) => inp.weightKg > 0 ? (inp.wkg1m * inp.weightKg) ** 2 / inp.weightKg : 0,
-  },
-  {
-    key: 'compound5m', label: '5m²/kg', requires: ['cp5min'],
-    description: '5min watts² ÷ weight. Flat-terrain VO₂max — same W/kg but heavier → higher score.',
-    fromCP: (kg, _s, _1, c5) => (c5 * c5) / kg,
-    fromInputs: (inp) => inp.weightKg > 0 ? (inp.wkg5m * inp.weightKg) ** 2 / inp.weightKg : 0,
-  },
-  {
-    key: 'compound20m', label: '20m²/kg', requires: ['cp20min'],
-    description: '20min watts² ÷ weight. Sustained flat power — the FTP compound score.',
-    fromCP: (kg, _s, _1, _5, c20) => (c20 * c20) / kg,
-    fromInputs: (inp) => inp.weightKg > 0 ? (inp.wkg20m * inp.weightKg) ** 2 / inp.weightKg : 0,
-  },
-];
-
-export const ALL_ON: Record<FeatureKey, boolean> = {
-  weight_kg: true, zrs: false, wkg5s: false, wkg1m: true, wkg5m: false, wkg20m: true,
-  watts5s: false, watts1m: false, watts5m: false, watts20m: false,
-  compound5s: false, compound1m: false, compound5m: true, compound20m: false,
-};
-
 /** Maps a power duration to the feature keys that need that W/kg input. */
 export const POWER_ROW_DEFS: {
   field: PowerField;
@@ -263,12 +164,9 @@ export function predictorFormLayout(activeKeys: FeatureKey[]): PredictorFormLayo
   };
 }
 
-export function mergeFeatures(saved: Record<string, unknown>): Record<FeatureKey, boolean> {
-  const out = { ...ALL_ON };
-  for (const k of Object.keys(ALL_ON) as FeatureKey[]) {
-    if (typeof saved[k] === 'boolean') out[k] = saved[k] as boolean;
-  }
-  return out;
+/** Look up a feature label; falls back to the key when metadata has not loaded yet. */
+export function featureLabel(defs: FeatureMeta[], key: FeatureKey): string {
+  return defs.find(f => f.key === key)?.label ?? key;
 }
 
 export const SCATTER_COLORS: Record<string, string> = {
@@ -293,55 +191,8 @@ export function veloForCategory(catName: string, cats: CategoryDef[] = ZR_CATEGO
 }
 
 // ---------------------------------------------------------------------------
-// OLS helpers (pure TS, no deps)
+// Predictions (computed by the backend predictor; this file holds no model code)
 // ---------------------------------------------------------------------------
-
-/** Gaussian elimination solver for Ax = b (in-place, square system). */
-function solveLinear(A: number[][], b: number[]): number[] {
-  const n = b.length;
-  const M = A.map((row, i) => [...row, b[i]]);
-  for (let col = 0; col < n; col++) {
-    let maxRow = col;
-    for (let row = col + 1; row < n; row++) {
-      if (Math.abs(M[row][col]) > Math.abs(M[maxRow][col])) maxRow = row;
-    }
-    [M[col], M[maxRow]] = [M[maxRow], M[col]];
-    if (Math.abs(M[col][col]) < 1e-12) throw new Error('Singular matrix');
-    for (let row = col + 1; row < n; row++) {
-      const f = M[row][col] / M[col][col];
-      for (let k = col; k <= n; k++) M[row][k] -= f * M[col][k];
-    }
-  }
-  const x = new Array(n).fill(0);
-  for (let i = n - 1; i >= 0; i--) {
-    x[i] = M[i][n];
-    for (let j = i + 1; j < n; j++) x[i] -= M[i][j] * x[j];
-    x[i] /= M[i][i];
-  }
-  return x;
-}
-
-/** OLS: X rows are feature vectors; returns [intercept, ...coefficients]. */
-function fitOLS(X: number[][], y: number[]): number[] {
-  const n = X.length;
-  const p = X[0].length + 1; // +1 for intercept
-  // Augmented X with intercept column prepended
-  const Xa = X.map(row => [1, ...row]);
-  // Normal equations: (Xᵀ X) β = Xᵀ y
-  const XtX = Array.from({ length: p }, () => new Array(p).fill(0));
-  const Xty = new Array(p).fill(0);
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j < p; j++) {
-      Xty[j] += Xa[i][j] * y[i];
-      for (let k = 0; k < p; k++) XtX[j][k] += Xa[i][j] * Xa[i][k];
-    }
-  }
-  return solveLinear(XtX, Xty);
-}
-
-export function predict(coeffs: number[], row: number[]): number {
-  return coeffs[0] + row.reduce((s, v, i) => s + coeffs[i + 1] * v, 0);
-}
 
 export interface PredictionSnapshot {
   velo: number | null;
@@ -350,33 +201,19 @@ export interface PredictionSnapshot {
   high: number | null;
   catLow: string | null;
   catHigh: string | null;
+  /** high = whole ±RMSE band in one division; low = too few Strava rides. */
+  confidence?: 'high' | 'medium' | 'low' | null;
 }
 
+/** Predictions keyed by Zwift ID (or any row id sent to `/admin/predictor/predict`). */
+export type PredictionMap = Record<string, PredictionSnapshot>;
+
 export const EMPTY_PREDICTION: PredictionSnapshot = {
-  velo: null, category: null, low: null, high: null, catLow: null, catHigh: null,
+  velo: null, category: null, low: null, high: null, catLow: null, catHigh: null, confidence: null,
 };
 
-/** Predicted vELO and category band for a filled input row. */
-export function predictionFromInputs(
-  model: ModelResult | null,
-  inputs: Inputs,
-  cats: CategoryDef[] = ZR_CATEGORY_DEFAULTS,
-): PredictionSnapshot {
-  if (!model) return EMPTY_PREDICTION;
-  const activeFeatures = FEATURE_DEFS.filter(f => model.activeFeatureKeys.includes(f.key));
-  const predRow = activeFeatures.map(f => f.fromInputs(inputs));
-  if (predRow.length === 0 || predRow.some(v => v <= 0)) return EMPTY_PREDICTION;
-  const velo = Math.round(predict(model.coeffs, predRow));
-  const low = Math.round(velo - model.rmse);
-  const high = Math.round(velo + model.rmse);
-  return {
-    velo,
-    category: categoryFromVelo(velo, cats),
-    low,
-    high,
-    catLow: categoryFromVelo(low, cats),
-    catHigh: categoryFromVelo(high, cats),
-  };
+export function predictionFor(map: PredictionMap | undefined, id: string): PredictionSnapshot {
+  return map?.[id] ?? EMPTY_PREDICTION;
 }
 
 export function formatVeloValue(value: number | string | null | undefined): string | null {
@@ -421,21 +258,13 @@ export function impliedCategoryFromParticipant(
   return velo == null ? null : categoryFromVelo(velo, cats);
 }
 
-export function predictedCategoryFromParticipant(
-  model: ModelResult | null,
-  p: Participant,
-  cats: CategoryDef[] = ZR_CATEGORY_DEFAULTS,
-): string | null {
-  return predictionFromInputs(model, inputsFromParticipant(p), cats).category;
-}
-
-/** True when Zwift-power predicted category differs from the category implied by actual vELO. */
+/** True when the Zwift-power predicted category differs from the category implied by actual vELO. */
 export function hasPredictedVsImpliedMismatch(
-  model: ModelResult | null,
   p: Participant,
+  zwiftPredictions: PredictionMap | undefined,
   cats: CategoryDef[] = ZR_CATEGORY_DEFAULTS,
 ): boolean {
-  const predicted = predictedCategoryFromParticipant(model, p, cats);
+  const predicted = predictionFor(zwiftPredictions, p.zwiftId).category;
   const implied = impliedCategoryFromParticipant(p, cats);
   return predicted != null && implied != null && predicted !== implied;
 }
@@ -450,7 +279,7 @@ export function riderAssignedCategory(
 /** Riders shown in Predict & Assign — dropdown and overview table share this list. */
 export function filterPredictorRiders(
   participants: Participant[],
-  model: ModelResult | null,
+  zwiftPredictions: PredictionMap | undefined,
   opts: {
     unassignedOnly: boolean;
     mismatchOnly: boolean;
@@ -462,7 +291,7 @@ export function filterPredictorRiders(
   return participants
     .filter(p => {
       if (opts.unassignedOnly && riderAssignedCategory(p, opts.assignedOverlay)) return false;
-      if (opts.mismatchOnly && !hasPredictedVsImpliedMismatch(model, p)) return false;
+      if (opts.mismatchOnly && !hasPredictedVsImpliedMismatch(p, zwiftPredictions)) return false;
       if (opts.zeroVeloOnly && !hasZeroVelo(p)) return false;
       if (opts.no30dVeloOnly && !hasNo30dVelo(p)) return false;
       return true;
@@ -470,76 +299,9 @@ export function filterPredictorRiders(
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export function predictionFromStravaCache(
-  model: ModelResult | null,
-  p: Participant,
-  cached: StravaRiderCache | undefined,
-): PredictionSnapshot {
-  if (!cached || cached.error) return EMPTY_PREDICTION;
+/** Predictor inputs for a rider's loaded Strava power (weight and ZRS from their profile). */
+export function stravaInputsForRider(p: Participant, cached: StravaRiderCache | undefined): Inputs | null {
+  if (!cached || cached.error) return null;
   const filled = inputsFromParticipant(p);
-  return predictionFromInputs(
-    model,
-    combineInputs({ weightKg: filled.weightKg, racingScore: filled.racingScore }, cached.power),
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Model builder
-// ---------------------------------------------------------------------------
-
-export function buildModel(
-  participants: Participant[],
-  enabled: Record<FeatureKey, boolean>,
-  cats: CategoryDef[] = ZR_CATEGORY_DEFAULTS,
-): ModelResult | null {
-  const active = FEATURE_DEFS.filter(f => enabled[f.key]);
-  if (active.length === 0) return null;
-
-  const needed = new Set<CPField>(active.flatMap(f => f.requires));
-
-  const training = participants.filter(p => {
-    const wg = p.weightInGrams;
-    const velo = typeof p.max30Rating === 'number' ? p.max30Rating : parseFloat(String(p.max30Rating ?? ''));
-    if (!wg || wg <= 0 || isNaN(velo) || velo <= 0) return false;
-    if (needed.has('cp5s')        && !(p.cp5s   && p.cp5s   > 0)) return false;
-    if (needed.has('cp1min')      && !(p.cp1min && p.cp1min > 0)) return false;
-    if (needed.has('cp5min')      && !(p.cp5min && p.cp5min > 0)) return false;
-    if (needed.has('cp20min')     && !(p.cp20min && p.cp20min > 0)) return false;
-    if (needed.has('racingScore')) {
-      const rs = typeof p.racingScore === 'number' ? p.racingScore : parseFloat(String(p.racingScore ?? ''));
-      if (isNaN(rs) || rs <= 0) return false;
-    }
-    return true;
-  });
-
-  if (training.length < active.length + 2) return null;
-
-  const rows: number[][] = [];
-  const y: number[] = [];
-
-  for (const p of training) {
-    const kg = p.weightInGrams! / 1000;
-    const velo = typeof p.max30Rating === 'number' ? p.max30Rating : parseFloat(String(p.max30Rating!));
-    const zrs = typeof p.racingScore === 'number' ? p.racingScore : parseFloat(String(p.racingScore ?? '0')) || 0;
-    rows.push(active.map(f => f.fromCP(kg, p.cp5s ?? 0, p.cp1min ?? 0, p.cp5min ?? 0, p.cp20min ?? 0, zrs)));
-    y.push(velo);
-  }
-
-  let coeffs: number[];
-  try { coeffs = fitOLS(rows, y); } catch { return null; }
-
-  const preds = rows.map(r => predict(coeffs, r));
-  const yMean = y.reduce((s, v) => s + v, 0) / y.length;
-  const ssTot = y.reduce((s, v) => s + (v - yMean) ** 2, 0);
-  const ssRes = y.reduce((s, v, i) => s + (v - preds[i]) ** 2, 0);
-  const r2 = ssTot > 0 ? 1 - ssRes / ssTot : 0;
-
-  const trainingPoints = training.map((p, i) => ({
-    actual: y[i],
-    predicted: Math.round(preds[i]),
-    name: p.name,
-    category: p.ligaCategory?.category ?? categoryFromVelo(y[i], cats),
-  }));
-
-  return { coeffs, r2, rmse: Math.round(Math.sqrt(ssRes / y.length)), n: training.length, activeFeatureKeys: active.map(f => f.key), trainingPoints };
+  return combineInputs({ weightKg: filled.weightKg, racingScore: filled.racingScore }, cached.power);
 }
