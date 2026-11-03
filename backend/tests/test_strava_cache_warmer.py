@@ -241,3 +241,36 @@ def test_a_paused_run_does_not_write_usage(monkeypatch):
                          compute_curve=MagicMock(), now=lambda: NOW)
     assert result["rateLimited"] is True and result["warmed"] == []
     assert writes == [] and db.store[key]["usageDay"] == 2240
+
+
+# --- One warm-up at a time ---------------------------------------------------------
+
+
+def test_a_second_warm_up_waits_while_one_is_running():
+    db = FakeDb()
+    lock = f"{warmer.LOCK_COLLECTION}/{warmer.LOCK_DOC}"
+    db.store[lock] = {"owner": "other", "at": NOW.isoformat()}  # e.g. Cloud Scheduler mid-run
+    service = _strava()
+    result = warmer.warm(db, service, [_rider(1)], min_rides=15, days=90,
+                         compute_curve=MagicMock(), now=lambda: NOW + timedelta(minutes=2))
+    assert result["busy"] is True and result["warmed"] == []
+    service.get_power_activities.assert_not_called()
+    assert db.store[lock]["owner"] == "other"  # the running warm-up keeps its lock
+
+
+def test_a_stale_lock_is_taken_over_and_released_afterwards():
+    db = FakeDb()
+    lock = f"{warmer.LOCK_COLLECTION}/{warmer.LOCK_DOC}"
+    db.store[lock] = {"owner": "killed", "at": (NOW - timedelta(minutes=30)).isoformat()}
+    result = warmer.warm(db, _strava(), [_rider(1)], min_rides=15, days=90,
+                         compute_curve=MagicMock(return_value={"w5": 1.0}), now=lambda: NOW)
+    assert result["busy"] is False and len(result["warmed"]) == 1
+    assert lock not in db.store  # released for the next call
+
+
+def test_busy_route_returns_counts_only(client, monkeypatch):
+    monkeypatch.setattr(routes, "require_scheduler", lambda _req: None)
+    routes.db.store[f"{warmer.LOCK_COLLECTION}/{warmer.LOCK_DOC}"] = {
+        "owner": "other", "at": datetime.now(timezone.utc).isoformat()}
+    body = client.post("/admin/predictor/strava-cache/warm", json={}).get_json()
+    assert body == {"busy": True, "warmed": 0, "rateLimited": False}
