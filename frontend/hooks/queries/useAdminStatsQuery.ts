@@ -1,10 +1,12 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
 
 export type DualRecordingBucket = 'required' | 'notRequired' | 'unknown';
+
+export type SexFilter = 'all' | 'male' | 'female';
 
 export interface TrainerStat {
     trainer: string;
@@ -36,16 +38,21 @@ export interface StatsData {
     }[];
     verificationStatus: { status: string; count: number }[];
     phenotypeDistribution: { phenotype: string; count: number }[];
+    /** Filter the backend applied to this payload. */
+    sexFilter?: SexFilter;
+    /** Unfiltered split of completed riders (from zwiftProfile.male). */
+    sexDistribution?: { sex: 'male' | 'female' | 'unknown'; count: number }[];
 }
 
-export function useAdminStatsQuery() {
+export function useAdminStatsQuery(sex: SexFilter = 'all') {
     const { user } = useAuth();
 
     return useQuery<StatsData>({
-        queryKey: ['admin-stats'],
+        queryKey: ['admin-stats', sex],
         queryFn: async () => {
             const token = await user!.getIdToken();
-            const res = await fetch(`${API_URL}/admin/stats`, {
+            const qs = sex === 'all' ? '' : `?sex=${sex}`;
+            const res = await fetch(`${API_URL}/admin/stats${qs}`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -53,5 +60,7 @@ export function useAdminStatsQuery() {
         },
         enabled: !!user,
         staleTime: 2 * 60_000,
+        // Keep the current dashboard on screen while another filter loads.
+        placeholderData: keepPreviousData,
     });
 }

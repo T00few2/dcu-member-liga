@@ -24,6 +24,23 @@ DR_REQUIRED = 'required'
 DR_NOT_REQUIRED = 'notRequired'
 DR_UNKNOWN = 'unknown'
 
+# Rider sex filter values (from users.zwiftProfile.male).
+SEX_MALE = 'male'
+SEX_FEMALE = 'female'
+SEX_UNKNOWN = 'unknown'
+SEX_FILTERS = {SEX_MALE, SEX_FEMALE}
+
+
+def _user_sex(data: dict) -> str:
+    """'male' / 'female' from the Zwift profile flag, 'unknown' when not synced."""
+    profile = data.get('zwiftProfile') or {}
+    male = profile.get('male') if isinstance(profile, dict) else None
+    if male is True:
+        return SEX_MALE
+    if male is False:
+        return SEX_FEMALE
+    return SEX_UNKNOWN
+
 
 def _normalize_trainer_name(name: str) -> str:
     """Normalize trainer names so user equipment matches the trainers catalog."""
@@ -83,13 +100,20 @@ def _race_id_from_signup(doc, data: dict) -> str:
         return ''
 
 
-def _race_growth_series() -> list:
-    """Per-race cumulative signup curves from races/{raceId}/signups."""
+def _race_growth_series(allowed_zwift_ids: set | None = None) -> list:
+    """Per-race cumulative signup curves from races/{raceId}/signups.
+
+    When ``allowed_zwift_ids`` is given, only signups from those riders count.
+    """
     per_race: dict = {}
     for doc in db.collection_group('signups').stream():
         data = doc.to_dict() or {}
         if str(data.get('status') or '') not in ACTIVE_SIGNUP_STATUSES:
             continue
+        if allowed_zwift_ids is not None:
+            zwift_id = str(data.get('zwiftId') or getattr(doc, 'id', '') or '').strip()
+            if zwift_id not in allowed_zwift_ids:
+                continue
         race_id = _race_id_from_signup(doc, data)
         if not race_id:
             continue
@@ -130,6 +154,12 @@ def get_league_stats():
     except AuthzError as e:
         return jsonify({'error': e.message}), e.status_code
 
+    sex_filter = (request.args.get('sex') or '').strip().lower()
+    if sex_filter in ('', 'all'):
+        sex_filter = None
+    elif sex_filter not in SEX_FILTERS:
+        return jsonify({'error': "Invalid sex filter; use 'male', 'female' or 'all'"}), 400
+
     try:
         trainer_dr_map = _load_trainer_dual_recording_map()
 
@@ -154,6 +184,10 @@ def get_league_stats():
         dr_counter = Counter()
         # {date_str -> {'signups': int, 'clubs': set}}
         daily: dict = {}
+        # Unfiltered split of completed riders, so the UI can label the filter.
+        sex_counter = Counter()
+        # zwiftIds of riders matching the sex filter (for per-race growth).
+        allowed_zwift_ids: set = set()
 
         for doc in docs:
             data = doc.to_dict() or {}
@@ -162,13 +196,24 @@ def get_league_stats():
             if data.get('isTestData'):
                 continue
 
-            # Always tally registration status (all users)
             reg = data.get('registration') or {}
             status = reg.get('status', 'draft')
+            sex = _user_sex(data)
+            if status == 'complete':
+                sex_counter[sex] += 1
+
+            if sex_filter and sex != sex_filter:
+                continue
+
+            # Tally registration status for every (matching) user
             reg_status_counter[status] += 1
 
             if status != 'complete':
                 continue
+
+            zwift_id = str(data.get('zwiftId') or '').strip()
+            if zwift_id:
+                allowed_zwift_ids.add(zwift_id)
 
             total += 1
 
@@ -331,7 +376,7 @@ def get_league_stats():
         growth_series = _growth_series(daily)
 
         try:
-            race_growth = _race_growth_series()
+            race_growth = _race_growth_series(allowed_zwift_ids if sex_filter else None)
         except Exception:
             logger.warning('Failed to build per-race signup growth', exc_info=True)
             race_growth = None
@@ -360,6 +405,11 @@ def get_league_stats():
             'clubCount': len([c for c in club_counter if c != 'Unknown']),
             'seasonStart': settings.get('seasonStart'),
             'leagueName': settings.get('name'),
+            'sexFilter': sex_filter or 'all',
+            'sexDistribution': [
+                {'sex': key, 'count': sex_counter.get(key, 0)}
+                for key in (SEX_MALE, SEX_FEMALE, SEX_UNKNOWN)
+            ],
         })
 
     except Exception as e:
