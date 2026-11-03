@@ -1,0 +1,37 @@
+name: Predictor Research (Claude sandbox)
+
+# Runs queued predictor research (Admin → Predictor → Tuning → "Run research").
+# Every 30 minutes: process a queued run if there is one (a no-op otherwise).
+# Monthly: also queue a run when none was made in the last 30 days.
+# A run can take up to ~13 minutes, so the request allows 15.
+
+on:
+  schedule:
+    - cron: '7,37 * * * *'
+    - cron: '41 4 2 * *'
+  workflow_dispatch:
+
+concurrency:
+  group: predictor-research
+  cancel-in-progress: false
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Process predictor research
+        env:
+          MONTHLY: ${{ github.event.schedule == '41 4 2 * *' }}
+        run: |
+          if [ "$MONTHLY" = "true" ]; then body='{"autoQueueIfOlderThanDays": 30}'; else body='{}'; fi
+          response=$(curl -s -o /tmp/body.txt -w "%{http_code}" \
+            --max-time 900 \
+            -X POST \
+            -H "X-Scheduler-Token: ${{ secrets.SCHEDULER_SECRET }}" \
+            -H "Content-Type: application/json" \
+            --data "$body" \
+            https://us-central1-dcu-member-liga-479507.cloudfunctions.net/dcu_api/admin/predictor/research/process)
+          echo "HTTP status: $response"
+          head -c 2000 /tmp/body.txt; echo
+          [ "$response" = "200" ] || exit 1

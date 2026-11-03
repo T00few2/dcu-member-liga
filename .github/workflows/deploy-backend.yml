@@ -87,6 +87,6 @@ jobs:
             --trigger-http \
             --allow-unauthenticated \
             --memory=1GB \
-            --timeout=300 \
+            --timeout=900 \
             --env-vars-file "$RUNNER_TEMP/dcu-api-env.yaml" \
             --project="$GCP_PROJECT_ID"

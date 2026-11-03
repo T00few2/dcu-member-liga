@@ -5,6 +5,7 @@ import type { User } from 'firebase/auth';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { API_URL } from '@/lib/api';
 import type { PredictorConfigResponse } from '@/hooks/queries';
+import CategoryPredictorResearch from './CategoryPredictorResearch';
 
 interface Score {
   n: number;
@@ -248,6 +249,8 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
           </ul>
         </details>
       )}
+
+      <CategoryPredictorResearch user={user} />
     </div>
   );
 }
