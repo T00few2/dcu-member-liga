@@ -274,3 +274,26 @@ def test_busy_route_returns_counts_only(client, monkeypatch):
         "owner": "other", "at": datetime.now(timezone.utc).isoformat()}
     body = client.post("/admin/predictor/strava-cache/warm", json={}).get_json()
     assert body == {"busy": True, "warmed": 0, "rateLimited": False}
+
+
+def test_lock_is_claimed_inside_a_transaction(monkeypatch):
+    """With a real Firestore client the read-check-write runs as one transaction."""
+    from firebase_admin import firestore
+
+    monkeypatch.setattr(firestore, "transactional", lambda fn: fn)  # run the body directly
+    db = FakeDb()
+    writes = []
+
+    class Tx:
+        def set(self, ref, data):
+            writes.append(data)
+            ref.set(data)
+
+    db.transaction = lambda: Tx()
+    lock = f"{warmer.LOCK_COLLECTION}/{warmer.LOCK_DOC}"
+
+    assert warmer._acquire_lock(db, "a", NOW) is True
+    assert writes == [{"owner": "a", "at": NOW.isoformat()}]
+    assert warmer._acquire_lock(db, "b", NOW + timedelta(minutes=1)) is False  # held
+    assert warmer._acquire_lock(db, "c", NOW + timedelta(minutes=30)) is True  # stale: taken over
+    assert db.store[lock]["owner"] == "c"

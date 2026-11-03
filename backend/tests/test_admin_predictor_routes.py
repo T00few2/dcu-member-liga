@@ -33,7 +33,7 @@ class FakeDoc:
         self.store = store
         self.path = path
 
-    def get(self):
+    def get(self, transaction=None):
         return FakeSnap(self.store.get(self.path))
 
     def set(self, data, merge=False):

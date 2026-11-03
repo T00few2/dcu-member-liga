@@ -111,22 +111,36 @@ def _parse_iso(value: Any) -> datetime | None:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
-def _acquire_lock(db: Any, owner: str, now: datetime) -> bool:
-    """Atomically claim the warm-up slot (Firestore `create` fails if the doc exists)."""
-    from google.api_core.exceptions import AlreadyExists
+def _lock_is_held(snap: Any, now: datetime) -> bool:
+    if not getattr(snap, "exists", False):
+        return False
+    held_at = _parse_iso((snap.to_dict() or {}).get("at"))
+    return bool(held_at and held_at > now - timedelta(minutes=LOCK_STALE_MINUTES))
 
+
+def _acquire_lock(db: Any, owner: str, now: datetime) -> bool:
+    """Claim the warm-up slot: free or stale lock -> ours, in one Firestore transaction.
+
+    Read-check-write inside a transaction means two callers that both find a stale
+    lock cannot both take it: the second transaction retries and sees the new lock.
+    """
     ref = db.collection(LOCK_COLLECTION).document(LOCK_DOC)
-    for _ in range(2):
-        try:
-            ref.create({"owner": owner, "at": now.isoformat()})
-            return True
-        except AlreadyExists:
-            snap = ref.get()
-            held_at = _parse_iso((snap.to_dict() or {}).get("at")) if getattr(snap, "exists", False) else None
-            if held_at and held_at > now - timedelta(minutes=LOCK_STALE_MINUTES):
+    record = {"owner": owner, "at": now.isoformat()}
+    if hasattr(db, "transaction"):
+        from firebase_admin import firestore
+
+        @firestore.transactional
+        def _claim(tx):
+            if _lock_is_held(ref.get(transaction=tx), now):
                 return False
-            ref.delete()
-    return False
+            tx.set(ref, record)
+            return True
+
+        return bool(_claim(db.transaction()))
+    if _lock_is_held(ref.get(), now):  # test fakes without transactions
+        return False
+    ref.set(record)
+    return True
 
 
 def _release_lock(db: Any, owner: str) -> None:
