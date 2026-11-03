@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useAdminStatsQuery, useRacesQuery } from '@/hooks/queries';
-import type { DualRecordingBucket, StatsData } from '@/hooks/queries';
+import type { DualRecordingBucket, SexFilter, StatsData } from '@/hooks/queries';
 import RaceSignupSelect from '@/components/RaceSignupSelect';
 import type { Race } from '@/types/live';
 import {
@@ -150,10 +150,61 @@ function ChartTip({ active, payload, label }: any) {
     );
 }
 
+const SEX_OPTIONS: { value: SexFilter; label: string }[] = [
+    { value: 'all', label: 'All' },
+    { value: 'male', label: 'Men' },
+    { value: 'female', label: 'Women' },
+];
+
+function SexFilterToggle({
+    value,
+    onChange,
+    distribution,
+    disabled,
+}: {
+    value: SexFilter;
+    onChange: (next: SexFilter) => void;
+    distribution?: StatsData['sexDistribution'];
+    disabled?: boolean;
+}) {
+    const counts = Object.fromEntries((distribution ?? []).map(d => [d.sex, d.count]));
+    const allCount = (distribution ?? []).reduce((sum, d) => sum + d.count, 0);
+    const countFor = (v: SexFilter) => (v === 'all' ? allCount : counts[v]);
+
+    return (
+        <div role="group" aria-label="Filter by sex" className="inline-flex rounded-lg border border-border overflow-hidden text-sm">
+            {SEX_OPTIONS.map(opt => {
+                const active = opt.value === value;
+                const count = countFor(opt.value);
+                return (
+                    <button
+                        key={opt.value}
+                        type="button"
+                        aria-pressed={active}
+                        disabled={disabled}
+                        onClick={() => onChange(opt.value)}
+                        className={`px-3 py-1.5 transition disabled:opacity-60 ${
+                            active
+                                ? 'bg-primary text-primary-foreground'
+                                : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                    >
+                        {opt.label}
+                        {distribution && count != null && (
+                            <span className="ml-1 opacity-70">({count})</span>
+                        )}
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function StatsDashboard() {
-    const statsQuery = useAdminStatsQuery();
+    const [sexFilter, setSexFilter] = useState<SexFilter>('all');
+    const statsQuery = useAdminStatsQuery(sexFilter);
 
     if (statsQuery.isLoading) {
         return (
@@ -180,6 +231,7 @@ export default function StatsDashboard() {
     }
 
     const stats = statsQuery.data;
+    const unknownSexCount = stats.sexDistribution?.find(d => d.sex === 'unknown')?.count ?? 0;
 
     const completeCount = stats.registrationStatus.find(s => s.status === 'complete')?.count ?? 0;
     const completePct = stats.total > 0 ? Math.round((completeCount / stats.total) * 100) : 0;
@@ -191,23 +243,39 @@ export default function StatsDashboard() {
         <div className="space-y-10 pb-12">
 
             {/* Header row */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                     <h2 className="text-xl font-bold text-foreground">
                         {stats.leagueName ?? 'League'} — Overview
+                        {sexFilter !== 'all' && (
+                            <span className="text-muted-foreground font-medium"> · {sexFilter === 'male' ? 'Men' : 'Women'}</span>
+                        )}
                     </h2>
                     {stats.seasonStart && (
                         <p className="text-sm text-muted-foreground mt-0.5">
                             Season started {new Date(stats.seasonStart).toLocaleDateString('en-IE', { day: 'numeric', month: 'long', year: 'numeric' })}
                         </p>
                     )}
+                    {sexFilter !== 'all' && unknownSexCount > 0 && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                            {unknownSexCount} rider{unknownSexCount === 1 ? '' : 's'} without a synced Zwift profile sex excluded.
+                        </p>
+                    )}
                 </div>
-                <button
-                    onClick={() => statsQuery.refetch()}
-                    className="text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg px-3 py-1.5 transition"
-                >
-                    Refresh
-                </button>
+                <div className="flex items-center gap-2">
+                    <SexFilterToggle
+                        value={sexFilter}
+                        onChange={setSexFilter}
+                        distribution={stats.sexDistribution}
+                        disabled={statsQuery.isFetching}
+                    />
+                    <button
+                        onClick={() => statsQuery.refetch()}
+                        className="text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg px-3 py-1.5 transition"
+                    >
+                        Refresh
+                    </button>
+                </div>
             </div>
 
             {/* KPI cards */}

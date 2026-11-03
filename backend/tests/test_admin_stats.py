@@ -206,3 +206,71 @@ def test_race_growth_is_cumulative_per_race(app: Flask, monkeypatch: pytest.Monk
     assert by_race["r2"] == [
         {"date": "2026-05-01", "signups": 1, "clubs": 0},
     ]
+
+
+def _sexed_user(doc_id: str, zwift_id: str, male: bool | None, status: str = "complete") -> MagicMock:
+    data = {
+        "zwiftId": zwift_id,
+        "registration": {"status": status},
+        "ligaCategory": {"autoAssigned": {"category": "Gold"}},
+        "equipment": {},
+    }
+    if male is not None:
+        data["zwiftProfile"] = {"male": male}
+    return _doc(doc_id, data)
+
+
+def _signup(zwift_id: str, race_id: str = "r1") -> MagicMock:
+    return _doc(zwift_id, {
+        "zwiftId": zwift_id,
+        "raceId": race_id,
+        "status": "registered",
+        "signedUpAt": "2026-10-01T10:00:00Z",
+    })
+
+
+def _stats_for_sex(app: Flask, monkeypatch: pytest.MonkeyPatch, query: str):
+    monkeypatch.setattr(admin_stats, "require_admin", lambda _req: None)
+    users = [
+        _sexed_user("u1", "1", True),
+        _sexed_user("u2", "2", True),
+        _sexed_user("u3", "3", False),
+        _sexed_user("u4", "4", None),                 # profile not synced
+        _sexed_user("u5", "5", False, status="draft"),
+    ]
+    signups = [_signup("1"), _signup("2"), _signup("3"), _signup("4")]
+    monkeypatch.setattr(admin_stats, "db", _make_db(users, [], {}, signups))
+    with app.test_request_context(f"/admin/stats{query}"):
+        return admin_stats.get_league_stats()
+
+
+def test_sex_filter_all_reports_distribution(app: Flask, monkeypatch: pytest.MonkeyPatch) -> None:
+    data = _stats_for_sex(app, monkeypatch, "").get_json()
+    assert data["total"] == 4
+    assert data["sexFilter"] == "all"
+    assert {d["sex"]: d["count"] for d in data["sexDistribution"]} == {
+        "male": 2, "female": 1, "unknown": 1,
+    }
+    assert data["raceGrowth"][0]["series"][-1]["signups"] == 4
+
+
+def test_sex_filter_female(app: Flask, monkeypatch: pytest.MonkeyPatch) -> None:
+    data = _stats_for_sex(app, monkeypatch, "?sex=female").get_json()
+    assert data["total"] == 1
+    assert data["sexFilter"] == "female"
+    # Distribution stays unfiltered so the UI can label every option.
+    assert {d["sex"]: d["count"] for d in data["sexDistribution"]}["male"] == 2
+    # Draft women still show in registration status; men do not.
+    assert {s["status"]: s["count"] for s in data["registrationStatus"]} == {"complete": 1, "draft": 1}
+    assert data["raceGrowth"][0]["series"][-1]["signups"] == 1
+
+
+def test_sex_filter_male(app: Flask, monkeypatch: pytest.MonkeyPatch) -> None:
+    data = _stats_for_sex(app, monkeypatch, "?sex=male").get_json()
+    assert data["total"] == 2
+    assert data["raceGrowth"][0]["series"][-1]["signups"] == 2
+
+
+def test_sex_filter_rejects_invalid_value(app: Flask, monkeypatch: pytest.MonkeyPatch) -> None:
+    response, status = _stats_for_sex(app, monkeypatch, "?sex=other")
+    assert status == 400
