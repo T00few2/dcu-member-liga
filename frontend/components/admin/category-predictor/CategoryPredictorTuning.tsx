@@ -31,6 +31,14 @@ interface TuningRun {
   };
 }
 
+interface CacheStatus {
+  days: number;
+  eligible: number;
+  cached: number;
+  remaining: number;
+  minEvalRiders: number;
+}
+
 export interface CategoryPredictorTuningProps {
   user: User | null;
   config?: PredictorConfigResponse;
@@ -65,6 +73,18 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
     staleTime: 60_000,
   });
   const latest = runs?.[0];
+
+  const { data: cache } = useQuery<CacheStatus>({
+    queryKey: ['predictor', 'strava-cache'],
+    queryFn: async () => {
+      const token = await user!.getIdToken();
+      const res = await fetch(`${API_URL}/admin/predictor/strava-cache/status`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error('Failed to load Strava cache status');
+      return res.json();
+    },
+    enabled: !!user,
+    staleTime: 60_000,
+  });
 
   async function call(path: string, body: unknown, label: string) {
     if (!user) return;
@@ -111,6 +131,29 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
+
+      {cache && (
+        <div className="flex items-center justify-between gap-3 flex-wrap text-sm">
+          <span className="text-muted-foreground">
+            Strava cache ({cache.days}d): <span className="font-semibold text-foreground">{cache.cached}</span> of{' '}
+            {cache.eligible} eligible riders
+            {cache.cached < cache.minEvalRiders
+              ? ` · tuning needs ${cache.minEvalRiders}; filled automatically, ~6 riders an hour`
+              : ' · enough to tune'}
+          </span>
+          {cache.remaining > 0 && (
+            <button
+              type="button"
+              onClick={() => void call('/admin/predictor/strava-cache/warm', {}, 'warm')}
+              disabled={busy !== null || !user}
+              className="px-2.5 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground disabled:opacity-50"
+              title="Fetches 2 riders now (about 100 Strava requests)"
+            >
+              {busy === 'warm' ? 'Filling…' : 'Fill now'}
+            </button>
+          )}
+        </div>
+      )}
 
       {metrics && <ScoreLine label="Active settings (last measured)" score={metrics} />}
 

@@ -1,0 +1,34 @@
+name: Strava Cache Warm-up (predictor tuning)
+
+# Fills the Strava power-curve cache a couple of riders per run, so predictor
+# tuning has riders to measure against. ~100 Strava requests per run keeps us
+# under Strava's 100-per-15-minutes read limit. Once every eligible rider has a
+# fresh curve, each run is a no-op that makes no Strava requests.
+
+on:
+  schedule:
+    - cron: '*/20 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: strava-cache-warm
+  cancel-in-progress: false
+
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Warm Strava curve cache
+        run: |
+          response=$(curl -s -o /tmp/body.txt -w "%{http_code}" \
+            --max-time 300 \
+            -X POST \
+            -H "X-Scheduler-Token: ${{ secrets.SCHEDULER_SECRET }}" \
+            -H "Content-Type: application/json" \
+            --data "{}" \
+            https://us-central1-dcu-member-liga-479507.cloudfunctions.net/dcu_api/admin/predictor/strava-cache/warm)
+          echo "HTTP status: $response"
+          echo "Response body:"
+          cat /tmp/body.txt
+          [ "$response" = "200" ] || exit 1

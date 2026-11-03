@@ -33,6 +33,10 @@ beforeEach(() => {
     if (String(url).endsWith('/admin/predictor/tune/runs')) {
       return new Response(JSON.stringify({ runs: [pendingRun] }), { status: 200 });
     }
+    if (String(url).endsWith('/admin/predictor/strava-cache/status')) {
+      return new Response(JSON.stringify({ days: 90, eligible: 70, cached: 12, remaining: 58, minEvalRiders: 40 }),
+        { status: 200 });
+    }
     return new Response(JSON.stringify({ message: 'ok' }), { status: 200 });
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -68,6 +72,17 @@ describe('CategoryPredictorTuning', () => {
       const call = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/admin/predictor/tune/run1/decision'));
       expect(call).toBeTruthy();
       expect(JSON.parse((call![1] as RequestInit).body as string)).toEqual({ action: 'apply' });
+    });
+  });
+
+  it('shows Strava cache progress and can fill it now', async () => {
+    const u = userEvent.setup();
+    renderPanel();
+    expect(await screen.findByText(/of 70 eligible riders/)).toBeInTheDocument();
+    expect(screen.getByText(/tuning needs 40/)).toBeInTheDocument();
+    await u.click(screen.getByRole('button', { name: 'Fill now' }));
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/admin/predictor/strava-cache/warm'))).toBe(true);
     });
   });
 });

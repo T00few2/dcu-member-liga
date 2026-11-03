@@ -92,7 +92,7 @@
     },
     "strava_power_curves": {
       "type": "array",
-      "description": "Cached Strava peak-power curves per rider and window. Doc id {userDocId}_{days}. Reused for 24 h by the admin predictor; tuning reads the cache only and never calls Strava.",
+      "description": "Cached Strava peak-power curves per rider and window. Doc id {userDocId}_{days}. Reused for 24 h by the admin predictor; tuning reads the cache only and never calls Strava. Filled for tuning-eligible riders by POST /admin/predictor/strava-cache/warm (2 riders per call, every 20 min via strava-cache-warm.yml); curves older than 30 days are refetched.",
       "items": { "$ref": "#/$defs/stravaPowerCurveDoc" }
     },
     "predictor_tuning_runs": {

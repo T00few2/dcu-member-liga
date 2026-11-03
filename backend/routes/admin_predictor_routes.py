@@ -9,11 +9,14 @@ import logging
 
 from flask import jsonify, request
 
-from authz import AuthzError, require_admin
-from extensions import db
+from authz import AuthzError, require_admin, require_scheduler
+from extensions import db, strava_service
 from routes.admin import admin_bp
 from services import predictor_service as ps
 from services import predictor_tuning_runs as runs
+from services import strava_cache_warmer as warmer
+from services.dual_recording.strava import _compute_strava_power_curve
+from services.predictor_tuning import MIN_EVAL_RIDERS
 from services import velo_predictor as vp
 
 logger = logging.getLogger(__name__)
@@ -227,4 +230,65 @@ def predictor_tune_decision(run_id: str):
         return jsonify({"message": e.message}), e.status_code
     except Exception as e:
         logger.error("predictor_tune_decision error: %s", e)
+        return jsonify({"message": str(e)}), 500
+
+
+# --- Strava curve cache for tuning ----------------------------------------------
+
+
+def _cache_context():
+    participants = ps.load_participants(db)
+    min_rides = ps.division_agent_settings(db)["minZwiftRides"]
+    days = ps.load_config(db).stravaWindowDays
+    return participants, min_rides, days
+
+
+@admin_bp.route("/admin/predictor/strava-cache/status", methods=["GET"])
+def predictor_strava_cache_status():
+    """How many tuning-eligible riders already have a fresh cached Strava curve."""
+    _, err = _admin()
+    if err:
+        return err
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+    try:
+        participants, min_rides, days = _cache_context()
+        status = warmer.cache_status(db, participants, min_rides=min_rides, days=days)
+        return jsonify({
+            "days": status["days"],
+            "eligible": status["eligible"],
+            "cached": status["cached"],
+            "remaining": len(status["missing"]),
+            "minEvalRiders": MIN_EVAL_RIDERS,
+        }), 200
+    except Exception as e:
+        logger.error("predictor_strava_cache_status error: %s", e)
+        return jsonify({"message": str(e)}), 500
+
+
+@admin_bp.route("/admin/predictor/strava-cache/warm", methods=["POST"])
+def predictor_strava_cache_warm():
+    """Fetch Strava curves for a couple of eligible riders (scheduler or admin).
+
+    Called every 20 minutes by `.github/workflows/strava-cache-warm.yml`; a no-op
+    once every eligible rider has a fresh curve.
+    """
+    try:
+        require_scheduler(request)
+    except AuthzError:
+        _, err = _admin()
+        if err:
+            return err
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+    try:
+        participants, min_rides, days = _cache_context()
+        result = warmer.warm(
+            db, strava_service, participants,
+            min_rides=min_rides, days=days, compute_curve=_compute_strava_power_curve,
+        )
+        result["minEvalRiders"] = MIN_EVAL_RIDERS
+        return jsonify(result), 200
+    except Exception as e:
+        logger.error("predictor_strava_cache_warm error: %s", e)
         return jsonify({"message": str(e)}), 500

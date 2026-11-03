@@ -46,6 +46,7 @@ def load_participants(db: Any) -> list[dict]:
             row, _ = build_participant_row(user, serialize_liga_category, rank_cats)
             # Internal only (Strava curve cache key); never sent to the browser by these routes.
             row["userDocId"] = str(user.id)
+            row["hasStrava"] = bool((user._data.get("connections") or {}).get("strava"))
             rows.append(row)
         except Exception as exc:
             logger.warning("predictor: skipping malformed participant %s: %s", getattr(user, "id", "?"), exc)
