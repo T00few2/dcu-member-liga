@@ -20,6 +20,8 @@ export interface PredictorConfig {
     stravaWindowDays: 90 | 180 | 360;
     stravaPowerScale: Record<'wkg5s' | 'wkg1m' | 'wkg5m' | 'wkg20m', number>;
     minStravaActivities: number;
+    /** Train only on riders with a reliable vELO (at least this many Zwift rides); 0 = all riders. */
+    trainingMinRides?: number;
 }
 
 export interface PredictorHistoryEntry {

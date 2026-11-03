@@ -2137,7 +2137,8 @@
             "wkg20m": { "type": "number" }
           }
         },
-        "minStravaActivities": { "type": "integer", "description": "Fewer Strava rides than this marks a Strava prediction low-confidence" }
+        "minStravaActivities": { "type": "integer", "description": "Fewer Strava rides than this marks a Strava prediction low-confidence" },
+        "trainingMinRides": { "type": "integer", "description": "Train only on riders with a reliable vELO (at least this many Zwift rides in 90 days and a stable rating); 0 = every rider with a vELO. Tuning tries 0 and minZwiftRides." }
       }
     },
     "predictorSettingsDoc": {

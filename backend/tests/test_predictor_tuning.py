@@ -182,3 +182,44 @@ def test_report_only_run_cannot_be_applied(run_db, monkeypatch):
     assert run["status"] == "report"
     with pytest.raises(runs.TuningRunError):
         runs.apply_run(run_db, run["runId"], decided_by="admin")
+
+
+def test_tuning_never_uses_zrs_even_when_it_looks_perfect():
+    # Eval riders have many Zwift rides, so their ZRS tracks vELO closely; the riders we
+    # actually predict for have few rides and an unreliable ZRS. Tuning must ignore it.
+    participants = [{**_rider(i), "racingScore": _rider(i)["max30Rating"]} for i in range(60)]
+    riders = pt.build_eval_set(participants, _curves(participants), min_rides=15)
+    feats = pt.greedy_features(participants, riders, vp.PredictorConfig(), folds=5)
+    assert feats.get("zrs") is False
+    current = vp.PredictorConfig.from_dict({"features": {**vp.DEFAULT_FEATURES, "zrs": True}})
+    result = pt.tune(participants, riders, current, folds=5, min_rides=15)
+    if result.best:
+        assert result.best["config"]["features"]["zrs"] is False
+
+
+def test_training_can_be_limited_to_riders_with_a_reliable_velo():
+    participants = [_rider(i) for i in range(30)] + [_rider(i, rides=3) for i in range(30, 50)]
+    cfg = vp.PredictorConfig()
+    assert vp.build_model(participants, cfg).n == 50
+    reliable_only = vp.PredictorConfig.from_dict({"trainingMinRides": 15})
+    assert reliable_only.to_dict()["trainingMinRides"] == 15
+    assert vp.build_model(participants, reliable_only).n == 30
+    assert vp.PredictorConfig.from_dict({"trainingMinRides": -1}).trainingMinRides == 0  # invalid ignored
+
+
+def test_tuning_tries_reliable_only_training():
+    participants = [_rider(i) for i in range(60)]
+    riders = pt.build_eval_set(participants, _curves(participants), min_rides=15)
+    seen = set()
+    original = pt._evaluate
+
+    def spy(parts, rs, cfg, *a):
+        seen.add(cfg.trainingMinRides)
+        return original(parts, rs, cfg, *a)
+
+    pt._evaluate = spy
+    try:
+        pt.tune(participants, riders, vp.PredictorConfig(), folds=5, min_rides=15)
+    finally:
+        pt._evaluate = original
+    assert seen >= {0, 15}

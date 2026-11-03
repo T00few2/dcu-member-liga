@@ -143,8 +143,8 @@ FEATURE_DEFS: list[FeatureDef] = [
     ),
     FeatureDef(
         "zrs", "ZRS",
-        "Zwift Racing Score — Zwift's in-game ranking. Directly comparable to vELO and often the strongest "
-        "single predictor.",
+        "Zwift Racing Score, earned from Zwift races. Like vELO it is unreliable for riders with few Zwift "
+        "rides, the riders this predictor is for, so tuning never uses or proposes it.",
         ("racingScore",), lambda kg, c5, c1, c5m, c20, zrs: zrs, lambda inp: inp["racingScore"],
     ),
     FeatureDef(
@@ -233,6 +233,9 @@ class PredictorConfig:
     # to correct for outdoor vs indoor power. 1.0 = no correction.
     stravaPowerScale: dict[str, float] = field(default_factory=lambda: {k: 1.0 for k in POWER_FIELDS})
     minStravaActivities: int = 3
+    # Train only on riders whose vELO is reliable (at least this many Zwift rides in
+    # 90 days and a stable rating); 0 = every rider with a vELO.
+    trainingMinRides: int = 0
 
     @classmethod
     def from_settings(cls, settings: dict | None) -> "PredictorConfig":
@@ -265,6 +268,9 @@ class PredictorConfig:
         min_acts = raw.get("minStravaActivities")
         if isinstance(min_acts, int) and not isinstance(min_acts, bool) and 0 <= min_acts <= 100:
             cfg.minStravaActivities = min_acts
+        min_train = raw.get("trainingMinRides")
+        if isinstance(min_train, int) and not isinstance(min_train, bool) and 0 <= min_train <= 200:
+            cfg.trainingMinRides = min_train
         return cfg
 
     def to_dict(self) -> dict:
@@ -275,6 +281,7 @@ class PredictorConfig:
             "stravaWindowDays": self.stravaWindowDays,
             "stravaPowerScale": dict(self.stravaPowerScale),
             "minStravaActivities": self.minStravaActivities,
+            "trainingMinRides": self.trainingMinRides,
         }
 
     def active_features(self) -> list[FeatureDef]:
@@ -389,13 +396,36 @@ def _positive(value: Any) -> float | None:
     return v if v is not None and v > 0 else None
 
 
-def training_rows(participants: list[dict], needed: set[str]) -> list[TrainingRow]:
-    """Riders with a real 30-day max vELO and every power value the active features need."""
+# A rating is "stable" when today's vELO is within this share of the 30-day max.
+STABLE_RATING_TOLERANCE = 0.10
+
+
+def reliable_velo(p: dict, min_rides: int) -> float | None:
+    """30-day max vELO when it can be trusted (enough Zwift rides, stable rating), else None."""
+    max30 = to_float(p.get("max30Rating"))
+    current = to_float(p.get("rating"))
+    rides = p.get("zwiftActivityCount")
+    if not max30 or max30 <= 0 or not current or current <= 0:
+        return None
+    if not isinstance(rides, int) or rides < min_rides:
+        return None
+    if abs(current - max30) > STABLE_RATING_TOLERANCE * max30:
+        return None
+    return max30
+
+
+def training_rows(participants: list[dict], needed: set[str], min_rides: int = 0) -> list[TrainingRow]:
+    """Riders with a real 30-day max vELO and every power value the active features need.
+
+    With `min_rides`, only riders whose vELO is reliable (see `reliable_velo`).
+    """
     rows: list[TrainingRow] = []
     for p in participants:
         wg = _positive(p.get("weightInGrams"))
         velo = _positive(p.get("max30Rating"))
         if wg is None or velo is None:
+            continue
+        if min_rides > 0 and reliable_velo(p, min_rides) is None:
             continue
         cps = {k: _positive(p.get(k)) for k in ("cp5s", "cp1min", "cp5min", "cp20min")}
         if any(k in needed and cps[k] is None for k in cps):
@@ -467,7 +497,7 @@ def build_model(
     if not active:
         return None
     needed = {req for f in active for req in f.requires}
-    rows = training_rows(participants, needed)
+    rows = training_rows(participants, needed, config.trainingMinRides)
     if len(rows) < len(active) + 2:
         return None
     try:
