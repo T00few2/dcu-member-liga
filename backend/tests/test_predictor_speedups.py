@@ -166,9 +166,14 @@ def test_worker_route(tune_db, monkeypatch):
 
     assert client.post("/admin/predictor/worker", json={}).get_json() == {
         "tuning": None, "research": {"idle": True}}
+    calls = []
+    monkeypatch.setattr(routes.research, "process_next", lambda _db: calls.append(1))
     runs.start_run(tune_db, started_by="admin")
     body = client.post("/admin/predictor/worker", json={}).get_json()
     assert body == {"tuning": "report", "research": {"idle": True}}
+    assert calls == []  # research waits for the next call so it gets the full time limit
+    client.post("/admin/predictor/worker", json={})
+    assert calls == [1]
 
 
 def test_worker_route_needs_scheduler_or_admin(tune_db, monkeypatch):

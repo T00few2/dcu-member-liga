@@ -220,7 +220,7 @@ def predictor_tune_process(run_id: str):
 
 @admin_bp.route("/admin/predictor/worker", methods=["POST"])
 def predictor_worker():
-    """Process waiting predictor jobs (scheduler or admin): a tuning run, then research.
+    """Process one waiting predictor job (scheduler or admin): a tuning run, else research.
 
     Called every 5 minutes by Cloud Scheduler (see deploy-backend.yml), so jobs finish
     even when the admin page's own processing request never reaches the server. Each
@@ -236,7 +236,9 @@ def predictor_worker():
         return jsonify({"error": "DB not available"}), 500
     try:
         tuned = runs.process_waiting(db)
-        researched = research.process_next(db)
+        # One job per call: research needs nearly the whole request time limit, so after
+        # a tuning run it waits for the next call (5 minutes later) instead of being cut off.
+        researched = research.process_next(db) if tuned is None else None
         # Counts and statuses only: scheduler responses may end up in logs.
         return jsonify({
             "tuning": tuned.get("status") if tuned else None,
