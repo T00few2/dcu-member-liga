@@ -280,7 +280,7 @@ def test_lock_is_claimed_inside_a_transaction(monkeypatch):
     """With a real Firestore client the read-check-write runs as one transaction."""
     from firebase_admin import firestore
 
-    monkeypatch.setattr(firestore, "transactional", lambda fn: fn)  # run the body directly
+    monkeypatch.setattr(firestore, "transactional", lambda fn: fn, raising=False)  # run the body directly
     db = FakeDb()
     writes = []
 

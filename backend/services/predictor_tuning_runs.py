@@ -69,11 +69,15 @@ def _parse(iso: Any) -> datetime | None:
 
 
 def _expire_stale(db: Any, runs: list[dict]) -> None:
-    """A run still `running` after STALE_RUNNING_MINUTES was killed with its request."""
+    """A run still `running` after STALE_RUNNING_MINUTES was killed with its request.
+
+    Counted from when processing started (or from creation while it still waits for
+    the browser or the predictor worker to pick it up).
+    """
     limit = datetime.now(timezone.utc) - timedelta(minutes=STALE_RUNNING_MINUTES)
     for run in runs:
-        created = _parse(run.get("createdAt"))
-        if run.get("status") == "running" and created and created < limit:
+        since = _parse(run.get("processingStartedAt")) or _parse(run.get("createdAt"))
+        if run.get("status") == "running" and since and since < limit:
             update = {"status": "failed", "error": "Run stopped (server time limit).", "finishedAt": _now()}
             db.collection(COLLECTION).document(run["runId"]).set(update, merge=True)
             run.update(update)
@@ -82,8 +86,8 @@ def _expire_stale(db: Any, runs: list[dict]) -> None:
 def start_run(db: Any, *, started_by: str) -> dict:
     """Create a `running` run and return at once; `process_run` does the work.
 
-    The admin page starts processing without waiting for it, so a slow tuning never
-    leaves the browser request hanging.
+    The admin page asks for processing right away; the predictor worker (Cloud
+    Scheduler, every 5 minutes) picks the run up if that request never arrives.
     """
     runs = list_runs(db, 5)
     if any(r.get("status") == "running" for r in runs):
@@ -93,10 +97,42 @@ def start_run(db: Any, *, started_by: str) -> dict:
     return run
 
 
+def _claim(db: Any, run_id: str) -> tuple[Any, dict]:
+    """Mark a waiting run as being processed, exactly once.
+
+    The admin page and the predictor worker (Cloud Scheduler) may both try to process
+    the same run; the read-check-write runs in one Firestore transaction, so only the
+    first one gets it.
+    """
+    ref = db.collection(COLLECTION).document(str(run_id))
+    started = _now()
+
+    def check(snap: Any) -> dict:
+        if not getattr(snap, "exists", False):
+            raise TuningRunError("Tuning run not found", 404)
+        run = snap.to_dict() or {}
+        if run.get("status") != "running" or run.get("processingStartedAt"):
+            raise TuningRunError("This run is not waiting to be processed")
+        return run
+
+    if hasattr(db, "transaction"):
+        from firebase_admin import firestore
+
+        @firestore.transactional
+        def _take(tx):
+            run = check(ref.get(transaction=tx))
+            tx.update(ref, {"processingStartedAt": started})
+            return run
+
+        run = _take(db.transaction())
+    else:  # test fakes without transactions
+        run = check(ref.get())
+        ref.set({"processingStartedAt": started}, merge=True)
+    return ref, {**run, "processingStartedAt": started}
+
+
 def process_run(db: Any, run_id: str, *, folds: int = pt.DEFAULT_FOLDS) -> dict:
-    ref, run = _load_run(db, run_id)
-    if run.get("status") != "running":
-        raise TuningRunError("This run is not waiting to be processed")
+    ref, run = _claim(db, run_id)
     try:
         result = _compute(db, folds=folds)
     except Exception as exc:
@@ -104,6 +140,20 @@ def process_run(db: Any, run_id: str, *, folds: int = pt.DEFAULT_FOLDS) -> dict:
     result["finishedAt"] = _now()
     ref.set(result, merge=True)
     return {**run, **result}
+
+
+def process_waiting(db: Any, *, folds: int = pt.DEFAULT_FOLDS) -> dict | None:
+    """Process the oldest run nobody has picked up yet (used by the predictor worker)."""
+    waiting = sorted(
+        (r for r in list_runs(db, 5) if r.get("status") == "running" and not r.get("processingStartedAt")),
+        key=lambda r: r.get("createdAt") or "",
+    )
+    for run in waiting:
+        try:
+            return process_run(db, run["runId"], folds=folds)
+        except TuningRunError:
+            continue  # taken by the admin page in the meantime
+    return None
 
 
 def list_runs(db: Any, limit: int = 10) -> list[dict]:

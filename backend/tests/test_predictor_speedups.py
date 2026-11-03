@@ -104,3 +104,85 @@ def test_tune_routes(tune_db, monkeypatch):
     processed = client.post(f"/admin/predictor/tune/{started['runId']}/process", json={}).get_json()
     assert processed == {"runId": started["runId"], "status": "report"}
     assert client.post(f"/admin/predictor/tune/{started['runId']}/process", json={}).status_code == 400
+
+
+# --- predictor worker (Cloud Scheduler safety net) -------------------------------------
+
+
+def test_worker_processes_a_run_the_page_never_processed(tune_db):
+    run = runs.start_run(tune_db, started_by="admin")  # the page's /process call was lost
+    done = runs.process_waiting(tune_db)
+    assert done["runId"] == run["runId"] and done["status"] == "report"
+    assert runs.process_waiting(tune_db) is None  # nothing left
+    with pytest.raises(runs.TuningRunError):
+        runs.process_run(tune_db, run["runId"])  # and the late page call does nothing
+
+
+def test_worker_skips_a_run_the_page_already_claimed(tune_db, monkeypatch):
+    run = runs.start_run(tune_db, started_by="admin")
+    key = f"{runs.COLLECTION}/{run['runId']}"
+    tune_db.store[key]["processingStartedAt"] = datetime.now(timezone.utc).isoformat()  # page is on it
+    assert runs.process_waiting(tune_db) is None
+    assert tune_db.store[key]["status"] == "running"
+
+
+def test_stale_time_counts_from_when_processing_started(tune_db):
+    created = (datetime.now(timezone.utc) - timedelta(minutes=45)).isoformat()
+    started = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()
+    tune_db.store[f"{runs.COLLECTION}/r1"] = {
+        "runId": "r1", "status": "running", "createdAt": created, "processingStartedAt": started}
+    assert runs.list_runs(tune_db)[0]["status"] == "running"  # picked up late, still working
+
+
+def test_claim_runs_in_a_transaction(tune_db, monkeypatch):
+    from firebase_admin import firestore
+
+    monkeypatch.setattr(firestore, "transactional", lambda fn: fn, raising=False)
+    updates = []
+
+    class Tx:
+        def update(self, ref, data):
+            updates.append(data)
+            ref.set(data, merge=True)
+
+    tune_db.transaction = lambda: Tx()
+    run = runs.start_run(tune_db, started_by="admin")
+    assert runs.process_run(tune_db, run["runId"])["status"] == "report"
+    assert list(updates[0]) == ["processingStartedAt"]
+    with pytest.raises(runs.TuningRunError):
+        runs.process_run(tune_db, run["runId"])
+
+
+def test_worker_route(tune_db, monkeypatch):
+    from flask import Flask
+    from routes import admin_predictor_routes as routes
+    from routes.admin import admin_bp
+
+    monkeypatch.setattr(routes, "db", tune_db)
+    monkeypatch.setattr(routes, "require_scheduler", lambda _req: None)
+    app = Flask(__name__)
+    app.register_blueprint(admin_bp)
+    client = app.test_client()
+
+    assert client.post("/admin/predictor/worker", json={}).get_json() == {
+        "tuning": None, "research": {"idle": True}}
+    runs.start_run(tune_db, started_by="admin")
+    body = client.post("/admin/predictor/worker", json={}).get_json()
+    assert body == {"tuning": "report", "research": {"idle": True}}
+
+
+def test_worker_route_needs_scheduler_or_admin(tune_db, monkeypatch):
+    from flask import Flask
+    from authz import AuthzError
+    from routes import admin_predictor_routes as routes
+    from routes.admin import admin_bp
+
+    def deny(_req):
+        raise AuthzError("Forbidden", 403)
+
+    monkeypatch.setattr(routes, "db", tune_db)
+    monkeypatch.setattr(routes, "require_scheduler", deny)
+    monkeypatch.setattr(routes, "require_admin", deny)
+    app = Flask(__name__)
+    app.register_blueprint(admin_bp)
+    assert app.test_client().post("/admin/predictor/worker", json={}).status_code == 403

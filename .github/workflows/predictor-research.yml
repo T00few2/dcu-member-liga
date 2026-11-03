@@ -1,13 +1,13 @@
 name: Predictor Research (Claude sandbox)
 
-# Runs queued predictor research (Admin → Predictor → Tuning → "Run research").
-# Every 30 minutes: process a queued run if there is one (a no-op otherwise).
-# Monthly: also queue a run when none was made in the last 30 days.
+# Monthly: queue a predictor research run when none was made in the last 30 days.
+# Queued runs (including "Run research" on the admin page) are processed by the
+# predictor-worker Cloud Scheduler job every 5 minutes (see deploy-backend.yml);
+# run this workflow by hand to process one right away.
 # A run can take up to ~13 minutes, so the request allows 15.
 
 on:
   schedule:
-    - cron: '7,37 * * * *'
     - cron: '41 4 2 * *'
   workflow_dispatch:
 

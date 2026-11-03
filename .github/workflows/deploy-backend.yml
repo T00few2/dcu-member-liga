@@ -91,44 +91,51 @@ jobs:
             --env-vars-file "$RUNNER_TEMP/dcu-api-env.yaml" \
             --project="$GCP_PROJECT_ID"
 
-      # Calls the Strava cache warm-up every 15 minutes from Google Cloud Scheduler,
-      # because GitHub runs this repo's scheduled workflows only every few hours.
-      # The warm-up is a no-op once every rider is cached, and it pauses itself at
-      # 75% of the Strava read limits. Never blocks the deploy: if the deploy service
-      # account lacks Cloud Scheduler rights, the step prints what to grant.
-      - name: Schedule Strava cache warm-up (Cloud Scheduler)
+      # Google Cloud Scheduler jobs for the predictor, because GitHub runs this repo's
+      # scheduled workflows only every few hours:
+      #   strava-cache-warm  every 15 min: fill the Strava curve cache (75% budget, one at a time)
+      #   predictor-worker   every 5 min: process a waiting tuning run, then queued research
+      # Both are no-ops when there is nothing to do. Never blocks the deploy: if the deploy
+      # service account lacks Cloud Scheduler rights, the step prints what to grant.
+      - name: Schedule predictor jobs (Cloud Scheduler)
         continue-on-error: true
         env:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           SCHEDULER_SECRET: ${{ secrets.SCHEDULER_SECRET }}
         run: |
           set -u
-          JOB=strava-cache-warm
           REGION=us-central1
-          URI="https://us-central1-dcu-member-liga-479507.cloudfunctions.net/dcu_api/admin/predictor/strava-cache/warm"
+          BASE="https://us-central1-dcu-member-liga-479507.cloudfunctions.net/dcu_api"
           gcloud services enable cloudscheduler.googleapis.com --project="$GCP_PROJECT_ID" >/dev/null 2>&1 || true
-          if gcloud scheduler jobs describe "$JOB" --location="$REGION" --project="$GCP_PROJECT_ID" >/dev/null 2>&1; then
-            action=update
-            header_flag=--update-headers
-          else
-            action=create
-            header_flag=--headers
-          fi
-          # Output is discarded so the job config (which holds the token) never reaches the public log.
-          if gcloud scheduler jobs "$action" http "$JOB" \
-              --location="$REGION" \
-              --project="$GCP_PROJECT_ID" \
-              --schedule="*/15 * * * *" \
-              --time-zone="Etc/UTC" \
-              --uri="$URI" \
-              --http-method=POST \
-              "$header_flag"="X-Scheduler-Token=${SCHEDULER_SECRET},Content-Type=application/json" \
-              --message-body="{}" \
-              --attempt-deadline=600s \
-              --quiet >/dev/null 2>"$RUNNER_TEMP/scheduler.err"; then
-            echo "Cloud Scheduler job '$JOB' ${action}d: every 15 minutes."
-          else
-            echo "::warning::Could not ${action} the Cloud Scheduler job. Grant the deploy service account the 'Cloud Scheduler Admin' role (and enable the Cloud Scheduler API) in Google Cloud IAM, then re-run this workflow."
-            grep -v -i "token" "$RUNNER_TEMP/scheduler.err" | tail -5 || true
-            exit 1
-          fi
+          failed=0
+          schedule_job() {  # name, cron, path, attempt deadline
+            local job="$1" cron="$2" path="$3" deadline="$4" action header_flag
+            if gcloud scheduler jobs describe "$job" --location="$REGION" --project="$GCP_PROJECT_ID" >/dev/null 2>&1; then
+              action=update
+              header_flag=--update-headers
+            else
+              action=create
+              header_flag=--headers
+            fi
+            # Output is discarded so the job config (which holds the token) never reaches the public log.
+            if gcloud scheduler jobs "$action" http "$job" \
+                --location="$REGION" \
+                --project="$GCP_PROJECT_ID" \
+                --schedule="$cron" \
+                --time-zone="Etc/UTC" \
+                --uri="$BASE$path" \
+                --http-method=POST \
+                "$header_flag"="X-Scheduler-Token=${SCHEDULER_SECRET},Content-Type=application/json" \
+                --message-body="{}" \
+                --attempt-deadline="$deadline" \
+                --quiet >/dev/null 2>"$RUNNER_TEMP/scheduler.err"; then
+              echo "Cloud Scheduler job '$job' ${action}d: $cron."
+            else
+              echo "::warning::Could not ${action} the Cloud Scheduler job '$job'. Grant the deploy service account the 'Cloud Scheduler Admin' role (and enable the Cloud Scheduler API) in Google Cloud IAM, then re-run this workflow."
+              grep -v -i "token" "$RUNNER_TEMP/scheduler.err" | tail -5 || true
+              failed=1
+            fi
+          }
+          schedule_job strava-cache-warm "*/15 * * * *" /admin/predictor/strava-cache/warm 600s
+          schedule_job predictor-worker "*/5 * * * *" /admin/predictor/worker 900s
+          exit "$failed"

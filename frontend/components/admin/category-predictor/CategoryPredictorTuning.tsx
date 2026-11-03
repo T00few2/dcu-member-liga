@@ -159,7 +159,15 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
         setError(data.message ?? 'Could not start tuning');
         return;
       }
-      await fireAndForget(`/admin/predictor/tune/${data.runId}/process`);
+      void queryClient.invalidateQueries({ queryKey: ['predictor', 'tune-runs'] });
+      // Ask the server to process the run now and wait for it (usually under a minute).
+      // If this request is dropped or times out, the predictor worker (Cloud Scheduler,
+      // every 5 minutes) processes the run, so errors here are not shown.
+      await fetch(`${API_URL}/admin/predictor/tune/${data.runId}/process`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: '{}',
+      }).catch(() => undefined);
       void queryClient.invalidateQueries({ queryKey: ['predictor', 'tune-runs'] });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Could not start tuning');
@@ -258,7 +266,7 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
             <span className="font-medium text-foreground">{latest.status}</span>
           </div>
           {latest.status === 'running' && (
-            <p className="text-sm text-muted-foreground">Running in the background… this usually takes under a minute.</p>
+            <p className="text-sm text-muted-foreground">Running in the background… usually done within a minute, at the latest within 5 minutes.</p>
           )}
           {latest.error && <p className="text-sm text-red-600">{latest.error}</p>}
           {r && (

@@ -200,7 +200,8 @@ def predictor_tune():
 def predictor_tune_process(run_id: str):
     """Do the work for a run created by POST /admin/predictor/tune.
 
-    The admin page calls this without waiting; it polls /tune/runs for the result.
+    The admin page calls this right after starting a run and polls /tune/runs for the
+    result. If this call never arrives, /admin/predictor/worker processes the run.
     """
     _, err = _admin()
     if err:
@@ -214,6 +215,35 @@ def predictor_tune_process(run_id: str):
         return jsonify({"message": e.message}), e.status_code
     except Exception as e:
         logger.error("predictor_tune_process error: %s", e)
+        return jsonify({"message": str(e)}), 500
+
+
+@admin_bp.route("/admin/predictor/worker", methods=["POST"])
+def predictor_worker():
+    """Process waiting predictor jobs (scheduler or admin): a tuning run, then research.
+
+    Called every 5 minutes by Cloud Scheduler (see deploy-backend.yml), so jobs finish
+    even when the admin page's own processing request never reaches the server. Each
+    job is claimed once, so this never repeats work the page already started.
+    """
+    try:
+        require_scheduler(request)
+    except AuthzError:
+        _, err = _admin()
+        if err:
+            return err
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+    try:
+        tuned = runs.process_waiting(db)
+        researched = research.process_next(db)
+        # Counts and statuses only: scheduler responses may end up in logs.
+        return jsonify({
+            "tuning": tuned.get("status") if tuned else None,
+            "research": research.public_summary(researched),
+        }), 200
+    except Exception as e:
+        logger.error("predictor_worker error: %s", e)
         return jsonify({"message": str(e)}), 500
 
 
