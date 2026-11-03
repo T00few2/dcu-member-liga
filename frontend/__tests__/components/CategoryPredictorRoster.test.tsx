@@ -3,15 +3,18 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps } from 'react';
 import CategoryPredictorRoster from '@/components/admin/category-predictor/CategoryPredictorRoster';
-import { EMPTY_POWER, type ModelResult, type Participant } from '@/components/admin/category-predictor/shared';
+import {
+  EMPTY_POWER,
+  type Participant,
+  type PredictionMap,
+} from '@/components/admin/category-predictor/shared';
 
-const MODEL: ModelResult = {
-  coeffs: [0, 320],
-  r2: 1,
-  rmse: 40,
-  n: 10,
-  activeFeatureKeys: ['wkg20m'],
-  trainingPoints: [],
+// Predictions as the backend returns them: Zwift 4.0 W/kg → 1280 ±40, Strava 4.4 W/kg → 1408 ±40.
+const ZWIFT: PredictionMap = {
+  '1': { velo: 1280, category: 'Platinum', low: 1240, high: 1320, catLow: 'Platinum', catHigh: 'Amethyst', confidence: 'medium' },
+};
+const STRAVA: PredictionMap = {
+  '1': { velo: 1408, category: 'Amethyst', low: 1368, high: 1448, catLow: 'Amethyst', catHigh: 'Amethyst', confidence: 'high' },
 };
 
 const ada: Participant = {
@@ -32,7 +35,8 @@ const ada: Participant = {
 function renderRoster(overrides: Partial<ComponentProps<typeof CategoryPredictorRoster>> = {}) {
   const props: ComponentProps<typeof CategoryPredictorRoster> = {
     riders: [ada],
-    model: MODEL,
+    zwiftPredictions: ZWIFT,
+    stravaPredictions: STRAVA,
     selectedZwiftId: '',
     onSelectRider: vi.fn(),
     showUnassignedOnly: false,

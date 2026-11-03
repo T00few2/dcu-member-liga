@@ -13,10 +13,11 @@ import {
   Customized,
 } from 'recharts';
 import {
-  FEATURE_DEFS,
   SCATTER_COLORS,
   ModelResult,
   FeatureKey,
+  FeatureMeta,
+  featureLabel,
 } from './shared';
 
 // ---------------------------------------------------------------------------
@@ -26,10 +27,14 @@ import {
 export interface CategoryPredictorResultsProps {
   /** Whether participants are still loading from the server. */
   loadingParticipants: boolean;
-  /** Fitted OLS model, or null when there is not enough training data. */
+  /** Model fitted by the backend predictor, or null when there is not enough training data. */
   model: ModelResult | null;
+  /** Error from the backend predictor, or empty string. */
+  modelError?: string;
+  /** Feature metadata from the backend predictor. */
+  featureDefs: FeatureMeta[];
   /** Which features are currently enabled in the regressor selector. */
-  selectedFeatures: Record<FeatureKey, boolean>;
+  selectedFeatures: Partial<Record<FeatureKey, boolean>>;
   /** Called when the user toggles a feature checkbox. */
   onToggleFeature: (key: FeatureKey, enabled: boolean) => void;
   /** Called when the user clicks "Save as default". */
@@ -74,7 +79,8 @@ function DiagonalLine({
 // ---------------------------------------------------------------------------
 
 interface RegressorSelectorProps {
-  selectedFeatures: Record<FeatureKey, boolean>;
+  featureDefs: FeatureMeta[];
+  selectedFeatures: Partial<Record<FeatureKey, boolean>>;
   onToggleFeature: (key: FeatureKey, enabled: boolean) => void;
   onSaveDefaults: () => void;
   savedFeedback: boolean;
@@ -82,6 +88,7 @@ interface RegressorSelectorProps {
 }
 
 function RegressorSelector({
+  featureDefs,
   selectedFeatures,
   onToggleFeature,
   onSaveDefaults,
@@ -101,12 +108,12 @@ function RegressorSelector({
       </button>
       {open && (
         <div className="px-4 py-3 space-y-3 bg-card">
-          {FEATURE_DEFS.map(f => (
+          {featureDefs.map(f => (
             <label key={f.key} className="flex items-start gap-3 cursor-pointer">
               <input
                 type="checkbox"
                 className="mt-0.5 shrink-0"
-                checked={selectedFeatures[f.key]}
+                checked={Boolean(selectedFeatures[f.key])}
                 onChange={e => onToggleFeature(f.key, e.target.checked)}
               />
               <div>
@@ -143,6 +150,8 @@ function RegressorSelector({
 export default function CategoryPredictorResults({
   loadingParticipants,
   model,
+  modelError = '',
+  featureDefs,
   selectedFeatures,
   onToggleFeature,
   onSaveDefaults,
@@ -150,7 +159,7 @@ export default function CategoryPredictorResults({
   onResetFeatures,
 }: CategoryPredictorResultsProps) {
   const coeffLabels = model
-    ? ['Intercept', ...model.activeFeatureKeys.map(k => FEATURE_DEFS.find(f => f.key === k)!.label)]
+    ? ['Intercept', ...model.activeFeatureKeys.map(k => featureLabel(featureDefs, k))]
     : [];
 
   const scatterVelos = model?.trainingPoints.map(p => p.actual) ?? [];
@@ -166,19 +175,24 @@ export default function CategoryPredictorResults({
         )}
       </div>
       <p className="text-sm text-muted-foreground mb-4">
-        Fitted automatically from all league members who have both Zwift CP efforts and a ZwiftRacing vELO
-        score. Features: rider weight (kg), 1-minute W/kg (sprint), 20-minute W/kg (aerobic ceiling), and
-        the 5-minute compound score (5min watts² ÷ weight). The compound score rewards heavier riders with
-        the same W/kg — because on flat terrain, absolute watts matter as much as power-to-weight.
+        Fitted by the backend predictor from all league members who have both Zwift CP efforts and a
+        ZwiftRacing vELO score, using the regressors selected below. The division agent and predictor tuning
+        use this same model. Compound scores (watts² ÷ weight) reward heavier riders with the same W/kg —
+        because on flat terrain, absolute watts matter as much as power-to-weight.
       </p>
 
-      {!model && !loadingParticipants && (
+      {modelError && (
+        <p className="text-sm text-red-600 mb-2">Predictor error: {modelError}</p>
+      )}
+
+      {!model && !loadingParticipants && !modelError && (
         <p className="text-muted-foreground text-sm">
           Not enough riders with both CP data and vELO scores to fit a model (need at least 5).
         </p>
       )}
 
       <RegressorSelector
+        featureDefs={featureDefs}
         selectedFeatures={selectedFeatures}
         onToggleFeature={onToggleFeature}
         onSaveDefaults={onSaveDefaults}

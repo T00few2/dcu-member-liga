@@ -120,6 +120,12 @@
       },
       "gracePeriod": 35,
       "weightVerificationValidDays": 30,
+      "predictorFeatures": {
+        "weight_kg": true, "zrs": false, "wkg5s": false, "wkg1m": true, "wkg5m": false, "wkg20m": true,
+        "watts5s": false, "watts1m": false, "watts5m": false, "watts20m": false,
+        "compound5s": false, "compound1m": false, "compound5m": true, "compound20m": false
+      },
+      "divisionAgent": { "minZwiftRides": 15 },
       "ligaCategories": [
         { "name": "Diamond", "upper": null, "requiresVerification": true, "color": "#b9f2ff" },
         { "name": "Ruby", "upper": 2200, "requiresVerification": true, "color": "#ff4e6a" },
@@ -809,6 +815,77 @@
       "profileUpdatedAt": "2026-05-15T00:14:40+00:00",
       "raceId": "race_doc_example_001",
       "activityId": "16889999"
+    }
+  ],
+  "strava_power_curves": [
+    {
+      "_id": "100001_90",
+      "userDocId": "100001",
+      "days": 90,
+      "curve": { "w5": 905.0, "w15": 780.0, "w30": 640.0, "w60": 470.0, "w120": 390.0, "w300": 330.0, "w1200": 281.0 },
+      "activityCount": 23,
+      "computedAt": "2026-11-02T18:20:00+00:00"
+    }
+  ],
+  "predictor_tuning_runs": [
+    {
+      "_id": "example_run_001",
+      "runId": "example_run_001",
+      "createdAt": "2026-11-01T08:55:00+00:00",
+      "startedBy": "admin@example.com",
+      "status": "applied",
+      "result": {
+        "status": "improved",
+        "evalRiders": 52,
+        "current": { "fitScale": false, "score": { "n": 52, "divisionAccuracy": 57.2, "adjacentAccuracy": 96.2, "maeVelo": 84.0, "zwiftDivisionAccuracy": 78.8 } },
+        "best": { "fitScale": true, "score": { "n": 52, "divisionAccuracy": 63.5, "adjacentAccuracy": 98.1, "maeVelo": 71.2, "zwiftDivisionAccuracy": 78.8 } },
+        "improvementPP": 6.3,
+        "changedRiders": [{ "zwiftId": "100001", "realCategory": "Gold", "before": "Silver", "after": "Gold" }],
+        "pastPredictions": { "n": 4, "divisionAccuracy": 75.0, "maeVelo": 66.0, "meanBias": -22.5 },
+        "windowsAvailable": { "90": 52, "180": 49, "360": 41 },
+        "message": "New settings improve Strava→division accuracy by 6.3 pp."
+      },
+      "minZwiftRides": 15,
+      "decidedBy": "admin@example.com",
+      "decidedAt": "2026-11-01T09:00:00+00:00"
+    }
+  ],
+  "predictor_settings": [
+    {
+      "_id": "current",
+      "config": {
+        "features": {
+          "weight_kg": true, "zrs": false, "wkg5s": false, "wkg1m": true, "wkg5m": false, "wkg20m": true,
+          "watts5s": false, "watts1m": false, "watts5m": false, "watts20m": false,
+          "compound5s": false, "compound1m": false, "compound5m": true, "compound20m": false
+        },
+        "regression": "ridge",
+        "ridgeLambda": 0.1,
+        "stravaWindowDays": 180,
+        "stravaPowerScale": { "wkg5s": 1.0, "wkg1m": 1.02, "wkg5m": 1.04, "wkg20m": 1.05 },
+        "minStravaActivities": 3
+      },
+      "history": [
+        {
+          "config": {
+            "features": { "weight_kg": true, "wkg1m": true, "wkg20m": true, "compound5m": true },
+            "regression": "ols",
+            "ridgeLambda": 0.0,
+            "stravaWindowDays": 90,
+            "stravaPowerScale": { "wkg5s": 1.0, "wkg1m": 1.0, "wkg5m": 1.0, "wkg20m": 1.0 },
+            "minStravaActivities": 3
+          },
+          "metrics": null,
+          "replacedAt": "2026-11-01T09:00:00+00:00",
+          "replacedBy": "admin@example.com",
+          "reason": "Tuning run example_run_001: +6.3 pp division accuracy"
+        }
+      ],
+      "metrics": {
+        "n": 52, "divisionAccuracy": 63.5, "adjacentAccuracy": 98.1, "maeVelo": 71.2,
+        "zwiftDivisionAccuracy": 78.8, "runId": "example_run_001", "measuredAt": "2026-11-01T08:55:00+00:00"
+      },
+      "updatedAt": "2026-11-01T09:00:00+00:00"
     }
   ]
 }

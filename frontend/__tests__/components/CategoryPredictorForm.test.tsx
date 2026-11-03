@@ -6,9 +6,9 @@ import CategoryPredictorForm from '@/components/admin/category-predictor/Categor
 import {
   EMPTY_POWER,
   EMPTY_PREDICTION,
-  type ModelResult,
   type PredictionSnapshot,
 } from '@/components/admin/category-predictor/shared';
+import { FEATURE_META } from '../helpers/predictorFeatures';
 
 const zwiftPred: PredictionSnapshot = {
   velo: 1200,
@@ -62,7 +62,9 @@ function renderForm(overrides: Partial<ComponentProps<typeof CategoryPredictorFo
     zwiftPower: { wkg5s: 14, wkg1m: 6, wkg5m: 4.5, wkg20m: 4.0 },
     stravaPower: { wkg5s: 15, wkg1m: 6.2, wkg5m: 4.8, wkg20m: 4.4 },
     onSetPowerInput: vi.fn(),
-    model: { coeffs: [0], r2: 1, rmse: 40, n: 10, activeFeatureKeys: ['wkg20m'], trainingPoints: [] },
+    rmse: 40,
+    featureDefs: FEATURE_META,
+    zwiftPredictions: { '42': zwiftPred },
     activeFeatureKeys: ['wkg20m'],
     zwiftPrediction: zwiftPred,
     stravaPrediction: stravaPred,
@@ -145,14 +147,8 @@ describe('CategoryPredictorForm dual-source columns', () => {
   });
 
   it('can filter the rider list to predicted vs vELO category mismatches', () => {
-    const mismatchModel: ModelResult = {
-      coeffs: [0, 300],
-      r2: 1,
-      rmse: 10,
-      n: 10,
-      activeFeatureKeys: ['wkg20m'],
-      trainingPoints: [],
-    };
+    // Backend predicts 1200 → Platinum for both riders.
+    const platinum: PredictionSnapshot = { ...EMPTY_PREDICTION, velo: 1200, category: 'Platinum' };
     const base = {
       weightInGrams: 70000,
       cp5s: 1000,
@@ -163,7 +159,7 @@ describe('CategoryPredictorForm dual-source columns', () => {
       ligaCategory: null,
     };
     renderForm({
-      model: mismatchModel,
+      zwiftPredictions: { '1': platinum, '2': platinum },
       activeFeatureKeys: ['wkg20m'],
       selectedZwiftId: '',
       showMismatchOnly: true,
