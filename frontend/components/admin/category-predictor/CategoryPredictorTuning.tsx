@@ -39,6 +39,14 @@ interface CacheStatus {
   noPowerData?: number;
   remaining: number;
   minEvalRiders: number;
+  stravaUsage?: {
+    usage15: number;
+    limit15: number;
+    usageDay: number;
+    limitDay: number;
+    known: boolean;
+    cacheBudgetFraction: number;
+  };
 }
 
 export interface CategoryPredictorTuningProps {
@@ -143,6 +151,15 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
             {cache.cached < cache.minEvalRiders
               ? ` · tuning needs ${cache.minEvalRiders}; filled automatically, ~6 riders an hour`
               : ' · enough to tune'}
+            {cache.stravaUsage?.known && (
+              <span className="block text-xs">
+                Strava reads today: {cache.stravaUsage.usageDay.toLocaleString()} of{' '}
+                {cache.stravaUsage.limitDay.toLocaleString()} (this {cache.stravaUsage.usage15} of{' '}
+                {cache.stravaUsage.limit15} per 15 min). The cache uses at most{' '}
+                {Math.round(cache.stravaUsage.cacheBudgetFraction * 100)}% and pauses when that is reached, so the rest
+                of the app always has room.
+              </span>
+            )}
           </span>
           {cache.remaining > 0 && (
             <button

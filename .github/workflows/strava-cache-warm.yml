@@ -1,8 +1,9 @@
 name: Strava Cache Warm-up (predictor tuning)
 
-# Fills the Strava power-curve cache a couple of riders per run, so predictor
-# tuning has riders to measure against. ~100 Strava requests per run keeps us
-# under Strava's 100-per-15-minutes read limit. Once every eligible rider has a
+# Fills the Strava power-curve cache up to 3 riders per run (~60 Strava reads each),
+# so predictor tuning has riders to measure against. The backend reads Strava's own
+# usage headers and pauses while usage is above half of the app's 15-minute or daily
+# read limit, so the rest of the app always has room. Once every eligible rider has a
 # fresh curve, each run is a no-op that makes no Strava requests.
 
 on:

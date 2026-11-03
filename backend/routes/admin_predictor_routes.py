@@ -262,6 +262,7 @@ def predictor_strava_cache_status():
             "noPowerData": status["noPowerData"],
             "remaining": len(status["missing"]),
             "minEvalRiders": MIN_EVAL_RIDERS,
+            "stravaUsage": warmer.strava_usage(db),
         }), 200
     except Exception as e:
         logger.error("predictor_strava_cache_status error: %s", e)
@@ -298,6 +299,7 @@ def predictor_strava_cache_warm():
             "warmed": len(result["warmed"]),
             "failed": len(result["failed"]),
             "remaining": result["remaining"],
+            "rateLimited": result["rateLimited"],
             "minEvalRiders": MIN_EVAL_RIDERS,
         }), 200
     except Exception as e:
