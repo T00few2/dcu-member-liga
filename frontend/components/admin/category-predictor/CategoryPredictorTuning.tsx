@@ -35,6 +35,7 @@ interface CacheStatus {
   days: number;
   eligible: number;
   cached: number;
+  noPowerData?: number;
   remaining: number;
   minEvalRiders: number;
 }
@@ -137,6 +138,7 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
           <span className="text-muted-foreground">
             Strava cache ({cache.days}d): <span className="font-semibold text-foreground">{cache.cached}</span> of{' '}
             {cache.eligible} eligible riders
+            {(cache.noPowerData ?? 0) > 0 ? ` · ${cache.noPowerData} without Strava power data` : ''}
             {cache.cached < cache.minEvalRiders
               ? ` · tuning needs ${cache.minEvalRiders}; filled automatically, ~6 riders an hour`
               : ' · enough to tune'}

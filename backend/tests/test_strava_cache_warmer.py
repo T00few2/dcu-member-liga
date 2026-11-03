@@ -53,6 +53,24 @@ def test_status_counts_fresh_curves_and_lists_never_cached_first():
     assert [r["zwiftId"] for r in status["missing"]] == ["3", "2"]  # stale one after never-cached
 
 
+def test_riders_without_power_rides_do_not_count_as_cached():
+    db = FakeDb()
+    service = MagicMock()
+    service.get_power_activities.return_value = []  # Strava connected, no power meter rides
+    riders = [_rider(1)]
+
+    result = warmer.warm(db, service, riders, min_rides=15, days=90, compute_curve=MagicMock())
+    assert result["cached"] == 0 and result["noPowerData"] == 1 and result["remaining"] == 0
+
+    again = warmer.warm(db, service, riders, min_rides=15, days=90, compute_curve=MagicMock())
+    assert again["warmed"] == []  # not retried within a week
+    assert service.get_power_activities.call_count == 1
+
+    db.store["strava_power_curves/doc1_90"]["computedAt"] = _fresh(hours=24 * 8)
+    status = warmer.cache_status(db, riders, min_rides=15, days=90)
+    assert [r["zwiftId"] for r in status["missing"]] == ["1"]  # retried after a week
+
+
 def test_warm_fetches_at_most_two_riders_per_call():
     db = FakeDb()
     compute = MagicMock(return_value={"w5": 900.0})
@@ -122,4 +140,4 @@ def test_warm_without_scheduler_token_needs_admin(client, monkeypatch):
 def test_status_endpoint(client, monkeypatch):
     monkeypatch.setattr(routes, "require_admin", lambda _req: {"admin": True})
     body = client.get("/admin/predictor/strava-cache/status").get_json()
-    assert body == {"days": 90, "eligible": 3, "cached": 0, "remaining": 3, "minEvalRiders": 40}
+    assert body == {"days": 90, "eligible": 3, "cached": 0, "noPowerData": 0, "remaining": 3, "minEvalRiders": 40}

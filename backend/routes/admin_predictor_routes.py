@@ -258,6 +258,7 @@ def predictor_strava_cache_status():
             "days": status["days"],
             "eligible": status["eligible"],
             "cached": status["cached"],
+            "noPowerData": status["noPowerData"],
             "remaining": len(status["missing"]),
             "minEvalRiders": MIN_EVAL_RIDERS,
         }), 200

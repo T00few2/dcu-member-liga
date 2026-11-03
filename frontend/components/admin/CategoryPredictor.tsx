@@ -20,6 +20,7 @@ import {
   combineInputs,
   predictionFor,
   stravaInputsForRider,
+  EMPTY_PREDICTION,
   actualVeloFromParticipant,
   EMPTY_POWER,
   EMPTY_SHARED,
@@ -60,19 +61,35 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   // previews an unsaved selection; "Save as default" stores it for everyone,
   // including the division agent.
   const [selectedFeatures, setSelectedFeatures] = useState<Record<FeatureKey, boolean> | null>(null);
+  const [seededFrom, setSeededFrom] = useState<string | null>(null);
   const [savedFeedback, setSavedFeedback] = useState(false);
 
+  // Re-seed the checkboxes whenever the saved config changes (first load, Save,
+  // Apply of a tuning run, Roll back), so the page never previews stale regressors
+  // on top of newly saved settings.
+  const savedConfigKey = predictorConfig?.config
+    ? `${predictorConfig.updatedAt ?? 'initial'}:${JSON.stringify(predictorConfig.config.features)}`
+    : null;
   useEffect(() => {
-    if (selectedFeatures === null && predictorConfig?.config?.features) {
+    if (savedConfigKey && savedConfigKey !== seededFrom && predictorConfig?.config?.features) {
       setSelectedFeatures(predictorConfig.config.features);
+      setSeededFrom(savedConfigKey);
     }
-  }, [predictorConfig, selectedFeatures]);
+  }, [savedConfigKey, seededFrom, predictorConfig]);
 
   const featuresForModel = useDebouncedValue(selectedFeatures, 300);
-  const { data: modelData, isLoading: loadingModel, error: modelError } = usePredictorModelQuery(featuresForModel);
+  const featuresSettled = JSON.stringify(featuresForModel) === JSON.stringify(selectedFeatures);
+  const {
+    data: modelData,
+    isLoading: loadingModel,
+    isPlaceholderData: modelIsPrevious,
+    error: modelError,
+  } = usePredictorModelQuery(featuresForModel);
   const model = modelData?.model ?? null;
   const featureDefs = useMemo(() => modelData?.features ?? [], [modelData]);
-  const zwiftPredictions = modelData?.predictions;
+  // Only offer predictions that belong to the current regressor selection: while a
+  // new model is loading, the previous one's numbers must not be assignable.
+  const zwiftPredictions = !modelIsPrevious && featuresSettled ? modelData?.predictions : undefined;
   const stravaWindowDays = predictorConfig?.config?.stravaWindowDays ?? 90;
   const activeFeatureKeys = useMemo(
     () => featureDefs.filter(f => selectedFeatures?.[f.key]).map(f => f.key),
@@ -111,9 +128,17 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
     },
   ], [shared, zwiftPower, stravaPower, selectedStrava?.activityCount]);
   const debouncedFormRows = useDebouncedValue(formRows, 300);
-  const { data: formPredictions } = usePredictionsQuery(debouncedFormRows, featuresForModel);
-  const zwiftPrediction = predictionFor(formPredictions, 'zwift');
-  const stravaPrediction = predictionFor(formPredictions, 'strava');
+  const { data: formPredictions, isPlaceholderData: formIsPrevious } = usePredictionsQuery(
+    debouncedFormRows,
+    featuresForModel,
+  );
+  // Predictions are shown (and assignable) only when they were computed for exactly
+  // the inputs on screen; after switching rider or typing, the form waits for the
+  // new result instead of offering the previous rider's vELO.
+  const formCurrent = !formIsPrevious && featuresSettled
+    && JSON.stringify(debouncedFormRows) === JSON.stringify(formRows);
+  const zwiftPrediction = formCurrent ? predictionFor(formPredictions, 'zwift') : EMPTY_PREDICTION;
+  const stravaPrediction = formCurrent ? predictionFor(formPredictions, 'strava') : EMPTY_PREDICTION;
 
   // Strava predictions for every rider whose Strava power has been loaded.
   const stravaRows = useMemo<PredictRow[]>(() => participants.flatMap(p => {
@@ -122,7 +147,11 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
       ? [{ id: p.zwiftId, inputs, source: 'strava' as const, activityCount: stravaByRider[p.zwiftId]?.activityCount ?? null }]
       : [];
   }), [participants, stravaByRider]);
-  const { data: stravaPredictions } = usePredictionsQuery(stravaRows, featuresForModel);
+  const { data: stravaPredictionsData, isPlaceholderData: stravaIsPrevious } = usePredictionsQuery(
+    stravaRows,
+    featuresForModel,
+  );
+  const stravaPredictions = !stravaIsPrevious && featuresSettled ? stravaPredictionsData : undefined;
 
   const selectedParticipant = participants.find(p => p.zwiftId === selectedZwiftId) ?? null;
   const actualVelo = selectedParticipant ? actualVeloFromParticipant(selectedParticipant) : null;
