@@ -17,7 +17,12 @@ _SERVICE_TOKEN_POLL_SECONDS = 0.25
 _SERVICE_TOKEN_EXPIRY_SKEW_SECONDS = 300
 
 def _strava_get(*args, **kwargs):
-    """requests.get that also records Strava's rate-limit headers (see services/strava_rate.py)."""
+    """requests.get that counts the request and records Strava's rate-limit headers.
+
+    See services/strava_rate.py: the app counts every request itself because Strava's
+    usage header undercounts.
+    """
+    strava_rate.count_request()
     res = requests.get(*args, **kwargs)
     strava_rate.record(getattr(res, "headers", None))
     return res
@@ -488,7 +493,7 @@ class StravaService:
         except (AttributeError, ValueError):
             return None
 
-    def get_power_activities(self, rider_id: str, after_timestamp: int, max_activities: int = 50) -> list:
+    def get_power_activities(self, rider_id: str, after_timestamp: int, max_activities: int | None = 50) -> list:
         """Return the most recent cycling activities with power since `after_timestamp`.
 
         Two filters, both required. `device_watts` drops rides whose watts Strava
@@ -502,6 +507,7 @@ class StravaService:
         would hand back the *start* of the window and silently drop everything recent —
         exactly the rides a 90-day peak-power curve depends on. Both filters are applied
         before `max_activities`, so non-cycling activities no longer eat into the budget.
+        `max_activities=None` returns every power ride in the window (the power curve uses that).
         """
         access_token = self._get_valid_token(rider_id)
         if not access_token:
@@ -569,7 +575,7 @@ class StravaService:
             cursor = oldest_epoch
 
         collected.sort(key=lambda a: a.get('startDate') or '', reverse=True)
-        return collected[:max_activities]
+        return collected if max_activities is None else collected[:max_activities]
 
     def get_segment_streams(self, segment_id: int):
         """Fetch distance and altitude streams for a public Strava segment."""

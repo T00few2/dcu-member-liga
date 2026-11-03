@@ -15,13 +15,14 @@ from typing import Any, Callable
 
 from services import predictor_tuning as pt
 from services import strava_rate
-from services.strava_power_curve import cached_reader, get_strava_power_curve
+from services.strava_power_curve import StravaBudgetExceeded, cached_reader, get_strava_power_curve
 
 logger = logging.getLogger(__name__)
 
 WARM_BATCH = 10
-# A curve costs about 1 activity page plus one stream request per ride (max 50).
-REQUESTS_PER_RIDER = 60
+# Before a rider's activity list is read, only the list page(s) need to fit; the real
+# cost (one stream per power ride, no cap) is checked once the list is known.
+LIST_REQUESTS = 2
 # The cache never uses more than this share of Strava's 15-minute and daily read limits,
 # so the rest of the app (predictor page, verification, rider features) always has room.
 BUDGET_FRACTION = 0.75
@@ -199,20 +200,37 @@ def _warm(
     warmed, failed = [], []
     new_cached = new_empty = 0
     rate_limited = False
+
+    def usage() -> dict:
+        # Re-read the shared counters: each curve fetch adds its requests to them (and
+        # other instances may have too), so a copy from the start of the run is stale.
+        nonlocal stored
+        try:
+            stored = strava_rate.load(db)
+        except Exception:
+            pass
+        return strava_rate.combined(stored)
+
+    def fits(streams: int) -> bool:
+        return strava_rate.within_budget(usage(), streams, BUDGET_FRACTION, now())
+
     for p in status["missing"][: max(0, limit)]:
-        usage = strava_rate.latest(stored, strava_rate.snapshot())
-        if not strava_rate.within_budget(usage, REQUESTS_PER_RIDER, BUDGET_FRACTION, now()):
+        if not fits(LIST_REQUESTS):
             rate_limited = True
             break
         try:
             entry = get_strava_power_curve(
                 db, strava_service, p["userDocId"], days, compute_curve=compute_curve, refresh=True,
+                budget=fits,
             )
             warmed.append({"zwiftId": str(p.get("zwiftId")), "activityCount": entry["activityCount"]})
             if entry.get("curve"):
                 new_cached += 1
             else:
                 new_empty += 1
+        except StravaBudgetExceeded:
+            rate_limited = True  # this rider waits for the next window
+            break
         except Exception as exc:
             logger.warning("strava cache warm failed for %s: %s", p.get("zwiftId"), exc)
             failed.append(str(p.get("zwiftId")))
@@ -241,7 +259,7 @@ def _warm(
         "failed": failed,
         "remaining": remaining,
         "rateLimited": rate_limited,
-        "stravaUsage": strava_rate.current_usage(strava_rate.latest(stored, strava_rate.snapshot()), now()),
+        "stravaUsage": strava_rate.current_usage(strava_rate.combined(stored), now()),
     }
 
 
@@ -251,7 +269,7 @@ def strava_usage(db: Any) -> dict:
         stored = strava_rate.load(db)
     except Exception:
         stored = {}
-    usage = strava_rate.current_usage(strava_rate.latest(stored, strava_rate.snapshot()))
+    usage = strava_rate.current_usage(strava_rate.combined(stored))
     return {**usage, "cacheBudgetFraction": BUDGET_FRACTION}
 
 

@@ -1,7 +1,7 @@
 """Cached Strava peak-power curves.
 
-Building a curve costs one Strava request per ride (up to 50 per rider), and
-Strava allows about 100 read requests per 15 minutes per app. Curves are cached
+Building a curve costs one Strava request per power ride in the window (every ride
+is used, no cap) plus the activity-list page(s). Curves are cached
 in `strava_power_curves/{userDocId}_{days}` so the admin page, the division
 agent and predictor tuning reuse them instead of refetching.
 """
@@ -16,6 +16,14 @@ logger = logging.getLogger(__name__)
 COLLECTION = "strava_power_curves"
 ALLOWED_DAYS = (30, 90, 180, 360)
 DEFAULT_MAX_AGE_HOURS = 24
+
+
+class StravaBudgetExceeded(Exception):
+    """Raised before downloading streams when the caller's Strava budget says no."""
+
+    def __init__(self, streams: int):
+        super().__init__(f"{streams} activity streams do not fit in the Strava budget right now")
+        self.streams = streams
 
 
 def cache_doc_id(user_doc_id: str, days: int) -> str:
@@ -83,6 +91,16 @@ def _age_hours(entry: dict, now: datetime) -> float | None:
     return (now - computed).total_seconds() / 3600
 
 
+def _share_usage(db: Any) -> None:
+    """Add this instance's Strava request count to the shared counters (best effort)."""
+    try:
+        from services import strava_rate
+
+        strava_rate.persist(db)
+    except Exception as exc:
+        logger.warning("could not store Strava usage: %s", exc)
+
+
 def get_strava_power_curve(
     db: Any,
     strava_service: Any,
@@ -93,12 +111,17 @@ def get_strava_power_curve(
     max_age_hours: float = DEFAULT_MAX_AGE_HOURS,
     refresh: bool = False,
     allow_fetch: bool = True,
+    budget: Callable[[int], bool] | None = None,
 ) -> dict | None:
     """Return `{curve, activityCount, days, computedAt, cached}` for one rider.
 
     Uses the cached curve when it is younger than `max_age_hours` (unless
     `refresh`). With `allow_fetch=False` only the cache is read, whatever its
     age, which is what tuning wants so it never spends Strava requests.
+
+    `budget(n)` is asked after the activity list is read, with the number of streams
+    the curve needs; when it returns False, `StravaBudgetExceeded` is raised and no
+    streams are downloaded.
     """
     if days not in ALLOWED_DAYS:
         raise ValueError(f"days must be one of {ALLOWED_DAYS}")
@@ -119,8 +142,13 @@ def get_strava_power_curve(
         return None
 
     after_ts = int((now - timedelta(days=days)).timestamp())
-    activities = strava_service.get_power_activities(str(user_doc_id), after_ts)
-    curve = compute_curve(str(user_doc_id), activities) if activities else {}
+    try:
+        activities = strava_service.get_power_activities(str(user_doc_id), after_ts, max_activities=None)
+        if activities and budget is not None and not budget(len(activities)):
+            raise StravaBudgetExceeded(len(activities))
+        curve = compute_curve(str(user_doc_id), activities) if activities else {}
+    finally:
+        _share_usage(db)
     entry = {
         "userDocId": str(user_doc_id),
         "days": int(days),
