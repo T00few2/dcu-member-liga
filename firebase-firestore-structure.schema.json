@@ -2251,7 +2251,8 @@
         "runId": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" },
         "startedBy": { "type": "string" },
-        "status": { "type": "string", "enum": ["running", "pending", "report", "applied", "rejected", "failed"], "description": "running while POST /admin/predictor/tune/<runId>/process computes it in the background" },
+        "status": { "type": "string", "enum": ["running", "pending", "report", "applied", "rejected", "failed"], "description": "running until POST /admin/predictor/tune/<runId>/process (admin page) or POST /admin/predictor/worker (Cloud Scheduler, every 5 min) computes it" },
+        "processingStartedAt": { "type": "string", "format": "date-time", "description": "Set once, in a transaction, by whichever caller claims the run; it is never processed twice" },
         "error": { "type": "string" },
         "finishedAt": { "type": "string", "format": "date-time" },
         "result": {

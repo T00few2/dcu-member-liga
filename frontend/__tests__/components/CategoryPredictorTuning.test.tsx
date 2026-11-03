@@ -94,7 +94,7 @@ describe('CategoryPredictorTuning', () => {
     });
   });
 
-  it('starts tuning in the background and processes it without waiting', async () => {
+  it('starts tuning and asks the server to process it', async () => {
     const u = userEvent.setup();
     renderPanel();
     await u.click(await screen.findByRole('button', { name: 'Run tuning' }));
