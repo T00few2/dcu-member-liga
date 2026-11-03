@@ -27,8 +27,6 @@ _STUBS = [
     "firebase_admin.auth",
     "google.cloud",
     "google.cloud.firestore",
-    "requests",
-    "requests.exceptions",
     "dotenv",
     "backoff",
 ]
