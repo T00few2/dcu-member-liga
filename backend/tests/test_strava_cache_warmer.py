@@ -378,3 +378,60 @@ def test_power_activities_without_a_cap_returns_every_ride(monkeypatch):
     after = int(datetime(2026, 9, 1, tzinfo=timezone.utc).timestamp())
     assert len(service.get_power_activities("u1", after)) == 50  # default cap for other callers
     assert len(service.get_power_activities("u1", after, max_activities=None)) == 80
+
+
+def _usage_doc(own15=0, own_day=0, at=NOW):
+    return {
+        "limit15": 300, "limitDay": 3000, "usage15": 0, "usageDay": 0, "at": at.isoformat(),
+        "ownDay": at.strftime("%Y-%m-%d"), "ownCountDay": own_day,
+        "ownQuarter": strava_rate._quarter_key(at), "ownCount15": own15,
+    }
+
+
+def _rides(n):
+    return [{"id": i} for i in range(n)]
+
+
+def test_a_rider_with_many_rides_runs_in_an_empty_quarter_hour_despite_its_own_list_request():
+    db = FakeDb()
+    db.store[f"{strava_rate.COLLECTION}/{strava_rate.DOC}"] = _usage_doc()
+    service = MagicMock()
+
+    def activities(*_a, **_k):
+        strava_rate.count_request(NOW)  # the list request itself counts in this quarter hour
+        return _rides(400)  # more than the 225 share on its own
+
+    service.get_power_activities.side_effect = activities
+    compute = MagicMock(return_value={"w5": 1.0})
+    result = warmer.warm(db, service, [_rider(1)], min_rides=15, days=90, compute_curve=compute,
+                         now=lambda: NOW)
+    assert [w["activityCount"] for w in result["warmed"]] == [400]
+    compute.assert_called_once()
+
+
+def test_a_heavy_rider_in_a_busy_quarter_hour_is_skipped_and_the_next_rider_still_runs():
+    db = FakeDb()
+    db.store[f"{strava_rate.COLLECTION}/{strava_rate.DOC}"] = _usage_doc(own15=10, own_day=10)
+    service = MagicMock()
+    service.get_power_activities.side_effect = [_rides(400), _rides(20)]
+    compute = MagicMock(return_value={"w5": 1.0})
+    result = warmer.warm(db, service, [_rider(1), _rider(2)], min_rides=15, days=90,
+                         compute_curve=compute, now=lambda: NOW)
+    assert [w["zwiftId"] for w in result["warmed"]] == ["2"]  # rider 1 waits for an empty window
+    assert result["rateLimited"] is True and compute.call_count == 1
+
+
+def test_a_normal_rider_that_does_not_fit_still_stops_the_run():
+    db = FakeDb()
+    db.store[f"{strava_rate.COLLECTION}/{strava_rate.DOC}"] = _usage_doc(own15=200, own_day=200)
+    service = MagicMock()
+    service.get_power_activities.side_effect = [_rides(50), _rides(5)]
+    result = warmer.warm(db, service, [_rider(1), _rider(2)], min_rides=15, days=90,
+                         compute_curve=MagicMock(), now=lambda: NOW)
+    assert result["warmed"] == [] and result["rateLimited"] is True
+    assert service.get_power_activities.call_count == 1  # budget used: nobody after it is tried
+
+
+def test_the_daily_cap_still_stops_a_heavy_rider():
+    snap = _usage_doc(own_day=2000)
+    assert not strava_rate.within_budget(snap, 400, 0.75, NOW, window_used_before=0)  # 2400 > 2250
