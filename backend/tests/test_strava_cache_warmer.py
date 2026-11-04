@@ -170,7 +170,8 @@ def test_headers_are_recorded_and_windows_reset():
     strava_rate.record({"X-ReadRateLimit-Limit": "300,3000", "X-ReadRateLimit-Usage": "12,345"}, now=NOW)
     snap = strava_rate.snapshot()
     assert strava_rate.current_usage(snap, NOW) == {
-        "limit15": 300, "limitDay": 3000, "usage15": 12, "usageDay": 345, "known": True}
+        "limit15": 300, "limitDay": 3000, "usage15": 12, "usageDay": 345,
+        "appRequests15": 0, "appRequestsDay": 0, "known": True}
     # Next quarter hour: 15-minute counter resets, daily does not.
     assert strava_rate.current_usage(snap, NOW + timedelta(minutes=10))["usage15"] == 0
     assert strava_rate.current_usage(snap, NOW + timedelta(minutes=10))["usageDay"] == 345
@@ -299,7 +300,7 @@ def test_lock_is_claimed_inside_a_transaction(monkeypatch):
     assert db.store[lock]["owner"] == "c"
 
 
-# --- The app's own request count (Strava's header undercounts) -----------------------
+# --- The app's own request count (informational; the budget follows Strava's report) ---
 
 
 def test_every_strava_get_is_counted(monkeypatch):
@@ -312,13 +313,24 @@ def test_every_strava_get_is_counted(monkeypatch):
     assert sum(counts["day"].values()) == 3 and sum(counts["quarter"].values()) == 3
 
 
-def test_own_count_wins_over_a_low_header():
+def test_budget_follows_stravas_report_and_the_app_count_is_informational():
     strava_rate.record({"X-ReadRateLimit-Limit": "300,3000", "X-ReadRateLimit-Usage": "10,75"}, now=NOW)
     for _ in range(120):
         strava_rate.count_request(NOW)
     usage = strava_rate.current_usage(strava_rate.snapshot(), NOW)
-    assert usage["usage15"] == 120 and usage["usageDay"] == 120
-    assert not strava_rate.within_budget(strava_rate.snapshot(), 120, 0.75, NOW)  # 240 > 225
+    assert usage["usage15"] == 10 and usage["usageDay"] == 75
+    assert usage["appRequests15"] == 120 and usage["appRequestsDay"] == 120
+    assert strava_rate.within_budget(strava_rate.snapshot(), 120, 0.75, NOW)  # 10 + 120 <= 225
+
+
+def test_a_refusal_from_strava_stops_background_work(monkeypatch):
+    from services import strava as strava_mod
+
+    refused = MagicMock(status_code=429, headers={"X-ReadRateLimit-Limit": "300,3000",
+                                                  "X-ReadRateLimit-Usage": "301,900"})
+    monkeypatch.setattr(strava_mod.requests, "get", lambda *a, **k: refused)
+    strava_mod._strava_get("https://www.strava.com/api/v3/athlete/activities")
+    assert not strava_rate.within_budget(strava_rate.snapshot(), 1, 0.75)
 
 
 def test_persist_adds_counts_from_every_instance_and_resets_per_window():
@@ -338,7 +350,7 @@ def test_persist_adds_counts_from_every_instance_and_resets_per_window():
     strava_rate.persist(db, now=later)
     assert db.store[key]["ownCountDay"] == 9 and db.store[key]["ownCount15"] == 1
     usage = strava_rate.current_usage(strava_rate.combined(strava_rate.load(db)), later)
-    assert usage["usageDay"] == 9 and usage["usage15"] == 1
+    assert usage["appRequestsDay"] == 9 and usage["appRequests15"] == 1
 
 
 def test_a_rider_bigger_than_the_15_minute_share_runs_in_an_empty_window():
@@ -351,7 +363,7 @@ def test_a_rider_bigger_than_the_15_minute_share_runs_in_an_empty_window():
 def test_warm_checks_each_riders_real_ride_count_before_downloading():
     db = FakeDb()
     db.store[f"{strava_rate.COLLECTION}/{strava_rate.DOC}"] = {
-        "limit15": 300, "limitDay": 3000, "usage15": 0, "usageDay": 0, "at": NOW.isoformat(),
+        "limit15": 300, "limitDay": 3000, "usage15": 100, "usageDay": 100, "at": NOW.isoformat(),
         "ownDay": NOW.strftime("%Y-%m-%d"), "ownCountDay": 100,
         "ownQuarter": strava_rate._quarter_key(NOW), "ownCount15": 100,
     }
@@ -382,7 +394,7 @@ def test_power_activities_without_a_cap_returns_every_ride(monkeypatch):
 
 def _usage_doc(own15=0, own_day=0, at=NOW):
     return {
-        "limit15": 300, "limitDay": 3000, "usage15": 0, "usageDay": 0, "at": at.isoformat(),
+        "limit15": 300, "limitDay": 3000, "usage15": own15, "usageDay": own_day, "at": at.isoformat(),
         "ownDay": at.strftime("%Y-%m-%d"), "ownCountDay": own_day,
         "ownQuarter": strava_rate._quarter_key(at), "ownCount15": own15,
     }

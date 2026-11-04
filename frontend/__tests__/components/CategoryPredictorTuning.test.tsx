@@ -38,7 +38,7 @@ beforeEach(() => {
     if (String(url).endsWith('/admin/predictor/strava-cache/status')) {
       return new Response(JSON.stringify({
         days: 90, eligible: 70, cached: 12, remaining: 58, minEvalRiders: 40,
-        stravaUsage: { usage15: 40, limit15: 300, usageDay: 900, limitDay: 3000, known: true, cacheBudgetFraction: 0.5 },
+        stravaUsage: { usage15: 40, limit15: 300, usageDay: 900, limitDay: 3000, appRequestsDay: 2400, known: true, cacheBudgetFraction: 0.5 },
       }), { status: 200 });
     }
     if (String(url).endsWith('/admin/predictor/tune')) {
@@ -87,7 +87,8 @@ describe('CategoryPredictorTuning', () => {
     renderPanel();
     expect(await screen.findByText(/of 70 eligible riders/)).toBeInTheDocument();
     expect(screen.getByText(/tuning needs 40/)).toBeInTheDocument();
-    expect(screen.getByText(/Strava reads today: 900 of 3,000/)).toBeInTheDocument();
+    expect(screen.getByText(/Strava reads today \(as reported by Strava\): 900 of 3,000/)).toBeInTheDocument();
+    expect(screen.getByText(/the app made 2,400 requests today/)).toBeInTheDocument();
     await u.click(screen.getByRole('button', { name: 'Fill now' }));
     await waitFor(() => {
       expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/admin/predictor/strava-cache/warm'))).toBe(true);

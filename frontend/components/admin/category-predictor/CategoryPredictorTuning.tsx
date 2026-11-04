@@ -52,6 +52,7 @@ interface CacheStatus {
     limit15: number;
     usageDay: number;
     limitDay: number;
+    appRequestsDay?: number;
     known: boolean;
     cacheBudgetFraction: number;
   };
@@ -234,9 +235,13 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
             )}
             {cache.stravaUsage?.known && (
               <span className="block text-xs">
-                Strava reads today: {cache.stravaUsage.usageDay.toLocaleString()} of{' '}
+                Strava reads today (as reported by Strava): {cache.stravaUsage.usageDay.toLocaleString()} of{' '}
                 {cache.stravaUsage.limitDay.toLocaleString()} (this {cache.stravaUsage.usage15} of{' '}
-                {cache.stravaUsage.limit15} per 15 min). The cache uses at most{' '}
+                {cache.stravaUsage.limit15} per 15 min)
+                {cache.stravaUsage.appRequestsDay != null
+                  ? `; the app made ${cache.stravaUsage.appRequestsDay.toLocaleString()} requests today`
+                  : ''}
+                . The cache uses at most{' '}
                 {Math.round(cache.stravaUsage.cacheBudgetFraction * 100)}% and pauses when that is reached, so the rest
                 of the app always has room.
               </span>

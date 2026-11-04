@@ -19,8 +19,8 @@ _SERVICE_TOKEN_EXPIRY_SKEW_SECONDS = 300
 def _strava_get(*args, **kwargs):
     """requests.get that counts the request and records Strava's rate-limit headers.
 
-    See services/strava_rate.py: the app counts every request itself because Strava's
-    usage header undercounts.
+    See services/strava_rate.py: the budget follows Strava's headers; the app's own
+    count is kept for information.
     """
     strava_rate.count_request()
     res = requests.get(*args, **kwargs)

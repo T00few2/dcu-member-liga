@@ -126,11 +126,11 @@
           "_id": { "type": "string", "const": "current" },
           "limit15": { "type": "integer" },
           "limitDay": { "type": "integer" },
-          "usage15": { "type": "integer", "description": "Reads in the 15-minute window containing 'at'" },
-          "usageDay": { "type": "integer", "description": "Reads on the UTC day containing 'at'" },
+          "usage15": { "type": "integer", "description": "Reads in the 15-minute window containing 'at', as reported by Strava (the background budget uses this)" },
+          "usageDay": { "type": "integer", "description": "Reads on the UTC day containing 'at', as reported by Strava (the background budget uses this)" },
           "at": { "type": "string", "format": "date-time" },
           "ownDay": { "type": "string", "description": "UTC day (YYYY-MM-DD) of ownCountDay" },
-          "ownCountDay": { "type": "integer", "description": "Strava requests the app made on ownDay (every function instance adds its own)" },
+          "ownCountDay": { "type": "integer", "description": "Strava requests the app made on ownDay (every function instance adds its own; informational)" },
           "ownQuarter": { "type": "string", "description": "UTC quarter hour of ownCount15, e.g. 2026-11-03T19:2 (minutes 30-44)" },
           "ownCount15": { "type": "integer", "description": "Strava requests the app made in ownQuarter" }
         }
