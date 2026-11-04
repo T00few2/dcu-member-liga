@@ -234,7 +234,12 @@ export default function DivisionAgent({ user }: { user: User | null }) {
     queryKey: ['division-agent', 'proposals', tab],
     queryFn: () => authed(user!, `/admin/division-agent/proposals?status=${tab}`),
     enabled: !!user,
-    refetchInterval: tab === 'pending' ? (working || Date.now() < pollUntil ? 10_000 : 30_000) : false,
+    // A callback, so the 10-minute fast window after a scan ends on its own.
+    refetchInterval: () => {
+      if (tab !== 'pending') return false;
+      const queued = queryClient.getQueryData<AgentStatus>(['division-agent', 'status'])?.queued ?? 0;
+      return queued > 0 || Date.now() < pollUntil ? 10_000 : 30_000;
+    },
   });
 
   async function decide(id: string, action: 'approve' | 'edit' | 'reject', body: { category?: string; note?: string }) {
