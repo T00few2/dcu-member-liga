@@ -44,13 +44,25 @@ def for_rider(proposals: list[dict], zwift_id: str) -> list[dict]:
 
 
 def already_handled(proposals: list[dict], zwift_id: str, fingerprint: str) -> bool:
-    """True when the rider has an open proposal, or a decided one for the same evidence."""
-    for p in for_rider(proposals, zwift_id):
-        if p.get("status") in OPEN:
-            return True
-        if p.get("status") in DECIDED and p.get("evidenceFingerprint") == fingerprint:
-            return True
-    return False
+    """True when a pending or decided proposal already covers this exact evidence.
+
+    A pending proposal built from older evidence is not "handled": the new one supersedes it.
+    """
+    return any(p.get("status") in OPEN + DECIDED and p.get("evidenceFingerprint") == fingerprint
+               for p in for_rider(proposals, zwift_id))
+
+
+def supersede_pending(db: Any, zwift_id: str, proposals: list[dict] | None = None) -> int:
+    """Mark the rider's pending proposals superseded (a re-check found no change is needed)."""
+    rows = proposals if proposals is not None else all_proposals(db)
+    count = 0
+    for old in for_rider(rows, zwift_id):
+        if old.get("status") in OPEN and old.get("id"):
+            db.collection(COLLECTION).document(old["id"]).set(
+                {"status": "superseded", "decidedAt": _now()}, merge=True)
+            old["status"] = "superseded"
+            count += 1
+    return count
 
 
 def create(db: Any, data: dict) -> dict:

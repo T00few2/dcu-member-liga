@@ -106,7 +106,7 @@ def division_agent_assess(zwift_id: str):
         return jsonify({"error": "DB not available"}), 500
     dry_run = request.args.get("dryRun") in ("1", "true")
     try:
-        bundle = ps.get_model(db)
+        bundle = runner.fresh_bundle(db)
         row = next((r for r in bundle[1] if str(r.get("zwiftId")) == str(zwift_id)), None)
         if row is None:
             return jsonify({"message": "Rider not found"}), 404

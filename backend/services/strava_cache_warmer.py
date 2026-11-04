@@ -234,7 +234,7 @@ def _warm(
                 new_empty += 1
         except StravaBudgetExceeded as exc:
             rate_limited = True
-            if exc.streams > strava_rate.share15(usage(), BUDGET_FRACTION):
+            if exc.streams + LIST_REQUESTS > strava_rate.share15(usage(), BUDGET_FRACTION):
                 # Too big for a quarter hour that is already in use: it runs at the start of
                 # the next one (the scheduler calls at :00/:15/:30/:45). Keep going with the
                 # riders after it so one heavy rider never blocks the rest.

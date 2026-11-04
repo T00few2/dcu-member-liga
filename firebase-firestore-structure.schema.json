@@ -200,7 +200,7 @@
           "usage": { "type": ["object", "null"], "additionalProperties": true },
           "locked": { "type": "boolean" },
           "movePreview": { "type": ["object", "null"], "additionalProperties": true, "description": "Dry-run category transfer preview for locked riders" },
-          "evidenceFingerprint": { "type": "string", "description": "A decided proposal is not repeated until this changes" },
+          "evidenceFingerprint": { "type": "string", "description": "Hash of vELO, Zwift ride count and Strava curve time (not the current division). A decided proposal is not repeated, and a pending one is not rebuilt, until this changes" },
           "createdAt": { "type": "string", "format": "date-time" },
           "decidedAt": { "type": "string", "format": "date-time" },
           "decidedBy": { "type": "string" },

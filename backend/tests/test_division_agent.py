@@ -175,7 +175,10 @@ def test_scan_queues_unreliable_riders_and_batch_creates_a_proposal(agent_db):
     assert counts["proposed"] == 1 and queue.entries(db) == []
     [p] = proposals.list_proposals(db)
     assert p["zwiftId"] == target["zwiftId"] and p["source"] == "strava" and p["currentCategory"] is None
-    assert runner.scan(db) == 0  # pending proposal: not queued again
+    assert runner.scan(db) == 1  # pending proposal: re-checked (cheap when nothing changed)
+    runner.process_batch(db, strava_service=MagicMock(), compute_curve=MagicMock(),
+                         client_factory=lambda: None)
+    assert [x["id"] for x in proposals.list_proposals(db)] == [p["id"]]  # same evidence: kept
 
 
 def test_rejected_proposal_is_not_repeated_until_the_evidence_changes(agent_db, monkeypatch):
@@ -352,3 +355,65 @@ def test_enqueue_never_breaks_the_caller():
     broken = MagicMock()
     broken.collection.side_effect = RuntimeError("firestore down")
     queue.safe_enqueue(broken, "7", "registered")  # logs, does not raise
+
+
+def _process(db, target, bundle=None):
+    return runner.process_rider(db, target, settings=SETTINGS,
+                                model_bundle=bundle or (MODEL, TRAINING + [target], CATS),
+                                strava_service=None, compute_curve=None, client_factory=lambda: None)
+
+
+def test_batch_reads_fresh_riders_not_the_cached_list(agent_db, monkeypatch):
+    db, target = agent_db
+    monkeypatch.setattr(ps, "get_model", lambda _db, *a, **k: (MODEL, TRAINING, CATS))  # stale cache
+    queue.enqueue(db, target["zwiftId"], "registration")
+    counts = runner.process_batch(db, strava_service=MagicMock(), compute_curve=MagicMock(),
+                                  client_factory=lambda: None)
+    assert counts["proposed"] == 1 and len(proposals.list_proposals(db)) == 1
+
+
+def test_new_evidence_replaces_a_pending_proposal(agent_db, monkeypatch):
+    db, target = agent_db
+    first = _process(db, target)["proposal"]
+    newer = {**_curve(target), "computedAt": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()}
+    monkeypatch.setattr(evidence, "strava_curve", lambda _db, row, days, **k: newer)
+    second = _process(db, target)
+    assert second["outcome"] == "proposed"
+    assert db.store[f"{proposals.COLLECTION}/{first['id']}"]["status"] == "superseded"
+    assert [p["id"] for p in proposals.list_proposals(db)] == [second["proposal"]["id"]]
+
+
+def test_a_pending_proposal_no_longer_needed_is_superseded(agent_db, monkeypatch):
+    db, target = agent_db
+    first = _process(db, target)["proposal"]
+    db.store[f"users/{target['zwiftId']}"] = {"ligaCategory": {"manualAssigned": {
+        "category": first["proposedCategory"]}}}
+    monkeypatch.setattr(evidence, "fingerprint", lambda ev: "changed")
+    monkeypatch.setattr(runner.evidence, "gather", _with_current(runner.evidence.gather, first["proposedCategory"]))
+    assert _process(db, target)["outcome"] == "no_change"
+    assert db.store[f"{proposals.COLLECTION}/{first['id']}"]["status"] == "superseded"
+
+
+def _with_current(gather, category):
+    def wrapped(*a, **k):
+        ev = gather(*a, **k)
+        ev["currentCategory"] = category
+        return ev
+    return wrapped
+
+
+def test_a_rider_who_became_reliable_has_the_pending_card_superseded(agent_db, monkeypatch):
+    db, target = agent_db
+    first = _process(db, target)["proposal"]
+    monkeypatch.setattr(triage, "needs_review", lambda row, settings: [])
+    assert _process(db, target)["outcome"] == "not_needed"
+    assert db.store[f"{proposals.COLLECTION}/{first['id']}"]["status"] == "superseded"
+
+
+def test_an_admin_edit_is_not_re_proposed(agent_db, monkeypatch):
+    db, target = agent_db
+    first = _process(db, target)["proposal"]
+    other = next(d for d in first["evidence"]["divisions"] if d != first["proposedCategory"])
+    db.store[f"{proposals.COLLECTION}/{first['id']}"].update({"status": "edited", "appliedCategory": other})
+    monkeypatch.setattr(runner.evidence, "gather", _with_current(runner.evidence.gather, other))
+    assert _process(db, target)["outcome"] == "handled"

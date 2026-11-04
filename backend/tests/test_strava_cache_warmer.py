@@ -435,3 +435,30 @@ def test_a_normal_rider_that_does_not_fit_still_stops_the_run():
 def test_the_daily_cap_still_stops_a_heavy_rider():
     snap = _usage_doc(own_day=2000)
     assert not strava_rate.within_budget(snap, 400, 0.75, NOW, window_used_before=0)  # 2400 > 2250
+
+
+def test_a_share_sized_rider_runs_in_an_empty_quarter_hour_after_its_own_list_request():
+    db = FakeDb()
+    db.store[f"{strava_rate.COLLECTION}/{strava_rate.DOC}"] = _usage_doc()
+    service = MagicMock()
+
+    def activities(*_a, **_k):
+        strava_rate.count_request(NOW)  # 1 + 225 > 225, although 225 alone fits the share
+        return _rides(225)
+
+    service.get_power_activities.side_effect = activities
+    compute = MagicMock(return_value={"w5": 1.0})
+    result = warmer.warm(db, service, [_rider(1)], min_rides=15, days=90, compute_curve=compute,
+                         now=lambda: NOW)
+    assert [w["activityCount"] for w in result["warmed"]] == [225]
+
+
+def test_a_share_sized_rider_in_a_busy_quarter_hour_is_skipped_not_a_stop():
+    db = FakeDb()
+    db.store[f"{strava_rate.COLLECTION}/{strava_rate.DOC}"] = _usage_doc(own15=10, own_day=10)
+    service = MagicMock()
+    service.get_power_activities.side_effect = [_rides(224), _rides(20)]
+    compute = MagicMock(return_value={"w5": 1.0})
+    result = warmer.warm(db, service, [_rider(1), _rider(2)], min_rides=15, days=90,
+                         compute_curve=compute, now=lambda: NOW)
+    assert [w["zwiftId"] for w in result["warmed"]] == ["2"]

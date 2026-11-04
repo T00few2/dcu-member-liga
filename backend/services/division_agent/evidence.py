@@ -171,11 +171,13 @@ def gather(
 
 
 def fingerprint(evidence: dict) -> str:
-    """Changes when the data behind a decision changes (new curve, new ratings, more rides)."""
+    """Changes when the data behind a decision changes (new curve, new ratings, more rides).
+
+    The current division is left out on purpose: an admin's approve or edit changes it,
+    and that must not re-open the rider until new data arrives."""
     key = {
         "velo": evidence.get("velo"),
         "rides": evidence.get("zwiftActivityCount"),
         "strava": (evidence.get("strava") or {}).get("computedAt"),
-        "current": evidence.get("currentCategory"),
     }
     return hashlib.sha1(json.dumps(key, sort_keys=True, default=str).encode()).hexdigest()[:16]

@@ -31,10 +31,11 @@ def scan(db: Any, *, participants: list[dict] | None = None) -> int:
         zid = str(row.get("zwiftId") or "")
         if not zid or zid in queued_ids:
             continue
-        reasons = triage.needs_review(row, settings)
-        if not reasons:
-            continue
-        if any(p.get("status") == "pending" for p in proposals.for_rider(existing, zid)):
+        has_pending = any(p.get("status") == "pending" for p in proposals.for_rider(existing, zid))
+        # Riders with a pending proposal are re-checked too: new data refreshes the card, and
+        # a rider who no longer needs a change gets the stale card superseded. Unchanged
+        # evidence is "handled" without a Claude call or a Strava fetch.
+        if not triage.needs_review(row, settings) and not has_pending:
             continue
         queue.enqueue(db, zid, "scan")
         count += 1
@@ -56,8 +57,12 @@ def process_rider(
     """Review one rider. Returns `{outcome, proposal?, evidence?}` (outcome: proposed |
     no_change | not_needed | handled). Raises `evidence.WaitingForStrava`."""
     model, _rows, categories = model_bundle
+    known = existing if existing is not None else proposals.all_proposals(db)
+    zid = str(row["zwiftId"])
     reasons = triage.needs_review(row, settings)
     if not reasons:
+        if not dry_run:
+            proposals.supersede_pending(db, zid, known)
         return {"outcome": "not_needed"}
     snap = db.collection("users").document(str(row.get("userDocId") or row.get("zwiftId"))).get()
     user_data = (snap.to_dict() or {}) if getattr(snap, "exists", False) else {}
@@ -65,11 +70,12 @@ def process_rider(
     curve = evidence.strava_curve(db, row, days, strava_service=strava_service, compute_curve=compute_curve)
     ev = evidence.gather(row, user_data, model=model, categories=categories, curve_entry=curve, reasons=reasons)
     fp = evidence.fingerprint(ev)
-    known = existing if existing is not None else proposals.all_proposals(db)
-    if not dry_run and proposals.already_handled(known, str(row["zwiftId"]), fp):
+    if not dry_run and proposals.already_handled(known, zid, fp):
         return {"outcome": "handled", "evidence": ev}
     suggestion = decide.suggest(ev, categories)
     if not decide.needs_proposal(ev, suggestion):
+        if not dry_run:
+            proposals.supersede_pending(db, zid, known)
         return {"outcome": "no_change", "evidence": ev, "suggestion": suggestion}
     result = assess_mod.assess(ev, suggestion, model=settings["assessModel"], client_factory=client_factory)
     flags = list(ev["flags"])
@@ -117,6 +123,16 @@ def _move_preview(db: Any, row: dict, user_data: dict, to_category: str) -> dict
         return {"error": str(exc)}
 
 
+def fresh_bundle(db: Any) -> tuple:
+    """The cached model and divisions, with participant rows read now.
+
+    The predictor's participant cache can be two minutes old: a rider who just registered
+    or connected Strava would be missing (and dropped from the queue) or lack `hasStrava`.
+    """
+    model, _cached_rows, categories = ps.get_model(db)
+    return model, ps.load_participants(db), categories
+
+
 def process_batch(
     db: Any,
     *,
@@ -134,7 +150,7 @@ def process_batch(
     if not ready:
         return None
     deadline = clock() + deadline_seconds
-    model_bundle = ps.get_model(db)
+    model_bundle = fresh_bundle(db)
     by_id = {str(r.get("zwiftId")): r for r in model_bundle[1]}
     counts = {"proposed": 0, "noChange": 0, "waitingForStrava": 0, "failed": 0, "processed": 0}
     existing = proposals.all_proposals(db)  # read once per batch, not once per rider

@@ -258,8 +258,8 @@ def within_budget(
     day_ok = u["usageDay"] + cost <= u["limitDay"] * fraction
     share15 = u["limit15"] * fraction
     used_before = u["usage15"] if window_used_before is None else window_used_before
-    if cost > share15 and used_before == 0:
-        return day_ok
+    if u["usage15"] + cost > share15 and used_before == 0:
+        return day_ok  # too big for the share, but alone in an empty quarter hour
     return u["usage15"] + cost <= share15 and day_ok
 
 
