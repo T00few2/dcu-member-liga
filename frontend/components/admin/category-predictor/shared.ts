@@ -78,6 +78,50 @@ export interface StravaRiderCache {
   power: PowerInputs;
   activityCount: number | null;
   error?: string;
+  /** Raw indoor/outdoor peak watts, so `power` can be re-corrected when the
+   *  outdoor→indoor correction changes. Absent once the admin edits the values by hand. */
+  curves?: StravaCurves;
+  weightKg?: number;
+}
+
+/** A failed (re)load keeps whatever was loaded before (curves, weight, ride count) and
+ *  only adds the error, so values already on screen are not blanked. */
+export function withStravaError(prev: StravaRiderCache | undefined, error: string): StravaRiderCache {
+  return { ...(prev ?? { power: EMPTY_POWER, activityCount: null }), error };
+}
+
+export type PowerScale = Partial<Record<PowerField, number>>;
+
+/** Strava peak watts (w5/w60/w300/w1200...) split into indoor and outdoor rides. */
+export interface StravaCurves {
+  indoor: Record<string, number>;
+  outdoor: Record<string, number>;
+}
+
+const CURVE_KEY_FOR: Record<PowerField, string> = { wkg5s: 'w5', wkg1m: 'w60', wkg5m: 'w300', wkg20m: 'w1200' };
+
+/** Curves from the strava-power-curve response; curves cached before the split count as outdoor. */
+export function stravaCurvesFromResponse(data: {
+  curve?: Record<string, number> | null;
+  curveIndoor?: Record<string, number> | null;
+  curveOutdoor?: Record<string, number> | null;
+}): StravaCurves {
+  if (data.curveIndoor || data.curveOutdoor) {
+    return { indoor: data.curveIndoor ?? {}, outdoor: data.curveOutdoor ?? {} };
+  }
+  return { indoor: {}, outdoor: data.curve ?? {} };
+}
+
+/** Indoor-equivalent peak watts: per duration the stronger of the indoor best and the
+ *  outdoor best times the outdoor→indoor correction (same rule as the backend). */
+export function correctedStravaCurve(curves: StravaCurves, scale: PowerScale | undefined): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [field, key] of Object.entries(CURVE_KEY_FOR) as [PowerField, string][]) {
+    const indoor = curves.indoor[key] ?? 0;
+    const outdoor = (curves.outdoor[key] ?? 0) * (scale?.[field] ?? 1);
+    if (Math.max(indoor, outdoor) > 0) out[key] = Math.max(indoor, outdoor);
+  }
+  return out;
 }
 
 export function combineInputs(shared: SharedInputs, power: PowerInputs): Inputs {

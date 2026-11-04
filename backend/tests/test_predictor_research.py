@@ -73,6 +73,8 @@ def test_dataset_is_anonymized_and_keeps_folds_and_baseline():
     assert "Do NOT use the Zwift Racing Score" in research.SYSTEM_PROMPT
     assert len(eval_rows) == 50 and ds["counts"]["eval"] == 50
     assert {r["fold"] for r in eval_rows} == {"0", "1", "2", "3", "4"}
+    # Indoor/outdoor columns exist (empty for curves cached before the split).
+    assert "strava90_indoor_w1200" in eval_rows[0] and "strava90_outdoorActivities" in eval_rows[0]
     assert all(r["baselinePredDivision"] for r in eval_rows)
     assert eval_rows[0]["strava90_w1200"] != ""
     assert ds["idMap"][eval_rows[0]["rider"]] in {p["zwiftId"] for p in participants}

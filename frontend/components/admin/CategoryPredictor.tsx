@@ -33,6 +33,9 @@ import {
   StravaRiderCache,
   filterPredictorRiders,
   powerFromStravaCurve,
+  stravaCurvesFromResponse,
+  correctedStravaCurve,
+  withStravaError,
 } from './category-predictor/shared';
 import CategoryPredictorResults from './category-predictor/CategoryPredictorResults';
 import CategoryPredictorForm from './category-predictor/CategoryPredictorForm';
@@ -91,6 +94,7 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   // new model is loading, the previous one's numbers must not be assignable.
   const zwiftPredictions = !modelIsPrevious && featuresSettled ? modelData?.predictions : undefined;
   const stravaWindowDays = predictorConfig?.config?.stravaWindowDays ?? 90;
+  const stravaPowerScale = predictorConfig?.config?.stravaPowerScale;
   const activeFeatureKeys = useMemo(
     () => featureDefs.filter(f => selectedFeatures?.[f.key]).map(f => f.key),
     [featureDefs, selectedFeatures],
@@ -101,7 +105,19 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   const [showMismatchOnly, setShowMismatchOnly] = useState(false);
   const [showZeroVeloOnly, setShowZeroVeloOnly] = useState(false);
   const [showNo30dVeloOnly, setShowNo30dVeloOnly] = useState(false);
-  const [stravaByRider, setStravaByRider] = useState<Record<string, StravaRiderCache>>({});
+  const [stravaRaw, setStravaByRider] = useState<Record<string, StravaRiderCache>>({});
+  // Loaded Strava curves are corrected with the *current* outdoor→indoor correction every
+  // render, so a newly applied config (or a load finishing after it) never keeps an old
+  // correction. Entries without `curves` (typed by hand) are used as they are.
+  const stravaByRider = useMemo<Record<string, StravaRiderCache>>(() => {
+    const out: Record<string, StravaRiderCache> = {};
+    for (const [id, entry] of Object.entries(stravaRaw)) {
+      out[id] = entry.curves && entry.weightKg
+        ? { ...entry, power: powerFromStravaCurve(correctedStravaCurve(entry.curves, stravaPowerScale), entry.weightKg, entry.power) }
+        : entry;
+    }
+    return out;
+  }, [stravaRaw, stravaPowerScale]);
   const [loadingStravaIds, setLoadingStravaIds] = useState<Record<string, true>>({});
   const [bulkStravaProgress, setBulkStravaProgress] = useState<{ done: number; total: number } | null>(null);
   const [shared, setShared] = useState<SharedInputs>(EMPTY_SHARED);
@@ -200,30 +216,26 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
       if (!res.ok) {
         setStravaByRider(prev => ({
           ...prev,
-          [zwiftId]: {
-            power: prev[zwiftId]?.power ?? EMPTY_POWER,
-            activityCount: prev[zwiftId]?.activityCount ?? null,
-            error: data.message ?? 'Failed to load Strava data',
-          },
+          [zwiftId]: withStravaError(prev[zwiftId], data.message ?? 'Failed to load Strava data'),
         }));
         return;
       }
-      const curve: Record<string, number> = data.curve ?? {};
+      // Keep the raw indoor/outdoor curves; the outdoor→indoor correction is applied at
+      // render with the active config (see `stravaByRider`).
+      const curves = stravaCurvesFromResponse(data);
       setStravaByRider(prev => ({
         ...prev,
         [zwiftId]: {
-          power: powerFromStravaCurve(curve, weightKg, prev[zwiftId]?.power),
+          power: prev[zwiftId]?.power ?? EMPTY_POWER, // fallback only; corrected from `curves` at render
           activityCount: typeof data.activityCount === 'number' ? data.activityCount : null,
+          curves,
+          weightKg,
         },
       }));
     } catch (e: unknown) {
       setStravaByRider(prev => ({
         ...prev,
-        [zwiftId]: {
-          power: prev[zwiftId]?.power ?? EMPTY_POWER,
-          activityCount: prev[zwiftId]?.activityCount ?? null,
-          error: e instanceof Error ? e.message : 'Error loading Strava data',
-        },
+        [zwiftId]: withStravaError(prev[zwiftId], e instanceof Error ? e.message : 'Error loading Strava data'),
       }));
     } finally {
       setLoadingStravaIds(prev => {
@@ -383,7 +395,8 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
     setStravaByRider(prev => ({
       ...prev,
       [selectedZwiftId]: {
-        power: { ...(prev[selectedZwiftId]?.power ?? EMPTY_POWER), [field]: next },
+        // Start from the values on screen (already corrected); a hand edit drops `curves`.
+        power: { ...(stravaByRider[selectedZwiftId]?.power ?? prev[selectedZwiftId]?.power ?? EMPTY_POWER), [field]: next },
         activityCount: prev[selectedZwiftId]?.activityCount ?? null,
       },
     }));

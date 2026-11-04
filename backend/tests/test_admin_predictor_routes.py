@@ -246,3 +246,36 @@ def test_stale_cache_is_refetched_but_cache_only_mode_never_fetches():
 def test_curve_rejects_unknown_window():
     with pytest.raises(ValueError):
         spc.get_strava_power_curve(FakeDb(), _strava([]), "u1", 45, compute_curve=MagicMock())
+
+
+def test_indoor_and_outdoor_rides_get_separate_curves():
+    db = FakeDb()
+    service = _strava([{"id": 1, "indoor": True}, {"id": 2, "indoor": False}, {"id": 3, "indoor": False}])
+
+    def compute(_uid, acts):
+        return {"w5": 800, "w1200": 290} if acts[0].get("indoor") else {"w5": 950, "w1200": 280}
+
+    entry = spc.get_strava_power_curve(db, service, "u1", 90, compute_curve=compute)
+    assert entry["split"] is True
+    assert entry["curveIndoor"] == {"w5": 800.0, "w1200": 290.0}
+    assert entry["curveOutdoor"] == {"w5": 950.0, "w1200": 280.0}
+    assert entry["curve"] == {"w5": 950.0, "w1200": 290.0}  # best of both
+    assert (entry["indoorCount"], entry["outdoorCount"], entry["activityCount"]) == (1, 2, 3)
+
+
+def test_a_recent_curve_from_before_the_split_is_refetched():
+    db = FakeDb()
+    now = datetime.now(timezone.utc).isoformat()
+    db.store["strava_power_curves/u1_90"] = {"curve": {"w5": 1.0}, "activityCount": 1, "computedAt": now}
+    compute = MagicMock(return_value={"w5": 2.0})
+    entry = spc.get_strava_power_curve(db, _strava([{"id": 1}]), "u1", 90, compute_curve=compute)
+    assert entry["split"] is True and entry["curve"] == {"w5": 2.0}
+
+
+def test_rides_on_a_trainer_are_tagged_indoor():
+    from services.strava import StravaService
+
+    assert StravaService._is_indoor_activity({"sport_type": "VirtualRide"})
+    assert StravaService._is_indoor_activity({"sport_type": "Ride", "trainer": True})
+    assert not StravaService._is_indoor_activity({"sport_type": "Ride", "trainer": False})
+    assert not StravaService._is_indoor_activity({"sport_type": "GravelRide"})

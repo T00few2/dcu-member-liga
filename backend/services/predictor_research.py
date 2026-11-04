@@ -105,8 +105,11 @@ Files (uploaded to your sandbox):
 - training.csv — every league rider with a real vELO: Zwift power (watts), weight, phenotype,
   zwiftActivityCount, realVelo. Column `fold` is set for riders that are also in eval.csv, empty otherwise.
 - eval.csv — riders whose vELO is reliable AND who have a Strava power curve. Strava peak watts per window
-  (strava{days}_w5 ... _w1200, strava{days}_activities), their `fold`, realVelo, realDivision, and the
-  current production model's out-of-fold prediction (baselinePredVelo, baselinePredDivision).
+  (strava{days}_w5 ... _w1200, strava{days}_activities), the same split into indoor rides (Zwift and other
+  trainer rides: strava{days}_indoor_*, strava{days}_indoorActivities) and outdoor rides
+  (strava{days}_outdoor_*, strava{days}_outdoorActivities) — empty for curves cached before the split —,
+  their `fold`, realVelo, realDivision, and the current production model's out-of-fold prediction
+  (baselinePredVelo, baselinePredDivision).
 - divisions.csv — division name and lower bound (inclusive) of the vELO range, top division first.
 
 Evaluation protocol (must match production exactly):
@@ -116,8 +119,12 @@ Evaluation protocol (must match production exactly):
    This is the main metric. MAE in vELO points is secondary.
 3. First reproduce the baseline: accuracy of baselinePredDivision vs realDivision.
 
-Ideas worth trying: feature combinations from the available durations (5s-20min), power ratios,
-absolute vs per-kg power, outdoor->indoor scaling of Strava power, phenotype, ridge strength, robust
+Riders report that their outdoor power is higher than what they manage indoors, where league races happen.
+Production treats this by scaling only outdoor efforts by a per-duration factor (median Zwift/outdoor W/kg
+ratio) and using, per duration, the stronger of the indoor best and the corrected outdoor best.
+Ideas worth trying: better outdoor->indoor corrections (learned only from outdoor efforts; indoor Strava rides
+are usually the same Zwift rides), feature combinations from the available durations (5s-20min), power
+ratios, absolute vs per-kg power, phenotype, ridge strength, robust
 fitting / outlier handling, choice of Strava window, training only on riders whose vELO is reliable
 (e.g. zwiftActivityCount >= 15). Prefer simple linear models: the production predictor is pure Python
 (no numpy) and fits a linear regression on features computed from weight and 5s/1min/5min/20min power,
@@ -213,6 +220,9 @@ def build_dataset(
     strava_cols: list[str] = []
     for days in vp.STRAVA_WINDOWS:
         strava_cols += [f"strava{days}_{k}" for k in CURVE_KEYS] + [f"strava{days}_activities"]
+        strava_cols += [f"strava{days}_indoor_{k}" for k in CURVE_KEYS]
+        strava_cols += [f"strava{days}_outdoor_{k}" for k in CURVE_KEYS]
+        strava_cols += [f"strava{days}_indoorActivities", f"strava{days}_outdoorActivities"]
     for r in riders:
         p = by_zid.get(r.zwiftId) or {}
         row = {
@@ -226,9 +236,17 @@ def build_dataset(
         for days in vp.STRAVA_WINDOWS:
             entry = read_curve(str(p.get("userDocId") or ""), days) if p.get("userDocId") else None
             curve = (entry or {}).get("curve") or {}
+            split = bool((entry or {}).get("split"))
+            indoor = (entry or {}).get("curveIndoor") or {} if split else {}
+            outdoor = (entry or {}).get("curveOutdoor") or {} if split else {}
             for k in CURVE_KEYS:
                 row[f"strava{days}_{k}"] = curve.get(k, "")
+                # Empty when the curve predates the indoor/outdoor split.
+                row[f"strava{days}_indoor_{k}"] = indoor.get(k, "") if split else ""
+                row[f"strava{days}_outdoor_{k}"] = outdoor.get(k, "") if split else ""
             row[f"strava{days}_activities"] = (entry or {}).get("activityCount", "") if entry else ""
+            row[f"strava{days}_indoorActivities"] = (entry or {}).get("indoorCount", "") if split else ""
+            row[f"strava{days}_outdoorActivities"] = (entry or {}).get("outdoorCount", "") if split else ""
         base = baseline_per_rider.get(r.zwiftId) or {}
         row["baselinePredVelo"] = base.get("predictedVelo", "")
         row["baselinePredDivision"] = base.get("predictedCategory", "")

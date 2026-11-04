@@ -16,6 +16,7 @@ from services.dual_recording_core import (
     _extract_zwift_activity_fields,
     _iter_activities_for_user_ids,
 )
+from services import predictor_service, velo_predictor
 from services.strava_power_curve import get_strava_power_curve
 from services.user_service import UserService
 from services.weight_history import list_weight_history_entries
@@ -218,9 +219,20 @@ def strava_power_curve(rider_id):
             compute_curve=_compute_strava_power_curve,
             refresh=request.args.get("refresh") in ("1", "true"),
         )
+        try:
+            scale = predictor_service.load_config(db).stravaPowerScale
+        except Exception as exc:  # the raw curve is still useful without the correction
+            logger.warning("strava_power_curve: predictor config unavailable: %s", exc)
+            scale = None
         return jsonify({
             "curve": entry["curve"],
+            "curveIndoor": entry.get("curveIndoor"),
+            "curveOutdoor": entry.get("curveOutdoor"),
+            # Indoor-equivalent curve the predictor uses (outdoor efforts corrected).
+            "predictionCurve": velo_predictor.strava_prediction_curve(entry, scale),
             "activityCount": entry["activityCount"],
+            "indoorCount": entry.get("indoorCount"),
+            "outdoorCount": entry.get("outdoorCount"),
             "days": days,
             "computedAt": entry.get("computedAt"),
             "cached": entry.get("cached", False),

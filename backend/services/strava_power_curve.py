@@ -101,6 +101,20 @@ def _share_usage(db: Any) -> None:
         logger.warning("could not store Strava usage: %s", exc)
 
 
+def _clean(curve: dict | None) -> dict[str, float]:
+    return {str(k): float(v) for k, v in (curve or {}).items() if v is not None}
+
+
+def merge_curves(*curves: dict) -> dict[str, float]:
+    """Per-duration best of several curves (the rider's overall Strava best efforts)."""
+    out: dict[str, float] = {}
+    for c in curves:
+        for k, v in (c or {}).items():
+            if v is not None and float(v) > out.get(k, 0.0):
+                out[k] = float(v)
+    return out
+
+
 def get_strava_power_curve(
     db: Any,
     strava_service: Any,
@@ -113,7 +127,13 @@ def get_strava_power_curve(
     allow_fetch: bool = True,
     budget: Callable[[int], bool] | None = None,
 ) -> dict | None:
-    """Return `{curve, activityCount, days, computedAt, cached}` for one rider.
+    """Return `{curve, curveIndoor, curveOutdoor, activityCount, indoorCount, outdoorCount,
+    days, computedAt, split, cached}` for one rider.
+
+    Indoor rides (Zwift `VirtualRide` and trainer rides) and outdoor rides get separate
+    curves so the outdoor→indoor correction is only applied to outdoor efforts; `curve` is
+    the per-duration best of both. Entries written before the split (no `split`) are
+    re-fetched instead of served from the cache when a fetch is allowed.
 
     Uses the cached curve when it is younger than `max_age_hours` (unless
     `refresh`). With `allow_fetch=False` only the cache is read, whatever its
@@ -134,7 +154,7 @@ def get_strava_power_curve(
 
     if cached and not allow_fetch:
         return {**cached, "cached": True}
-    if cached and not refresh:
+    if cached and not refresh and cached.get("split"):  # legacy (unsplit) entries are re-fetched
         age = _age_hours(cached, now)
         if age is not None and age < max_age_hours:
             return {**cached, "cached": True}
@@ -146,14 +166,23 @@ def get_strava_power_curve(
         activities = strava_service.get_power_activities(str(user_doc_id), after_ts, max_activities=None)
         if activities and budget is not None and not budget(len(activities)):
             raise StravaBudgetExceeded(len(activities))
-        curve = compute_curve(str(user_doc_id), activities) if activities else {}
+        activities = activities or []
+        indoor = [a for a in activities if a.get("indoor")]
+        outdoor = [a for a in activities if not a.get("indoor")]
+        curve_indoor = _clean(compute_curve(str(user_doc_id), indoor)) if indoor else {}
+        curve_outdoor = _clean(compute_curve(str(user_doc_id), outdoor)) if outdoor else {}
     finally:
         _share_usage(db)
     entry = {
         "userDocId": str(user_doc_id),
         "days": int(days),
-        "curve": {str(k): float(v) for k, v in (curve or {}).items()},
-        "activityCount": len(activities or []),
+        "curve": merge_curves(curve_indoor, curve_outdoor),
+        "curveIndoor": curve_indoor,
+        "curveOutdoor": curve_outdoor,
+        "activityCount": len(activities),
+        "indoorCount": len(indoor),
+        "outdoorCount": len(outdoor),
+        "split": True,
         "computedAt": now.isoformat(),
     }
     try:

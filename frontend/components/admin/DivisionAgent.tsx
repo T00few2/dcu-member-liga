@@ -36,7 +36,13 @@ export interface DivisionProposal {
     zwiftActivityCount?: number | null;
     weightKg?: number | null;
     velo?: { current?: number | null; max30?: number | null };
-    strava?: { activityCount?: number; days?: number; prediction?: Prediction } | null;
+    strava?: {
+      activityCount?: number;
+      indoorCount?: number | null;
+      outdoorCount?: number | null;
+      days?: number;
+      prediction?: Prediction;
+    } | null;
     zwift?: { prediction?: Prediction } | null;
   };
 }
@@ -62,6 +68,13 @@ const FLAG_TEXT: Record<string, string> = {
   no_power_data: 'no power data',
   assessment_disagrees: 'Claude differs from the predictor',
 };
+
+function stravaRides(s: { activityCount?: number; indoorCount?: number | null; outdoorCount?: number | null; days?: number }) {
+  const total = `${s.activityCount ?? 0} rides in ${s.days ?? '?'} days`;
+  return s.indoorCount != null && s.outdoorCount != null
+    ? `${total} (${s.indoorCount} indoor, ${s.outdoorCount} outdoor; outdoor efforts corrected)`
+    : total;
+}
 
 const SOURCE_TEXT: Record<string, string> = { strava: 'Strava', zwift: 'Zwift power', velo: 'vELO' };
 
@@ -132,7 +145,7 @@ function ProposalCard({
       </div>
       <ul className="text-sm text-muted-foreground list-disc pl-5">
         <PredictionLine label="Strava" p={ev.strava?.prediction}
-          extra={ev.strava ? `${ev.strava.activityCount ?? 0} rides in ${ev.strava.days ?? '?'} days` : undefined} />
+          extra={ev.strava ? stravaRides(ev.strava) : undefined} />
         <PredictionLine label="Zwift power" p={ev.zwift?.prediction} />
         <li>
           vELO {ev.velo?.current ?? '—'} (max30 {ev.velo?.max30 ?? '—'}) · {ev.zwiftActivityCount ?? 0} Zwift rides

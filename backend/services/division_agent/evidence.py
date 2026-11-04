@@ -55,8 +55,9 @@ def _parse(value: Any) -> datetime | None:
 
 
 def _fresh(entry: dict | None, now: datetime) -> bool:
+    """Recent and in the indoor/outdoor split format (older entries are re-fetched)."""
     computed = _parse((entry or {}).get("computedAt"))
-    return bool(computed and computed > now - timedelta(days=REFRESH_AFTER_DAYS))
+    return bool((entry or {}).get("split") and computed and computed > now - timedelta(days=REFRESH_AFTER_DAYS))
 
 
 def strava_budget(db: Any, now: Callable[[], datetime]) -> Callable[..., bool]:
@@ -128,12 +129,18 @@ def gather(
     strava = None
     curve = (curve_entry or {}).get("curve") or {}
     if curve and kg > 0:
-        inputs = vp.inputs_from_strava_curve(curve, kg, 0.0)
+        split = vp.strava_split_inputs(curve_entry, kg)
+        scale = model.config.stravaPowerScale if model is not None else None
+        # Indoor-equivalent: outdoor efforts get the outdoor→indoor correction, indoor ones do not.
+        inputs = vp.strava_inputs(split, scale)
         count = int((curve_entry or {}).get("activityCount") or 0)
         pred = vp.predict_inputs(model, inputs, categories, source="strava", activity_count=count)
         strava = {
             "days": (curve_entry or {}).get("days"),
             "activityCount": count,
+            "indoorCount": (curve_entry or {}).get("indoorCount"),
+            "outdoorCount": (curve_entry or {}).get("outdoorCount"),
+            "bestFrom": vp.strava_sources(split, scale),
             "computedAt": (curve_entry or {}).get("computedAt"),
             "inputs": inputs,
             "prediction": pred,
