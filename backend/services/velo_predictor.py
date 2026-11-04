@@ -104,6 +104,64 @@ def inputs_from_strava_curve(curve: dict, weight_kg: float, racing_score: float 
     return out
 
 
+def strava_split_inputs(entry: dict | None, weight_kg: float) -> dict[str, dict | None]:
+    """Indoor and outdoor W/kg inputs from a cached Strava curve entry.
+
+    Entries written before the indoor/outdoor split (no `split`) are treated as all
+    outdoor, which is how they were used before.
+    """
+    entry = entry or {}
+    if entry.get("split"):
+        indoor, outdoor = entry.get("curveIndoor") or {}, entry.get("curveOutdoor") or {}
+    else:
+        indoor, outdoor = {}, entry.get("curve") or {}
+    return {
+        "indoor": inputs_from_strava_curve(indoor, weight_kg) if indoor else None,
+        "outdoor": inputs_from_strava_curve(outdoor, weight_kg) if outdoor else None,
+    }
+
+
+def strava_inputs(split: dict, scale: dict[str, float] | None, racing_score: float = 0.0) -> dict[str, float]:
+    """Indoor-equivalent Strava inputs: per duration the stronger of the indoor best and
+    the outdoor best times the outdoor→indoor correction."""
+    indoor = split.get("indoor") or {}
+    outdoor = split.get("outdoor") or {}
+    out = {"weightKg": (indoor or outdoor).get("weightKg", 0.0), "racingScore": racing_score}
+    for k in POWER_FIELDS:
+        out[k] = round2(max(indoor.get(k, 0.0) or 0.0, (outdoor.get(k, 0.0) or 0.0) * (scale or {}).get(k, 1.0)))
+    return out
+
+
+def strava_prediction_curve(entry: dict | None, scale: dict[str, float] | None) -> dict[str, float]:
+    """Indoor-equivalent peak watts (w5/w60/w300/w1200) for the predictor: per duration the
+    stronger of the indoor best and the corrected outdoor best."""
+    entry = entry or {}
+    if entry.get("split"):
+        indoor, outdoor = entry.get("curveIndoor") or {}, entry.get("curveOutdoor") or {}
+    else:
+        indoor, outdoor = {}, entry.get("curve") or {}
+    out = {}
+    for fld, key in STRAVA_CURVE_KEYS.items():
+        i = to_float(indoor.get(key)) or 0.0
+        o = (to_float(outdoor.get(key)) or 0.0) * (scale or {}).get(fld, 1.0)
+        if max(i, o) > 0:
+            out[key] = round(max(i, o), 1)
+    return out
+
+
+def strava_sources(split: dict, scale: dict[str, float] | None) -> dict[str, str]:
+    """Per duration, whether the indoor or the (corrected) outdoor best is used."""
+    indoor = split.get("indoor") or {}
+    outdoor = split.get("outdoor") or {}
+    out = {}
+    for k in POWER_FIELDS:
+        i = indoor.get(k, 0.0) or 0.0
+        o = (outdoor.get(k, 0.0) or 0.0) * (scale or {}).get(k, 1.0)
+        if i > 0 or o > 0:
+            out[k] = "indoor" if i >= o else "outdoor"
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Feature definitions
 # ---------------------------------------------------------------------------
@@ -546,13 +604,6 @@ def category_for_velo(velo: float, categories: Any = None) -> str:
     return get_zr_category(velo, categories)[0]
 
 
-def apply_strava_scale(inputs: dict, config: PredictorConfig) -> dict:
-    out = dict(inputs)
-    for k in POWER_FIELDS:
-        out[k] = inputs[k] * config.stravaPowerScale.get(k, 1.0)
-    return out
-
-
 def predict_inputs(
     model: Model | None,
     inputs: dict,
@@ -563,14 +614,13 @@ def predict_inputs(
 ) -> dict:
     """Predicted vELO, division and ±RMSE band for one set of inputs.
 
-    `source="strava"` applies the configured outdoor→indoor power correction and
-    marks the prediction low-confidence when there are too few Strava rides.
+    `source="strava"` marks the prediction low-confidence when there are too few Strava
+    rides. Strava inputs must already be indoor-equivalent (`strava_inputs`): the
+    outdoor→indoor correction applies to outdoor efforts only, so it is not applied here.
     """
     if model is None:
         return dict(EMPTY_PREDICTION)
     inp = clean_inputs(inputs)
-    if source == "strava":
-        inp = apply_strava_scale(inp, model.config)
     row = [f.from_inputs(inp) for f in model.features()]
     if not row or any(v <= 0 for v in row):
         return dict(EMPTY_PREDICTION)

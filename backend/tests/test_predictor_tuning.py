@@ -223,3 +223,20 @@ def test_tuning_tries_reliable_only_training():
     finally:
         pt._evaluate = original
     assert seen >= {0, 15}
+
+
+def test_the_outdoor_correction_is_learned_from_outdoor_rides_only():
+    participants = [_rider(i) for i in range(30)]
+    store = {}
+    for i, p in enumerate(participants):
+        zwift = {"w5": p["cp5s"], "w60": p["cp1min"], "w300": p["cp5min"], "w1200": p["cp20min"]}
+        if i % 2:  # indoor-only riders: Strava holds their Zwift rides, ratio 1
+            store[(p["userDocId"], 90)] = {"split": True, "curve": zwift, "curveIndoor": zwift,
+                                           "curveOutdoor": {}, "activityCount": 20}
+        else:  # outdoor riders: 10% stronger outside
+            outdoor = {k: v * 1.1 for k, v in zwift.items()}
+            store[(p["userDocId"], 90)] = {"split": True, "curve": outdoor, "curveIndoor": {},
+                                           "curveOutdoor": outdoor, "activityCount": 20}
+    riders = pt.build_eval_set(participants, lambda d, days: store.get((d, days)), min_rides=15)
+    scale = pt.fit_strava_scale(riders, 90)
+    assert scale["wkg20m"] == pytest.approx(1 / 1.1, abs=0.01)  # not pulled towards 1 by indoor riders

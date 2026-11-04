@@ -55,7 +55,7 @@ class EvalRider:
     weightKg: float
     racingScore: float
     zwiftInputs: dict
-    # window days -> (inputs, activityCount)
+    # window days -> ({"indoor": inputs|None, "outdoor": inputs|None}, activityCount)
     strava: dict[int, tuple[dict, int]] = field(default_factory=dict)
 
 
@@ -85,8 +85,7 @@ def build_eval_set(
             entry = read_curve(str(doc_id), days)
             if not entry or not entry.get("curve"):
                 continue
-            inputs = vp.inputs_from_strava_curve(entry["curve"], kg, zwift_inputs["racingScore"])
-            strava[days] = (inputs, int(entry.get("activityCount") or 0))
+            strava[days] = (vp.strava_split_inputs(entry, kg), int(entry.get("activityCount") or 0))
         if not strava:
             continue
         out.append(EvalRider(
@@ -137,15 +136,20 @@ def folds_for(riders: list[EvalRider], k: int) -> list[set[str]]:
 
 
 def fit_strava_scale(riders: list[EvalRider], days: int) -> dict[str, float]:
-    """Median Zwift/Strava W/kg ratio per duration (outdoor → indoor correction)."""
+    """Median Zwift / outdoor-Strava W/kg ratio per duration (outdoor → indoor correction).
+
+    Only outdoor efforts are compared: indoor Strava rides are usually the same Zwift
+    rides, so including them would pull the correction towards 1.
+    """
     scale = {}
     for fld in vp.POWER_FIELDS:
         ratios = []
         for r in riders:
             if days not in r.strava:
                 continue
+            outdoor = r.strava[days][0].get("outdoor") or {}
             z = r.zwiftInputs.get(fld) or 0
-            s = r.strava[days][0].get(fld) or 0
+            s = outdoor.get(fld) or 0
             if z > 0 and s > 0:
                 ratios.append(z / s)
         value = statistics.median(ratios) if len(ratios) >= 5 else 1.0
@@ -214,7 +218,8 @@ def cross_validate(
         for r in usable:
             if r.zwiftId not in fold:
                 continue
-            inputs, count = r.strava[days]
+            split, count = r.strava[days]
+            inputs = vp.strava_inputs(split, fold_cfg.stravaPowerScale, r.racingScore)
             pred = vp.predict_inputs(model, inputs, categories, source="strava", activity_count=count)
             zpred = vp.predict_inputs(model, r.zwiftInputs, categories)
             if zpred["velo"] is not None:

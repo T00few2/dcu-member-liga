@@ -417,3 +417,24 @@ def test_an_admin_edit_is_not_re_proposed(agent_db, monkeypatch):
     db.store[f"{proposals.COLLECTION}/{first['id']}"].update({"status": "edited", "appliedCategory": other})
     monkeypatch.setattr(runner.evidence, "gather", _with_current(runner.evidence.gather, other))
     assert _process(db, target)["outcome"] == "handled"
+
+
+def test_evidence_corrects_only_outdoor_strava_and_shows_the_split():
+    row = _target()
+    kg = row["weightInGrams"] / 1000
+    watts = {"w5": row["cp5s"], "w60": row["cp1min"], "w300": row["cp5min"], "w1200": row["cp20min"]}
+    entry = {"split": True, "curve": watts, "curveIndoor": watts, "curveOutdoor": {},
+             "activityCount": 12, "indoorCount": 12, "outdoorCount": 0,
+             "computedAt": datetime.now(timezone.utc).isoformat()}
+    scaled = vp.PredictorConfig.from_dict({"stravaPowerScale": {k: 0.8 for k in vp.POWER_FIELDS}})
+    model = vp.build_model(TRAINING, scaled)
+    ev = evidence.gather(row, {}, model=model, categories=CATS, curve_entry=entry, reasons=["few_rides"])
+    assert ev["strava"]["indoorCount"] == 12 and ev["strava"]["outdoorCount"] == 0
+    assert ev["strava"]["inputs"]["wkg20m"] == round(row["cp20min"] / kg, 2)  # indoor: no correction
+    assert set(ev["strava"]["bestFrom"].values()) == {"indoor"}
+
+
+def test_a_curve_from_before_the_split_is_not_fresh():
+    now = datetime.now(timezone.utc)
+    assert not evidence._fresh({"curve": {"w5": 1}, "computedAt": now.isoformat()}, now)
+    assert evidence._fresh({"curve": {"w5": 1}, "split": True, "computedAt": now.isoformat()}, now)

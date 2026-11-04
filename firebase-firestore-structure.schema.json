@@ -2263,10 +2263,23 @@
         "days": { "type": "integer", "enum": [30, 90, 180, 360] },
         "curve": {
           "type": "object",
-          "description": "Peak watts keyed w{seconds}: w5, w15, w30, w60, w120, w300, w1200",
+          "description": "Peak watts keyed w{seconds}: w5, w15, w30, w60, w120, w300, w1200 (best of indoor and outdoor)",
+          "additionalProperties": { "type": "number" }
+        },
+        "curveIndoor": {
+          "type": "object",
+          "description": "Peak watts from indoor rides only (Strava VirtualRide, e.g. Zwift, or trainer rides)",
+          "additionalProperties": { "type": "number" }
+        },
+        "curveOutdoor": {
+          "type": "object",
+          "description": "Peak watts from outdoor rides only; the predictor applies the outdoor->indoor correction to these",
           "additionalProperties": { "type": "number" }
         },
         "activityCount": { "type": "integer", "description": "Power rides in the window" },
+        "indoorCount": { "type": "integer" },
+        "outdoorCount": { "type": "integer" },
+        "split": { "type": "boolean", "description": "True when curveIndoor/curveOutdoor exist; older entries are re-fetched" },
         "computedAt": { "type": "string", "format": "date-time" }
       }
     },

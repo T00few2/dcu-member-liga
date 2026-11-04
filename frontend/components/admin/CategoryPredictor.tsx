@@ -208,7 +208,8 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
         }));
         return;
       }
-      const curve: Record<string, number> = data.curve ?? {};
+      // Indoor-equivalent curve: outdoor efforts carry the outdoor→indoor correction.
+      const curve: Record<string, number> = data.predictionCurve ?? data.curve ?? {};
       setStravaByRider(prev => ({
         ...prev,
         [zwiftId]: {

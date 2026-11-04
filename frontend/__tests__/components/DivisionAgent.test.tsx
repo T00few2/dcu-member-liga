@@ -22,7 +22,10 @@ const proposal: DivisionProposal = {
   evidence: {
     divisions: ['Diamond', 'Gold', 'Silver'],
     zwiftActivityCount: 3,
-    strava: { activityCount: 12, days: 90, prediction: { velo: 1080, category: 'Gold', confidence: 'high' } },
+    strava: {
+      activityCount: 12, indoorCount: 4, outdoorCount: 8, days: 90,
+      prediction: { velo: 1080, category: 'Gold', confidence: 'high' },
+    },
   },
 };
 
@@ -84,6 +87,7 @@ describe('DivisionAgent', () => {
     expect(await screen.findByText('Test Rider')).toBeInTheDocument();
     expect(screen.getByText('few Strava rides')).toBeInTheDocument();
     expect(screen.getByText('Strava 20-min power points to Gold.')).toBeInTheDocument();
+    expect(screen.getByText(/4 indoor, 8 outdoor/)).toBeInTheDocument();
     expect(await screen.findByText(/1 pending · 3 queued \(1 waiting for Strava\)/)).toBeInTheDocument();
   });
 

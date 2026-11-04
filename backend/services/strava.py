@@ -485,6 +485,12 @@ class StravaService:
         return sport in cls.CYCLING_SPORT_TYPES
 
     @staticmethod
+    def _is_indoor_activity(activity: dict) -> bool:
+        """True for rides on a trainer: Zwift and similar (VirtualRide) or `trainer` rides."""
+        sport = activity.get('sport_type') or activity.get('type')
+        return sport == 'VirtualRide' or bool(activity.get('trainer'))
+
+    @staticmethod
     def _activity_start_epoch(activity: dict) -> int | None:
         """Unix seconds for a summary activity's UTC start, or None if unparseable."""
         raw = activity.get('start_date') or ''
@@ -568,6 +574,7 @@ class StravaService:
                         'id': act_id,
                         'name': a.get('name'),
                         'startDate': a.get('start_date'),
+                        'indoor': self._is_indoor_activity(a),
                     })
 
             if reached_window_start or len(batch) < per_page or new_ids == 0 or oldest_epoch is None:

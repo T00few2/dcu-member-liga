@@ -98,15 +98,40 @@ def test_ridge_shrinks_towards_the_mean():
     assert abs(vp.predict_inputs(strong, inputs)["velo"] - mean_velo) < 20
 
 
-def test_strava_power_scale_is_applied_only_to_strava():
+def test_the_outdoor_correction_applies_to_outdoor_efforts_only():
+    scale = {"wkg5s": 0.9, "wkg1m": 0.9, "wkg5m": 0.9, "wkg20m": 0.9}
+    curve = {"w5": 1000.0, "w60": 500.0, "w300": 350.0, "w1200": 300.0}
+    indoor_only = vp.strava_split_inputs(
+        {"split": True, "curveIndoor": curve, "curveOutdoor": {}}, 75)
+    outdoor_only = vp.strava_split_inputs(
+        {"split": True, "curveIndoor": {}, "curveOutdoor": curve}, 75)
+    assert vp.strava_inputs(indoor_only, scale)["wkg20m"] == 4.0  # untouched
+    assert vp.strava_inputs(outdoor_only, scale)["wkg20m"] == 3.6  # 4.0 * 0.9
+    mixed = vp.strava_split_inputs({
+        "split": True,
+        "curveIndoor": {"w5": 900.0, "w1200": 285.0},
+        "curveOutdoor": {"w5": 1100.0, "w1200": 300.0},
+    }, 75)
+    combined = vp.strava_inputs(mixed, scale)
+    assert combined["wkg20m"] == 3.8  # indoor 3.8 beats corrected outdoor 3.6
+    assert combined["wkg5s"] == 13.2  # corrected outdoor 13.2 beats indoor 12.0
+    assert vp.strava_sources(mixed, scale) == {"wkg5s": "outdoor", "wkg20m": "indoor"}
+
+
+def test_entries_before_the_split_are_treated_as_outdoor():
+    legacy = vp.strava_split_inputs({"curve": {"w1200": 300.0}}, 75)
+    assert legacy["indoor"] is None and legacy["outdoor"]["wkg20m"] == 4.0
+    assert vp.strava_inputs(legacy, {"wkg20m": 0.9})["wkg20m"] == 3.6
+
+
+def test_predict_inputs_never_scales_strava_again():
     rows = _participants()
     plain = vp.build_model(rows, vp.PredictorConfig())
     scaled = vp.build_model(rows, vp.PredictorConfig.from_dict({
         "stravaPowerScale": {"wkg5s": 1.1, "wkg1m": 1.1, "wkg5m": 1.1, "wkg20m": 1.1},
     }))
     inputs = {"weightKg": 75, "wkg1m": 6.0, "wkg5m": 4.0, "wkg20m": 3.5}
-    assert vp.predict_inputs(scaled, inputs)["velo"] == vp.predict_inputs(plain, inputs)["velo"]
-    assert vp.predict_inputs(scaled, inputs, source="strava")["velo"] > vp.predict_inputs(plain, inputs)["velo"]
+    assert vp.predict_inputs(scaled, inputs, source="strava")["velo"] == vp.predict_inputs(plain, inputs)["velo"]
 
 
 def test_few_strava_rides_mark_the_prediction_low_confidence():
@@ -147,3 +172,11 @@ def test_js_compatible_rounding():
     assert vp.js_round(-2.5) == -2
     assert vp.round2(1.005) == 1.0  # 1.005 is 1.00499... in binary, as in JS toFixed
     assert vp.round2(4.125) == 4.13
+
+
+def test_prediction_curve_corrects_outdoor_watts_only():
+    entry = {"split": True, "curveIndoor": {"w5": 900.0, "w1200": 285.0},
+             "curveOutdoor": {"w5": 1100.0, "w1200": 300.0, "w60": 500.0}}
+    curve = vp.strava_prediction_curve(entry, {"wkg5s": 0.9, "wkg1m": 0.9, "wkg5m": 0.9, "wkg20m": 0.9})
+    assert curve == {"w5": 990.0, "w60": 450.0, "w1200": 285.0}
+    assert vp.strava_prediction_curve({"curve": {"w1200": 300.0}}, {"wkg20m": 0.9}) == {"w1200": 270.0}

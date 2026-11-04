@@ -87,10 +87,14 @@ def cache_status(
         has_power = bool(entry and entry.get("curve"))
         if has_power and _is_fresh(entry, now, max_age_days):
             cached += 1
+            if not entry.get("split"):
+                # Usable meanwhile, but written before the indoor/outdoor split: re-fetch
+                # it after every never-cached and stale rider.
+                missing.append((2, p))
         elif entry and not has_power and _is_fresh(entry, now, RETRY_EMPTY_AFTER_DAYS):
             no_power += 1
         else:
-            # 0 = never cached, 1 = stale or empty curve due for a retry
+            # 0 = never cached, 1 = stale or empty curve due for a retry (2 = pre-split, above)
             missing.append((0 if entry is None else 1, p))
     missing.sort(key=lambda m: m[0])
     return {

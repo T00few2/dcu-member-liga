@@ -43,8 +43,9 @@ def test_only_reliable_riders_with_strava_are_eligible():
 
 def test_status_counts_fresh_curves_and_lists_never_cached_first():
     db = FakeDb()
-    db.store["strava_power_curves/doc1_90"] = {"curve": {"w5": 1}, "computedAt": _fresh()}
-    db.store["strava_power_curves/doc2_90"] = {"curve": {"w5": 1}, "computedAt": _fresh(hours=24 * 40)}
+    db.store["strava_power_curves/doc1_90"] = {"curve": {"w5": 1}, "split": True, "computedAt": _fresh()}
+    db.store["strava_power_curves/doc2_90"] = {"curve": {"w5": 1}, "split": True,
+                                               "computedAt": _fresh(hours=24 * 40)}
     riders = [_rider(1), _rider(2), _rider(3)]
 
     status = warmer.cache_status(db, riders, min_rides=15, days=90)
@@ -52,6 +53,16 @@ def test_status_counts_fresh_curves_and_lists_never_cached_first():
     assert status["eligible"] == 3
     assert status["cached"] == 1
     assert [r["zwiftId"] for r in status["missing"]] == ["3", "2"]  # stale one after never-cached
+
+
+def test_curves_from_before_the_indoor_outdoor_split_are_refetched_last():
+    db = FakeDb()
+    db.store["strava_power_curves/doc1_90"] = {"curve": {"w5": 1}, "computedAt": _fresh()}  # pre-split
+    db.store["strava_power_curves/doc2_90"] = {"curve": {"w5": 1}, "split": True,
+                                               "computedAt": _fresh(hours=24 * 40)}
+    status = warmer.cache_status(db, [_rider(1), _rider(2), _rider(3)], min_rides=15, days=90)
+    assert status["cached"] == 1  # still usable for tuning meanwhile
+    assert [r["zwiftId"] for r in status["missing"]] == ["3", "2", "1"]
 
 
 def test_riders_without_power_rides_do_not_count_as_cached():
