@@ -218,18 +218,28 @@ export default function DivisionAgent({ user }: { user: User | null }) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
+  const [scanning, setScanning] = useState(false);
+  const [pollUntil, setPollUntil] = useState(0);
 
   const { data: status } = useQuery<AgentStatus>({
     queryKey: ['division-agent', 'status'],
     queryFn: () => authed(user!, '/admin/division-agent/status'),
     enabled: !!user,
-    refetchInterval: 30_000,
+    // Faster while riders are queued or right after a scan, so progress is visible.
+    refetchInterval: (query) =>
+      (query.state.data?.queued ?? 0) > 0 || Date.now() < pollUntil ? 10_000 : 30_000,
   });
+  const working = (status?.queued ?? 0) > 0;
   const { data: list, isLoading } = useQuery<{ proposals: DivisionProposal[] }>({
     queryKey: ['division-agent', 'proposals', tab],
     queryFn: () => authed(user!, `/admin/division-agent/proposals?status=${tab}`),
     enabled: !!user,
-    refetchInterval: tab === 'pending' ? 30_000 : false,
+    // A callback, so the 10-minute fast window after a scan ends on its own.
+    refetchInterval: () => {
+      if (tab !== 'pending') return false;
+      const queued = queryClient.getQueryData<AgentStatus>(['division-agent', 'status'])?.queued ?? 0;
+      return queued > 0 || Date.now() < pollUntil ? 10_000 : 30_000;
+    },
   });
 
   async function decide(id: string, action: 'approve' | 'edit' | 'reject', body: { category?: string; note?: string }) {
@@ -255,14 +265,23 @@ export default function DivisionAgent({ user }: { user: User | null }) {
   }
 
   async function scan() {
-    if (!user) return;
+    if (!user || scanning) return;
     setError('');
+    setInfo('Scanning riders…');
+    setScanning(true);
     try {
       const data = await authed(user, '/admin/division-agent/scan', { method: 'POST', body: '{}' });
-      setInfo(`${data.queued} rider(s) queued. Proposals appear here within a few minutes.`);
-      void queryClient.invalidateQueries({ queryKey: ['division-agent', 'status'] });
+      const queued = Number(data.queued) || 0;
+      setInfo(queued > 0
+        ? `${queued} rider(s) queued — proposals appear here within a few minutes.`
+        : 'No riders need a review right now.');
+      setPollUntil(Date.now() + 10 * 60_000);
+      void queryClient.invalidateQueries({ queryKey: ['division-agent'] });
     } catch (e: unknown) {
+      setInfo('');
       setError(e instanceof Error ? e.message : 'Scan failed');
+    } finally {
+      setScanning(false);
     }
   }
 
@@ -283,9 +302,16 @@ export default function DivisionAgent({ user }: { user: User | null }) {
             {status.waiting > 0 ? ` (${status.waiting} waiting for Strava)` : ''}
             {status.lastRun?.at ? ` · last run ${when(status.lastRun.at)}` : ''}
             {status.enabled === false ? ' · agent is switched off' : ''}
+            {working && status.enabled !== false ? ' · working…' : ''}
           </span>
         )}
-        <button onClick={() => void scan()} className="px-3 py-1.5 rounded border border-border">Scan riders now</button>
+        <button
+          onClick={() => void scan()}
+          disabled={scanning || !user}
+          className="px-3 py-1.5 rounded border border-border disabled:opacity-50"
+        >
+          {scanning ? 'Scanning…' : 'Scan riders now'}
+        </button>
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
       {info && <p className="text-sm text-green-700">{info}</p>}
