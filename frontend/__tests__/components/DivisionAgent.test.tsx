@@ -126,4 +126,29 @@ describe('DivisionAgent', () => {
     await u.click(await screen.findByRole('button', { name: 'Scan riders now' }));
     expect(await screen.findByText(/4 rider\(s\) queued/)).toBeInTheDocument();
   });
+
+  it('shows that a scan is running and when nobody needs a review', async () => {
+    const gate: { release?: (r: Response) => void } = {};
+    const base = fetchMock.getMockImplementation() as (url: string, init?: RequestInit) => Promise<Response>;
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith('/admin/division-agent/scan')) {
+        return new Promise<Response>((resolve) => { gate.release = resolve; });
+      }
+      return base(url, init);
+    });
+    const u = userEvent.setup();
+    renderAgent();
+    await u.click(await screen.findByRole('button', { name: 'Scan riders now' }));
+    const busy = await screen.findByRole('button', { name: 'Scanning…' });
+    expect(busy).toBeDisabled();
+    expect(screen.getByText('Scanning riders…')).toBeInTheDocument();
+    gate.release?.(new Response(JSON.stringify({ queued: 0 }), { status: 200 }));
+    expect(await screen.findByText('No riders need a review right now.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Scan riders now' })).toBeEnabled();
+  });
+
+  it('marks the agent as working while riders are queued', async () => {
+    renderAgent();
+    expect(await screen.findByText(/3 queued.*working…/)).toBeInTheDocument();
+  });
 });
