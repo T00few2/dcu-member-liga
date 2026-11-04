@@ -7,6 +7,7 @@ import { categoryRankOrder } from '@/lib/ligaCategories';
 import { preferredResultCategory } from '@/lib/preferredResultCategory';
 
 import { ClubSnapshotCards } from './_components/ClubSnapshotCards';
+import { DivisionCompareSection } from './_components/DivisionCompareSection';
 import { PowerCurveSection } from './_components/PowerCurveSection';
 import { SprintAnalysisSection } from './_components/SprintAnalysisSection';
 import {
@@ -51,6 +52,7 @@ export default function MyStatsPage() {
     const [sprintCategoryFilter, setSprintCategoryFilter] = useState<string>('all');
     const [prefsHydrated, setPrefsHydrated] = useState(false);
     const powerCurveChartRef = useRef<HTMLDivElement | null>(null);
+    const powerUnitChosenRef = useRef(false);
 
     const {
         races,
@@ -63,7 +65,13 @@ export default function MyStatsPage() {
     } = useStatsPageData({ selectedRaceId, setSelectedRaceId });
 
     const parseStatsMode = (value: string | null): StatsMode => {
-        return value === 'club' ? 'club' : 'all';
+        if (value === 'club' || value === 'divisions') return value;
+        return 'all';
+    };
+
+    const choosePowerUnit = (unit: PowerUnit) => {
+        powerUnitChosenRef.current = true;
+        setPowerUnit(unit);
     };
 
     const parseSprintXAxis = (value: string | null): SprintXAxisMode => {
@@ -80,11 +88,15 @@ export default function MyStatsPage() {
                 sprintXAxis?: string;
                 sprintCategoryFilter?: string;
                 powerUnit?: string;
+                powerUnitChosen?: boolean;
                 hiddenRiderIdsByMode?: { all?: unknown; club?: unknown };
             };
 
-            if (parsed.statsMode === 'all' || parsed.statsMode === 'club') {
+            if (parsed.statsMode === 'all' || parsed.statsMode === 'club' || parsed.statsMode === 'divisions') {
                 setStatsMode(parsed.statsMode);
+            }
+            if (parsed.powerUnitChosen === true) {
+                powerUnitChosenRef.current = true;
             }
             if (parsed.sprintXAxis === 'rank' || parsed.sprintXAxis === 'time') {
                 setSprintXAxis(parsed.sprintXAxis);
@@ -115,8 +127,12 @@ export default function MyStatsPage() {
             setStatsMode(parseStatsMode(params.get('mode')));
             setSprintXAxis(parseSprintXAxis(params.get('x')));
             const unitParam = params.get('unit');
+            const modeParam = params.get('mode');
             if (unitParam === 'watts' || unitParam === 'wkg') {
                 setPowerUnit(parsePowerUnit(unitParam));
+                if (modeParam === 'divisions') powerUnitChosenRef.current = true;
+            } else if (modeParam === 'divisions' && !powerUnitChosenRef.current) {
+                setPowerUnit('wkg');
             }
             const categoryParam = params.get('cat');
             setSprintCategoryFilter(categoryParam && categoryParam.trim() ? categoryParam.trim() : 'all');
@@ -137,6 +153,7 @@ export default function MyStatsPage() {
             sprintXAxis,
             sprintCategoryFilter,
             powerUnit,
+            powerUnitChosen: powerUnitChosenRef.current,
             hiddenRiderIdsByMode,
         };
         window.localStorage.setItem(STATS_PREFS_STORAGE_KEY, JSON.stringify(payload));
@@ -265,7 +282,10 @@ export default function MyStatsPage() {
         return { isMe, isTeammate, strokeColor, strokeWidth, opacity, name, tooltipName };
     };
 
-    const hiddenRiderIds = useMemo(() => new Set(hiddenRiderIdsByMode[statsMode] || []), [hiddenRiderIdsByMode, statsMode]);
+    const hiddenRiderIds = useMemo(() => {
+        if (statsMode === 'divisions') return new Set<string>();
+        return new Set(hiddenRiderIdsByMode[statsMode] || []);
+    }, [hiddenRiderIdsByMode, statsMode]);
 
     const powerLegendEntries = useMemo(() => {
         return [...displayRidersWithPower]
@@ -292,6 +312,7 @@ export default function MyStatsPage() {
     }, [displayRidersWithPower, hiddenRiderIds]);
 
     useEffect(() => {
+        if (statsMode === 'divisions') return;
         if (displayRidersWithPower.length > 0 && visibleDisplayRidersWithPower.length === 0) {
             setHiddenRiderIdsByMode((prev) => ({
                 ...prev,
@@ -301,6 +322,7 @@ export default function MyStatsPage() {
     }, [displayRidersWithPower, visibleDisplayRidersWithPower, statsMode]);
 
     const toggleRiderVisibility = (zwiftId: string) => {
+        if (statsMode === 'divisions') return;
         setHiddenRiderIdsByMode((prev) => {
             const current = new Set(prev[statsMode] || []);
             if (current.has(zwiftId)) current.delete(zwiftId);
@@ -313,6 +335,7 @@ export default function MyStatsPage() {
     };
 
     const showAllRiders = () => {
+        if (statsMode === 'divisions') return;
         setHiddenRiderIdsByMode((prev) => ({
             ...prev,
             [statsMode]: [],
@@ -320,6 +343,7 @@ export default function MyStatsPage() {
     };
 
     const hideAllRiders = () => {
+        if (statsMode === 'divisions') return;
         const ids = displayRidersWithPower.map((rider) => String(rider.zwiftId));
         setHiddenRiderIdsByMode((prev) => ({
             ...prev,
@@ -328,6 +352,7 @@ export default function MyStatsPage() {
     };
 
     const showOnlyMe = () => {
+        if (statsMode === 'divisions') return;
         const myId = String(currentUserZwiftId || '').trim();
         if (!myId) return;
         const ids = displayRidersWithPower
@@ -591,7 +616,7 @@ export default function MyStatsPage() {
             <h1 className="text-3xl font-bold mb-8 text-foreground">Statistik</h1>
 
             {/* Main Tabs */}
-            <div className="flex gap-4 mb-8 border-b border-border">
+            <div className="flex flex-wrap gap-4 mb-8 border-b border-border">
                 <button
                     onClick={() => setStatsMode('all')}
                     className={`pb-2 px-4 font-medium transition ${statsMode === 'all' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
@@ -603,6 +628,15 @@ export default function MyStatsPage() {
                     className={`pb-2 px-4 font-medium transition ${statsMode === 'club' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
                 >
                     Klubstatistik
+                </button>
+                <button
+                    onClick={() => {
+                        setStatsMode('divisions');
+                        if (!powerUnitChosenRef.current) setPowerUnit('wkg');
+                    }}
+                    className={`pb-2 px-4 font-medium transition ${statsMode === 'divisions' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                >
+                    Divisioner
                 </button>
             </div>
 
@@ -643,7 +677,18 @@ export default function MyStatsPage() {
                 </div>
             </div>
 
-            {!canRenderStatsSections ? (
+            {statsMode === 'divisions' ? (
+                <DivisionCompareSection
+                    key={selectedRace.id}
+                    race={selectedRace}
+                    riders={allRiders}
+                    weightKgByZwiftId={weightKgByZwiftId}
+                    currentUserZwiftId={currentUserZwiftId}
+                    rankOrder={rankOrder}
+                    powerUnit={powerUnit}
+                    setPowerUnit={choosePowerUnit}
+                />
+            ) : !canRenderStatsSections ? (
                 <div className="p-6 bg-muted/20 rounded text-center text-muted-foreground">
                     {statsMode === 'club'
                         ? 'Ingen holdkammerater fra din klub har resultater i dette løb. Tjek at klubbens ryttere er registreret korrekt og at resultaterne er behandlet.'
@@ -657,7 +702,7 @@ export default function MyStatsPage() {
                         statsMode={statsMode}
                         userCategory={referenceCategory}
                         powerUnit={powerUnit}
-                        setPowerUnit={setPowerUnit}
+                        setPowerUnit={choosePowerUnit}
                         powerLegendEntries={powerLegendEntries}
                         visibleDisplayRidersWithPower={visibleDisplayRidersWithPower}
                         highlightedRiderId={highlightedRiderId}
@@ -685,7 +730,7 @@ export default function MyStatsPage() {
                         userResult={userResult}
                         userWeightKg={currentUserZwiftId ? (weightKgByZwiftId[currentUserZwiftId] ?? null) : null}
                         powerUnit={powerUnit}
-                        setPowerUnit={setPowerUnit}
+                        setPowerUnit={choosePowerUnit}
                         exportSprintCsv={exportSprintCsv}
                         formatTime={formatTime}
                     />
