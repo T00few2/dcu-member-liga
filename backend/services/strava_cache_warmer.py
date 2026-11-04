@@ -211,26 +211,35 @@ def _warm(
             pass
         return strava_rate.combined(stored)
 
-    def fits(streams: int) -> bool:
-        return strava_rate.within_budget(usage(), streams, BUDGET_FRACTION, now())
+    def fits(streams: int, window_used_before: int | None = None) -> bool:
+        return strava_rate.within_budget(usage(), streams, BUDGET_FRACTION, now(),
+                                         window_used_before=window_used_before)
 
     for p in status["missing"][: max(0, limit)]:
         if not fits(LIST_REQUESTS):
             rate_limited = True
             break
+        # 15-minute usage before this rider: its own activity-list request must not stop
+        # a rider with very many rides from using an otherwise empty quarter hour.
+        before15 = strava_rate.current_usage(usage(), now())["usage15"]
         try:
             entry = get_strava_power_curve(
                 db, strava_service, p["userDocId"], days, compute_curve=compute_curve, refresh=True,
-                budget=fits,
+                budget=lambda n, b=before15: fits(n, window_used_before=b),
             )
             warmed.append({"zwiftId": str(p.get("zwiftId")), "activityCount": entry["activityCount"]})
             if entry.get("curve"):
                 new_cached += 1
             else:
                 new_empty += 1
-        except StravaBudgetExceeded:
-            rate_limited = True  # this rider waits for the next window
-            break
+        except StravaBudgetExceeded as exc:
+            rate_limited = True
+            if exc.streams + LIST_REQUESTS > strava_rate.share15(usage(), BUDGET_FRACTION):
+                # Too big for a quarter hour that is already in use: it runs at the start of
+                # the next one (the scheduler calls at :00/:15/:30/:45). Keep going with the
+                # riders after it so one heavy rider never blocks the rest.
+                continue
+            break  # a normal rider that does not fit: the budget is used up
         except Exception as exc:
             logger.warning("strava cache warm failed for %s: %s", p.get("zwiftId"), exc)
             failed.append(str(p.get("zwiftId")))

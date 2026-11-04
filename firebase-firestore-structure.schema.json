@@ -172,6 +172,78 @@
       "description": "vELO predictor tuning runs. A run that finds better settings is pending until an admin applies or rejects it.",
       "items": { "$ref": "#/$defs/predictorTuningRunDoc" }
     },
+    "division_proposals": {
+      "type": "array",
+      "description": "Admin-only. Division agent proposals for riders with no vELO or few Zwift rides. Nothing is applied until an admin approves (predict-assign / manual-assign, or a category transfer for locked riders), edits or rejects. A newer proposal supersedes an older pending one for the same rider.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "_id": { "type": "string" },
+          "id": { "type": "string" },
+          "zwiftId": { "type": "string" },
+          "name": { "type": "string", "description": "For the admin page only; never sent to Claude" },
+          "status": { "type": "string", "enum": ["pending", "approved", "edited", "rejected", "superseded"] },
+          "reasons": { "type": "array", "items": { "type": "string", "enum": ["no_velo", "few_rides"] } },
+          "currentCategory": { "type": ["string", "null"] },
+          "proposedCategory": { "type": ["string", "null"], "description": "null = not enough data; an admin places the rider by hand" },
+          "suggestedCategory": { "type": ["string", "null"], "description": "Deterministic suggestion from the vELO predictor" },
+          "predictedVelo": { "type": ["number", "null"] },
+          "source": { "type": "string", "enum": ["strava", "zwift", "velo", "insufficient_data"] },
+          "confidence": { "type": "string", "enum": ["low", "medium", "high"] },
+          "flags": { "type": "array", "items": { "type": "string" }, "description": "few_strava_rides, implausible_wkg, no_weight, strava_zwift_disagree, no_power_data, assessment_disagrees" },
+          "evidence": { "type": "object", "additionalProperties": true, "description": "Anonymized evidence (ratings, ride counts, Zwift/Strava predictions and inputs, flags, division list); no names or IDs" },
+          "adminRationale": { "type": "string" },
+          "riderExplanation": { "type": "string", "description": "Danish text for the rider" },
+          "author": { "type": "string", "enum": ["claude", "template"] },
+          "model": { "type": ["string", "null"] },
+          "usage": { "type": ["object", "null"], "additionalProperties": true },
+          "locked": { "type": "boolean" },
+          "movePreview": { "type": ["object", "null"], "additionalProperties": true, "description": "Dry-run category transfer preview for locked riders" },
+          "evidenceFingerprint": { "type": "string", "description": "Hash of vELO, Zwift ride count and Strava curve time (not the current division). A decided proposal is not repeated, and a pending one is not rebuilt, until this changes" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "decidedAt": { "type": "string", "format": "date-time" },
+          "decidedBy": { "type": "string" },
+          "decisionNote": { "type": ["string", "null"] },
+          "appliedCategory": { "type": "string" },
+          "transferId": { "type": "string" }
+        }
+      }
+    },
+    "division_agent_queue": {
+      "type": "array",
+      "description": "Admin-only. Riders waiting for the division agent (doc id = zwiftId). Filled by registration, Strava connect, the nightly ZR refresh and Scan riders now; processed by the predictor worker.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "_id": { "type": "string" },
+          "zwiftId": { "type": "string" },
+          "reasons": { "type": "array", "items": { "type": "string" } },
+          "queuedAt": { "type": "string", "format": "date-time" },
+          "attempts": { "type": "integer" },
+          "notBefore": { "type": ["string", "null"], "format": "date-time", "description": "Retry time, e.g. while the Strava budget is used up" },
+          "claimedAt": { "type": ["string", "null"], "format": "date-time" }
+        }
+      }
+    },
+    "division_agent_status": {
+      "type": "array",
+      "description": "Admin-only. Single doc 'last': counts from the latest division agent batch.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "_id": { "type": "string", "const": "last" },
+          "at": { "type": "string", "format": "date-time" },
+          "processed": { "type": "integer" },
+          "proposed": { "type": "integer" },
+          "noChange": { "type": "integer" },
+          "waitingForStrava": { "type": "integer" },
+          "failed": { "type": "integer" }
+        }
+      }
+    },
     "strava_oauth_states": {
       "type": "array",
       "items": {
@@ -456,7 +528,10 @@
           "additionalProperties": true,
           "properties": {
             "minZwiftRides": { "type": "integer", "default": 15 },
-            "tuneModel": { "type": "string", "default": "claude-opus-5-5", "description": "Claude model for predictor sandbox research" }
+            "tuneModel": { "type": "string", "default": "claude-opus-5-5", "description": "Claude model for predictor sandbox research" },
+            "enabled": { "type": "boolean", "default": true, "description": "false stops the division agent (no scans, no reviews)" },
+            "assessModel": { "type": "string", "default": "claude-haiku-5-5", "description": "Claude model that writes division proposal texts" },
+            "maxPerRun": { "type": "integer", "default": 8, "description": "Riders reviewed per predictor-worker call" }
           }
         },
         "ligaCategories": {

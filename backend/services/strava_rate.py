@@ -235,19 +235,34 @@ def combined(stored: dict | None) -> dict:
     return best
 
 
-def within_budget(snap: dict, cost: int, fraction: float, now: datetime | None = None) -> bool:
+def within_budget(
+    snap: dict,
+    cost: int,
+    fraction: float,
+    now: datetime | None = None,
+    *,
+    window_used_before: int | None = None,
+) -> bool:
     """True when spending `cost` more requests keeps both windows under `fraction` of the limit.
 
     With no information yet (no response seen), one unit of work is allowed so the
     real limits can be learned from Strava's headers. A single job bigger than the whole
     15-minute share is allowed in an otherwise unused quarter hour (if the day has room),
-    so a rider with many rides is never stuck forever.
+    so a rider with many rides is never stuck forever. `window_used_before` is the
+    15-minute usage before that job started; its own earlier requests (the activity
+    list) do not make the window "used".
     """
     u = current_usage(snap, now)
     if not u["known"]:
         return True
     day_ok = u["usageDay"] + cost <= u["limitDay"] * fraction
     share15 = u["limit15"] * fraction
-    if cost > share15 and u["usage15"] == 0:
-        return day_ok
+    used_before = u["usage15"] if window_used_before is None else window_used_before
+    if u["usage15"] + cost > share15 and used_before == 0:
+        return day_ok  # too big for the share, but alone in an empty quarter hour
     return u["usage15"] + cost <= share15 and day_ok
+
+
+def share15(snap: dict, fraction: float) -> float:
+    """The 15-minute share a background job may use."""
+    return current_usage(snap)["limit15"] * fraction

@@ -13,6 +13,7 @@ from authz import AuthzError, require_admin, require_scheduler
 from extensions import db, strava_service
 from routes.admin import admin_bp
 from services import predictor_research as research
+from services.division_agent import runner as agent_runner
 from services import predictor_service as ps
 from services import predictor_tuning_runs as runs
 from services import strava_cache_warmer as warmer
@@ -220,7 +221,8 @@ def predictor_tune_process(run_id: str):
 
 @admin_bp.route("/admin/predictor/worker", methods=["POST"])
 def predictor_worker():
-    """Process one waiting predictor job (scheduler or admin): a tuning run, else research.
+    """Process one waiting predictor job (scheduler or admin): a tuning run, else research,
+    else a batch of the division agent's queue.
 
     Called every 5 minutes by Cloud Scheduler (see deploy-backend.yml), so jobs finish
     even when the admin page's own processing request never reaches the server. Each
@@ -239,10 +241,16 @@ def predictor_worker():
         # One job per call: research needs nearly the whole request time limit, so after
         # a tuning run it waits for the next call (5 minutes later) instead of being cut off.
         researched = research.process_next(db) if tuned is None else None
+        # Then the division agent's queue (riders to review), when nothing else ran.
+        divisions = None
+        if tuned is None and researched is None:
+            divisions = agent_runner.process_batch(
+                db, strava_service=strava_service, compute_curve=_compute_strava_power_curve)
         # Counts and statuses only: scheduler responses may end up in logs.
         return jsonify({
             "tuning": tuned.get("status") if tuned else None,
             "research": research.public_summary(researched),
+            "divisionAgent": divisions,
         }), 200
     except Exception as e:
         logger.error("predictor_worker error: %s", e)

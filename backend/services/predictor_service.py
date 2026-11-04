@@ -113,8 +113,14 @@ def division_agent_settings(db: Any) -> dict:
     raw = league_settings(db).get("divisionAgent")
     raw = raw if isinstance(raw, dict) else {}
     min_rides = raw.get("minZwiftRides")
+    max_per_run = raw.get("maxPerRun")
+    model = raw.get("assessModel")
     return {
         "minZwiftRides": min_rides if isinstance(min_rides, int) and not isinstance(min_rides, bool) else 15,
+        "enabled": raw.get("enabled") is not False,
+        "assessModel": model if isinstance(model, str) and model.startswith("claude-") else "claude-haiku-5-5",
+        "maxPerRun": max_per_run if isinstance(max_per_run, int) and not isinstance(max_per_run, bool)
+        and 1 <= max_per_run <= 50 else 8,
     }
 
 

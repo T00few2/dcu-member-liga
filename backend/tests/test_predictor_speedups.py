@@ -160,18 +160,21 @@ def test_worker_route(tune_db, monkeypatch):
 
     monkeypatch.setattr(routes, "db", tune_db)
     monkeypatch.setattr(routes, "require_scheduler", lambda _req: None)
+    batches = []
+    monkeypatch.setattr(routes.agent_runner, "process_batch", lambda _db, **k: batches.append(1) or None)
     app = Flask(__name__)
     app.register_blueprint(admin_bp)
     client = app.test_client()
 
     assert client.post("/admin/predictor/worker", json={}).get_json() == {
-        "tuning": None, "research": {"idle": True}}
+        "tuning": None, "research": {"idle": True}, "divisionAgent": None}
+    assert batches == [1]  # nothing else to do: the division agent's queue runs
     calls = []
     monkeypatch.setattr(routes.research, "process_next", lambda _db: calls.append(1))
     runs.start_run(tune_db, started_by="admin")
     body = client.post("/admin/predictor/worker", json={}).get_json()
-    assert body == {"tuning": "report", "research": {"idle": True}}
-    assert calls == []  # research waits for the next call so it gets the full time limit
+    assert body == {"tuning": "report", "research": {"idle": True}, "divisionAgent": None}
+    assert calls == [] and batches == [1]  # research and the agent wait for the next call
     client.post("/admin/predictor/worker", json={})
     assert calls == [1]
 
