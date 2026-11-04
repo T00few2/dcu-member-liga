@@ -7,11 +7,15 @@ midnight. `record()` keeps the latest values in memory; `persist()`/`load()` sha
 them through `strava_rate_usage/current` so a fresh Cloud Function instance knows
 the usage before it makes its first request.
 
-Strava's usage header turned out to undercount badly (it reported 75 reads for a day
-in which the app downloaded ~2,800 activity streams), so the app also counts its own
-requests: `count_request()` is called for every Strava GET, `persist()` adds this
-instance's new requests to shared per-quarter-hour and per-day counters, and
-`current_usage()` reports the higher of the header and the app's own count.
+The budget follows Strava's own usage report: it is what Strava enforces. (Strava
+reports far fewer reads than the app makes, e.g. 74 on a day with ~2,250 requests,
+because activity-stream downloads evidently do not count the same way, and the app
+was never refused at those volumes.) A 429 response carries usage at the limit, so
+the budget stops background work as soon as Strava refuses anything.
+
+The app still counts its own requests (`count_request()` for every Strava GET,
+shared through `persist()`) for information: `current_usage()` reports them as
+`appRequests15` / `appRequestsDay`.
 """
 from __future__ import annotations
 
@@ -204,8 +208,9 @@ def latest(*snapshots: dict) -> dict:
 def current_usage(snap: dict, now: datetime | None = None) -> dict:
     """Usage in the *current* windows (counters from an earlier window count as 0).
 
-    The higher of Strava's header and the app's own request count (shared counters in
-    `snap` plus this instance's requests not yet persisted).
+    `usage15` / `usageDay` are Strava's own report (what the budget uses).
+    `appRequests15` / `appRequestsDay` are the app's own request counts (shared counters
+    in `snap` plus this instance's requests not yet persisted), for information only.
     """
     now = now or datetime.now(timezone.utc)
     at = _parse(snap.get("at"))
@@ -219,8 +224,10 @@ def current_usage(snap: dict, now: datetime | None = None) -> dict:
     return {
         "limit15": int(snap.get("limit15") or DEFAULT_LIMIT_15MIN),
         "limitDay": int(snap.get("limitDay") or DEFAULT_LIMIT_DAILY),
-        "usage15": max(int(snap.get("usage15") or 0) if same_quarter else 0, own_15),
-        "usageDay": max(int(snap.get("usageDay") or 0) if same_day else 0, own_day),
+        "usage15": int(snap.get("usage15") or 0) if same_quarter else 0,
+        "usageDay": int(snap.get("usageDay") or 0) if same_day else 0,
+        "appRequests15": own_15,
+        "appRequestsDay": own_day,
         "known": bool(snap.get("limitDay")),
     }
 
