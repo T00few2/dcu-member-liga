@@ -8,6 +8,7 @@ from extensions import db, strava_service, get_zwift_game_service, get_zwift_ser
 from config import FRONTEND_URL
 from authz import verify_user_token, AuthzError
 from services.club_kits import extract_game_client_fields, extract_level_fields
+from services.division_agent import queue as division_queue
 from services.leadin_elevation import leadin_elevation
 from services.route_segment_spline import segment_spline_positions
 from services.sauce_elevation import route_elevation, route_leadin_profile
@@ -187,6 +188,9 @@ def strava_callback():
             'connections': {'strava': {'athlete_id': token_data.get('athlete', {}).get('id')}},
             'updatedAt': firestore.SERVER_TIMESTAMP,
         }), merge=True)
+        # New power data: the division agent reviews the rider again (riders without a
+        # trusted vELO only; the worker skips everyone else).
+        division_queue.safe_enqueue(db, str(user_doc_ref.id), "strava_connected")
 
     finally:
         try:

@@ -13,6 +13,7 @@ from authz import AuthzError, require_admin, require_scheduler
 from extensions import db, get_zwift_service, zr_service
 from routes.admin import admin_bp
 from routes.integration import _competition_metrics_to_profile, _power_profile_to_firestore
+from services.division_agent import runner as division_runner
 from services.category_engine import effective_rating
 from services.zwiftracing import zwift_racing_fields_from_payload
 from services.liga_categories_core import (
@@ -201,6 +202,12 @@ def refresh_zr_stats():
         if skipped_ids:
             logger.info("ZR nightly refresh: %s rider(s) skipped (no ZR data): %s", skipped, skipped_ids)
         logger.info("ZR nightly refresh complete: %s updated, %s skipped", updated, skipped)
+        # Riders whose vELO still can't be trusted go to the division agent's queue.
+        try:
+            queued = division_runner.scan(db)
+            logger.info("ZR nightly refresh: %s rider(s) queued for the division agent", queued)
+        except Exception as scan_err:
+            logger.warning("ZR nightly refresh: division agent scan failed: %s", scan_err)
         return (
             jsonify(
                 {

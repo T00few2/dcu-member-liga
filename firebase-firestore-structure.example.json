@@ -125,7 +125,7 @@
         "watts5s": false, "watts1m": false, "watts5m": false, "watts20m": false,
         "compound5s": false, "compound1m": false, "compound5m": true, "compound20m": false
       },
-      "divisionAgent": { "minZwiftRides": 15 },
+      "divisionAgent": { "minZwiftRides": 15, "enabled": true, "assessModel": "claude-haiku-5-5", "maxPerRun": 8 },
       "ligaCategories": [
         { "name": "Diamond", "upper": null, "requiresVerification": true, "color": "#b9f2ff" },
         { "name": "Ruby", "upper": 2200, "requiresVerification": true, "color": "#ff4e6a" },
@@ -849,6 +849,59 @@
       "decidedBy": "admin@example.com",
       "decidedAt": "2026-11-01T09:00:00+00:00"
     }
+  ],
+  "division_proposals": [
+    {
+      "_id": "example_proposal_001",
+      "id": "example_proposal_001",
+      "zwiftId": "1000001",
+      "name": "Example Rider",
+      "status": "pending",
+      "reasons": ["few_rides"],
+      "currentCategory": null,
+      "proposedCategory": "Gold",
+      "suggestedCategory": "Gold",
+      "predictedVelo": 1085,
+      "source": "strava",
+      "confidence": "medium",
+      "flags": [],
+      "evidence": {
+        "reasons": ["few_rides"],
+        "currentCategory": null,
+        "locked": false,
+        "velo": { "current": null, "max30": null, "max90": null },
+        "zwiftActivityCount": 3,
+        "weightKg": 74.0,
+        "hasStrava": true,
+        "zwift": null,
+        "strava": { "days": 90, "activityCount": 24, "prediction": { "velo": 1085, "category": "Gold", "confidence": "medium" } },
+        "flags": [],
+        "divisions": ["Diamond", "Ruby", "Emerald", "Sapphire", "Amethyst", "Platinum", "Gold", "Silver", "Bronze", "Copper"]
+      },
+      "adminRationale": "Strava 5- and 20-minute power over 24 rides predicts vELO 1085 (Gold).",
+      "riderExplanation": "Ud fra dine Strava-watt foreslår vi Gold. En admin ser forslaget igennem og beslutter.",
+      "author": "claude",
+      "model": "claude-haiku-5-5",
+      "usage": { "inputTokens": 1450, "outputTokens": 160 },
+      "locked": false,
+      "movePreview": null,
+      "evidenceFingerprint": "0123456789abcdef",
+      "createdAt": "2026-11-04T08:00:00+00:00"
+    }
+  ],
+  "division_agent_queue": [
+    {
+      "_id": "1000002",
+      "zwiftId": "1000002",
+      "reasons": ["registered"],
+      "queuedAt": "2026-11-04T08:05:00+00:00",
+      "attempts": 0,
+      "notBefore": null,
+      "claimedAt": null
+    }
+  ],
+  "division_agent_status": [
+    { "_id": "last", "at": "2026-11-04T08:10:00+00:00", "processed": 8, "proposed": 3, "noChange": 4, "waitingForStrava": 1, "failed": 0 }
   ],
   "predictor_settings": [
     {

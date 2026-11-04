@@ -11,13 +11,14 @@ import PolicyManager from '@/components/admin/PolicyManager';
 import WeightVerificationManager from '@/components/admin/WeightVerificationManager';
 import CategoryManager from '@/components/admin/CategoryManager';
 import CategoryPredictor from '@/components/admin/CategoryPredictor';
+import DivisionAgent from '@/components/admin/DivisionAgent';
 import StatsDashboard from '@/components/admin/StatsDashboard';
 import UsersOverview from '@/components/admin/UsersOverview';
 import UserDetailsTab from '@/components/admin/UserDetailsTab';
 import PostsManager from '@/components/admin/PostsManager';
 
-type AdminSection = 'league' | 'categories' | 'predictor' | 'verification' | 'weight' | 'trainers' | 'users' | 'stats' | 'policies' | 'nyheder';
-const ADMIN_SECTIONS: AdminSection[] = ['league', 'categories', 'predictor', 'verification', 'weight', 'trainers', 'users', 'stats', 'policies', 'nyheder'];
+type AdminSection = 'league' | 'categories' | 'predictor' | 'agent' | 'verification' | 'weight' | 'trainers' | 'users' | 'stats' | 'policies' | 'nyheder';
+const ADMIN_SECTIONS: AdminSection[] = ['league', 'categories', 'predictor', 'agent', 'verification', 'weight', 'trainers', 'users', 'stats', 'policies', 'nyheder'];
 const LEAGUE_TABS: LeagueManagerTab[] = ['races', 'season', 'results', 'settings', 'kits', 'clubapi', 'testing', 'rawdata', 'planning'];
 
 function normalizeLeagueTab(value: string | null): string | null {
@@ -165,6 +166,12 @@ function AdminPageContent() {
           vELO Predictor
         </button>
         <button
+          onClick={() => handleSectionChange('agent')}
+          className={`pb-4 px-6 text-lg font-medium transition whitespace-nowrap ${activeSection === 'agent' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          Division Agent
+        </button>
+        <button
           onClick={() => handleSectionChange('verification')}
           className={`pb-4 px-6 text-lg font-medium transition whitespace-nowrap ${activeSection === 'verification' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
         >
@@ -244,6 +251,8 @@ function AdminPageContent() {
             <CategoryManager />
           ) : activeSection === 'predictor' ? (
             <CategoryPredictor user={user} />
+          ) : activeSection === 'agent' ? (
+            <DivisionAgent user={user} />
           ) : activeSection === 'verification' ? (
             <VerificationDashboard />
           ) : activeSection === 'weight' ? (

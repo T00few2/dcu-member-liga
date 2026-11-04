@@ -7,6 +7,7 @@ from firebase_admin import firestore
 
 from authz import AuthzError, verify_user_token
 from extensions import db, stats_queue
+from services.division_agent import queue as division_queue
 from services.category_engine import ZR_CATEGORIES, assignment_floor_category, cats_from_defs, serialize_liga_category
 from services.liga_categories_core import _load_liga_settings, _resolve_categories
 from services.policy_store import (
@@ -400,6 +401,10 @@ def signup():
 
                     if not stored_now:
                         stats_queue.enqueue(str(doc_id), str(zwift_id), rider_label=str(zwift_id or doc_id))
+
+                if is_newly_registered:
+                    # The division agent reviews new riders (no vELO / few Zwift rides) within minutes.
+                    division_queue.safe_enqueue(db, str(zwift_id), "registered")
 
         return (
             jsonify(
