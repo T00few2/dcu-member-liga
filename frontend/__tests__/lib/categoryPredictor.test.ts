@@ -218,3 +218,21 @@ describe('hasPredictedVsImpliedMismatch', () => {
     expect(hasPredictedVsImpliedMismatch(rider(900), {})).toBe(false);
   });
 });
+
+describe('Strava indoor/outdoor correction', () => {
+  it('corrects outdoor efforts only and keeps the stronger per duration', async () => {
+    const { correctedStravaCurve, stravaCurvesFromResponse } = await import('@/components/admin/category-predictor/shared');
+    const curves = stravaCurvesFromResponse({
+      curveIndoor: { w5: 900, w1200: 285 },
+      curveOutdoor: { w5: 1100, w60: 500, w1200: 300 },
+    });
+    expect(correctedStravaCurve(curves, { wkg5s: 0.9, wkg1m: 0.9, wkg5m: 0.9, wkg20m: 0.9 }))
+      .toEqual({ w5: 990, w60: 450, w1200: 285 });
+    // A curve cached before the split counts as outdoor.
+    const legacy = stravaCurvesFromResponse({ curve: { w1200: 300 } });
+    expect(correctedStravaCurve(legacy, { wkg20m: 0.9 })).toEqual({ w1200: 270 });
+    // Indoor-only riders are never corrected.
+    const indoor = stravaCurvesFromResponse({ curveIndoor: { w1200: 300 }, curveOutdoor: {} });
+    expect(correctedStravaCurve(indoor, { wkg20m: 0.5 })).toEqual({ w1200: 300 });
+  });
+});

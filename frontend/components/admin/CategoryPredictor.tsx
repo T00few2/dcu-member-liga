@@ -33,6 +33,8 @@ import {
   StravaRiderCache,
   filterPredictorRiders,
   powerFromStravaCurve,
+  stravaCurvesFromResponse,
+  correctedStravaCurve,
 } from './category-predictor/shared';
 import CategoryPredictorResults from './category-predictor/CategoryPredictorResults';
 import CategoryPredictorForm from './category-predictor/CategoryPredictorForm';
@@ -91,6 +93,28 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   // new model is loading, the previous one's numbers must not be assignable.
   const zwiftPredictions = !modelIsPrevious && featuresSettled ? modelData?.predictions : undefined;
   const stravaWindowDays = predictorConfig?.config?.stravaWindowDays ?? 90;
+  const stravaPowerScale = predictorConfig?.config?.stravaPowerScale;
+  const stravaScaleKey = JSON.stringify(stravaPowerScale ?? null);
+
+  // A new outdoor→indoor correction (e.g. an applied tuning run) re-corrects every
+  // Strava curve already loaded, instead of keeping the old correction until reload.
+  useEffect(() => {
+    setStravaByRider(prev => {
+      let changed = false;
+      const next: typeof prev = {};
+      for (const [id, entry] of Object.entries(prev)) {
+        if (entry.curves && entry.weightKg) {
+          const power = powerFromStravaCurve(correctedStravaCurve(entry.curves, stravaPowerScale), entry.weightKg, entry.power);
+          changed = changed || JSON.stringify(power) !== JSON.stringify(entry.power);
+          next[id] = { ...entry, power };
+        } else {
+          next[id] = entry;
+        }
+      }
+      return changed ? next : prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the scale's content
+  }, [stravaScaleKey]);
   const activeFeatureKeys = useMemo(
     () => featureDefs.filter(f => selectedFeatures?.[f.key]).map(f => f.key),
     [featureDefs, selectedFeatures],
@@ -208,13 +232,16 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
         }));
         return;
       }
-      // Indoor-equivalent curve: outdoor efforts carry the outdoor→indoor correction.
-      const curve: Record<string, number> = data.predictionCurve ?? data.curve ?? {};
+      // Keep the raw indoor/outdoor curves: the outdoor→indoor correction is applied here
+      // with the active config, and re-applied when that config changes.
+      const curves = stravaCurvesFromResponse(data);
       setStravaByRider(prev => ({
         ...prev,
         [zwiftId]: {
-          power: powerFromStravaCurve(curve, weightKg, prev[zwiftId]?.power),
+          power: powerFromStravaCurve(correctedStravaCurve(curves, stravaPowerScale), weightKg, prev[zwiftId]?.power),
           activityCount: typeof data.activityCount === 'number' ? data.activityCount : null,
+          curves,
+          weightKg,
         },
       }));
     } catch (e: unknown) {
