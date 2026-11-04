@@ -236,3 +236,15 @@ describe('Strava indoor/outdoor correction', () => {
     expect(correctedStravaCurve(indoor, { wkg20m: 0.5 })).toEqual({ w1200: 300 });
   });
 });
+
+describe('failed Strava reload', () => {
+  it('keeps the loaded curves and only adds the error', async () => {
+    const { withStravaError, EMPTY_POWER } = await import('@/components/admin/category-predictor/shared');
+    const loaded = {
+      power: EMPTY_POWER, activityCount: 12, weightKg: 75,
+      curves: { indoor: { w1200: 300 }, outdoor: {} },
+    };
+    expect(withStravaError(loaded, 'boom')).toEqual({ ...loaded, error: 'boom' });
+    expect(withStravaError(undefined, 'boom')).toEqual({ power: EMPTY_POWER, activityCount: null, error: 'boom' });
+  });
+});

@@ -35,6 +35,7 @@ import {
   powerFromStravaCurve,
   stravaCurvesFromResponse,
   correctedStravaCurve,
+  withStravaError,
 } from './category-predictor/shared';
 import CategoryPredictorResults from './category-predictor/CategoryPredictorResults';
 import CategoryPredictorForm from './category-predictor/CategoryPredictorForm';
@@ -215,16 +216,12 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
       if (!res.ok) {
         setStravaByRider(prev => ({
           ...prev,
-          [zwiftId]: {
-            power: prev[zwiftId]?.power ?? EMPTY_POWER,
-            activityCount: prev[zwiftId]?.activityCount ?? null,
-            error: data.message ?? 'Failed to load Strava data',
-          },
+          [zwiftId]: withStravaError(prev[zwiftId], data.message ?? 'Failed to load Strava data'),
         }));
         return;
       }
-      // Keep the raw indoor/outdoor curves: the outdoor→indoor correction is applied here
-      // with the active config, and re-applied when that config changes.
+      // Keep the raw indoor/outdoor curves; the outdoor→indoor correction is applied at
+      // render with the active config (see `stravaByRider`).
       const curves = stravaCurvesFromResponse(data);
       setStravaByRider(prev => ({
         ...prev,
@@ -238,11 +235,7 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
     } catch (e: unknown) {
       setStravaByRider(prev => ({
         ...prev,
-        [zwiftId]: {
-          power: prev[zwiftId]?.power ?? EMPTY_POWER,
-          activityCount: prev[zwiftId]?.activityCount ?? null,
-          error: e instanceof Error ? e.message : 'Error loading Strava data',
-        },
+        [zwiftId]: withStravaError(prev[zwiftId], e instanceof Error ? e.message : 'Error loading Strava data'),
       }));
     } finally {
       setLoadingStravaIds(prev => {

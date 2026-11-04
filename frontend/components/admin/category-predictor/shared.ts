@@ -84,6 +84,12 @@ export interface StravaRiderCache {
   weightKg?: number;
 }
 
+/** A failed (re)load keeps whatever was loaded before (curves, weight, ride count) and
+ *  only adds the error, so values already on screen are not blanked. */
+export function withStravaError(prev: StravaRiderCache | undefined, error: string): StravaRiderCache {
+  return { ...(prev ?? { power: EMPTY_POWER, activityCount: null }), error };
+}
+
 export type PowerScale = Partial<Record<PowerField, number>>;
 
 /** Strava peak watts (w5/w60/w300/w1200...) split into indoor and outdoor rides. */
