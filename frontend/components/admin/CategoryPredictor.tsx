@@ -94,27 +94,6 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   const zwiftPredictions = !modelIsPrevious && featuresSettled ? modelData?.predictions : undefined;
   const stravaWindowDays = predictorConfig?.config?.stravaWindowDays ?? 90;
   const stravaPowerScale = predictorConfig?.config?.stravaPowerScale;
-  const stravaScaleKey = JSON.stringify(stravaPowerScale ?? null);
-
-  // A new outdoor→indoor correction (e.g. an applied tuning run) re-corrects every
-  // Strava curve already loaded, instead of keeping the old correction until reload.
-  useEffect(() => {
-    setStravaByRider(prev => {
-      let changed = false;
-      const next: typeof prev = {};
-      for (const [id, entry] of Object.entries(prev)) {
-        if (entry.curves && entry.weightKg) {
-          const power = powerFromStravaCurve(correctedStravaCurve(entry.curves, stravaPowerScale), entry.weightKg, entry.power);
-          changed = changed || JSON.stringify(power) !== JSON.stringify(entry.power);
-          next[id] = { ...entry, power };
-        } else {
-          next[id] = entry;
-        }
-      }
-      return changed ? next : prev;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the scale's content
-  }, [stravaScaleKey]);
   const activeFeatureKeys = useMemo(
     () => featureDefs.filter(f => selectedFeatures?.[f.key]).map(f => f.key),
     [featureDefs, selectedFeatures],
@@ -125,7 +104,19 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   const [showMismatchOnly, setShowMismatchOnly] = useState(false);
   const [showZeroVeloOnly, setShowZeroVeloOnly] = useState(false);
   const [showNo30dVeloOnly, setShowNo30dVeloOnly] = useState(false);
-  const [stravaByRider, setStravaByRider] = useState<Record<string, StravaRiderCache>>({});
+  const [stravaRaw, setStravaByRider] = useState<Record<string, StravaRiderCache>>({});
+  // Loaded Strava curves are corrected with the *current* outdoor→indoor correction every
+  // render, so a newly applied config (or a load finishing after it) never keeps an old
+  // correction. Entries without `curves` (typed by hand) are used as they are.
+  const stravaByRider = useMemo<Record<string, StravaRiderCache>>(() => {
+    const out: Record<string, StravaRiderCache> = {};
+    for (const [id, entry] of Object.entries(stravaRaw)) {
+      out[id] = entry.curves && entry.weightKg
+        ? { ...entry, power: powerFromStravaCurve(correctedStravaCurve(entry.curves, stravaPowerScale), entry.weightKg, entry.power) }
+        : entry;
+    }
+    return out;
+  }, [stravaRaw, stravaPowerScale]);
   const [loadingStravaIds, setLoadingStravaIds] = useState<Record<string, true>>({});
   const [bulkStravaProgress, setBulkStravaProgress] = useState<{ done: number; total: number } | null>(null);
   const [shared, setShared] = useState<SharedInputs>(EMPTY_SHARED);
@@ -238,7 +229,7 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
       setStravaByRider(prev => ({
         ...prev,
         [zwiftId]: {
-          power: powerFromStravaCurve(correctedStravaCurve(curves, stravaPowerScale), weightKg, prev[zwiftId]?.power),
+          power: prev[zwiftId]?.power ?? EMPTY_POWER, // fallback only; corrected from `curves` at render
           activityCount: typeof data.activityCount === 'number' ? data.activityCount : null,
           curves,
           weightKg,
@@ -411,7 +402,8 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
     setStravaByRider(prev => ({
       ...prev,
       [selectedZwiftId]: {
-        power: { ...(prev[selectedZwiftId]?.power ?? EMPTY_POWER), [field]: next },
+        // Start from the values on screen (already corrected); a hand edit drops `curves`.
+        power: { ...(stravaByRider[selectedZwiftId]?.power ?? prev[selectedZwiftId]?.power ?? EMPTY_POWER), [field]: next },
         activityCount: prev[selectedZwiftId]?.activityCount ?? null,
       },
     }));
