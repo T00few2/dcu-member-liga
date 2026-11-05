@@ -13,6 +13,10 @@ interface ConnectionsFormProps {
     handleDisconnectStrava: () => void;
     handleConnectZwift: () => void;
     handleDisconnectZwift: () => void;
+    /** Linked Discord username, or null. The Discord section shows when the handlers are given. */
+    discordUsername?: string | null;
+    handleConnectDiscord?: () => void;
+    handleDisconnectDiscord?: () => void;
 }
 
 function joinDanishNames(names: string[]): string {
@@ -31,6 +35,9 @@ export default function ConnectionsForm({
     handleDisconnectStrava,
     handleConnectZwift,
     handleDisconnectZwift,
+    discordUsername = null,
+    handleConnectDiscord,
+    handleDisconnectDiscord,
 }: ConnectionsFormProps) {
     const [zwiftLogoFailed, setZwiftLogoFailed] = useState(false);
     const verificationLabel = joinDanishNames(verificationCategoryNames);
@@ -144,6 +151,35 @@ export default function ConnectionsForm({
                     )}
                 </div>
             </div>
+
+            {handleConnectDiscord && handleDisconnectDiscord && (
+                <div>
+                    <h3 className="text-lg font-semibold mb-3 text-card-foreground">Discord (valgfrit)</h3>
+                    <div className={`p-4 border rounded-lg transition-colors ${discordUsername ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' : 'bg-card border-border'}`}>
+                        <p className="mb-4 text-sm text-muted-foreground">
+                            Forbind din Discord-konto, så vores hjælpekanal kan svare dig om din division. Vi gemmer kun dit Discord-brugernavn.
+                        </p>
+                        {discordUsername ? (
+                            <div className="flex items-center justify-between bg-white dark:bg-black/20 p-4 rounded border border-border">
+                                <div className="flex items-center gap-2 text-green-600 dark:text-green-400 font-medium">
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+                                    Forbundet som @{discordUsername}
+                                </div>
+                                <button onClick={handleDisconnectDiscord} className="text-sm text-red-600 hover:text-red-700 hover:underline">
+                                    Frakobl
+                                </button>
+                            </div>
+                        ) : (
+                            <button
+                                onClick={handleConnectDiscord}
+                                className="px-4 py-2 rounded-lg bg-[#5865F2] text-white hover:brightness-95 font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5865F2] focus-visible:ring-offset-2"
+                            >
+                                Forbind Discord
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

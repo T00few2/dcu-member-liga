@@ -45,6 +45,7 @@ function RegisterContent() {
         trainerRequiresDualRecording,
         step0MissingItems, step1MissingItems, step2MissingItems,
         handleConnectStrava, handleDisconnectStrava, handleConnectZwift, handleDisconnectZwift, handleRequestTrainer, saveData,
+        discordUsername, handleConnectDiscord, handleDisconnectDiscord,
         clubKit, dropLevel,
         zwiftId,
     } = useRegistration();
@@ -197,6 +198,9 @@ function RegisterContent() {
                                 handleDisconnectStrava={handleDisconnectStrava}
                                 handleConnectZwift={handleConnectZwift}
                                 handleDisconnectZwift={handleDisconnectZwift}
+                                discordUsername={discordUsername}
+                                handleConnectDiscord={handleConnectDiscord}
+                                handleDisconnectDiscord={handleDisconnectDiscord}
                             />
                         )}
                         {activeTab === 'agreements' && (
@@ -251,6 +255,9 @@ function RegisterContent() {
                                     handleDisconnectStrava={handleDisconnectStrava}
                                     handleConnectZwift={handleConnectZwift}
                                     handleDisconnectZwift={handleDisconnectZwift}
+                                    discordUsername={discordUsername}
+                                    handleConnectDiscord={handleConnectDiscord}
+                                    handleDisconnectDiscord={handleDisconnectDiscord}
                                 />
                             </div>
                         )}

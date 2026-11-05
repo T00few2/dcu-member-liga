@@ -31,6 +31,10 @@ export interface DivisionProposal {
   decidedBy?: string;
   decisionNote?: string | null;
   appliedCategory?: string;
+  /** "appeal" when a rider asked to move (Discord); "agent" for the agent's own review. */
+  origin?: 'agent' | 'appeal';
+  riderStatement?: string;
+  requestedCategory?: string | null;
   evidence?: {
     divisions?: string[];
     zwiftActivityCount?: number | null;
@@ -49,6 +53,8 @@ export interface DivisionProposal {
 
 interface AgentStatus {
   enabled: boolean;
+  /** Discord replies go out without an admin's approval. */
+  autoReply?: boolean;
   queued: number;
   waiting: number;
   pending: number;
@@ -67,6 +73,7 @@ const FLAG_TEXT: Record<string, string> = {
   strava_zwift_disagree: 'Strava and Zwift disagree',
   no_power_data: 'no power data',
   assessment_disagrees: 'Claude differs from the predictor',
+  appeal_not_supported: 'the numbers do not support the request',
 };
 
 function stravaRides(s: { activityCount?: number; indoorCount?: number | null; outdoorCount?: number | null; days?: number }) {
@@ -123,6 +130,7 @@ function ProposalCard({
           <span className="font-semibold text-foreground">{proposal.name || proposal.zwiftId}</span>
           <span className="text-xs text-muted-foreground"> · {proposal.zwiftId}</span>
           {proposal.locked && <span className="ml-2 text-xs rounded bg-amber-100 text-amber-800 px-1.5 py-0.5">locked</span>}
+          {proposal.origin === 'appeal' && <span className="ml-2 text-xs rounded bg-indigo-100 text-indigo-800 px-1.5 py-0.5">appeal</span>}
         </div>
         <span className="text-xs text-muted-foreground">{when(proposal.createdAt)}</span>
       </div>
@@ -152,6 +160,17 @@ function ProposalCard({
           {ev.weightKg ? ` · ${ev.weightKg} kg` : ''}
         </li>
       </ul>
+      {proposal.origin === 'appeal' && (
+        <blockquote className="text-sm border-l-4 border-indigo-300 pl-3">
+          <span className="text-muted-foreground">
+            Rider asks{proposal.requestedCategory ? ` for ${proposal.requestedCategory}` : ''}:
+          </span>{' '}
+          “{proposal.riderStatement || '—'}”
+          {proposal.suggestedCategory && (
+            <span className="block text-xs text-muted-foreground">The predictor suggests {proposal.suggestedCategory}.</span>
+          )}
+        </blockquote>
+      )}
       {proposal.adminRationale && <p className="text-sm">{proposal.adminRationale}</p>}
       {proposal.riderExplanation && (
         <details className="text-sm">
@@ -277,6 +296,18 @@ export default function DivisionAgent({ user }: { user: User | null }) {
     }
   }
 
+  async function setAutoReply(value: boolean) {
+    if (!user) return;
+    setError('');
+    try {
+      await authed(user, '/admin/division-agent/settings', { method: 'POST', body: JSON.stringify({ autoReply: value }) });
+      setInfo(value ? 'Discord replies now go out without approval.' : 'Discord replies now wait for your approval.');
+      void queryClient.invalidateQueries({ queryKey: ['division-agent', 'status'] });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not save the setting');
+    }
+  }
+
   async function scan() {
     if (!user || scanning) return;
     setError('');
@@ -325,6 +356,17 @@ export default function DivisionAgent({ user }: { user: User | null }) {
         >
           {scanning ? 'Scanning…' : 'Scan riders now'}
         </button>
+        {status && (
+          <label className="flex items-center gap-2" title="Discord help channel: send the agent's answers to riders without waiting for an admin">
+            <input
+              type="checkbox"
+              checked={!!status.autoReply}
+              onChange={e => void setAutoReply(e.target.checked)}
+              disabled={!user}
+            />
+            Answer riders on Discord without approval
+          </label>
+        )}
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
       {info && <p className="text-sm text-green-700">{info}</p>}

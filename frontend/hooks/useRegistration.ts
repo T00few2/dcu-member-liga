@@ -15,6 +15,7 @@ export function useRegistration() {
     const searchParams = useSearchParams();
     const stravaStatusParam = searchParams.get('strava');
     const zwiftStatusParam = searchParams.get('zwift');
+    const discordStatusParam = searchParams.get('discord');
 
     // User Data
     const [name, setName] = useState('');
@@ -23,6 +24,8 @@ export function useRegistration() {
     const [trainer, setTrainer] = useState('');
     const [stravaConnected, setStravaConnected] = useState(false);
     const [zwiftConnected, setZwiftConnected] = useState(false);
+    // Linked Discord username (null when not linked); used by the help-channel bot.
+    const [discordUsername, setDiscordUsername] = useState<string | null>(null);
     const [acceptedCoC, setAcceptedCoC] = useState(false);
     const [acceptedDataPolicy, setAcceptedDataPolicy] = useState(false);
     const [acceptedPublicResults, setAcceptedPublicResults] = useState(false);
@@ -121,6 +124,7 @@ export function useRegistration() {
                         setTrainer(data.trainer || '');
                         setStravaConnected(data.stravaConnected || false);
                         setZwiftConnected(data.zwiftConnected || false);
+                        setDiscordUsername(data.discordUsername ?? null);
                         setAcceptedCoC(data.acceptedCoC || false);
                         setAcceptedDataPolicy(!!data.acceptedDataPolicy && data.dataPolicyVersion === data.requiredDataPolicyVersion);
                         setAcceptedPublicResults(!!data.acceptedPublicResults && data.publicResultsConsentVersion === data.requiredPublicResultsConsentVersion);
@@ -178,7 +182,46 @@ export function useRegistration() {
         }
     }, [zwiftStatusParam]);
 
+    useEffect(() => {
+        if (!discordStatusParam) return;
+        setActiveTab('connections');
+        if (discordStatusParam === 'connected') setMessage('Discord forbundet!');
+        else if (discordStatusParam === 'taken') setError('Den Discord-konto er allerede forbundet til en anden rytter.');
+        else if (discordStatusParam === 'cancelled') setError('Discord-forbindelsen blev afbrudt.');
+    }, [discordStatusParam]);
+
     // --- Actions ---
+
+    const handleConnectDiscord = async () => {
+        try {
+            const token = await user?.getIdToken();
+            const res = await fetch(`${API_URL}/discord/login`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({}),
+            });
+            const data = await res.json();
+            if (data.url) window.location.href = data.url;
+            else throw new Error(data.message || 'Kunne ikke starte Discord-forbindelsen');
+        } catch (e: any) {
+            setError(e.message);
+        }
+    };
+
+    const handleDisconnectDiscord = async () => {
+        try {
+            const token = await user?.getIdToken();
+            const res = await fetch(`${API_URL}/discord/unlink`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+            });
+            if (!res.ok) throw new Error('Kunne ikke frakoble Discord');
+            setDiscordUsername(null);
+            showToast('Discord frakoblet', 'success');
+        } catch (e: any) {
+            setError(e.message);
+        }
+    };
 
     const handleConnectStrava = async () => {
         localStorage.setItem('temp_reg_name', name);
@@ -372,6 +415,9 @@ export function useRegistration() {
         // Actions
         handleConnectStrava,
         handleDisconnectStrava,
+        discordUsername,
+        handleConnectDiscord,
+        handleDisconnectDiscord,
         handleConnectZwift,
         handleDisconnectZwift,
         handleRequestTrainer,

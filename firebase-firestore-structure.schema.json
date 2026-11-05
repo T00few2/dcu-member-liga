@@ -184,14 +184,28 @@
           "zwiftId": { "type": "string" },
           "name": { "type": "string", "description": "For the admin page only; never sent to Claude" },
           "status": { "type": "string", "enum": ["pending", "approved", "edited", "rejected", "superseded"] },
-          "reasons": { "type": "array", "items": { "type": "string", "enum": ["no_velo", "few_rides"] } },
+          "reasons": { "type": "array", "items": { "type": "string", "enum": ["no_velo", "few_rides", "appeal"] } },
+          "origin": { "type": "string", "enum": ["agent", "appeal"], "description": "appeal = a rider asked to move (Discord); always proposed, whatever the numbers say" },
+          "riderStatement": { "type": "string", "description": "Appeals: the rider's reason in their own words" },
+          "requestedCategory": { "type": ["string", "null"], "description": "Appeals: the division the rider asked for" },
+          "discord": {
+            "type": "object",
+            "description": "Bot bookkeeping: rider thread, admin-channel post, and what has been posted or delivered",
+            "additionalProperties": false,
+            "properties": {
+              "threadId": { "type": "string" },
+              "adminMessageId": { "type": "string" },
+              "adminUpdated": { "type": "boolean" },
+              "riderNotified": { "type": "boolean" }
+            }
+          },
           "currentCategory": { "type": ["string", "null"] },
           "proposedCategory": { "type": ["string", "null"], "description": "null = not enough data; an admin places the rider by hand" },
           "suggestedCategory": { "type": ["string", "null"], "description": "Deterministic suggestion from the vELO predictor" },
           "predictedVelo": { "type": ["number", "null"] },
           "source": { "type": "string", "enum": ["strava", "zwift", "velo", "insufficient_data"] },
           "confidence": { "type": "string", "enum": ["low", "medium", "high"] },
-          "flags": { "type": "array", "items": { "type": "string" }, "description": "few_strava_rides, implausible_wkg, no_weight, strava_zwift_disagree, no_power_data, assessment_disagrees" },
+          "flags": { "type": "array", "items": { "type": "string" }, "description": "few_strava_rides, implausible_wkg, no_weight, strava_zwift_disagree, no_power_data, assessment_disagrees, appeal_not_supported" },
           "evidence": { "type": "object", "additionalProperties": true, "description": "Anonymized evidence (ratings, ride counts, Zwift/Strava predictions and inputs, flags, division list); no names or IDs" },
           "adminRationale": { "type": "string" },
           "riderExplanation": { "type": "string", "description": "Danish text for the rider" },
@@ -207,6 +221,78 @@
           "decisionNote": { "type": ["string", "null"] },
           "appliedCategory": { "type": "string" },
           "transferId": { "type": "string" }
+        }
+      }
+    },
+    "division_reply_drafts": {
+      "type": "array",
+      "description": "Admin-only. Discord help-channel answers waiting for an admin's Send / Edit / Reject (autoReply off).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "_id": { "type": "string" },
+          "id": { "type": "string" },
+          "threadId": { "type": "string" },
+          "zwiftId": { "type": "string" },
+          "name": { "type": "string", "description": "For the admin channel only; never sent to Claude" },
+          "discordUserId": { "type": "string" },
+          "question": { "type": "string" },
+          "draft": { "type": "string" },
+          "proposalId": { "type": ["string", "null"], "description": "Appeal filed in the same exchange" },
+          "status": { "type": "string", "enum": ["pending", "sent", "edited", "rejected"] },
+          "finalText": { "type": "string" },
+          "decidedBy": { "type": "string" },
+          "decidedAt": { "type": "string", "format": "date-time" },
+          "model": { "type": ["string", "null"] },
+          "usage": { "type": ["object", "null"], "additionalProperties": true },
+          "adminMessageId": { "type": "string" },
+          "adminUpdated": { "type": "boolean" },
+          "delivered": { "type": "boolean" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "division_conversations": {
+      "type": "array",
+      "description": "Admin-only. Log of Discord help threads (doc id = thread id), last 60 messages.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "_id": { "type": "string" },
+          "threadId": { "type": "string" },
+          "zwiftId": { "type": ["string", "null"] },
+          "discordUserId": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "messages": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
+        }
+      }
+    },
+    "division_chat_limits": {
+      "type": "array",
+      "description": "Admin-only. Messages per Discord user in the current hour (doc id = Discord user id).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "_id": { "type": "string" },
+          "hour": { "type": "string", "description": "UTC hour, e.g. 2026-11-05T09" },
+          "count": { "type": "integer" }
+        }
+      }
+    },
+    "discord_oauth_states": {
+      "type": "array",
+      "description": "Short-lived (10 min) state for Discord account linking (doc id = state).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "_id": { "type": "string" },
+          "uid": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" }
         }
       }
     },
@@ -531,7 +617,9 @@
             "tuneModel": { "type": "string", "default": "claude-opus-5-5", "description": "Claude model for predictor sandbox research" },
             "enabled": { "type": "boolean", "default": true, "description": "false stops the division agent (no scans, no reviews)" },
             "assessModel": { "type": "string", "default": "claude-haiku-5-5", "description": "Claude model that writes division proposal texts" },
-            "maxPerRun": { "type": "integer", "default": 8, "description": "Riders reviewed per predictor-worker call" }
+            "maxPerRun": { "type": "integer", "default": 8, "description": "Riders reviewed per predictor-worker call" },
+            "chatModel": { "type": "string", "default": "claude-haiku-5-5", "description": "Claude model that answers riders in the Discord help channel" },
+            "autoReply": { "type": "boolean", "default": false, "description": "true = Discord answers go to riders without an admin's approval" }
           }
         },
         "ligaCategories": {
@@ -1734,6 +1822,16 @@
                 "athlete_id": {
                   "type": "integer"
                 }
+              }
+            },
+            "discord": {
+              "type": "object",
+              "description": "Linked Discord account (OAuth identify) for the help-channel bot. Only the id and username are stored; no tokens.",
+              "additionalProperties": false,
+              "properties": {
+                "userId": { "type": "string" },
+                "username": { "type": "string" },
+                "linkedAt": { "type": "string", "format": "date-time" }
               }
             },
             "zwift": {
