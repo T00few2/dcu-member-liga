@@ -895,3 +895,7 @@ def get_clubs():
         return jsonify({'clubs': clubs}), 200
     except Exception as e:
         return jsonify({'message': f'Failed to fetch clubs: {str(e)}'}), 500
+
+
+# Sub-modules that add routes to integration_bp (imported last: they import integration_bp).
+from routes import bot_routes as _bot_routes, discord_routes as _discord_routes  # noqa: E402, F401

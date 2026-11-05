@@ -26,6 +26,13 @@ ZWIFT_MIGRATION_MODE = os.getenv('ZWIFT_MIGRATION_MODE', 'official_only')
 
 SCHEDULER_SECRET = os.getenv('SCHEDULER_SECRET')
 
+# Discord: account linking (OAuth "identify") and the help-channel bot. Optional: the
+# rider chat and Discord linking are unavailable until these are configured.
+DISCORD_CLIENT_ID = os.getenv('DISCORD_CLIENT_ID')
+DISCORD_CLIENT_SECRET = os.getenv('DISCORD_CLIENT_SECRET')
+DISCORD_REDIRECT_URI = os.getenv('DISCORD_REDIRECT_URI', f'{BACKEND_URL}/discord/callback')
+BOT_SHARED_SECRET = os.getenv('BOT_SHARED_SECRET')
+
 # Zoho SMTP (admin email sending)
 ZOHO_SMTP_HOST = os.getenv('ZOHO_SMTP_HOST', 'smtp.zoho.eu')
 ZOHO_SMTP_PORT = int(os.getenv('ZOHO_SMTP_PORT', '587'))
