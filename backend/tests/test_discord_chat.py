@@ -16,6 +16,7 @@ from authz import AuthzError  # noqa: E402
 from services import discord_link  # noqa: E402
 from services import predictor_service as ps  # noqa: E402
 from services.division_agent import chat, proposals, runner  # noqa: E402
+from services.division_agent import league_tools as lt  # noqa: E402
 from tests.test_admin_predictor_routes import FakeSnap  # noqa: E402
 from tests.test_division_agent import CATS, MODEL, TRAINING, _target  # noqa: E402
 
@@ -300,6 +301,7 @@ def test_a_request_to_move_always_becomes_an_appeal(chat_db):
     db, target = chat_db
     claude = FakeClaude([
         _tool("file_appeal", {"statement": "My power meter reads high outdoors", "requestedCategory": "Bronze"}),
+        _reply("(the appeal's own assessment call; unparseable, so templates are used)"),
         _reply("Jeg har sendt det til admins."),
     ])
     out = chat.ask(db, "d-1", "th7", [{"author": "rider", "text": "Kan jeg komme ned i Bronze?"}],
@@ -312,14 +314,17 @@ def test_a_request_to_move_always_becomes_an_appeal(chat_db):
     assert db.store[f"{chat.DRAFTS}/{out['draftId']}"]["proposalId"] == out["proposalId"]
 
 
-def test_a_failed_claude_call_still_leaves_a_draft_for_the_admins(chat_db):
+def test_a_failed_claude_call_passes_the_question_to_the_admins(chat_db):
     db, _ = chat_db
 
     class Broken:
         messages = SimpleNamespace(create=MagicMock(side_effect=RuntimeError("down")))
 
-    out = chat.ask(db, "d-1", "th1", [{"author": "rider", "text": "?"}], client_factory=lambda: Broken())
-    assert db.store[f"{chat.DRAFTS}/{out['draftId']}"]["draft"] == chat.FALLBACK_DRAFT
+    out = chat.ask(db, "d-1", "th1", [{"author": "rider", "text": "Hvornår er næste løb?"}],
+                   client_factory=lambda: Broken())
+    assert out == {"reply": chat.FALLBACK_REPLY, "sendNow": True, "proposalId": None}
+    [item] = [v for k, v in db.store.items() if k.startswith(f"{lt.UNANSWERED}/")]
+    assert item["question"] == "Hvornår er næste løb?" and item["status"] == "open" and item["threadId"] == "th1"
 
 
 def test_riders_are_rate_limited(chat_db):
@@ -351,13 +356,19 @@ def test_bot_api_needs_the_token(client):
 
 def test_items_are_posted_and_delivered_once(client):
     http, db, target = client
-    asked = http.post("/bot/ask", headers=H, json={
-        "discordUserId": "d-1", "threadId": "th1", "messages": [{"author": "rider", "text": "?"}]}).get_json()
+    # Without a model reply the question goes to the admins as an unanswered question.
+    unanswered = http.post("/bot/ask", headers=H, json={
+        "discordUserId": "d-1", "threadId": "th0", "messages": [{"author": "rider", "text": "?"}]}).get_json()
+    assert unanswered["reply"] == chat.FALLBACK_REPLY
+    [u_id] = [v["id"] for k, v in db.store.items() if k.startswith(f"{lt.UNANSWERED}/")]
+    asked = chat.ask(db, "d-1", "th1", [{"author": "rider", "text": "Hvorfor Gold?"}],
+                     client_factory=lambda: FakeClaude([_tool("explain_my_division"), _reply("Fordi...")]))
     proposal = runner.file_appeal(db, target["zwiftId"], "please", None, thread_id="th1",
                                   client_factory=lambda: None)
 
     items = http.get("/bot/pending", headers=H).get_json()["items"]
-    assert {(i["kind"], i["id"]) for i in items} == {("draft", asked["draftId"]), ("proposal", proposal["id"])}
+    assert {(i["kind"], i["id"]) for i in items} == {("draft", asked["draftId"]), ("proposal", proposal["id"]),
+                                                     ("unanswered", u_id)}
     for i in items:
         assert http.post("/bot/ack", headers=H, json={"kind": i["kind"], "id": i["id"], "messageId": "m1"}).status_code == 200
     assert http.get("/bot/pending", headers=H).get_json()["items"] == []
@@ -379,6 +390,12 @@ def test_items_are_posted_and_delivered_once(client):
     assert http.get("/bot/pending", headers=H).get_json()["items"] == []
     assert http.post(f"/bot/replies/{asked['draftId']}/decision", headers=H,
                      json={"action": "send"}).status_code == 400  # already handled
+
+    # Solved from Discord: the post was updated by the bot itself, so nothing is left to sync.
+    res = http.post(f"/bot/unanswered/{u_id}/resolve", headers=H, json={"discordUser": "admin"})
+    assert res.status_code == 200 and res.get_json()["unanswered"]["status"] == "resolved"
+    assert http.get("/bot/pending", headers=H).get_json()["items"] == []
+    assert http.post("/bot/unanswered/missing/resolve", headers=H, json={}).status_code == 404
 
 
 def test_ack_rejects_unknown_kinds(client):

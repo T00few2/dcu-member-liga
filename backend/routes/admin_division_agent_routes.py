@@ -1,4 +1,4 @@
-"""Admin routes for the division agent: proposals, decisions, scan and status."""
+"""Admin routes for the division agent: proposals, decisions, scan, status and the help bot's unanswered questions."""
 from __future__ import annotations
 
 import logging
@@ -10,6 +10,7 @@ from extensions import db, strava_service
 from routes.admin import admin_bp
 from services import predictor_service as ps
 from services.division_agent import evidence, proposals, runner
+from services.division_agent import league_tools as lt
 from services.dual_recording.strava import _compute_strava_power_curve
 
 logger = logging.getLogger(__name__)
@@ -140,3 +141,38 @@ def division_agent_assess(zwift_id: str):
     except Exception as e:
         logger.error("division_agent_assess error: %s", e)
         return jsonify({"message": str(e)}), 500
+
+
+@admin_bp.route("/admin/division-agent/unanswered", methods=["GET"])
+def division_agent_unanswered():
+    """Questions the Discord help bot could not answer: `?status=open` (default) or `?status=resolved`."""
+    _, err = _admin()
+    if err:
+        return err
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+    status = "resolved" if request.args.get("status") == "resolved" else "open"
+    try:
+        return jsonify({"items": lt.list_unanswered(db, status=status)}), 200
+    except Exception as e:
+        logger.error("division_agent_unanswered error: %s", e)
+        return jsonify({"message": "Could not load the questions"}), 500
+
+
+@admin_bp.route("/admin/division-agent/unanswered/<item_id>/resolve", methods=["POST"])
+def division_agent_unanswered_resolve(item_id: str):
+    decoded, err = _admin()
+    if err:
+        return err
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+    body = request.get_json(silent=True) or {}
+    try:
+        item = lt.resolve_unanswered(db, item_id, resolved_by=_who(decoded),
+                                     note=body.get("note") if isinstance(body.get("note"), str) else None)
+        return jsonify({"item": item}), 200
+    except LookupError:
+        return jsonify({"message": "Not found"}), 404
+    except Exception as e:
+        logger.error("division_agent_unanswered_resolve error: %s", e)
+        return jsonify({"message": "Could not update the question"}), 500
