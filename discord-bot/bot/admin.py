@@ -99,22 +99,20 @@ class ProposalEditModal(discord.ui.Modal, title="Choose a division"):
 
 
 class RejectModal(discord.ui.Modal, title="Reject"):
-    def __init__(self, bot: "DcuBot", kind: str, item_id: str):
+    """Rejecting a proposal asks for an optional note (a modal needs at least one input)."""
+
+    def __init__(self, bot: "DcuBot", proposal_id: str):
         super().__init__()
-        self.bot, self.kind, self.item_id = bot, kind, item_id
+        self.bot, self.proposal_id = bot, proposal_id
         self.note = discord.ui.TextInput(label="Note (optional, kept for the admins)", required=False,
                                          max_length=500, style=discord.TextStyle.paragraph)
-        if kind == "prop":
-            self.add_item(self.note)
+        self.add_item(self.note)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
         try:
-            if self.kind == "prop":
-                await self.bot.backend.decide_proposal(self.item_id, "reject", who(interaction.user),
-                                                       note=self.note.value or None)
-            else:
-                await self.bot.backend.decide_reply(self.item_id, "reject", who(interaction.user))
+            await self.bot.backend.decide_proposal(self.proposal_id, "reject", who(interaction.user),
+                                                   note=self.note.value or None)
         except BackendError as e:
             await _fail(interaction, e.message)
             return
@@ -125,8 +123,8 @@ class DraftEditModal(discord.ui.Modal, title="Edit the reply"):
     def __init__(self, bot: "DcuBot", draft_id: str, draft_text: str):
         super().__init__()
         self.bot, self.draft_id = bot, draft_id
-        self.text = discord.ui.TextInput(label="Reply to the rider", default=draft_text[:1900],
-                                         max_length=1900, style=discord.TextStyle.paragraph)
+        self.text = discord.ui.TextInput(label="Reply to the rider", default=draft_text[:embeds.DRAFT_MAX],
+                                         max_length=embeds.DRAFT_MAX, style=discord.TextStyle.paragraph)
         self.add_item(self.text)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
@@ -145,6 +143,17 @@ def _embed_field(message: discord.Message | None, name: str) -> str:
             if field.name == name:
                 return field.value or ""
     return ""
+
+
+def _embed_description(message: discord.Message | None) -> str:
+    embeds_ = message.embeds if message else []
+    return (embeds_[0].description or "") if embeds_ else ""
+
+
+def post_divisions(message: discord.Message | None) -> list[str]:
+    """Division names listed on a proposal post (survives bot restarts)."""
+    text = _embed_field(message, embeds.DIVISIONS_FIELD)
+    return [d.strip() for d in text.split(",") if d.strip()]
 
 
 TEMPLATE = r"dcu:(?P<kind>prop|draft):(?P<action>[a-z]+):(?P<id>[0-9a-zA-Z_-]+)"
@@ -167,16 +176,17 @@ class ActionButton(discord.ui.DynamicItem[discord.ui.Button], template=TEMPLATE)
         if not is_admin(interaction.user, bot.config.admin_role_id):
             await _fail(interaction, "Only league admins can do this.")
             return
-        if self.action == "reject":
-            await interaction.response.send_modal(RejectModal(bot, self.kind, self.item_id))
+        if self.kind == "prop" and self.action == "reject":
+            await interaction.response.send_modal(RejectModal(bot, self.item_id))
             return
         if self.kind == "prop" and self.action == "edit":
-            divisions = bot.divisions.get(self.item_id) or bot.known_divisions
+            divisions = (bot.divisions.get(self.item_id) or post_divisions(interaction.message)
+                         or bot.known_divisions)
             await interaction.response.send_modal(ProposalEditModal(bot, self.item_id, divisions, None))
             return
         if self.kind == "draft" and self.action == "edit":
             await interaction.response.send_modal(
-                DraftEditModal(bot, self.item_id, _embed_field(interaction.message, "Draft answer")))
+                DraftEditModal(bot, self.item_id, _embed_description(interaction.message)))
             return
         await interaction.response.defer()
         try:
@@ -184,6 +194,9 @@ class ActionButton(discord.ui.DynamicItem[discord.ui.Button], template=TEMPLATE)
                 result = await bot.backend.decide_proposal(self.item_id, "approve", who(interaction.user))
                 await _finish(interaction, result.get("status") or "approved",
                               f"→ {result.get('appliedCategory')}" if result.get("appliedCategory") else None)
+            elif self.action == "reject":  # a rejected draft sends nothing; no note needed
+                await bot.backend.decide_reply(self.item_id, "reject", who(interaction.user))
+                await _finish(interaction, "rejected")
             else:
                 await bot.backend.decide_reply(self.item_id, "send", who(interaction.user))
                 await _finish(interaction, "sent")

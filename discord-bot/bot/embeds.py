@@ -6,6 +6,7 @@ import discord
 PENDING_COLOUR = discord.Colour.gold()
 APPEAL_COLOUR = discord.Colour.blurple()
 DONE_COLOUR = discord.Colour.dark_grey()
+DIVISIONS_FIELD = "Divisions"
 
 FLAG_TEXT = {
     "few_strava_rides": "few Strava rides",
@@ -46,6 +47,9 @@ def proposal_embed(p: dict) -> discord.Embed:
     if appeal:
         asked = f" for {p['requestedCategory']}" if p.get("requestedCategory") else ""
         embed.add_field(name=f"Rider asks{asked}", value=_cut(p.get("riderStatement") or "—", 1000), inline=False)
+    if p.get("divisions"):
+        # Read back by Edit, so the division names are known after a restart too.
+        embed.add_field(name=DIVISIONS_FIELD, value=_cut(", ".join(p["divisions"]), 1000), inline=False)
     if p.get("flags"):
         embed.add_field(name="Flags", value=_cut(", ".join(FLAG_TEXT.get(f, f) for f in p["flags"]), 1000),
                         inline=False)
@@ -59,11 +63,15 @@ def proposal_embed(p: dict) -> discord.Embed:
     return embed
 
 
+DRAFT_MAX = 4000  # a modal text input holds at most 4000 characters
+
+
 def draft_embed(d: dict) -> discord.Embed:
+    # The draft is the description (up to 4096 characters), not a field (1024), so Edit can
+    # prefill the whole answer from the post, also after a restart.
     embed = discord.Embed(title=_cut(f"Reply to {d.get('name') or d.get('zwiftId')}", 250),
-                          colour=PENDING_COLOUR)
+                          description=_cut(d.get("draft") or "—", DRAFT_MAX), colour=PENDING_COLOUR)
     embed.add_field(name="Rider wrote", value=_cut(d.get("question") or "—", 1000), inline=False)
-    embed.add_field(name="Draft answer", value=_cut(d.get("draft") or "—", 1000), inline=False)
     if d.get("proposalId"):
         embed.add_field(name="Appeal", value="An appeal was filed with this message (see its own post).",
                         inline=False)

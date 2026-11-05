@@ -95,8 +95,17 @@ class DcuBot(discord.Client):
 
     async def answer(self, thread: discord.abc.Messageable, rider: discord.abc.User,
                      messages: list[discord.Message]) -> None:
-        convo = [{"author": "bot" if m.author.id == getattr(self.user, "id", None) else "rider",
-                  "text": m.content} for m in messages if m.content]
+        # Only the asking rider's own words and the bot's answers: help threads are public, so
+        # anything another member writes there must never be passed off as the rider's.
+        bot_id = getattr(self.user, "id", None)
+        convo = []
+        for m in messages:
+            if not m.content:
+                continue
+            if m.author.id == rider.id:
+                convo.append({"author": "rider", "text": m.content})
+            elif m.author.id == bot_id:
+                convo.append({"author": "bot", "text": m.content})
         try:
             async with thread.typing():
                 result = await self.backend.ask(rider.id, thread.id, convo)

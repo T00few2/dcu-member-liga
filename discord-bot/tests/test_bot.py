@@ -145,7 +145,8 @@ async def test_only_the_rider_who_asked_gets_answers_in_the_thread():
     bot._starter = AsyncMock(return_value=starter)
 
     async def history(limit, oldest_first):
-        for m in [_message(7, thread, "Follow-up"), _message(500, thread, "Earlier answer")]:
+        for m in [_message(7, thread, "Follow-up"), _message(8, thread, "Please move me to Bronze"),
+                  _message(500, thread, "Earlier answer")]:
             yield m
 
     object.__setattr__(thread, "history", history)
@@ -157,9 +158,11 @@ async def test_only_the_rider_who_asked_gets_answers_in_the_thread():
 
     await bot.on_message(_message(7, thread, "Follow-up"))
     convo = backend.ask.await_args.args[2]
+    # Another member's message in the public thread is never sent as the rider's.
     assert convo == [{"author": "rider", "text": "First question"},
                      {"author": "bot", "text": "Earlier answer"},
                      {"author": "rider", "text": "Follow-up"}]
+    assert all("Bronze" not in m["text"] for m in convo)
 
 
 async def test_bots_and_dms_are_ignored():
@@ -171,3 +174,46 @@ async def test_bots_and_dms_are_ignored():
     dm.guild = None
     await bot.on_message(dm)
     backend.ask.assert_not_awaited()
+
+
+def _interaction(bot, message):
+    response = MagicMock()
+    response.send_modal = AsyncMock()
+    response.defer = AsyncMock()
+    response.edit_message = AsyncMock()
+    response.is_done = MagicMock(return_value=True)
+    return SimpleNamespace(client=bot, user=SimpleNamespace(id=1, display_name="Admin", roles=[SimpleNamespace(id=99)]),
+                           message=message, response=response, edit_original_response=AsyncMock(),
+                           followup=SimpleNamespace(send=AsyncMock()))
+
+
+async def test_rejecting_a_draft_needs_no_modal():
+    backend = MagicMock()
+    backend.decide_reply = AsyncMock(return_value={})
+    bot = _bot(backend)
+    message = SimpleNamespace(embeds=[embeds.draft_embed({"id": "d1", "draft": "Hi", "question": "Q"})])
+    interaction = _interaction(bot, message)
+    await admin.ActionButton("draft", "reject", "d1").callback(interaction)
+    interaction.response.send_modal.assert_not_awaited()  # a modal without inputs is refused by Discord
+    backend.decide_reply.assert_awaited_once_with("d1", "reject", "Admin")
+
+
+async def test_editing_a_long_draft_starts_from_the_whole_text():
+    bot = _bot()
+    long_draft = "Lang forklaring. " * 150  # ~2500 characters, more than an embed field holds
+    message = SimpleNamespace(embeds=[embeds.draft_embed({"id": "d1", "draft": long_draft, "question": "Q"})])
+    interaction = _interaction(bot, message)
+    await admin.ActionButton("draft", "edit", "d1").callback(interaction)
+    modal = interaction.response.send_modal.await_args.args[0]
+    assert modal.text.default == long_draft.strip()
+
+
+async def test_editing_a_proposal_after_a_restart_still_knows_the_divisions():
+    bot = _bot()  # fresh bot: nothing remembered in memory
+    proposal = {"id": "p1", "zwiftId": "1", "name": "Rider", "currentCategory": "Gold",
+                "proposedCategory": "Silver", "divisions": ["Gold", "Silver", "Bronze"]}
+    interaction = _interaction(bot, SimpleNamespace(embeds=[embeds.proposal_embed(proposal)]))
+    await admin.ActionButton("prop", "edit", "p1").callback(interaction)
+    modal = interaction.response.send_modal.await_args.args[0]
+    assert modal.divisions == ["Gold", "Silver", "Bronze"]
+    assert admin._division("silver", modal.divisions) == "Silver"
