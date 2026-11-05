@@ -17,6 +17,20 @@ describe('ConnectionsForm Discord section', () => {
     expect(connect).toHaveBeenCalled();
   });
 
+  it('shows that it is connecting while the Discord login starts', async () => {
+    let finish!: () => void;
+    const connect = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
+    render(<ConnectionsForm {...base} discordUsername={null} handleConnectDiscord={connect} handleDisconnectDiscord={vi.fn()} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Forbind Discord' }));
+    const busy = screen.getByRole('button', { name: 'Forbinder…' });
+    expect(busy).toBeDisabled();
+    await user.click(busy); // a second click does nothing
+    expect(connect).toHaveBeenCalledTimes(1);
+    finish();
+    expect(await screen.findByRole('button', { name: 'Forbind Discord' })).toBeEnabled();
+  });
+
   it('shows the linked account and unlinks it', async () => {
     const unlink = vi.fn();
     render(<ConnectionsForm {...base} discordUsername="rider" handleConnectDiscord={vi.fn()} handleDisconnectDiscord={unlink} />);

@@ -15,7 +15,7 @@ interface ConnectionsFormProps {
     handleDisconnectZwift: () => void;
     /** Linked Discord username, or null. The Discord section shows when the handlers are given. */
     discordUsername?: string | null;
-    handleConnectDiscord?: () => void;
+    handleConnectDiscord?: () => void | Promise<void>;
     handleDisconnectDiscord?: () => void;
 }
 
@@ -40,6 +40,17 @@ export default function ConnectionsForm({
     handleDisconnectDiscord,
 }: ConnectionsFormProps) {
     const [zwiftLogoFailed, setZwiftLogoFailed] = useState(false);
+    // Starting the Discord login takes a moment before the browser leaves the page; show it.
+    const [discordConnecting, setDiscordConnecting] = useState(false);
+    const connectDiscord = async () => {
+        if (!handleConnectDiscord || discordConnecting) return;
+        setDiscordConnecting(true);
+        try {
+            await handleConnectDiscord();
+        } finally {
+            setDiscordConnecting(false);
+        }
+    };
     const verificationLabel = joinDanishNames(verificationCategoryNames);
 
     return (
@@ -165,16 +176,18 @@ export default function ConnectionsForm({
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
                                     Forbundet som @{discordUsername}
                                 </div>
-                                <button onClick={handleDisconnectDiscord} className="text-sm text-red-600 hover:text-red-700 hover:underline">
+                                <button onClick={handleDisconnectDiscord} className="cursor-pointer text-sm text-red-600 hover:text-red-700 hover:underline">
                                     Frakobl
                                 </button>
                             </div>
                         ) : (
                             <button
-                                onClick={handleConnectDiscord}
-                                className="px-4 py-2 rounded-lg bg-[#5865F2] text-white hover:brightness-95 font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5865F2] focus-visible:ring-offset-2"
+                                onClick={connectDiscord}
+                                disabled={discordConnecting}
+                                aria-busy={discordConnecting}
+                                className="cursor-pointer px-4 py-2 rounded-lg bg-[#5865F2] text-white hover:brightness-95 active:scale-[0.97] transition font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5865F2] focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-70"
                             >
-                                Forbind Discord
+                                {discordConnecting ? 'Forbinder…' : 'Forbind Discord'}
                             </button>
                         )}
                     </div>
