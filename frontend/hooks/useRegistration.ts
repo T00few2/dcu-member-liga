@@ -224,11 +224,15 @@ export function useRegistration() {
                     setProfileTick((tick) => tick + 1); // a profile read that raced the link sees it now
                 }
                 showDiscordStatus(data.status || 'error');
+                // The server answered, so the state is spent: drop it (and the token) from the
+                // URL so a refresh does nothing.
+                router.replace('/register', { scroll: false });
             } catch {
-                showDiscordStatus('error');
+                // The request never reached the server (network / auth glitch): the state is
+                // still valid, so keep the URL and allow a retry (e.g. a refresh).
+                discordConfirmed.current = false;
+                setError('Discord-forbindelsen kunne ikke gennemføres. Genindlæs siden for at prøve igen.');
             }
-            // The state is spent: drop it (and the token) from the URL so a refresh does nothing.
-            router.replace('/register', { scroll: false });
         })();
     }, [discordStatusParam, discordStateParam, discordTokenParam, user, router]);
 

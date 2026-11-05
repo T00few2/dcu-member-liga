@@ -65,4 +65,11 @@ describe('useRegistration – Discord confirm', () => {
         await waitFor(() => expect(result.current.name).toBe('Draft Name'));
         expect(localStorage.getItem('temp_reg_name')).toBe('Draft Name');
     });
+
+    it('keeps the confirm URL for a retry when the request never reaches the server', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
+        const { result } = renderHook(() => useRegistration());
+        await waitFor(() => expect(result.current.error).toMatch(/Genindlæs siden/));
+        expect(replace).not.toHaveBeenCalled();
+    });
 });
