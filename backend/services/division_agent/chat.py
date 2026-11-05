@@ -45,14 +45,6 @@ FALLBACK_REPLY = ("Tak for dit spørgsmål – jeg har givet det videre til en a
                   "Thanks for your question – I have passed it to an admin, who will reply here.")
 
 
-def not_linked_reply() -> str:
-    url = f"{FRONTEND_URL}/register"
-    return ("Jeg kan ikke se, hvem du er i ligaen endnu. Forbind din Discord-konto under "
-            f"Forbindelser her: {url} – og skriv så igen. / "
-            f"I can't see who you are in the league yet. Link your Discord account under Connections here: {url} "
-            "– then write again.")
-
-
 SYSTEM_PROMPT = f"""You are the help bot of DCU E-serien, a Danish Zwift racing league, in its Discord help channel.
 You answer questions about the league (format, categories, points, rules, verification, race schedule,
 standings, results, news, data policy) and, for riders who have linked Discord in the app, about their own
@@ -403,9 +395,8 @@ def ask(
             text = ""
 
     if not text:
-        if not linked:
-            return {"reply": not_linked_reply(), "sendNow": True}
-        # No answer at all: the admins get the question in the admin channel and reply in the thread.
+        # No answer at all (linked or not): the admins get the question in the admin channel and reply
+        # in the thread.
         lt.report_unanswered(db, question=question, missing="The help bot could not answer (no model reply).",
                              thread_id=thread_id, discord_user_id=discord_user_id, zwift_id=zwift_id,
                              guild_id=guild_id, now=t)

@@ -270,10 +270,13 @@ def _tool(name, args=None):
                            usage=SimpleNamespace(input_tokens=10, output_tokens=5))
 
 
-def test_an_unlinked_user_gets_the_link(chat_db):
+def test_an_unlinked_user_without_a_model_answer_is_passed_to_the_admins(chat_db):
     db, _ = chat_db
-    out = chat.ask(db, "unknown", "th1", [{"author": "rider", "text": "hej"}], client_factory=lambda: None)
-    assert out["sendNow"] is True and "/register" in out["reply"] and "draftId" not in out
+    out = chat.ask(db, "unknown", "th1", [{"author": "rider", "text": "Hvornår er næste løb?"}],
+                   client_factory=lambda: None)
+    assert out == {"reply": chat.FALLBACK_REPLY, "sendNow": True, "proposalId": None}
+    [item] = [v for k, v in db.store.items() if k.startswith(f"{lt.UNANSWERED}/")]
+    assert item["question"] == "Hvornår er næste løb?" and item["zwiftId"] is None
 
 
 def test_the_answer_waits_as_a_draft_and_only_sees_the_asking_rider(chat_db):

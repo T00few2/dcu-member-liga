@@ -116,7 +116,7 @@ def _race_card(race_id: str, data: dict, when: datetime | None, stage_names: dic
     if sid:
         card["stageRace"] = stage_names.get(sid) or sid
         if data.get("stageIndex") is not None:
-            card["stage"] = int(data["stageIndex"]) + 1
+            card["stage"] = int(data["stageIndex"])  # already 1-based (the site shows "Etape {stageIndex}")
     return {k: v for k, v in card.items() if v not in (None, "", [])}
 
 

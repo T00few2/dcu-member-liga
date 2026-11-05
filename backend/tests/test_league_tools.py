@@ -54,7 +54,7 @@ def db():
         "races/r1": {"name": "Classic 1", "date": "2026-11-12T19:30:00", "map": "Watopia", "routeName": "Volcano",
                      "laps": 3, "totalDistance": 30.1, "eventId": "123", "eventSecret": "s3cr3t",
                      "eventConfiguration": [{"customCategory": "Gold", "startTime": "19:30", "eventId": "9"}]},
-        "races/r0": {"name": "Tour stage", "date": "2026-10-01T19:30:00", "stageRaceId": "t1", "stageIndex": 0,
+        "races/r0": {"name": "Tour stage", "date": "2026-10-01T19:30:00", "stageRaceId": "t1", "stageIndex": 1,
                      "results": {"Gold": [{"zwiftId": "2", "name": "B", "totalPoints": 10},
                                           {"zwiftId": "1", "name": "A", "totalPoints": 25, "club": "CK"}]}},
         "races/r2": {"name": "Classic 2", "date": "2026-11-26T19:30:00"},
