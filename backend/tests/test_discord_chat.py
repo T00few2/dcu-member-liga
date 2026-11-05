@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -327,12 +328,18 @@ def test_a_failed_claude_call_passes_the_question_to_the_admins(chat_db):
     assert item["question"] == "Hvornår er næste løb?" and item["status"] == "open" and item["threadId"] == "th1"
 
 
-def test_riders_are_rate_limited(chat_db):
+def test_riders_are_rate_limited_per_day(chat_db):
     db, _ = chat_db
-    for _ in range(chat.MAX_MESSAGES_PER_HOUR):
-        chat.ask(db, "d-1", "th1", [{"author": "rider", "text": "?"}], client_factory=lambda: None)
-    out = chat.ask(db, "d-1", "th1", [{"author": "rider", "text": "?"}], client_factory=lambda: None)
+    day1 = datetime(2026, 11, 5, 9, 0, tzinfo=timezone.utc)
+    for _ in range(chat.MAX_MESSAGES_PER_DAY):
+        chat.ask(db, "d-1", "th1", [{"author": "rider", "text": "?"}], client_factory=lambda: None, now=lambda: day1)
+    out = chat.ask(db, "d-1", "th1", [{"author": "rider", "text": "?"}], client_factory=lambda: None,
+                   now=lambda: day1.replace(hour=22))  # 23:00 in Copenhagen: still the same day
     assert out["reply"] == chat.RATE_LIMITED
+    next_day = day1.replace(hour=23, minute=30)  # 00:30 in Copenhagen
+    out = chat.ask(db, "d-1", "th1", [{"author": "rider", "text": "?"}], client_factory=lambda: None,
+                   now=lambda: next_day)
+    assert out["reply"] != chat.RATE_LIMITED
 
 
 def test_history_becomes_alternating_turns_starting_with_the_rider():

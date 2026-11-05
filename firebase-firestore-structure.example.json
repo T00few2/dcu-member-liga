@@ -947,7 +947,7 @@
     }
   ],
   "division_chat_limits": [
-    { "_id": "1200000000000000001", "hour": "2026-11-05T09", "count": 1 }
+    { "_id": "1200000000000000001", "day": "2026-11-05", "count": 1 }
   ],
   "discord_oauth_states": [
     {

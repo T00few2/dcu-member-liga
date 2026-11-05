@@ -304,13 +304,13 @@
     },
     "division_chat_limits": {
       "type": "array",
-      "description": "Admin-only. Messages per Discord user in the current hour (doc id = Discord user id).",
+      "description": "Admin-only. Questions per Discord user on the current Copenhagen day (doc id = Discord user id); 30 a day.",
       "items": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
           "_id": { "type": "string" },
-          "hour": { "type": "string", "description": "UTC hour, e.g. 2026-11-05T09" },
+          "day": { "type": "string", "description": "Copenhagen date, e.g. 2026-11-05" },
           "count": { "type": "integer" }
         }
       }

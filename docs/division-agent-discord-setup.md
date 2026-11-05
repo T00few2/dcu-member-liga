@@ -78,7 +78,8 @@ The next backend deploy picks them up. Riders can then link Discord under *Regis
   Conduct doc or the site text that feeds `/llms.txt`), so the bot can answer it next time.
 - Proposals made by the agent itself also appear in **#division-admin**. Deciding on the admin page instead updates
   the Discord post.
-- Users may send 10 messages per hour.
+- Each Discord user may send 30 questions per day (Copenhagen time); after that the bot says to try again
+  tomorrow, and an admin can still answer by hand.
 
 ## Test checklist (test server)
 

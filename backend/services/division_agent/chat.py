@@ -32,14 +32,15 @@ logger = logging.getLogger(__name__)
 DRAFTS = "division_reply_drafts"
 CONVERSATIONS = "division_conversations"
 LIMITS = "division_chat_limits"
-MAX_MESSAGES_PER_HOUR = 10
+MAX_MESSAGES_PER_DAY = 30  # per Discord user, per Copenhagen calendar day
 MAX_TOOL_TURNS = 5
 HISTORY_LIMIT = 20
 LOG_LIMIT = 60
 
 HOLDING = "Tak for dit spørgsmål – en admin svarer dig her snarest. / Thanks – an admin will reply here soon."
-RATE_LIMITED = ("Du har skrevet mange beskeder den sidste time – prøv igen lidt senere. / "
-                "You have sent many messages this hour – please try again a little later.")
+RATE_LIMITED = ("Du har nået dagens grænse for spørgsmål til botten – prøv igen i morgen. En admin kan stadig "
+                "svare dig her. / You have reached today's limit of questions to the bot – please try again "
+                "tomorrow. An admin can still reply here.")
 FALLBACK_REPLY = ("Tak for dit spørgsmål – jeg har givet det videre til en admin, som svarer dig her. / "
                   "Thanks for your question – I have passed it to an admin, who will reply here.")
 
@@ -209,13 +210,13 @@ def explain(evidence: dict, categories: Any) -> dict:
 
 def _within_rate_limit(db: Any, discord_user_id: str, now: datetime) -> bool:
     ref = db.collection(LIMITS).document(str(discord_user_id))
-    hour = now.strftime("%Y-%m-%dT%H")
+    day = now.astimezone(lt._CPH).strftime("%Y-%m-%d")
     snap = ref.get()
     data = (snap.to_dict() or {}) if getattr(snap, "exists", False) else {}
-    count = int(data.get("count") or 0) if data.get("hour") == hour else 0
-    if count >= MAX_MESSAGES_PER_HOUR:
+    count = int(data.get("count") or 0) if data.get("day") == day else 0
+    if count >= MAX_MESSAGES_PER_DAY:
         return False
-    ref.set({"hour": hour, "count": count + 1})
+    ref.set({"day": day, "count": count + 1})
     return True
 
 
