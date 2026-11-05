@@ -1,6 +1,7 @@
 """Admin routes for the division agent: proposals, decisions, scan, status and the help bot's unanswered questions."""
 from __future__ import annotations
 
+import json
 import logging
 
 from flask import jsonify, request
@@ -77,7 +78,9 @@ def division_agent_scan():
     if not db:
         return jsonify({"error": "DB not available"}), 500
     try:
-        return jsonify({"queued": runner.scan(db)}), 200
+        stats: dict = {}
+        queued = runner.scan(db, stats=stats)
+        return jsonify({"queued": queued, "closed": stats.get("closed", 0)}), 200
     except Exception as e:
         logger.error("division_agent_scan error: %s", e)
         return jsonify({"message": str(e)}), 500
@@ -99,22 +102,63 @@ def division_agent_status():
 
 @admin_bp.route("/admin/division-agent/settings", methods=["POST"])
 def division_agent_settings_update():
-    """Body `{autoReply: bool}`: whether Discord replies go out without an admin's approval."""
+    """Body with any of: `autoReply` (bool: division answers on Discord without approval),
+    `reviewFilter` (which riders the agent checks) and `minZwiftRides` (1-200)."""
     _, err = _admin()
     if err:
         return err
     if not db:
         return jsonify({"error": "DB not available"}), 500
     body = request.get_json(silent=True) or {}
-    if not isinstance(body.get("autoReply"), bool):
-        return jsonify({"message": "autoReply must be true or false"}), 400
+    update: dict = {}
+    if "autoReply" in body:
+        if not isinstance(body["autoReply"], bool):
+            return jsonify({"message": "autoReply must be true or false"}), 400
+        update["autoReply"] = body["autoReply"]
+    if "reviewFilter" in body:
+        if not isinstance(body["reviewFilter"], dict):
+            return jsonify({"message": "reviewFilter must be an object"}), 400
+        update["reviewFilter"] = ps.triage_filter(body["reviewFilter"])
+    if "minZwiftRides" in body:
+        rides = body["minZwiftRides"]
+        if not isinstance(rides, int) or isinstance(rides, bool) or not 1 <= rides <= 200:
+            return jsonify({"message": "minZwiftRides must be a whole number from 1 to 200"}), 400
+        update["minZwiftRides"] = rides
+    if not update:
+        return jsonify({"message": "Nothing to save"}), 400
     try:
-        db.collection("league").document("settings").set(
-            {"divisionAgent": {"autoReply": body["autoReply"]}}, merge=True)
-        return jsonify({"autoReply": ps.division_agent_settings(db)["autoReply"]}), 200
+        db.collection("league").document("settings").set({"divisionAgent": update}, merge=True)
+        ps.clear_caches()
+        settings = ps.division_agent_settings(db)
+        return jsonify({k: settings[k] for k in ("autoReply", "reviewFilter", "minZwiftRides")}), 200
     except Exception as e:
         logger.error("division_agent_settings_update error: %s", e)
         return jsonify({"message": str(e)}), 500
+
+
+@admin_bp.route("/admin/division-agent/filter-preview", methods=["GET"])
+def division_agent_filter_preview():
+    """How many riders a filter would select (`?filter=<json>&minZwiftRides=<n>`); saves nothing."""
+    _, err = _admin()
+    if err:
+        return err
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+    try:
+        raw = json.loads(request.args.get("filter") or "{}")
+    except ValueError:
+        return jsonify({"message": "filter must be JSON"}), 400
+    settings = dict(ps.division_agent_settings(db))
+    settings["reviewFilter"] = ps.triage_filter(raw)
+    rides = request.args.get("minZwiftRides", type=int)
+    if rides is not None and 1 <= rides <= 200:
+        settings["minZwiftRides"] = rides
+    try:
+        rows = ps.cached_participants(db)
+        return jsonify(runner.filter_preview(rows, settings, proposals.all_proposals(db))), 200
+    except Exception as e:
+        logger.error("division_agent_filter_preview error: %s", e)
+        return jsonify({"message": "Could not count riders"}), 500
 
 
 @admin_bp.route("/admin/division-agent/assess/<zwift_id>", methods=["POST"])

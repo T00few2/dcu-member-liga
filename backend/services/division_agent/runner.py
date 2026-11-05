@@ -18,29 +18,54 @@ WAIT_FOR_STRAVA_MINUTES = 15
 MAX_ATTEMPTS = 20
 
 
-def scan(db: Any, *, participants: list[dict] | None = None) -> int:
-    """Queue every rider who needs a look and has no open or already-decided proposal."""
+def scan(db: Any, *, participants: list[dict] | None = None, stats: dict | None = None) -> int:
+    """Queue every rider the review filter selects. Pending agent proposals of riders outside
+    the filter are closed ("Outside the review filter"); appeals are never touched.
+    Returns how many riders were queued; `stats`, if given, also gets `closed`."""
     settings = ps.division_agent_settings(db)
     if not settings["enabled"]:
         return 0
     rows = participants if participants is not None else ps.load_participants(db)
     existing = proposals.all_proposals(db)
     queued_ids = {str(e.get("zwiftId")) for e in queue.entries(db)}
-    count = 0
+    count = closed = 0
     for row in rows:
         zid = str(row.get("zwiftId") or "")
-        if not zid or zid in queued_ids:
+        if not zid:
             continue
-        has_pending = any(p.get("status") == "pending" and not proposals.is_appeal(p)
-                          for p in proposals.for_rider(existing, zid))
-        # Riders with a pending proposal are re-checked too: new data refreshes the card, and
-        # a rider who no longer needs a change gets the stale card superseded. Unchanged
-        # evidence is "handled" without a Claude call or a Strava fetch.
-        if not triage.needs_review(row, settings) and not has_pending:
+        if not triage.needs_review(row, settings):
+            closed += proposals.supersede_pending(db, zid, existing, note=proposals.OUTSIDE_FILTER_NOTE)
             continue
+        if zid in queued_ids:
+            continue
+        # Riders with a pending proposal are re-checked too: new data refreshes the card.
+        # Unchanged evidence is "handled" without a Claude call or a Strava fetch.
         queue.enqueue(db, zid, "scan")
         count += 1
+    if stats is not None:
+        stats["closed"] = closed
     return count
+
+
+def filter_preview(rows: list[dict], settings: dict, existing: list[dict]) -> dict:
+    """Counts for the admin page while choosing a filter; writes nothing."""
+    by_reason = {r: 0 for r in triage.REASONS}
+    in_group = matching = pending_outside = 0
+    for row in rows:
+        zid = str(row.get("zwiftId") or "")
+        if not zid:
+            continue
+        m = triage.matches(row, settings)
+        in_group += 1 if m["inGroup"] else 0
+        if m["reasons"]:
+            matching += 1
+            for r in m["reasons"]:
+                by_reason[r] += 1
+        else:
+            pending_outside += sum(1 for p in proposals.for_rider(existing, zid)
+                                   if p.get("status") == "pending" and not proposals.is_appeal(p))
+    return {"total": len([r for r in rows if r.get("zwiftId")]), "inGroup": in_group, "matching": matching,
+            "byReason": by_reason, "pendingOutside": pending_outside}
 
 
 def process_rider(
@@ -287,6 +312,8 @@ def status(db: Any) -> dict:
     return {
         "enabled": settings["enabled"],
         "autoReply": settings["autoReply"],
+        "reviewFilter": settings["reviewFilter"],
+        "minZwiftRides": settings["minZwiftRides"],
         "queued": len(entries),
         "waiting": waiting,
         "pending": pending,

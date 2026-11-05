@@ -41,11 +41,48 @@ def _curve(row, factor=0.95, count=30):
 # --- triage ---------------------------------------------------------------------------
 
 
-def test_triage_reviews_unreliable_riders_only():
-    assert triage.needs_review(_rider(1), SETTINGS) == []  # 30 rides, stable rating
+def test_triage_default_reasons():
+    assert triage.needs_review(_rider(1), SETTINGS) == []  # 30 rides, real ratings
     assert triage.needs_review(_rider(1, rides=3), SETTINGS) == [triage.FEW_RIDES]
-    no_velo = {**_rider(1, rides=0), "rating": "N/A", "max30Rating": "N/A"}
-    assert triage.needs_review(no_velo, SETTINGS) == [triage.NO_VELO, triage.FEW_RIDES]
+    no_velo = {**_rider(1, rides=0), "rating": "N/A", "max30Rating": 0}
+    assert triage.needs_review(no_velo, SETTINGS) == [triage.NO_VELO, triage.NO_MAX30, triage.FEW_RIDES]
+    assert triage.needs_review({**_rider(1), "max30Rating": 0}, SETTINGS) == [triage.NO_MAX30]
+
+
+NOW = datetime(2026, 11, 5, 12, tzinfo=timezone.utc)
+
+
+def _with(flt, **settings):
+    return {**SETTINGS, "reviewFilter": flt, **settings}
+
+
+def test_review_filter_limits_and_any_reason():
+    new = {**_rider(1, rides=3), "registeredAt": "2026-10-20T10:00:00+00:00", "hasStrava": True}
+    old = {**new, "registeredAt": "2026-01-01T10:00:00+00:00"}
+    flt = {"newSignupsDays": 30, "reasons": [triage.FEW_RIDES]}
+    assert triage.needs_review(new, _with(flt), NOW) == [triage.FEW_RIDES]
+    assert triage.needs_review(old, _with(flt), NOW) == []  # outside the limit
+    assert triage.needs_review({**new, "registeredAt": None}, _with(flt), NOW) == []
+    # every ticked limit must hold
+    assert triage.needs_review({**new, "locked": True}, _with({**flt, "onlyUnlocked": True}), NOW) == []
+    assert triage.needs_review({**new, "hasStrava": False}, _with({**flt, "onlyWithStrava": True}), NOW) == []
+    assert triage.needs_review({**new, "assignedFrom": "admin"}, _with({**flt, "skipAdminPlaced": True}), NOW) == []
+    assert triage.needs_review({**new, "assignedFrom": "predicted"}, _with({**flt, "skipAdminPlaced": True}),
+                               NOW) == [triage.FEW_RIDES]
+    # any ticked reason is enough; unticked reasons never count
+    only_division = _with({"reasons": [triage.NO_DIVISION]})
+    assert triage.needs_review({**_rider(1, rides=3), "category": "N/A"}, only_division) == [triage.NO_DIVISION]
+    assert triage.needs_review({**_rider(1, rides=3), "category": "Gold"}, only_division) == []
+    assert triage.needs_review(_rider(1, rides=3), _with({"reasons": []})) == []
+    # the minimum is the admin's setting
+    assert triage.needs_review(_rider(1, rides=10), _with({"reasons": [triage.FEW_RIDES]}, minZwiftRides=5)) == []
+
+
+def test_bad_filter_values_fall_back_to_defaults():
+    flt = triage.normalize_filter({"newSignupsDays": "30", "onlyUnlocked": "yes", "reasons": ["no_velo", "x"]})
+    assert flt == {"newSignupsDays": None, "onlyUnlocked": False, "onlyWithStrava": False,
+                   "skipAdminPlaced": False, "reasons": ["no_velo"]}
+    assert triage.normalize_filter(None)["reasons"] == [triage.NO_VELO, triage.NO_MAX30, triage.FEW_RIDES]
 
 
 # --- evidence and decide ----------------------------------------------------------------
@@ -179,6 +216,36 @@ def test_scan_queues_unreliable_riders_and_batch_creates_a_proposal(agent_db):
     runner.process_batch(db, strava_service=MagicMock(), compute_curve=MagicMock(),
                          client_factory=lambda: None)
     assert [x["id"] for x in proposals.list_proposals(db)] == [p["id"]]  # same evidence: kept
+
+
+def test_narrowing_the_filter_closes_agent_cards_but_not_appeals(agent_db):
+    db, target = agent_db
+    runner.scan(db)
+    runner.process_batch(db, strava_service=MagicMock(), compute_curve=MagicMock(), client_factory=lambda: None)
+    [card] = proposals.list_proposals(db)
+    appeal = runner.file_appeal(db, target["zwiftId"], "please", "Bronze", client_factory=lambda: None)
+    # Only new signups now, and the target has no sign-up date: outside the filter.
+    db.store["league/settings"] = {"divisionAgent": {"reviewFilter": {"newSignupsDays": 30,
+                                                                      "reasons": ["few_rides"]}}}
+    rows = ps.load_participants(db)
+    settings = ps.division_agent_settings(db)
+    preview = runner.filter_preview(rows, settings, proposals.all_proposals(db))
+    assert preview["matching"] == 0 and preview["pendingOutside"] == 1 and preview["total"] == len(rows)
+    assert db.store[f"{proposals.COLLECTION}/{card['id']}"]["status"] == "pending"  # preview writes nothing
+    stats: dict = {}
+    assert runner.scan(db, stats=stats) == 0 and stats["closed"] == 1
+    closed = db.store[f"{proposals.COLLECTION}/{card['id']}"]
+    assert closed["status"] == "superseded" and closed["decisionNote"] == proposals.OUTSIDE_FILTER_NOTE
+    assert db.store[f"{proposals.COLLECTION}/{appeal['id']}"]["status"] == "pending"
+
+
+def test_filter_preview_counts_reasons():
+    rows = [{**_rider(1, rides=3), "max30Rating": 0, "category": "Gold"}, {**_rider(2), "category": "Gold"},
+            {**_rider(3), "category": "N/A"}]
+    settings = {**SETTINGS, "reviewFilter": {"reasons": ["no_max30", "few_rides", "no_division"]}}
+    out = runner.filter_preview(rows, settings, [])
+    assert out["total"] == 3 and out["inGroup"] == 3 and out["matching"] == 2
+    assert out["byReason"] == {"no_velo": 0, "no_max30": 1, "few_rides": 1, "no_division": 1}
 
 
 def test_rejected_proposal_is_not_repeated_until_the_evidence_changes(agent_db, monkeypatch):
@@ -320,7 +387,7 @@ def client(agent_db, monkeypatch):
 
 def test_routes_scan_review_and_decide(client, monkeypatch):
     http, db, target = client
-    assert http.post("/admin/division-agent/scan").get_json() == {"queued": 1}
+    assert http.post("/admin/division-agent/scan").get_json() == {"queued": 1, "closed": 0}
     assert http.get("/admin/division-agent/status").get_json()["queued"] == 1
 
     dry = http.post(f"/admin/division-agent/assess/{target['zwiftId']}?dryRun=1").get_json()
@@ -336,6 +403,28 @@ def test_routes_scan_review_and_decide(client, monkeypatch):
     assert h["status"] == "rejected" and h["decisionNote"] == "Known injury"
     assert http.post(f"/admin/division-agent/proposals/{p['id']}/decision",
                      json={"action": "approve"}).status_code == 400
+
+
+def test_routes_save_the_review_filter_and_preview_it(client, monkeypatch):
+    http, db, target = client
+    monkeypatch.setattr(ps, "cached_participants", lambda _db: ps.load_participants(_db))
+    preview = http.get("/admin/division-agent/filter-preview?filter="
+                       + json.dumps({"reasons": ["few_rides"]})).get_json()
+    assert preview["matching"] == 1 and preview["total"] == len(TRAINING) + 1
+    assert "league/settings" not in db.store  # preview saves nothing
+    assert http.get("/admin/division-agent/filter-preview?filter=x").status_code == 400
+
+    res = http.post("/admin/division-agent/settings", json={
+        "reviewFilter": {"onlyUnlocked": True, "newSignupsDays": 14, "reasons": ["no_max30", "bogus"]},
+        "minZwiftRides": 10})
+    assert res.status_code == 200
+    assert res.get_json()["reviewFilter"] == {"newSignupsDays": 14, "onlyUnlocked": True, "onlyWithStrava": False,
+                                              "skipAdminPlaced": False, "reasons": ["no_max30"]}
+    status = http.get("/admin/division-agent/status").get_json()
+    assert status["minZwiftRides"] == 10 and status["reviewFilter"]["newSignupsDays"] == 14
+    assert http.post("/admin/division-agent/settings", json={"minZwiftRides": 0}).status_code == 400
+    assert http.post("/admin/division-agent/settings", json={"reviewFilter": []}).status_code == 400
+    assert http.post("/admin/division-agent/settings", json={}).status_code == 400
 
 
 def test_routes_need_admin(client, monkeypatch):
