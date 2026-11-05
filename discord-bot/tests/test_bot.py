@@ -121,12 +121,14 @@ async def test_a_new_help_message_opens_a_thread_and_answers():
     backend.ask = AsyncMock(return_value={"reply": "Tak – en admin svarer snart."})
     bot = _bot(backend)
     thread = MagicMock(id=900)
+    thread.guild = SimpleNamespace(id=55)
     thread.send = AsyncMock()
     thread.typing = MagicMock(return_value=FakeTyping())
     msg = _message(7, SimpleNamespace(id=1))
     msg.create_thread = AsyncMock(return_value=thread)
     await bot.on_message(msg)
-    backend.ask.assert_awaited_once_with(7, 900, [{"author": "rider", "text": "Hvorfor er jeg i Gold?"}])
+    backend.ask.assert_awaited_once_with(7, 900, [{"author": "rider", "text": "Hvorfor er jeg i Gold?"}],
+                                         guild_id=55)
     thread.send.assert_awaited_once_with("Tak – en admin svarer snart.")
 
 
@@ -217,3 +219,50 @@ async def test_editing_a_proposal_after_a_restart_still_knows_the_divisions():
     modal = interaction.response.send_modal.await_args.args[0]
     assert modal.divisions == ["Gold", "Silver", "Bronze"]
     assert admin._division("silver", modal.divisions) == "Silver"
+
+
+async def test_unanswered_questions_are_posted_with_a_solved_button_and_acknowledged():
+    backend = MagicMock()
+    backend.pending = AsyncMock(return_value=[
+        {"kind": "unanswered", "id": "u1", "unanswered": {"id": "u1", "question": "Må jeg køre MTB?",
+                                                          "missing": "bike rules", "threadId": "77"}}])
+    backend.ack = AsyncMock()
+    bot = _bot(backend)
+    admin_channel = MagicMock(guild=SimpleNamespace(id=11))
+    admin_channel.send = AsyncMock(return_value=SimpleNamespace(id=31))
+    bot.get_channel = MagicMock(return_value=admin_channel)
+    assert await bot.relay_once() == 1
+    embed = admin_channel.send.await_args.kwargs["embed"]
+    view = admin_channel.send.await_args.kwargs["view"]
+    assert embed.description == "Må jeg køre MTB?"
+    fields = {f.name: f.value for f in embed.fields}
+    assert fields["Missing"] == "bike rules" and "discord.com/channels/11/77" in fields["Thread"]
+    assert [c.custom_id for c in view.children] == ["dcu:unans:resolve:u1"]
+    backend.ack.assert_awaited_once_with("unanswered", "u1", 31)
+
+
+async def test_solved_marks_the_question_resolved():
+    backend = MagicMock()
+    backend.resolve_unanswered = AsyncMock(return_value={})
+    bot = _bot(backend)
+    interaction = _interaction(bot, SimpleNamespace(embeds=[embeds.unanswered_embed({"id": "u1", "question": "Q"})]))
+    await admin.ActionButton("unans", "resolve", "u1").callback(interaction)
+    backend.resolve_unanswered.assert_awaited_once_with("u1", "Admin")
+    edited = interaction.edit_original_response.await_args.kwargs
+    assert edited["view"] is None and "Solved" in {f.name: f.value for f in edited["embed"].fields}["Decision"]
+
+
+async def test_a_question_solved_on_the_admin_page_updates_the_discord_post():
+    backend = MagicMock()
+    backend.pending = AsyncMock(return_value=[
+        {"kind": "unanswered_resolved", "id": "u1", "messageId": "31", "resolvedBy": "boss", "note": "fixed"}])
+    backend.ack = AsyncMock()
+    bot = _bot(backend)
+    post = MagicMock(components=[object()], embeds=[embeds.unanswered_embed({"id": "u1", "question": "Q"})])
+    post.edit = AsyncMock()
+    admin_channel = MagicMock()
+    admin_channel.fetch_message = AsyncMock(return_value=post)
+    bot.get_channel = MagicMock(return_value=admin_channel)
+    assert await bot.relay_once() == 1
+    assert post.edit.await_args.kwargs["view"] is None
+    backend.ack.assert_awaited_once_with("unanswered_resolved", "u1")

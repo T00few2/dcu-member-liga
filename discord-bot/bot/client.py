@@ -6,7 +6,8 @@ answer (or a holding message while an admin approves the draft). Other people wr
 in the thread (admins answering by hand) are ignored.
 
 Admin channel: every `poll_seconds` the bot asks the backend what to post or deliver
-(`/bot/pending`) and acknowledges each item (`/bot/ack`) so nothing is sent twice.
+(`/bot/pending`: proposals, reply drafts and questions the bot could not answer) and
+acknowledges each item (`/bot/ack`) so nothing is sent twice.
 """
 from __future__ import annotations
 
@@ -108,7 +109,8 @@ class DcuBot(discord.Client):
                 convo.append({"author": "bot", "text": m.content})
         try:
             async with thread.typing():
-                result = await self.backend.ask(rider.id, thread.id, convo)
+                result = await self.backend.ask(rider.id, thread.id, convo,
+                                                guild_id=getattr(getattr(thread, "guild", None), "id", None))
             reply = result.get("reply") or ""
         except BackendError as e:
             logger.warning("ask failed: %s", e.message)
@@ -159,6 +161,20 @@ class DcuBot(discord.Client):
                 await thread.edit(archived=False)
             for part in split_message(item.get("text") or ""):
                 await thread.send(part)
+            await self.backend.ack(kind, item_id)
+        elif kind == "unanswered":
+            u = item.get("unanswered") or {}
+            guild = getattr(getattr(admin_channel, "guild", None), "id", None)
+            msg = await admin_channel.send(embed=embeds.unanswered_embed(u, guild), view=admin.unanswered_view(item_id))
+            await self.backend.ack(kind, item_id, msg.id)
+        elif kind == "unanswered_resolved":
+            try:
+                msg = await admin_channel.fetch_message(int(item["messageId"]))
+                if msg.components:  # solved on the admin page
+                    await msg.edit(embed=embeds.decided(msg.embeds[0] if msg.embeds else None, "resolved",
+                                                        item.get("resolvedBy"), item.get("note")), view=None)
+            except discord.NotFound:
+                pass
             await self.backend.ack(kind, item_id)
         elif kind in ("proposal_decided", "draft_decided"):
             status = (item.get("proposal") or {}).get("status") or item.get("status") or "decided"

@@ -20,7 +20,9 @@ FLAG_TEXT = {
 STATUS_TEXT = {
     "approved": "✅ Approved", "edited": "✏️ Edited", "rejected": "❌ Rejected",
     "superseded": "↪️ Superseded by a newer proposal", "sent": "✅ Sent", "pending": "Pending",
+    "resolved": "✅ Solved",
 }
+UNANSWERED_COLOUR = discord.Colour.orange()
 
 
 def _cut(text: str | None, n: int) -> str:
@@ -76,6 +78,24 @@ def draft_embed(d: dict) -> discord.Embed:
         embed.add_field(name="Appeal", value="An appeal was filed with this message (see its own post).",
                         inline=False)
     embed.set_footer(text=f"Thread {d.get('threadId')} · draft {d.get('id')}")
+    return embed
+
+
+def thread_url(guild_id: int | str | None, thread_id: int | str | None) -> str | None:
+    return f"https://discord.com/channels/{guild_id}/{thread_id}" if guild_id and thread_id else None
+
+
+def unanswered_embed(u: dict, guild_id: int | str | None = None) -> discord.Embed:
+    """A question the help bot could not answer: reply in the thread, then fix the gap at its source."""
+    embed = discord.Embed(title="Unanswered question", description=_cut(u.get("question") or "—", DRAFT_MAX),
+                          colour=UNANSWERED_COLOUR)
+    if u.get("missing"):
+        embed.add_field(name="Missing", value=_cut(u["missing"], 1000), inline=False)
+    url = thread_url(u.get("guildId") or guild_id, u.get("threadId"))
+    if url:
+        embed.add_field(name="Thread", value=f"[Open the rider's thread]({url})", inline=False)
+    embed.set_footer(text=f"Reply in the thread, then fix the source (settings, news, Code of Conduct, site text) "
+                          f"· {u.get('id')}")
     return embed
 
 

@@ -913,6 +913,25 @@
       "createdAt": "2026-11-05T09:00:00+00:00"
     }
   ],
+  "bot_unanswered_questions": [
+    {
+      "_id": "example_unanswered",
+      "id": "example_unanswered",
+      "question": "Må jeg køre på mountainbike?",
+      "key": "må jeg køre på mountainbike",
+      "missing": "Nothing about bike types in the guide",
+      "threadId": "100000000000000010",
+      "guildId": "100000000000000020",
+      "discordUserId": "100000000000000001",
+      "zwiftId": null,
+      "status": "resolved",
+      "createdAt": "2026-11-05T16:00:00+00:00",
+      "resolvedBy": "discord:Admin",
+      "resolvedAt": "2026-11-05T16:20:00+00:00",
+      "note": "Added to the equipment section",
+      "discord": { "adminMessageId": "100000000000000030", "adminUpdated": true }
+    }
+  ],
   "division_conversations": [
     {
       "_id": "1300000000000000001",
