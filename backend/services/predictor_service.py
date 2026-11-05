@@ -69,8 +69,9 @@ def _agent_fields(data: dict) -> dict:
     reg = data.get("registration") or {}
     lc = data.get("ligaCategory") or {}
     return {
-        # When registration first became complete; older riders fall back to their data-policy acceptance.
-        "registeredAt": _iso(reg.get("completedAt") or (reg.get("dataPolicy") or {}).get("acceptedAt")),
+        # When registration first became complete. Riders who registered before this field existed have
+        # none and never count as new signups (dataPolicy.acceptedAt moves on every re-acceptance).
+        "registeredAt": _iso(reg.get("completedAt")),
         "locked": bool(lc.get("locked")),
         "assignedFrom": (lc.get("manualAssigned") or {}).get("assignedFrom"),
     }

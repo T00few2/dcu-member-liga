@@ -150,6 +150,9 @@ export default function ReviewFilterPanel({
             />
             days
           </label>
+          {filter.newSignupsDays !== null && (
+            <p className="text-xs text-muted-foreground ml-6">Only riders who registered after this update count as new signups.</p>
+          )}
           <label className={check}>
             <input type="checkbox" checked={filter.onlyUnlocked}
               onChange={e => setFilter(f => ({ ...f, onlyUnlocked: e.target.checked }))} />

@@ -2292,7 +2292,7 @@
             },
             "completedAt": {
               "$ref": "#/$defs/timestampString",
-              "description": "When the registration first became complete (set once); used by the division agent's new-signups filter"
+              "description": "When the registration first became complete (set once). Used by the division agent's new-signups filter; riders who registered before this field existed have none and never count as new signups."
             },
             "dataPolicy": {
               "type": "object",

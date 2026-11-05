@@ -78,6 +78,19 @@ def test_review_filter_limits_and_any_reason():
     assert triage.needs_review(_rider(1, rides=10), _with({"reasons": [triage.FEW_RIDES]}, minZwiftRides=5)) == []
 
 
+def test_only_a_stored_completion_date_counts_as_a_signup_date():
+    """dataPolicy.acceptedAt moves on every re-acceptance, so it never makes a rider look new."""
+    old_rider = ps._agent_fields({"registration": {"status": "complete",
+                                                   "dataPolicy": {"acceptedAt": "2026-11-01T10:00:00+00:00"}}})
+    assert old_rider["registeredAt"] is None
+    flt = _with({"newSignupsDays": 30, "reasons": [triage.FEW_RIDES]})
+    assert triage.needs_review({**_rider(1, rides=3), **old_rider}, flt, NOW) == []
+    new_rider = ps._agent_fields({"registration": {"completedAt": datetime(2026, 11, 1, tzinfo=timezone.utc)},
+                                  "ligaCategory": {"locked": True, "manualAssigned": {"assignedFrom": "admin"}}})
+    assert new_rider == {"registeredAt": "2026-11-01T00:00:00+00:00", "locked": True, "assignedFrom": "admin"}
+    assert triage.needs_review({**_rider(1, rides=3), **new_rider}, flt, NOW) == [triage.FEW_RIDES]
+
+
 def test_bad_filter_values_fall_back_to_defaults():
     flt = triage.normalize_filter({"newSignupsDays": "30", "onlyUnlocked": "yes", "reasons": ["no_velo", "x"]})
     assert flt == {"newSignupsDays": None, "onlyUnlocked": False, "onlyWithStrava": False,
