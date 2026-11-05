@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
 from services import predictor_tuning as pt
+from services import velo_predictor as vp
 from services import strava_rate
 from services.strava_power_curve import StravaBudgetExceeded, cached_reader, get_strava_power_curve
 
@@ -36,7 +37,8 @@ LAST_WARM_DOC = "last"
 LOCK_COLLECTION = "strava_cache_warm_lock"
 LOCK_DOC = "current"
 LOCK_STALE_MINUTES = 16
-REFRESH_AFTER_DAYS = 30
+# Weekly, so a curve always ends close to "now" like the 30-day vELO it is compared with.
+REFRESH_AFTER_DAYS = 7
 # A rider whose Strava has no power rides gets an empty curve. Count it as "no
 # power data" (not cached, not usable for tuning) and retry only after a week.
 RETRY_EMPTY_AFTER_DAYS = 7
@@ -55,6 +57,11 @@ def _is_fresh(entry: dict | None, now: datetime, max_age_days: int) -> bool:
     if computed.tzinfo is None:
         computed = computed.replace(tzinfo=timezone.utc)
     return (now - computed).total_seconds() < max_age_days * 86400
+
+
+def _complete(entry: dict) -> bool:
+    """Split into indoor/outdoor, and every tuning window written by the same fetch."""
+    return bool(entry.get("split")) and set(vp.STRAVA_WINDOWS) <= set(entry.get("windows") or ())
 
 
 def eligible_riders(participants: list[dict], min_rides: int) -> list[dict]:
@@ -90,20 +97,20 @@ def cache_status(
         has_power = bool(entry and entry.get("curve"))
         if has_power and _is_fresh(entry, now, max_age_days):
             cached += 1
-            if not entry.get("split"):
-                # Usable meanwhile, but written before the indoor/outdoor split: re-fetch
-                # it after every never-cached and stale rider.
+            if not _complete(entry):
+                # Usable meanwhile, but written before the indoor/outdoor split or without
+                # every tuning window: re-fetch it after every never-cached and stale rider.
                 missing.append((2, p))
         elif entry and not has_power and _is_fresh(entry, now, RETRY_EMPTY_AFTER_DAYS):
             no_power += 1
         else:
-            # 0 = never cached, 1 = stale or empty curve due for a retry (2 = pre-split, above)
+            # 0 = never cached, 1 = stale or empty curve due for a retry (2 = incomplete, above)
             missing.append((0 if entry is None else 1, p))
             uncounted.add(p["userDocId"])
 
     # Every other rider with Strava (mostly the division agent's riders: no vELO or few
     # rides) is kept cached too, after the tuning riders: 3 = never cached, 4 = stale,
-    # empty and due for a retry, or written before the indoor/outdoor split.
+    # empty and due for a retry, or incomplete (before the split, or missing a window).
     eligible_ids = {p["userDocId"] for p in eligible}
     others = [p for p in participants
               if p.get("hasStrava") and p.get("userDocId") and p["userDocId"] not in eligible_ids]
@@ -111,7 +118,7 @@ def cache_status(
     for p in others:
         entry = read_curve(p["userDocId"], days)
         has_power = bool(entry and entry.get("curve"))
-        if has_power and entry.get("split") and _is_fresh(entry, now, max_age_days):
+        if has_power and _complete(entry) and _is_fresh(entry, now, max_age_days):
             others_cached += 1
         elif entry and not has_power and _is_fresh(entry, now, RETRY_EMPTY_AFTER_DAYS):
             pass  # no power rides; retried after a week
@@ -256,7 +263,7 @@ def _warm(
         try:
             entry = get_strava_power_curve(
                 db, strava_service, p["userDocId"], days, compute_curve=compute_curve, refresh=True,
-                budget=lambda n, b=before15: fits(n, window_used_before=b),
+                budget=lambda n, b=before15: fits(n, window_used_before=b), also_days=vp.STRAVA_WINDOWS,
             )
             warmed.append({"zwiftId": str(p.get("zwiftId")), "activityCount": entry["activityCount"]})
             if entry.get("curve"):

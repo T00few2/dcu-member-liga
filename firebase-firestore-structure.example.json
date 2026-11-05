@@ -829,6 +829,7 @@
       "indoorCount": 9,
       "outdoorCount": 14,
       "split": true,
+      "windows": [30, 60, 90],
       "computedAt": "2026-11-02T18:20:00+00:00"
     }
   ],

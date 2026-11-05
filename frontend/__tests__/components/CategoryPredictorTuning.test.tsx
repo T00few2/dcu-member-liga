@@ -17,7 +17,7 @@ const pendingRun = {
     status: 'improved',
     evalRiders: 48,
     current: { score: score(52) },
-    best: { score: score(61), config: { stravaWindowDays: 180 } },
+    best: { score: score(61), config: { stravaWindowDays: 60 } },
     improvementPP: 9,
     changedRiders: [{ zwiftId: '7', realCategory: 'Gold', before: 'Silver', after: 'Gold' }],
     pastPredictions: { n: 0 },

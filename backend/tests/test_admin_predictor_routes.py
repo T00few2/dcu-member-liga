@@ -279,3 +279,29 @@ def test_rides_on_a_trainer_are_tagged_indoor():
     assert StravaService._is_indoor_activity({"sport_type": "Ride", "trainer": True})
     assert not StravaService._is_indoor_activity({"sport_type": "Ride", "trainer": False})
     assert not StravaService._is_indoor_activity({"sport_type": "GravelRide"})
+
+
+def test_one_fetch_writes_every_window_from_rides_inside_it():
+    db = FakeDb()
+    now = datetime.now(timezone.utc)
+
+    def ride(i, days_ago, indoor):
+        return {"id": i, "indoor": indoor, "startDate": (now - timedelta(days=days_ago)).isoformat()}
+
+    rides = [ride(1, 10, True), ride(2, 45, False), ride(3, 80, False)]
+    service = _strava(rides)
+    watts = {1: 300.0, 2: 320.0, 3: 340.0}
+    compute = MagicMock(side_effect=lambda _uid, acts: {"w1200": watts[acts[0]["id"]]})
+    budget = MagicMock(return_value=True)
+
+    entry = spc.get_strava_power_curve(db, service, "u1", 90, compute_curve=compute,
+                                       also_days=(30, 60, 90), budget=budget)
+
+    assert compute.call_count == 3  # each ride computed once, shared by every window
+    budget.assert_called_once_with(3)
+    assert entry["curve"] == {"w1200": 340.0} and entry["windows"] == [30, 60, 90]
+    d30, d60 = db.store["strava_power_curves/u1_30"], db.store["strava_power_curves/u1_60"]
+    assert (d30["activityCount"], d30["curveIndoor"], d30["curveOutdoor"]) == (1, {"w1200": 300.0}, {})
+    assert (d60["activityCount"], d60["curveOutdoor"]) == (2, {"w1200": 320.0})
+    assert d60["split"] is True and "windows" not in d60
+    service.get_power_activities.assert_called_once()

@@ -2200,7 +2200,7 @@
         },
         "regression": { "type": "string", "enum": ["ols", "ridge"] },
         "ridgeLambda": { "type": "number", "minimum": 0, "description": "Ridge strength on standardized features, scaled by row count" },
-        "stravaWindowDays": { "type": "integer", "enum": [90, 180, 360] },
+        "stravaWindowDays": { "type": "integer", "enum": [30, 60, 90] },
         "stravaPowerScale": {
           "type": "object",
           "description": "Multiplier per W/kg input applied to Strava (outdoor) power before predicting; 1.0 = no correction. Range 0.5-1.5.",
@@ -2260,7 +2260,12 @@
       "properties": {
         "_id": { "type": "string", "description": "{userDocId}_{days}" },
         "userDocId": { "type": "string" },
-        "days": { "type": "integer", "enum": [30, 90, 180, 360] },
+        "days": { "type": "integer", "enum": [30, 60, 90, 180, 360] },
+        "windows": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "description": "On the longest window's doc: every window (e.g. 30, 60, 90) written by the same fetch; the warm-up refetches curves missing a tuning window"
+        },
         "curve": {
           "type": "object",
           "description": "Peak watts keyed w{seconds}: w5, w15, w30, w60, w120, w300, w1200 (best of indoor and outdoor)",
