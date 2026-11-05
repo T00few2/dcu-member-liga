@@ -17,6 +17,20 @@ describe('ConnectionsForm Discord section', () => {
     expect(connect).toHaveBeenCalled();
   });
 
+  it('shows that it is connecting while the Discord login starts', async () => {
+    let finish!: () => void;
+    const connect = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
+    render(<ConnectionsForm {...base} discordUsername={null} handleConnectDiscord={connect} handleDisconnectDiscord={vi.fn()} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Forbind Discord' }));
+    const busy = screen.getByRole('button', { name: 'Forbinder…' });
+    expect(busy).toBeDisabled();
+    await user.click(busy); // a second click does nothing
+    expect(connect).toHaveBeenCalledTimes(1);
+    finish();
+    expect(await screen.findByRole('button', { name: 'Forbind Discord' })).toBeEnabled();
+  });
+
   it('shows the linked account and unlinks it', async () => {
     const unlink = vi.fn();
     render(<ConnectionsForm {...base} discordUsername="rider" handleConnectDiscord={vi.fn()} handleDisconnectDiscord={unlink} />);
@@ -29,5 +43,24 @@ describe('ConnectionsForm Discord section', () => {
   it('hides the section without handlers', () => {
     render(<ConnectionsForm {...base} />);
     expect(screen.queryByText('Discord (valgfrit)')).not.toBeInTheDocument();
+  });
+
+  it('shows Zwift and Strava as busy too, and blocks a second login meanwhile', async () => {
+    let finish!: () => void;
+    const zwift = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
+    const strava = vi.fn();
+    render(<ConnectionsForm {...base} stravaConnected={false} zwiftConnected={false}
+      handleConnectZwift={zwift} handleConnectStrava={strava} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Forbind med Zwift Link' }));
+    expect(screen.getByRole('button', { name: 'Forbinder…' })).toBeDisabled();
+    const stravaButton = screen.getByRole('button', { name: 'Connect with Strava' });
+    expect(stravaButton).toBeDisabled();
+    await user.click(stravaButton);
+    expect(strava).not.toHaveBeenCalled();
+    finish();
+    expect(await screen.findByRole('button', { name: 'Forbind med Zwift Link' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Connect with Strava' }));
+    expect(strava).toHaveBeenCalledTimes(1);
   });
 });

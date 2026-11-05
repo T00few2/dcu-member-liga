@@ -9,13 +9,13 @@ interface ConnectionsFormProps {
     dualRecordingRequiresStrava?: boolean;
     /** Category names where dual-recording reports apply (from league settings). */
     verificationCategoryNames?: string[];
-    handleConnectStrava: () => void;
+    handleConnectStrava: () => void | Promise<void>;
     handleDisconnectStrava: () => void;
-    handleConnectZwift: () => void;
+    handleConnectZwift: () => void | Promise<void>;
     handleDisconnectZwift: () => void;
     /** Linked Discord username, or null. The Discord section shows when the handlers are given. */
     discordUsername?: string | null;
-    handleConnectDiscord?: () => void;
+    handleConnectDiscord?: () => void | Promise<void>;
     handleDisconnectDiscord?: () => void;
 }
 
@@ -40,6 +40,18 @@ export default function ConnectionsForm({
     handleDisconnectDiscord,
 }: ConnectionsFormProps) {
     const [zwiftLogoFailed, setZwiftLogoFailed] = useState(false);
+    // Starting a login (Zwift, Strava, Discord) takes a moment before the browser leaves the
+    // page; show it, and ignore further clicks meanwhile.
+    const [connecting, setConnecting] = useState<'zwift' | 'strava' | 'discord' | null>(null);
+    const connectWith = (which: 'zwift' | 'strava' | 'discord', start?: () => void | Promise<void>) => async () => {
+        if (!start || connecting) return;
+        setConnecting(which);
+        try {
+            await start();
+        } finally {
+            setConnecting(null);
+        }
+    };
     const verificationLabel = joinDanishNames(verificationCategoryNames);
 
     return (
@@ -81,17 +93,19 @@ export default function ConnectionsForm({
                             </div>
                             <button
                                 onClick={handleDisconnectZwift}
-                                className="text-sm text-red-600 hover:text-red-700 hover:underline"
+                                className="cursor-pointer text-sm text-red-600 hover:text-red-700 hover:underline"
                             >
                                 Frakobl
                             </button>
                         </div>
                     ) : (
                         <button
-                            onClick={handleConnectZwift}
-                            className="px-4 py-2 rounded-lg bg-[#FC6719] text-white hover:brightness-95 font-medium border border-[#FC6719] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FC6719] focus-visible:ring-offset-2"
+                            onClick={connectWith('zwift', handleConnectZwift)}
+                            disabled={connecting !== null}
+                            aria-busy={connecting === 'zwift'}
+                            className="cursor-pointer px-4 py-2 rounded-lg bg-[#FC6719] text-white hover:brightness-95 active:scale-[0.97] transition font-medium border border-[#FC6719] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FC6719] focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-70"
                         >
-                            Forbind med Zwift Link
+                            {connecting === 'zwift' ? 'Forbinder…' : 'Forbind med Zwift Link'}
                         </button>
                     )}
                 </div>
@@ -128,7 +142,7 @@ export default function ConnectionsForm({
                             </div>
                             <button
                                 onClick={handleDisconnectStrava}
-                                className="text-sm text-red-600 hover:text-red-700 hover:underline"
+                                className="cursor-pointer text-sm text-red-600 hover:text-red-700 hover:underline"
                             >
                                 Frakobl
                             </button>
@@ -136,8 +150,10 @@ export default function ConnectionsForm({
                     ) : (
                         <div className="flex items-center justify-between gap-4">
                             <button
-                                onClick={handleConnectStrava}
-                                className="inline-flex items-center justify-start rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                onClick={connectWith('strava', handleConnectStrava)}
+                                disabled={connecting !== null}
+                                aria-busy={connecting === 'strava'}
+                                className="cursor-pointer inline-flex items-center justify-start rounded-lg active:scale-[0.97] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-60"
                                 aria-label="Connect with Strava"
                             >
                                 <img
@@ -157,7 +173,7 @@ export default function ConnectionsForm({
                     <h3 className="text-lg font-semibold mb-3 text-card-foreground">Discord (valgfrit)</h3>
                     <div className={`p-4 border rounded-lg transition-colors ${discordUsername ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' : 'bg-card border-border'}`}>
                         <p className="mb-4 text-sm text-muted-foreground">
-                            Forbind din Discord-konto, så vores hjælpekanal kan svare dig om din division. Vi gemmer kun dit Discord-brugernavn.
+                            Forbind din Discord-konto, så vi kan kommunikere med dig på Discord, og vores Discord-bot ved, hvem du er. Vi gemmer kun dit Discord-ID og brugernavn.
                         </p>
                         {discordUsername ? (
                             <div className="flex items-center justify-between bg-white dark:bg-black/20 p-4 rounded border border-border">
@@ -165,16 +181,18 @@ export default function ConnectionsForm({
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
                                     Forbundet som @{discordUsername}
                                 </div>
-                                <button onClick={handleDisconnectDiscord} className="text-sm text-red-600 hover:text-red-700 hover:underline">
+                                <button onClick={handleDisconnectDiscord} className="cursor-pointer text-sm text-red-600 hover:text-red-700 hover:underline">
                                     Frakobl
                                 </button>
                             </div>
                         ) : (
                             <button
-                                onClick={handleConnectDiscord}
-                                className="px-4 py-2 rounded-lg bg-[#5865F2] text-white hover:brightness-95 font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5865F2] focus-visible:ring-offset-2"
+                                onClick={connectWith('discord', handleConnectDiscord)}
+                                disabled={connecting !== null}
+                                aria-busy={connecting === 'discord'}
+                                className="cursor-pointer px-4 py-2 rounded-lg bg-[#5865F2] text-white hover:brightness-95 active:scale-[0.97] transition font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5865F2] focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-70"
                             >
-                                Forbind Discord
+                                {connecting === 'discord' ? 'Forbinder…' : 'Forbind Discord'}
                             </button>
                         )}
                     </div>
