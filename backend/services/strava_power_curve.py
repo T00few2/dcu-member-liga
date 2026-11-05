@@ -8,13 +8,16 @@ agent and predictor tuning reuse them instead of refetching.
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
 COLLECTION = "strava_power_curves"
-ALLOWED_DAYS = (30, 90, 180, 360)
+ALLOWED_DAYS = (30, 60, 90, 180, 360)
+# Parallel per-activity work when one fetch builds several windows.
+PER_ACTIVITY_WORKERS = 10
 DEFAULT_MAX_AGE_HOURS = 24
 
 
@@ -126,6 +129,7 @@ def get_strava_power_curve(
     refresh: bool = False,
     allow_fetch: bool = True,
     budget: Callable[[int], bool] | None = None,
+    also_days: tuple[int, ...] | list[int] = (),
 ) -> dict | None:
     """Return `{curve, curveIndoor, curveOutdoor, activityCount, indoorCount, outdoorCount,
     days, computedAt, split, cached}` for one rider.
@@ -142,9 +146,19 @@ def get_strava_power_curve(
     `budget(n)` is asked after the activity list is read, with the number of streams
     the curve needs; when it returns False, `StravaBudgetExceeded` is raised and no
     streams are downloaded.
+
+    With `also_days`, one fetch (activity list and one stream per ride, for the longest
+    window) writes an entry for every window in `days` + `also_days`: each ride's best
+    efforts are computed once and merged per window. Every entry records `windows`, so
+    the warm-up knows every window was written together, whichever one it checks.
     """
-    if days not in ALLOWED_DAYS:
+    windows = sorted({int(days), *(int(d) for d in also_days)})
+    if any(w not in ALLOWED_DAYS for w in windows):
         raise ValueError(f"days must be one of {ALLOWED_DAYS}")
+    if len(windows) > 1:
+        return _fetch_windows(db, strava_service, user_doc_id, days, windows, compute_curve=compute_curve,
+                              max_age_hours=max_age_hours, refresh=refresh, allow_fetch=allow_fetch,
+                              budget=budget)
     now = _now()
     cached = None
     try:
@@ -190,3 +204,86 @@ def get_strava_power_curve(
     except Exception as exc:
         logger.warning("strava curve cache write failed for %s: %s", user_doc_id, exc)
     return {**entry, "cached": False}
+
+
+def _start_epoch(activity: dict) -> float | None:
+    raw = activity.get("startDate")
+    if not isinstance(raw, str):
+        return None
+    try:
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)).timestamp()
+
+
+def _fetch_windows(
+    db: Any,
+    strava_service: Any,
+    user_doc_id: str,
+    days: int,
+    windows: list[int],
+    *,
+    compute_curve: Callable[[str, list], dict],
+    max_age_hours: float,
+    refresh: bool,
+    allow_fetch: bool,
+    budget: Callable[[int], bool] | None,
+) -> dict | None:
+    """Several windows from one fetch; returns the entry for `days`."""
+    now = _now()
+    longest = max(windows)
+    try:
+        cached = read_cached_curve(db, user_doc_id, days)
+    except Exception as exc:  # cache problems must never block a fetch
+        logger.warning("strava curve cache read failed for %s: %s", user_doc_id, exc)
+        cached = None
+    if cached and not allow_fetch:
+        return {**cached, "cached": True}
+    if not allow_fetch:
+        return None
+    if cached and not refresh and cached.get("split"):
+        age = _age_hours(cached, now)
+        if age is not None and age < max_age_hours:
+            return {**cached, "cached": True}
+
+    after_ts = int((now - timedelta(days=longest)).timestamp())
+    try:
+        activities = strava_service.get_power_activities(str(user_doc_id), after_ts, max_activities=None) or []
+        if activities and budget is not None and not budget(len(activities)):
+            raise StravaBudgetExceeded(len(activities))
+        # One stream download and one best-efforts computation per ride, in parallel.
+        with ThreadPoolExecutor(max_workers=PER_ACTIVITY_WORKERS) as pool:
+            efforts = list(pool.map(lambda a: _clean(compute_curve(str(user_doc_id), [a])), activities))
+    finally:
+        _share_usage(db)
+
+    entries: dict[int, dict] = {}
+    for w in windows:
+        cutoff = (now - timedelta(days=w)).timestamp()
+        inside = [(a, e) for a, e in zip(activities, efforts)
+                  if w == longest or (_start_epoch(a) or 0) > cutoff]
+        indoor = [e for a, e in inside if a.get("indoor")]
+        outdoor = [e for a, e in inside if not a.get("indoor")]
+        curve_indoor, curve_outdoor = merge_curves(*indoor), merge_curves(*outdoor)
+        entry = {
+            "userDocId": str(user_doc_id),
+            "days": int(w),
+            "curve": merge_curves(curve_indoor, curve_outdoor),
+            "curveIndoor": curve_indoor,
+            "curveOutdoor": curve_outdoor,
+            "activityCount": len(inside),
+            "indoorCount": len(indoor),
+            "outdoorCount": len(outdoor),
+            "split": True,
+            # On every window's doc, so the warm-up can check completeness from whichever
+            # window the predictor uses.
+            "windows": list(windows),
+            "computedAt": now.isoformat(),
+        }
+        entries[w] = entry
+        try:
+            db.collection(COLLECTION).document(cache_doc_id(user_doc_id, w)).set(entry)
+        except Exception as exc:
+            logger.warning("strava curve cache write failed for %s (%sd): %s", user_doc_id, w, exc)
+    return {**entries[int(days)], "cached": False}

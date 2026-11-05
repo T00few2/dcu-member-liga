@@ -98,6 +98,7 @@ def strava_curve(
     try:
         return get_strava_power_curve(
             db, strava_service, doc_id, days, compute_curve=compute_curve, refresh=True,
+            also_days=vp.STRAVA_WINDOWS,
             budget=lambda n: fits(n, window_used_before=before15),
         )
     except StravaBudgetExceeded as exc:

@@ -17,7 +17,7 @@ from services.dual_recording_core import (
     _iter_activities_for_user_ids,
 )
 from services import predictor_service, velo_predictor
-from services.strava_power_curve import get_strava_power_curve
+from services.strava_power_curve import ALLOWED_DAYS, get_strava_power_curve
 from services.user_service import UserService
 from services.weight_history import list_weight_history_entries
 from services.zwift_tokens import get_token_doc, get_valid_access_token
@@ -203,8 +203,8 @@ def strava_power_curve(rider_id):
         return jsonify({"message": e.message}), e.status_code
 
     days = request.args.get("days", 90, type=int)
-    if days not in (30, 90, 180, 360):
-        return jsonify({"message": "days must be one of 30, 90, 180, 360"}), 400
+    if days not in ALLOWED_DAYS:
+        return jsonify({"message": f"days must be one of {', '.join(map(str, ALLOWED_DAYS))}"}), 400
 
     try:
         user = UserService.get_user_by_id(rider_id)

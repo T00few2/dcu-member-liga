@@ -38,6 +38,9 @@ interface CacheStatus {
   eligible: number;
   cached: number;
   noPowerData?: number;
+  /** Riders with Strava outside the tuning set (mostly the division agent's riders). */
+  others?: number;
+  othersCached?: number;
   remaining: number;
   minEvalRiders: number;
   lastWarm?: {
@@ -225,6 +228,11 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
             {cache.cached < cache.minEvalRiders
               ? ` · tuning needs ${cache.minEvalRiders}`
               : ' · enough to tune'}
+            {(cache.others ?? 0) > 0 && (
+              <span className="block text-xs">
+                Other riders with Strava (division agent): {cache.othersCached ?? 0} of {cache.others} cached
+              </span>
+            )}
             {cache.lastWarm && (
               <span className="block text-xs">
                 Last fetch {new Date(cache.lastWarm.at).toLocaleTimeString()}: +{cache.lastWarm.warmed} riders

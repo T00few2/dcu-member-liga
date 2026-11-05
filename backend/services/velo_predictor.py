@@ -277,7 +277,9 @@ def merge_features(saved: dict | None) -> dict[str, bool]:
 # Config
 # ---------------------------------------------------------------------------
 
-STRAVA_WINDOWS = (90, 180, 360)
+# Strava windows tuning compares; all are cached together by one fetch. Kept short so
+# the power lines up in time with the 30-day vELO used as the right answer.
+STRAVA_WINDOWS = (30, 60, 90)
 REGRESSIONS = ("ols", "ridge")
 
 

@@ -43,9 +43,10 @@ def test_only_reliable_riders_with_strava_are_eligible():
 
 def test_status_counts_fresh_curves_and_lists_never_cached_first():
     db = FakeDb()
-    db.store["strava_power_curves/doc1_90"] = {"curve": {"w5": 1}, "split": True, "computedAt": _fresh()}
-    db.store["strava_power_curves/doc2_90"] = {"curve": {"w5": 1}, "split": True,
-                                               "computedAt": _fresh(hours=24 * 40)}
+    db.store["strava_power_curves/doc1_90"] = {"curve": {"w5": 1}, "split": True, "windows": [30, 60, 90],
+                                               "computedAt": _fresh()}
+    db.store["strava_power_curves/doc2_90"] = {"curve": {"w5": 1}, "split": True, "windows": [30, 60, 90],
+                                               "computedAt": _fresh(hours=24 * 8)}  # older than a week
     riders = [_rider(1), _rider(2), _rider(3)]
 
     status = warmer.cache_status(db, riders, min_rides=15, days=90)
@@ -100,13 +101,13 @@ def test_warm_fetches_at_most_ten_riders_per_call():
     assert len(first["warmed"]) == 10
     assert first["remaining"] == 2
     assert first["cached"] == 10
-    assert compute.call_count == 10
+    assert compute.call_count == 20  # 2 rides each, each computed once for all windows
     assert db.store[f"{warmer.LAST_WARM_COLLECTION}/{warmer.LAST_WARM_DOC}"]["warmed"] == 10
 
     warmer.warm(db, _strava(), riders, min_rides=15, days=90, compute_curve=compute)
     done = warmer.warm(db, _strava(), riders, min_rides=15, days=90, compute_curve=compute)
     assert done["warmed"] == [] and done["remaining"] == 0 and done["cached"] == 12
-    assert compute.call_count == 12  # a full cache costs no further Strava requests
+    assert compute.call_count == 24  # 12 riders x 2 rides; a full cache costs no further requests
 
 
 def test_a_failing_rider_does_not_stop_the_batch():
@@ -163,7 +164,8 @@ def test_status_endpoint(client, monkeypatch):
     body = client.get("/admin/predictor/strava-cache/status").get_json()
     usage = body.pop("stravaUsage")
     assert body.pop("lastWarm") is None
-    assert body == {"days": 90, "eligible": 3, "cached": 0, "noPowerData": 0, "remaining": 3, "minEvalRiders": 40}
+    assert body == {"days": 90, "eligible": 3, "cached": 0, "noPowerData": 0, "others": 0, "othersCached": 0,
+                    "remaining": 3, "minEvalRiders": 40}
     assert usage["cacheBudgetFraction"] == 0.75 and usage["known"] is False
 
 
@@ -429,7 +431,7 @@ def test_a_rider_with_many_rides_runs_in_an_empty_quarter_hour_despite_its_own_l
     result = warmer.warm(db, service, [_rider(1)], min_rides=15, days=90, compute_curve=compute,
                          now=lambda: NOW)
     assert [w["activityCount"] for w in result["warmed"]] == [400]
-    compute.assert_called_once()
+    assert compute.call_count == 400  # once per ride (shared by the 30/60/90-day windows)
 
 
 def test_a_heavy_rider_in_a_busy_quarter_hour_is_skipped_and_the_next_rider_still_runs():
@@ -441,7 +443,7 @@ def test_a_heavy_rider_in_a_busy_quarter_hour_is_skipped_and_the_next_rider_stil
     result = warmer.warm(db, service, [_rider(1), _rider(2)], min_rides=15, days=90,
                          compute_curve=compute, now=lambda: NOW)
     assert [w["zwiftId"] for w in result["warmed"]] == ["2"]  # rider 1 waits for an empty window
-    assert result["rateLimited"] is True and compute.call_count == 1
+    assert result["rateLimited"] is True and compute.call_count == 20  # rider 2's rides only
 
 
 def test_a_normal_rider_that_does_not_fit_still_stops_the_run():
@@ -485,3 +487,54 @@ def test_a_share_sized_rider_in_a_busy_quarter_hour_is_skipped_not_a_stop():
     result = warmer.warm(db, service, [_rider(1), _rider(2)], min_rides=15, days=90,
                          compute_curve=compute, now=lambda: NOW)
     assert [w["zwiftId"] for w in result["warmed"]] == ["2"]
+
+
+def test_other_riders_with_strava_are_cached_after_the_tuning_riders():
+    db = FakeDb()
+    tuning = [_rider(1), _rider(2)]
+    new_rider = _rider(3, rides=2)  # few rides: not a tuning rider, but has Strava
+    old_format = _rider(4, velo=0)  # no vELO, curve from before the split
+    done = _rider(5, rides=1)  # fresh split curve: nothing to do
+    no_strava = _rider(6, strava=False, rides=1)
+    db.store["strava_power_curves/doc2_90"] = {"curve": {"w5": 1}, "split": True,
+                                               "computedAt": _fresh(hours=24 * 40)}
+    db.store["strava_power_curves/doc4_90"] = {"curve": {"w5": 1}, "computedAt": _fresh()}
+    db.store["strava_power_curves/doc5_90"] = {"curve": {"w5": 1}, "split": True, "windows": [30, 60, 90],
+                                               "computedAt": _fresh()}
+
+    status = warmer.cache_status(db, tuning + [new_rider, old_format, done, no_strava],
+                                 min_rides=15, days=90)
+
+    assert status["eligible"] == 2 and status["others"] == 3 and status["othersCached"] == 1
+    assert [r["zwiftId"] for r in status["missing"]] == ["1", "2", "3", "4"]  # tuning riders first
+
+
+def test_warming_another_rider_does_not_inflate_the_tuning_count():
+    db = FakeDb()
+    service = MagicMock()
+    service.get_power_activities.return_value = [{"id": 1}]
+    result = warmer.warm(db, service, [_rider(7, rides=2)], min_rides=15, days=90,
+                         compute_curve=MagicMock(return_value={"w5": 1.0}))
+    assert [w["zwiftId"] for w in result["warmed"]] == ["7"]
+    assert result["cached"] == 0 and result["othersCached"] == 1
+
+
+def test_a_curve_without_every_tuning_window_is_refetched():
+    db = FakeDb()
+    db.store["strava_power_curves/doc1_90"] = {"curve": {"w5": 1}, "split": True, "computedAt": _fresh()}
+    status = warmer.cache_status(db, [_rider(1)], min_rides=15, days=90)
+    assert status["cached"] == 1 and [r["zwiftId"] for r in status["missing"]] == ["1"]
+
+
+def test_curves_are_refreshed_weekly():
+    assert warmer.REFRESH_AFTER_DAYS == 7
+
+
+def test_a_complete_curve_counts_whichever_window_the_predictor_uses():
+    db = FakeDb()
+    service = MagicMock()
+    service.get_power_activities.return_value = [{"id": 1, "startDate": _fresh(hours=24)}]
+    compute = MagicMock(return_value={"w5": 900.0})
+    warmer.warm(db, service, [_rider(1)], min_rides=15, days=30, compute_curve=compute)
+    status = warmer.cache_status(db, [_rider(1)], min_rides=15, days=30)
+    assert status["cached"] == 1 and status["missing"] == []  # not refetched forever

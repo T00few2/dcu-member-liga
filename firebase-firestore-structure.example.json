@@ -829,6 +829,7 @@
       "indoorCount": 9,
       "outdoorCount": 14,
       "split": true,
+      "windows": [30, 60, 90],
       "computedAt": "2026-11-02T18:20:00+00:00"
     }
   ],
@@ -919,7 +920,7 @@
         },
         "regression": "ridge",
         "ridgeLambda": 0.1,
-        "stravaWindowDays": 180,
+        "stravaWindowDays": 60,
         "stravaPowerScale": { "wkg5s": 1.0, "wkg1m": 1.02, "wkg5m": 1.04, "wkg20m": 1.05 },
         "minStravaActivities": 3
       },
