@@ -56,15 +56,22 @@ def is_appeal(p: dict) -> bool:
     return p.get("origin") == "appeal"
 
 
-def supersede_pending(db: Any, zwift_id: str, proposals: list[dict] | None = None) -> int:
+OUTSIDE_FILTER_NOTE = "Outside the review filter"
+
+
+def supersede_pending(db: Any, zwift_id: str, proposals: list[dict] | None = None,
+                      note: str | None = None) -> int:
     """Mark the rider's pending agent proposals superseded (a re-check found no change is
-    needed). Appeals are never closed by the agent: only an admin decides them."""
+    needed, or the rider is outside the review filter). Appeals are never closed by the
+    agent: only an admin decides them."""
     rows = proposals if proposals is not None else all_proposals(db)
     count = 0
     for old in for_rider(rows, zwift_id):
         if old.get("status") in OPEN and old.get("id") and not is_appeal(old):
-            db.collection(COLLECTION).document(old["id"]).set(
-                {"status": "superseded", "decidedAt": _now()}, merge=True)
+            update = {"status": "superseded", "decidedAt": _now()}
+            if note:
+                update["decisionNote"] = note
+            db.collection(COLLECTION).document(old["id"]).set(update, merge=True)
             old["status"] = "superseded"
             count += 1
     return count

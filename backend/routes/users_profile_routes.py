@@ -314,6 +314,11 @@ def signup():
                     else None
                 )
                 newly_registered = not is_draft and prev_reg_status != "complete"
+                if newly_registered:
+                    # When the rider first completed registration (the division agent's
+                    # "new signups" filter); merge keeps it on later profile saves.
+                    data = {**data, "registration": {**(data.get("registration") or {}),
+                                                     "completedAt": firestore.SERVER_TIMESTAMP}}
                 transaction.set(ref, data, merge=True)
                 return newly_registered
 

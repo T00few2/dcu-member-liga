@@ -56,6 +56,27 @@ def load_config(db: Any) -> vp.PredictorConfig:
     return vp.PredictorConfig.from_settings(league_settings(db))
 
 
+def _iso(value: Any) -> str | None:
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value) or None
+
+
+def _agent_fields(data: dict) -> dict:
+    """Internal fields the division agent's review filter uses (never sent to the browser)."""
+    reg = data.get("registration") or {}
+    lc = data.get("ligaCategory") or {}
+    return {
+        # When registration first became complete. Riders who registered before this field existed have
+        # none and never count as new signups (dataPolicy.acceptedAt moves on every re-acceptance).
+        "registeredAt": _iso(reg.get("completedAt")),
+        "locked": bool(lc.get("locked")),
+        "assignedFrom": (lc.get("manualAssigned") or {}).get("assignedFrom"),
+    }
+
+
 def load_participants(db: Any) -> list[dict]:
     """Participant rows for every registered rider (same rows as `/participants`)."""
     rank_cats = load_categories(db)
@@ -66,6 +87,7 @@ def load_participants(db: Any) -> list[dict]:
             # Internal only (Strava curve cache key); never sent to the browser by these routes.
             row["userDocId"] = str(user.id)
             row["hasStrava"] = bool((user._data.get("connections") or {}).get("strava"))
+            row.update(_agent_fields(user._data))
             rows.append(row)
         except Exception as exc:
             logger.warning("predictor: skipping malformed participant %s: %s", getattr(user, "id", "?"), exc)
@@ -117,7 +139,8 @@ def division_agent_settings(db: Any) -> dict:
     model = raw.get("assessModel")
     chat_model = raw.get("chatModel")
     return {
-        "minZwiftRides": min_rides if isinstance(min_rides, int) and not isinstance(min_rides, bool) else 15,
+        "minZwiftRides": min_rides if isinstance(min_rides, int) and not isinstance(min_rides, bool)
+        and 1 <= min_rides <= 200 else 15,
         "enabled": raw.get("enabled") is not False,
         "assessModel": model if isinstance(model, str) and model.startswith("claude-") else "claude-haiku-5-5",
         "maxPerRun": max_per_run if isinstance(max_per_run, int) and not isinstance(max_per_run, bool)
@@ -126,7 +149,14 @@ def division_agent_settings(db: Any) -> dict:
         else "claude-haiku-5-5",
         # Off by default: every Discord reply waits for an admin's Send / Edit / Reject.
         "autoReply": raw.get("autoReply") is True,
+        # Which riders the agent checks (limits AND any ticked reason); see division_agent.triage.
+        "reviewFilter": triage_filter(raw.get("reviewFilter")),
     }
+
+
+def triage_filter(raw: Any) -> dict:
+    from services.division_agent.triage import normalize_filter  # avoids an import cycle
+    return normalize_filter(raw)
 
 
 def zwift_predictions(model: vp.Model | None, participants: list[dict], cats: Any) -> dict[str, dict]:

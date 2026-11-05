@@ -660,7 +660,23 @@
             "assessModel": { "type": "string", "default": "claude-haiku-5-5", "description": "Claude model that writes division proposal texts" },
             "maxPerRun": { "type": "integer", "default": 8, "description": "Riders reviewed per predictor-worker call" },
             "chatModel": { "type": "string", "default": "claude-haiku-5-5", "description": "Claude model that answers riders in the Discord help channel" },
-            "autoReply": { "type": "boolean", "default": false, "description": "true = Discord answers go to riders without an admin's approval" }
+            "autoReply": { "type": "boolean", "default": false, "description": "true = Discord answers about a rider's own division go out without an admin's approval (league answers always do)" },
+            "reviewFilter": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Which riders the division agent checks: every ticked limit must hold, and any ticked reason selects the rider. Set on the admin Agent page.",
+              "properties": {
+                "newSignupsDays": { "type": ["integer", "null"], "minimum": 1, "maximum": 365, "description": "Only riders registered within this many days (null = any)" },
+                "onlyUnlocked": { "type": "boolean", "default": false },
+                "onlyWithStrava": { "type": "boolean", "default": false },
+                "skipAdminPlaced": { "type": "boolean", "default": false, "description": "Skip riders whose manualAssigned.assignedFrom is admin" },
+                "reasons": {
+                  "type": "array",
+                  "items": { "type": "string", "enum": ["no_velo", "no_max30", "few_rides", "no_division"] },
+                  "default": ["no_velo", "no_max30", "few_rides"]
+                }
+              }
+            }
           }
         },
         "ligaCategories": {
@@ -2273,6 +2289,10 @@
             },
             "cocAccepted": {
               "type": "boolean"
+            },
+            "completedAt": {
+              "$ref": "#/$defs/timestampString",
+              "description": "When the registration first became complete (set once). Used by the division agent's new-signups filter; riders who registered before this field existed have none and never count as new signups."
             },
             "dataPolicy": {
               "type": "object",
