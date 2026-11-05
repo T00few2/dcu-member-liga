@@ -17,6 +17,7 @@ export function useRegistration() {
     const zwiftStatusParam = searchParams.get('zwift');
     const discordStatusParam = searchParams.get('discord');
     const discordStateParam = searchParams.get('state');
+    const discordTokenParam = searchParams.get('token');
     const discordConfirmed = useRef(false);
 
     // User Data
@@ -92,8 +93,15 @@ export function useRegistration() {
     }, []);
 
     // Keep in-progress rider info locally so OAuth redirects and reloads do not wipe input.
+    // Skip the first run: it would overwrite the saved draft with the empty initial state
+    // before the return-from-OAuth effects below restore it.
+    const persistReady = useRef(false);
     useEffect(() => {
         if (typeof window === 'undefined') return;
+        if (!persistReady.current) {
+            persistReady.current = true;
+            return;
+        }
         localStorage.setItem('temp_reg_name', name || '');
         localStorage.setItem('temp_reg_club', club || '');
         localStorage.setItem('temp_reg_trainer', trainer || '');
@@ -208,7 +216,7 @@ export function useRegistration() {
                 const res = await fetch(`${API_URL}/discord/confirm`, {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ state: discordStateParam }),
+                    body: JSON.stringify({ state: discordStateParam, token: discordTokenParam }),
                 });
                 const data = await res.json().catch(() => ({}));
                 if (data.status === 'connected') {
@@ -219,8 +227,10 @@ export function useRegistration() {
             } catch {
                 showDiscordStatus('error');
             }
+            // The state is spent: drop it (and the token) from the URL so a refresh does nothing.
+            router.replace('/register', { scroll: false });
         })();
-    }, [discordStatusParam, discordStateParam, user]);
+    }, [discordStatusParam, discordStateParam, discordTokenParam, user, router]);
 
     function showDiscordStatus(status: string) {
         if (status === 'confirm') return; // the confirm effect reports the outcome

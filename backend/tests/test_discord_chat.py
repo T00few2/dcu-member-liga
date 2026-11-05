@@ -160,10 +160,11 @@ def client(chat_db, monkeypatch):
     return app.test_client(), db, target
 
 
-def _confirm_url_state(res):
-    loc = res.headers["Location"]
-    assert "discord=confirm" in loc
-    return loc.split("state=")[1].split("&")[0]
+def _confirm_params(res):
+    from urllib.parse import parse_qs, urlparse
+    q = parse_qs(urlparse(res.headers["Location"]).query)
+    assert q["discord"] == ["confirm"]
+    return {"state": q["state"][0], "token": q["token"][0]}
 
 
 def test_linking_saves_the_discord_account_and_refuses_one_taken_by_another_rider(client, monkeypatch):
@@ -177,19 +178,20 @@ def test_linking_saves_the_discord_account_and_refuses_one_taken_by_another_ride
     monkeypatch.setattr(discord_link, "fetch_identity", lambda _code: {"userId": "d-9", "username": "New"})
     db.store[f"users/{target['zwiftId']}"]["connections"] = {}
     res = http.get(f"/discord/callback?code=c&state={state}")
-    assert res.status_code == 302 and _confirm_url_state(res) == state
+    params = _confirm_params(res)
+    assert res.status_code == 302 and params["state"] == state
+    assert "token" not in str(db.store[f"{discord_link.STATES_COLLECTION}/{state}"].get("confirmTokenHash"))
     assert "discord" not in db.store[f"users/{target['zwiftId']}"]["connections"]  # not linked yet
-    res = http.post("/discord/confirm", json={"state": state})
+    res = http.post("/discord/confirm", json=params)
     assert res.get_json() == {"status": "connected", "username": "New"}
     assert db.store[f"users/{target['zwiftId']}"]["connections"]["discord"]["userId"] == "d-9"
     assert f"{discord_link.STATES_COLLECTION}/{state}" not in db.store  # state used once
-    assert http.post("/discord/confirm", json={"state": state}).get_json()["status"] == "expired"
+    assert http.post("/discord/confirm", json=params).get_json()["status"] == "expired"
 
     db.store["users/other"] = {"connections": {"discord": {"userId": "d-7"}}}
     monkeypatch.setattr(discord_link, "fetch_identity", lambda _code: {"userId": "d-7", "username": "X"})
     discord_routes.db.collection(discord_link.STATES_COLLECTION).document("s2").set({"uid": target["zwiftId"]})
-    http.get("/discord/callback?code=c&state=s2")
-    res = http.post("/discord/confirm", json={"state": "s2"})
+    res = http.post("/discord/confirm", json=_confirm_params(http.get("/discord/callback?code=c&state=s2")))
     assert res.status_code == 409 and res.get_json()["status"] == "taken"
     assert db.store[f"users/{target['zwiftId']}"]["connections"]["discord"]["userId"] == "d-9"
 
@@ -206,16 +208,33 @@ def test_a_link_started_by_someone_else_cannot_be_finished_in_my_browser(client,
     db.store["users/attacker"] = {"connections": {}}
     db.collection(discord_link.STATES_COLLECTION).document("evil").set({"uid": "attacker"})
     monkeypatch.setattr(discord_link, "fetch_identity", lambda _code: {"userId": "victim-d", "username": "V"})
-    _confirm_url_state(http.get("/discord/callback?code=c&state=evil"))  # victim's browser
+    params = _confirm_params(http.get("/discord/callback?code=c&state=evil"))  # victim's browser
     # The victim's app confirms with the victim's own token (the fixture's rider): refused.
-    res = http.post("/discord/confirm", json={"state": "evil"})
+    res = http.post("/discord/confirm", json=params)
     assert res.status_code == 403 and res.get_json()["status"] == "mismatch"
     assert "discord" not in db.store["users/attacker"]["connections"]
     assert f"{discord_link.STATES_COLLECTION}/evil" not in db.store
     # Even the attacker cannot finish it afterwards.
     monkeypatch.setattr(discord_routes, "verify_user_token", lambda _req: {"uid": "attacker"})
-    assert http.post("/discord/confirm", json={"state": "evil"}).get_json()["status"] == "expired"
+    assert http.post("/discord/confirm", json=params).get_json()["status"] == "expired"
     assert "discord" not in db.store["users/attacker"]["connections"]
+
+
+def test_the_starter_cannot_confirm_without_the_token_from_the_consenting_browser(client, monkeypatch):
+    """The victim consents but is not logged into the app; the attacker knows only the state."""
+    http, db, target = client
+    from routes import discord_routes
+
+    monkeypatch.setattr(discord_routes, "verify_user_token", lambda _req: {"uid": "attacker"})
+    db.store["users/attacker"] = {"connections": {}}
+    monkeypatch.setattr(discord_link, "fetch_identity", lambda _code: {"userId": "victim-d", "username": "V"})
+    for attempt in ({"state": "evil"}, {"state": "evil", "token": "guess"}):
+        db.collection(discord_link.STATES_COLLECTION).document("evil").set({"uid": "attacker"})
+        _confirm_params(http.get("/discord/callback?code=c&state=evil"))  # the victim's browser
+        res = http.post("/discord/confirm", json=attempt)
+        assert res.status_code == 403 and res.get_json()["status"] == "mismatch"
+        assert "discord" not in db.store["users/attacker"]["connections"]
+        assert f"{discord_link.STATES_COLLECTION}/evil" not in db.store
 
 
 # --- chat ---------------------------------------------------------------------

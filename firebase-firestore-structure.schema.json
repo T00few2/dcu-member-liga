@@ -285,7 +285,7 @@
     },
     "discord_oauth_states": {
       "type": "array",
-      "description": "Short-lived (10 min) state for Discord account linking (doc id = state). The callback parks the Discord identity here; the link is written only when the same logged-in user confirms it (POST /discord/confirm).",
+      "description": "Short-lived (10 min) state for Discord account linking (doc id = state). The callback parks the Discord identity here; the link is written only when the same logged-in user confirms it (POST /discord/confirm) with the one-time token that only the browser returning from Discord received.",
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -300,7 +300,8 @@
               "userId": { "type": "string" },
               "username": { "type": "string" }
             }
-          }
+          },
+          "confirmTokenHash": { "type": "string", "description": "SHA-256 of the one-time confirm token (the token itself is never stored)." }
         }
       }
     },

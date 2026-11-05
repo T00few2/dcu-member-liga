@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import datetime
+import hashlib
+import hmac
 import logging
 import secrets
 from urllib.parse import urlencode
@@ -73,8 +75,11 @@ def discord_callback():
         logger.warning("discord link failed: %s", e.message)
         _delete_state(state_ref)
         return redirect(f"{FRONTEND_URL}/register?discord=error")
-    state_ref.update({"identity": identity})
-    return redirect(f"{FRONTEND_URL}/register?" + urlencode({"discord": "confirm", "state": state}))
+    # Only the browser that came back from Discord gets this token, so a link started by
+    # someone else can't be finished by them either.
+    token = secrets.token_urlsafe(32)
+    state_ref.update({"identity": identity, "confirmTokenHash": _hash(token)})
+    return redirect(f"{FRONTEND_URL}/register?" + urlencode({"discord": "confirm", "state": state, "token": token}))
 
 
 @integration_bp.route("/discord/confirm", methods=["POST"])
@@ -86,7 +91,8 @@ def discord_confirm():
         return jsonify({"message": e.message}), e.status_code
     if not db:
         return jsonify({"error": "DB not available"}), 500
-    state = str((request.get_json(silent=True) or {}).get("state") or "")
+    body = request.get_json(silent=True) or {}
+    state, token = str(body.get("state") or ""), str(body.get("token") or "")
     if not state:
         return jsonify({"status": "error", "message": "Missing state"}), 400
     state_ref = db.collection(discord_link.STATES_COLLECTION).document(state)
@@ -96,7 +102,8 @@ def discord_confirm():
     data = snap.to_dict() or {}
     _delete_state(state_ref)  # one attempt only, whoever makes it
     identity = data.get("identity") or {}
-    if str(data.get("uid")) != str(decoded["uid"]):
+    if str(data.get("uid")) != str(decoded["uid"]) or not token or not hmac.compare_digest(
+            _hash(token), str(data.get("confirmTokenHash") or "")):
         logger.warning("discord confirm by a different user than the one who started the link")
         return jsonify({"status": "mismatch"}), 403
     if _expired(data) or not identity.get("userId"):
@@ -114,6 +121,10 @@ def discord_confirm():
         "updatedAt": firestore.SERVER_TIMESTAMP,
     }), merge=True)
     return jsonify({"status": "connected", "username": identity.get("username") or ""}), 200
+
+
+def _hash(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
 
 
 def _delete_state(state_ref) -> None:

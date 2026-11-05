@@ -935,7 +935,8 @@
       "_id": "example_state",
       "uid": "example_uid",
       "createdAt": "2026-11-05T08:59:00+00:00",
-      "identity": { "userId": "100000000000000001", "username": "example_rider" }
+      "identity": { "userId": "100000000000000001", "username": "example_rider" },
+      "confirmTokenHash": "0000000000000000000000000000000000000000000000000000000000000000"
     }
   ],
   "division_agent_queue": [
