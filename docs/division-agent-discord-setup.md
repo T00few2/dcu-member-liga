@@ -67,13 +67,13 @@ The next backend deploy picks them up. Riders can then link Discord under *Regis
   - published news posts and the current data policy.
 - **Personal questions** need Discord linked in the app (*Registrering → Forbindelser*): the rider's own
   registration, verification, sign-ups and standing, and their division.
-- **Division answers** follow the auto-reply switch on the admin page (*Division Agent*, "Answer division questions
+- **Division answers** follow the auto-reply switch on the admin page (*Agent*, "Answer division questions
   on Discord without approval", off by default): when off, the rider gets "an admin will reply soon" and the draft
   appears in **#division-admin** with **Send / Edit / Reject**.
 - A request to move division becomes an **appeal** post with **Approve / Edit / Reject** (and the transfer preview
   for riders who have raced). The rider is told the outcome in their thread.
 - **Questions the bot cannot answer** are never guessed: they appear in **#division-admin** (with a link to the
-  thread and a **Løst / Solved** button) and on the admin page under *Division Agent → Unanswered questions*.
+  thread and a **Løst / Solved** button) and on the admin page under *Agent → Unanswered questions*.
   Reply to the rider in the thread, then fix the gap at its source (league settings, a news post, the Code of
   Conduct doc or the site text that feeds `/llms.txt`), so the bot can answer it next time.
 - Proposals made by the agent itself also appear in **#division-admin**. Deciding on the admin page instead updates

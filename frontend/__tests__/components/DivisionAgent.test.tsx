@@ -59,6 +59,13 @@ beforeEach(() => {
     if (u.includes('/admin/division-agent/proposals?status=history')) {
       return new Response(JSON.stringify({ proposals: [] }), { status: 200 });
     }
+    if (u.includes('/admin/division-agent/filter-preview')) {
+      const f = JSON.parse(decodeURIComponent(u.split('filter=')[1].split('&')[0]));
+      const matching = f.onlyUnlocked ? 12 : 40;
+      return new Response(JSON.stringify({ total: 600, inGroup: f.onlyUnlocked ? 300 : 600, matching,
+        byReason: { no_velo: 5, no_max30: matching, few_rides: 30, no_division: 0 }, pendingOutside: f.onlyUnlocked ? 3 : 0 }),
+        { status: 200 });
+    }
     if (u.includes('/admin/division-agent/unanswered?status=open')) {
       return new Response(JSON.stringify({ items: openQuestions }), { status: 200 });
     }
@@ -161,7 +168,7 @@ describe('DivisionAgent', () => {
     expect(busy).toBeDisabled();
     expect(screen.getByText('Scanning riders…')).toBeInTheDocument();
     gate.release?.(new Response(JSON.stringify({ queued: 0 }), { status: 200 }));
-    expect(await screen.findByText('No riders need a review right now.')).toBeInTheDocument();
+    expect(await screen.findByText('No riders match the filter right now.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Scan riders now' })).toBeEnabled();
   });
 
@@ -209,5 +216,25 @@ describe('DivisionAgent and Discord', () => {
       expect(call && JSON.parse((call[1] as RequestInit).body as string)).toEqual({ note: 'Added to /info' });
     });
     expect(await screen.findByText('No unanswered questions.')).toBeInTheDocument();
+  });
+
+  it('chooses which riders to check, with a live count, and saves the filter', async () => {
+    const u = userEvent.setup();
+    renderAgent();
+    expect(await screen.findByText(/of 600 riders match/)).toBeInTheDocument();
+    await u.click(screen.getByLabelText('are not locked (have not raced yet)'));
+    expect(await screen.findByText(/3 pending card\(s\) will be closed/)).toBeInTheDocument();
+    expect(screen.getByText('12')).toBeInTheDocument();
+    await u.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([url, init]) => String(url).endsWith('/admin/division-agent/settings')
+        && JSON.parse(String((init as RequestInit).body)).reviewFilter);
+      expect(call && JSON.parse((call[1] as RequestInit).body as string)).toEqual({
+        reviewFilter: { newSignupsDays: null, onlyUnlocked: true, onlyWithStrava: false, skipAdminPlaced: false,
+          reasons: ['no_velo', 'no_max30', 'few_rides'] },
+        minZwiftRides: 15,
+      });
+    });
+    expect(screen.getByRole('heading', { name: 'Agent' })).toBeInTheDocument();
   });
 });

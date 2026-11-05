@@ -169,7 +169,7 @@ function AdminPageContent() {
           onClick={() => handleSectionChange('agent')}
           className={`pb-4 px-6 text-lg font-medium transition whitespace-nowrap ${activeSection === 'agent' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
         >
-          Division Agent
+          Agent
         </button>
         <button
           onClick={() => handleSectionChange('verification')}

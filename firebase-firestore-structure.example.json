@@ -125,7 +125,7 @@
         "watts5s": false, "watts1m": false, "watts5m": false, "watts20m": false,
         "compound5s": false, "compound1m": false, "compound5m": true, "compound20m": false
       },
-      "divisionAgent": { "minZwiftRides": 15, "enabled": true, "assessModel": "claude-haiku-5-5", "maxPerRun": 8, "chatModel": "claude-haiku-5-5", "autoReply": false },
+      "divisionAgent": { "minZwiftRides": 15, "enabled": true, "assessModel": "claude-haiku-5-5", "maxPerRun": 8, "chatModel": "claude-haiku-5-5", "autoReply": false, "reviewFilter": { "newSignupsDays": 30, "onlyUnlocked": true, "onlyWithStrava": false, "skipAdminPlaced": true, "reasons": ["no_velo", "no_max30", "few_rides"] } },
       "ligaCategories": [
         { "name": "Diamond", "upper": null, "requiresVerification": true, "color": "#b9f2ff" },
         { "name": "Ruby", "upper": 2200, "requiresVerification": true, "color": "#ff4e6a" },
@@ -708,6 +708,7 @@
       "registration": {
         "status": "complete",
         "cocAccepted": true,
+        "completedAt": "2026-02-04T10:00:00+00:00",
         "dataPolicy": {
           "version": "2026-02-04",
           "acceptedAt": "2026-03-04T22:21:43+00:00"

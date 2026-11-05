@@ -6,6 +6,7 @@ import type { User } from 'firebase/auth';
 import { API_URL } from '@/lib/api';
 import { PreviewBlock, type Preview } from '@/components/admin/category-manager/TransferPreview';
 import UnansweredQuestions from '@/components/admin/UnansweredQuestions';
+import ReviewFilterPanel, { type ReviewFilter } from '@/components/admin/ReviewFilterPanel';
 
 type Prediction = { velo: number | null; category: string | null; confidence?: string };
 
@@ -56,6 +57,8 @@ interface AgentStatus {
   enabled: boolean;
   /** Discord replies go out without an admin's approval. */
   autoReply?: boolean;
+  reviewFilter?: ReviewFilter;
+  minZwiftRides?: number;
   queued: number;
   waiting: number;
   pending: number;
@@ -64,7 +67,9 @@ interface AgentStatus {
 
 const REASON_TEXT: Record<string, string> = {
   no_velo: 'no vELO',
+  no_max30: 'no max30 vELO',
   few_rides: 'few Zwift rides',
+  no_division: 'no division',
 };
 
 const FLAG_TEXT: Record<string, string> = {
@@ -317,9 +322,11 @@ export default function DivisionAgent({ user }: { user: User | null }) {
     try {
       const data = await authed(user, '/admin/division-agent/scan', { method: 'POST', body: '{}' });
       const queued = Number(data.queued) || 0;
-      setInfo(queued > 0
+      const closed = Number(data.closed) || 0;
+      const closedText = closed > 0 ? ` ${closed} pending card(s) outside the filter were closed.` : '';
+      setInfo((queued > 0
         ? `${queued} rider(s) queued — proposals appear here within a few minutes.`
-        : 'No riders need a review right now.');
+        : 'No riders match the filter right now.') + closedText);
       setPollUntil(Date.now() + 10 * 60_000);
       void queryClient.invalidateQueries({ queryKey: ['division-agent'] });
     } catch (e: unknown) {
@@ -334,10 +341,10 @@ export default function DivisionAgent({ user }: { user: User | null }) {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-2xl font-semibold text-foreground">Division Agent</h2>
+        <h2 className="text-2xl font-semibold text-foreground">Agent</h2>
         <p className="text-sm text-muted-foreground">
-          Reviews riders with no vELO or few Zwift rides using Strava and Zwift power (the vELO predictor) and
-          proposes a division. Nothing changes until you approve, edit or reject a proposal.
+          Proposes divisions for the riders you choose below, using Strava and Zwift power (the vELO predictor),
+          and runs the Discord help bot. Nothing changes until you approve, edit or reject a proposal.
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-3 text-sm">
@@ -371,6 +378,7 @@ export default function DivisionAgent({ user }: { user: User | null }) {
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
       {info && <p className="text-sm text-green-700">{info}</p>}
+      <ReviewFilterPanel user={user} saved={status?.reviewFilter} savedMinRides={status?.minZwiftRides} />
       <div className="flex border-b border-border">
         {(['pending', 'history', 'unanswered'] as const).map(t => (
           <button
