@@ -183,7 +183,7 @@ def test_linking_saves_the_discord_account_and_refuses_one_taken_by_another_ride
 
     assert http.post("/discord/unlink").status_code == 200
     assert "discord" not in db.store[f"users/{target['zwiftId']}"]["connections"]
-    assert http.get("/discord/callback?code=c&state=bogus").status_code == 400
+    assert http.get("/discord/callback?code=c&state=bogus").status_code == 302
 
 
 # --- chat ---------------------------------------------------------------------
@@ -334,3 +334,37 @@ def test_ack_rejects_unknown_kinds(client):
     http, _, _ = client
     assert http.post("/bot/ack", headers=H, json={"kind": "x", "id": "1"}).status_code == 400
     assert http.post("/bot/ack", headers=H, json={"kind": "draft", "id": "missing", "messageId": "m"}).status_code == 404
+
+
+def test_the_agent_never_closes_an_appeal(chat_db, monkeypatch):
+    db, target = chat_db
+    appeal = runner.file_appeal(db, target["zwiftId"], "please move me", "Bronze", thread_id="th1",
+                                client_factory=lambda: None)
+    # An agent re-check that finds no change needed (or a trusted vELO) supersedes agent cards only.
+    assert proposals.supersede_pending(db, target["zwiftId"]) == 0
+    agent = proposals.create(db, {"zwiftId": target["zwiftId"], "origin": "agent", "proposedCategory": "Gold"})
+    assert db.store[f"{proposals.COLLECTION}/{appeal['id']}"]["status"] == "pending"
+    # ... and a newer appeal replaces the older appeal, not the agent card.
+    newer = runner.file_appeal(db, target["zwiftId"], "again", None, client_factory=lambda: None)
+    assert db.store[f"{proposals.COLLECTION}/{appeal['id']}"]["status"] == "superseded"
+    assert db.store[f"{proposals.COLLECTION}/{agent['id']}"]["status"] == "pending"
+    assert db.store[f"{proposals.COLLECTION}/{newer['id']}"]["status"] == "pending"
+    # A pending appeal alone does not make the nightly scan re-review the rider.
+    monkeypatch.setattr(runner.triage, "needs_review", lambda row, settings: [])
+    db.store[f"{proposals.COLLECTION}/{agent['id']}"]["status"] = "rejected"
+    assert runner.scan(db) == 0
+
+
+def test_a_failed_or_expired_link_returns_to_the_app(client, monkeypatch):
+    http, db, target = client
+    assert http.get("/discord/callback?code=c&state=unknown").headers["Location"].endswith("discord=expired")
+    assert http.get("/discord/callback").headers["Location"].endswith("discord=error")
+
+    def fail(_code):
+        raise discord_link.DiscordLinkError("nope", 502)
+
+    monkeypatch.setattr(discord_link, "fetch_identity", fail)
+    db.collection(discord_link.STATES_COLLECTION).document("s3").set({"uid": target["zwiftId"]})
+    res = http.get("/discord/callback?code=c&state=s3")
+    assert res.headers["Location"].endswith("discord=error")
+    assert f"{discord_link.STATES_COLLECTION}/s3" not in db.store

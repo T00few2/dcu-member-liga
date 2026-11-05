@@ -184,15 +184,28 @@ export function useRegistration() {
 
     useEffect(() => {
         if (!discordStatusParam) return;
+        // Back from Discord: same step and in-progress fields as after Strava / Zwift.
         setActiveTab('connections');
+        setCurrentStep(1);
+        const tempName = localStorage.getItem('temp_reg_name');
+        if (tempName) {
+            setName(tempName);
+            setClub(localStorage.getItem('temp_reg_club') || '');
+            setTrainer(localStorage.getItem('temp_reg_trainer') || '');
+        }
         if (discordStatusParam === 'connected') setMessage('Discord forbundet!');
         else if (discordStatusParam === 'taken') setError('Den Discord-konto er allerede forbundet til en anden rytter.');
         else if (discordStatusParam === 'cancelled') setError('Discord-forbindelsen blev afbrudt.');
+        else if (discordStatusParam === 'expired') setError('Discord-login udløb. Prøv igen.');
+        else if (discordStatusParam === 'error') setError('Discord-forbindelsen mislykkedes. Prøv igen.');
     }, [discordStatusParam]);
 
     // --- Actions ---
 
     const handleConnectDiscord = async () => {
+        localStorage.setItem('temp_reg_name', name);
+        localStorage.setItem('temp_reg_club', club);
+        localStorage.setItem('temp_reg_trainer', trainer);
         try {
             const token = await user?.getIdToken();
             const res = await fetch(`${API_URL}/discord/login`, {

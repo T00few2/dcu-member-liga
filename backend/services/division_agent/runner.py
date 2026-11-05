@@ -31,7 +31,8 @@ def scan(db: Any, *, participants: list[dict] | None = None) -> int:
         zid = str(row.get("zwiftId") or "")
         if not zid or zid in queued_ids:
             continue
-        has_pending = any(p.get("status") == "pending" for p in proposals.for_rider(existing, zid))
+        has_pending = any(p.get("status") == "pending" and not proposals.is_appeal(p)
+                          for p in proposals.for_rider(existing, zid))
         # Riders with a pending proposal are re-checked too: new data refreshes the card, and
         # a rider who no longer needs a change gets the stale card superseded. Unchanged
         # evidence is "handled" without a Claude call or a Strava fetch.

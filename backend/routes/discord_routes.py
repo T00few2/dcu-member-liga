@@ -44,23 +44,22 @@ def discord_login():
 @integration_bp.route("/discord/callback", methods=["GET"])
 def discord_callback():
     code, state, error = request.args.get("code"), request.args.get("state"), request.args.get("error")
+    # The rider's browser lands here from Discord: always send them back to the app.
     if error:
         return redirect(f"{FRONTEND_URL}/register?discord=cancelled")
-    if not code or not state:
-        return jsonify({"message": "Missing code or state"}), 400
-    if not db:
-        return jsonify({"error": "DB not available"}), 500
+    if not code or not state or not db:
+        return redirect(f"{FRONTEND_URL}/register?discord=error")
     state_ref = db.collection(discord_link.STATES_COLLECTION).document(state)
     snap = state_ref.get()
     if not snap.exists:
-        return jsonify({"message": "Invalid or expired state"}), 400
+        return redirect(f"{FRONTEND_URL}/register?discord=expired")
     data = snap.to_dict() or {}
     try:
         created = data.get("createdAt")
         if isinstance(created, datetime.datetime) and (
                 datetime.datetime.now(datetime.timezone.utc) - created).total_seconds() \
                 > discord_link.STATE_MAX_AGE_SECONDS:
-            return jsonify({"message": "Login expired, please try again"}), 400
+            return redirect(f"{FRONTEND_URL}/register?discord=expired")
         identity = discord_link.fetch_identity(code)
         user_ref = _user_ref(str(data.get("uid")))
         other = discord_link.user_for_discord(db, identity["userId"])
@@ -75,7 +74,8 @@ def discord_callback():
             "updatedAt": firestore.SERVER_TIMESTAMP,
         }), merge=True)
     except discord_link.DiscordLinkError as e:
-        return jsonify({"message": e.message}), e.status_code
+        logger.warning("discord link failed: %s", e.message)
+        return redirect(f"{FRONTEND_URL}/register?discord=error")
     finally:
         try:
             state_ref.delete()
