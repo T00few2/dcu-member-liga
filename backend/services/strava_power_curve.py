@@ -149,8 +149,8 @@ def get_strava_power_curve(
 
     With `also_days`, one fetch (activity list and one stream per ride, for the longest
     window) writes an entry for every window in `days` + `also_days`: each ride's best
-    efforts are computed once and merged per window. That entry for the longest window
-    records `windows`, so the warm-up knows every window was written together.
+    efforts are computed once and merged per window. Every entry records `windows`, so
+    the warm-up knows every window was written together, whichever one it checks.
     """
     windows = sorted({int(days), *(int(d) for d in also_days)})
     if any(w not in ALLOWED_DAYS for w in windows):
@@ -276,10 +276,11 @@ def _fetch_windows(
             "indoorCount": len(indoor),
             "outdoorCount": len(outdoor),
             "split": True,
+            # On every window's doc, so the warm-up can check completeness from whichever
+            # window the predictor uses.
+            "windows": list(windows),
             "computedAt": now.isoformat(),
         }
-        if w == longest:
-            entry["windows"] = list(windows)
         entries[w] = entry
         try:
             db.collection(COLLECTION).document(cache_doc_id(user_doc_id, w)).set(entry)

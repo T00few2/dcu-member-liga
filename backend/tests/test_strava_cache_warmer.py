@@ -528,3 +528,13 @@ def test_a_curve_without_every_tuning_window_is_refetched():
 
 def test_curves_are_refreshed_weekly():
     assert warmer.REFRESH_AFTER_DAYS == 7
+
+
+def test_a_complete_curve_counts_whichever_window_the_predictor_uses():
+    db = FakeDb()
+    service = MagicMock()
+    service.get_power_activities.return_value = [{"id": 1, "startDate": _fresh(hours=24)}]
+    compute = MagicMock(return_value={"w5": 900.0})
+    warmer.warm(db, service, [_rider(1)], min_rides=15, days=30, compute_curve=compute)
+    status = warmer.cache_status(db, [_rider(1)], min_rides=15, days=30)
+    assert status["cached"] == 1 and status["missing"] == []  # not refetched forever

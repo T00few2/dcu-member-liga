@@ -303,5 +303,5 @@ def test_one_fetch_writes_every_window_from_rides_inside_it():
     d30, d60 = db.store["strava_power_curves/u1_30"], db.store["strava_power_curves/u1_60"]
     assert (d30["activityCount"], d30["curveIndoor"], d30["curveOutdoor"]) == (1, {"w1200": 300.0}, {})
     assert (d60["activityCount"], d60["curveOutdoor"]) == (2, {"w1200": 320.0})
-    assert d60["split"] is True and "windows" not in d60
+    assert d60["split"] is True and d60["windows"] == d30["windows"] == [30, 60, 90]
     service.get_power_activities.assert_called_once()
