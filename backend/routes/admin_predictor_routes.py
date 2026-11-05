@@ -322,6 +322,8 @@ def predictor_strava_cache_status():
             "eligible": status["eligible"],
             "cached": status["cached"],
             "noPowerData": status["noPowerData"],
+            "others": status["others"],
+            "othersCached": status["othersCached"],
             "remaining": len(status["missing"]),
             "minEvalRiders": MIN_EVAL_RIDERS,
             "stravaUsage": warmer.strava_usage(db),

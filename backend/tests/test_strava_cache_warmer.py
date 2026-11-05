@@ -163,7 +163,8 @@ def test_status_endpoint(client, monkeypatch):
     body = client.get("/admin/predictor/strava-cache/status").get_json()
     usage = body.pop("stravaUsage")
     assert body.pop("lastWarm") is None
-    assert body == {"days": 90, "eligible": 3, "cached": 0, "noPowerData": 0, "remaining": 3, "minEvalRiders": 40}
+    assert body == {"days": 90, "eligible": 3, "cached": 0, "noPowerData": 0, "others": 0, "othersCached": 0,
+                    "remaining": 3, "minEvalRiders": 40}
     assert usage["cacheBudgetFraction"] == 0.75 and usage["known"] is False
 
 
@@ -485,3 +486,32 @@ def test_a_share_sized_rider_in_a_busy_quarter_hour_is_skipped_not_a_stop():
     result = warmer.warm(db, service, [_rider(1), _rider(2)], min_rides=15, days=90,
                          compute_curve=compute, now=lambda: NOW)
     assert [w["zwiftId"] for w in result["warmed"]] == ["2"]
+
+
+def test_other_riders_with_strava_are_cached_after_the_tuning_riders():
+    db = FakeDb()
+    tuning = [_rider(1), _rider(2)]
+    new_rider = _rider(3, rides=2)  # few rides: not a tuning rider, but has Strava
+    old_format = _rider(4, velo=0)  # no vELO, curve from before the split
+    done = _rider(5, rides=1)  # fresh split curve: nothing to do
+    no_strava = _rider(6, strava=False, rides=1)
+    db.store["strava_power_curves/doc2_90"] = {"curve": {"w5": 1}, "split": True,
+                                               "computedAt": _fresh(hours=24 * 40)}
+    db.store["strava_power_curves/doc4_90"] = {"curve": {"w5": 1}, "computedAt": _fresh()}
+    db.store["strava_power_curves/doc5_90"] = {"curve": {"w5": 1}, "split": True, "computedAt": _fresh()}
+
+    status = warmer.cache_status(db, tuning + [new_rider, old_format, done, no_strava],
+                                 min_rides=15, days=90)
+
+    assert status["eligible"] == 2 and status["others"] == 3 and status["othersCached"] == 1
+    assert [r["zwiftId"] for r in status["missing"]] == ["1", "2", "3", "4"]  # tuning riders first
+
+
+def test_warming_another_rider_does_not_inflate_the_tuning_count():
+    db = FakeDb()
+    service = MagicMock()
+    service.get_power_activities.return_value = [{"id": 1}]
+    result = warmer.warm(db, service, [_rider(7, rides=2)], min_rides=15, days=90,
+                         compute_curve=MagicMock(return_value={"w5": 1.0}))
+    assert [w["zwiftId"] for w in result["warmed"]] == ["7"]
+    assert result["cached"] == 0 and result["othersCached"] == 1

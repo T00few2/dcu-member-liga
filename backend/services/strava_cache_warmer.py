@@ -1,7 +1,9 @@
 """Fill the Strava power-curve cache a few riders at a time, for predictor tuning.
 
-Tuning needs a cached Strava curve for riders whose vELO is reliable. Building
-one curve costs up to about 60 Strava requests, so each call warms at most
+Tuning needs a cached Strava curve for riders whose vELO is reliable; those come
+first. Every other rider with Strava (mostly the division agent's riders) is cached
+after them, so their review rarely waits for Strava. Building one curve costs one
+request per power ride, so each call warms at most
 `WARM_BATCH` riders and stops at `BUDGET_FRACTION` of Strava's read limits. Google
 Cloud Scheduler calls it every 15 minutes (set up by `deploy-backend.yml`); only one
 call runs at a time.
@@ -81,6 +83,7 @@ def cache_status(
     eligible = eligible_riders(participants, min_rides)
     read_curve = cached_reader(db)
     missing: list[tuple[int, dict]] = []
+    uncounted: set[str] = set()  # eligible riders not yet in `cached` / `noPowerData`
     cached = no_power = 0
     for p in eligible:
         entry = read_curve(p["userDocId"], days)
@@ -96,12 +99,35 @@ def cache_status(
         else:
             # 0 = never cached, 1 = stale or empty curve due for a retry (2 = pre-split, above)
             missing.append((0 if entry is None else 1, p))
+            uncounted.add(p["userDocId"])
+
+    # Every other rider with Strava (mostly the division agent's riders: no vELO or few
+    # rides) is kept cached too, after the tuning riders: 3 = never cached, 4 = stale,
+    # empty and due for a retry, or written before the indoor/outdoor split.
+    eligible_ids = {p["userDocId"] for p in eligible}
+    others = [p for p in participants
+              if p.get("hasStrava") and p.get("userDocId") and p["userDocId"] not in eligible_ids]
+    others_cached = 0
+    for p in others:
+        entry = read_curve(p["userDocId"], days)
+        has_power = bool(entry and entry.get("curve"))
+        if has_power and entry.get("split") and _is_fresh(entry, now, max_age_days):
+            others_cached += 1
+        elif entry and not has_power and _is_fresh(entry, now, RETRY_EMPTY_AFTER_DAYS):
+            pass  # no power rides; retried after a week
+        else:
+            missing.append((3 if entry is None else 4, p))
+
     missing.sort(key=lambda m: m[0])
     return {
         "days": days,
         "eligible": len(eligible),
         "cached": cached,
         "noPowerData": no_power,
+        "others": len(others),
+        "othersCached": others_cached,
+        "uncounted": uncounted,
+        "eligibleIds": eligible_ids,
         "missing": [p for _, p in missing],
     }
 
@@ -203,6 +229,7 @@ def _warm(
         stored = {}
     warmed, failed = [], []
     new_cached = new_empty = 0
+    eligible_cached = eligible_empty = others_cached = 0
     rate_limited = False
 
     def usage() -> dict:
@@ -236,6 +263,13 @@ def _warm(
                 new_cached += 1
             else:
                 new_empty += 1
+            if p["userDocId"] in status["uncounted"]:  # newly usable tuning rider
+                if entry.get("curve"):
+                    eligible_cached += 1
+                else:
+                    eligible_empty += 1
+            elif p["userDocId"] not in status["eligibleIds"] and entry.get("curve"):
+                others_cached += 1
         except StravaBudgetExceeded as exc:
             rate_limited = True
             if exc.streams + LIST_REQUESTS > strava_rate.share15(usage(), BUDGET_FRACTION):
@@ -266,8 +300,10 @@ def _warm(
     return {
         "days": days,
         "eligible": status["eligible"],
-        "cached": status["cached"] + new_cached,
-        "noPowerData": status["noPowerData"] + new_empty,
+        "cached": status["cached"] + eligible_cached,
+        "noPowerData": status["noPowerData"] + eligible_empty,
+        "others": status["others"],
+        "othersCached": status["othersCached"] + others_cached,
         "warmed": warmed,
         "failed": failed,
         "remaining": remaining,
