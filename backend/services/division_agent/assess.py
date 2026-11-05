@@ -1,4 +1,4 @@
-"""Claude reviews the evidence and writes the rationale (English) and rider text (Danish).
+"""Claude reviews the evidence and writes the admin rationale and the rider text, both in Danish.
 
 The numbers come from the shared predictor and the division suggestion from
 `decide.suggest`; Claude judges data quality, may pick a neighbouring division with a
@@ -30,7 +30,7 @@ Your job:
   few Strava rides, implausible W/kg, missing weight, Strava and Zwift disagreeing, no power data).
 - Choose the division. Keep the suggested division unless the evidence clearly supports a neighbouring
   one; never move more than one division from the suggestion. Use null only when there is no usable data.
-- adminRationale: 2-4 short English sentences for the admin: which numbers drove the choice, how
+- adminRationale: 2-4 short sentences in Danish for the admin: which numbers drove the choice, how
   confident, and what to double-check.
 - riderExplanation: 2-4 short sentences in Danish addressed to the rider ("du"), friendly and plain:
   which data was used and which division is proposed. Never promise anything: say that an admin
@@ -65,26 +65,35 @@ def client_from_env() -> Any | None:
 def template(evidence: dict, suggestion: dict) -> dict:
     """Plain texts used when Claude is not available."""
     cat = suggestion.get("category")
-    source = {"strava": "Strava power", "zwift": "Zwift power", "velo": "your vELO"}.get(
-        suggestion.get("source"), "the available data")
+    source = {"strava": "Strava-watt", "zwift": "Zwift-watt", "velo": "vELO"}.get(
+        suggestion.get("source"), "de tilgængelige data")
     source_da = {"strava": "din Strava-watt", "zwift": "din Zwift-watt", "velo": "din vELO"}.get(
         suggestion.get("source"), "de tilgængelige data")
     if cat is None:
         return {
             "proposedCategory": None,
             "confidence": "low",
-            "adminRationale": "No usable power data or vELO: please place this rider by hand.",
+            "adminRationale": "Ingen brugbare wattdata eller vELO: placér rytteren manuelt.",
             "riderExplanation": "Vi har ikke nok data til at foreslå en division endnu. En admin kigger på det.",
         }
-    flags = ", ".join(evidence.get("flags") or []) or "none"
+    flags = ", ".join(FLAGS_DA.get(f, f) for f in evidence.get("flags") or []) or "ingen"
     return {
         "proposedCategory": cat,
         "confidence": suggestion.get("confidence") or "medium",
-        "adminRationale": (f"Predicted vELO {suggestion.get('velo')} from {source} gives {cat}. "
-                           f"Data-quality flags: {flags}."),
+        "adminRationale": (f"Forudsagt vELO {suggestion.get('velo')} ud fra {source} giver {cat}. "
+                           f"Datakvalitet: {flags}."),
         "riderExplanation": (f"Ud fra {source_da} foreslår vi divisionen {cat}. "
                              "En admin ser forslaget igennem og træffer den endelige beslutning."),
     }
+
+
+FLAGS_DA = {
+    "few_strava_rides": "få Strava-ture",
+    "implausible_wkg": "usandsynlig W/kg",
+    "no_weight": "ingen vægt",
+    "strava_zwift_disagree": "Strava og Zwift er uenige",
+    "no_power_data": "ingen wattdata",
+}
 
 
 def _prompt(evidence: dict, suggestion: dict) -> str:
