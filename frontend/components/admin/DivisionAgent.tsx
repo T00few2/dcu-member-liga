@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { User } from 'firebase/auth';
 import { API_URL } from '@/lib/api';
 import { PreviewBlock, type Preview } from '@/components/admin/category-manager/TransferPreview';
+import UnansweredQuestions from '@/components/admin/UnansweredQuestions';
 
 type Prediction = { velo: number | null; category: string | null; confidence?: string };
 
@@ -246,7 +247,7 @@ function ProposalCard({
 
 export default function DivisionAgent({ user }: { user: User | null }) {
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<'pending' | 'history'>('pending');
+  const [tab, setTab] = useState<'pending' | 'history' | 'unanswered'>('pending');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
@@ -265,7 +266,7 @@ export default function DivisionAgent({ user }: { user: User | null }) {
   const { data: list, isLoading } = useQuery<{ proposals: DivisionProposal[] }>({
     queryKey: ['division-agent', 'proposals', tab],
     queryFn: () => authed(user!, `/admin/division-agent/proposals?status=${tab}`),
-    enabled: !!user,
+    enabled: !!user && tab !== 'unanswered',
     // A callback, so the 10-minute fast window after a scan ends on its own.
     refetchInterval: () => {
       if (tab !== 'pending') return false;
@@ -301,7 +302,7 @@ export default function DivisionAgent({ user }: { user: User | null }) {
     setError('');
     try {
       await authed(user, '/admin/division-agent/settings', { method: 'POST', body: JSON.stringify({ autoReply: value }) });
-      setInfo(value ? 'Discord replies now go out without approval.' : 'Discord replies now wait for your approval.');
+      setInfo(value ? 'Answers about divisions now go out without approval.' : 'Answers about divisions now wait for your approval.');
       void queryClient.invalidateQueries({ queryKey: ['division-agent', 'status'] });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Could not save the setting');
@@ -357,32 +358,33 @@ export default function DivisionAgent({ user }: { user: User | null }) {
           {scanning ? 'Scanning…' : 'Scan riders now'}
         </button>
         {status && (
-          <label className="flex items-center gap-2" title="Discord help channel: send the agent's answers to riders without waiting for an admin">
+          <label className="flex items-center gap-2" title="Discord help channel: send answers about a rider's own division without waiting for an admin. League questions are always answered directly; appeals always wait for an admin.">
             <input
               type="checkbox"
               checked={!!status.autoReply}
               onChange={e => void setAutoReply(e.target.checked)}
               disabled={!user}
             />
-            Answer riders on Discord without approval
+            Answer division questions on Discord without approval
           </label>
         )}
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
       {info && <p className="text-sm text-green-700">{info}</p>}
       <div className="flex border-b border-border">
-        {(['pending', 'history'] as const).map(t => (
+        {(['pending', 'history', 'unanswered'] as const).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`pb-2 px-4 text-sm font-medium ${tab === t ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground'}`}
+            className={`cursor-pointer pb-2 px-4 text-sm font-medium ${tab === t ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground'}`}
           >
-            {t === 'pending' ? 'Pending' : 'History'}
+            {t === 'pending' ? 'Pending' : t === 'history' ? 'History' : 'Unanswered questions'}
           </button>
         ))}
       </div>
-      {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
-      {!isLoading && proposals.length === 0 && (
+      {tab === 'unanswered' && <UnansweredQuestions user={user} />}
+      {tab !== 'unanswered' && isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+      {tab !== 'unanswered' && !isLoading && proposals.length === 0 && (
         <p className="text-sm text-muted-foreground">
           {tab === 'pending' ? 'No proposals waiting.' : 'No decisions yet.'}
         </p>

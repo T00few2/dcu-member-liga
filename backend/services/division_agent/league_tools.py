@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 UNANSWERED = "bot_unanswered_questions"
 GUIDE_TTL_SECONDS = 600
-GUIDE_MAX_CHARS = 30000
+GUIDE_MAX_CHARS = 60000  # rules + Code of Conduct come first; news is last and is cut first
 NEWS_MAX_CHARS = 3000
 TOP_N = 10
 _CPH = pytz.timezone("Europe/Copenhagen")
@@ -304,7 +304,7 @@ def my_status(db: Any, zwift_id: str, user: dict, *, now: datetime | None = None
 # --- unanswered questions --------------------------------------------------------------
 
 def report_unanswered(db: Any, *, question: str, missing: str, thread_id: str, discord_user_id: str,
-                      zwift_id: str | None, now: datetime | None = None) -> dict:
+                      zwift_id: str | None, guild_id: str | None = None, now: datetime | None = None) -> dict:
     """Log a question the bot could not answer (once per thread and question)."""
     t = now or datetime.now(timezone.utc)
     q = (question or "").strip()[:1000]
@@ -321,6 +321,7 @@ def report_unanswered(db: Any, *, question: str, missing: str, thread_id: str, d
         "key": key,
         "missing": (missing or "").strip()[:1000],
         "threadId": str(thread_id),
+        "guildId": str(guild_id) if guild_id else None,
         "discordUserId": str(discord_user_id),
         "zwiftId": zwift_id,
         "status": "open",

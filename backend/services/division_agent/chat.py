@@ -304,7 +304,7 @@ def converse(
 
 def _tool_set(db: Any, *, thread_id: str, discord_user_id: str, question: str, zwift_id: str | None,
               user_data: dict | None, settings: dict, filed: dict, client_factory: Callable[[], Any],
-              t: datetime) -> dict[str, Callable[[dict], dict]]:
+              t: datetime, guild_id: str | None = None) -> dict[str, Callable[[dict], dict]]:
     """The callables Claude may use. Rider tools exist only for a linked rider and only see that rider."""
     reported: dict = {}
 
@@ -313,7 +313,8 @@ def _tool_set(db: Any, *, thread_id: str, discord_user_id: str, question: str, z
             return {"status": "already passed to the admins"}
         result = lt.report_unanswered(db, question=str(args.get("question") or question),
                                       missing=str(args.get("missing") or ""), thread_id=thread_id,
-                                      discord_user_id=discord_user_id, zwift_id=zwift_id, now=t)
+                                      discord_user_id=discord_user_id, zwift_id=zwift_id, guild_id=guild_id,
+                                      now=t)
         reported["done"] = True
         return result
 
@@ -361,6 +362,7 @@ def ask(
     *,
     client_factory: Callable[[], Any] = assess_mod.client_from_env,
     now: Callable[[], datetime] = _now,
+    guild_id: str | None = None,
 ) -> dict:
     """Answer one message from the help channel. Returns `{reply, sendNow, draftId?, proposalId?}`:
     `reply` is what the bot posts now (the answer, a holding message or a link prompt).
@@ -380,7 +382,7 @@ def ask(
     used: set[str] = set()
     tools = _tool_set(db, thread_id=thread_id, discord_user_id=discord_user_id, question=question,
                       zwift_id=zwift_id, user_data=user_data, settings=settings, filed=filed,
-                      client_factory=client_factory, t=t)
+                      client_factory=client_factory, t=t, guild_id=guild_id)
     system = SYSTEM_PROMPT if linked else (
         SYSTEM_PROMPT + "\n\n" + NOT_LINKED_NOTE.format(url=f"{FRONTEND_URL}/register"))
 
@@ -404,7 +406,8 @@ def ask(
             return {"reply": not_linked_reply(), "sendNow": True}
         # No answer at all: the admins get the question in the admin channel and reply in the thread.
         lt.report_unanswered(db, question=question, missing="The help bot could not answer (no model reply).",
-                             thread_id=thread_id, discord_user_id=discord_user_id, zwift_id=zwift_id, now=t)
+                             thread_id=thread_id, discord_user_id=discord_user_id, zwift_id=zwift_id,
+                             guild_id=guild_id, now=t)
         text = FALLBACK_REPLY
         _log(db, thread_id, zwift_id, discord_user_id, messages, text, None, t)
         return {"reply": text, "sendNow": True, "proposalId": filed.get("id")}

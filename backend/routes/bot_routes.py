@@ -83,7 +83,7 @@ def pending_items(db) -> list[dict]:
         d = u.get("discord") or {}
         if u.get("status") == "open" and not d.get("adminMessageId"):
             items.append({"kind": "unanswered", "id": uid, "unanswered": {
-                k: u.get(k) for k in ("id", "question", "missing", "threadId", "createdAt")}})
+                k: u.get(k) for k in ("id", "question", "missing", "threadId", "guildId", "createdAt")}})
         elif u.get("status") == "resolved" and d.get("adminMessageId") and not d.get("adminUpdated"):
             items.append({"kind": "unanswered_resolved", "id": uid, "messageId": d["adminMessageId"],
                           "resolvedBy": u.get("resolvedBy"), "note": u.get("note")})
@@ -103,7 +103,9 @@ def bot_ask():
     if not user or not thread or not messages:
         return jsonify({"message": "discordUserId, threadId and messages are required"}), 400
     try:
-        return jsonify(chat.ask(db, user, thread, [m for m in messages if isinstance(m, dict)])), 200
+        guild = str(body.get("guildId") or "") or None
+        return jsonify(chat.ask(db, user, thread, [m for m in messages if isinstance(m, dict)],
+                                guild_id=guild)), 200
     except Exception as e:
         logger.error("bot_ask error: %s", e)
         return jsonify({"message": "Something went wrong"}), 500
