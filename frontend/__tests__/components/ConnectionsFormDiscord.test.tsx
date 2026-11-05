@@ -44,4 +44,23 @@ describe('ConnectionsForm Discord section', () => {
     render(<ConnectionsForm {...base} />);
     expect(screen.queryByText('Discord (valgfrit)')).not.toBeInTheDocument();
   });
+
+  it('shows Zwift and Strava as busy too, and blocks a second login meanwhile', async () => {
+    let finish!: () => void;
+    const zwift = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
+    const strava = vi.fn();
+    render(<ConnectionsForm {...base} stravaConnected={false} zwiftConnected={false}
+      handleConnectZwift={zwift} handleConnectStrava={strava} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Forbind med Zwift Link' }));
+    expect(screen.getByRole('button', { name: 'Forbinder…' })).toBeDisabled();
+    const stravaButton = screen.getByRole('button', { name: 'Connect with Strava' });
+    expect(stravaButton).toBeDisabled();
+    await user.click(stravaButton);
+    expect(strava).not.toHaveBeenCalled();
+    finish();
+    expect(await screen.findByRole('button', { name: 'Forbind med Zwift Link' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Connect with Strava' }));
+    expect(strava).toHaveBeenCalledTimes(1);
+  });
 });

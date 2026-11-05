@@ -9,9 +9,9 @@ interface ConnectionsFormProps {
     dualRecordingRequiresStrava?: boolean;
     /** Category names where dual-recording reports apply (from league settings). */
     verificationCategoryNames?: string[];
-    handleConnectStrava: () => void;
+    handleConnectStrava: () => void | Promise<void>;
     handleDisconnectStrava: () => void;
-    handleConnectZwift: () => void;
+    handleConnectZwift: () => void | Promise<void>;
     handleDisconnectZwift: () => void;
     /** Linked Discord username, or null. The Discord section shows when the handlers are given. */
     discordUsername?: string | null;
@@ -40,15 +40,16 @@ export default function ConnectionsForm({
     handleDisconnectDiscord,
 }: ConnectionsFormProps) {
     const [zwiftLogoFailed, setZwiftLogoFailed] = useState(false);
-    // Starting the Discord login takes a moment before the browser leaves the page; show it.
-    const [discordConnecting, setDiscordConnecting] = useState(false);
-    const connectDiscord = async () => {
-        if (!handleConnectDiscord || discordConnecting) return;
-        setDiscordConnecting(true);
+    // Starting a login (Zwift, Strava, Discord) takes a moment before the browser leaves the
+    // page; show it, and ignore further clicks meanwhile.
+    const [connecting, setConnecting] = useState<'zwift' | 'strava' | 'discord' | null>(null);
+    const connectWith = (which: 'zwift' | 'strava' | 'discord', start?: () => void | Promise<void>) => async () => {
+        if (!start || connecting) return;
+        setConnecting(which);
         try {
-            await handleConnectDiscord();
+            await start();
         } finally {
-            setDiscordConnecting(false);
+            setConnecting(null);
         }
     };
     const verificationLabel = joinDanishNames(verificationCategoryNames);
@@ -92,17 +93,19 @@ export default function ConnectionsForm({
                             </div>
                             <button
                                 onClick={handleDisconnectZwift}
-                                className="text-sm text-red-600 hover:text-red-700 hover:underline"
+                                className="cursor-pointer text-sm text-red-600 hover:text-red-700 hover:underline"
                             >
                                 Frakobl
                             </button>
                         </div>
                     ) : (
                         <button
-                            onClick={handleConnectZwift}
-                            className="px-4 py-2 rounded-lg bg-[#FC6719] text-white hover:brightness-95 font-medium border border-[#FC6719] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FC6719] focus-visible:ring-offset-2"
+                            onClick={connectWith('zwift', handleConnectZwift)}
+                            disabled={connecting !== null}
+                            aria-busy={connecting === 'zwift'}
+                            className="cursor-pointer px-4 py-2 rounded-lg bg-[#FC6719] text-white hover:brightness-95 active:scale-[0.97] transition font-medium border border-[#FC6719] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FC6719] focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-70"
                         >
-                            Forbind med Zwift Link
+                            {connecting === 'zwift' ? 'Forbinder…' : 'Forbind med Zwift Link'}
                         </button>
                     )}
                 </div>
@@ -139,7 +142,7 @@ export default function ConnectionsForm({
                             </div>
                             <button
                                 onClick={handleDisconnectStrava}
-                                className="text-sm text-red-600 hover:text-red-700 hover:underline"
+                                className="cursor-pointer text-sm text-red-600 hover:text-red-700 hover:underline"
                             >
                                 Frakobl
                             </button>
@@ -147,8 +150,10 @@ export default function ConnectionsForm({
                     ) : (
                         <div className="flex items-center justify-between gap-4">
                             <button
-                                onClick={handleConnectStrava}
-                                className="inline-flex items-center justify-start rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                onClick={connectWith('strava', handleConnectStrava)}
+                                disabled={connecting !== null}
+                                aria-busy={connecting === 'strava'}
+                                className="cursor-pointer inline-flex items-center justify-start rounded-lg active:scale-[0.97] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-60"
                                 aria-label="Connect with Strava"
                             >
                                 <img
@@ -182,12 +187,12 @@ export default function ConnectionsForm({
                             </div>
                         ) : (
                             <button
-                                onClick={connectDiscord}
-                                disabled={discordConnecting}
-                                aria-busy={discordConnecting}
+                                onClick={connectWith('discord', handleConnectDiscord)}
+                                disabled={connecting !== null}
+                                aria-busy={connecting === 'discord'}
                                 className="cursor-pointer px-4 py-2 rounded-lg bg-[#5865F2] text-white hover:brightness-95 active:scale-[0.97] transition font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5865F2] focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-70"
                             >
-                                {discordConnecting ? 'Forbinder…' : 'Forbind Discord'}
+                                {connecting === 'discord' ? 'Forbinder…' : 'Forbind Discord'}
                             </button>
                         )}
                     </div>
