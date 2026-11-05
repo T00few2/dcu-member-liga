@@ -157,7 +157,7 @@ export default function ConnectionsForm({
                     <h3 className="text-lg font-semibold mb-3 text-card-foreground">Discord (valgfrit)</h3>
                     <div className={`p-4 border rounded-lg transition-colors ${discordUsername ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' : 'bg-card border-border'}`}>
                         <p className="mb-4 text-sm text-muted-foreground">
-                            Forbind din Discord-konto, så vores hjælpekanal kan svare dig om din division. Vi gemmer kun dit Discord-brugernavn.
+                            Forbind din Discord-konto, så vi kan kommunikere med dig på Discord, og vores Discord-bot ved, hvem du er. Vi gemmer kun dit Discord-ID og brugernavn.
                         </p>
                         {discordUsername ? (
                             <div className="flex items-center justify-between bg-white dark:bg-black/20 p-4 rounded border border-border">
