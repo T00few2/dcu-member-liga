@@ -6,6 +6,7 @@
   admin-channel posts to update because they were decided on the admin page.
 - `POST /bot/ack`: mark an item as posted / delivered so it is never sent twice.
 - `POST /bot/proposals/<id>/decision`, `POST /bot/replies/<id>/decision`: admin buttons.
+- `POST /bot/unanswered/<id>/resolve`: an admin marks an unanswered question as solved.
 """
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ from extensions import db
 from routes.integration import integration_bp
 from services import predictor_service as ps
 from services.division_agent import chat, proposals
+from services.division_agent import league_tools as lt
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +77,16 @@ def pending_items(db) -> list[dict]:
         if r.get("status") != "pending" and r.get("adminMessageId") and not r.get("adminUpdated"):
             items.append({"kind": "draft_decided", "id": r.get("id") or snap.id,
                           "messageId": r["adminMessageId"], "status": r.get("status")})
+    for snap in db.collection(lt.UNANSWERED).stream():
+        u = snap.to_dict() or {}
+        uid = u.get("id") or snap.id
+        d = u.get("discord") or {}
+        if u.get("status") == "open" and not d.get("adminMessageId"):
+            items.append({"kind": "unanswered", "id": uid, "unanswered": {
+                k: u.get(k) for k in ("id", "question", "missing", "threadId", "guildId", "createdAt")}})
+        elif u.get("status") == "resolved" and d.get("adminMessageId") and not d.get("adminUpdated"):
+            items.append({"kind": "unanswered_resolved", "id": uid, "messageId": d["adminMessageId"],
+                          "resolvedBy": u.get("resolvedBy"), "note": u.get("note")})
     return items
 
 
@@ -91,7 +103,9 @@ def bot_ask():
     if not user or not thread or not messages:
         return jsonify({"message": "discordUserId, threadId and messages are required"}), 400
     try:
-        return jsonify(chat.ask(db, user, thread, [m for m in messages if isinstance(m, dict)])), 200
+        guild = str(body.get("guildId") or "") or None
+        return jsonify(chat.ask(db, user, thread, [m for m in messages if isinstance(m, dict)],
+                                guild_id=guild)), 200
     except Exception as e:
         logger.error("bot_ask error: %s", e)
         return jsonify({"message": "Something went wrong"}), 500
@@ -119,6 +133,8 @@ ACK_FIELDS = {
     "draft": (chat.DRAFTS, "adminMessageId"),
     "draft_decided": (chat.DRAFTS, "adminUpdated"),
     "reply": (chat.DRAFTS, "delivered"),
+    "unanswered": (lt.UNANSWERED, "discord.adminMessageId"),
+    "unanswered_resolved": (lt.UNANSWERED, "discord.adminUpdated"),
 }
 
 
@@ -188,3 +204,25 @@ def bot_reply_decision(draft_id: str):
         return jsonify({"message": "Not found"}), 404
     except ValueError as e:
         return jsonify({"message": str(e)}), 400
+
+
+@integration_bp.route("/bot/unanswered/<item_id>/resolve", methods=["POST"])
+def bot_unanswered_resolve(item_id: str):
+    """The bot checks the admin role before calling this."""
+    err = _bot()
+    if err:
+        return err
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+    body = request.get_json(silent=True) or {}
+    try:
+        item = lt.resolve_unanswered(db, item_id, resolved_by=_who(body),
+                                     note=body.get("note") if isinstance(body.get("note"), str) else None)
+        # The Discord post was just updated by the bot itself; nothing left to sync.
+        db.collection(lt.UNANSWERED).document(item_id).update({"discord.adminUpdated": True})
+        return jsonify({"unanswered": item}), 200
+    except LookupError:
+        return jsonify({"message": "Not found"}), 404
+    except Exception as e:
+        logger.error("bot_unanswered_resolve error: %s", e)
+        return jsonify({"message": "Something went wrong"}), 500

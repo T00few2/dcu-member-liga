@@ -56,15 +56,30 @@ The next backend deploy picks them up. Riders can then link Discord under *Regis
 
 ## How it works
 
-- A rider writes in **#division-help** → the bot opens a thread and asks the backend. Unlinked riders get a link to
-  the app. Only the rider who asked gets answers in their thread; admins may answer there by hand.
-- With auto-reply **off** (default; switch on the admin page under *Division Agent*), the rider gets "an admin will
-  reply soon" and the draft appears in **#division-admin** with **Send / Edit / Reject**.
+- A user writes in **#division-help** → the bot opens a thread and asks the backend. Only the user who asked gets
+  answers in their thread; admins may answer there by hand (the bot never passes their text on as the rider's).
+- **League questions** (format, categories, points, verification, Code of Conduct, schedule, standings, results,
+  news, data policy) are answered **directly**, for linked and unlinked users alike. The bot only uses live
+  sources, so nothing is maintained twice:
+  - the site's generated `/llms.txt` (built from the league settings, stage races and news, plus the Code of
+    Conduct Google Doc), re-read every 10 minutes;
+  - the race schedule, standings and results in Firestore (no event secrets);
+  - published news posts and the current data policy.
+- **Personal questions** need Discord linked in the app (*Registrering → Forbindelser*): the rider's own
+  registration, verification, sign-ups and standing, and their division.
+- **Division answers** follow the auto-reply switch on the admin page (*Division Agent*, "Answer division questions
+  on Discord without approval", off by default): when off, the rider gets "an admin will reply soon" and the draft
+  appears in **#division-admin** with **Send / Edit / Reject**.
 - A request to move division becomes an **appeal** post with **Approve / Edit / Reject** (and the transfer preview
   for riders who have raced). The rider is told the outcome in their thread.
+- **Questions the bot cannot answer** are never guessed: they appear in **#division-admin** (with a link to the
+  thread and a **Løst / Solved** button) and on the admin page under *Division Agent → Unanswered questions*.
+  Reply to the rider in the thread, then fix the gap at its source (league settings, a news post, the Code of
+  Conduct doc or the site text that feeds `/llms.txt`), so the bot can answer it next time.
 - Proposals made by the agent itself also appear in **#division-admin**. Deciding on the admin page instead updates
   the Discord post.
-- Riders may send 10 messages per hour.
+- Each Discord user may send 30 questions per day (Copenhagen time); after that the bot says to try again
+  tomorrow, and an admin can still answer by hand.
 
 ## Test checklist (test server)
 
@@ -72,3 +87,7 @@ The next backend deploy picks them up. Riders can then link Discord under *Regis
 2. Ask "Hvorfor er jeg i Gold?" and "Why am I in Gold?" → drafts in #division-admin → Send, Edit, Reject.
 3. Ask to move down with a reason → appeal post → Approve or Reject → outcome in the rider's thread.
 4. Turn auto-reply on → answers go out directly.
+5. Ask league questions without approval: "Hvornår er næste løb?", "Hvordan får man point?", "Hvad stod der i den
+   seneste nyhed?" (also from an account that has not linked Discord).
+6. Ask something the site does not cover (for example "Må jeg køre på mountainbike?") → it shows up in
+   #division-admin and under *Unanswered questions*; press **Løst / Solved**.

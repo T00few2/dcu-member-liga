@@ -42,6 +42,12 @@ def proposal_view(proposal_id: str) -> discord.ui.View:
     return view
 
 
+def unanswered_view(item_id: str) -> discord.ui.View:
+    view = discord.ui.View(timeout=None)
+    view.add_item(ActionButton("unans", "resolve", item_id, label="Løst / Solved", style=discord.ButtonStyle.success))
+    return view
+
+
 def draft_view(draft_id: str) -> discord.ui.View:
     view = discord.ui.View(timeout=None)
     for action, label, style in DRAFT_ACTIONS:
@@ -156,7 +162,7 @@ def post_divisions(message: discord.Message | None) -> list[str]:
     return [d.strip() for d in text.split(",") if d.strip()]
 
 
-TEMPLATE = r"dcu:(?P<kind>prop|draft):(?P<action>[a-z]+):(?P<id>[0-9a-zA-Z_-]+)"
+TEMPLATE = r"dcu:(?P<kind>prop|draft|unans):(?P<action>[a-z]+):(?P<id>[0-9a-zA-Z_-]+)"
 
 
 class ActionButton(discord.ui.DynamicItem[discord.ui.Button], template=TEMPLATE):
@@ -190,7 +196,10 @@ class ActionButton(discord.ui.DynamicItem[discord.ui.Button], template=TEMPLATE)
             return
         await interaction.response.defer()
         try:
-            if self.kind == "prop":
+            if self.kind == "unans":
+                await bot.backend.resolve_unanswered(self.item_id, who(interaction.user))
+                await _finish(interaction, "resolved")
+            elif self.kind == "prop":
                 result = await bot.backend.decide_proposal(self.item_id, "approve", who(interaction.user))
                 await _finish(interaction, result.get("status") or "approved",
                               f"→ {result.get('appliedCategory')}" if result.get("appliedCategory") else None)

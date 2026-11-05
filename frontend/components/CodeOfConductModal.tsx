@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { CODE_OF_CONDUCT_EDIT_URL, CODE_OF_CONDUCT_PREVIEW_URL } from '@/lib/codeOfConduct';
 
 interface CodeOfConductModalProps {
     isOpen: boolean;
@@ -20,8 +21,8 @@ export default function CodeOfConductModal({ isOpen, onClose, onAccept, disableA
 
     if (!isOpen) return null;
 
-    const docUrl = "https://docs.google.com/document/d/1lQE0w8ylJLoBscj6rgWZ4nGYqKbCsoin9HR4wBiF3V4/preview";
-    const docEditUrl = "https://docs.google.com/document/d/1lQE0w8ylJLoBscj6rgWZ4nGYqKbCsoin9HR4wBiF3V4/edit?tab=t.0#heading=h.epmyt5apdaf3";
+    const docUrl = CODE_OF_CONDUCT_PREVIEW_URL;
+    const docEditUrl = CODE_OF_CONDUCT_EDIT_URL;
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">

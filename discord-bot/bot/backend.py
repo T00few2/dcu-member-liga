@@ -40,9 +40,12 @@ class Backend:
                 raise BackendError((data or {}).get("message") or f"HTTP {res.status}", res.status)
             return data
 
-    async def ask(self, discord_user_id: int, thread_id: int, messages: list[dict]) -> dict:
-        return await self._call("POST", "/bot/ask", {
-            "discordUserId": str(discord_user_id), "threadId": str(thread_id), "messages": messages})
+    async def ask(self, discord_user_id: int, thread_id: int, messages: list[dict],
+                  guild_id: int | None = None) -> dict:
+        body = {"discordUserId": str(discord_user_id), "threadId": str(thread_id), "messages": messages}
+        if guild_id:
+            body["guildId"] = str(guild_id)
+        return await self._call("POST", "/bot/ask", body)
 
     async def pending(self) -> list[dict]:
         return (await self._call("GET", "/bot/pending")).get("items") or []
@@ -61,3 +64,7 @@ class Backend:
     async def decide_reply(self, draft_id: str, action: str, discord_user: str, text: str | None = None) -> dict:
         return (await self._call("POST", f"/bot/replies/{draft_id}/decision", {
             "action": action, "text": text, "discordUser": discord_user})).get("draft") or {}
+
+    async def resolve_unanswered(self, item_id: str, discord_user: str) -> dict:
+        return (await self._call("POST", f"/bot/unanswered/{item_id}/resolve", {
+            "discordUser": discord_user})).get("unanswered") or {}

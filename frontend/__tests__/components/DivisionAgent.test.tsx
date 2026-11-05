@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { User } from 'firebase/auth';
 import DivisionAgent, { type DivisionProposal } from '@/components/admin/DivisionAgent';
+import type { UnansweredQuestion } from '@/components/admin/UnansweredQuestions';
 
 const proposal: DivisionProposal = {
   id: 'p1',
@@ -41,9 +42,12 @@ const lockedProposal: DivisionProposal = {
 const user = { getIdToken: vi.fn().mockResolvedValue('t') } as unknown as User;
 let fetchMock: ReturnType<typeof vi.fn>;
 let pending: DivisionProposal[] = [];
+let openQuestions: UnansweredQuestion[] = [];
 
 beforeEach(() => {
   pending = [proposal];
+  openQuestions = [{ id: 'u1', question: 'Må jeg køre på MTB?', missing: 'bike rules', threadId: '77',
+    guildId: '11', status: 'open', createdAt: '2026-11-05T12:00:00Z' }];
   fetchMock = vi.fn(async (url: string) => {
     const u = String(url);
     if (u.endsWith('/admin/division-agent/status')) {
@@ -54,6 +58,16 @@ beforeEach(() => {
     }
     if (u.includes('/admin/division-agent/proposals?status=history')) {
       return new Response(JSON.stringify({ proposals: [] }), { status: 200 });
+    }
+    if (u.includes('/admin/division-agent/unanswered?status=open')) {
+      return new Response(JSON.stringify({ items: openQuestions }), { status: 200 });
+    }
+    if (u.includes('/admin/division-agent/unanswered?status=resolved')) {
+      return new Response(JSON.stringify({ items: [] }), { status: 200 });
+    }
+    if (u.includes('/admin/division-agent/unanswered/') && u.endsWith('/resolve')) {
+      openQuestions = [];
+      return new Response(JSON.stringify({ item: {} }), { status: 200 });
     }
     if (u.endsWith('/admin/division-agent/scan')) {
       return new Response(JSON.stringify({ queued: 4 }), { status: 200 });
@@ -173,10 +187,27 @@ describe('DivisionAgent and Discord', () => {
   it('switches auto-reply on', async () => {
     const u = userEvent.setup();
     renderAgent();
-    await u.click(await screen.findByLabelText('Answer riders on Discord without approval'));
+    await u.click(await screen.findByLabelText('Answer division questions on Discord without approval'));
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/admin/division-agent/settings'));
       expect(call && JSON.parse((call[1] as RequestInit).body as string)).toEqual({ autoReply: true });
     });
+  });
+
+  it('lists unanswered questions with a link to the thread and marks them solved', async () => {
+    const u = userEvent.setup();
+    renderAgent();
+    await u.click(await screen.findByRole('button', { name: 'Unanswered questions' }));
+    expect(await screen.findByText('“Må jeg køre på MTB?”')).toBeInTheDocument();
+    expect(screen.getByText('Missing: bike rules')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open the thread in Discord' }))
+      .toHaveAttribute('href', 'https://discord.com/channels/11/77');
+    await u.type(screen.getByPlaceholderText('What did you fix? (optional)'), 'Added to /info');
+    await u.click(screen.getByRole('button', { name: 'Mark as solved' }));
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/unanswered/u1/resolve'));
+      expect(call && JSON.parse((call[1] as RequestInit).body as string)).toEqual({ note: 'Added to /info' });
+    });
+    expect(await screen.findByText('No unanswered questions.')).toBeInTheDocument();
   });
 });

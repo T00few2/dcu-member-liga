@@ -253,6 +253,38 @@
         }
       }
     },
+    "bot_unanswered_questions": {
+      "type": "array",
+      "description": "Admin-only. Questions the Discord help bot could not answer from its tools (site guide, schedule, standings, results, news, data policy, the rider's own status). Shown on the admin page and posted in the Discord admin channel; admins reply in the thread and fix the gap at its source.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "_id": { "type": "string" },
+          "id": { "type": "string" },
+          "question": { "type": "string" },
+          "key": { "type": "string", "description": "Normalised question, to log it once per thread." },
+          "missing": { "type": "string" },
+          "threadId": { "type": "string" },
+          "guildId": { "type": ["string", "null"] },
+          "discordUserId": { "type": "string" },
+          "zwiftId": { "type": ["string", "null"], "description": "Null when the Discord user has not linked the app." },
+          "status": { "type": "string", "enum": ["open", "resolved"] },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "resolvedBy": { "type": "string" },
+          "resolvedAt": { "type": "string", "format": "date-time" },
+          "note": { "type": ["string", "null"] },
+          "discord": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "adminMessageId": { "type": "string" },
+              "adminUpdated": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
     "division_conversations": {
       "type": "array",
       "description": "Admin-only. Log of Discord help threads (doc id = thread id), last 60 messages.",
@@ -272,13 +304,13 @@
     },
     "division_chat_limits": {
       "type": "array",
-      "description": "Admin-only. Messages per Discord user in the current hour (doc id = Discord user id).",
+      "description": "Admin-only. Questions per Discord user on the current Copenhagen day (doc id = Discord user id); 30 a day.",
       "items": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
           "_id": { "type": "string" },
-          "hour": { "type": "string", "description": "UTC hour, e.g. 2026-11-05T09" },
+          "day": { "type": "string", "description": "Copenhagen date, e.g. 2026-11-05" },
           "count": { "type": "integer" }
         }
       }
