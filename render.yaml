@@ -1,0 +1,28 @@
+# Render Blueprint for the DCU Liga Discord bot (help-channel answers, admin approvals).
+# Create it once in Render: New -> Blueprint -> this repository. Secrets marked
+# `sync: false` are entered in the Render dashboard, never committed.
+services:
+  - type: worker
+    name: dcu-liga-discord-bot
+    runtime: python
+    plan: starter
+    region: frankfurt
+    rootDir: discord-bot
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m bot
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: DISCORD_BOT_TOKEN
+        sync: false
+      - key: BOT_SHARED_SECRET
+        sync: false
+      - key: HELP_CHANNEL_ID
+        sync: false
+      - key: ADMIN_CHANNEL_ID
+        sync: false
+      - key: ADMIN_ROLE_ID
+        sync: false
+      - key: BACKEND_URL
+        sync: false
