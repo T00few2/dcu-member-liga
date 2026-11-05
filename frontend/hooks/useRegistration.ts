@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ToastProvider';
@@ -16,6 +16,8 @@ export function useRegistration() {
     const stravaStatusParam = searchParams.get('strava');
     const zwiftStatusParam = searchParams.get('zwift');
     const discordStatusParam = searchParams.get('discord');
+    const discordStateParam = searchParams.get('state');
+    const discordConfirmed = useRef(false);
 
     // User Data
     const [name, setName] = useState('');
@@ -193,12 +195,42 @@ export function useRegistration() {
             setClub(localStorage.getItem('temp_reg_club') || '');
             setTrainer(localStorage.getItem('temp_reg_trainer') || '');
         }
-        if (discordStatusParam === 'connected') setMessage('Discord forbundet!');
-        else if (discordStatusParam === 'taken') setError('Den Discord-konto er allerede forbundet til en anden rytter.');
-        else if (discordStatusParam === 'cancelled') setError('Discord-forbindelsen blev afbrudt.');
-        else if (discordStatusParam === 'expired') setError('Discord-login udløb. Prøv igen.');
-        else if (discordStatusParam === 'error') setError('Discord-forbindelsen mislykkedes. Prøv igen.');
+        showDiscordStatus(discordStatusParam);
     }, [discordStatusParam]);
+
+    // Back from Discord: the link is only made when this logged-in rider confirms it.
+    useEffect(() => {
+        if (discordStatusParam !== 'confirm' || !discordStateParam || !user || discordConfirmed.current) return;
+        discordConfirmed.current = true;
+        (async () => {
+            try {
+                const token = await user.getIdToken();
+                const res = await fetch(`${API_URL}/discord/confirm`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ state: discordStateParam }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (data.status === 'connected') {
+                    setDiscordUsername(data.username || null);
+                    setProfileTick((tick) => tick + 1); // a profile read that raced the link sees it now
+                }
+                showDiscordStatus(data.status || 'error');
+            } catch {
+                showDiscordStatus('error');
+            }
+        })();
+    }, [discordStatusParam, discordStateParam, user]);
+
+    function showDiscordStatus(status: string) {
+        if (status === 'confirm') return; // the confirm effect reports the outcome
+        if (status === 'connected') setMessage('Discord forbundet!');
+        else if (status === 'taken') setError('Den Discord-konto er allerede forbundet til en anden rytter.');
+        else if (status === 'cancelled') setError('Discord-forbindelsen blev afbrudt.');
+        else if (status === 'expired') setError('Discord-login udløb. Prøv igen.');
+        else if (status === 'mismatch') setError('Discord-forbindelsen blev startet af en anden konto. Start den igen her.');
+        else setError('Discord-forbindelsen mislykkedes. Prøv igen.');
+    }
 
     // --- Actions ---
 

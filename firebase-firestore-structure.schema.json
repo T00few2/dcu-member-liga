@@ -285,14 +285,22 @@
     },
     "discord_oauth_states": {
       "type": "array",
-      "description": "Short-lived (10 min) state for Discord account linking (doc id = state).",
+      "description": "Short-lived (10 min) state for Discord account linking (doc id = state). The callback parks the Discord identity here; the link is written only when the same logged-in user confirms it (POST /discord/confirm).",
       "items": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
           "_id": { "type": "string" },
           "uid": { "type": "string" },
-          "createdAt": { "type": "string", "format": "date-time" }
+          "createdAt": { "type": "string", "format": "date-time" },
+          "identity": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "userId": { "type": "string" },
+              "username": { "type": "string" }
+            }
+          }
         }
       }
     },

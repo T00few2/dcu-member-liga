@@ -41,7 +41,8 @@ def authorize_url(state: str) -> str:
         "response_type": "code",
         "scope": "identify",
         "state": state,
-        "prompt": "none",
+        # Always show Discord's consent screen, so nobody is linked without seeing it.
+        "prompt": "consent",
     })
 
 

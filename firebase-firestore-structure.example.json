@@ -931,7 +931,12 @@
     { "_id": "1200000000000000001", "hour": "2026-11-05T09", "count": 1 }
   ],
   "discord_oauth_states": [
-    { "_id": "example_state", "uid": "example_uid", "createdAt": "2026-11-05T08:59:00+00:00" }
+    {
+      "_id": "example_state",
+      "uid": "example_uid",
+      "createdAt": "2026-11-05T08:59:00+00:00",
+      "identity": { "userId": "100000000000000001", "username": "example_rider" }
+    }
   ],
   "division_agent_queue": [
     {

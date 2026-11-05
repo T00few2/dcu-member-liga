@@ -4,6 +4,7 @@ from __future__ import annotations
 import datetime
 import logging
 import secrets
+from urllib.parse import urlencode
 
 from firebase_admin import firestore
 from flask import jsonify, redirect, request
@@ -41,8 +42,17 @@ def discord_login():
     return jsonify({"url": discord_link.authorize_url(state)}), 200
 
 
+def _expired(data: dict) -> bool:
+    created = data.get("createdAt")
+    return isinstance(created, datetime.datetime) and (
+        datetime.datetime.now(datetime.timezone.utc) - created).total_seconds() > discord_link.STATE_MAX_AGE_SECONDS
+
+
 @integration_bp.route("/discord/callback", methods=["GET"])
 def discord_callback():
+    """Discord sends the browser here. Nothing is linked yet: the identity is parked on the
+    one-time state and the app confirms it with the logged-in rider's token (`/discord/confirm`),
+    so a link started by someone else can never be completed in another rider's browser."""
     code, state, error = request.args.get("code"), request.args.get("state"), request.args.get("error")
     # The rider's browser lands here from Discord: always send them back to the app.
     if error:
@@ -54,34 +64,63 @@ def discord_callback():
     if not snap.exists:
         return redirect(f"{FRONTEND_URL}/register?discord=expired")
     data = snap.to_dict() or {}
+    if _expired(data) or data.get("identity"):
+        _delete_state(state_ref)
+        return redirect(f"{FRONTEND_URL}/register?discord=expired")
     try:
-        created = data.get("createdAt")
-        if isinstance(created, datetime.datetime) and (
-                datetime.datetime.now(datetime.timezone.utc) - created).total_seconds() \
-                > discord_link.STATE_MAX_AGE_SECONDS:
-            return redirect(f"{FRONTEND_URL}/register?discord=expired")
         identity = discord_link.fetch_identity(code)
-        user_ref = _user_ref(str(data.get("uid")))
-        other = discord_link.user_for_discord(db, identity["userId"])
-        if other and other[0] != user_ref.id:
-            return redirect(f"{FRONTEND_URL}/register?discord=taken")
-        user_ref.set(with_schema_version({
-            "connections": {"discord": {
-                "userId": identity["userId"],
-                "username": identity["username"],
-                "linkedAt": firestore.SERVER_TIMESTAMP,
-            }},
-            "updatedAt": firestore.SERVER_TIMESTAMP,
-        }), merge=True)
     except discord_link.DiscordLinkError as e:
         logger.warning("discord link failed: %s", e.message)
+        _delete_state(state_ref)
         return redirect(f"{FRONTEND_URL}/register?discord=error")
-    finally:
-        try:
-            state_ref.delete()
-        except Exception as exc:
-            logger.warning("could not delete Discord OAuth state: %s", exc)
-    return redirect(f"{FRONTEND_URL}/register?discord=connected")
+    state_ref.update({"identity": identity})
+    return redirect(f"{FRONTEND_URL}/register?" + urlencode({"discord": "confirm", "state": state}))
+
+
+@integration_bp.route("/discord/confirm", methods=["POST"])
+def discord_confirm():
+    """Finish linking for the logged-in rider who started it."""
+    try:
+        decoded = verify_user_token(request)
+    except AuthzError as e:
+        return jsonify({"message": e.message}), e.status_code
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+    state = str((request.get_json(silent=True) or {}).get("state") or "")
+    if not state:
+        return jsonify({"status": "error", "message": "Missing state"}), 400
+    state_ref = db.collection(discord_link.STATES_COLLECTION).document(state)
+    snap = state_ref.get()
+    if not snap.exists:
+        return jsonify({"status": "expired"}), 410
+    data = snap.to_dict() or {}
+    _delete_state(state_ref)  # one attempt only, whoever makes it
+    identity = data.get("identity") or {}
+    if str(data.get("uid")) != str(decoded["uid"]):
+        logger.warning("discord confirm by a different user than the one who started the link")
+        return jsonify({"status": "mismatch"}), 403
+    if _expired(data) or not identity.get("userId"):
+        return jsonify({"status": "expired"}), 410
+    user_ref = _user_ref(str(decoded["uid"]))
+    other = discord_link.user_for_discord(db, identity["userId"])
+    if other and other[0] != user_ref.id:
+        return jsonify({"status": "taken"}), 409
+    user_ref.set(with_schema_version({
+        "connections": {"discord": {
+            "userId": identity["userId"],
+            "username": identity.get("username") or "",
+            "linkedAt": firestore.SERVER_TIMESTAMP,
+        }},
+        "updatedAt": firestore.SERVER_TIMESTAMP,
+    }), merge=True)
+    return jsonify({"status": "connected", "username": identity.get("username") or ""}), 200
+
+
+def _delete_state(state_ref) -> None:
+    try:
+        state_ref.delete()
+    except Exception as exc:
+        logger.warning("could not delete Discord OAuth state: %s", exc)
 
 
 @integration_bp.route("/discord/unlink", methods=["POST"])
