@@ -52,12 +52,17 @@ def already_handled(proposals: list[dict], zwift_id: str, fingerprint: str) -> b
                for p in for_rider(proposals, zwift_id))
 
 
+def is_appeal(p: dict) -> bool:
+    return p.get("origin") == "appeal"
+
+
 def supersede_pending(db: Any, zwift_id: str, proposals: list[dict] | None = None) -> int:
-    """Mark the rider's pending proposals superseded (a re-check found no change is needed)."""
+    """Mark the rider's pending agent proposals superseded (a re-check found no change is
+    needed). Appeals are never closed by the agent: only an admin decides them."""
     rows = proposals if proposals is not None else all_proposals(db)
     count = 0
     for old in for_rider(rows, zwift_id):
-        if old.get("status") in OPEN and old.get("id"):
+        if old.get("status") in OPEN and old.get("id") and not is_appeal(old):
             db.collection(COLLECTION).document(old["id"]).set(
                 {"status": "superseded", "decidedAt": _now()}, merge=True)
             old["status"] = "superseded"
@@ -66,10 +71,11 @@ def supersede_pending(db: Any, zwift_id: str, proposals: list[dict] | None = Non
 
 
 def create(db: Any, data: dict) -> dict:
-    """Store a pending proposal; an older pending one for the same rider is superseded."""
+    """Store a pending proposal; an older pending one of the same kind (agent review or
+    rider appeal) for the same rider is superseded. An agent review never closes an appeal."""
     zwift_id = str(data["zwiftId"])
     for old in for_rider(all_proposals(db), zwift_id):
-        if old.get("status") == "pending":
+        if old.get("status") == "pending" and is_appeal(old) == is_appeal(data):
             db.collection(COLLECTION).document(old["id"]).set(
                 {"status": "superseded", "decidedAt": _now()}, merge=True)
     proposal = {**data, "id": uuid.uuid4().hex, "status": "pending", "createdAt": _now()}

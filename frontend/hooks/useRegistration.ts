@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ToastProvider';
@@ -15,6 +15,10 @@ export function useRegistration() {
     const searchParams = useSearchParams();
     const stravaStatusParam = searchParams.get('strava');
     const zwiftStatusParam = searchParams.get('zwift');
+    const discordStatusParam = searchParams.get('discord');
+    const discordStateParam = searchParams.get('state');
+    const discordTokenParam = searchParams.get('token');
+    const discordConfirmed = useRef(false);
 
     // User Data
     const [name, setName] = useState('');
@@ -23,6 +27,8 @@ export function useRegistration() {
     const [trainer, setTrainer] = useState('');
     const [stravaConnected, setStravaConnected] = useState(false);
     const [zwiftConnected, setZwiftConnected] = useState(false);
+    // Linked Discord username (null when not linked); used by the help-channel bot.
+    const [discordUsername, setDiscordUsername] = useState<string | null>(null);
     const [acceptedCoC, setAcceptedCoC] = useState(false);
     const [acceptedDataPolicy, setAcceptedDataPolicy] = useState(false);
     const [acceptedPublicResults, setAcceptedPublicResults] = useState(false);
@@ -87,8 +93,15 @@ export function useRegistration() {
     }, []);
 
     // Keep in-progress rider info locally so OAuth redirects and reloads do not wipe input.
+    // Skip the first run: it would overwrite the saved draft with the empty initial state
+    // before the return-from-OAuth effects below restore it.
+    const persistReady = useRef(false);
     useEffect(() => {
         if (typeof window === 'undefined') return;
+        if (!persistReady.current) {
+            persistReady.current = true;
+            return;
+        }
         localStorage.setItem('temp_reg_name', name || '');
         localStorage.setItem('temp_reg_club', club || '');
         localStorage.setItem('temp_reg_trainer', trainer || '');
@@ -121,6 +134,7 @@ export function useRegistration() {
                         setTrainer(data.trainer || '');
                         setStravaConnected(data.stravaConnected || false);
                         setZwiftConnected(data.zwiftConnected || false);
+                        setDiscordUsername(data.discordUsername ?? null);
                         setAcceptedCoC(data.acceptedCoC || false);
                         setAcceptedDataPolicy(!!data.acceptedDataPolicy && data.dataPolicyVersion === data.requiredDataPolicyVersion);
                         setAcceptedPublicResults(!!data.acceptedPublicResults && data.publicResultsConsentVersion === data.requiredPublicResultsConsentVersion);
@@ -178,7 +192,95 @@ export function useRegistration() {
         }
     }, [zwiftStatusParam]);
 
+    useEffect(() => {
+        if (!discordStatusParam) return;
+        // Back from Discord: same step and in-progress fields as after Strava / Zwift.
+        setActiveTab('connections');
+        setCurrentStep(1);
+        const tempName = localStorage.getItem('temp_reg_name');
+        if (tempName) {
+            setName(tempName);
+            setClub(localStorage.getItem('temp_reg_club') || '');
+            setTrainer(localStorage.getItem('temp_reg_trainer') || '');
+        }
+        showDiscordStatus(discordStatusParam);
+    }, [discordStatusParam]);
+
+    // Back from Discord: the link is only made when this logged-in rider confirms it.
+    useEffect(() => {
+        if (discordStatusParam !== 'confirm' || !discordStateParam || !user || discordConfirmed.current) return;
+        discordConfirmed.current = true;
+        (async () => {
+            try {
+                const token = await user.getIdToken();
+                const res = await fetch(`${API_URL}/discord/confirm`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ state: discordStateParam, token: discordTokenParam }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (data.status === 'connected') {
+                    setDiscordUsername(data.username || null);
+                    setProfileTick((tick) => tick + 1); // a profile read that raced the link sees it now
+                }
+                showDiscordStatus(data.status || 'error');
+                // The server answered, so the state is spent: drop it (and the token) from the
+                // URL so a refresh does nothing.
+                router.replace('/register', { scroll: false });
+            } catch {
+                // The request never reached the server (network / auth glitch): the state is
+                // still valid, so keep the URL and allow a retry (e.g. a refresh).
+                discordConfirmed.current = false;
+                setError('Discord-forbindelsen kunne ikke gennemføres. Genindlæs siden for at prøve igen.');
+            }
+        })();
+    }, [discordStatusParam, discordStateParam, discordTokenParam, user, router]);
+
+    function showDiscordStatus(status: string) {
+        if (status === 'confirm') return; // the confirm effect reports the outcome
+        if (status === 'connected') setMessage('Discord forbundet!');
+        else if (status === 'taken') setError('Den Discord-konto er allerede forbundet til en anden rytter.');
+        else if (status === 'cancelled') setError('Discord-forbindelsen blev afbrudt.');
+        else if (status === 'expired') setError('Discord-login udløb. Prøv igen.');
+        else if (status === 'mismatch') setError('Discord-forbindelsen blev startet af en anden konto. Start den igen her.');
+        else setError('Discord-forbindelsen mislykkedes. Prøv igen.');
+    }
+
     // --- Actions ---
+
+    const handleConnectDiscord = async () => {
+        localStorage.setItem('temp_reg_name', name);
+        localStorage.setItem('temp_reg_club', club);
+        localStorage.setItem('temp_reg_trainer', trainer);
+        try {
+            const token = await user?.getIdToken();
+            const res = await fetch(`${API_URL}/discord/login`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({}),
+            });
+            const data = await res.json();
+            if (data.url) window.location.href = data.url;
+            else throw new Error(data.message || 'Kunne ikke starte Discord-forbindelsen');
+        } catch (e: any) {
+            setError(e.message);
+        }
+    };
+
+    const handleDisconnectDiscord = async () => {
+        try {
+            const token = await user?.getIdToken();
+            const res = await fetch(`${API_URL}/discord/unlink`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+            });
+            if (!res.ok) throw new Error('Kunne ikke frakoble Discord');
+            setDiscordUsername(null);
+            showToast('Discord frakoblet', 'success');
+        } catch (e: any) {
+            setError(e.message);
+        }
+    };
 
     const handleConnectStrava = async () => {
         localStorage.setItem('temp_reg_name', name);
@@ -372,6 +474,9 @@ export function useRegistration() {
         // Actions
         handleConnectStrava,
         handleDisconnectStrava,
+        discordUsername,
+        handleConnectDiscord,
+        handleDisconnectDiscord,
         handleConnectZwift,
         handleDisconnectZwift,
         handleRequestTrainer,

@@ -156,3 +156,27 @@ describe('DivisionAgent', () => {
     expect(await screen.findByText(/3 queued.*working…/)).toBeInTheDocument();
   });
 });
+
+describe('DivisionAgent and Discord', () => {
+  it('shows an appeal with the rider statement', async () => {
+    pending = [{
+      ...proposal, id: 'p3', origin: 'appeal', requestedCategory: 'Bronze', suggestedCategory: 'Gold',
+      riderStatement: 'My power meter reads high outdoors', flags: ['appeal_not_supported'],
+    }];
+    renderAgent();
+    expect(await screen.findByText('appeal')).toBeInTheDocument();
+    expect(screen.getByText(/Rider asks for Bronze/)).toBeInTheDocument();
+    expect(screen.getByText(/My power meter reads high outdoors/)).toBeInTheDocument();
+    expect(screen.getByText('the numbers do not support the request')).toBeInTheDocument();
+  });
+
+  it('switches auto-reply on', async () => {
+    const u = userEvent.setup();
+    renderAgent();
+    await u.click(await screen.findByLabelText('Answer riders on Discord without approval'));
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/admin/division-agent/settings'));
+      expect(call && JSON.parse((call[1] as RequestInit).body as string)).toEqual({ autoReply: true });
+    });
+  });
+});

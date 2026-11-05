@@ -82,6 +82,8 @@ def get_profile():
                             "club": shell_data.get("club", ""),
                             "trainer": (shell_data.get("equipment") or {}).get("trainer", ""),
                             "stravaConnected": bool((shell_data.get("connections") or {}).get("strava")),
+                            "discordUsername": ((shell_data.get("connections") or {}).get("discord") or {}).get(
+                                "username"),
                             "zwiftConnected": bool(shell_conn.get("connected")),
                             "requiredDataPolicyVersion": policy_meta.get(POLICY_DATA_POLICY, {}).get(
                                 "requiredVersion"
@@ -138,6 +140,9 @@ def get_profile():
                     "trainer": user.trainer,
                     "stravaConnected": bool(user._data.get("connections", {}).get("strava")),
                     "zwiftConnected": bool(user._data.get("connections", {}).get("zwift")),
+                    # Linked Discord account (for the help-channel bot); username only.
+                    "discordUsername": ((user._data.get("connections", {}) or {}).get("discord") or {}).get(
+                        "username") if (user._data.get("connections", {}) or {}).get("discord") else None,
                     "acceptedCoC": user.registration.get("cocAccepted", False),
                     "acceptedDataPolicy": user.accepted_data_policy,
                     "acceptedPublicResults": user.accepted_public_results,

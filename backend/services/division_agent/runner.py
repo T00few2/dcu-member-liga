@@ -31,7 +31,8 @@ def scan(db: Any, *, participants: list[dict] | None = None) -> int:
         zid = str(row.get("zwiftId") or "")
         if not zid or zid in queued_ids:
             continue
-        has_pending = any(p.get("status") == "pending" for p in proposals.for_rider(existing, zid))
+        has_pending = any(p.get("status") == "pending" and not proposals.is_appeal(p)
+                          for p in proposals.for_rider(existing, zid))
         # Riders with a pending proposal are re-checked too: new data refreshes the card, and
         # a rider who no longer needs a change gets the stale card superseded. Unchanged
         # evidence is "handled" without a Claude call or a Strava fetch.
@@ -85,6 +86,7 @@ def process_rider(
     data = {
         "zwiftId": str(row["zwiftId"]),
         "name": row.get("name") or "",
+        "origin": "agent",
         "reasons": reasons,
         "currentCategory": ev["currentCategory"],
         "proposedCategory": result["proposedCategory"],
@@ -108,6 +110,92 @@ def process_rider(
     if dry_run:
         return {"outcome": "proposed", "proposal": data}
     return {"outcome": "proposed", "proposal": proposals.create(db, data)}
+
+
+def rider_context(db: Any, zwift_id: str) -> tuple[dict, dict, tuple] | None:
+    """`(row, userData, model_bundle)` for one rider, from the (cached) participant rows
+    with a fresh read as fallback; None when the rider is not registered."""
+    bundle = ps.get_model(db)
+    row = next((r for r in bundle[1] if str(r.get("zwiftId")) == str(zwift_id)), None)
+    if row is None:
+        bundle = fresh_bundle(db)
+        row = next((r for r in bundle[1] if str(r.get("zwiftId")) == str(zwift_id)), None)
+    if row is None:
+        return None
+    snap = db.collection("users").document(str(row.get("userDocId") or zwift_id)).get()
+    user_data = (snap.to_dict() or {}) if getattr(snap, "exists", False) else {}
+    return row, user_data, bundle
+
+
+def rider_evidence(db: Any, row: dict, user_data: dict, bundle: tuple, settings: dict) -> dict:
+    """Evidence from cached data only (never waits for Strava), for chat and appeals."""
+    from services.strava_power_curve import read_cached_curve
+
+    model, _rows, categories = bundle
+    days = model.config.stravaWindowDays if model is not None else 90
+    try:
+        curve = read_cached_curve(db, str(row.get("userDocId") or ""), days) if row.get("userDocId") else None
+    except Exception as exc:
+        logger.warning("division agent: cached curve read failed for %s: %s", row.get("zwiftId"), exc)
+        curve = None
+    reasons = triage.needs_review(row, settings) or ["appeal"]
+    return evidence.gather(row, user_data, model=model, categories=categories, curve_entry=curve, reasons=reasons)
+
+
+def file_appeal(
+    db: Any,
+    zwift_id: str,
+    statement: str,
+    requested_category: str | None,
+    *,
+    thread_id: str | None = None,
+    client_factory: Callable[[], Any] = assess_mod.client_from_env,
+) -> dict:
+    """A rider's request to change division. Always becomes a pending proposal, whatever
+    the numbers say: the admin sees the request, the agent's own view and (for riders
+    locked after racing) the transfer preview, and decides."""
+    settings = ps.division_agent_settings(db)
+    ctx = rider_context(db, zwift_id)
+    if ctx is None:
+        raise ValueError("rider not registered")
+    row, user_data, bundle = ctx
+    _model, _rows, categories = bundle
+    ev = rider_evidence(db, row, user_data, bundle, settings)
+    suggestion = decide.suggest(ev, categories)
+    result = assess_mod.assess(ev, suggestion, model=settings["assessModel"], client_factory=client_factory)
+    requested = requested_category if requested_category in ev["divisions"] else None
+    proposed = requested or result["proposedCategory"] or suggestion.get("category")
+    flags = list(ev["flags"])
+    if requested and requested != suggestion.get("category"):
+        flags.append("appeal_not_supported")
+    data = {
+        "zwiftId": str(row["zwiftId"]),
+        "name": row.get("name") or "",
+        "origin": "appeal",
+        "reasons": ev.get("reasons") or ["appeal"],
+        "riderStatement": (statement or "").strip()[:2000],
+        "requestedCategory": requested,
+        "currentCategory": ev["currentCategory"],
+        "proposedCategory": proposed,
+        "suggestedCategory": suggestion.get("category"),
+        "predictedVelo": suggestion.get("velo"),
+        "source": suggestion.get("source"),
+        "confidence": result["confidence"],
+        "flags": flags,
+        "evidence": ev,
+        "adminRationale": result["adminRationale"],
+        "riderExplanation": result["riderExplanation"],
+        "author": result["author"],
+        "model": result["model"],
+        "usage": result["usage"],
+        "locked": ev["locked"],
+        "movePreview": None,
+        "evidenceFingerprint": evidence.fingerprint(ev),
+        "discord": {"threadId": str(thread_id)} if thread_id else {},
+    }
+    if ev["locked"] and proposed and proposed != ev["currentCategory"]:
+        data["movePreview"] = _move_preview(db, row, user_data, proposed)
+    return proposals.create(db, data)
 
 
 def _move_preview(db: Any, row: dict, user_data: dict, to_category: str) -> dict | None:
@@ -190,13 +278,15 @@ def process_batch(
 
 
 def status(db: Any) -> dict:
+    settings = ps.division_agent_settings(db)
     entries = queue.entries(db)
     now = datetime.now(timezone.utc)
     waiting = sum(1 for e in entries if (queue._parse(e.get("notBefore")) or now) > now)
     snap = db.collection(STATUS_COLLECTION).document(STATUS_DOC).get()
     pending = sum(1 for p in proposals.all_proposals(db) if p.get("status") == "pending")
     return {
-        "enabled": ps.division_agent_settings(db)["enabled"],
+        "enabled": settings["enabled"],
+        "autoReply": settings["autoReply"],
         "queued": len(entries),
         "waiting": waiting,
         "pending": pending,

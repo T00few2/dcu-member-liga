@@ -125,7 +125,7 @@
         "watts5s": false, "watts1m": false, "watts5m": false, "watts20m": false,
         "compound5s": false, "compound1m": false, "compound5m": true, "compound20m": false
       },
-      "divisionAgent": { "minZwiftRides": 15, "enabled": true, "assessModel": "claude-haiku-5-5", "maxPerRun": 8 },
+      "divisionAgent": { "minZwiftRides": 15, "enabled": true, "assessModel": "claude-haiku-5-5", "maxPerRun": 8, "chatModel": "claude-haiku-5-5", "autoReply": false },
       "ligaCategories": [
         { "name": "Diamond", "upper": null, "requiresVerification": true, "color": "#b9f2ff" },
         { "name": "Ruby", "upper": 2200, "requiresVerification": true, "color": "#ff4e6a" },
@@ -863,6 +863,7 @@
       "zwiftId": "1000001",
       "name": "Example Rider",
       "status": "pending",
+      "origin": "agent",
       "reasons": ["few_rides"],
       "currentCategory": null,
       "proposedCategory": "Gold",
@@ -893,6 +894,49 @@
       "movePreview": null,
       "evidenceFingerprint": "0123456789abcdef",
       "createdAt": "2026-11-04T08:00:00+00:00"
+    }
+  ],
+  "division_reply_drafts": [
+    {
+      "_id": "example_draft_001",
+      "id": "example_draft_001",
+      "threadId": "1300000000000000001",
+      "zwiftId": "1000001",
+      "name": "Example Rider",
+      "discordUserId": "1200000000000000001",
+      "question": "Hvorfor er jeg i Gold?",
+      "draft": "Du er placeret i Gold ud fra dine Strava-watt (24 ture). En admin ser din division igennem.",
+      "proposalId": null,
+      "status": "pending",
+      "model": "claude-haiku-5-5",
+      "usage": { "inputTokens": 900, "outputTokens": 80 },
+      "createdAt": "2026-11-05T09:00:00+00:00"
+    }
+  ],
+  "division_conversations": [
+    {
+      "_id": "1300000000000000001",
+      "threadId": "1300000000000000001",
+      "zwiftId": "1000001",
+      "discordUserId": "1200000000000000001",
+      "createdAt": "2026-11-05T09:00:00+00:00",
+      "updatedAt": "2026-11-05T09:00:00+00:00",
+      "messages": [
+        { "author": "rider", "text": "Hvorfor er jeg i Gold?", "at": "2026-11-05T09:00:00+00:00" },
+        { "author": "agent", "text": "Du er placeret i Gold ud fra dine Strava-watt.", "draftId": "example_draft_001", "at": "2026-11-05T09:00:00+00:00" }
+      ]
+    }
+  ],
+  "division_chat_limits": [
+    { "_id": "1200000000000000001", "hour": "2026-11-05T09", "count": 1 }
+  ],
+  "discord_oauth_states": [
+    {
+      "_id": "example_state",
+      "uid": "example_uid",
+      "createdAt": "2026-11-05T08:59:00+00:00",
+      "identity": { "userId": "100000000000000001", "username": "example_rider" },
+      "confirmTokenHash": "0000000000000000000000000000000000000000000000000000000000000000"
     }
   ],
   "division_agent_queue": [

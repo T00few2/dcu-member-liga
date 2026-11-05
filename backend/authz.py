@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import hmac
 import logging
 from dataclasses import dataclass
 from typing import Any, Dict
 
 from flask import Request
 from firebase_admin import auth
-from config import SCHEDULER_SECRET
+
+from config import BOT_SHARED_SECRET, SCHEDULER_SECRET
 
 logger = logging.getLogger(__name__)
 
@@ -62,3 +64,12 @@ def require_scheduler(request: Request) -> None:
     if not token or token != SCHEDULER_SECRET:
         raise AuthzError("Forbidden", 403)
 
+
+
+def require_bot(request: Request) -> None:
+    """Verify the shared secret the Discord bot sends in the X-Bot-Token header."""
+    if not BOT_SHARED_SECRET:
+        raise AuthzError("Bot secret not configured on server", 500)
+    token = request.headers.get("X-Bot-Token", "")
+    if not token or not hmac.compare_digest(token, BOT_SHARED_SECRET):
+        raise AuthzError("Forbidden", 403)

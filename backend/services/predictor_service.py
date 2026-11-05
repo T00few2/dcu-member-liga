@@ -115,12 +115,17 @@ def division_agent_settings(db: Any) -> dict:
     min_rides = raw.get("minZwiftRides")
     max_per_run = raw.get("maxPerRun")
     model = raw.get("assessModel")
+    chat_model = raw.get("chatModel")
     return {
         "minZwiftRides": min_rides if isinstance(min_rides, int) and not isinstance(min_rides, bool) else 15,
         "enabled": raw.get("enabled") is not False,
         "assessModel": model if isinstance(model, str) and model.startswith("claude-") else "claude-haiku-5-5",
         "maxPerRun": max_per_run if isinstance(max_per_run, int) and not isinstance(max_per_run, bool)
         and 1 <= max_per_run <= 50 else 8,
+        "chatModel": chat_model if isinstance(chat_model, str) and chat_model.startswith("claude-")
+        else "claude-haiku-5-5",
+        # Off by default: every Discord reply waits for an admin's Send / Edit / Reject.
+        "autoReply": raw.get("autoReply") is True,
     }
 
 

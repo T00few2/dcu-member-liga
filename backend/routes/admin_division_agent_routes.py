@@ -96,6 +96,26 @@ def division_agent_status():
         return jsonify({"message": str(e)}), 500
 
 
+@admin_bp.route("/admin/division-agent/settings", methods=["POST"])
+def division_agent_settings_update():
+    """Body `{autoReply: bool}`: whether Discord replies go out without an admin's approval."""
+    _, err = _admin()
+    if err:
+        return err
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body.get("autoReply"), bool):
+        return jsonify({"message": "autoReply must be true or false"}), 400
+    try:
+        db.collection("league").document("settings").set(
+            {"divisionAgent": {"autoReply": body["autoReply"]}}, merge=True)
+        return jsonify({"autoReply": ps.division_agent_settings(db)["autoReply"]}), 200
+    except Exception as e:
+        logger.error("division_agent_settings_update error: %s", e)
+        return jsonify({"message": str(e)}), 500
+
+
 @admin_bp.route("/admin/division-agent/assess/<zwift_id>", methods=["POST"])
 def division_agent_assess(zwift_id: str):
     """Review one rider now. `?dryRun=1` returns the would-be proposal without saving it."""
