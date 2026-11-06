@@ -28,6 +28,7 @@ from services.division_agent import chat, decide, evidence, proposals, runner, t
 logger = logging.getLogger(__name__)
 
 MAX_MATCHES = 10
+MAX_TURNS = 8  # find, explain, move and follow-ups can take several tool rounds
 HISTORY_LIMIT = 30
 FALLBACK = ("Jeg kunne ikke svare lige nu (ingen svar fra modellen). Prøv igen om lidt, eller brug admin-siden. / "
             "I could not answer right now (no model reply). Try again shortly, or use the admin page.")
@@ -49,7 +50,9 @@ Rules:
 - Always look riders up with `find_rider` first. If several riders match, list them (name, club, Zwift ID,
   division) and ask which one is meant; never guess. If none match, say so.
 - Use `explain_rider_division` before saying anything about a rider's division or numbers, and only use numbers
-  it returns. Explain which rule decides the current division, then the division you suggest and why (the
+  it returns. Never compare a vELO with division limits yourself: `veloCheck` already says, for each number, which
+  division it belongs to and whether it is inside, below, above or within the grace margin of the current division.
+  Quote those results. Explain which rule decides the current division, then the division you suggest and why (the
   `agentSuggestion` and the evidence: source, confidence, data-quality flags). Say plainly when the data is weak.
 - Call `move_rider` only when an admin clearly tells you to move a specific rider to a specific division (and
   after you know exactly which rider). Pass the admin's reason. The move is NOT applied yet: tell the admin that a
@@ -315,7 +318,7 @@ def ask(
         "explain_rider_division": lambda a: explain_rider(db, str(a.get("zwiftId") or ""), settings),
         "move_rider": move_tool,
     }
-    text = ""
+    text, reason = "", "no API key"
     try:
         client = (client_factory or assess_mod.client_from_env)()
     except Exception as exc:
@@ -324,10 +327,14 @@ def ask(
     conv = _messages(messages)
     if client is not None and conv:
         try:
-            text, _usage = chat.converse(conv, model=settings["chatModel"], tools=tools, client=client,
-                                         system=SYSTEM_PROMPT, tool_specs=TOOLS)
+            text, usage = chat.converse(conv, model=settings["chatModel"], tools=tools, client=client,
+                                        system=SYSTEM_PROMPT, tool_specs=TOOLS, max_turns=MAX_TURNS)
+            reason = usage.get("stopReason") or "empty reply"
         except Exception as exc:
             logger.warning("admin chat: Claude call failed: %s", exc)
+            reason = type(exc).__name__
     if not text:
-        text = FALLBACK if not prepared else "Forslaget er lagt i tråden. / The proposal is posted in the thread."
+        # Admins see why, so a recurring cause (rate limit, refusal, ...) is easy to spot.
+        text = (f"{FALLBACK} ({reason})" if not prepared
+                else "Forslaget er lagt i tråden. / The proposal is posted in the thread.")
     return {"reply": text, "proposals": prepared}

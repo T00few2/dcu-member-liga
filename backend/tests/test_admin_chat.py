@@ -5,11 +5,12 @@ import json
 import os
 import sys
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from routes import bot_routes  # noqa: E402
-from services.division_agent import admin_chat, proposals, runner  # noqa: E402
+from services.division_agent import admin_chat, chat, proposals, runner  # noqa: E402
 from tests.test_discord_chat import H, FakeClaude, _reply, _tool, chat_db, client  # noqa: E402,F401
 
 
@@ -115,7 +116,7 @@ def test_bad_moves_are_refused_to_the_model(chat_db):
 def test_without_a_model_the_admin_gets_a_clear_fallback(chat_db):
     db, _ = chat_db
     out = admin_chat.ask(db, [{"author": "admin", "text": "?"}], admin_name="Boss", client_factory=lambda: None)
-    assert out == {"reply": admin_chat.FALLBACK, "proposals": []}
+    assert out == {"reply": f"{admin_chat.FALLBACK} (no API key)", "proposals": []}
 
 
 def test_the_bot_api_returns_cards_and_the_relay_waits_for_the_thread_post(client, monkeypatch):
@@ -176,3 +177,36 @@ def test_the_filter_preview_does_not_count_admin_requests_as_closable(chat_db):
     assert runner.filter_preview(rows, settings, [request])["pendingOutside"] == 0
     agent = proposals.create(db, {"zwiftId": target["zwiftId"], "origin": "agent", "proposedCategory": "Gold"})
     assert runner.filter_preview(rows, settings, [request, agent])["pendingOutside"] == 1
+
+
+def test_velo_check_places_each_number_so_the_model_never_compares_itself():
+    # The case from the admin channel: locked in Ruby (1900-2200), current 1882, max30 1902.
+    check = chat.velo_check({"current": 1882, "max30": 1902, "max90": None}, "Ruby", None)
+    assert check["current"] == {"velo": 1882, "divisionForThisVelo": "Emerald",
+                                "comparedToCurrentDivision": "below the lower limit of Ruby (1900)"}
+    assert check["max30"]["divisionForThisVelo"] == "Ruby"
+    assert check["max30"]["comparedToCurrentDivision"].startswith("inside Ruby")
+    assert check["assignmentVelo"]["velo"] == 1902 and "max90" not in check
+    grace = chat.velo_check({"current": 2210}, "Ruby", None)["current"]["comparedToCurrentDivision"]
+    assert "within the grace limit (2235)" in grace
+    assert "above the grace limit" in chat.velo_check({"current": 2240}, "Ruby", None)["current"][
+        "comparedToCurrentDivision"]
+    assert chat.velo_check({"current": 2500}, "Diamond", None)["current"]["comparedToCurrentDivision"].startswith(
+        "inside Diamond")
+
+
+def test_a_reply_cut_off_while_thinking_says_why_and_the_cap_leaves_room():
+    cut = SimpleNamespace(stop_reason="max_tokens", content=[SimpleNamespace(type="thinking", thinking="")],
+                          usage=SimpleNamespace(input_tokens=10, output_tokens=16000))
+    claude = FakeClaude([cut])
+    text, usage = chat.converse([{"role": "user", "content": "?"}], model="m", tools={}, client=claude)
+    assert text == "" and usage["stopReason"] == "max_tokens"
+    assert claude.calls[0]["max_tokens"] >= 16000  # thinking counts against the cap
+
+
+def test_the_admin_sees_why_there_was_no_answer(chat_db):
+    db, _ = chat_db
+    cut = SimpleNamespace(stop_reason="max_tokens", content=[], usage=None)
+    out = admin_chat.ask(db, [{"author": "admin", "text": "?"}], admin_name="Boss",
+                         client_factory=lambda: FakeClaude([cut]))
+    assert out["reply"] == f"{admin_chat.FALLBACK} (max_tokens)"
