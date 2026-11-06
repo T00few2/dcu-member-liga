@@ -121,7 +121,7 @@ def assess(
     try:
         response = client.messages.create(
             model=model,
-            max_tokens=2000,
+            max_tokens=8000,  # thinking counts against it
             system=SYSTEM_PROMPT,
             output_config={"effort": "low", "format": {"type": "json_schema", "schema": output_schema(divisions)}},
             messages=[{"role": "user", "content": _prompt(evidence, suggestion)}],

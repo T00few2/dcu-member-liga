@@ -22,7 +22,8 @@ from typing import Any, Callable
 from config import FRONTEND_URL
 from services import discord_link
 from services import predictor_service as ps
-from services.category_engine import GRACE_POINTS, ZR_CATEGORIES
+from services import velo_predictor as vp
+from services.category_engine import GRACE_POINTS, ZR_CATEGORIES, effective_rating
 from services.division_agent import assess as assess_mod
 from services.division_agent import league_tools as lt
 from services.division_agent import runner
@@ -34,6 +35,9 @@ CONVERSATIONS = "division_conversations"
 LIMITS = "division_chat_limits"
 MAX_MESSAGES_PER_DAY = 30  # per Discord user, per Copenhagen calendar day
 MAX_TOOL_TURNS = 5
+# The chat models think before answering (adaptive thinking is on by default), and thinking
+# counts against max_tokens: a tight cap can end a turn with thinking only and no text.
+MAX_TOKENS = 16000
 HISTORY_LIMIT = 20
 LOG_LIMIT = 60
 
@@ -180,6 +184,40 @@ def _division_limits(categories: Any) -> list[dict]:
     return [{"division": name, "fromVelo": lo, "toVelo": hi} for name, lo, hi in (categories or ZR_CATEGORIES)]
 
 
+def velo_check(velo: dict | None, current: str | None, categories: Any, grace: int = GRACE_POINTS) -> dict:
+    """Each vELO number placed against the division limits, computed here so the model never
+    compares numbers itself. `assignmentVelo` is the highest of the three, which the
+    automatic assignment uses."""
+    cats = categories or ZR_CATEGORIES
+    limits = {name: (lo, hi) for name, lo, hi in cats}
+
+    def place(v: float) -> dict:
+        out: dict = {"velo": round(v), "divisionForThisVelo": vp.category_for_velo(v, cats)}
+        if current in limits:
+            lo, hi = limits[current]
+            if v < lo:
+                rel = f"below the lower limit of {current} ({lo})"
+            elif hi is None or v < hi:
+                rel = f"inside {current} ({lo}-{hi if hi is not None else 'no upper limit'})"
+            elif v < hi + grace:
+                rel = f"above the upper limit of {current} ({hi}) but within the grace limit ({hi + grace})"
+            else:
+                rel = f"above the grace limit of {current} ({hi + grace})"
+            out["comparedToCurrentDivision"] = rel
+        return out
+
+    velo = velo or {}
+    check: dict = {}
+    for key in ("current", "max30", "max90"):
+        v = velo.get(key)
+        if isinstance(v, (int, float)) and v > 0:
+            check[key] = place(float(v))
+    best = effective_rating(velo.get("current") or "N/A", velo.get("max30") or "N/A", velo.get("max90") or "N/A")
+    if best:
+        check["assignmentVelo"] = place(float(best))
+    return check
+
+
 def explain(evidence: dict, categories: Any) -> dict:
     """What `explain_my_division` returns: the rider's own numbers only."""
     strava = evidence.get("strava") or {}
@@ -188,6 +226,7 @@ def explain(evidence: dict, categories: Any) -> dict:
         "currentDivision": evidence.get("currentCategory"),
         "lockedAfterRacing": bool(evidence.get("locked")),
         "velo": evidence.get("velo"),
+        "veloCheck": velo_check(evidence.get("velo"), evidence.get("currentCategory"), categories),
         "zwiftRidesLast90Days": evidence.get("zwiftActivityCount"),
         "zwiftPowerPrediction": (zwift.get("prediction") or {}) if zwift else None,
         "stravaPrediction": (strava.get("prediction") or {}) if strava else None,
@@ -260,21 +299,27 @@ def converse(
     system: str = SYSTEM_PROMPT,
     tool_specs: list[dict] | None = None,
     used: set[str] | None = None,
+    max_turns: int = MAX_TOOL_TURNS,
 ) -> tuple[str, dict]:
     """Run the tool loop. Returns `(reply text, usage)`; raises on API errors.
-    Only tools in `tools` are offered; the names actually called are added to `used`."""
+    Only tools in `tools` are offered; the names actually called are added to `used`.
+    `usage["stopReason"]` says why the last call ended (for logging an empty reply)."""
     conv: list[dict] = list(messages)
-    usage = {"inputTokens": 0, "outputTokens": 0}
+    usage: dict = {"inputTokens": 0, "outputTokens": 0, "stopReason": None}
     specs = [t for t in (tool_specs if tool_specs is not None else TOOLS) if t["name"] in tools]
-    for _ in range(MAX_TOOL_TURNS):
-        response = client.messages.create(model=model, max_tokens=1200, system=system,
+    for _ in range(max_turns):
+        response = client.messages.create(model=model, max_tokens=MAX_TOKENS, system=system,
                                           tools=specs, messages=conv)
         u = getattr(response, "usage", None)
         usage["inputTokens"] += int(getattr(u, "input_tokens", 0) or 0)
         usage["outputTokens"] += int(getattr(u, "output_tokens", 0) or 0)
+        usage["stopReason"] = getattr(response, "stop_reason", None)
         blocks = list(getattr(response, "content", None) or [])
-        if getattr(response, "stop_reason", None) != "tool_use":
+        if usage["stopReason"] != "tool_use":
             text = "\n".join(b.text for b in blocks if getattr(b, "type", None) == "text").strip()
+            if not text:
+                logger.warning("division chat: empty reply (stop_reason=%s, output tokens=%s)",
+                               usage["stopReason"], getattr(u, "output_tokens", None))
             return text, usage
         conv.append({"role": "assistant", "content": blocks})
         results = []
@@ -292,6 +337,8 @@ def converse(
             results.append({"type": "tool_result", "tool_use_id": b.id,
                             "content": json.dumps(output, default=str, ensure_ascii=False)})
         conv.append({"role": "user", "content": results})
+    usage["stopReason"] = "too_many_tool_turns"
+    logger.warning("division chat: no reply after %s tool turns", max_turns)
     return "", usage
 
 
