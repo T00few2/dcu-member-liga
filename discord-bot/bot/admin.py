@@ -159,7 +159,7 @@ def _embed_description(message: discord.Message | None) -> str:
 def post_divisions(message: discord.Message | None) -> list[str]:
     """Division names listed on a proposal post (survives bot restarts)."""
     text = _embed_field(message, embeds.DIVISIONS_FIELD)
-    return [d.strip() for d in text.split(",") if d.strip()]
+    return [d.strip().replace("\\.", ".") for d in text.split(",") if d.strip()]
 
 
 TEMPLATE = r"dcu:(?P<kind>prop|draft|unans):(?P<action>[a-z]+):(?P<id>[0-9a-zA-Z_-]+)"

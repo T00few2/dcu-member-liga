@@ -210,3 +210,22 @@ def test_the_admin_sees_why_there_was_no_answer(chat_db):
     out = admin_chat.ask(db, [{"author": "admin", "text": "?"}], admin_name="Boss",
                          client_factory=lambda: FakeClaude([cut]))
     assert out["reply"] == f"{admin_chat.FALLBACK} (max_tokens)"
+
+
+def test_posted_cards_carry_the_riders_current_velo_and_placement(client):
+    http, db, target = client
+    zid = target["zwiftId"]
+    db.store[f"users/{zid}"].update({
+        "zwiftRacing": {"currentRating": 1882.4, "max30Rating": 1902, "max90Rating": "N/A"},
+        "ligaCategory": {"locked": False, "manualAssigned": {"category": "Gold", "assignedFrom": "admin"},
+                         "selfSelected": {"category": "Platinum"}},
+    })
+    p = proposals.create(db, {"zwiftId": zid, "origin": "agent", "proposedCategory": "Silver"})
+    [item] = [i for i in http.get("/bot/pending", headers=H).get_json()["items"] if i["id"] == p["id"]]
+    assert item["proposal"]["rider"] == {"velo": 1882, "max30": 1902, "locked": False, "holdCategory": "Gold",
+                                         "assignedFrom": "admin", "selfSelected": "Platinum"}
+    # A rider without a user document falls back to the proposal's own evidence.
+    gone = proposals.create(db, {"zwiftId": "nobody", "origin": "agent", "locked": True,
+                                 "evidence": {"velo": {"current": 1500, "max30": 0}}})
+    card = bot_routes._card_for_post(db, gone)
+    assert card["rider"]["velo"] == 1500 and card["rider"]["max30"] is None and card["rider"]["locked"]

@@ -374,3 +374,24 @@ async def test_a_move_decided_on_the_admin_page_updates_the_thread_post():
     thread.fetch_message.assert_awaited_once_with(78)
     admin_channel.fetch_message.assert_not_called()
     assert post.edit.await_args.kwargs["view"] is None
+
+
+def test_proposal_cards_show_current_velo_and_placement_and_keep_numbered_names_plain():
+    p = {"id": "p1", "zwiftId": "1", "name": "Rider", "currentCategory": "6. Division",
+         "proposedCategory": "2. Division", "divisions": ["1. Division", "2. Division", "6. Division"],
+         "rider": {"velo": 1882, "max30": 1902, "locked": False, "assignedFrom": "admin",
+                   "holdCategory": "6. Division", "selfSelected": None}}
+    e = embeds.proposal_embed(p)
+    lines = e.description.splitlines()
+    assert lines[0] == "**6\\. Division → 2\\. Division**"  # not a numbered list in Discord
+    assert lines[1] == "vELO 1882 · max30 1902"
+    assert lines[2] == "✋ Placed by hand by an admin (6\\. Division)"
+    # Edit after a restart still reads the plain division names back from the post.
+    assert admin.post_divisions(SimpleNamespace(embeds=[e])) == ["1. Division", "2. Division", "6. Division"]
+
+    assert embeds.placement_text({"locked": True, "assignedFrom": "admin"}).startswith("🔒 Locked after racing")
+    assert embeds.placement_text({"assignedFrom": "predicted", "holdCategory": "Gold"}) == \
+        "Held from a predicted vELO (Gold)"
+    assert embeds.placement_text({"selfSelected": "Gold"}) == "Assigned automatically from vELO · self-selected Gold"
+    no_numbers = embeds.proposal_embed({**p, "rider": {"velo": None, "max30": None}})
+    assert no_numbers.description.splitlines()[1] == "vELO — · max30 —"
