@@ -303,6 +303,8 @@ def ask(
                              thread_id=thread_id, settings=settings)
         except ValueError as exc:
             return {"error": str(exc)}
+        # A newer move for the same rider supersedes the earlier one: post only the live card.
+        prepared[:] = [q for q in prepared if str(q.get("zwiftId")) != str(p.get("zwiftId"))]
         prepared.append(p)
         return {"status": "proposal posted in this thread; an admin must click Approve to apply it",
                 "from": p.get("currentCategory"), "to": p.get("proposedCategory"), "locked": p.get("locked"),

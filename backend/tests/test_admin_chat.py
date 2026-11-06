@@ -153,3 +153,26 @@ def test_an_admin_request_replaces_the_agent_card_but_never_an_appeal(chat_db):
     status = {k: db.store[f"{proposals.COLLECTION}/{p['id']}"]["status"] for k, p in
               (("appeal", appeal), ("agent", agent), ("request", request))}
     assert status == {"appeal": "pending", "agent": "superseded", "request": "pending"}
+
+
+def test_a_second_move_for_the_same_rider_posts_only_the_live_card(chat_db):
+    db, target = chat_db
+    db.store["users/doc500"] = {"ligaCategory": {"autoAssigned": {"category": "Gold"}}}
+    claude = FakeClaude([
+        _tool("move_rider", {"zwiftId": target["zwiftId"], "division": "Silver"}),
+        _tool("move_rider", {"zwiftId": target["zwiftId"], "division": "Bronze"}),
+        _reply("ok"),
+    ])
+    out = admin_chat.ask(db, [{"author": "admin", "text": "flyt"}], admin_name="Boss", client_factory=lambda: claude)
+    [p] = out["proposals"]
+    assert p["proposedCategory"] == "Bronze" and db.store[f"{proposals.COLLECTION}/{p['id']}"]["status"] == "pending"
+
+
+def test_the_filter_preview_does_not_count_admin_requests_as_closable(chat_db):
+    db, target = chat_db
+    request = proposals.create(db, {"zwiftId": target["zwiftId"], "origin": "admin", "proposedCategory": "Silver"})
+    rows = [{"zwiftId": target["zwiftId"]}]
+    settings = {"minZwiftRides": 15, "reviewFilter": {"reasons": []}}
+    assert runner.filter_preview(rows, settings, [request])["pendingOutside"] == 0
+    agent = proposals.create(db, {"zwiftId": target["zwiftId"], "origin": "agent", "proposedCategory": "Gold"})
+    assert runner.filter_preview(rows, settings, [request, agent])["pendingOutside"] == 1

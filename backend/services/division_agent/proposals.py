@@ -61,6 +61,11 @@ def is_admin_request(p: dict) -> bool:
     return p.get("origin") == "admin"
 
 
+def agent_may_close(p: dict) -> bool:
+    """The agent's own review cards; it never closes appeals or moves an admin asked for."""
+    return not is_appeal(p) and not is_admin_request(p)
+
+
 def _replaces(new: dict, old: dict) -> bool:
     """Which pending proposal a new one supersedes: the same kind (agent review, rider appeal,
     admin request), and an admin request also replaces the agent's own card. Appeals are only
@@ -81,7 +86,7 @@ def supersede_pending(db: Any, zwift_id: str, proposals: list[dict] | None = Non
     rows = proposals if proposals is not None else all_proposals(db)
     count = 0
     for old in for_rider(rows, zwift_id):
-        if old.get("status") in OPEN and old.get("id") and not is_appeal(old) and not is_admin_request(old):
+        if old.get("status") in OPEN and old.get("id") and agent_may_close(old):
             update = {"status": "superseded", "decidedAt": _now()}
             if note:
                 update["decisionNote"] = note
