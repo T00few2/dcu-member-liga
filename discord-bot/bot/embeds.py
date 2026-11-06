@@ -1,6 +1,8 @@
 """Admin-channel embeds for proposals and reply drafts."""
 from __future__ import annotations
 
+import re
+
 import discord
 
 PENDING_COLOUR = discord.Colour.gold()
@@ -30,18 +32,44 @@ def _cut(text: str | None, n: int) -> str:
     return text if len(text) <= n else text[: n - 1] + "…"
 
 
+def md_safe(name: str | None) -> str:
+    """Division names like "6. Division" would start a numbered list in Discord markdown."""
+    return re.sub(r"^(\d+)\.", r"\1\\.", str(name or ""))
+
+
+def placement_text(r: dict) -> str:
+    if r.get("locked"):
+        text = "🔒 Locked after racing (only a category transfer moves the rider)"
+    elif r.get("assignedFrom") == "admin":
+        text = f"✋ Placed by hand by an admin ({md_safe(r.get('holdCategory'))})"
+    elif r.get("assignedFrom") == "predicted":
+        text = f"Held from a predicted vELO ({md_safe(r.get('holdCategory'))})"
+    elif r.get("assignedFrom"):
+        text = f"Held manually ({md_safe(r.get('holdCategory'))}, {r['assignedFrom']})"
+    else:
+        text = "Assigned automatically from vELO"
+    if r.get("selfSelected") and not r.get("locked"):
+        text += f" · self-selected {md_safe(r['selfSelected'])}"
+    return text
+
+
 def proposal_embed(p: dict) -> discord.Embed:
     appeal = p.get("origin") == "appeal"
     requested = p.get("origin") == "admin"
     kind = ("Appeal" if appeal else f"Move requested by {p.get('requestedBy') or 'an admin'}" if requested
             else "Division proposal")
     title = f"{kind}: {p.get('name') or p.get('zwiftId')}"
-    lines = [f"**{p.get('currentCategory') or 'No division'} → {p.get('proposedCategory') or 'needs a manual look'}**"]
+    lines = [f"**{md_safe(p.get('currentCategory')) or 'No division'} → "
+             f"{md_safe(p.get('proposedCategory')) or 'needs a manual look'}**"]
+    rider = p.get("rider")
+    if rider:
+        lines.append(f"vELO {rider.get('velo') or '—'} · max30 {rider.get('max30') or '—'}")
+        lines.append(placement_text(rider))
     if p.get("predictedVelo") is not None:
         lines.append(f"Predicted vELO {p['predictedVelo']} from {p.get('source')}"
                      + (f" · {p['confidence']} confidence" if p.get("confidence") else ""))
     if p.get("suggestedCategory") and p.get("suggestedCategory") != p.get("proposedCategory"):
-        lines.append(f"The predictor suggests {p['suggestedCategory']}.")
+        lines.append(f"The predictor suggests {md_safe(p['suggestedCategory'])}.")
     rides = p.get("stravaRides") or {}
     if rides.get("activityCount") is not None:
         split = (f" ({rides.get('indoorCount')} indoor, {rides.get('outdoorCount')} outdoor)"
@@ -54,7 +82,8 @@ def proposal_embed(p: dict) -> discord.Embed:
         embed.add_field(name=f"Rider asks{asked}", value=_cut(p.get("riderStatement") or "—", 1000), inline=False)
     if p.get("divisions"):
         # Read back by Edit, so the division names are known after a restart too.
-        embed.add_field(name=DIVISIONS_FIELD, value=_cut(", ".join(p["divisions"]), 1000), inline=False)
+        embed.add_field(name=DIVISIONS_FIELD, value=_cut(", ".join(md_safe(d) for d in p["divisions"]), 1000),
+                        inline=False)
     if p.get("flags"):
         embed.add_field(name="Flags", value=_cut(", ".join(FLAG_TEXT.get(f, f) for f in p["flags"]), 1000),
                         inline=False)

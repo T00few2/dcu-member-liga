@@ -21,6 +21,7 @@ from authz import AuthzError, require_bot
 from extensions import db
 from routes.integration import integration_bp
 from services import predictor_service as ps
+from services import velo_predictor as vp
 from services.division_agent import admin_chat, chat, proposals
 from services.division_agent import league_tools as lt
 
@@ -73,6 +74,47 @@ def _posting_in_thread(p: dict, now: datetime) -> bool:
     return now - created < ADMIN_CHAT_GRACE
 
 
+def _positive(value) -> int | None:
+    v = vp.to_float(value)
+    return round(v) if v and v > 0 else None
+
+
+def rider_now(db, zwift_id) -> dict | None:
+    """The rider's vELO and placement right now (read when a card is posted, not when the
+    proposal was made), so the admin sees current values."""
+    try:
+        snap = db.collection("users").document(str(zwift_id)).get()
+    except Exception as e:
+        logger.warning("bot: could not read rider %s: %s", zwift_id, e)
+        return None
+    if not getattr(snap, "exists", False):
+        return None
+    data = snap.to_dict() or {}
+    zr = data.get("zwiftRacing") or {}
+    lc = data.get("ligaCategory") or {}
+    manual = lc.get("manualAssigned") or {}
+    return {
+        "velo": _positive(zr.get("currentRating")),
+        "max30": _positive(zr.get("max30Rating")),
+        "locked": bool(lc.get("locked")),
+        "holdCategory": manual.get("category") or None,
+        "assignedFrom": (manual.get("assignedFrom") or "manual") if manual.get("category") else None,
+        "selfSelected": (lc.get("selfSelected") or {}).get("category") or None,
+    }
+
+
+def _card_for_post(db, p: dict) -> dict:
+    """A proposal card with the rider's current numbers, falling back to the proposal's evidence."""
+    card = _proposal_card(p)
+    rider = rider_now(db, p.get("zwiftId"))
+    if rider is None:
+        velo = (p.get("evidence") or {}).get("velo") or {}
+        rider = {"velo": _positive(velo.get("current")), "max30": _positive(velo.get("max30")),
+                 "locked": bool(p.get("locked")), "holdCategory": None, "assignedFrom": None, "selfSelected": None}
+    card["rider"] = rider
+    return card
+
+
 def pending_items(db, now: datetime | None = None) -> list[dict]:
     t = now or datetime.now(timezone.utc)
     items: list[dict] = []
@@ -80,7 +122,7 @@ def pending_items(db, now: datetime | None = None) -> list[dict]:
         d = p.get("discord") or {}
         if p.get("status") == "pending" and not d.get("adminMessageId"):
             if not _posting_in_thread(p, t):
-                items.append({"kind": "proposal", "id": p["id"], "proposal": _proposal_card(p)})
+                items.append({"kind": "proposal", "id": p["id"], "proposal": _card_for_post(db, p)})
         elif p.get("status") != "pending" and d.get("adminMessageId") and not d.get("adminUpdated"):
             item = {"kind": "proposal_decided", "id": p["id"], "messageId": d["adminMessageId"],
                     "proposal": _proposal_card(p)}
@@ -269,7 +311,7 @@ def bot_admin_ask():
     try:
         out = admin_chat.ask(db, [m for m in messages if isinstance(m, dict)], admin_name=str(body.get("discordUser") or "admin")[:80],
                              thread_id=str(body.get("threadId") or "") or None)
-        return jsonify({"reply": out["reply"], "proposals": [_proposal_card(p) for p in out["proposals"]]}), 200
+        return jsonify({"reply": out["reply"], "proposals": [_card_for_post(db, p) for p in out["proposals"]]}), 200
     except Exception as e:
         logger.error("bot_admin_ask error: %s", e)
         return jsonify({"message": "Something went wrong"}), 500
