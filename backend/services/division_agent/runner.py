@@ -63,7 +63,7 @@ def filter_preview(rows: list[dict], settings: dict, existing: list[dict]) -> di
                 by_reason[r] += 1
         else:
             pending_outside += sum(1 for p in proposals.for_rider(existing, zid)
-                                   if p.get("status") == "pending" and not proposals.is_appeal(p))
+                                   if p.get("status") == "pending" and proposals.agent_may_close(p))
     return {"total": len([r for r in rows if r.get("zwiftId")]), "inGroup": in_group, "matching": matching,
             "byReason": by_reason, "pendingOutside": pending_outside}
 

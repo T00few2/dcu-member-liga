@@ -78,6 +78,17 @@ The next backend deploy picks them up. Riders can then link Discord under *Regis
   Conduct doc or the site text that feeds `/llms.txt`), so the bot can answer it next time.
 - Proposals made by the agent itself also appear in **#division-admin**. Deciding on the admin page instead updates
   the Discord post.
+- **Talking with the agent in #division-admin**: an admin (with the admin role) mentions the bot, for example
+  `@DCU Liga hvorfor er Søren Hansen i Gold?`. The bot opens a thread and answers there; in that thread every
+  admin message gets an answer without a new mention (in other threads, mention the bot). The agent can:
+  - search riders by name (or Zwift ID); when several riders match it lists them and asks which one;
+  - explain why a rider is in their division (locked after racing, held by an admin, held from a predicted
+    vELO, automatic from vELO, or self-selected) with the numbers, and which division it would suggest and why;
+  - prepare a move on request ("flyt ham til Silver, han er skadet"): it posts a **Move requested by …** card in
+    the thread with **Approve / Edit / Reject**. Nothing changes until an admin presses **Approve**; for a rider
+    who has raced, approving makes the normal category transfer. An approved move is an admin placement (it
+    counts as "placed by hand"), and the agent never closes or replaces a requested move.
+  Non-admins in the admin channel are ignored, as is admin chatter that does not mention the bot.
 - Each Discord user may send 30 questions per day (Copenhagen time); after that the bot says to try again
   tomorrow, and an admin can still answer by hand.
 
@@ -89,5 +100,7 @@ The next backend deploy picks them up. Riders can then link Discord under *Regis
 4. Turn auto-reply on → answers go out directly.
 5. Ask league questions without approval: "Hvornår er næste løb?", "Hvordan får man point?", "Hvad stod der i den
    seneste nyhed?" (also from an account that has not linked Discord).
-6. Ask something the site does not cover (for example "Må jeg køre på mountainbike?") → it shows up in
+6. In #division-admin: `@bot hvorfor er <rider> i <division>?`, then in the thread "hvad ville du foreslå?" and
+   "flyt <rider> til <division>" → a move card in the thread → Approve (or Reject) → the card shows the decision.
+7. Ask something the site does not cover (for example "Må jeg køre på mountainbike?") → it shows up in
    #division-admin and under *Unanswered questions*; press **Løst / Solved**.

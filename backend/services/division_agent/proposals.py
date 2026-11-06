@@ -56,6 +56,25 @@ def is_appeal(p: dict) -> bool:
     return p.get("origin") == "appeal"
 
 
+def is_admin_request(p: dict) -> bool:
+    """A move an admin asked for in the Discord admin channel."""
+    return p.get("origin") == "admin"
+
+
+def agent_may_close(p: dict) -> bool:
+    """The agent's own review cards; it never closes appeals or moves an admin asked for."""
+    return not is_appeal(p) and not is_admin_request(p)
+
+
+def _replaces(new: dict, old: dict) -> bool:
+    """Which pending proposal a new one supersedes: the same kind (agent review, rider appeal,
+    admin request), and an admin request also replaces the agent's own card. Appeals are only
+    replaced by newer appeals; the agent never replaces an admin's request."""
+    if is_appeal(new) or is_appeal(old):
+        return is_appeal(new) and is_appeal(old)
+    return is_admin_request(new) or not is_admin_request(old)
+
+
 OUTSIDE_FILTER_NOTE = "Outside the review filter"
 
 
@@ -63,11 +82,11 @@ def supersede_pending(db: Any, zwift_id: str, proposals: list[dict] | None = Non
                       note: str | None = None) -> int:
     """Mark the rider's pending agent proposals superseded (a re-check found no change is
     needed, or the rider is outside the review filter). Appeals are never closed by the
-    agent: only an admin decides them."""
+    agent: only an admin decides them, and neither are moves an admin asked for."""
     rows = proposals if proposals is not None else all_proposals(db)
     count = 0
     for old in for_rider(rows, zwift_id):
-        if old.get("status") in OPEN and old.get("id") and not is_appeal(old):
+        if old.get("status") in OPEN and old.get("id") and agent_may_close(old):
             update = {"status": "superseded", "decidedAt": _now()}
             if note:
                 update["decisionNote"] = note
@@ -78,11 +97,11 @@ def supersede_pending(db: Any, zwift_id: str, proposals: list[dict] | None = Non
 
 
 def create(db: Any, data: dict) -> dict:
-    """Store a pending proposal; an older pending one of the same kind (agent review or
-    rider appeal) for the same rider is superseded. An agent review never closes an appeal."""
+    """Store a pending proposal; older pending ones it replaces (see `_replaces`) for the same
+    rider are superseded. An agent review never closes an appeal or an admin's request."""
     zwift_id = str(data["zwiftId"])
     for old in for_rider(all_proposals(db), zwift_id):
-        if old.get("status") == "pending" and is_appeal(old) == is_appeal(data):
+        if old.get("status") == "pending" and _replaces(data, old):
             db.collection(COLLECTION).document(old["id"]).set(
                 {"status": "superseded", "decidedAt": _now()}, merge=True)
     proposal = {**data, "id": uuid.uuid4().hex, "status": "pending", "createdAt": _now()}
@@ -161,7 +180,9 @@ def decide(db: Any, proposal_id: str, action: str, *, decided_by: str,
             raise ProposalError("Choose a division" if action == "edit" else
                                 "This proposal has no division; use Edit to choose one")
         try:
-            applied = _apply(db, proposal, target, use_prediction=action == "approve")
+            # An admin's own request is an admin placement, not a prediction hold.
+            applied = _apply(db, proposal, target,
+                             use_prediction=action == "approve" and not is_admin_request(proposal))
         except ProposalError as exc:
             if exc.message == "stale":
                 ref.set({"status": "superseded", "decidedAt": _now(),

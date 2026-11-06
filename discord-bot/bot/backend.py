@@ -50,11 +50,18 @@ class Backend:
     async def pending(self) -> list[dict]:
         return (await self._call("GET", "/bot/pending")).get("items") or []
 
-    async def ack(self, kind: str, item_id: str, message_id: int | None = None) -> None:
+    async def ack(self, kind: str, item_id: str, message_id: int | None = None,
+                  channel_id: int | None = None) -> None:
         body: dict = {"kind": kind, "id": item_id}
         if message_id is not None:
             body["messageId"] = str(message_id)
+        if channel_id is not None:  # posted somewhere other than the admin channel (an admin-chat thread)
+            body["channelId"] = str(channel_id)
         await self._call("POST", "/bot/ack", body)
+
+    async def admin_ask(self, messages: list[dict], thread_id: int, discord_user: str) -> dict:
+        return await self._call("POST", "/bot/admin/ask", {
+            "messages": messages, "threadId": str(thread_id), "discordUser": discord_user})
 
     async def decide_proposal(self, proposal_id: str, action: str, discord_user: str,
                               category: str | None = None, note: str | None = None) -> dict:
