@@ -184,8 +184,9 @@
           "zwiftId": { "type": "string" },
           "name": { "type": "string", "description": "For the admin page only; never sent to Claude" },
           "status": { "type": "string", "enum": ["pending", "approved", "edited", "rejected", "superseded"] },
-          "reasons": { "type": "array", "items": { "type": "string", "enum": ["no_velo", "few_rides", "appeal"] } },
-          "origin": { "type": "string", "enum": ["agent", "appeal"], "description": "appeal = a rider asked to move (Discord); always proposed, whatever the numbers say" },
+          "reasons": { "type": "array", "items": { "type": "string", "enum": ["no_velo", "no_max30", "few_rides", "no_division", "appeal", "admin"] } },
+          "origin": { "type": "string", "enum": ["agent", "appeal", "admin"], "description": "appeal = a rider asked to move (Discord); always proposed, whatever the numbers say. admin = an admin told the agent to move the rider in the Discord admin channel; posted in that thread, applied as an admin placement on Approve. Neither is ever superseded by the agent" },
+          "requestedBy": { "type": "string", "description": "origin admin: the Discord display name of the admin who asked for the move" },
           "riderStatement": { "type": "string", "description": "Appeals: the rider's reason in their own words" },
           "requestedCategory": { "type": ["string", "null"], "description": "Appeals: the division the rider asked for" },
           "discord": {
@@ -195,6 +196,9 @@
             "properties": {
               "threadId": { "type": "string" },
               "adminMessageId": { "type": "string" },
+              "adminChannelId": { "type": "string", "description": "Set when the post is in an admin-chat thread instead of the admin channel itself" },
+              "adminChat": { "type": "boolean", "description": "origin admin: the bot posts it in the admin-chat thread; the relay only posts it in the channel if that was not acknowledged within 5 minutes" },
+              "adminThreadId": { "type": "string", "description": "origin admin: the admin-chat thread the move was asked for in" },
               "adminUpdated": { "type": "boolean" },
               "riderNotified": { "type": "boolean" }
             }
@@ -209,7 +213,7 @@
           "evidence": { "type": "object", "additionalProperties": true, "description": "Anonymized evidence (ratings, ride counts, Zwift/Strava predictions and inputs, flags, division list); no names or IDs" },
           "adminRationale": { "type": "string" },
           "riderExplanation": { "type": "string", "description": "Danish text for the rider" },
-          "author": { "type": "string", "enum": ["claude", "template"] },
+          "author": { "type": "string", "enum": ["claude", "template", "admin"] },
           "model": { "type": ["string", "null"] },
           "usage": { "type": ["object", "null"], "additionalProperties": true },
           "locked": { "type": "boolean" },

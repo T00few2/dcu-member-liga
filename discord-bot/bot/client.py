@@ -8,11 +8,19 @@ in the thread (admins answering by hand) are ignored.
 Admin channel: every `poll_seconds` the bot asks the backend what to post or deliver
 (`/bot/pending`: proposals, reply drafts and questions the bot could not answer) and
 acknowledges each item (`/bot/ack`) so nothing is sent twice.
+
+Admin chat: an admin who mentions the bot in the admin channel gets a thread where they can
+talk with the division agent (`/bot/admin/ask`): why a rider is in a division, which division
+the agent suggests, and "move X to Y". A move comes back as a proposal, posted in the thread
+with Approve / Edit / Reject; nothing changes before an admin clicks Approve. In its own
+threads the bot answers every admin message; elsewhere only when mentioned. Only members
+with the admin role are answered.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
+import re
 
 import discord
 
@@ -39,9 +47,16 @@ def split_message(text: str) -> list[str]:
     return parts + ([text] if text else [])
 
 
-def thread_name(message: discord.Message) -> str:
-    base = (message.content or "Spørgsmål").strip().splitlines()[0]
-    return f"{message.author.display_name}: {base}"[:95]
+def thread_name(message: discord.Message, text: str | None = None) -> str:
+    base = ((message.content if text is None else text) or "Spørgsmål").strip().splitlines() or ["Spørgsmål"]
+    return f"{message.author.display_name}: {base[0]}"[:95]
+
+
+def strip_mentions(text: str, user_id: int | None) -> str:
+    """The admin's words without the bot's @mention."""
+    if user_id is None:
+        return (text or "").strip()
+    return re.sub(rf"<@!?{user_id}>", "", text or "").strip()
 
 
 class DcuBot(discord.Client):
@@ -75,6 +90,8 @@ class DcuBot(discord.Client):
         if message.author.bot or message.guild is None:
             return
         channel = message.channel
+        if await self._admin_chat(message):
+            return
         if getattr(channel, "id", None) == self.config.help_channel_id:
             thread = await message.create_thread(name=thread_name(message), auto_archive_duration=1440)
             await self.answer(thread, message.author, [message])
@@ -117,6 +134,76 @@ class DcuBot(discord.Client):
             reply = SORRY
         for part in split_message(reply):
             await thread.send(part)
+
+    # --- admin chat -------------------------------------------------------------
+
+    def _mentions_me(self, message: discord.Message) -> bool:
+        bot_id = getattr(self.user, "id", None)
+        return any(getattr(u, "id", None) == bot_id for u in getattr(message, "mentions", None) or [])
+
+    async def _admin_chat(self, message: discord.Message) -> bool:
+        """Handle an admin talking to the bot in the admin channel. True when the message was
+        in the admin channel or one of its threads (handled or deliberately ignored)."""
+        channel = message.channel
+        admin_channel = self.config.admin_channel_id
+        in_channel = getattr(channel, "id", None) == admin_channel
+        in_thread = isinstance(channel, discord.Thread) and channel.parent_id == admin_channel
+        if not (in_channel or in_thread):
+            return False
+        if not admin.is_admin(message.author, self.config.admin_role_id):
+            return True
+        if in_channel:
+            if not self._mentions_me(message):
+                return True  # admins talking among themselves
+            text = strip_mentions(message.content, getattr(self.user, "id", None))
+            thread = await message.create_thread(name=thread_name(message, text or "Agent"),
+                                                 auto_archive_duration=1440)
+            await self.admin_answer(thread, message.author, [message])
+            return True
+        # In a thread: the bot's own threads get every admin message; others only a mention.
+        if channel.owner_id != getattr(self.user, "id", None) and not self._mentions_me(message):
+            return True
+        history = [m async for m in channel.history(limit=HISTORY_LIMIT, oldest_first=False)]
+        history.reverse()
+        if not any(getattr(m, "id", None) == getattr(message, "id", None) for m in history):
+            history.append(message)
+        starter = await self._starter(channel) if channel.owner_id == getattr(self.user, "id", None) else None
+        await self.admin_answer(channel, message.author, ([starter] if starter else []) + history)
+        return True
+
+    async def admin_answer(self, thread: discord.abc.Messageable, asker: discord.abc.User,
+                           messages: list[discord.Message]) -> None:
+        bot_id = getattr(self.user, "id", None)
+        convo = []
+        for m in messages:
+            if m.author.id == bot_id:
+                if m.content:
+                    convo.append({"author": "bot", "text": m.content})
+            elif admin.is_admin(m.author, self.config.admin_role_id):
+                text = strip_mentions(m.content, bot_id)
+                if text:
+                    convo.append({"author": "admin", "name": admin.who(m.author), "text": text})
+        if not convo:
+            return
+        try:
+            async with thread.typing():
+                result = await self.backend.admin_ask(convo, thread.id, admin.who(asker))
+        except BackendError as e:
+            logger.warning("admin ask failed: %s", e.message)
+            await thread.send(f"Det gik galt / Something went wrong: {e.message}")
+            return
+        for part in split_message(result.get("reply") or ""):
+            await thread.send(part)
+        for proposal in result.get("proposals") or []:
+            pid = str(proposal.get("id"))
+            if proposal.get("divisions"):
+                self.divisions[pid] = proposal["divisions"]
+                self.known_divisions = proposal["divisions"]
+            msg = await thread.send(embed=embeds.proposal_embed(proposal), view=admin.proposal_view(pid))
+            try:
+                await self.backend.ack("proposal", pid, msg.id, channel_id=thread.id)
+            except BackendError as e:  # the relay posts it in the channel after a few minutes
+                logger.warning("ack of admin-chat proposal %s failed: %s", pid, e.message)
 
     # --- admin channel relay ----------------------------------------------------
 
@@ -179,7 +266,13 @@ class DcuBot(discord.Client):
         elif kind in ("proposal_decided", "draft_decided"):
             status = (item.get("proposal") or {}).get("status") or item.get("status") or "decided"
             try:
-                msg = await admin_channel.fetch_message(int(item["messageId"]))
+                channel = admin_channel
+                if item.get("channelId"):  # posted in an admin-chat thread
+                    channel = self.get_channel(int(item["channelId"])) or \
+                        await self.fetch_channel(int(item["channelId"]))
+                    if getattr(channel, "archived", False):
+                        await channel.edit(archived=False)
+                msg = await channel.fetch_message(int(item["messageId"]))
                 if msg.components:  # still has buttons: decided elsewhere (admin page)
                     by = (item.get("proposal") or {}).get("decidedBy")
                     await msg.edit(embed=embeds.decided(msg.embeds[0] if msg.embeds else None, status, by),

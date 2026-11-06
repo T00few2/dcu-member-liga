@@ -33,8 +33,10 @@ export interface DivisionProposal {
   decidedBy?: string;
   decisionNote?: string | null;
   appliedCategory?: string;
-  /** "appeal" when a rider asked to move (Discord); "agent" for the agent's own review. */
-  origin?: 'agent' | 'appeal';
+  /** "appeal" when a rider asked to move (Discord); "admin" when an admin asked the agent to move a rider
+   *  (Discord admin channel); "agent" for the agent's own review. */
+  origin?: 'agent' | 'appeal' | 'admin';
+  requestedBy?: string;
   riderStatement?: string;
   requestedCategory?: string | null;
   evidence?: {
@@ -137,6 +139,11 @@ function ProposalCard({
           <span className="text-xs text-muted-foreground"> · {proposal.zwiftId}</span>
           {proposal.locked && <span className="ml-2 text-xs rounded bg-amber-100 text-amber-800 px-1.5 py-0.5">locked</span>}
           {proposal.origin === 'appeal' && <span className="ml-2 text-xs rounded bg-indigo-100 text-indigo-800 px-1.5 py-0.5">appeal</span>}
+          {proposal.origin === 'admin' && (
+            <span className="ml-2 text-xs rounded bg-sky-100 text-sky-800 px-1.5 py-0.5">
+              requested by {proposal.requestedBy || 'an admin'}
+            </span>
+          )}
         </div>
         <span className="text-xs text-muted-foreground">{when(proposal.createdAt)}</span>
       </div>

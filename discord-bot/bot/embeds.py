@@ -32,7 +32,10 @@ def _cut(text: str | None, n: int) -> str:
 
 def proposal_embed(p: dict) -> discord.Embed:
     appeal = p.get("origin") == "appeal"
-    title = ("Appeal" if appeal else "Division proposal") + f": {p.get('name') or p.get('zwiftId')}"
+    requested = p.get("origin") == "admin"
+    kind = ("Appeal" if appeal else f"Move requested by {p.get('requestedBy') or 'an admin'}" if requested
+            else "Division proposal")
+    title = f"{kind}: {p.get('name') or p.get('zwiftId')}"
     lines = [f"**{p.get('currentCategory') or 'No division'} → {p.get('proposedCategory') or 'needs a manual look'}**"]
     if p.get("predictedVelo") is not None:
         lines.append(f"Predicted vELO {p['predictedVelo']} from {p.get('source')}"

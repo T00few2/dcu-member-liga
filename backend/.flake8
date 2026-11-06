@@ -38,3 +38,4 @@ per-file-ignores =
     services/results/race_scorer.py: F841
     routes/verification.py: F841
     tests/test_league_engine.py: F401
+    tests/test_admin_chat.py: F811

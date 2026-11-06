@@ -266,3 +266,111 @@ async def test_a_question_solved_on_the_admin_page_updates_the_discord_post():
     assert await bot.relay_once() == 1
     assert post.edit.await_args.kwargs["view"] is None
     backend.ack.assert_awaited_once_with("unanswered_resolved", "u1")
+
+
+# --- admin chat -------------------------------------------------------------------
+
+ADMIN_ROLE = [SimpleNamespace(id=99)]
+
+
+def _admin_message(channel, content, author_id=7, roles=ADMIN_ROLE, mentions=(), msg_id=1):
+    author = SimpleNamespace(id=author_id, bot=False, display_name="Boss", roles=list(roles))
+    return SimpleNamespace(id=msg_id, author=author, channel=channel, content=content, guild=object(),
+                           mentions=list(mentions))
+
+
+def _admin_thread(owner_id, history=()):
+    class Thread(discord.Thread):
+        def __init__(self):  # skip discord's constructor
+            pass
+
+    thread = Thread()
+    thread.id, thread.parent_id, thread.owner_id = 950, 2, owner_id
+
+    async def _history(limit, oldest_first):
+        for m in reversed(history):  # newest first, like Discord
+            yield m
+
+    object.__setattr__(thread, "history", _history)
+    object.__setattr__(thread, "send", AsyncMock(return_value=SimpleNamespace(id=77)))
+    object.__setattr__(thread, "typing", MagicMock(return_value=FakeTyping()))
+    return thread
+
+
+async def test_an_admin_mentioning_the_bot_gets_a_thread_and_a_move_card():
+    backend = MagicMock()
+    card = {"id": "p9", "zwiftId": "42", "name": "Rider", "origin": "admin", "requestedBy": "Boss",
+            "currentCategory": "Gold", "proposedCategory": "Silver", "divisions": ["Gold", "Silver"]}
+    backend.admin_ask = AsyncMock(return_value={"reply": "Forslaget er lagt her.", "proposals": [card]})
+    backend.ack = AsyncMock()
+    bot = _bot(backend)
+    thread = MagicMock(id=950)
+    thread.send = AsyncMock(side_effect=[SimpleNamespace(id=1), SimpleNamespace(id=78)])
+    thread.typing = MagicMock(return_value=FakeTyping())
+    msg = _admin_message(SimpleNamespace(id=2), "<@500> flyt Rider til Silver", mentions=[SimpleNamespace(id=500)])
+    msg.create_thread = AsyncMock(return_value=thread)
+    await bot.on_message(msg)
+
+    assert msg.create_thread.await_args.kwargs["name"] == "Boss: flyt Rider til Silver"
+    backend.admin_ask.assert_awaited_once_with(
+        [{"author": "admin", "name": "Boss", "text": "flyt Rider til Silver"}], 950, "Boss")
+    assert thread.send.await_args_list[0].args == ("Forslaget er lagt her.",)
+    posted = thread.send.await_args_list[1].kwargs
+    assert posted["embed"].title == "Move requested by Boss: Rider"
+    assert [c.custom_id for c in posted["view"].children][0] == "dcu:prop:approve:p9"
+    backend.ack.assert_awaited_once_with("proposal", "p9", 78, channel_id=950)
+    assert bot.divisions["p9"] == ["Gold", "Silver"]
+
+
+async def test_the_admin_channel_ignores_non_admins_and_unmentioned_chatter():
+    backend = MagicMock()
+    backend.admin_ask = AsyncMock()
+    backend.ask = AsyncMock()
+    bot = _bot(backend)
+    channel = SimpleNamespace(id=2)
+    for msg in (_admin_message(channel, "<@500> hi", roles=[], mentions=[SimpleNamespace(id=500)]),
+                _admin_message(channel, "just talking among admins")):
+        msg.create_thread = AsyncMock()
+        await bot.on_message(msg)
+        msg.create_thread.assert_not_awaited()
+    # A thread an admin opened on a proposal post: only a mention gets an answer.
+    await bot.on_message(_admin_message(_admin_thread(owner_id=7), "what about this one?"))
+    backend.admin_ask.assert_not_awaited()
+    backend.ask.assert_not_awaited()
+
+
+async def test_follow_ups_in_the_bots_thread_carry_the_conversation():
+    backend = MagicMock()
+    backend.admin_ask = AsyncMock(return_value={"reply": "Gold, fra vELO.", "proposals": []})
+    bot = _bot(backend)
+    starter = _admin_message(None, "<@500> hvorfor er Rider i Gold?", mentions=[SimpleNamespace(id=500)])
+    history = [_admin_message(None, "Rider er i Gold fordi ...", author_id=500, msg_id=2),
+               _admin_message(None, "random member", author_id=8, roles=[], msg_id=3),
+               _admin_message(None, "og hvad foreslår du?", msg_id=4)]
+    thread = _admin_thread(owner_id=500, history=history)
+    bot._starter = AsyncMock(return_value=starter)
+    await bot.on_message(_admin_message(thread, "og hvad foreslår du?", msg_id=4))
+    convo = backend.admin_ask.await_args.args[0]
+    assert convo == [{"author": "admin", "name": "Boss", "text": "hvorfor er Rider i Gold?"},
+                     {"author": "bot", "text": "Rider er i Gold fordi ..."},
+                     {"author": "admin", "name": "Boss", "text": "og hvad foreslår du?"}]
+    thread.send.assert_awaited_once_with("Gold, fra vELO.")
+
+
+async def test_a_move_decided_on_the_admin_page_updates_the_thread_post():
+    backend = MagicMock()
+    backend.pending = AsyncMock(return_value=[{"kind": "proposal_decided", "id": "p9", "messageId": "78",
+                                               "channelId": "950", "proposal": {"status": "approved"}}])
+    backend.ack = AsyncMock()
+    bot = _bot(backend)
+    post = MagicMock(components=[object()], embeds=[embeds.proposal_embed({"id": "p9", "origin": "admin"})])
+    post.edit = AsyncMock()
+    thread = MagicMock(archived=True)
+    thread.edit = AsyncMock()
+    thread.fetch_message = AsyncMock(return_value=post)
+    admin_channel = MagicMock()
+    bot.get_channel = MagicMock(side_effect=lambda cid: admin_channel if cid == 2 else thread)
+    assert await bot.relay_once() == 1
+    thread.fetch_message.assert_awaited_once_with(78)
+    admin_channel.fetch_message.assert_not_called()
+    assert post.edit.await_args.kwargs["view"] is None

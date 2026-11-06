@@ -7,10 +7,13 @@
 - `POST /bot/ack`: mark an item as posted / delivered so it is never sent twice.
 - `POST /bot/proposals/<id>/decision`, `POST /bot/replies/<id>/decision`: admin buttons.
 - `POST /bot/unanswered/<id>/resolve`: an admin marks an unanswered question as solved.
+- `POST /bot/admin/ask`: an admin talks with the division agent in the admin channel
+  (why a rider is in a division, what the agent suggests, prepare a move).
 """
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta, timezone
 
 from flask import jsonify, request
 
@@ -18,12 +21,15 @@ from authz import AuthzError, require_bot
 from extensions import db
 from routes.integration import integration_bp
 from services import predictor_service as ps
-from services.division_agent import chat, proposals
+from services.division_agent import admin_chat, chat, proposals
 from services.division_agent import league_tools as lt
 
 logger = logging.getLogger(__name__)
 
 DECIDED = ("approved", "edited", "rejected")
+# A move prepared in the admin chat is posted in that thread by the bot right away. Only if
+# the bot never acknowledged it (crash, Discord error) does the relay post it in the channel.
+ADMIN_CHAT_GRACE = timedelta(minutes=5)
 
 
 def _bot():
@@ -46,7 +52,7 @@ def _proposal_card(p: dict) -> dict:
     ev = p.get("evidence") or {}
     keys = ("id", "zwiftId", "name", "origin", "currentCategory", "proposedCategory", "suggestedCategory",
             "requestedCategory", "predictedVelo", "source", "confidence", "flags", "adminRationale",
-            "riderStatement", "locked", "movePreview", "status", "appliedCategory", "decidedBy")
+            "riderStatement", "requestedBy", "locked", "movePreview", "status", "appliedCategory", "decidedBy")
     card = {k: p.get(k) for k in keys}
     card["divisions"] = ev.get("divisions") or []
     strava = ev.get("strava") or {}
@@ -55,15 +61,32 @@ def _proposal_card(p: dict) -> dict:
     return card
 
 
-def pending_items(db) -> list[dict]:
+def _posting_in_thread(p: dict, now: datetime) -> bool:
+    """A fresh admin-chat move the bot is posting in its thread itself."""
+    if not (p.get("discord") or {}).get("adminChat"):
+        return False
+    try:
+        created = datetime.fromisoformat(str(p.get("createdAt") or "").replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    created = created if created.tzinfo else created.replace(tzinfo=timezone.utc)
+    return now - created < ADMIN_CHAT_GRACE
+
+
+def pending_items(db, now: datetime | None = None) -> list[dict]:
+    t = now or datetime.now(timezone.utc)
     items: list[dict] = []
     for p in proposals.all_proposals(db):
         d = p.get("discord") or {}
         if p.get("status") == "pending" and not d.get("adminMessageId"):
-            items.append({"kind": "proposal", "id": p["id"], "proposal": _proposal_card(p)})
+            if not _posting_in_thread(p, t):
+                items.append({"kind": "proposal", "id": p["id"], "proposal": _proposal_card(p)})
         elif p.get("status") != "pending" and d.get("adminMessageId") and not d.get("adminUpdated"):
-            items.append({"kind": "proposal_decided", "id": p["id"], "messageId": d["adminMessageId"],
-                          "proposal": _proposal_card(p)})
+            item = {"kind": "proposal_decided", "id": p["id"], "messageId": d["adminMessageId"],
+                    "proposal": _proposal_card(p)}
+            if d.get("adminChannelId"):  # posted in an admin-chat thread, not in the channel itself
+                item["channelId"] = d["adminChannelId"]
+            items.append(item)
         if p.get("status") in DECIDED and d.get("threadId") and not d.get("riderNotified"):
             items.append({"kind": "outcome", "id": p["id"], "threadId": d["threadId"], "text": _outcome_text(p)})
     for snap in db.collection(chat.DRAFTS).stream():
@@ -156,7 +179,10 @@ def bot_ack():
     ref = db.collection(collection).document(item_id)
     if not getattr(ref.get(), "exists", False):
         return jsonify({"message": "Not found"}), 404
-    ref.update({field: value})  # dotted path: only that nested field changes
+    update = {field: value}  # dotted paths: only those nested fields change
+    if kind == "proposal" and body.get("channelId"):
+        update["discord.adminChannelId"] = str(body["channelId"])
+    ref.update(update)
     return jsonify({"ok": True}), 200
 
 
@@ -225,4 +251,25 @@ def bot_unanswered_resolve(item_id: str):
         return jsonify({"message": "Not found"}), 404
     except Exception as e:
         logger.error("bot_unanswered_resolve error: %s", e)
+        return jsonify({"message": "Something went wrong"}), 500
+
+
+@integration_bp.route("/bot/admin/ask", methods=["POST"])
+def bot_admin_ask():
+    """An admin's message in the admin channel. The bot checks the admin role before calling this."""
+    err = _bot()
+    if err:
+        return err
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+    body = request.get_json(silent=True) or {}
+    messages = body.get("messages") if isinstance(body.get("messages"), list) else []
+    if not messages:
+        return jsonify({"message": "messages are required"}), 400
+    try:
+        out = admin_chat.ask(db, [m for m in messages if isinstance(m, dict)], admin_name=str(body.get("discordUser") or "admin")[:80],
+                             thread_id=str(body.get("threadId") or "") or None)
+        return jsonify({"reply": out["reply"], "proposals": [_proposal_card(p) for p in out["proposals"]]}), 200
+    except Exception as e:
+        logger.error("bot_admin_ask error: %s", e)
         return jsonify({"message": "Something went wrong"}), 500
