@@ -562,6 +562,22 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
 
     const clubOptions = useMemo(() => clubs.map((c) => c.club), [clubs]);
 
+    const reservedLabelBySig = useMemo(() => {
+        const labels: Record<number, string> = {};
+        const saved = overview?.classificationJerseys;
+        const slots: [keyof ClassificationJerseys, string][] = [
+            ['individual', 'førertrøjen (Individuel)'],
+            ['sprint', 'sprinttrøjen'],
+            ['kom', 'bjergtrøjen (KOM)'],
+        ];
+        for (const [key, label] of slots) {
+            const sig = saved?.[key]?.jerseySignature;
+            if (sig != null && labels[sig] == null) labels[sig] = label;
+        }
+        return labels;
+    }, [overview?.classificationJerseys]);
+    const pinJerseyReserved = pinJersey ? reservedLabelBySig[pinJersey.signature] : undefined;
+
     const jerseyThumb = (url?: string | null, name?: string) => (
         <div className="w-10 h-10 rounded border border-border bg-background overflow-hidden flex items-center justify-center shrink-0">
             {url ? (
@@ -865,11 +881,16 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                         {pinJersey ? `Valgt: ${pinJersey.name}` : 'Vælg en trøje i søgningen'}
                     </p>
                 </div>
+                {pinJerseyReserved && (
+                    <p className="text-sm text-red-600">
+                        Trøjen er {pinJerseyReserved} og kan ikke bruges som klubtrøje.
+                    </p>
+                )}
                 <div className="flex flex-wrap gap-2">
                     <button
                         type="button"
                         onClick={() => void assignAutoSelected()}
-                        disabled={busy || !pinClub || !pinJersey}
+                        disabled={busy || !pinClub || !pinJersey || !!pinJerseyReserved}
                         className="px-3 py-2 text-sm bg-primary text-primary-foreground rounded-lg disabled:opacity-50"
                     >
                         Tildel som auto
@@ -877,7 +898,7 @@ export default function ClubKitsTab({ user }: ClubKitsTabProps) {
                     <button
                         type="button"
                         onClick={() => void pinSelected()}
-                        disabled={busy || !pinClub || !pinJersey}
+                        disabled={busy || !pinClub || !pinJersey || !!pinJerseyReserved}
                         className="px-3 py-2 text-sm border border-border rounded-lg disabled:opacity-50"
                     >
                         Pin
