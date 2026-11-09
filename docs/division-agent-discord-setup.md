@@ -68,7 +68,7 @@ The next backend deploy picks them up. Riders can then link Discord under *Regis
 - **Personal questions** need Discord linked in the app (*Registrering → Forbindelser*): the rider's own
   registration, verification, sign-ups and standing, and their division.
 - **Division answers** follow the auto-reply switch on the admin page (*Agent*, "Answer division questions
-  on Discord without approval", off by default): when off, the rider gets "an admin will reply soon" and the draft
+  on Discord without approval", off by default): when off, the rider is told the bot is still in testing and an admin checks its answer first, and the draft
   appears in **#division-admin** with **Send / Edit / Reject**.
 - A request to move division becomes an **appeal** post with **Approve / Edit / Reject** (and the transfer preview
   for riders who have raced). The rider is told the outcome in their thread.

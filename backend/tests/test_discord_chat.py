@@ -1,6 +1,7 @@
 """Discord linking, the rider chat (drafts, appeals, rate limit) and the bot API."""
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime, timezone
 import sys
@@ -274,7 +275,7 @@ def test_an_unlinked_user_without_a_model_answer_is_passed_to_the_admins(chat_db
     db, _ = chat_db
     out = chat.ask(db, "unknown", "th1", [{"author": "rider", "text": "Hvornår er næste løb?"}],
                    client_factory=lambda: None)
-    assert out == {"reply": chat.FALLBACK_REPLY, "sendNow": True, "proposalId": None}
+    assert out == {"reply": chat.FALLBACK_REPLY["da"], "sendNow": True, "proposalId": None}
     [item] = [v for k, v in db.store.items() if k.startswith(f"{lt.UNANSWERED}/")]
     assert item["question"] == "Hvornår er næste løb?" and item["zwiftId"] is None
 
@@ -284,13 +285,42 @@ def test_the_answer_waits_as_a_draft_and_only_sees_the_asking_rider(chat_db):
     claude = FakeClaude([_tool("explain_my_division"), _reply("Du er placeret ud fra din Strava-watt.")])
     out = chat.ask(db, "d-1", "th1", [{"author": "rider", "text": "Hvorfor er jeg i Gold?"}],
                    client_factory=lambda: claude)
-    assert out["reply"] == chat.HOLDING and out["draftId"]
+    assert out["reply"] == chat.HOLDING["da"] and out["draftId"]
     draft = db.store[f"{chat.DRAFTS}/{out['draftId']}"]
     assert draft["status"] == "pending" and draft["draft"].startswith("Du er placeret")
     tool_result = claude.calls[1]["messages"][-1]["content"][0]["content"]
     assert target["name"] not in tool_result and target["zwiftId"] not in tool_result  # no names or ids
     assert '"divisionLimits"' in tool_result and "racingScore" not in tool_result
     assert db.store[f"{chat.CONVERSATIONS}/th1"]["messages"][-1]["draftId"] == out["draftId"]
+
+
+def test_the_division_history_shows_admin_moves_without_admin_names(chat_db):
+    db, target = chat_db
+    zid = target["zwiftId"]
+    db.store[f"users/{target['userDocId']}"] = {"zwiftId": zid, "ligaCategory": {
+        "locked": True, "category": "Gold", "lockedAt": "2026-11-01T18:30:00+00:00",
+        "autoAssigned": {"category": "Silver", "assignedAt": "2026-10-01T08:00:00+00:00"},
+    }}
+    db.store["categoryTransfers/t1"] = {"zwiftId": zid, "name": target["name"], "fromCategory": "Silver",
+                                         "toCategory": "Gold", "status": "applied",
+                                         "createdAtIso": "2026-11-03T20:00:00+00:00"}
+    db.store["division_proposals/p1"] = {"id": "p1", "zwiftId": zid, "name": target["name"], "origin": "admin",
+                                         "status": "approved", "currentCategory": "Silver",
+                                         "appliedCategory": "Gold", "decidedBy": "admin@example.com",
+                                         "decisionNote": "internal note", "createdAt": "2026-11-03T19:00:00+00:00",
+                                         "decidedAt": "2026-11-03T20:00:00+00:00"}
+    claude = FakeClaude([_tool("explain_my_division"), _reply("En admin flyttede dig.")])
+    chat.ask(db, "d-1", "th1", [{"author": "rider", "text": "Blev jeg rykket op automatisk?"}],
+             client_factory=lambda: claude)
+    result = json.loads(claude.calls[1]["messages"][-1]["content"][0]["content"])
+    hist = result["divisionHistory"]
+    assert hist["howCurrentDivisionWasSet"].startswith("locked") and hist["lockedOn"] == "2026-11-01"
+    assert hist["adminMoves"] == [{"from": "Silver", "to": "Gold", "date": "2026-11-03", "by": "admin",
+                                   "undone": False}]
+    assert hist["adminDecisions"][0]["newDivision"] == "Gold"
+    raw = json.dumps(result)
+    for secret in ("admin@example.com", "internal note", target["name"], zid):
+        assert secret not in raw
 
 
 def test_auto_reply_answers_directly(chat_db):
@@ -326,7 +356,7 @@ def test_a_failed_claude_call_passes_the_question_to_the_admins(chat_db):
 
     out = chat.ask(db, "d-1", "th1", [{"author": "rider", "text": "Hvornår er næste løb?"}],
                    client_factory=lambda: Broken())
-    assert out == {"reply": chat.FALLBACK_REPLY, "sendNow": True, "proposalId": None}
+    assert out == {"reply": chat.FALLBACK_REPLY["da"], "sendNow": True, "proposalId": None}
     [item] = [v for k, v in db.store.items() if k.startswith(f"{lt.UNANSWERED}/")]
     assert item["question"] == "Hvornår er næste løb?" and item["status"] == "open" and item["threadId"] == "th1"
 
@@ -338,11 +368,28 @@ def test_riders_are_rate_limited_per_day(chat_db):
         chat.ask(db, "d-1", "th1", [{"author": "rider", "text": "?"}], client_factory=lambda: None, now=lambda: day1)
     out = chat.ask(db, "d-1", "th1", [{"author": "rider", "text": "?"}], client_factory=lambda: None,
                    now=lambda: day1.replace(hour=22))  # 23:00 in Copenhagen: still the same day
-    assert out["reply"] == chat.RATE_LIMITED
+    assert out["reply"] == chat.say(chat.RATE_LIMITED, None)  # "?" has no clear language: both
     next_day = day1.replace(hour=23, minute=30)  # 00:30 in Copenhagen
     out = chat.ask(db, "d-1", "th1", [{"author": "rider", "text": "?"}], client_factory=lambda: None,
                    now=lambda: next_day)
-    assert out["reply"] != chat.RATE_LIMITED
+    assert out["reply"] != chat.say(chat.RATE_LIMITED, None)
+
+
+def test_fixed_messages_follow_the_riders_language():
+    assert chat.language("Er jeg blevet rykket op automatisk?") == "da"
+    assert chat.language("Why am I in this division?") == "en"
+    assert chat.language("?", "ok", "Hvornår er næste løb?") == "da"  # falls back to earlier messages
+    assert chat.language("?") is None
+    assert chat.say(chat.HOLDING, "en") == chat.HOLDING["en"]
+    assert chat.say(chat.HOLDING, None) == f"{chat.HOLDING['da']} / {chat.HOLDING['en']}"
+
+
+def test_the_holding_message_is_in_english_for_an_english_question(chat_db):
+    db, _ = chat_db
+    claude = FakeClaude([_tool("explain_my_division"), _reply("You are placed from your Strava power.")])
+    out = chat.ask(db, "d-1", "th1", [{"author": "rider", "text": "Why am I in Gold?"}],
+                   client_factory=lambda: claude)
+    assert out["reply"] == chat.HOLDING["en"] and out["draftId"]
 
 
 def test_history_becomes_alternating_turns_starting_with_the_rider():
@@ -369,7 +416,7 @@ def test_items_are_posted_and_delivered_once(client):
     # Without a model reply the question goes to the admins as an unanswered question.
     unanswered = http.post("/bot/ask", headers=H, json={
         "discordUserId": "d-1", "threadId": "th0", "messages": [{"author": "rider", "text": "?"}]}).get_json()
-    assert unanswered["reply"] == chat.FALLBACK_REPLY
+    assert unanswered["reply"] == chat.say(chat.FALLBACK_REPLY, None)
     [u_id] = [v["id"] for k, v in db.store.items() if k.startswith(f"{lt.UNANSWERED}/")]
     asked = chat.ask(db, "d-1", "th1", [{"author": "rider", "text": "Hvorfor Gold?"}],
                      client_factory=lambda: FakeClaude([_tool("explain_my_division"), _reply("Fordi...")]))
