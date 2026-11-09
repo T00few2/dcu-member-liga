@@ -41,7 +41,9 @@ MAX_TOKENS = 16000
 HISTORY_LIMIT = 20
 LOG_LIMIT = 60
 
-HOLDING = "Tak for dit spørgsmål – en admin svarer dig her snarest. / Thanks – an admin will reply here soon."
+HOLDING = ("Tak for dit spørgsmål. Jeg er stadig i test, så en admin tjekker mit svar, før jeg sender det her i "
+           "tråden. / Thanks for your question. I'm still in testing, so an admin checks my answer before I "
+           "post it here in the thread.")
 RATE_LIMITED = ("Du har nået dagens grænse for spørgsmål til botten – prøv igen i morgen. En admin kan stadig "
                 "svare dig her. / You have reached today's limit of questions to the bot – please try again "
                 "tomorrow. An admin can still reply here.")
@@ -67,7 +69,10 @@ Rules:
 - If the tools do not contain the answer, do not guess: call `report_unanswered` with the question and what was
   missing, and tell the rider you have passed the question to the admins, who will reply in the thread.
 - Use `explain_my_division` before explaining anything about the rider's own division or numbers, and only use
-  numbers it returns. Use `my_status` for the rider's own registration, verification, connections, sign-ups and
+  numbers it returns. Its `divisionHistory` says how the current division was set (automatic from vELO, held by an
+  admin, self-selected, locked after racing) and lists the logged admin moves and decisions with dates: use it to
+  answer whether a move was automatic or made by an admin, and when. If it shows no admin move or hold, the
+  division came from the automatic assignment. Use `my_status` for the rider's own registration, verification, connections, sign-ups and
   standing.
 - Never promise a change of division. Say that an admin decides.
 - If the rider asks to move division (up or down), or explains why their division or data is wrong (injury,
@@ -150,8 +155,10 @@ RIDER_TOOLS = [
     {
         "name": "explain_my_division",
         "description": "The asking rider's current division, vELO, ride counts, predicted vELO from Zwift and "
-                       "Strava power (Strava split into indoor and outdoor rides), data-quality flags and the "
-                       "division limits. Only this rider; no names.",
+                       "Strava power (Strava split into indoor and outdoor rides), data-quality flags, the "
+                       "division limits, and the division history: how the division was set (automatic, admin "
+                       "hold, self-selected, locked) and the logged admin moves and decisions with dates. Only "
+                       "this rider; no names.",
         "input_schema": _NO_INPUT,
     },
     {
@@ -237,6 +244,91 @@ def explain(evidence: dict, categories: Any) -> dict:
         "divisionLimits": _division_limits(categories),
         "graceMarginVelo": GRACE_POINTS,
     }
+
+
+def _day(value: Any) -> str | None:
+    """A stored timestamp as a Copenhagen calendar date (YYYY-MM-DD)."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return value[:10] or None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.astimezone(lt._CPH).strftime("%Y-%m-%d")
+    return None
+
+
+_HOW = {
+    "locked": "locked after the rider's first race this season; only an admin can move a locked rider",
+    "none": "no division yet",
+    "selfSelected": "the rider chose a harder division than their assignment",
+    "adminHold": "placed and held there by an admin",
+    "predictedHold": "placed by an admin from predicted power (Strava/Zwift) because the vELO was not reliable",
+    "automatic": "assigned automatically from the rider's vELO",
+}
+
+
+def division_history(db: Any, zwift_id: str, user_data: dict | None, categories: Any) -> dict:
+    """How the rider's division was set and the logged admin moves, for the rider themself:
+    divisions, dates and outcomes only (no admin names, internal notes or rider names)."""
+    from services.division_agent import admin_chat  # imports this module
+
+    lc = (user_data or {}).get("ligaCategory") or {}
+    a = admin_chat.assignment(lc, categories)
+    manual = lc.get("manualAssigned") or {}
+    auto = lc.get("autoAssigned") or {}
+    sel = (lc.get("selfSelected") or {}).get("category")
+    if a["locked"]:
+        how = "locked"
+    elif not a["effectiveDivision"]:
+        how = "none"
+    elif sel and sel == a["effectiveDivision"] and sel != (manual.get("category") or auto.get("category")):
+        how = "selfSelected"
+    elif manual.get("category"):
+        how = "predictedHold" if manual.get("assignedFrom") == "predicted" else "adminHold"
+    else:
+        how = "automatic"
+
+    moves: list[dict] = []
+    decisions: list[dict] = []
+    try:
+        hist = admin_chat._history(db, str(zwift_id))
+    except Exception as exc:
+        logger.warning("division chat: could not read division history: %s", exc)
+        hist = {}
+    for t in hist.get("transfers") or []:
+        moves.append({"from": t.get("fromCategory"), "to": t.get("toCategory"), "date": _day(t.get("createdAtIso")),
+                      "by": "admin", "undone": t.get("status") == "reverted"})
+    for p in hist.get("proposals") or []:
+        if p.get("status") not in ("approved", "edited", "rejected"):
+            continue
+        decisions.append({k: v for k, v in {
+            "kind": "rider appeal" if p.get("origin") == "appeal" else "admin review",
+            "outcome": "rejected" if p.get("status") == "rejected" else "approved",
+            "fromDivision": p.get("currentCategory"),
+            "requestedDivision": p.get("requestedCategory"),
+            "newDivision": p.get("appliedCategory"),
+            "date": _day(p.get("decidedAt") or p.get("createdAt")),
+        }.items() if v not in (None, "")})
+
+    out = {
+        "howCurrentDivisionWasSet": _HOW[how],
+        "lockedOn": _day(lc.get("lockedAt")) if a["locked"] else None,
+        "lockedDivision": a.get("lockedDivision"),
+        "adminHold": {"division": manual.get("category"), "basedOn": "predicted power"
+                      if manual.get("assignedFrom") == "predicted" else "admin decision",
+                      "setOn": _day(manual.get("assignedAt"))} if manual.get("category") else None,
+        "automaticAssignment": {"division": auto.get("category"), "setOn": _day(auto.get("assignedAt"))}
+        if auto.get("category") else None,
+        "selfSelectedDivision": sel or None,
+        "adminMoves": moves,
+        "adminDecisions": decisions,
+    }
+    return {k: v for k, v in out.items() if v not in (None, "")}
 
 
 def _within_rate_limit(db: Any, discord_user_id: str, now: datetime) -> bool:
@@ -375,7 +467,9 @@ def _tool_set(db: Any, *, thread_id: str, discord_user_id: str, question: str, z
         if ctx is None:
             return {"error": "rider not registered"}
         row, data, bundle = ctx
-        return explain(runner.rider_evidence(db, row, data, bundle, settings), bundle[2])
+        info = explain(runner.rider_evidence(db, row, data, bundle, settings), bundle[2])
+        info["divisionHistory"] = division_history(db, zwift_id, data, bundle[2])
+        return info
 
     def appeal_tool(args: dict) -> dict:
         if filed:
