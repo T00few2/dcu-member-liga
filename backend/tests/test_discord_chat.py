@@ -297,10 +297,10 @@ def test_the_answer_waits_as_a_draft_and_only_sees_the_asking_rider(chat_db):
 def test_the_division_history_shows_admin_moves_without_admin_names(chat_db):
     db, target = chat_db
     zid = target["zwiftId"]
-    db.store[f"users/{zid}"]["ligaCategory"] = {
+    db.store[f"users/{target['userDocId']}"] = {"zwiftId": zid, "ligaCategory": {
         "locked": True, "category": "Gold", "lockedAt": "2026-11-01T18:30:00+00:00",
         "autoAssigned": {"category": "Silver", "assignedAt": "2026-10-01T08:00:00+00:00"},
-    }
+    }}
     db.store[f"categoryTransfers/t1"] = {"zwiftId": zid, "name": target["name"], "fromCategory": "Silver",
                                          "toCategory": "Gold", "status": "applied",
                                          "createdAtIso": "2026-11-03T20:00:00+00:00"}
