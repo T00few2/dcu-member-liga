@@ -301,7 +301,7 @@ def test_the_division_history_shows_admin_moves_without_admin_names(chat_db):
         "locked": True, "category": "Gold", "lockedAt": "2026-11-01T18:30:00+00:00",
         "autoAssigned": {"category": "Silver", "assignedAt": "2026-10-01T08:00:00+00:00"},
     }}
-    db.store[f"categoryTransfers/t1"] = {"zwiftId": zid, "name": target["name"], "fromCategory": "Silver",
+    db.store["categoryTransfers/t1"] = {"zwiftId": zid, "name": target["name"], "fromCategory": "Silver",
                                          "toCategory": "Gold", "status": "applied",
                                          "createdAtIso": "2026-11-03T20:00:00+00:00"}
     db.store["division_proposals/p1"] = {"id": "p1", "zwiftId": zid, "name": target["name"], "origin": "admin",
