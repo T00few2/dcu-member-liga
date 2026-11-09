@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Callable
@@ -41,14 +42,45 @@ MAX_TOKENS = 16000
 HISTORY_LIMIT = 20
 LOG_LIMIT = 60
 
-HOLDING = ("Tak for dit spørgsmål. Jeg er stadig i test, så en admin tjekker mit svar, før jeg sender det her i "
-           "tråden. / Thanks for your question. I'm still in testing, so an admin checks my answer before I "
-           "post it here in the thread.")
-RATE_LIMITED = ("Du har nået dagens grænse for spørgsmål til botten – prøv igen i morgen. En admin kan stadig "
-                "svare dig her. / You have reached today's limit of questions to the bot – please try again "
-                "tomorrow. An admin can still reply here.")
-FALLBACK_REPLY = ("Tak for dit spørgsmål – jeg har givet det videre til en admin, som svarer dig her. / "
-                  "Thanks for your question – I have passed it to an admin, who will reply here.")
+# Fixed bot messages, sent in the rider's language (`language`); both when it is unclear.
+HOLDING = {
+    "da": "Tak for dit spørgsmål. Jeg er stadig i test, så en admin tjekker mit svar, før jeg sender det her i tråden.",
+    "en": "Thanks for your question. I'm still in testing, so an admin checks my answer before I post it here in "
+          "the thread.",
+}
+RATE_LIMITED = {
+    "da": "Du har nået dagens grænse for spørgsmål til botten – prøv igen i morgen. En admin kan stadig svare dig her.",
+    "en": "You have reached today's limit of questions to the bot – please try again tomorrow. An admin can still "
+          "reply here.",
+}
+FALLBACK_REPLY = {
+    "da": "Tak for dit spørgsmål – jeg har givet det videre til en admin, som svarer dig her.",
+    "en": "Thanks for your question – I have passed it to an admin, who will reply here.",
+}
+
+_DA_WORDS = frozenset(
+    "jeg er og det ikke hvad hvorfor hvordan hvornår hvilken hvilke min mit mine mig har kan til på den et "
+    "blevet bliver du dig hej tak skal vil om ved løb løbet hvis eller også nu får ja nej godt da men".split())
+_EN_WORDS = frozenset(
+    "am is the and what why how when which my me have has can to on it you your hi hello thanks thank will "
+    "would do does did was are be been race if or also now get yes no good but there this that please".split())
+
+
+def language(*texts: str | None) -> str | None:
+    """"da" or "en" for the first text that clearly reads as one of them; None when unclear."""
+    for text in texts:
+        low = str(text or "").lower()
+        words = re.findall(r"[a-zæøå']+", low)
+        da = sum(w in _DA_WORDS for w in words) + 2 * len(re.findall(r"[æøå]", low))
+        en = sum(w in _EN_WORDS for w in words)
+        if da != en:
+            return "da" if da > en else "en"
+    return None
+
+
+def say(message: dict[str, str], lang: str | None) -> str:
+    """A fixed message in `lang`, or Danish and English when the language is unclear."""
+    return message[lang] if lang in message else f"{message['da']} / {message['en']}"
 
 
 SYSTEM_PROMPT = f"""You are the help bot of DCU E-serien, a Danish Zwift racing league, in its Discord help channel.
@@ -331,6 +363,11 @@ def division_history(db: Any, zwift_id: str, user_data: dict | None, categories:
     return {k: v for k, v in out.items() if v not in (None, "")}
 
 
+def _rider_texts(messages: list[dict]) -> list[str]:
+    """The rider's messages, newest first (for picking the reply language)."""
+    return [str(m.get("text") or "") for m in reversed(messages or []) if m.get("author") != "bot"]
+
+
 def _within_rate_limit(db: Any, discord_user_id: str, now: datetime) -> bool:
     ref = db.collection(LIMITS).document(str(discord_user_id))
     day = now.astimezone(lt._CPH).strftime("%Y-%m-%d")
@@ -506,7 +543,7 @@ def ask(
     """
     t = now()
     if not _within_rate_limit(db, discord_user_id, t):
-        return {"reply": RATE_LIMITED, "sendNow": True}
+        return {"reply": say(RATE_LIMITED, language(*_rider_texts(messages))), "sendNow": True}
     linked = discord_link.user_for_discord(db, discord_user_id)
     user_doc_id, user_data = linked if linked else (None, None)
     zwift_id = str((user_data or {}).get("zwiftId") or user_doc_id) if linked else None
@@ -541,7 +578,7 @@ def ask(
         lt.report_unanswered(db, question=question, missing="The help bot could not answer (no model reply).",
                              thread_id=thread_id, discord_user_id=discord_user_id, zwift_id=zwift_id,
                              guild_id=guild_id, now=t)
-        text = FALLBACK_REPLY
+        text = say(FALLBACK_REPLY, language(*_rider_texts(messages)))
         _log(db, thread_id, zwift_id, discord_user_id, messages, text, None, t)
         return {"reply": text, "sendNow": True, "proposalId": filed.get("id")}
 
@@ -566,7 +603,8 @@ def ask(
     }
     db.collection(DRAFTS).document(draft["id"]).set(draft)
     _log(db, thread_id, zwift_id, discord_user_id, messages, text, draft["id"], t)
-    return {"reply": HOLDING, "sendNow": True, "draftId": draft["id"], "proposalId": filed.get("id")}
+    holding = say(HOLDING, language(*_rider_texts(messages)) or language(text))
+    return {"reply": holding, "sendNow": True, "draftId": draft["id"], "proposalId": filed.get("id")}
 
 
 def decide_reply(db: Any, draft_id: str, action: str, *, decided_by: str, text: str | None = None) -> dict:
