@@ -357,6 +357,36 @@ async def test_follow_ups_in_the_bots_thread_carry_the_conversation():
     thread.send.assert_awaited_once_with("Gold, fra vELO.")
 
 
+def _history_message(content, author_id, msg_id):
+    """A message as read from the thread history: the author is a plain user, without roles."""
+    author = SimpleNamespace(id=author_id, bot=False, display_name="Boss")
+    return SimpleNamespace(id=msg_id, author=author, channel=None, content=content, guild=object(), mentions=[])
+
+
+async def test_follow_ups_work_when_the_history_has_users_without_roles():
+    backend = MagicMock()
+    backend.admin_ask = AsyncMock(return_value={"reply": "2. Division.", "proposals": []})
+    bot = _bot(backend)
+    starter = _history_message("<@500> hvilken division er Torben i?", 7, 1)
+    history = [_history_message("Jeg kan ikke finde Torben.", 500, 2),
+               _history_message("prøv Thorsten", 9, 3),       # another admin
+               _history_message("hvad med mig?", 8, 4),       # not an admin
+               _history_message("Sorry. Thorben Madsen", 7, 5)]
+    thread = _admin_thread(owner_id=500, history=history)
+
+    async def fetch_member(user_id):
+        return SimpleNamespace(id=user_id, roles=ADMIN_ROLE if user_id == 9 else [])
+
+    thread.guild = SimpleNamespace(fetch_member=AsyncMock(side_effect=fetch_member))
+    bot._starter = AsyncMock(return_value=starter)
+    await bot.on_message(_admin_message(thread, "Sorry. Thorben Madsen", msg_id=5))
+    convo = backend.admin_ask.await_args.args[0]
+    assert [(m["author"], m["text"]) for m in convo] == [
+        ("admin", "hvilken division er Torben i?"), ("bot", "Jeg kan ikke finde Torben."),
+        ("admin", "prøv Thorsten"), ("admin", "Sorry. Thorben Madsen")]
+    assert [c.args[0] for c in thread.guild.fetch_member.await_args_list] == [9, 8]  # the asker is known
+
+
 async def test_a_move_decided_on_the_admin_page_updates_the_thread_post():
     backend = MagicMock()
     backend.pending = AsyncMock(return_value=[{"kind": "proposal_decided", "id": "p9", "messageId": "78",
