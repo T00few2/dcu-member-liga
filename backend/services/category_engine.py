@@ -226,13 +226,24 @@ def serialize_liga_category(
     bounds_source = manual if manual_cat and not locked else auto
     assigned_source = manual if manual_cat and not locked else auto
 
+    upper_boundary = bounds_source.get('upperBoundary')
+    grace_limit = bounds_source.get('graceLimit')
+    status = status_source.get('status', 'ok')
+    # The top category has no upper limit. Stored bounds can be left over from
+    # a lower category (e.g. the rider's vELO band before they were locked up).
+    found = get_category_by_name(effective, categories) if effective else None
+    if found and found[2] is None:
+        upper_boundary = None
+        grace_limit = None
+        status = 'ok'
+
     return {
         'category': effective or None,
-        'upperBoundary': bounds_source.get('upperBoundary'),
-        'graceLimit': bounds_source.get('graceLimit'),
+        'upperBoundary': upper_boundary,
+        'graceLimit': grace_limit,
         'assignedRating': assigned_source.get('assignedRating'),
         'assignedAt': _ts_to_ms(assigned_source.get('assignedAt') or auto.get('assignedAt')),
-        'status': status_source.get('status', 'ok'),
+        'status': status,
         'lastCheckedRating': auto.get('lastCheckedRating'),
         'lastCheckedAt': _ts_to_ms(auto.get('lastCheckedAt')),
         'locked': locked,

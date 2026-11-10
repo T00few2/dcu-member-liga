@@ -105,14 +105,15 @@ def _compute_liga_update(
     """Return Firestore update dict for ligaCategory fields."""
     cats = categories or ZR_CATEGORIES
 
-    def _bounds_for(cat_name: str | None) -> tuple[int | None, int | None]:
+    def _bounds_for(cat_name: str | None) -> tuple[int | None, int | None, bool]:
+        """Return (upper, grace_limit, found). The top category is found with no bounds."""
         if not cat_name:
-            return None, None
+            return None, None, False
         for name, _lower, upper in cats:
             if name == cat_name:
                 grace_limit = (upper + grace_period) if upper is not None else None
-                return upper, grace_limit
-        return None, None
+                return upper, grace_limit, True
+        return None, None, False
 
     if existing_lc:
         auto = existing_lc.get("autoAssigned") or {}
@@ -120,8 +121,8 @@ def _compute_liga_update(
             # Locked riders must remain in their locked category; only refresh
             # status/check metadata against that category's boundaries.
             locked_effective = existing_lc.get("category") or auto.get("category")
-            upper_boundary, grace_limit = _bounds_for(locked_effective)
-            if upper_boundary is None and grace_limit is None:
+            upper_boundary, grace_limit, found = _bounds_for(locked_effective)
+            if not found:
                 upper_boundary = auto.get("upperBoundary")
                 grace_limit = auto.get("graceLimit")
 
@@ -152,8 +153,8 @@ def _compute_liga_update(
                 # Keep the admin hold; still refresh vELO-implied autoAssigned
                 # and status/bounds against the manual category.
                 rating_int = int(eff_rating)
-                upper_boundary, grace_limit = _bounds_for(manual_cat)
-                if upper_boundary is None and grace_limit is None:
+                upper_boundary, grace_limit, found = _bounds_for(manual_cat)
+                if not found:
                     upper_boundary = manual.get("upperBoundary")
                     grace_limit = manual.get("graceLimit")
                 new_manual = dict(manual)
