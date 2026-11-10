@@ -171,15 +171,35 @@ class DcuBot(discord.Client):
         await self.admin_answer(channel, message.author, ([starter] if starter else []) + history)
         return True
 
+    async def _wrote_as_admin(self, message: discord.Message, guild, known: dict[int, bool]) -> bool:
+        """Whether a thread message was written by an admin. Messages read from the history carry a
+        plain user without roles when the member is not cached (the bot has no members intent), so
+        the role is then read from Discord."""
+        author = message.author
+        if author.id in known:
+            return known[author.id]
+        if getattr(author, "roles", None) is not None:  # a member: the roles are right there
+            known[author.id] = admin.is_admin(author, self.config.admin_role_id)
+            return known[author.id]
+        try:
+            member = await guild.fetch_member(author.id)
+        except (AttributeError, discord.HTTPException) as exc:  # no guild, left the server, Discord down
+            logger.warning("could not read the roles of %s: %s", author.id, exc)
+            return False
+        known[author.id] = admin.is_admin(member, self.config.admin_role_id)
+        return known[author.id]
+
     async def admin_answer(self, thread: discord.abc.Messageable, asker: discord.abc.User,
                            messages: list[discord.Message]) -> None:
         bot_id = getattr(self.user, "id", None)
+        # `asker` was checked on the live message. Other authors are looked up once per turn.
+        admins: dict[int, bool] = {asker.id: True}
         convo = []
         for m in messages:
             if m.author.id == bot_id:
                 if m.content:
                     convo.append({"author": "bot", "text": m.content})
-            elif admin.is_admin(m.author, self.config.admin_role_id):
+            elif await self._wrote_as_admin(m, getattr(thread, "guild", None), admins):
                 text = strip_mentions(m.content, bot_id)
                 if text:
                     convo.append({"author": "admin", "name": admin.who(m.author), "text": text})

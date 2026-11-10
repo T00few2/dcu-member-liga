@@ -323,9 +323,12 @@ def ask(
         client = (client_factory or assess_mod.client_from_env)()
     except Exception as exc:
         logger.warning("admin chat: no Claude client: %s", exc)
-        client = None
+        client, reason = None, f"no Claude client: {type(exc).__name__}"
     conv = _messages(messages)
-    if client is not None and conv:
+    if not conv:
+        logger.warning("admin chat: no admin message among %s messages", len(messages))
+        reason = "no admin message reached the agent"
+    elif client is not None:
         try:
             text, usage = chat.converse(conv, model=settings["chatModel"], tools=tools, client=client,
                                         system=SYSTEM_PROMPT, tool_specs=TOOLS, max_turns=MAX_TURNS)

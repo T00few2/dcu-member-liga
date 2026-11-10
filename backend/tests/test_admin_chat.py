@@ -119,6 +119,13 @@ def test_without_a_model_the_admin_gets_a_clear_fallback(chat_db):
     assert out == {"reply": f"{admin_chat.FALLBACK} (no API key)", "proposals": []}
 
 
+def test_a_conversation_without_an_admin_message_says_so(chat_db):
+    db, _ = chat_db
+    out = admin_chat.ask(db, [{"author": "bot", "text": "Jeg kan ikke finde rytteren."}], admin_name="Boss",
+                         client_factory=lambda: object())
+    assert out["reply"] == f"{admin_chat.FALLBACK} (no admin message reached the agent)"
+
+
 def test_the_bot_api_returns_cards_and_the_relay_waits_for_the_thread_post(client, monkeypatch):
     http, db, target = client
     db.store["users/doc500"] = {"ligaCategory": {"autoAssigned": {"category": "Gold"}}}
