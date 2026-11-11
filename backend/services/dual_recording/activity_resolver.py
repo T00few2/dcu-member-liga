@@ -32,8 +32,23 @@ def _collect_candidate_user_ids(db: object, user_doc_data: dict, zwift_id: str) 
     return candidate_user_ids
 
 
+def _activity_recency_key(doc_id: str) -> tuple[int, int | str]:
+    """Newer Zwift activity ids sort last. Numeric ids beat lexicographic order."""
+    text = str(doc_id or "").strip()
+    if text.isdigit():
+        return (1, int(text))
+    return (0, text)
+
+
 def _iter_activities_for_user_ids(db: object, candidate_user_ids: list[str], limit: int = 200):
-    seen_doc_ids: set[str] = set()
+    """Yield stored activities for these Zwift ids, newest activity id first.
+
+    Firestore's default order is document id ascending, so a limited query
+    returns the oldest rides. Activity ids increase over time, but they are
+    not all the same length, so the newest ``limit`` documents are chosen
+    numerically after the equality read.
+    """
+    seen_docs: dict[str, object] = {}
     for user_id in candidate_user_ids:
         query_values: list[object] = [user_id]
         if user_id.isdigit():
@@ -43,14 +58,16 @@ def _iter_activities_for_user_ids(db: object, candidate_user_ids: list[str], lim
             docs = (
                 db.collection("zwift_activities")
                 .where("userId", "==", query_value)
-                .limit(limit)
                 .stream()
             )
             for doc in docs:
-                if doc.id in seen_doc_ids:
-                    continue
-                seen_doc_ids.add(doc.id)
-                yield doc
+                if doc.id not in seen_docs:
+                    seen_docs[doc.id] = doc
+
+    newest = sorted(seen_docs.values(), key=lambda doc: _activity_recency_key(doc.id), reverse=True)
+    if limit is not None and limit >= 0:
+        newest = newest[:limit]
+    yield from newest
 
 
 def _resolve_activity_id_for_rider(

@@ -19,6 +19,7 @@ from utils.email_sender import (
     EmailSendError,
     INDIVIDUAL_SEND_LIMIT,
 )
+from services.dual_recording.activity_resolver import _iter_activities_for_user_ids
 from utils.zoho_campaigns import FirestoreCampaignContentStore, send_zoho_campaign
 
 import logging
@@ -472,18 +473,9 @@ def get_user_races(user_id):
             if candidate_id and candidate_id not in candidate_activity_user_ids:
                 candidate_activity_user_ids.append(candidate_id)
 
-        candidate_activity_docs = []
-        seen_activity_doc_ids = set()
-        for candidate in candidate_activity_user_ids:
-            query_values = [candidate]
-            if candidate.isdigit():
-                query_values.append(int(candidate))
-            for qv in query_values:
-                for act_doc in db.collection('zwift_activities').where('userId', '==', qv).limit(250).stream():
-                    if act_doc.id in seen_activity_doc_ids:
-                        continue
-                    seen_activity_doc_ids.add(act_doc.id)
-                    candidate_activity_docs.append(act_doc)
+        candidate_activity_docs = list(
+            _iter_activities_for_user_ids(db, candidate_activity_user_ids, limit=250)
+        )
 
         for act_doc in candidate_activity_docs:
             act = act_doc.to_dict() or {}
