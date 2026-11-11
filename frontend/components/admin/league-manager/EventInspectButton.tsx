@@ -303,8 +303,13 @@ export default function EventInspectButton({ eventId }: { eventId: string }) {
                 return;
             }
             setEvent(body as InspectedEvent);
-        } catch {
-            setError('Could not reach the event inspection');
+        } catch (err) {
+            const detail = err instanceof Error ? err.message : '';
+            setError(
+                detail && !/failed to fetch|networkerror/i.test(detail)
+                    ? detail
+                    : 'The inspection service did not answer. The backend deploy may still be finishing.',
+            );
         } finally {
             setLoading(false);
         }

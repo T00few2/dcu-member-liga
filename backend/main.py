@@ -130,8 +130,9 @@ def dcu_api(request):
             rv = app.preprocess_request()
             if rv is None:
                 rv = app.dispatch_request()
-            response = app.make_response(rv)
-            response = app.process_response(response)
-            return response
-        except Exception as e:
-            return app.handle_user_exception(e)
+        except Exception as exc:
+            # A missing route raises before after_request. Without CORS the
+            # browser reports a network failure instead of the real status.
+            rv = app.handle_user_exception(exc)
+        response = app.make_response(rv)
+        return app.process_response(response)
