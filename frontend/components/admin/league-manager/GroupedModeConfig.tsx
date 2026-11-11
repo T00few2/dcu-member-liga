@@ -3,6 +3,7 @@
 import { useRaceFormContext } from '@/lib/race-form-context';
 import { CollapsibleSegmentPicker } from './SegmentPicker';
 import LigaCategoryNameSelect from './LigaCategoryNameSelect';
+import EventInspectButton from './EventInspectButton';
 
 export default function GroupedModeConfig() {
     const {
@@ -34,7 +35,10 @@ export default function GroupedModeConfig() {
                             </div>
                             <div className="flex-1">
                                 <label className="text-[10px] text-muted-foreground font-bold uppercase block mb-1">Zwift Event ID</label>
-                                <input type="text" value={group.eventId} onChange={e => onUpdateRaceGroup(groupIdx, 'eventId', e.target.value)} className="w-full p-2 border border-input rounded bg-background text-foreground text-sm" placeholder="e.g. 12345" />
+                                <div className="flex gap-1">
+                                    <input type="text" value={group.eventId} onChange={e => onUpdateRaceGroup(groupIdx, 'eventId', e.target.value)} className="w-full p-2 border border-input rounded bg-background text-foreground text-sm" placeholder="e.g. 12345" />
+                                    <EventInspectButton eventId={group.eventId} />
+                                </div>
                             </div>
                             <div className="flex-1">
                                 <label className="text-[10px] text-muted-foreground font-bold uppercase block mb-1">Secret (Opt)</label>

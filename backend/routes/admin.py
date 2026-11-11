@@ -38,3 +38,4 @@ import routes.admin_users           # noqa: E402, F401
 import routes.admin_club_kits_routes  # noqa: E402, F401
 import routes.admin_live_race       # noqa: E402, F401
 import routes.admin_stream_riders   # noqa: E402, F401
+import routes.admin_event_inspect_routes  # noqa: E402, F401

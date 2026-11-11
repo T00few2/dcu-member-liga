@@ -1,6 +1,7 @@
 import { useRaceFormContext } from '@/lib/race-form-context';
 import SegmentPicker from './SegmentPicker';
 import CategoryConfigRow from './CategoryConfigRow';
+import EventInspectButton from './EventInspectButton';
 
 export default function SingleModeConfig() {
     const {
@@ -19,13 +20,16 @@ export default function SingleModeConfig() {
             <div className="grid grid-cols-2 gap-4">
                 <div>
                     <label className="block text-xs font-medium text-muted-foreground mb-1">Zwift Event ID</label>
-                    <input
-                        type="text"
-                        value={formState.eventId}
-                        onChange={e => onFieldChange('eventId', e.target.value)}
-                        className="w-full p-2 border border-input rounded bg-background text-foreground"
-                        placeholder="e.g. 123456"
-                    />
+                    <div className="flex gap-2">
+                        <input
+                            type="text"
+                            value={formState.eventId}
+                            onChange={e => onFieldChange('eventId', e.target.value)}
+                            className="w-full p-2 border border-input rounded bg-background text-foreground"
+                            placeholder="e.g. 123456"
+                        />
+                        <EventInspectButton eventId={formState.eventId} />
+                    </div>
                 </div>
                 <div>
                     <label className="block text-xs font-medium text-muted-foreground mb-1">Event Secret (Optional)</label>

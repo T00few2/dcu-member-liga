@@ -2,6 +2,7 @@ import type { Segment, EventConfig } from '@/types/admin';
 import { CollapsibleSegmentPicker } from './SegmentPicker';
 import LigaCategoryNameSelect from './LigaCategoryNameSelect';
 import { useRaceFormContext } from '@/lib/race-form-context';
+import EventInspectButton from './EventInspectButton';
 
 interface EventConfigRowProps {
     config: EventConfig;
@@ -30,13 +31,16 @@ export default function EventConfigRow({
             <div className="flex gap-2 items-start">
                 <div className="flex-1">
                     <label className="text-[10px] text-muted-foreground font-bold uppercase block mb-1">Zwift ID</label>
-                    <input
-                        type="text"
-                        value={config.eventId}
-                        onChange={e => onUpdate('eventId', e.target.value)}
-                        className="w-full p-2 border border-input rounded bg-background text-foreground text-sm"
-                        placeholder="e.g. 12345"
-                    />
+                    <div className="flex gap-1">
+                        <input
+                            type="text"
+                            value={config.eventId}
+                            onChange={e => onUpdate('eventId', e.target.value)}
+                            className="w-full p-2 border border-input rounded bg-background text-foreground text-sm"
+                            placeholder="e.g. 12345"
+                        />
+                        <EventInspectButton eventId={config.eventId} />
+                    </div>
                 </div>
                 <div className="flex-1">
                     <label className="text-[10px] text-muted-foreground font-bold uppercase block mb-1">Category Name</label>
