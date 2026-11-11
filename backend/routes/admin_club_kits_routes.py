@@ -26,7 +26,11 @@ from services.club_kits import (
     unpin_club_kit,
 )
 from services.jersey_unlock_seed import match_known_unlocks, merge_unlocks
-from services.classification_jerseys import build_classification_jerseys
+from services.classification_jerseys import (
+    build_classification_jerseys,
+    classification_club_kit_conflicts,
+    reserved_classification_signatures,
+)
 from services.request_models import (
     ClassificationJerseysSaveRequest,
     ClubKitPinRequest,
@@ -89,6 +93,10 @@ def _registered_riders() -> list[dict[str, Any]]:
     return riders
 
 
+def _reserved(settings: dict[str, Any]) -> dict[int, str]:
+    return reserved_classification_signatures(settings.get("classificationJerseys"))
+
+
 def _jersey_lookup() -> dict[int, dict[str, Any]]:
     game = get_zwift_game_service()
     return {row["signature"]: row for row in game.get_jerseys(query=None, limit=None)}
@@ -119,6 +127,7 @@ def club_kits_overview():
             unlocks=settings.get("jerseyUnlocks") or [],
             club_kits=settings.get("clubKits") or [],
             riders=riders,
+            reserved=_reserved(settings),
         )
         grouped = riders_by_club(riders)
         saved = club_kits_by_club(settings.get("clubKits") or [])
@@ -173,6 +182,11 @@ def save_classification_jerseys():
         return err
     try:
         stored = build_classification_jerseys(body.model_dump(), _jersey_lookup())
+        conflicts = classification_club_kit_conflicts(stored, _load_settings().get("clubKits") or [])
+        if conflicts:
+            return jsonify({
+                "message": "Konkurrencetrøjer kan ikke også være klubtrøjer: " + "; ".join(conflicts),
+            }), 400
         update = with_schema_version({
             "classificationJerseys": stored,
             "updatedAt": firestore.SERVER_TIMESTAMP,
@@ -289,6 +303,7 @@ def pin_club_kit_route():
             jersey_name=body.jerseyName or catalog.get("name"),
             image_name=body.imageName or catalog.get("imageName"),
             members=members_for_club(riders_by_club(_registered_riders()), body.club),
+            reserved=_reserved(settings),
         )
         update = with_schema_version({
             "clubKits": next_kits,
@@ -330,6 +345,7 @@ def assign_auto_club_kit_route():
             jersey_name=body.jerseyName or catalog.get("name"),
             image_name=body.imageName or catalog.get("imageName"),
             members=members_for_club(riders_by_club(_registered_riders()), body.club),
+            reserved=_reserved(settings),
         )
         update = with_schema_version({
             "clubKits": next_kits,
@@ -391,6 +407,7 @@ def preview_club_kits_route():
             riders=riders,
             jerseys_by_sig=_jersey_lookup(),
             mode=mode,
+            reserved=_reserved(settings),
         )
         preview["savedRiderCoverage"] = rider_assigned_kit_coverage(
             riders,
@@ -422,6 +439,7 @@ def apply_club_kits_route():
             existing=settings.get("clubKits") or [],
             unlocks=settings.get("jerseyUnlocks") or [],
             jerseys_by_sig=_jersey_lookup(),
+            reserved=_reserved(settings),
         )
         update = with_schema_version({
             "clubKits": next_kits,

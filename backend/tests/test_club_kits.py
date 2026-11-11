@@ -653,3 +653,59 @@ def test_seed_matches_catalog_level_and_code():
     gcn_merged = next(row for row in merged if row["jerseySignature"] == 2)
     assert gcn_merged["codeStatus"] == "working"
     assert any(row["jerseySignature"] == 1 for row in merged)
+
+
+def test_classification_jerseys_reserved_for_every_slot():
+    from services.classification_jerseys import (
+        classification_club_kit_conflicts,
+        reserved_classification_signatures,
+    )
+
+    saved = {
+        "individual": {"jerseySignature": 100},
+        "sprint": {"jerseySignature": 1},
+        "kom": {"jerseySignature": 2},
+    }
+    reserved = reserved_classification_signatures(saved)
+    assert set(reserved) == {100, 1, 2}
+    conflicts = classification_club_kit_conflicts(saved, [{"club": "A", "jerseySignature": 2}])
+    assert len(conflicts) == 1 and "A" in conflicts[0]
+
+
+def test_auto_never_assigns_sprint_or_kom_jersey():
+    unlocks = [
+        {"jerseySignature": 1, "jerseyName": "Level 5", "minLevel": 5},
+        {"jerseySignature": 2, "jerseyName": "Level 50", "minLevel": 50},
+        {"jerseySignature": 6, "jerseyName": "Starter", "minLevel": 1},
+    ]
+    riders = [{"club": "A", "dropLevel": 80}, {"club": "B", "dropLevel": 80}]
+    saved_auto = [{"club": "A", "jerseySignature": 1, "assignment": "auto"}]
+    reserved = {1: "sprinttrøjen", 2: "bjergtrøjen (KOM)"}
+    for mode in ("scratch", "new", "minimal"):
+        preview = preview_auto_assignment(
+            unlocks=unlocks, club_kits=saved_auto, riders=riders, mode=mode, reserved=reserved,
+        )
+        sigs = {row["jerseySignature"] for row in preview["proposedClubKits"]}
+        assert sigs == {6}, (mode, sigs)
+
+
+def test_pin_assign_and_commit_reject_competition_jersey():
+    from services.club_kits import commit_club_kit_proposal
+
+    reserved = {2: "sprinttrøjen"}
+    for fn in (pin_club_kit, assign_auto_club_kit):
+        try:
+            fn(club="A", signature=2, club_kits=[], unlocks=UNLOCKS, reserved=reserved)
+            raise AssertionError("expected reserved rejection")
+        except ValueError as exc:
+            assert "sprinttrøjen" in str(exc)
+    try:
+        commit_club_kit_proposal(
+            proposed=[{"club": "A", "jerseySignature": 2, "assignment": "auto"}],
+            existing=[],
+            unlocks=UNLOCKS,
+            reserved=reserved,
+        )
+        raise AssertionError("expected reserved rejection")
+    except ValueError as exc:
+        assert "sprinttrøjen" in str(exc)

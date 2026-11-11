@@ -190,3 +190,74 @@ def test_load_liga_settings_includes_club_kits_and_unlocks():
     settings = _load_liga_settings(_FakeDb())
     assert settings["clubKits"][0]["jerseyName"] == "DZR 2025"
     assert settings["jerseyUnlocks"][0]["jerseySignature"] == 1381648520
+
+
+_DIVISIONS = [("1. Division", 1900, None), ("2. Division", 850, 1900), ("3. Division", 0, 850)]
+
+
+def test_locked_top_category_drops_stale_bounds():
+    existing_lc = {
+        "locked": True,
+        "category": "1. Division",
+        "autoAssigned": {
+            "category": "3. Division",
+            "assignedRating": 800,
+            "upperBoundary": 850,
+            "graceLimit": 885,
+            "status": "over",
+        },
+    }
+
+    update = _compute_liga_update(
+        eff_rating=1449, existing_lc=existing_lc, grace_period=35, categories=_DIVISIONS,
+    )
+
+    auto = update["ligaCategory.autoAssigned"]
+    assert auto["category"] == "1. Division"
+    assert auto["upperBoundary"] is None
+    assert auto["graceLimit"] is None
+    assert auto["status"] == "ok"
+
+
+def test_manual_top_category_drops_stale_bounds():
+    existing_lc = {
+        "locked": False,
+        "autoAssigned": {"category": "3. Division", "assignedRating": 800},
+        "manualAssigned": {
+            "category": "1. Division",
+            "assignedFrom": "admin",
+            "upperBoundary": 850,
+            "graceLimit": 885,
+            "status": "over",
+        },
+    }
+
+    update = _compute_liga_update(
+        eff_rating=1449, existing_lc=existing_lc, grace_period=35, categories=_DIVISIONS,
+    )
+
+    manual = update["ligaCategory.manualAssigned"]
+    assert manual["upperBoundary"] is None
+    assert manual["graceLimit"] is None
+    assert manual["status"] == "ok"
+
+
+def test_serialize_top_category_ignores_stale_bounds():
+    from services.category_engine import serialize_liga_category
+
+    lc = {
+        "locked": True,
+        "category": "1. Division",
+        "autoAssigned": {
+            "category": "3. Division",
+            "upperBoundary": 850,
+            "graceLimit": 885,
+            "status": "over",
+        },
+    }
+
+    out = serialize_liga_category(lc, _DIVISIONS)
+    assert out["category"] == "1. Division"
+    assert out["upperBoundary"] is None
+    assert out["graceLimit"] is None
+    assert out["status"] == "ok"

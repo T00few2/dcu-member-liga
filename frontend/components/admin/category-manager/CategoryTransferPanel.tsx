@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useAuth } from '@/lib/auth-context';
@@ -29,6 +29,7 @@ export default function CategoryTransferPanel({ riders, categories }: Props) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [zwiftId, setZwiftId] = useState('');
+  const [riderSearch, setRiderSearch] = useState('');
   const [toCategory, setToCategory] = useState('');
   const [preview, setPreview] = useState<Preview | null>(null);
   const [busy, setBusy] = useState(false);
@@ -51,6 +52,20 @@ export default function CategoryTransferPanel({ riders, categories }: Props) {
 
   const rider = riders.find((item) => item.zwiftId === zwiftId);
   const fromCategory = rider?.ligaCategory?.category || '';
+
+  const sortedRiders = useMemo(
+    () => [...riders].sort((a, b) => a.name.localeCompare(b.name, 'da', { sensitivity: 'base' })),
+    [riders],
+  );
+  const riderSearchTerm = riderSearch.trim().toLowerCase();
+  // Keep the selected rider in the list so the select never shows a blank value.
+  const riderOptions = riderSearchTerm
+    ? sortedRiders.filter((item) =>
+        item.zwiftId === zwiftId ||
+        item.name.toLowerCase().includes(riderSearchTerm) ||
+        (item.club || '').toLowerCase().includes(riderSearchTerm) ||
+        item.zwiftId.toLowerCase().includes(riderSearchTerm))
+    : sortedRiders;
 
   useEffect(() => {
     setPreview(null);
@@ -128,16 +143,26 @@ export default function CategoryTransferPanel({ riders, categories }: Props) {
         </p>
       </div>
 
-      <div className="grid sm:grid-cols-2 gap-3">
+      <div className="grid sm:grid-cols-2 gap-3 items-end">
         <label className="text-sm">
           <span className="block text-muted-foreground mb-1">Rider</span>
+          <input
+            type="search"
+            value={riderSearch}
+            onChange={(event) => setRiderSearch(event.target.value)}
+            placeholder="Search rider, club, or Zwift ID"
+            aria-label="Search rider"
+            className="w-full border border-border rounded px-2 py-1.5 bg-background mb-2"
+          />
           <select
             value={zwiftId}
             onChange={(event) => setZwiftId(event.target.value)}
             className="w-full border border-border rounded px-2 py-1.5 bg-background"
           >
-            <option value="">Select rider</option>
-            {riders.map((item) => (
+            <option value="">
+              {riderSearchTerm ? `Select rider (${riderOptions.length} match${riderOptions.length === 1 ? '' : 'es'})` : 'Select rider'}
+            </option>
+            {riderOptions.map((item) => (
               <option key={item.zwiftId} value={item.zwiftId}>
                 {item.name} ({item.ligaCategory?.category || 'no category'})
               </option>
@@ -184,7 +209,7 @@ export default function CategoryTransferPanel({ riders, categories }: Props) {
         <h3 className="font-medium text-card-foreground">History</h3>
         {historyQuery.isLoading && <p className="text-sm text-muted-foreground">Loading moves…</p>}
         {historyQuery.isError && <p className="text-sm text-red-600">Could not load moves.</p>}
-        <ul className="mt-2 space-y-2">
+        <ul className="mt-2 space-y-2 max-h-80 overflow-y-auto pr-1">
           {(historyQuery.data ?? []).map((item) => (
             <li key={item.id} className="border border-border rounded p-3 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-2">

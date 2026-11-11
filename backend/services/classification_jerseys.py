@@ -6,6 +6,44 @@ from typing import Any
 from services.zwift_game import jersey_image_url
 
 CLASSIFICATION_JERSEY_KEYS = ("individual", "sprint", "kom")
+CLASSIFICATION_JERSEY_LABELS = {
+    "individual": "førertrøjen (Individuel)",
+    "sprint": "sprinttrøjen",
+    "kom": "bjergtrøjen (KOM)",
+}
+
+
+def reserved_classification_signatures(saved: dict[str, Any] | None) -> dict[int, str]:
+    """Signature -> label for every saved competition jersey; these cannot be club kits."""
+    out: dict[int, str] = {}
+    for key in CLASSIFICATION_JERSEY_KEYS:
+        row = (saved or {}).get(key)
+        if not isinstance(row, dict):
+            continue
+        try:
+            signature = int(row.get("jerseySignature"))
+        except (TypeError, ValueError):
+            continue
+        out.setdefault(signature, CLASSIFICATION_JERSEY_LABELS[key])
+    return out
+
+
+def classification_club_kit_conflicts(
+    stored: dict[str, Any] | None,
+    club_kits: list[dict[str, Any]] | None,
+) -> list[str]:
+    """Messages for each competition jersey already used as a club kit."""
+    reserved = reserved_classification_signatures(stored)
+    conflicts: list[str] = []
+    for row in club_kits or []:
+        try:
+            signature = int(row.get("jerseySignature"))
+        except (TypeError, ValueError):
+            continue
+        label = reserved.get(signature)
+        if label:
+            conflicts.append(f"{label} er klubtrøje for {row.get('club') or 'ukendt klub'}")
+    return conflicts
 
 
 def stored_classification_jersey(

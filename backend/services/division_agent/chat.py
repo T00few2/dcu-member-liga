@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Callable
@@ -22,7 +23,8 @@ from typing import Any, Callable
 from config import FRONTEND_URL
 from services import discord_link
 from services import predictor_service as ps
-from services.category_engine import GRACE_POINTS, ZR_CATEGORIES
+from services import velo_predictor as vp
+from services.category_engine import GRACE_POINTS, ZR_CATEGORIES, effective_rating
 from services.division_agent import assess as assess_mod
 from services.division_agent import league_tools as lt
 from services.division_agent import runner
@@ -34,15 +36,51 @@ CONVERSATIONS = "division_conversations"
 LIMITS = "division_chat_limits"
 MAX_MESSAGES_PER_DAY = 30  # per Discord user, per Copenhagen calendar day
 MAX_TOOL_TURNS = 5
+# The chat models think before answering (adaptive thinking is on by default), and thinking
+# counts against max_tokens: a tight cap can end a turn with thinking only and no text.
+MAX_TOKENS = 16000
 HISTORY_LIMIT = 20
 LOG_LIMIT = 60
 
-HOLDING = "Tak for dit spørgsmål – en admin svarer dig her snarest. / Thanks – an admin will reply here soon."
-RATE_LIMITED = ("Du har nået dagens grænse for spørgsmål til botten – prøv igen i morgen. En admin kan stadig "
-                "svare dig her. / You have reached today's limit of questions to the bot – please try again "
-                "tomorrow. An admin can still reply here.")
-FALLBACK_REPLY = ("Tak for dit spørgsmål – jeg har givet det videre til en admin, som svarer dig her. / "
-                  "Thanks for your question – I have passed it to an admin, who will reply here.")
+# Fixed bot messages, sent in the rider's language (`language`); both when it is unclear.
+HOLDING = {
+    "da": "Tak for dit spørgsmål. Jeg er stadig i test, så en admin tjekker mit svar, før jeg sender det her i tråden.",
+    "en": "Thanks for your question. I'm still in testing, so an admin checks my answer before I post it here in "
+          "the thread.",
+}
+RATE_LIMITED = {
+    "da": "Du har nået dagens grænse for spørgsmål til botten – prøv igen i morgen. En admin kan stadig svare dig her.",
+    "en": "You have reached today's limit of questions to the bot – please try again tomorrow. An admin can still "
+          "reply here.",
+}
+FALLBACK_REPLY = {
+    "da": "Tak for dit spørgsmål – jeg har givet det videre til en admin, som svarer dig her.",
+    "en": "Thanks for your question – I have passed it to an admin, who will reply here.",
+}
+
+_DA_WORDS = frozenset(
+    "jeg er og det ikke hvad hvorfor hvordan hvornår hvilken hvilke min mit mine mig har kan til på den et "
+    "blevet bliver du dig hej tak skal vil om ved løb løbet hvis eller også nu får ja nej godt da men".split())
+_EN_WORDS = frozenset(
+    "am is the and what why how when which my me have has can to on it you your hi hello thanks thank will "
+    "would do does did was are be been race if or also now get yes no good but there this that please".split())
+
+
+def language(*texts: str | None) -> str | None:
+    """"da" or "en" for the first text that clearly reads as one of them; None when unclear."""
+    for text in texts:
+        low = str(text or "").lower()
+        words = re.findall(r"[a-zæøå']+", low)
+        da = sum(w in _DA_WORDS for w in words) + 2 * len(re.findall(r"[æøå]", low))
+        en = sum(w in _EN_WORDS for w in words)
+        if da != en:
+            return "da" if da > en else "en"
+    return None
+
+
+def say(message: dict[str, str], lang: str | None) -> str:
+    """A fixed message in `lang`, or Danish and English when the language is unclear."""
+    return message[lang] if lang in message else f"{message['da']} / {message['en']}"
 
 
 SYSTEM_PROMPT = f"""You are the help bot of DCU E-serien, a Danish Zwift racing league, in its Discord help channel.
@@ -63,7 +101,10 @@ Rules:
 - If the tools do not contain the answer, do not guess: call `report_unanswered` with the question and what was
   missing, and tell the rider you have passed the question to the admins, who will reply in the thread.
 - Use `explain_my_division` before explaining anything about the rider's own division or numbers, and only use
-  numbers it returns. Use `my_status` for the rider's own registration, verification, connections, sign-ups and
+  numbers it returns. Its `divisionHistory` says how the current division was set (automatic from vELO, held by an
+  admin, self-selected, locked after racing) and lists the logged admin moves and decisions with dates: use it to
+  answer whether a move was automatic or made by an admin, and when. If it shows no admin move or hold, the
+  division came from the automatic assignment. Use `my_status` for the rider's own registration, verification, connections, sign-ups and
   standing.
 - Never promise a change of division. Say that an admin decides.
 - If the rider asks to move division (up or down), or explains why their division or data is wrong (injury,
@@ -146,8 +187,10 @@ RIDER_TOOLS = [
     {
         "name": "explain_my_division",
         "description": "The asking rider's current division, vELO, ride counts, predicted vELO from Zwift and "
-                       "Strava power (Strava split into indoor and outdoor rides), data-quality flags and the "
-                       "division limits. Only this rider; no names.",
+                       "Strava power (Strava split into indoor and outdoor rides), data-quality flags, the "
+                       "division limits, and the division history: how the division was set (automatic, admin "
+                       "hold, self-selected, locked) and the logged admin moves and decisions with dates. Only "
+                       "this rider; no names.",
         "input_schema": _NO_INPUT,
     },
     {
@@ -180,6 +223,40 @@ def _division_limits(categories: Any) -> list[dict]:
     return [{"division": name, "fromVelo": lo, "toVelo": hi} for name, lo, hi in (categories or ZR_CATEGORIES)]
 
 
+def velo_check(velo: dict | None, current: str | None, categories: Any, grace: int = GRACE_POINTS) -> dict:
+    """Each vELO number placed against the division limits, computed here so the model never
+    compares numbers itself. `assignmentVelo` is the highest of the three, which the
+    automatic assignment uses."""
+    cats = categories or ZR_CATEGORIES
+    limits = {name: (lo, hi) for name, lo, hi in cats}
+
+    def place(v: float) -> dict:
+        out: dict = {"velo": round(v), "divisionForThisVelo": vp.category_for_velo(v, cats)}
+        if current in limits:
+            lo, hi = limits[current]
+            if v < lo:
+                rel = f"below the lower limit of {current} ({lo})"
+            elif hi is None or v < hi:
+                rel = f"inside {current} ({lo}-{hi if hi is not None else 'no upper limit'})"
+            elif v < hi + grace:
+                rel = f"above the upper limit of {current} ({hi}) but within the grace limit ({hi + grace})"
+            else:
+                rel = f"above the grace limit of {current} ({hi + grace})"
+            out["comparedToCurrentDivision"] = rel
+        return out
+
+    velo = velo or {}
+    check: dict = {}
+    for key in ("current", "max30", "max90"):
+        v = velo.get(key)
+        if isinstance(v, (int, float)) and v > 0:
+            check[key] = place(float(v))
+    best = effective_rating(velo.get("current") or "N/A", velo.get("max30") or "N/A", velo.get("max90") or "N/A")
+    if best:
+        check["assignmentVelo"] = place(float(best))
+    return check
+
+
 def explain(evidence: dict, categories: Any) -> dict:
     """What `explain_my_division` returns: the rider's own numbers only."""
     strava = evidence.get("strava") or {}
@@ -188,6 +265,7 @@ def explain(evidence: dict, categories: Any) -> dict:
         "currentDivision": evidence.get("currentCategory"),
         "lockedAfterRacing": bool(evidence.get("locked")),
         "velo": evidence.get("velo"),
+        "veloCheck": velo_check(evidence.get("velo"), evidence.get("currentCategory"), categories),
         "zwiftRidesLast90Days": evidence.get("zwiftActivityCount"),
         "zwiftPowerPrediction": (zwift.get("prediction") or {}) if zwift else None,
         "stravaPrediction": (strava.get("prediction") or {}) if strava else None,
@@ -198,6 +276,96 @@ def explain(evidence: dict, categories: Any) -> dict:
         "divisionLimits": _division_limits(categories),
         "graceMarginVelo": GRACE_POINTS,
     }
+
+
+def _day(value: Any) -> str | None:
+    """A stored timestamp as a Copenhagen calendar date (YYYY-MM-DD)."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return value[:10] or None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.astimezone(lt._CPH).strftime("%Y-%m-%d")
+    return None
+
+
+_HOW = {
+    "locked": "locked after the rider's first race this season; only an admin can move a locked rider",
+    "none": "no division yet",
+    "selfSelected": "the rider chose a harder division than their assignment",
+    "adminHold": "placed and held there by an admin",
+    "predictedHold": "placed by an admin from predicted power (Strava/Zwift) because the vELO was not reliable",
+    "automatic": "assigned automatically from the rider's vELO",
+}
+
+
+def division_history(db: Any, zwift_id: str, user_data: dict | None, categories: Any) -> dict:
+    """How the rider's division was set and the logged admin moves, for the rider themself:
+    divisions, dates and outcomes only (no admin names, internal notes or rider names)."""
+    from services.division_agent import admin_chat  # imports this module
+
+    lc = (user_data or {}).get("ligaCategory") or {}
+    a = admin_chat.assignment(lc, categories)
+    manual = lc.get("manualAssigned") or {}
+    auto = lc.get("autoAssigned") or {}
+    sel = (lc.get("selfSelected") or {}).get("category")
+    if a["locked"]:
+        how = "locked"
+    elif not a["effectiveDivision"]:
+        how = "none"
+    elif sel and sel == a["effectiveDivision"] and sel != (manual.get("category") or auto.get("category")):
+        how = "selfSelected"
+    elif manual.get("category"):
+        how = "predictedHold" if manual.get("assignedFrom") == "predicted" else "adminHold"
+    else:
+        how = "automatic"
+
+    moves: list[dict] = []
+    decisions: list[dict] = []
+    try:
+        hist = admin_chat._history(db, str(zwift_id))
+    except Exception as exc:
+        logger.warning("division chat: could not read division history: %s", exc)
+        hist = {}
+    for t in hist.get("transfers") or []:
+        moves.append({"from": t.get("fromCategory"), "to": t.get("toCategory"), "date": _day(t.get("createdAtIso")),
+                      "by": "admin", "undone": t.get("status") == "reverted"})
+    for p in hist.get("proposals") or []:
+        if p.get("status") not in ("approved", "edited", "rejected"):
+            continue
+        decisions.append({k: v for k, v in {
+            "kind": "rider appeal" if p.get("origin") == "appeal" else "admin review",
+            "outcome": "rejected" if p.get("status") == "rejected" else "approved",
+            "fromDivision": p.get("currentCategory"),
+            "requestedDivision": p.get("requestedCategory"),
+            "newDivision": p.get("appliedCategory"),
+            "date": _day(p.get("decidedAt") or p.get("createdAt")),
+        }.items() if v not in (None, "")})
+
+    out = {
+        "howCurrentDivisionWasSet": _HOW[how],
+        "lockedOn": _day(lc.get("lockedAt")) if a["locked"] else None,
+        "lockedDivision": a.get("lockedDivision"),
+        "adminHold": {"division": manual.get("category"), "basedOn": "predicted power"
+                      if manual.get("assignedFrom") == "predicted" else "admin decision",
+                      "setOn": _day(manual.get("assignedAt"))} if manual.get("category") else None,
+        "automaticAssignment": {"division": auto.get("category"), "setOn": _day(auto.get("assignedAt"))}
+        if auto.get("category") else None,
+        "selfSelectedDivision": sel or None,
+        "adminMoves": moves,
+        "adminDecisions": decisions,
+    }
+    return {k: v for k, v in out.items() if v not in (None, "")}
+
+
+def _rider_texts(messages: list[dict]) -> list[str]:
+    """The rider's messages, newest first (for picking the reply language)."""
+    return [str(m.get("text") or "") for m in reversed(messages or []) if m.get("author") != "bot"]
 
 
 def _within_rate_limit(db: Any, discord_user_id: str, now: datetime) -> bool:
@@ -260,21 +428,27 @@ def converse(
     system: str = SYSTEM_PROMPT,
     tool_specs: list[dict] | None = None,
     used: set[str] | None = None,
+    max_turns: int = MAX_TOOL_TURNS,
 ) -> tuple[str, dict]:
     """Run the tool loop. Returns `(reply text, usage)`; raises on API errors.
-    Only tools in `tools` are offered; the names actually called are added to `used`."""
+    Only tools in `tools` are offered; the names actually called are added to `used`.
+    `usage["stopReason"]` says why the last call ended (for logging an empty reply)."""
     conv: list[dict] = list(messages)
-    usage = {"inputTokens": 0, "outputTokens": 0}
+    usage: dict = {"inputTokens": 0, "outputTokens": 0, "stopReason": None}
     specs = [t for t in (tool_specs if tool_specs is not None else TOOLS) if t["name"] in tools]
-    for _ in range(MAX_TOOL_TURNS):
-        response = client.messages.create(model=model, max_tokens=1200, system=system,
+    for _ in range(max_turns):
+        response = client.messages.create(model=model, max_tokens=MAX_TOKENS, system=system,
                                           tools=specs, messages=conv)
         u = getattr(response, "usage", None)
         usage["inputTokens"] += int(getattr(u, "input_tokens", 0) or 0)
         usage["outputTokens"] += int(getattr(u, "output_tokens", 0) or 0)
+        usage["stopReason"] = getattr(response, "stop_reason", None)
         blocks = list(getattr(response, "content", None) or [])
-        if getattr(response, "stop_reason", None) != "tool_use":
+        if usage["stopReason"] != "tool_use":
             text = "\n".join(b.text for b in blocks if getattr(b, "type", None) == "text").strip()
+            if not text:
+                logger.warning("division chat: empty reply (stop_reason=%s, output tokens=%s)",
+                               usage["stopReason"], getattr(u, "output_tokens", None))
             return text, usage
         conv.append({"role": "assistant", "content": blocks})
         results = []
@@ -292,6 +466,8 @@ def converse(
             results.append({"type": "tool_result", "tool_use_id": b.id,
                             "content": json.dumps(output, default=str, ensure_ascii=False)})
         conv.append({"role": "user", "content": results})
+    usage["stopReason"] = "too_many_tool_turns"
+    logger.warning("division chat: no reply after %s tool turns", max_turns)
     return "", usage
 
 
@@ -328,7 +504,9 @@ def _tool_set(db: Any, *, thread_id: str, discord_user_id: str, question: str, z
         if ctx is None:
             return {"error": "rider not registered"}
         row, data, bundle = ctx
-        return explain(runner.rider_evidence(db, row, data, bundle, settings), bundle[2])
+        info = explain(runner.rider_evidence(db, row, data, bundle, settings), bundle[2])
+        info["divisionHistory"] = division_history(db, zwift_id, data, bundle[2])
+        return info
 
     def appeal_tool(args: dict) -> dict:
         if filed:
@@ -365,7 +543,7 @@ def ask(
     """
     t = now()
     if not _within_rate_limit(db, discord_user_id, t):
-        return {"reply": RATE_LIMITED, "sendNow": True}
+        return {"reply": say(RATE_LIMITED, language(*_rider_texts(messages))), "sendNow": True}
     linked = discord_link.user_for_discord(db, discord_user_id)
     user_doc_id, user_data = linked if linked else (None, None)
     zwift_id = str((user_data or {}).get("zwiftId") or user_doc_id) if linked else None
@@ -400,7 +578,7 @@ def ask(
         lt.report_unanswered(db, question=question, missing="The help bot could not answer (no model reply).",
                              thread_id=thread_id, discord_user_id=discord_user_id, zwift_id=zwift_id,
                              guild_id=guild_id, now=t)
-        text = FALLBACK_REPLY
+        text = say(FALLBACK_REPLY, language(*_rider_texts(messages)))
         _log(db, thread_id, zwift_id, discord_user_id, messages, text, None, t)
         return {"reply": text, "sendNow": True, "proposalId": filed.get("id")}
 
@@ -425,7 +603,8 @@ def ask(
     }
     db.collection(DRAFTS).document(draft["id"]).set(draft)
     _log(db, thread_id, zwift_id, discord_user_id, messages, text, draft["id"], t)
-    return {"reply": HOLDING, "sendNow": True, "draftId": draft["id"], "proposalId": filed.get("id")}
+    holding = say(HOLDING, language(*_rider_texts(messages)) or language(text))
+    return {"reply": holding, "sendNow": True, "draftId": draft["id"], "proposalId": filed.get("id")}
 
 
 def decide_reply(db: Any, draft_id: str, action: str, *, decided_by: str, text: str | None = None) -> dict:
