@@ -98,7 +98,7 @@ def test_admin_route_returns_the_inspection(monkeypatch):
     import routes.admin_event_inspect_routes as route
 
     monkeypatch.setattr(route, "require_admin", lambda _req: {"admin": True})
-    monkeypatch.setattr(route, "load_event", lambda event_id: _event(id=event_id))
+    monkeypatch.setattr(route, "load_event", lambda event_id, event_secret=None: _event(id=event_id))
     game = MagicMock()
     game.get_game_dictionary.return_value = DICTIONARY
     monkeypatch.setattr(route, "get_zwift_game_service", lambda: game)
@@ -111,6 +111,60 @@ def test_admin_route_returns_the_inspection(monkeypatch):
     assert body["id"] == 5780631
     assert body["steering"] == "enabled"
     assert "eventSecret" not in body["raw"]
+
+
+class _Response:
+    def __init__(self, status, body):
+        self.status_code = status
+        self._body = body
+
+    def json(self):
+        return self._body
+
+
+def test_a_restricted_upcoming_event_is_read_with_its_secret(monkeypatch):
+    from services import event_inspect
+
+    calls = []
+
+    def fake_get(url, headers=None, params=None, timeout=None):
+        calls.append((url, dict(params or {})))
+        if "events-core" in url and (params or {}).get("eventSecret") == "stage-secret":
+            return _Response(200, {
+                "id": 5793706,
+                "name": "DCU Ligaen 2026 – 3. etape (1-3 Div)",
+                "tags": ["steering_disabled"],
+                "eventSecret": "stage-secret",
+                "eventSubgroups": [],
+            })
+        return _Response(403, {"message": "forbidden"})
+
+    monkeypatch.setattr(event_inspect.requests, "get", fake_get)
+    monkeypatch.setattr(event_inspect, "game_client_access_token", lambda: "token")
+    event = event_inspect.load_event(5793706, "stage-secret")
+    viewed = event_inspect.inspect_document(event, None)
+    assert viewed["name"].startswith("DCU Ligaen 2026")
+    assert viewed["steering"] == "disabled"
+    assert "eventSecret" not in viewed["raw"]
+    assert calls[0][1].get("eventSecret") == "stage-secret"
+    assert len(calls) == 1
+
+
+def test_a_restricted_event_without_a_secret_asks_for_one(monkeypatch):
+    from services import event_inspect
+
+    def fake_get(url, headers=None, params=None, timeout=None):
+        return _Response(403, {"message": "invalid.event.secret"})
+
+    monkeypatch.setattr(event_inspect.requests, "get", fake_get)
+    monkeypatch.setattr(event_inspect, "game_client_access_token", lambda: "token")
+    try:
+        event_inspect.load_event(5793706, None)
+    except event_inspect.EventInspectError as exc:
+        assert exc.status_code == 403
+        assert "event secret" in exc.message
+    else:
+        raise AssertionError("expected a refusal")
 
 
 def test_admin_route_reports_a_zwift_failure(monkeypatch):

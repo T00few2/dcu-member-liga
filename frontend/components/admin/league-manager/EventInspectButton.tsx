@@ -269,7 +269,7 @@ function InspectBody({ event }: { event: InspectedEvent }) {
     );
 }
 
-export default function EventInspectButton({ eventId }: { eventId: string }) {
+export default function EventInspectButton({ eventId, eventSecret }: { eventId: string; eventSecret?: string }) {
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -294,7 +294,9 @@ export default function EventInspectButton({ eventId }: { eventId: string }) {
         setEvent(null);
         try {
             const token = await auth.currentUser?.getIdToken();
-            const res = await fetch(`${API_URL}/admin/zwift/events/${id}`, {
+            const secret = (eventSecret || '').trim();
+            const query = secret ? `?eventSecret=${encodeURIComponent(secret)}` : '';
+            const res = await fetch(`${API_URL}/admin/zwift/events/${id}${query}`, {
                 headers: token ? { Authorization: `Bearer ${token}` } : {},
             });
             const body = await res.json().catch(() => ({}));

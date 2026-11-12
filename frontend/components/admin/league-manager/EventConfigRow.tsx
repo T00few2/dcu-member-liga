@@ -39,7 +39,7 @@ export default function EventConfigRow({
                             className="w-full p-2 border border-input rounded bg-background text-foreground text-sm"
                             placeholder="e.g. 12345"
                         />
-                        <EventInspectButton eventId={config.eventId} />
+                        <EventInspectButton eventId={config.eventId} eventSecret={config.eventSecret} />
                     </div>
                 </div>
                 <div className="flex-1">

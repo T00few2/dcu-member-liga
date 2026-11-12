@@ -15,8 +15,9 @@ def get_zwift_event_inspection(event_id: int):
         require_admin(request)
     except AuthzError as exc:
         return jsonify({"message": exc.message}), exc.status_code
+    secret = str(request.args.get("eventSecret") or "").strip() or None
     try:
-        event = load_event(event_id)
+        event = load_event(event_id, secret)
         dictionary = get_zwift_game_service().get_game_dictionary()
     except EventInspectError as exc:
         return jsonify({"message": exc.message}), exc.status_code

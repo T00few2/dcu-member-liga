@@ -289,30 +289,70 @@ def inspect_document(event: dict, dictionary: dict | None = None) -> dict[str, A
     }
 
 
-def load_event(event_id: int) -> dict:
-    """Organizer event document. Raises EventInspectError when Zwift cannot be read."""
+def _event_body(payload: Any) -> dict | None:
+    """An event document, ignoring Zwift's {message: ...} refusals."""
+    if not isinstance(payload, dict) or payload.get("message"):
+        return None
+    event = payload.get("eventData") if "eventData" in payload else payload
+    if not isinstance(event, dict):
+        return None
+    if event.get("id") is None and event.get("name") is None and "eventSubgroups" not in event:
+        return None
+    return event
+
+
+def _get_json(url: str, *, token: str | None, params: dict | None) -> tuple[int, dict | None]:
+    headers = {"Accept": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    try:
+        response = requests.get(url, headers=headers, params=params or None, timeout=30)
+    except requests.RequestException as exc:
+        raise EventInspectError("Zwift did not answer", 502) from exc
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = None
+    return response.status_code, _event_body(payload)
+
+
+def load_event(event_id: int, event_secret: str | None = None) -> dict:
+    """Read one event. A known event secret is sent on the first Zwift request.
+
+    A finished race can still be read with no secret. An upcoming restricted
+    race is refused until the secret is present on that first request.
+    """
+    secret = str(event_secret or "").strip() or None
     try:
         token = game_client_access_token()
     except DropLevelAuthError as exc:
         raise EventInspectError(str(exc), 502) from exc
-    try:
-        response = requests.get(
-            f"{ZWIFT_API_BASE}/api/events-core/events/{int(event_id)}",
-            headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
-            params={"skipDefaults": "true"},
-            timeout=30,
-        )
-    except requests.RequestException as exc:
-        raise EventInspectError("Zwift did not answer", 502) from exc
-    if response.status_code == 404:
+
+    core_url = f"{ZWIFT_API_BASE}/api/events-core/events/{int(event_id)}"
+    public_url = f"{ZWIFT_API_BASE}/api/public/events/{int(event_id)}"
+    core_params = {"skipDefaults": "true"}
+    if secret:
+        core_params["eventSecret"] = secret
+    status, event = _get_json(core_url, token=token, params=core_params)
+    if event is not None:
+        return event
+    if status == 404:
         raise EventInspectError(f"Zwift has no event {event_id}", 404)
-    if response.status_code != 200:
-        raise EventInspectError(f"Zwift could not read event {event_id} ({response.status_code})", 502)
-    try:
-        payload = response.json()
-    except ValueError as exc:
-        raise EventInspectError("Zwift returned an unreadable event", 502) from exc
-    event = payload.get("eventData") if isinstance(payload, dict) and "eventData" in payload else payload
-    if not isinstance(event, dict):
-        raise EventInspectError("Zwift returned an unreadable event", 502)
-    return event
+
+    public_params = {"eventSecret": secret} if secret else None
+    public_status, public_event = _get_json(public_url, token=None, params=public_params)
+    if public_event is not None:
+        return public_event
+
+    refused = status in (401, 403) or public_status in (401, 403)
+    if refused and secret:
+        raise EventInspectError(
+            f"Zwift refused event {event_id} ({status}). Check the event secret.",
+            403,
+        )
+    if refused:
+        raise EventInspectError(
+            f"Zwift refused event {event_id} ({status}). This race is still restricted. Enter the event secret and inspect again.",
+            403,
+        )
+    raise EventInspectError(f"Zwift could not read event {event_id} ({status})", 502)

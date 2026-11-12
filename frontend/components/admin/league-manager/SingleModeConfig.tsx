@@ -28,7 +28,7 @@ export default function SingleModeConfig() {
                             className="w-full p-2 border border-input rounded bg-background text-foreground"
                             placeholder="e.g. 123456"
                         />
-                        <EventInspectButton eventId={formState.eventId} />
+                        <EventInspectButton eventId={formState.eventId} eventSecret={formState.eventSecret} />
                     </div>
                 </div>
                 <div>
