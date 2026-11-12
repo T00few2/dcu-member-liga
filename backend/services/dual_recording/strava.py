@@ -21,6 +21,10 @@ logger = logging.getLogger(__name__)
 # cooldown) score even lower, so ignore anything below the floor — unless the
 # only remaining non-export file is a truncated dual recording (late start /
 # early stop) that still finishes with the race.
+#
+# A head unit often keeps Zwift's activity title ("Zwift - Race: …"). That
+# title only counts as the Zwift upload when Strava does not say which device
+# recorded the file. A known non-Zwift device stays eligible below 0.995.
 _ZWIFT_EXPORT_CORR = 0.995
 _ZWIFT_EXPORT_NAMED_CORR = 0.98
 _MIN_DUAL_RECORDING_CORR = 0.40
@@ -50,12 +54,28 @@ def _is_zwift_named(act: dict) -> bool:
     return _strava_activity_name(act).lower().startswith("zwift")
 
 
+def _recorded_on_zwift(act: dict) -> bool | None:
+    """True/False when Strava identifies the recording device. None if unknown."""
+    device = str(act.get("deviceName") or "").strip().lower()
+    if device:
+        return device == "zwift" or device.startswith("zwift ")
+    external = str(act.get("externalId") or "").strip().lower()
+    if external.startswith("zwift-") or external.startswith("zwift_"):
+        return True
+    return None
+
+
 def _is_zwift_export(act: dict, similarity: float | None) -> bool:
     if similarity is None:
         return False
     if similarity >= _ZWIFT_EXPORT_CORR:
         return True
-    return similarity >= _ZWIFT_EXPORT_NAMED_CORR and _is_zwift_named(act)
+    if similarity < _ZWIFT_EXPORT_NAMED_CORR:
+        return False
+    recorded_on_zwift = _recorded_on_zwift(act)
+    if recorded_on_zwift is not None:
+        return recorded_on_zwift
+    return _is_zwift_named(act)
 
 
 def _activity_duration_sec(act: dict) -> int:

@@ -459,6 +459,8 @@ class StravaService:
                     'distanceM': a.get('distance', 0),
                     'sport': a.get('sport_type', a.get('type', 'Ride')),
                     'hasPowerMeter': bool(a.get('device_watts', False)),
+                    'deviceName': a.get('device_name') or '',
+                    'externalId': a.get('external_id') or '',
                 }
                 for a in res.json()
             ]

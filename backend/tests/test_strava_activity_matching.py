@@ -174,6 +174,51 @@ def test_selects_truncated_dual_over_zwift_export(monkeypatch):
     assert by_id["41"]["belowSimilarityFloor"] is False
 
 
+def test_zwift_titled_garmin_file_is_the_dual_recording(monkeypatch):
+    """Martin-style: the head unit keeps Zwift's title, so the name is not the export."""
+    export = _act(60, "Zwift - Race: 4. Division", "2026-09-17T17:02:19Z", 4856, sport="VirtualRide")
+    export["deviceName"] = "Zwift"
+    export["externalId"] = "zwift-activity-1.fit"
+    dual = _act(61, "Zwift - Race: 4. Division", "2026-09-17T17:01:00Z", 4900, sport="Ride")
+    dual["deviceName"] = "Garmin Edge 520"
+    dual["externalId"] = "garmin_ping_1"
+    _patch_activities(monkeypatch, [export, dual], {"60": 1.0, "61": 0.983161})
+
+    matched, chosen_id, debug = _match()
+    assert chosen_id == "61"
+    assert matched["name"] == "Zwift - Race: 4. Division"
+    assert debug["selectionReason"] == "lowest_similarity"
+    by_id = {c["activityId"]: c for c in debug["candidates"]}
+    assert by_id["60"]["excludedAsExport"] is True
+    assert by_id["61"]["excludedAsExport"] is False
+    assert by_id["61"]["selected"] is True
+
+
+def test_zwift_device_near_duplicate_stays_export_without_a_second_file(monkeypatch):
+    export = _act(62, "Zwift - Race: 4. Division", "2026-09-17T17:02:19Z", 4856)
+    export["deviceName"] = "Zwift"
+    _patch_activities(monkeypatch, [export], {"62": 0.99})
+
+    matched, chosen_id, debug = _match()
+    assert matched is None
+    assert chosen_id is None
+    assert debug["selectionReason"] == "no_similar_candidate"
+    by_id = {c["activityId"]: c for c in debug["candidates"]}
+    assert by_id["62"]["excludedAsExport"] is True
+
+
+def test_zwift_title_without_device_still_counts_as_export(monkeypatch):
+    export = _act(63, "Zwift - Race: 4. Division", "2026-09-17T17:02:19Z", 4856)
+    dual = _act(64, "Cykeltur om aftenen", "2026-09-17T17:01:44Z", 4876)
+    _patch_activities(monkeypatch, [export, dual], {"63": 0.99, "64": 0.90})
+
+    _matched, chosen_id, debug = _match()
+    assert chosen_id == "64"
+    by_id = {c["activityId"]: c for c in debug["candidates"]}
+    assert by_id["63"]["excludedAsExport"] is True
+    assert by_id["64"]["selected"] is True
+
+
 def test_still_rejects_outdoor_ride_with_mismatched_end_in_gray_zone(monkeypatch):
     export = _act(50, "Zwift - Race: 3. Division", "2026-09-17T17:00:00Z", 4856)
     outdoor = _act(51, "Cykeltur om aftenen", "2026-09-17T16:46:19Z", 6753)
