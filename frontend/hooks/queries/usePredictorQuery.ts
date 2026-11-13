@@ -28,6 +28,8 @@ export interface PredictorConfig {
     targetSource?: 'velo' | 'velo_or_league';
     /** Leave out league rows whose weight was not recorded before the race. */
     strictPointInTime?: boolean;
+    /** Riders with at least this many indoor rides in the Strava window are rated on indoor power alone; 0 = off. */
+    indoorFirstMinRides?: number;
 }
 
 export interface PredictorHistoryEntry {

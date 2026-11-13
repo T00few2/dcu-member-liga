@@ -2408,6 +2408,7 @@
           }
         },
         "targetSource": { "type": "string", "enum": ["velo", "velo_or_league"], "default": "velo", "description": "velo_or_league: riders without a reliable vELO are trained on predictor_observations (power known before a league race vs. the performance vELO of that race) instead of their vELO" },
+        "indoorFirstMinRides": { "type": "integer", "minimum": 0, "maximum": 100, "default": 0, "description": "Indoor-first rule: a rider with at least this many indoor rides in the Strava window is rated on indoor power alone (outdoor bests no longer override it); 0 = off. Tuning tries 0 and 5." },
         "strictPointInTime": { "type": "boolean", "default": false, "description": "Leave out league training rows whose weight is today's value rather than one recorded before the race" }
       }
     },

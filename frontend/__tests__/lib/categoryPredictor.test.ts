@@ -234,6 +234,11 @@ describe('Strava indoor/outdoor correction', () => {
     // Indoor-only riders are never corrected.
     const indoor = stravaCurvesFromResponse({ curveIndoor: { w1200: 300 }, curveOutdoor: {} });
     expect(correctedStravaCurve(indoor, { wkg20m: 0.5 })).toEqual({ w1200: 300 });
+    // Indoor-first: with enough indoor rides the outdoor best no longer overrides the indoor one.
+    const both = stravaCurvesFromResponse({ curveIndoor: { w1200: 250 }, curveOutdoor: { w1200: 300, w5: 900 }, indoorCount: 8 });
+    expect(correctedStravaCurve(both, undefined)).toEqual({ w1200: 300, w5: 900 });
+    expect(correctedStravaCurve(both, undefined, null, 5)).toEqual({ w1200: 250, w5: 900 });
+    expect(correctedStravaCurve(both, undefined, null, 10)).toEqual({ w1200: 300, w5: 900 });
   });
 });
 

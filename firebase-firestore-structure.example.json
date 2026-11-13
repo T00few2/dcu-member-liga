@@ -1084,7 +1084,8 @@
         "trainingMinRides": 0,
         "outdoorRaceScale": { "wkg5s": 1.0, "wkg1m": 1.0, "wkg5m": 1.01, "wkg20m": 1.02 },
         "targetSource": "velo_or_league",
-        "strictPointInTime": false
+        "strictPointInTime": false,
+        "indoorFirstMinRides": 5
       },
       "history": [
         {

@@ -151,8 +151,9 @@ def gather(
         scale = model.config.stravaPowerScale if model is not None else None
         race_scale = model.config.outdoorRaceScale if model is not None else None
         # Indoor-equivalent: outdoor efforts get the outdoor→indoor correction, indoor ones do not.
-        inputs = vp.strava_inputs(split, scale, race_scale=race_scale)
-        sources = vp.strava_sources(split, scale, race_scale)
+        indoor_min = model.config.indoorFirstMinRides if model is not None else 0
+        inputs = vp.strava_inputs(split, scale, race_scale=race_scale, indoor_first_min=indoor_min)
+        sources = vp.strava_sources(split, scale, race_scale, indoor_min)
         count = int((curve_entry or {}).get("activityCount") or 0)
         pred = vp.predict_inputs(model, inputs, categories, source="strava", activity_count=count)
         strava = {
@@ -162,6 +163,8 @@ def gather(
             "outdoorCount": (curve_entry or {}).get("outdoorCount"),
             "outdoorRaceCount": (curve_entry or {}).get("outdoorRaceCount"),
             "bestFrom": sources,
+            # True when the rider has enough indoor rides to be rated on indoor power alone.
+            "indoorOnly": vp.indoor_first(split["indoorRides"], indoor_min),
             # Share of the durations whose best comes from outdoor riding (0 to 1).
             "outdoorShare": round(sum(1 for v in sources.values() if v != "indoor") / len(sources), 2)
             if sources else None,

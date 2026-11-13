@@ -36,6 +36,9 @@ DEFAULT_FOLDS = 5
 STABLE_RATING_TOLERANCE = vp.STABLE_RATING_TOLERANCE
 MAX_GREEDY_FEATURES = 6
 RIDGE_LAMBDAS = (0.01, 0.1, 1.0)
+# Indoor-first thresholds tuning tries (0 = rule off). Predictor research found 1, 5 and 10
+# indoor rides equally good on riders with a reliable vELO, so one middle value is enough.
+INDOOR_FIRST_MIN_RIDES = (0, 5)
 # Never tried or proposed by tuning. ZRS is as unreliable as vELO for riders with few
 # Zwift rides (exactly the riders the predictor is for), but the eval riders all have
 # many rides, so ZRS would look far better here than it is in real use. The admin page
@@ -294,7 +297,8 @@ def cross_validate(
                 continue
             split, count = r.strava[days]
             inputs = vp.strava_inputs(split, fold_cfg.stravaPowerScale, r.racingScore,
-                                      race_scale=fold_cfg.outdoorRaceScale)
+                                      race_scale=fold_cfg.outdoorRaceScale,
+                                      indoor_first_min=fold_cfg.indoorFirstMinRides)
             pred = vp.predict_inputs(model, inputs, categories, source="strava", activity_count=count)
             if r.truthSource == "velo":
                 zpred = vp.predict_inputs(model, r.zwiftInputs, categories)
@@ -483,25 +487,32 @@ def tune(
                         cfg = _with(current, features=feats, regression=regression, ridgeLambda=lam,
                                     stravaWindowDays=days, trainingMinRides=train_min,
                                     stravaPowerScale={k: 1.0 for k in vp.POWER_FIELDS},
-                                    outdoorRaceScale=None)
+                                    outdoorRaceScale=None, indoorFirstMinRides=0)
                         cand = _evaluate(participants, riders, cfg, categories, folds, fit_scale,
                                          observations=observations)
                         if cand and cand.score.key() > best.score.key():
                             best = cand
 
-    # On top of the best settings so far: an own correction for outdoor races, and
-    # training on league results for riders without a reliable vELO.
+    # On top of the best settings so far: the indoor-first rule, an own correction for
+    # outdoor races, and training on league results for riders without a reliable vELO.
+    # Indoor-first is also tried without the fitted outdoor correction: the two answer
+    # the same problem, and the correction may only have won for lack of the rule.
     start = best
     targets = vp.TARGET_SOURCES if observations else (start.config.targetSource,)
-    for target in targets:
-        for fit_race in (False, True):
-            if target == start.config.targetSource and not fit_race:
-                continue
-            cfg = _with(start.config, targetSource=target, outdoorRaceScale=None)
-            cand = _evaluate(participants, riders, cfg, categories, folds, start.fitScale, fit_race,
-                             observations=observations)
-            if cand and cand.score.key() > best.score.key():
-                best = cand
+    for indoor_min in INDOOR_FIRST_MIN_RIDES:
+        for fit_scale in sorted({start.fitScale, False}):
+            for target in targets:
+                for fit_race in (False, True):
+                    if (indoor_min, fit_scale, target, fit_race) == (0, start.fitScale,
+                                                                     start.config.targetSource, False):
+                        continue
+                    cfg = _with(start.config, targetSource=target, outdoorRaceScale=None,
+                                indoorFirstMinRides=indoor_min,
+                                stravaPowerScale={k: 1.0 for k in vp.POWER_FIELDS})
+                    cand = _evaluate(participants, riders, cfg, categories, folds, fit_scale, fit_race,
+                                     observations=observations)
+                    if cand and cand.score.key() > best.score.key():
+                        best = cand
 
     improvement = round(best.score.divisionAccuracy - baseline.score.divisionAccuracy, 1)
     if best is baseline or improvement < min_improvement_pp:
