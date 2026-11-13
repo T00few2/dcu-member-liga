@@ -95,6 +95,7 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
   const zwiftPredictions = !modelIsPrevious && featuresSettled ? modelData?.predictions : undefined;
   const stravaWindowDays = predictorConfig?.config?.stravaWindowDays ?? 90;
   const stravaPowerScale = predictorConfig?.config?.stravaPowerScale;
+  const outdoorRaceScale = predictorConfig?.config?.outdoorRaceScale;
   const activeFeatureKeys = useMemo(
     () => featureDefs.filter(f => selectedFeatures?.[f.key]).map(f => f.key),
     [featureDefs, selectedFeatures],
@@ -113,11 +114,11 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
     const out: Record<string, StravaRiderCache> = {};
     for (const [id, entry] of Object.entries(stravaRaw)) {
       out[id] = entry.curves && entry.weightKg
-        ? { ...entry, power: powerFromStravaCurve(correctedStravaCurve(entry.curves, stravaPowerScale), entry.weightKg, entry.power) }
+        ? { ...entry, power: powerFromStravaCurve(correctedStravaCurve(entry.curves, stravaPowerScale, outdoorRaceScale), entry.weightKg, entry.power) }
         : entry;
     }
     return out;
-  }, [stravaRaw, stravaPowerScale]);
+  }, [stravaRaw, stravaPowerScale, outdoorRaceScale]);
   const [loadingStravaIds, setLoadingStravaIds] = useState<Record<string, true>>({});
   const [bulkStravaProgress, setBulkStravaProgress] = useState<{ done: number; total: number } | null>(null);
   const [shared, setShared] = useState<SharedInputs>(EMPTY_SHARED);

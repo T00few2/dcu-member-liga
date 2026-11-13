@@ -76,6 +76,24 @@ beforeEach(() => {
       openQuestions = [];
       return new Response(JSON.stringify({ item: {} }), { status: 200 });
     }
+    if (u.endsWith('/admin/division-agent/struggling')) {
+      return new Response(JSON.stringify({
+        riders: [{
+          zwiftId: '77', name: 'Back Marker', club: 'Test CC', division: 'Gold',
+          league: { races: 3, finishes: 2, dnfs: 1, performanceVelo: 1010, recent: [
+            { raceId: 'a', rank: 9, fieldSize: 10, percentile: 0.89, dnf: false },
+            { raceId: 'b', rank: 10, fieldSize: 10, percentile: 1, dnf: false },
+            { raceId: 'c', rank: null, fieldSize: 10, percentile: 1, dnf: true }] },
+          velo: { current: 905, max30: 930 }, zwiftActivityCount: 20,
+          heldUp: true, veloReliable: true, veloDivision: 'Silver', pendingProposal: null,
+        }],
+        thresholds: { strugglingMinRaces: 3, strugglingPercentile: 0.8, strugglingShare: 0.75 },
+        reasonEnabled: false,
+      }), { status: 200 });
+    }
+    if (u.includes('/admin/division-agent/assess/77')) {
+      return new Response(JSON.stringify({ outcome: 'proposed' }), { status: 200 });
+    }
     if (u.endsWith('/admin/division-agent/scan')) {
       return new Response(JSON.stringify({ queued: 4 }), { status: 200 });
     }
@@ -231,10 +249,40 @@ describe('DivisionAgent and Discord', () => {
         && JSON.parse(String((init as RequestInit).body)).reviewFilter);
       expect(call && JSON.parse((call[1] as RequestInit).body as string)).toEqual({
         reviewFilter: { newSignupsDays: null, onlyUnlocked: true, onlyWithStrava: false, skipAdminPlaced: false,
-          reasons: ['no_velo', 'no_max30', 'few_rides'] },
+          reasons: ['no_velo', 'no_max30', 'few_rides'],
+          strugglingMinRaces: 3, strugglingShare: 0.75, strugglingPercentile: 0.8 },
         minZwiftRides: 15,
       });
     });
     expect(screen.getByRole('heading', { name: 'Agent' })).toBeInTheDocument();
+  });
+  it('lists struggling riders and has the agent check one', async () => {
+    const u = userEvent.setup();
+    renderAgent();
+    await u.click(await screen.findByRole('button', { name: 'Struggling riders' }));
+    expect(await screen.findByText('Back Marker')).toBeInTheDocument();
+    expect(screen.getByText(/9\/10, 10\/10, DNF · rides like vELO 1010 \(3 races in this division\)/)).toBeInTheDocument();
+    expect(screen.getByText('Above own vELO division (Silver)')).toBeInTheDocument();
+    expect(screen.getByText(/does not check these riders by itself until the reason is ticked/)).toBeInTheDocument();
+    await u.click(screen.getByRole('button', { name: 'Check now' }));
+    expect(await screen.findByText('Proposal created (see Pending).')).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/admin/division-agent/assess/77?reason=struggling'))).toBe(true);
+  });
+
+  it('shows the thresholds when the struggling reason is ticked and saves them', async () => {
+    const u = userEvent.setup();
+    renderAgent();
+    await u.click(await screen.findByLabelText(/Keeps finishing at the back of their division/));
+    const races = screen.getByLabelText('Minimum league races');
+    await u.clear(races);
+    await u.type(races, '4');
+    await u.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([url, init]) => String(url).endsWith('/admin/division-agent/settings')
+        && JSON.parse(String((init as RequestInit).body)).reviewFilter);
+      const body = call && JSON.parse((call[1] as RequestInit).body as string);
+      expect(body?.reviewFilter.reasons).toContain('struggling');
+      expect(body?.reviewFilter.strugglingMinRaces).toBe(4);
+    });
   });
 });

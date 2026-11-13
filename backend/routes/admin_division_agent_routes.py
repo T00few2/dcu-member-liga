@@ -187,8 +187,10 @@ def division_agent_struggling():
 
 @admin_bp.route("/admin/division-agent/assess/<zwift_id>", methods=["POST"])
 def division_agent_assess(zwift_id: str):
-    """Review one rider now. `?dryRun=1` returns the would-be proposal without saving it."""
-    _, err = _admin()
+    """Review one rider now. `?dryRun=1` returns the would-be proposal without saving it.
+    `?reason=struggling` checks the rider as a struggling rider even when that reason is not
+    ticked in the review filter (the "Check now" button of the struggling list)."""
+    decoded, err = _admin()
     if err:
         return err
     if not db:
@@ -202,6 +204,8 @@ def division_agent_assess(zwift_id: str):
         result = runner.process_rider(
             db, row, settings=ps.division_agent_settings(db), model_bundle=bundle,
             strava_service=strava_service, compute_curve=_compute_strava_power_curve, dry_run=dry_run,
+            force_reasons=["struggling"] if request.args.get("reason") == "struggling" else None,
+            requested_by=_who(decoded),
         )
         return jsonify(result), 200
     except evidence.WaitingForStrava:

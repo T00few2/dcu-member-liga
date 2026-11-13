@@ -406,3 +406,16 @@ def test_a_new_league_race_reopens_a_rider():
     assert first != more
     no_races = {**_rider(3), "league": None}
     assert "leagueRaces" not in str(evidence.fingerprint(_evidence(no_races, "Gold", reasons=("few_rides",))))
+
+
+def test_idle_upkeep_reads_no_riders():
+    db = FakeDb()
+    now = RACE_START + timedelta(days=30)
+    db.store["predictor_observations/r1"] = {"raceId": "r1", "builtAt": now.isoformat(), "pending": 0, "riders": {}}
+    loader = MagicMock(return_value=[])
+    assert po.refresh_next(db, [(_race("r1"), RACE_START)], loader, now=now) is None
+    loader.assert_not_called()
+    # A race that has not started, or is not finalized, is never built.
+    future = [(_race("r9"), now + timedelta(days=1)), (_race("r8", phase="provisional"), RACE_START)]
+    assert po.refresh_next(db, future, loader, now=now) is None
+    loader.assert_not_called()

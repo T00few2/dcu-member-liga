@@ -80,13 +80,19 @@ def process_rider(
     client_factory: Callable[[], Any] = assess_mod.client_from_env,
     dry_run: bool = False,
     existing: list[dict] | None = None,
+    force_reasons: list[str] | None = None,
+    requested_by: str | None = None,
 ) -> dict:
     """Review one rider. Returns `{outcome, proposal?, evidence?}` (outcome: proposed |
-    no_change | not_needed | handled). Raises `evidence.WaitingForStrava`."""
+    no_change | not_needed | handled). Raises `evidence.WaitingForStrava`.
+
+    `force_reasons` reviews the rider for those reasons whatever the filter says (an admin
+    pressed "Check now" in the struggling list). A proposal from it is the admin's request
+    (`requested_by`), so a later scan does not close it as outside the filter."""
     model, _rows, categories = model_bundle
     known = existing if existing is not None else proposals.all_proposals(db)
     zid = str(row["zwiftId"])
-    reasons = triage.needs_review(row, settings)
+    reasons = list(force_reasons) if force_reasons else triage.needs_review(row, settings)
     if not reasons:
         if not dry_run:
             proposals.supersede_pending(db, zid, known)
@@ -113,7 +119,7 @@ def process_rider(
     data = {
         "zwiftId": str(row["zwiftId"]),
         "name": row.get("name") or "",
-        "origin": "agent",
+        "origin": "admin" if force_reasons else "agent",
         "reasons": reasons,
         "currentCategory": ev["currentCategory"],
         "proposedCategory": result["proposedCategory"],
@@ -132,6 +138,8 @@ def process_rider(
         "movePreview": None,
         "evidenceFingerprint": fp,
     }
+    if force_reasons:
+        data["requestedBy"] = requested_by or "an admin"
     if ev["locked"] and result["proposedCategory"] and result["proposedCategory"] != ev["currentCategory"]:
         data["movePreview"] = _move_preview(db, row, user_data, result["proposedCategory"])
     if dry_run:

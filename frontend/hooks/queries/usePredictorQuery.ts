@@ -22,6 +22,12 @@ export interface PredictorConfig {
     minStravaActivities: number;
     /** Train only on riders with a reliable vELO (at least this many Zwift rides); 0 = all riders. */
     trainingMinRides?: number;
+    /** Own outdoor→indoor correction for outdoor rides marked as a race on Strava; null = same as other outdoor rides. */
+    outdoorRaceScale?: Record<'wkg5s' | 'wkg1m' | 'wkg5m' | 'wkg20m', number> | null;
+    /** "velo_or_league": riders without a reliable vELO are trained on their league results instead. */
+    targetSource?: 'velo' | 'velo_or_league';
+    /** Leave out league rows whose weight was not recorded before the race. */
+    strictPointInTime?: boolean;
 }
 
 export interface PredictorHistoryEntry {

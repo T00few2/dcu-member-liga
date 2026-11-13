@@ -268,7 +268,10 @@ def _keep_point_in_time_data() -> None:
         from services import predictor_snapshots as snapshots
 
         races = ps.league_races(db)
-        participants = ps.cached_participants(db)
+
+        def participants():  # read only when a snapshot or a race is actually due
+            return ps.cached_participants(db)
+
         snapshots.take_if_due(db, participants, [start for _race, start in races])
         if po.refresh_next(db, races, participants):
             ps.clear_league_cache()

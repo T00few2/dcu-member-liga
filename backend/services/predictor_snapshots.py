@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from services import velo_predictor as vp
 
@@ -66,12 +66,14 @@ def latest_captured_at(db: Any) -> datetime | None:
     return None
 
 
-def take_if_due(db: Any, participants: list[dict], race_starts: Iterable[datetime | None],
-                now: datetime | None = None) -> bool:
+def take_if_due(db: Any, participants: list[dict] | Callable[[], list[dict]],
+                race_starts: Iterable[datetime | None], now: datetime | None = None) -> bool:
+    """Store a snapshot when one is due. `participants` may be a function, called only then."""
     now = now or datetime.now(timezone.utc)
     if not is_due(latest_captured_at(db), race_starts, now):
         return False
-    db.collection(COLLECTION).document(now.strftime("%Y-%m-%d")).set(build(participants, now))
+    rows = participants() if callable(participants) else participants
+    db.collection(COLLECTION).document(now.strftime("%Y-%m-%d")).set(build(rows, now))
     return True
 
 

@@ -120,17 +120,15 @@ def read_all(db: Any) -> list[dict]:
     return out
 
 
-def refresh_next(
-    db: Any,
-    races: list[tuple[dict, datetime | None]],
-    participants: list[dict],
-    *,
-    now: datetime | None = None,
-) -> str | None:
-    """Build the observations of one race that has none yet, or whose riders were still
-    waiting for Strava history a day ago. Returns the race id, or None when all are done."""
-    now = now or datetime.now(timezone.utc)
-    existing = {str(snap.id): (snap.to_dict() or {}) for snap in db.collection(COLLECTION).stream()}
+def next_race(
+    db: Any, races: list[tuple[dict, datetime | None]], now: datetime,
+) -> tuple[dict, datetime] | None:
+    """The next race to build: a finalized one without observations, else one whose riders
+    were still waiting for Strava history a day ago. None when all are done."""
+    collection = db.collection(COLLECTION)
+    # Only the two small fields are needed here; the rider maps are large.
+    query = collection.select(["builtAt", "pending"]) if hasattr(collection, "select") else collection
+    existing = {str(snap.id): (snap.to_dict() or {}) for snap in query.stream()}
     todo = None
     for race, start in races:
         if start is None or start >= now or not lp.is_finalized(race):
@@ -142,9 +140,26 @@ def refresh_next(
         built = strava_efforts.parse_iso(have.get("builtAt"))
         if have.get("pending") and (built is None or now - built >= timedelta(hours=REBUILD_AFTER_HOURS)):
             todo = todo or (race, start)
+    return todo
+
+
+def refresh_next(
+    db: Any,
+    races: list[tuple[dict, datetime | None]],
+    participants: list[dict] | Callable[[], list[dict]],
+    *,
+    now: datetime | None = None,
+) -> str | None:
+    """Build and store the observations of one race (see `next_race`). Returns the race id,
+    or None when nothing is due. `participants` may be a function, called only when a race
+    is built, so an idle call reads no rider documents."""
+    now = now or datetime.now(timezone.utc)
+    todo = next_race(db, races, now)
     if todo is None:
         return None
     race, start = todo
+    if callable(participants):
+        participants = participants()
     cache: dict[str, dict] = {}
 
     def read_efforts(doc_id: str) -> dict:
