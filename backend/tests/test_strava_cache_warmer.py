@@ -164,6 +164,7 @@ def test_status_endpoint(client, monkeypatch):
     body = client.get("/admin/predictor/strava-cache/status").get_json()
     usage = body.pop("stravaUsage")
     assert body.pop("lastWarm") is None
+    body.pop("league")  # league progress has its own test (test_league_performance)
     assert body == {"days": 90, "eligible": 3, "cached": 0, "noPowerData": 0, "others": 0, "othersCached": 0,
                     "remaining": 3, "minEvalRiders": 40}
     assert usage["cacheBudgetFraction"] == 0.75 and usage["known"] is False

@@ -166,6 +166,23 @@ def observations(db: Any) -> list[dict]:
     return _cached("observations", lambda: po.read_all(db))
 
 
+def league_progress(db: Any, participants: list[dict]) -> dict:
+    """Counts for the Tuning panel: how much league ground truth exists and how much of it
+    tuning can score today (cached 10 minutes)."""
+    from services import predictor_observations as po
+    from services import predictor_tuning as pt
+
+    def load() -> dict:
+        out = po.progress(db, league_races(db))
+        usable = pt.build_league_eval(observations(db), participants,
+                                      min_rides=division_agent_settings(db)["minZwiftRides"])
+        out["usable"] = len(usable)
+        out["usableRiders"] = len({r.zwiftId for r in usable})
+        return out
+
+    return _cached("progress", load)
+
+
 def strava_history_days(db: Any, now: datetime | None = None) -> int | None:
     """How far back Strava ride lists must reach so a curve can be rebuilt for the first
     finalized race of the season: back to its start, plus the longest tuning window."""
