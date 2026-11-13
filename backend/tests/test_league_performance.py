@@ -474,3 +474,18 @@ def test_tuning_finds_indoor_first_when_outdoor_peaks_over_rate_riders():
     assert result.status == "improved"
     assert result.best["config"]["indoorFirstMinRides"] == 5
     assert result.best["score"]["divisionAccuracy"] > result.current["score"]["divisionAccuracy"]
+
+
+def test_progress_counts_what_is_stored_and_what_still_waits():
+    db = FakeDb()
+    now = RACE_START + timedelta(days=30)
+    races = [(_race("r1"), RACE_START), (_race("r2"), RACE_START + timedelta(days=7)),
+             (_race("r3", phase="provisional"), RACE_START + timedelta(days=14))]
+    rows = [{"zwiftId": str(i), "userDocId": f"d{i}", "hasStrava": i in (5, 6), "weightInGrams": 70000}
+            for i in range(1, 11)]
+    db.store["strava_activity_efforts/d5"] = {"userDocId": "d5", **_efforts_doc({"x": _ride(10, 250)})}
+    assert po.refresh_next(db, races, rows, now=now) == "r1"
+
+    out = po.progress(db, races, now)
+    assert out == {"racesFinalized": 2, "racesBuilt": 1, "observations": 10, "withStrava": 1,
+                   "weightBeforeRace": 0, "ridersWaitingForStrava": 1}   # rider 6: Strava, no history yet

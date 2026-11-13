@@ -49,6 +49,17 @@ interface CacheStatus {
   /** Riders with Strava outside the tuning set (mostly the division agent's riders). */
   others?: number;
   othersCached?: number;
+  /** League races as ground truth: how much exists and how much tuning can score today. */
+  league?: {
+    racesFinalized: number;
+    racesBuilt: number;
+    observations: number;
+    withStrava: number;
+    weightBeforeRace: number;
+    ridersWaitingForStrava: number;
+    usable: number;
+    usableRiders: number;
+  } | null;
   remaining: number;
   minEvalRiders: number;
   lastWarm?: {
@@ -248,6 +259,18 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
             {(cache.others ?? 0) > 0 && (
               <span className="block text-xs">
                 Other riders with Strava (division agent): {cache.othersCached ?? 0} of {cache.others} cached
+              </span>
+            )}
+            {cache.league && (
+              <span className="block">
+                League data: <span className="font-semibold text-foreground">{cache.league.usable}</span> results
+                from {cache.league.usableRiders} riders without a reliable vELO are ready for tuning ·{' '}
+                {cache.league.racesBuilt} of {cache.league.racesFinalized} finalized races processed ·{' '}
+                {cache.league.withStrava} of {cache.league.observations} results have Strava power from before the
+                race ({cache.league.weightBeforeRace} also a weight recorded before it)
+                {cache.league.ridersWaitingForStrava > 0
+                  ? ` · ${cache.league.ridersWaitingForStrava} riders still wait for their Strava history`
+                  : ''}
               </span>
             )}
             {cache.lastWarm && (

@@ -120,6 +120,25 @@ def read_all(db: Any) -> list[dict]:
     return out
 
 
+def progress(db: Any, races: list[tuple[dict, datetime | None]], now: datetime | None = None) -> dict:
+    """How far the league data has come, for the admin page: finalized races, races with
+    observations, observations stored, those with Strava power known before the race, and
+    riders with Strava still waiting for their ride history."""
+    now = now or datetime.now(timezone.utc)
+    docs = [snap.to_dict() or {} for snap in db.collection(COLLECTION).stream()]
+    riders = [r for d in docs for r in (d.get("riders") or {}).values() if isinstance(r, dict)]
+    waiting = {r.get("zwiftId") for r in riders if r.get("stravaPending")}
+    return {
+        "racesFinalized": sum(1 for race, start in races
+                              if start is not None and start < now and lp.is_finalized(race)),
+        "racesBuilt": len(docs),
+        "observations": len(riders),
+        "withStrava": sum(1 for r in riders if r.get("strava")),
+        "weightBeforeRace": sum(1 for r in riders if r.get("strava") and r.get("weightSource") == "snapshot"),
+        "ridersWaitingForStrava": len(waiting),
+    }
+
+
 def next_race(
     db: Any, races: list[tuple[dict, datetime | None]], now: datetime,
 ) -> tuple[dict, datetime] | None:

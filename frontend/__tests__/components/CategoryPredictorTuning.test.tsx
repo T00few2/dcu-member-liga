@@ -38,6 +38,8 @@ beforeEach(() => {
     if (String(url).endsWith('/admin/predictor/strava-cache/status')) {
       return new Response(JSON.stringify({
         days: 90, eligible: 70, cached: 12, others: 30, othersCached: 4, remaining: 84, minEvalRiders: 40,
+        league: { racesFinalized: 6, racesBuilt: 5, observations: 400, withStrava: 120, weightBeforeRace: 0,
+          ridersWaitingForStrava: 35, usable: 48, usableRiders: 19 },
         stravaUsage: { usage15: 40, limit15: 300, usageDay: 900, limitDay: 3000, appRequestsDay: 2400, known: true, cacheBudgetFraction: 0.5 },
       }), { status: 200 });
     }
@@ -94,6 +96,15 @@ describe('CategoryPredictorTuning', () => {
     await waitFor(() => {
       expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/admin/predictor/strava-cache/warm'))).toBe(true);
     });
+  });
+
+  it('shows how much league data is ready for tuning', async () => {
+    renderPanel();
+    const line = await screen.findByText(/League data:/);
+    expect(line).toHaveTextContent('48 results from 19 riders without a reliable vELO are ready for tuning');
+    expect(line).toHaveTextContent('5 of 6 finalized races processed');
+    expect(line).toHaveTextContent('120 of 400 results have Strava power from before the race');
+    expect(line).toHaveTextContent('35 riders still wait for their Strava history');
   });
 
   it('starts tuning and asks the server to process it', async () => {
