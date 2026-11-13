@@ -14,6 +14,7 @@ from .time_series import (
     _resample_power_to_1hz,
 )
 
+from services.strava_efforts import StreamUnavailable
 logger = logging.getLogger(__name__)
 
 # Among overlapping Strava files, pick the least Zwift-like trace so a
@@ -496,9 +497,13 @@ def _compute_strava_power_curve(rider_id: str, activities: list, max_workers: in
     Streams are requested at full resolution (resolution=None) so long rides are not
     time-averaged before the peaks are read, and gaps are zero-filled rather than
     interpolated so a stop never contributes watts to a best effort.
+
+    Called with a single ride (the per-ride efforts store does that), a download that
+    failed for now raises `StreamUnavailable` instead of looking like a ride without power.
     """
     merged: dict = {}
     futures = {}
+    single = len(activities) == 1
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         for act in activities:
             fut = executor.submit(
@@ -507,6 +512,7 @@ def _compute_strava_power_curve(rider_id: str, activities: list, max_workers: in
                 act["id"],
                 "time,watts",
                 None,
+                raise_if_unavailable=single,
             )
             futures[fut] = act["id"]
 
@@ -524,6 +530,8 @@ def _compute_strava_power_curve(rider_id: str, activities: list, max_workers: in
             for k, v in efforts.items():
                 if v > merged.get(k, 0):
                     merged[k] = v
+        except StreamUnavailable:
+            raise
         except Exception as exc:
             logger.warning(
                 "_compute_strava_power_curve: stream error for activity %s: %s",

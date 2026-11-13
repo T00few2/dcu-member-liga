@@ -15,7 +15,7 @@ from routes import admin_predictor_routes as routes  # noqa: E402
 from routes.admin import admin_bp  # noqa: E402
 from services import predictor_service as ps  # noqa: E402
 from services import strava_cache_warmer as warmer  # noqa: E402
-from services import strava_rate  # noqa: E402
+from services import strava_efforts, strava_rate  # noqa: E402
 from tests.test_admin_predictor_routes import FakeDb  # noqa: E402
 
 
@@ -185,7 +185,9 @@ def test_headers_are_recorded_and_windows_reset():
     snap = strava_rate.snapshot()
     assert strava_rate.current_usage(snap, NOW) == {
         "limit15": 300, "limitDay": 3000, "usage15": 12, "usageDay": 345,
-        "appRequests15": 0, "appRequestsDay": 0, "known": True}
+        "appRequests15": 0, "appRequestsDay": 0, "known": True,
+        "overallLimit15": None, "overallLimitDay": None, "overallUsage15": 0, "overallUsageDay": 0,
+        "refusedDay": 0}
     # Next quarter hour: 15-minute counter resets, daily does not.
     assert strava_rate.current_usage(snap, NOW + timedelta(minutes=10))["usage15"] == 0
     assert strava_rate.current_usage(snap, NOW + timedelta(minutes=10))["usageDay"] == 345
@@ -353,7 +355,7 @@ def test_persist_adds_counts_from_every_instance_and_resets_per_window():
     for _ in range(5):
         strava_rate.count_request(NOW)
     assert strava_rate.persist(db, now=NOW) is True
-    assert strava_rate.pending() == {"day": {}, "quarter": {}}
+    assert strava_rate.pending() == {"day": {}, "quarter": {}, "refused": {}}
     for _ in range(3):  # another instance, same quarter hour
         strava_rate.count_request(NOW)
     strava_rate.persist(db, now=NOW)
@@ -559,3 +561,40 @@ def test_league_riders_without_a_reliable_velo_come_first():
     # Without league riders nothing changes: rider 3 only lacks history and is last.
     plain = warmer.cache_status(db, tuning + [raced_new, not_raced], min_rides=15, days=90, history_days=200)
     assert [r["zwiftId"] for r in plain["missing"]] == ["1", "2", "4", "3"]
+
+
+def test_the_overall_limit_and_refusals_are_tracked():
+    strava_rate.clear()
+    strava_rate.record({"X-RateLimit-Limit": "600,6000", "X-RateLimit-Usage": "50,5000",
+                        "X-ReadRateLimit-Limit": "300,3000", "X-ReadRateLimit-Usage": "12,345"}, now=NOW)
+    strava_rate.count_refused(NOW)
+    usage = strava_rate.current_usage(strava_rate.snapshot(), NOW)
+    assert (usage["overallLimit15"], usage["overallLimitDay"]) == (600, 6000)
+    assert (usage["overallUsage15"], usage["overallUsageDay"]) == (50, 5000)
+    assert usage["usageDay"] == 345 and usage["refusedDay"] == 1
+    # The budget still follows the read limit only; the overall numbers are shown, not enforced.
+    assert strava_rate.within_budget(strava_rate.snapshot(), 100, 0.75, NOW) is True
+    db = FakeDb()
+    assert strava_rate.persist(db, now=NOW) is True
+    stored = strava_rate.load(db)
+    assert stored["ownRefusedDay"] == 1 and stored["overallLimitDay"] == 6000
+    strava_rate.clear()
+    assert strava_rate.current_usage(strava_rate.combined(stored), NOW)["refusedDay"] == 1
+    # Older apps send only X-RateLimit-*: it is the one limit, not a separate overall one.
+    strava_rate.record({"X-RateLimit-Limit": "100,1000", "X-RateLimit-Usage": "1,2"}, now=NOW)
+    assert strava_rate.current_usage(strava_rate.snapshot(), NOW)["overallLimitDay"] is None
+    strava_rate.clear()
+
+
+def test_a_run_stops_when_ride_downloads_fail():
+    db = FakeDb()
+    service = _strava()
+
+    def refused(_uid, _rides):
+        raise strava_efforts.StreamUnavailable("Strava answered 429")
+
+    result = warmer.warm(db, service, [_rider(i) for i in range(5)], min_rides=15, days=90, compute_curve=refused)
+
+    assert result["rateLimited"] is True and len(result["warmed"]) == 1   # stopped after the first rider
+    assert db.store["strava_cache_warm/last"]["failedDownloads"] == 2
+    assert db.store["strava_activity_efforts/doc0"]["rides"] == {}        # nothing stored as "no power"

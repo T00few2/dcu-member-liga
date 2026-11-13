@@ -67,6 +67,8 @@ interface CacheStatus {
     warmed: number;
     noPowerData: number;
     failed: number;
+    /** Ride downloads Strava refused or failed in that run; they are fetched again later. */
+    failedDownloads?: number;
     rateLimited: boolean;
   } | null;
   stravaUsage?: {
@@ -75,6 +77,13 @@ interface CacheStatus {
     usageDay: number;
     limitDay: number;
     appRequestsDay?: number;
+    /** Strava's overall limit (every request); null until Strava has reported it. */
+    overallLimit15?: number | null;
+    overallLimitDay?: number | null;
+    overallUsage15?: number;
+    overallUsageDay?: number;
+    /** Requests Strava refused today (HTTP 429). */
+    refusedDay?: number;
     known: boolean;
     cacheBudgetFraction: number;
   };
@@ -278,6 +287,9 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
                 Last fetch {new Date(cache.lastWarm.at).toLocaleTimeString()}: +{cache.lastWarm.warmed} riders
                 {cache.lastWarm.noPowerData > 0 ? ` (${cache.lastWarm.noPowerData} without power data)` : ''}
                 {cache.lastWarm.failed > 0 ? `, ${cache.lastWarm.failed} failed` : ''}
+                {(cache.lastWarm.failedDownloads ?? 0) > 0
+                  ? `, ${cache.lastWarm.failedDownloads} ride downloads failed (fetched again later)`
+                  : ''}
                 {cache.lastWarm.rateLimited ? ' · paused: Strava budget reached, continues in the next window' : ''}
               </span>
             )}
@@ -289,6 +301,10 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
                 {cache.stravaUsage.appRequestsDay != null
                   ? `; the app made ${cache.stravaUsage.appRequestsDay.toLocaleString()} requests today`
                   : ''}
+                {cache.stravaUsage.overallLimitDay
+                  ? `; all requests as counted by Strava: ${(cache.stravaUsage.overallUsageDay ?? 0).toLocaleString()} of ${cache.stravaUsage.overallLimitDay.toLocaleString()} today`
+                  : ''}
+                {`; Strava refused ${(cache.stravaUsage.refusedDay ?? 0).toLocaleString()} requests today`}
                 . The cache uses at most{' '}
                 {Math.round(cache.stravaUsage.cacheBudgetFraction * 100)}% and pauses when that is reached, so the rest
                 of the app always has room.

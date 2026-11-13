@@ -25,7 +25,12 @@ def _strava_get(*args, **kwargs):
     strava_rate.count_request()
     res = requests.get(*args, **kwargs)
     strava_rate.record(getattr(res, "headers", None))
+    if getattr(res, "status_code", None) == 429:
+        strava_rate.count_refused()
     return res
+
+
+from services.strava_efforts import StreamUnavailable  # noqa: E402
 
 
 class StravaService:
@@ -207,8 +212,13 @@ class StravaService:
         keys='time,watts,cadence,heartrate,altitude',
         resolution='high',
         series_type='time',
+        raise_if_unavailable=False,
     ):
         """Fetch activity streams. Pass resolution=None for the raw, un-downsampled stream.
+
+        Returns None when the streams cannot be had. With `raise_if_unavailable`, a failure
+        that may pass (HTTP 429, a 5xx, a network error) raises `StreamUnavailable` instead,
+        so the caller can tell "try again later" from "this ride has no streams" (404 etc.).
 
         Strava caps a 'high' resolution stream at 10,000 points, so rides longer than
         ~2h47m come back time-averaged — which flattens short peaks. Callers that need
@@ -232,11 +242,16 @@ class StravaService:
 
             if res.status_code == 200:
                 return res.json()
-            else:
-                logger.error(f"Error fetching streams: {res.status_code} {res.text}")
-                return None
+            logger.error(f"Error fetching streams: {res.status_code} {res.text}")
+            if raise_if_unavailable and (res.status_code == 429 or res.status_code >= 500):
+                raise StreamUnavailable(f"Strava answered {res.status_code}")
+            return None
+        except StreamUnavailable:
+            raise
         except Exception as e:
             logger.error(f"Error fetching streams: {e}")
+            if raise_if_unavailable:
+                raise StreamUnavailable(str(e)) from e
             return None
 
     def _service_token_ref(self):

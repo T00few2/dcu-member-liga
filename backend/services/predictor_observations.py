@@ -27,8 +27,9 @@ from services import velo_predictor as vp
 logger = logging.getLogger(__name__)
 
 COLLECTION = "predictor_observations"
-# A race with riders still waiting for Strava history is rebuilt at most this often.
-REBUILD_AFTER_HOURS = 24
+# A race with riders still waiting for Strava history is rebuilt at most this often (the
+# backfill fetches about 40 riders an hour, so a day was a long wait for the admin page).
+REBUILD_AFTER_HOURS = 6
 CURVE_KEYS = ("curve", "curveIndoor", "curveOutdoor", "curveOutdoorRace")
 COUNT_KEYS = ("activityCount", "indoorCount", "outdoorCount", "outdoorRaceCount")
 

@@ -127,7 +127,8 @@
           "warmed": { "type": "integer", "description": "Riders whose curve now has power data" },
           "noPowerData": { "type": "integer" },
           "failed": { "type": "integer" },
-          "rateLimited": { "type": "boolean", "description": "Stopped because the Strava budget (75% of the read limits) was reached" }
+          "failedDownloads": { "type": "integer", "description": "Ride downloads Strava refused or failed in this run; the run stops and those rides are fetched again later" },
+          "rateLimited": { "type": "boolean", "description": "Stopped because the Strava budget (75% of the limits) was reached, or because ride downloads failed" }
         }
       }
     },
@@ -147,7 +148,12 @@
           "ownDay": { "type": "string", "description": "UTC day (YYYY-MM-DD) of ownCountDay" },
           "ownCountDay": { "type": "integer", "description": "Strava requests the app made on ownDay (every function instance adds its own; informational)" },
           "ownQuarter": { "type": "string", "description": "UTC quarter hour of ownCount15, e.g. 2026-11-03T19:2 (minutes 30-44)" },
-          "ownCount15": { "type": "integer", "description": "Strava requests the app made in ownQuarter" }
+          "ownCount15": { "type": "integer", "description": "Strava requests the app made in ownQuarter" },
+          "ownRefusedDay": { "type": "integer", "description": "Requests Strava refused (HTTP 429) on ownDay" },
+          "overallLimit15": { "type": "integer", "description": "Strava's overall limit (every request, X-RateLimit-*), 15-minute window; only when Strava also sends the read limit" },
+          "overallLimitDay": { "type": "integer" },
+          "overallUsage15": { "type": "integer", "description": "All requests in the 15-minute window containing 'at', as reported by Strava (shown on the admin page; the budget follows the read numbers)" },
+          "overallUsageDay": { "type": "integer" }
         }
       }
     },
@@ -2431,6 +2437,7 @@
               "startDate": { "type": "string", "format": "date-time" },
               "indoor": { "type": "boolean", "description": "VirtualRide or trainer ride" },
               "race": { "type": "boolean", "description": "Marked as a race on Strava" },
+              "checked": { "type": "boolean", "description": "The download succeeded; a ride with empty efforts and no checked flag is downloaded again" },
               "efforts": { "type": "object", "description": "Peak watts keyed w{seconds}", "additionalProperties": { "type": "number" } }
             }
           }
@@ -2572,6 +2579,7 @@
         "outdoorRaceCount": { "type": "integer" },
         "version": { "type": "integer", "description": "2 = built from strava_activity_efforts with race tags; older entries are re-fetched" },
         "historyFrom": { "type": "string", "format": "date-time", "description": "How far back the rider's stored ride history (strava_activity_efforts) reaches" },
+        "failedDownloads": { "type": "integer", "description": "Ride downloads that failed for now in this fetch (Strava refused them or had an error); those rides are not stored and are fetched again later" },
         "split": { "type": "boolean", "description": "True when curveIndoor/curveOutdoor exist; older entries are re-fetched" },
         "computedAt": { "type": "string", "format": "date-time" }
       }

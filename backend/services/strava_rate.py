@@ -13,6 +13,15 @@ because activity-stream downloads evidently do not count the same way, and the a
 was never refused at those volumes.) A 429 response carries usage at the limit, so
 the budget stops background work as soon as Strava refuses anything.
 
+Strava documents two limits per app, each with a 15-minute and a daily window: an
+overall one (`X-RateLimit-*`, every request) and a "non-upload" one (`X-ReadRateLimit-*`,
+every request except uploads). Both are kept and shown on the admin page. The budget
+still follows the read header only: the documentation says ride-stream downloads count
+against both limits, but the read header has reported far fewer, and until the overall
+numbers have been seen for this app it is not known which one Strava enforces. Refused
+requests (HTTP 429) are counted (`count_refused`), which shows directly whether Strava
+is turning the app away, and a warm-up run stops as soon as a ride download is refused.
+
 The app still counts its own requests (`count_request()` for every Strava GET,
 shared through `persist()`) for information: `current_usage()` reports them as
 `appRequests15` / `appRequestsDay`.
@@ -33,7 +42,8 @@ _lock = threading.Lock()
 _state: dict[str, Any] = {}
 # Requests made by this instance and not yet added to the shared counters:
 # {"day": {"YYYY-MM-DD": n}, "quarter": {"YYYY-MM-DDTHH:q": n}}
-_pending: dict[str, dict[str, int]] = {"day": {}, "quarter": {}}
+# "refused": requests Strava answered with 429, per day.
+_pending: dict[str, dict[str, int]] = {"day": {}, "quarter": {}, "refused": {}}
 
 
 def _day_key(now: datetime) -> str:
@@ -51,6 +61,13 @@ def count_request(now: datetime | None = None) -> None:
     with _lock:
         for kind, key in (("day", _day_key(now)), ("quarter", _quarter_key(now))):
             _pending[kind][key] = _pending[kind].get(key, 0) + 1
+
+
+def count_refused(now: datetime | None = None) -> None:
+    """Count one request Strava refused (HTTP 429: over a rate limit)."""
+    key = _day_key(now or datetime.now(timezone.utc))
+    with _lock:
+        _pending["refused"][key] = _pending["refused"].get(key, 0) + 1
 
 
 def pending() -> dict[str, dict[str, int]]:
@@ -75,6 +92,10 @@ def record(headers: Mapping[str, str] | None, now: datetime | None = None) -> No
     try:
         limit = _pair(headers.get("X-ReadRateLimit-Limit") or headers.get("X-RateLimit-Limit"))
         usage = _pair(headers.get("X-ReadRateLimit-Usage") or headers.get("X-RateLimit-Usage"))
+        # The overall limit, kept separately only when Strava sends both kinds.
+        has_read = bool(headers.get("X-ReadRateLimit-Limit"))
+        overall_limit = _pair(headers.get("X-RateLimit-Limit")) if has_read else None
+        overall_usage = _pair(headers.get("X-RateLimit-Usage")) if has_read else None
     except AttributeError:
         return
     if not limit or not usage:
@@ -85,6 +106,11 @@ def record(headers: Mapping[str, str] | None, now: datetime | None = None) -> No
             "usage15": usage[0], "usageDay": usage[1],
             "at": (now or datetime.now(timezone.utc)).isoformat(),
         })
+        if overall_limit and overall_usage:
+            _state.update({
+                "overallLimit15": overall_limit[0], "overallLimitDay": overall_limit[1],
+                "overallUsage15": overall_usage[0], "overallUsageDay": overall_usage[1],
+            })
 
 
 def snapshot() -> dict:
@@ -97,6 +123,7 @@ def clear() -> None:
         _state.clear()
         _pending["day"].clear()
         _pending["quarter"].clear()
+        _pending["refused"].clear()
 
 
 def _parse(at: Any) -> datetime | None:
@@ -129,7 +156,9 @@ def _merged(stored: dict | None, current: dict, counts: dict[str, dict[str, int]
     day, quarter = _day_key(now), _quarter_key(now)
     own_day = int(stored.get("ownCountDay") or 0) if stored.get("ownDay") == day else 0
     own_q = int(stored.get("ownCount15") or 0) if stored.get("ownQuarter") == quarter else 0
+    refused = int(stored.get("ownRefusedDay") or 0) if stored.get("ownDay") == day else 0
     out.update({
+        "ownRefusedDay": refused + counts.get("refused", {}).get(day, 0),
         "ownDay": day,
         "ownCountDay": own_day + counts["day"].get(day, 0),
         "ownQuarter": quarter,
@@ -161,7 +190,7 @@ def persist(db: Any, now: datetime | None = None) -> bool:
     now = now or datetime.now(timezone.utc)
     current = snapshot()
     counts = pending()
-    has_counts = any(counts["day"].values()) or any(counts["quarter"].values())
+    has_counts = any(any(by_key.values()) for by_key in counts.values())
     if not current and not has_counts:
         return False
     ref = db.collection(COLLECTION).document(DOC)
@@ -228,6 +257,14 @@ def current_usage(snap: dict, now: datetime | None = None) -> dict:
         "usageDay": int(snap.get("usageDay") or 0) if same_day else 0,
         "appRequests15": own_15,
         "appRequestsDay": own_day,
+        # Strava's overall limit (every request); None until a response carried both kinds.
+        "overallLimit15": int(snap["overallLimit15"]) if snap.get("overallLimit15") else None,
+        "overallLimitDay": int(snap["overallLimitDay"]) if snap.get("overallLimitDay") else None,
+        "overallUsage15": int(snap.get("overallUsage15") or 0) if same_quarter else 0,
+        "overallUsageDay": int(snap.get("overallUsageDay") or 0) if same_day else 0,
+        # Requests Strava refused today (HTTP 429).
+        "refusedDay": (int(snap.get("ownRefusedDay") or 0) if snap.get("ownDay") == day else 0)
+        + local["refused"].get(day, 0),
         "known": bool(snap.get("limitDay")),
     }
 
@@ -236,7 +273,7 @@ def combined(stored: dict | None) -> dict:
     """The newest header values (stored or this instance's) plus the shared own counts."""
     stored = stored or {}
     best = dict(latest(stored, snapshot()))
-    for key in ("ownDay", "ownCountDay", "ownQuarter", "ownCount15"):
+    for key in ("ownDay", "ownCountDay", "ownQuarter", "ownCount15", "ownRefusedDay"):
         if key in stored:
             best[key] = stored[key]
     return best

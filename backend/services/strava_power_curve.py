@@ -116,6 +116,12 @@ def _clean(curve: dict | None) -> dict[str, float]:
 merge_curves = strava_efforts.merge_curves
 
 
+def _needs_download(stored_ride: dict | None) -> bool:
+    if stored_ride is None:
+        return True
+    return not stored_ride.get("efforts") and not stored_ride.get("checked")
+
+
 def get_strava_power_curve(
     db: Any,
     strava_service: Any,
@@ -144,7 +150,11 @@ def get_strava_power_curve(
     `refresh`). With `allow_fetch=False` only the cache is read, whatever its
     age, which is what tuning wants so it never spends Strava requests.
 
-    Only rides whose best efforts are not stored yet are downloaded. `budget(n)` is asked
+    Only rides whose best efforts are not stored yet are downloaded. A download that fails
+    for now (`compute_curve` raises `StreamUnavailable`: Strava refused it, a server error)
+    is not stored: the ride is tried again at the next fetch, `failedDownloads` says how
+    many, and the stored history is not marked complete, so no past race is given a curve
+    with rides missing. `budget(n)` is asked
     after the activity list is read, with the number of streams still needed; when it
     returns False, `StravaBudgetExceeded` is raised and no streams are downloaded.
 
@@ -184,20 +194,33 @@ def get_strava_power_curve(
     try:
         activities = strava_service.get_power_activities(
             str(user_doc_id), int(reach_from.timestamp()), max_activities=None) or []
-        new = [a for a in activities if str(a.get("id")) not in stored]
+        # A stored ride without efforts and without `checked` may be a download that was
+        # refused before failures were told apart from rides without power: fetch it again.
+        new = [a for a in activities if _needs_download(stored.get(str(a.get("id"))))]
         if new and budget is not None and not budget(len(new)):
             raise StravaBudgetExceeded(len(new))
+
+        def efforts_of(activity: dict) -> dict | None:
+            try:
+                return _clean(compute_curve(str(user_doc_id), [activity]))
+            except strava_efforts.StreamUnavailable:
+                return None
+
         # One stream download and one best-efforts computation per new ride, in parallel.
         with ThreadPoolExecutor(max_workers=PER_ACTIVITY_WORKERS) as pool:
-            fresh = list(pool.map(lambda a: _clean(compute_curve(str(user_doc_id), [a])), new))
+            fresh = list(pool.map(efforts_of, new))
     finally:
         _share_usage(db)
 
-    computed = {str(a.get("id")): e for a, e in zip(new, fresh)}
+    computed = {str(a.get("id")): e for a, e in zip(new, fresh) if e is not None}
+    failed = {str(a.get("id")) for a, e in zip(new, fresh) if e is None}
     rides: dict[str, dict] = {}
     for a in activities:
         aid = str(a.get("id"))
+        if aid in failed:
+            continue  # tried again at the next fetch
         rides[aid] = {
+            "checked": True,
             # A ride without a start date (Strava always sends one) counts as the oldest
             # possible, so it is never used for a date it may not have existed on.
             "startDate": a.get("startDate") or reach_from.isoformat(),
@@ -216,6 +239,9 @@ def get_strava_power_curve(
     previous_update = strava_efforts.parse_iso(stored_doc.get("updatedAt"))
     if previous_from and previous_update and previous_update >= reach_from:
         history_from = min(previous_from, reach_from)
+    if failed:
+        # Rides are missing: the history covers nothing until a fetch gets them all.
+        history_from = now
     try:
         strava_efforts.write(db, user_doc_id, rides, history_from, now)
     except Exception as exc:
@@ -226,7 +252,7 @@ def get_strava_power_curve(
         entry = strava_efforts.curve_as_of(rides, now, w)
         entry.pop("asOf", None)
         entry.update({"userDocId": str(user_doc_id), "computedAt": now.isoformat(),
-                      "historyFrom": history_from.isoformat()})
+                      "historyFrom": history_from.isoformat(), "failedDownloads": len(failed)})
         if len(windows) > 1:
             # On every window's doc, so the warm-up can check completeness from whichever
             # window the predictor uses.

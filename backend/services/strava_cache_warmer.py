@@ -278,6 +278,7 @@ def _warm(
     new_cached = new_empty = 0
     eligible_cached = eligible_empty = others_cached = 0
     rate_limited = False
+    failed_downloads = 0
 
     def usage() -> dict:
         # Re-read the shared counters: each curve fetch adds its requests to them (and
@@ -307,6 +308,7 @@ def _warm(
                 history_days=history_days,
             )
             warmed.append({"zwiftId": str(p.get("zwiftId")), "activityCount": entry["activityCount"]})
+            failed_downloads += int(entry.get("failedDownloads") or 0)
             if entry.get("curve"):
                 new_cached += 1
             else:
@@ -318,6 +320,11 @@ def _warm(
                     eligible_empty += 1
             elif p["userDocId"] not in status["eligibleIds"] and entry.get("curve"):
                 others_cached += 1
+            if entry.get("failedDownloads"):
+                # Strava refused ride downloads (or had errors): stop instead of asking for
+                # more. The rides that failed are fetched again in a later run.
+                rate_limited = True
+                break
         except StravaBudgetExceeded as exc:
             rate_limited = True
             if exc.streams + LIST_REQUESTS > strava_rate.share15(usage(), BUDGET_FRACTION):
@@ -341,6 +348,7 @@ def _warm(
             "warmed": new_cached,
             "noPowerData": new_empty,
             "failed": len(failed),
+            "failedDownloads": failed_downloads,
             "rateLimited": rate_limited,
         })
     except Exception as exc:

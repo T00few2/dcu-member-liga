@@ -489,3 +489,77 @@ def test_progress_counts_what_is_stored_and_what_still_waits():
     out = po.progress(db, races, now)
     assert out == {"racesFinalized": 2, "racesBuilt": 1, "observations": 10, "withStrava": 1,
                    "weightBeforeRace": 0, "ridersWaitingForStrava": 1}   # rider 6: Strava, no history yet
+
+
+# --- refused ride downloads -------------------------------------------------------------------
+
+
+def test_a_refused_download_is_not_stored_as_a_ride_without_power_and_is_retried():
+    now = datetime.now(timezone.utc)
+    acts = [{"id": 1, "startDate": (now - timedelta(days=5)).isoformat()},
+            {"id": 2, "startDate": (now - timedelta(days=6)).isoformat()}]
+    db = FakeDb()
+    refuse = {2}
+
+    def compute(_uid, rides):
+        if rides[0]["id"] in refuse:
+            raise strava_efforts.StreamUnavailable("Strava answered 429")
+        return {"w1200": 250}
+
+    entry = spc.get_strava_power_curve(db, _strava(acts), "u1", 90, compute_curve=compute, refresh=True,
+                                       history_days=200)
+    stored = strava_efforts.read(db, "u1")
+    assert entry["failedDownloads"] == 1 and set(stored["rides"]) == {"1"}
+    # The history is not complete, so no past race gets a curve with a ride missing.
+    assert not strava_efforts.covers(stored, now - timedelta(days=1), 90)
+
+    refuse.clear()
+    spy = MagicMock(side_effect=compute)
+    entry = spc.get_strava_power_curve(db, _strava(acts), "u1", 90, compute_curve=spy, refresh=True,
+                                       history_days=200)
+    stored = strava_efforts.read(db, "u1")
+    assert spy.call_count == 1 and spy.call_args[0][1][0]["id"] == 2      # only the ride that failed
+    assert entry["failedDownloads"] == 0 and set(stored["rides"]) == {"1", "2"}
+    assert strava_efforts.covers(stored, now - timedelta(seconds=1), 90)
+
+
+def test_rides_stored_empty_before_failures_were_told_apart_are_downloaded_again():
+    now = datetime.now(timezone.utc)
+    act = {"id": 7, "startDate": (now - timedelta(days=5)).isoformat()}
+    db = FakeDb()
+    db.store["strava_activity_efforts/u1"] = {
+        "userDocId": "u1", "historyFrom": (now - timedelta(days=200)).isoformat(),
+        "updatedAt": (now - timedelta(hours=1)).isoformat(),
+        "rides": {"7": {"startDate": act["startDate"], "indoor": False, "race": False, "efforts": {}}}}
+    compute = MagicMock(return_value={"w1200": 260})
+    spc.get_strava_power_curve(db, _strava([act]), "u1", 90, compute_curve=compute, refresh=True)
+    ride = strava_efforts.read(db, "u1")["rides"]["7"]
+    assert compute.call_count == 1 and ride["efforts"] == {"w1200": 260.0} and ride["checked"] is True
+    # A ride that really has no power is checked once and then left alone.
+    empty = MagicMock(return_value={})
+    act8 = {"id": 8, "startDate": (now - timedelta(days=4)).isoformat()}
+    spc.get_strava_power_curve(db, _strava([act, act8]), "u1", 90, compute_curve=empty, refresh=True)
+    spc.get_strava_power_curve(db, _strava([act, act8]), "u1", 90, compute_curve=empty, refresh=True)
+    assert empty.call_count == 1
+
+
+def test_streams_tell_try_again_later_from_no_streams(monkeypatch):
+    import services.strava as strava_module
+
+    service = strava_module.StravaService(db=None)
+    monkeypatch.setattr(service, "_get_valid_token", lambda _rid: "token")
+    status = {"code": 429}
+    monkeypatch.setattr(strava_module, "_strava_get",
+                        lambda *a, **k: MagicMock(status_code=status["code"], text="", json=lambda: [{"type": "watts"}]))
+    assert service.get_activity_streams("u1", 1) is None                      # other callers: unchanged
+    for code in (429, 503):
+        status["code"] = code
+        try:
+            service.get_activity_streams("u1", 1, raise_if_unavailable=True)
+            raise AssertionError("expected StreamUnavailable")
+        except strava_efforts.StreamUnavailable:
+            pass
+    status["code"] = 404                                                       # deleted or private: no retry
+    assert service.get_activity_streams("u1", 1, raise_if_unavailable=True) is None
+    status["code"] = 200
+    assert service.get_activity_streams("u1", 1, raise_if_unavailable=True) == [{"type": "watts"}]
