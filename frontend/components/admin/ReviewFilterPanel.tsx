@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { User } from 'firebase/auth';
 import { API_URL } from '@/lib/api';
 
-export type ReviewReason = 'no_velo' | 'no_max30' | 'few_rides' | 'no_division';
+export type ReviewReason = 'no_velo' | 'no_max30' | 'few_rides' | 'no_division' | 'struggling';
 
 export interface ReviewFilter {
   newSignupsDays: number | null;
@@ -13,6 +13,12 @@ export interface ReviewFilter {
   onlyWithStrava: boolean;
   skipAdminPlaced: boolean;
   reasons: ReviewReason[];
+  /** "struggling": at least this many races in the current division… */
+  strugglingMinRaces?: number;
+  /** …of which this share (0.5-1)… */
+  strugglingShare?: number;
+  /** …ended at or behind this part of the field (0.8 = the last 20%). DNFs count as last. */
+  strugglingPercentile?: number;
 }
 
 interface FilterPreview {
@@ -29,6 +35,9 @@ export const DEFAULT_FILTER: ReviewFilter = {
   onlyWithStrava: false,
   skipAdminPlaced: false,
   reasons: ['no_velo', 'no_max30', 'few_rides'],
+  strugglingMinRaces: 3,
+  strugglingShare: 0.75,
+  strugglingPercentile: 0.8,
 };
 
 const REASONS: { key: ReviewReason; label: string }[] = [
@@ -36,7 +45,32 @@ const REASONS: { key: ReviewReason; label: string }[] = [
   { key: 'no_max30', label: 'No max30 vELO (missing or 0)' },
   { key: 'few_rides', label: 'Few Zwift rides' },
   { key: 'no_division', label: 'No division yet' },
+  { key: 'struggling', label: 'Keeps finishing at the back of their division' },
 ];
+
+/** A whole-number box that keeps what is typed and passes on a value only while it is in range. */
+function NumberField({ label, value, min, max, onChange }: {
+  label: string; value: number; min: number; max: number; onChange: (n: number) => void;
+}) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => {
+    setText(t => (Number(t) === value ? t : String(value)));
+  }, [value]);
+  const valid = Number.isInteger(Number(text)) && Number(text) >= min && Number(text) <= max && text.trim() !== '';
+  return (
+    <input
+      type="number" min={min} max={max} value={text} aria-label={label} aria-invalid={!valid}
+      title={`${min} to ${max}`}
+      onChange={e => {
+        setText(e.target.value);
+        const n = Number(e.target.value);
+        if (e.target.value.trim() !== '' && Number.isInteger(n) && n >= min && n <= max) onChange(n);
+      }}
+      onBlur={() => setText(String(value))}
+      className={`w-14 px-1 py-0.5 rounded border bg-background text-foreground ${valid ? 'border-border' : 'border-red-500'}`}
+    />
+  );
+}
 
 async function authed(user: User, path: string, init?: RequestInit) {
   const token = await user.getIdToken();
@@ -68,7 +102,7 @@ export default function ReviewFilterPanel({
   savedMinRides?: number;
 }) {
   const queryClient = useQueryClient();
-  const [filter, setFilter] = useState<ReviewFilter>(saved ?? DEFAULT_FILTER);
+  const [filter, setFilter] = useState<ReviewFilter>({ ...DEFAULT_FILTER, ...saved });
   const [minRides, setMinRides] = useState<number>(savedMinRides ?? 15);
   const [days, setDays] = useState<string>(String(saved?.newSignupsDays ?? 30));
   const [saving, setSaving] = useState(false);
@@ -79,7 +113,7 @@ export default function ReviewFilterPanel({
   const savedKey = JSON.stringify([saved, savedMinRides]);
   useEffect(() => {
     if (saved) {
-      setFilter(saved);
+      setFilter({ ...DEFAULT_FILTER, ...saved });
       if (saved.newSignupsDays) setDays(String(saved.newSignupsDays));
     }
     if (savedMinRides) setMinRides(savedMinRides);
@@ -97,7 +131,7 @@ export default function ReviewFilterPanel({
     enabled: !!user,
   });
 
-  const dirty = JSON.stringify([filter, minRides]) !== JSON.stringify([saved ?? DEFAULT_FILTER, savedMinRides ?? 15]);
+  const dirty = JSON.stringify([filter, minRides]) !== JSON.stringify([{ ...DEFAULT_FILTER, ...saved }, savedMinRides ?? 15]);
 
   function toggleReason(key: ReviewReason, on: boolean) {
     setFilter(f => ({ ...f, reasons: on ? [...f.reasons.filter(r => r !== key), key] : f.reasons.filter(r => r !== key) }));
@@ -190,6 +224,35 @@ export default function ReviewFilterPanel({
               {preview?.byReason && <span className="text-muted-foreground">· {preview.byReason[r.key] ?? 0}</span>}
             </label>
           ))}
+          {filter.reasons.includes('struggling') && (
+            <div className="ml-6 space-y-1 text-xs text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-1">
+                In the last
+                <NumberField
+                  label="Back of the field, percent" min={5} max={50}
+                  value={Math.round((1 - (filter.strugglingPercentile ?? 0.8)) * 100)}
+                  onChange={n => setFilter(f => ({ ...f, strugglingPercentile: (100 - n) / 100 }))}
+                />
+                % of the field in at least
+                <NumberField
+                  label="Share of races, percent" min={50} max={100}
+                  value={Math.round((filter.strugglingShare ?? 0.75) * 100)}
+                  onChange={n => setFilter(f => ({ ...f, strugglingShare: n / 100 }))}
+                />
+                % of their races, with at least
+                <NumberField
+                  label="Minimum league races" min={2} max={20}
+                  value={filter.strugglingMinRaces ?? 3}
+                  onChange={n => setFilter(f => ({ ...f, strugglingMinRaces: n }))}
+                />
+                races in the division.
+              </div>
+              <p>
+                Did-not-finish counts as last. A move down is only proposed for riders placed above their own
+                vELO division, or whose vELO is unreliable; the others are only listed under “Struggling riders”.
+              </p>
+            </div>
+          )}
         </fieldset>
       </div>
       <div className="flex flex-wrap items-center gap-3 text-sm">

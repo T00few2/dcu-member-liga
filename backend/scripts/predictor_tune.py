@@ -116,13 +116,24 @@ def main() -> int:
 
     riders = pt.build_eval_set(participants, read_curve, min_rides=min_rides, categories=categories)
     print(f"Eval riders (reliable vELO + cached Strava curve): {len(riders)}")
+    from services import league_performance as lp
+    from services import predictor_observations as po
+
+    observations = po.read_all(db)
+    league = pt.build_league_eval(observations, participants, min_rides=min_rides, categories=categories)
+    print(f"League observations stored: {len(observations)} · eval entries from league races "
+          f"(riders without a reliable vELO): {len(league)}")
+    riders += league
 
     if args.report_only:
-        score, _ = pt.cross_validate(participants, riders, config, categories=categories, folds=args.folds)
+        score, _ = pt.cross_validate(participants, riders, config, categories=categories, folds=args.folds,
+                                     observations=observations)
+        ratings = lp.performance_ratings(p for rows in ps.league_performances(db).values() for p in rows)
         _print("Current config", config.to_dict())
         _print("Strava → division accuracy (cross-validated)", score.to_dict() if score else None)
-        _print("Earlier predicted placements vs. real vELO now",
-               pt.past_prediction_outcomes(participants, min_rides=min_rides, categories=categories))
+        _print("Earlier predicted placements vs. real vELO (or league performance) now",
+               pt.past_prediction_outcomes(participants, min_rides=min_rides, categories=categories,
+                                           league_ratings=ratings))
         return 0
 
     run = runs.run_tuning(db, started_by="predictor_tune.py", save=not args.dry_run, folds=args.folds)

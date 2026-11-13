@@ -577,6 +577,8 @@ class StravaService:
                         'name': a.get('name'),
                         'startDate': a.get('start_date'),
                         'indoor': self._is_indoor_activity(a),
+                        # The rider marked the ride as a race on Strava (workout_type 11).
+                        'race': a.get('workout_type') == 11,
                     })
 
             if reached_window_start or len(batch) < per_page or new_ids == 0 or oldest_epoch is None:

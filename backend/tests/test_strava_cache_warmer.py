@@ -43,9 +43,9 @@ def test_only_reliable_riders_with_strava_are_eligible():
 
 def test_status_counts_fresh_curves_and_lists_never_cached_first():
     db = FakeDb()
-    db.store["strava_power_curves/doc1_90"] = {"curve": {"w5": 1}, "split": True, "windows": [30, 60, 90],
+    db.store["strava_power_curves/doc1_90"] = {"curve": {"w5": 1}, "split": True, "version": 2, "windows": [30, 60, 90],
                                                "computedAt": _fresh()}
-    db.store["strava_power_curves/doc2_90"] = {"curve": {"w5": 1}, "split": True, "windows": [30, 60, 90],
+    db.store["strava_power_curves/doc2_90"] = {"curve": {"w5": 1}, "split": True, "version": 2, "windows": [30, 60, 90],
                                                "computedAt": _fresh(hours=24 * 8)}  # older than a week
     riders = [_rider(1), _rider(2), _rider(3)]
 
@@ -499,7 +499,7 @@ def test_other_riders_with_strava_are_cached_after_the_tuning_riders():
     db.store["strava_power_curves/doc2_90"] = {"curve": {"w5": 1}, "split": True,
                                                "computedAt": _fresh(hours=24 * 40)}
     db.store["strava_power_curves/doc4_90"] = {"curve": {"w5": 1}, "computedAt": _fresh()}
-    db.store["strava_power_curves/doc5_90"] = {"curve": {"w5": 1}, "split": True, "windows": [30, 60, 90],
+    db.store["strava_power_curves/doc5_90"] = {"curve": {"w5": 1}, "split": True, "version": 2, "windows": [30, 60, 90],
                                                "computedAt": _fresh()}
 
     status = warmer.cache_status(db, tuning + [new_rider, old_format, done, no_strava],

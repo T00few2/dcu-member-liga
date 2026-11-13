@@ -13,7 +13,15 @@ interface Score {
   adjacentAccuracy: number;
   maeVelo: number;
   zwiftDivisionAccuracy: number;
+  /** Per kind of right answer: the rider's own reliable vELO, or league results (riders without one). */
+  bySource?: Record<string, { n: number; divisionAccuracy: number; maeVelo: number }>;
 }
+
+const SOURCE_LABEL: Record<string, string> = {
+  velo: 'riders with a reliable vELO',
+  league: 'league races of riders without one',
+  leaguePointInTimeWeight: 'of those, weight recorded before the race',
+};
 
 interface TuningRun {
   runId: string;
@@ -73,6 +81,15 @@ function ScoreLine({ label, score }: { label: string; score: Score | null | unde
       <span className="text-muted-foreground">{label}: </span>
       <span className="font-semibold text-foreground">{score.divisionAccuracy}%</span>
       <span className="text-muted-foreground"> right division · {score.adjacentAccuracy}% within one · MAE {score.maeVelo} pts · n={score.n}</span>
+      {score.bySource && Object.keys(score.bySource).length > 1 && (
+        <ul className="text-xs text-muted-foreground list-disc pl-5">
+          {Object.entries(score.bySource).map(([key, s]) => (
+            <li key={key}>
+              {SOURCE_LABEL[key] ?? key}: {s.divisionAccuracy}% right division · MAE {s.maeVelo} pts · n={s.n}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

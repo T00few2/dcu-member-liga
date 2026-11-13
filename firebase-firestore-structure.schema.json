@@ -95,6 +95,21 @@
       "description": "Cached Strava peak-power curves per rider and window. Doc id {userDocId}_{days}. Reused for 24 h by the admin predictor; tuning reads the cache only and never calls Strava. Filled for tuning-eligible riders by POST /admin/predictor/strava-cache/warm (up to 10 riders per call, every 20 min via strava-cache-warm.yml or Fill now, paused while Strava read usage is above 75% of either limit); curves older than 30 days are refetched.",
       "items": { "$ref": "#/$defs/stravaPowerCurveDoc" }
     },
+    "strava_activity_efforts": {
+      "type": "array",
+      "description": "Admin-only (default-deny in firestore.rules; backend Admin SDK only). Best efforts of every Strava power ride, one doc per rider (doc id = userDocId), written whenever a Strava curve is fetched. A ride is downloaded once. Lets a power curve be rebuilt as it was before any past league race (backend/services/strava_efforts.py curve_as_of): only rides started before the race are used.",
+      "items": { "$ref": "#/$defs/stravaActivityEffortsDoc" }
+    },
+    "predictor_snapshots": {
+      "type": "array",
+      "description": "Admin-only. Dated copies of each rider's weight, Zwift power and vELO (doc id YYYY-MM-DD), written by the predictor worker weekly and daily when a race starts within two days. A league race uses the latest snapshot taken before its start, never a later one.",
+      "items": { "$ref": "#/$defs/predictorSnapshotDoc" }
+    },
+    "predictor_observations": {
+      "type": "array",
+      "description": "Admin-only. Point-in-time training data from league races, one doc per finalized race (doc id = race id): per rider the performance vELO of that race next to the power, weight and vELO known before the race started. Built by the predictor worker; rebuilt daily while riders still wait for Strava history.",
+      "items": { "$ref": "#/$defs/predictorObservationDoc" }
+    },
     "predictor_settings": {
       "type": "array",
       "description": "Admin-only (default-deny in firestore.rules; backend Admin SDK only). Single doc 'current' with the active vELO predictor config, its metrics and change history. Kept out of the public league/settings because history names the admin who made each change.",
@@ -210,7 +225,7 @@
           "source": { "type": "string", "enum": ["strava", "zwift", "velo", "insufficient_data"] },
           "confidence": { "type": "string", "enum": ["low", "medium", "high"] },
           "flags": { "type": "array", "items": { "type": "string" }, "description": "few_strava_rides, implausible_wkg, no_weight, strava_zwift_disagree, no_power_data, assessment_disagrees, appeal_not_supported" },
-          "evidence": { "type": "object", "additionalProperties": true, "description": "Anonymized evidence (ratings, ride counts, Zwift/Strava predictions and inputs, flags, division list); no names or IDs" },
+          "evidence": { "type": "object", "additionalProperties": true, "description": "Anonymized evidence (ratings, ride counts, Zwift/Strava predictions and inputs, flags, division list; league = results in the current division this season with performanceVelo; heldUp / veloDivision / veloReliable = whether the division is above the rider's own vELO); no names or IDs" },
           "adminRationale": { "type": "string" },
           "riderExplanation": { "type": "string", "description": "Danish text for the rider" },
           "author": { "type": "string", "enum": ["claude", "template", "admin"] },
@@ -676,9 +691,13 @@
                 "skipAdminPlaced": { "type": "boolean", "default": false, "description": "Skip riders whose manualAssigned.assignedFrom is admin" },
                 "reasons": {
                   "type": "array",
-                  "items": { "type": "string", "enum": ["no_velo", "no_max30", "few_rides", "no_division"] },
-                  "default": ["no_velo", "no_max30", "few_rides"]
-                }
+                  "items": { "type": "string", "enum": ["no_velo", "no_max30", "few_rides", "no_division", "struggling"] },
+                  "default": ["no_velo", "no_max30", "few_rides"],
+                  "description": "struggling = keeps finishing at the back of the current division in league races (thresholds below)"
+                },
+                "strugglingMinRaces": { "type": "integer", "minimum": 2, "maximum": 20, "default": 3, "description": "Races in the current division needed before a rider can count as struggling" },
+                "strugglingPercentile": { "type": "number", "minimum": 0.5, "maximum": 1, "default": 0.8, "description": "A race counts as 'at the back' at or behind this part of the field (0 = winner, 1 = last; DNF = last)" },
+                "strugglingShare": { "type": "number", "minimum": 0.5, "maximum": 1, "default": 0.75, "description": "Share of the rider's recent races that must be at the back" }
               }
             }
           }
@@ -2376,7 +2395,104 @@
           }
         },
         "minStravaActivities": { "type": "integer", "description": "Fewer Strava rides than this marks a Strava prediction low-confidence" },
-        "trainingMinRides": { "type": "integer", "description": "Train only on riders with a reliable vELO (at least this many Zwift rides in 90 days and a stable rating); 0 = every rider with a vELO. Tuning tries 0 and minZwiftRides." }
+        "trainingMinRides": { "type": "integer", "description": "Train only on riders with a reliable vELO (at least this many Zwift rides in 90 days and a stable rating); 0 = every rider with a vELO. Tuning tries 0 and minZwiftRides." },
+        "outdoorRaceScale": {
+          "type": ["object", "null"],
+          "description": "Own outdoor->indoor multiplier per W/kg input for outdoor rides marked as a race on Strava; null = they get stravaPowerScale like other outdoor rides. Range 0.5-1.5.",
+          "additionalProperties": false,
+          "properties": {
+            "wkg5s": { "type": "number" },
+            "wkg1m": { "type": "number" },
+            "wkg5m": { "type": "number" },
+            "wkg20m": { "type": "number" }
+          }
+        },
+        "targetSource": { "type": "string", "enum": ["velo", "velo_or_league"], "default": "velo", "description": "velo_or_league: riders without a reliable vELO are trained on predictor_observations (power known before a league race vs. the performance vELO of that race) instead of their vELO" },
+        "strictPointInTime": { "type": "boolean", "default": false, "description": "Leave out league training rows whose weight is today's value rather than one recorded before the race" }
+      }
+    },
+    "stravaActivityEffortsDoc": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "_id": { "type": "string", "description": "userDocId" },
+        "userDocId": { "type": "string" },
+        "historyFrom": { "type": "string", "format": "date-time", "description": "The ride list is complete from this date on" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "version": { "type": "integer" },
+        "rides": {
+          "type": "object",
+          "description": "Strava activity id -> ride",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "startDate": { "type": "string", "format": "date-time" },
+              "indoor": { "type": "boolean", "description": "VirtualRide or trainer ride" },
+              "race": { "type": "boolean", "description": "Marked as a race on Strava" },
+              "efforts": { "type": "object", "description": "Peak watts keyed w{seconds}", "additionalProperties": { "type": "number" } }
+            }
+          }
+        }
+      }
+    },
+    "predictorSnapshotDoc": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "_id": { "type": "string", "description": "YYYY-MM-DD" },
+        "capturedAt": { "type": "string", "format": "date-time" },
+        "riders": {
+          "type": "object",
+          "description": "zwiftId -> values on that day (only positive values are stored)",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "weightInGrams": { "type": "number" },
+              "cp5s": { "type": "number" },
+              "cp1min": { "type": "number" },
+              "cp5min": { "type": "number" },
+              "cp20min": { "type": "number" },
+              "rating": { "type": "number" },
+              "max30Rating": { "type": "number" },
+              "zwiftActivityCount": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "predictorObservationDoc": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "_id": { "type": "string", "description": "race id" },
+        "raceId": { "type": "string" },
+        "raceStart": { "type": "string", "format": "date-time" },
+        "builtAt": { "type": "string", "format": "date-time" },
+        "pending": { "type": "integer", "description": "Riders with Strava whose stored ride history did not cover every window yet; the race is rebuilt daily until 0" },
+        "riders": {
+          "type": "object",
+          "description": "zwiftId -> observation (finishers with a performance vELO only)",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "zwiftId": { "type": "string" },
+              "division": { "type": "string" },
+              "rank": { "type": "integer" },
+              "fieldSize": { "type": "integer" },
+              "percentile": { "type": "number", "description": "0 = winner, 1 = last" },
+              "performanceVelo": { "type": "number", "description": "Median pre-race vELO of the riders finishing within three places" },
+              "veloBefore": { "type": ["number", "null"], "description": "The rider's own vELO going into the race (races.veloChanges.riders.before)" },
+              "weightKg": { "type": ["number", "null"] },
+              "weightSource": { "type": ["string", "null"], "enum": ["snapshot", "current", null], "description": "snapshot = recorded before the race; current = today's weight (no earlier snapshot)" },
+              "zwift": { "type": ["object", "null"], "description": "Zwift W/kg inputs from the snapshot before the race; null when there was none (today's Zwift power is never used)" },
+              "strava": { "type": "object", "description": "Window days ('30', '60', '90') -> curve as of the race start (curve, curveIndoor, curveOutdoor, curveOutdoorRace with w5/w60/w300/w1200, and ride counts)", "additionalProperties": { "type": "object" } },
+              "stravaPending": { "type": "boolean" }
+            }
+          }
+        }
       }
     },
     "predictorSettingsDoc": {
@@ -2444,9 +2560,17 @@
           "description": "Peak watts from outdoor rides only; the predictor applies the outdoor->indoor correction to these",
           "additionalProperties": { "type": "number" }
         },
+        "curveOutdoorRace": {
+          "type": "object",
+          "description": "Peak watts from outdoor rides the rider marked as a race on Strava (workout_type 11); also part of curveOutdoor",
+          "additionalProperties": { "type": "number" }
+        },
         "activityCount": { "type": "integer", "description": "Power rides in the window" },
         "indoorCount": { "type": "integer" },
         "outdoorCount": { "type": "integer" },
+        "outdoorRaceCount": { "type": "integer" },
+        "version": { "type": "integer", "description": "2 = built from strava_activity_efforts with race tags; older entries are re-fetched" },
+        "historyFrom": { "type": "string", "format": "date-time", "description": "How far back the rider's stored ride history (strava_activity_efforts) reaches" },
         "split": { "type": "boolean", "description": "True when curveIndoor/curveOutdoor exist; older entries are re-fetched" },
         "computedAt": { "type": "string", "format": "date-time" }
       }
