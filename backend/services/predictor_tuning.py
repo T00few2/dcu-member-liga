@@ -15,6 +15,11 @@ Everything here is deterministic plain Python so a run can be repeated:
 
 Only cached Strava curves are used (`strava_power_curves`), so tuning never
 spends Strava API requests.
+
+League results add a second kind of ground truth, for exactly the riders the predictor
+is for: a rider without a reliable vELO who has ridden league races is scored per race,
+power known **before** the race against the performance vELO of that race
+(`services/predictor_observations.py`). Scores are reported for both kinds.
 """
 from __future__ import annotations
 
@@ -55,8 +60,17 @@ class EvalRider:
     weightKg: float
     racingScore: float
     zwiftInputs: dict
-    # window days -> ({"indoor": inputs|None, "outdoor": inputs|None}, activityCount)
+    # window days -> ({"indoor": inputs|None, "outdoor": inputs|None, "race": inputs|None}, activityCount)
     strava: dict[int, tuple[dict, int]] = field(default_factory=dict)
+    # "velo": the rider's own reliable vELO. "league": one league race of a rider without
+    # one; `realVelo` is then the performance vELO of that race and `strava` the power
+    # known before it.
+    truthSource: str = "velo"
+    key: str = ""  # unique per entry (a league rider has one entry per race)
+    pointInTimeWeight: bool = True
+
+    def __post_init__(self) -> None:
+        self.key = self.key or self.zwiftId
 
 
 def reliable_velo(p: dict, min_rides: int) -> float | None:
@@ -100,8 +114,47 @@ def build_eval_set(
     return out
 
 
-def past_prediction_outcomes(participants: list[dict], *, min_rides: int, categories: Any = None) -> dict:
-    """How good were earlier predicted placements, now that those riders have a real vELO?"""
+def build_league_eval(
+    observations: list[dict] | None,
+    participants: list[dict],
+    *,
+    min_rides: int,
+    categories: Any = None,
+) -> list[EvalRider]:
+    """League races of riders **without** a reliable vELO, as eval entries.
+
+    Riders with a reliable vELO are already in the eval set with that as the truth.
+    """
+    trusted = {str(p.get("zwiftId")) for p in participants if reliable_velo(p, min_rides) is not None}
+    out: list[EvalRider] = []
+    for o in observations or []:
+        zid = str(o.get("zwiftId") or "")
+        perf = vp.to_float(o.get("performanceVelo"))
+        kg = vp.to_float(o.get("weightKg")) or 0.0
+        if not zid or zid in trusted or not perf or perf <= 0 or kg <= 0:
+            continue
+        strava = {}
+        for days in vp.STRAVA_WINDOWS:
+            entry = (o.get("strava") or {}).get(str(days))
+            if isinstance(entry, dict) and entry.get("curve"):
+                strava[days] = (vp.strava_split_inputs(entry, kg), int(entry.get("activityCount") or 0))
+        if not strava:
+            continue
+        out.append(EvalRider(
+            zwiftId=zid, realVelo=perf, realCategory=get_zr_category(perf, categories)[0], weightKg=kg,
+            racingScore=0.0, zwiftInputs=vp.clean_inputs(o.get("zwift")), strava=strava,
+            truthSource="league", key=f"{zid}@{o.get('raceId')}",
+            pointInTimeWeight=o.get("weightSource") == "snapshot",
+        ))
+    return out
+
+
+def past_prediction_outcomes(
+    participants: list[dict], *, min_rides: int, categories: Any = None,
+    league_ratings: dict[str, dict] | None = None,
+) -> dict:
+    """How good were earlier predicted placements, now that those riders have a real vELO
+    (or, without a reliable one, a performance vELO from their league races)?"""
     pairs = []
     for p in participants:
         lc = p.get("ligaCategory") or {}
@@ -109,6 +162,8 @@ def past_prediction_outcomes(participants: list[dict], *, min_rides: int, catego
             continue
         predicted = vp.to_float(lc.get("predictedVelo"))
         real = reliable_velo(p, min_rides)
+        if real is None:
+            real = vp.to_float(((league_ratings or {}).get(str(p.get("zwiftId"))) or {}).get("performanceVelo"))
         if not predicted or real is None:
             continue
         pairs.append((predicted, real))
@@ -130,16 +185,18 @@ def past_prediction_outcomes(participants: list[dict], *, min_rides: int, catego
 
 def folds_for(riders: list[EvalRider], k: int) -> list[set[str]]:
     """Deterministic folds by rider id (stable across runs)."""
-    ids = sorted(r.zwiftId for r in riders)
+    ids = sorted({r.zwiftId for r in riders})
     k = max(2, min(k, len(ids))) if ids else 1
     return [set(ids[i::k]) for i in range(k)]
 
 
-def fit_strava_scale(riders: list[EvalRider], days: int) -> dict[str, float]:
+def fit_strava_scale(riders: list[EvalRider], days: int, part: str = "outdoor") -> dict[str, float]:
     """Median Zwift / outdoor-Strava W/kg ratio per duration (outdoor → indoor correction).
 
     Only outdoor efforts are compared: indoor Strava rides are usually the same Zwift
-    rides, so including them would pull the correction towards 1.
+    rides, so including them would pull the correction towards 1. With `part="race"`,
+    only outdoor rides marked as a race are compared (the correction for race efforts).
+    A league entry counts only when it has Zwift power recorded before its race.
     """
     scale = {}
     for fld in vp.POWER_FIELDS:
@@ -147,7 +204,7 @@ def fit_strava_scale(riders: list[EvalRider], days: int) -> dict[str, float]:
         for r in riders:
             if days not in r.strava:
                 continue
-            outdoor = r.strava[days][0].get("outdoor") or {}
+            outdoor = r.strava[days][0].get(part) or {}
             z = r.zwiftInputs.get(fld) or 0
             s = outdoor.get(fld) or 0
             if z > 0 and s > 0:
@@ -164,6 +221,10 @@ class Score:
     adjacentAccuracy: float
     maeVelo: float
     zwiftDivisionAccuracy: float
+    # Per kind of ground truth: {"velo": {n, divisionAccuracy, maeVelo}, "league": {...},
+    # "leaguePointInTimeWeight": {...}} (the last one: league races whose weight was
+    # recorded before the race, not today's).
+    bySource: dict = field(default_factory=dict)
 
     def key(self) -> tuple[float, float]:
         return (self.divisionAccuracy, -self.maeVelo)
@@ -175,6 +236,7 @@ class Score:
             "adjacentAccuracy": self.adjacentAccuracy,
             "maeVelo": self.maeVelo,
             "zwiftDivisionAccuracy": self.zwiftDivisionAccuracy,
+            "bySource": self.bySource,
         }
 
 
@@ -194,11 +256,18 @@ def cross_validate(
     categories: Any = None,
     folds: int = DEFAULT_FOLDS,
     fit_scale: bool = False,
+    fit_race: bool = False,
+    observations: list[dict] | None = None,
 ) -> tuple[Score | None, dict[str, dict]]:
     """Strava→division accuracy for `config`, plus each rider's out-of-fold prediction.
 
     With `fit_scale`, the Strava power correction is re-fitted inside every training
-    fold (never on the riders being predicted) and replaces `config.stravaPowerScale`.
+    fold (never on the riders being predicted) and replaces `config.stravaPowerScale`;
+    with `fit_race`, the same for the outdoor-race correction.
+
+    `observations` are the league-race training rows (used when the config trains on
+    them). Folds are by rider, so none of a rider's races is in the training set used to
+    predict any of that rider's races.
     """
     days = config.stravaWindowDays
     usable = [r for r in riders if days in r.strava]
@@ -207,24 +276,31 @@ def cross_validate(
     per_rider: dict[str, dict] = {}
     hits = adjacent = zwift_hits = zwift_n = 0
     abs_err = []
+    groups: dict[str, list[tuple[bool, float]]] = {}
     for fold in folds_for(usable, folds):
         train_participants = [p for p in participants if str(p.get("zwiftId")) not in fold]
+        train_obs = [o for o in observations or [] if str(o.get("zwiftId")) not in fold]
+        train_riders = [r for r in usable if r.zwiftId not in fold]
         fold_cfg = vp.PredictorConfig.from_dict(config.to_dict())
         if fit_scale:
-            fold_cfg.stravaPowerScale = fit_strava_scale([r for r in usable if r.zwiftId not in fold], days)
-        model = vp.build_model(train_participants, fold_cfg, categories)
+            fold_cfg.stravaPowerScale = fit_strava_scale(train_riders, days)
+        if fit_race:
+            fold_cfg.outdoorRaceScale = fit_strava_scale(train_riders, days, "race")
+        model = vp.build_model(train_participants, fold_cfg, categories, train_obs)
         if model is None:
             return None, {}
         for r in usable:
             if r.zwiftId not in fold:
                 continue
             split, count = r.strava[days]
-            inputs = vp.strava_inputs(split, fold_cfg.stravaPowerScale, r.racingScore)
+            inputs = vp.strava_inputs(split, fold_cfg.stravaPowerScale, r.racingScore,
+                                      race_scale=fold_cfg.outdoorRaceScale)
             pred = vp.predict_inputs(model, inputs, categories, source="strava", activity_count=count)
-            zpred = vp.predict_inputs(model, r.zwiftInputs, categories)
-            if zpred["velo"] is not None:
-                zwift_n += 1
-                zwift_hits += int(zpred["category"] == r.realCategory)
+            if r.truthSource == "velo":
+                zpred = vp.predict_inputs(model, r.zwiftInputs, categories)
+                if zpred["velo"] is not None:
+                    zwift_n += 1
+                    zwift_hits += int(zpred["category"] == r.realCategory)
             if pred["velo"] is None:
                 continue
             hit = pred["category"] == r.realCategory
@@ -232,12 +308,17 @@ def cross_validate(
                        - _division_index(r.realCategory, categories)) <= 1
             hits += int(hit)
             adjacent += int(near)
-            abs_err.append(abs(pred["velo"] - r.realVelo))
-            per_rider[r.zwiftId] = {
+            err = abs(pred["velo"] - r.realVelo)
+            abs_err.append(err)
+            groups.setdefault(r.truthSource, []).append((hit, err))
+            if r.truthSource == "league" and r.pointInTimeWeight:
+                groups.setdefault("leaguePointInTimeWeight", []).append((hit, err))
+            per_rider[r.key] = {
                 "predictedVelo": pred["velo"],
                 "predictedCategory": pred["category"],
                 "realVelo": r.realVelo,
                 "realCategory": r.realCategory,
+                "truthSource": r.truthSource,
             }
     n = len(abs_err)
     if n == 0:
@@ -248,6 +329,12 @@ def cross_validate(
         adjacentAccuracy=round(100 * adjacent / n, 1),
         maeVelo=round(statistics.mean(abs_err), 1),
         zwiftDivisionAccuracy=round(100 * zwift_hits / zwift_n, 1) if zwift_n else 0.0,
+        bySource={
+            name: {"n": len(rows),
+                   "divisionAccuracy": round(100 * sum(1 for h, _ in rows if h) / len(rows), 1),
+                   "maeVelo": round(statistics.mean(e for _, e in rows), 1)}
+            for name, rows in sorted(groups.items())
+        },
     )
     return score, per_rider
 
@@ -263,17 +350,20 @@ class Candidate:
     fitScale: bool
     score: Score
     perRider: dict[str, dict]
+    fitRace: bool = False
 
     def describe(self) -> dict:
-        return {"config": self.config.to_dict(), "fitScale": self.fitScale, "score": self.score.to_dict()}
+        return {"config": self.config.to_dict(), "fitScale": self.fitScale, "fitRace": self.fitRace,
+                "score": self.score.to_dict()}
 
 
-def _evaluate(participants, riders, cfg, categories, folds, fit_scale) -> Candidate | None:
+def _evaluate(participants, riders, cfg, categories, folds, fit_scale, fit_race=False,
+              observations=None) -> Candidate | None:
     score, per_rider = cross_validate(participants, riders, cfg, categories=categories, folds=folds,
-                                      fit_scale=fit_scale)
+                                      fit_scale=fit_scale, fit_race=fit_race, observations=observations)
     if score is None:
         return None
-    return Candidate(cfg, fit_scale, score, per_rider)
+    return Candidate(cfg, fit_scale, score, per_rider, fit_race)
 
 
 def _with(cfg: vp.PredictorConfig, **changes) -> vp.PredictorConfig:
@@ -290,6 +380,7 @@ def greedy_features(
     categories: Any = None,
     folds: int = DEFAULT_FOLDS,
     max_features: int = MAX_GREEDY_FEATURES,
+    observations: list[dict] | None = None,
 ) -> dict[str, bool]:
     """Forward selection: keep adding the feature that improves Strava accuracy most."""
     chosen: list[str] = []
@@ -300,7 +391,8 @@ def greedy_features(
             if key in chosen or key in TUNING_EXCLUDED_FEATURES:
                 continue
             feats = {k: (k in chosen or k == key) for k in vp.FEATURE_BY_KEY}
-            cand = _evaluate(participants, riders, _with(base, features=feats), categories, folds, False)
+            cand = _evaluate(participants, riders, _with(base, features=feats), categories, folds, False,
+                             observations=observations)
             if cand and (step_best is None or cand.score.key() > step_best[0].score.key()):
                 step_best = (cand, key)
         if step_best is None or (best is not None and step_best[0].score.key() <= best.score.key()):
@@ -346,10 +438,15 @@ def tune(
     min_riders: int = MIN_EVAL_RIDERS,
     min_improvement_pp: float = MIN_IMPROVEMENT_PP,
     min_rides: int = 15,
+    observations: list[dict] | None = None,
+    league_ratings: dict[str, dict] | None = None,
 ) -> TuningResult:
+    """Search for better settings. `riders` may hold league entries (`build_league_eval`);
+    `observations` are the league-race training rows a config can train on."""
     windows = {d: sum(1 for r in riders if d in r.strava) for d in vp.STRAVA_WINDOWS}
-    past = past_prediction_outcomes(participants, min_rides=min_rides, categories=categories)
-    baseline = _evaluate(participants, riders, current, categories, folds, False)
+    past = past_prediction_outcomes(participants, min_rides=min_rides, categories=categories,
+                                    league_ratings=league_ratings)
+    baseline = _evaluate(participants, riders, current, categories, folds, False, observations=observations)
 
     if len(riders) < min_riders or baseline is None:
         return TuningResult(
@@ -368,7 +465,8 @@ def tune(
         )
 
     feature_sets = [_without_excluded(current.features)]
-    greedy = greedy_features(participants, riders, current, categories=categories, folds=folds)
+    greedy = greedy_features(participants, riders, current, categories=categories, folds=folds,
+                             observations=observations)
     if greedy != feature_sets[0]:
         feature_sets.append(greedy)
 
@@ -384,10 +482,26 @@ def tune(
                     for fit_scale in (False, True):
                         cfg = _with(current, features=feats, regression=regression, ridgeLambda=lam,
                                     stravaWindowDays=days, trainingMinRides=train_min,
-                                    stravaPowerScale={k: 1.0 for k in vp.POWER_FIELDS})
-                        cand = _evaluate(participants, riders, cfg, categories, folds, fit_scale)
+                                    stravaPowerScale={k: 1.0 for k in vp.POWER_FIELDS},
+                                    outdoorRaceScale=None)
+                        cand = _evaluate(participants, riders, cfg, categories, folds, fit_scale,
+                                         observations=observations)
                         if cand and cand.score.key() > best.score.key():
                             best = cand
+
+    # On top of the best settings so far: an own correction for outdoor races, and
+    # training on league results for riders without a reliable vELO.
+    start = best
+    targets = vp.TARGET_SOURCES if observations else (start.config.targetSource,)
+    for target in targets:
+        for fit_race in (False, True):
+            if target == start.config.targetSource and not fit_race:
+                continue
+            cfg = _with(start.config, targetSource=target, outdoorRaceScale=None)
+            cand = _evaluate(participants, riders, cfg, categories, folds, start.fitScale, fit_race,
+                             observations=observations)
+            if cand and cand.score.key() > best.score.key():
+                best = cand
 
     improvement = round(best.score.divisionAccuracy - baseline.score.divisionAccuracy, 1)
     if best is baseline or improvement < min_improvement_pp:
@@ -409,6 +523,8 @@ def tune(
     final_cfg = vp.PredictorConfig.from_dict(best.config.to_dict())
     if best.fitScale:
         final_cfg.stravaPowerScale = fit_strava_scale(riders, final_cfg.stravaWindowDays)
+    if best.fitRace:
+        final_cfg.outdoorRaceScale = fit_strava_scale(riders, final_cfg.stravaWindowDays, "race")
     changed = []
     for zid, after in best.perRider.items():
         before = baseline.perRider.get(zid)

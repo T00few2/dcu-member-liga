@@ -237,6 +237,7 @@ def predictor_worker():
     if not db:
         return jsonify({"error": "DB not available"}), 500
     try:
+        _keep_point_in_time_data()
         tuned = runs.process_waiting(db)
         # One job per call: research needs nearly the whole request time limit, so after
         # a tuning run it waits for the next call (5 minutes later) instead of being cut off.
@@ -255,6 +256,24 @@ def predictor_worker():
     except Exception as e:
         logger.error("predictor_worker error: %s", e)
         return jsonify({"message": str(e)}), 500
+
+
+def _keep_point_in_time_data() -> None:
+    """Light upkeep on every worker call: a dated snapshot of weight, Zwift power and vELO
+    when one is due, and the point-in-time observations of one league race.
+
+    Never stops the worker: these only feed later tuning."""
+    try:
+        from services import predictor_observations as po
+        from services import predictor_snapshots as snapshots
+
+        races = ps.league_races(db)
+        participants = ps.cached_participants(db)
+        snapshots.take_if_due(db, participants, [start for _race, start in races])
+        if po.refresh_next(db, races, participants):
+            ps.clear_league_cache()
+    except Exception as e:
+        logger.warning("predictor_worker: point-in-time upkeep failed: %s", e)
 
 
 @admin_bp.route("/admin/predictor/tune/runs", methods=["GET"])
@@ -316,7 +335,8 @@ def predictor_strava_cache_status():
         return jsonify({"error": "DB not available"}), 500
     try:
         participants, min_rides, days = _cache_context()
-        status = warmer.cache_status(db, participants, min_rides=min_rides, days=days)
+        status = warmer.cache_status(db, participants, min_rides=min_rides, days=days,
+                                     history_days=ps.strava_history_days(db))
         return jsonify({
             "days": status["days"],
             "eligible": status["eligible"],
@@ -355,6 +375,7 @@ def predictor_strava_cache_warm():
         result = warmer.warm(
             db, strava_service, participants,
             min_rides=min_rides, days=days, compute_curve=_compute_strava_power_curve,
+            history_days=ps.strava_history_days(db),
         )
         if result.get("busy"):
             return jsonify({"busy": True, "warmed": 0, "rateLimited": False}), 200

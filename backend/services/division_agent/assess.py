@@ -23,7 +23,18 @@ Strava holds indoor rides (Zwift, trainer) and outdoor rides. Outdoor efforts ar
 the same rider manages indoors, so the league scales outdoor efforts down by a learned correction and
 uses, per duration, the stronger of the indoor best and the corrected outdoor best (`strava.bestFrom`,
 `strava.indoorCount`, `strava.outdoorCount`). A prediction resting mainly on outdoor efforts is less
-certain for indoor racing; say so when it matters.
+certain for indoor racing; say so when it matters. `strava.bestFrom` may also say "outdoor_race": the best
+effort came from an outdoor ride the rider marked as a race on Strava.
+
+Some riders are reviewed because they keep finishing at the back of their division in the league's own
+races (reason "struggling"). `league` then holds their results in the current division this season: per
+race the rank, the field size and `percentile` (0 = winner, 1 = last, DNFs count as last), and
+`performanceVelo`, the typical pre-race vELO of the riders they finished among. `heldUp` says whether the
+rider's division is harder than their own vELO says (`veloDivision`) or that vELO is unreliable
+(`veloReliable` false). The league only suggests one division down for a struggling rider who is held up and
+whose power data does not point to the current division. A rider whose reliable vELO belongs in the division
+stays, however the races went. Results depend on more than fitness (tactics, mechanicals, a bad day), so say
+how many races the view rests on.
 
 Your job:
 - Check the evidence for data-quality problems (the `flags` list names the ones found by simple rules:
@@ -65,10 +76,10 @@ def client_from_env() -> Any | None:
 def template(evidence: dict, suggestion: dict) -> dict:
     """Plain texts used when Claude is not available."""
     cat = suggestion.get("category")
-    source = {"strava": "Strava-watt", "zwift": "Zwift-watt", "velo": "vELO"}.get(
-        suggestion.get("source"), "de tilgængelige data")
-    source_da = {"strava": "din Strava-watt", "zwift": "din Zwift-watt", "velo": "din vELO"}.get(
-        suggestion.get("source"), "de tilgængelige data")
+    source = {"strava": "Strava-watt", "zwift": "Zwift-watt", "velo": "vELO",
+              "league": "resultaterne i ligaens løb"}.get(suggestion.get("source"), "de tilgængelige data")
+    source_da = {"strava": "din Strava-watt", "zwift": "din Zwift-watt", "velo": "din vELO",
+                 "league": "dine resultater i ligaens løb"}.get(suggestion.get("source"), "de tilgængelige data")
     if cat is None:
         return {
             "proposedCategory": None,
@@ -80,8 +91,13 @@ def template(evidence: dict, suggestion: dict) -> dict:
     return {
         "proposedCategory": cat,
         "confidence": suggestion.get("confidence") or "medium",
-        "adminRationale": (f"Forudsagt vELO {suggestion.get('velo')} ud fra {source} giver {cat}. "
-                           f"Datakvalitet: {flags}."),
+        "adminRationale": (
+            (f"Rytteren slutter gentagne gange bagerst i {evidence.get('currentCategory')} "
+             f"({(evidence.get('league') or {}).get('races')} løb) og er placeret over sin egen vELO-division: "
+             f"forslag {cat}. Datakvalitet: {flags}.")
+            if suggestion.get("source") == "league" else
+            (f"Forudsagt vELO {suggestion.get('velo')} ud fra {source} giver {cat}. "
+             f"Datakvalitet: {flags}.")),
         "riderExplanation": (f"Ud fra {source_da} foreslår vi divisionen {cat}. "
                              "En admin ser forslaget igennem og træffer den endelige beslutning."),
     }

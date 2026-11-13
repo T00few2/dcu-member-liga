@@ -224,7 +224,7 @@ def test_curve_is_fetched_once_and_then_served_from_cache():
     assert first["cached"] is False and second["cached"] is True
     assert second["curve"] == {"w5": 900.0, "w1200": 280.0}
     assert second["activityCount"] == 2
-    assert compute.call_count == 1
+    assert compute.call_count == 2  # once per ride; the second call downloads nothing
 
 
 def test_stale_cache_is_refetched_but_cache_only_mode_never_fetches():

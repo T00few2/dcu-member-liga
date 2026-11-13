@@ -205,6 +205,10 @@ def explain_rider(db: Any, zwift_id: str, settings: dict) -> dict:
         **info,
         "weightKg": ev.get("weightKg"),
         "hasStrava": ev.get("hasStrava"),
+        # League results in the current division, and whether the division is above the rider's own vELO.
+        "league": ev.get("league"),
+        "heldUp": ev.get("heldUp"),
+        "veloDivision": ev.get("veloDivision"),
         "agentReviewReasons": triage.needs_review(row, settings),
         "agentSuggestion": suggestion,
         "history": _history(db, str(row.get("zwiftId"))),

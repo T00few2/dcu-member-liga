@@ -210,8 +210,8 @@ def test_queue_then_process_stores_findings_and_cleans_up_files(run_db):
     assert stored["findings"] == FINDINGS
     assert stored["evalRiders"] == 60 and stored["idMap"]
     assert stored["outcome"] in ("proposal", "report")
-    assert sorted(client.files.uploaded) == ["divisions.csv", "eval.csv", "training.csv"]
-    assert sorted(client.files.deleted) == ["f-divisions.csv", "f-eval.csv", "f-training.csv"]
+    assert sorted(client.files.uploaded) == ["divisions.csv", "eval.csv", "league.csv", "training.csv"]
+    assert sorted(client.files.deleted) == ["f-divisions.csv", "f-eval.csv", "f-league.csv", "f-training.csv"]
     assert "idMap" not in research.list_runs(run_db)[0]  # never sent to the browser
     assert research.process_next(run_db, client_factory=lambda: client) is None  # idle
 

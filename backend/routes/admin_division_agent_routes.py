@@ -161,6 +161,30 @@ def division_agent_filter_preview():
         return jsonify({"message": "Could not count riders"}), 500
 
 
+@admin_bp.route("/admin/division-agent/struggling", methods=["GET"])
+def division_agent_struggling():
+    """Riders who keep finishing at the back of their division (the review filter's thresholds),
+    with their results, vELO and whether their division is held above their own vELO."""
+    _, err = _admin()
+    if err:
+        return err
+    if not db:
+        return jsonify({"error": "DB not available"}), 500
+    try:
+        settings = ps.division_agent_settings(db)
+        riders = runner.struggling_riders(ps.cached_participants(db), settings, ps.load_categories(db),
+                                          proposals.all_proposals(db))
+        flt = settings["reviewFilter"]
+        return jsonify({
+            "riders": riders,
+            "thresholds": {k: flt[k] for k in ("strugglingMinRaces", "strugglingPercentile", "strugglingShare")},
+            "reasonEnabled": "struggling" in flt["reasons"],
+        }), 200
+    except Exception as e:
+        logger.error("division_agent_struggling error: %s", e)
+        return jsonify({"message": "Could not list struggling riders"}), 500
+
+
 @admin_bp.route("/admin/division-agent/assess/<zwift_id>", methods=["POST"])
 def division_agent_assess(zwift_id: str):
     """Review one rider now. `?dryRun=1` returns the would-be proposal without saving it."""

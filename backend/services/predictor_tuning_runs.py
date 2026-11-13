@@ -40,7 +40,15 @@ def _compute(db: Any, *, folds: int) -> dict:
     min_rides = ps.division_agent_settings(db)["minZwiftRides"]
     read_curve = cached_reader(db)
     riders = pt.build_eval_set(participants, read_curve, min_rides=min_rides, categories=categories)
-    result = pt.tune(participants, riders, current, categories=categories, folds=folds, min_rides=min_rides)
+    # League races of riders without a reliable vELO: extra ground truth and training rows.
+    from services import league_performance as lp
+    from services import predictor_observations as po
+
+    observations = po.read_all(db)
+    riders += pt.build_league_eval(observations, participants, min_rides=min_rides, categories=categories)
+    ratings = lp.performance_ratings(p for rows in ps.league_performances(db).values() for p in rows)
+    result = pt.tune(participants, riders, current, categories=categories, folds=folds, min_rides=min_rides,
+                     observations=observations, league_ratings=ratings)
     return {
         "status": "pending" if result.status == "improved" else "report",
         "result": result.to_dict(),

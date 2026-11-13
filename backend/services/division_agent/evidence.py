@@ -105,6 +105,22 @@ def strava_curve(
         raise WaitingForStrava() from exc
 
 
+def held_up(row: dict, current: str | None, categories: Any, min_rides: int) -> dict:
+    """Is the rider's division harder than their own vELO says, or is that vELO unreliable?
+
+    Only such riders may be proposed for a move down when they struggle: a rider whose
+    reliable vELO belongs in the division stays there, whatever the results.
+    """
+    names = division_names(categories)
+    real = max((v for v in (vp.to_float(row.get("rating")), vp.to_float(row.get("max30Rating"))) if v and v > 0),
+               default=None)
+    velo_division = vp.category_for_velo(real, categories) if real else None
+    reliable = vp.reliable_velo(row, min_rides) is not None
+    above = bool(current in names and velo_division in names and names.index(current) < names.index(velo_division))
+    return {"heldUp": bool(not reliable or above), "veloReliable": reliable, "veloDivision": velo_division,
+            "aboveVeloDivision": above}
+
+
 def gather(
     row: dict,
     user_data: dict,
@@ -113,6 +129,7 @@ def gather(
     categories: Any,
     curve_entry: dict | None,
     reasons: list[str],
+    min_rides: int = vp.LEAGUE_MIN_RIDES,
 ) -> dict:
     """Evidence for one rider. ZRS is never used: it is as unreliable as vELO here."""
     lc = user_data.get("ligaCategory") or {}
@@ -132,8 +149,10 @@ def gather(
     if curve and kg > 0:
         split = vp.strava_split_inputs(curve_entry, kg)
         scale = model.config.stravaPowerScale if model is not None else None
+        race_scale = model.config.outdoorRaceScale if model is not None else None
         # Indoor-equivalent: outdoor efforts get the outdoor→indoor correction, indoor ones do not.
-        inputs = vp.strava_inputs(split, scale)
+        inputs = vp.strava_inputs(split, scale, race_scale=race_scale)
+        sources = vp.strava_sources(split, scale, race_scale)
         count = int((curve_entry or {}).get("activityCount") or 0)
         pred = vp.predict_inputs(model, inputs, categories, source="strava", activity_count=count)
         strava = {
@@ -141,7 +160,11 @@ def gather(
             "activityCount": count,
             "indoorCount": (curve_entry or {}).get("indoorCount"),
             "outdoorCount": (curve_entry or {}).get("outdoorCount"),
-            "bestFrom": vp.strava_sources(split, scale),
+            "outdoorRaceCount": (curve_entry or {}).get("outdoorRaceCount"),
+            "bestFrom": sources,
+            # Share of the durations whose best comes from outdoor riding (0 to 1).
+            "outdoorShare": round(sum(1 for v in sources.values() if v != "indoor") / len(sources), 2)
+            if sources else None,
             "computedAt": (curve_entry or {}).get("computedAt"),
             "inputs": inputs,
             "prediction": pred,
@@ -159,9 +182,14 @@ def gather(
     if zwift is None and strava is None:
         flags.append(NO_POWER_DATA)
 
+    current = effective_liga_category_name(lc, categories) or None
+    league = row.get("league") if isinstance(row.get("league"), dict) and row["league"].get("races") else None
     return {
         "reasons": list(reasons),
-        "currentCategory": effective_liga_category_name(lc, categories) or None,
+        # Results in the current division this season (None before the first league race).
+        "league": league,
+        **held_up(row, current, categories, min_rides),
+        "currentCategory": current,
         "locked": bool(lc.get("locked")),
         "velo": {
             "current": vp.to_float(row.get("rating")),
@@ -188,4 +216,6 @@ def fingerprint(evidence: dict) -> str:
         "rides": evidence.get("zwiftActivityCount"),
         "strava": (evidence.get("strava") or {}).get("computedAt"),
     }
+    if evidence.get("league"):  # a new league race re-opens the rider; riders without races keep their key
+        key["leagueRaces"] = evidence["league"].get("races")
     return hashlib.sha1(json.dumps(key, sort_keys=True, default=str).encode()).hexdigest()[:16]

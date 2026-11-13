@@ -3,20 +3,24 @@
 The filter (`league/settings.divisionAgent.reviewFilter`) has two parts:
 - limits that narrow the group (all ticked ones must hold): new signups within N days,
   non-locked riders, riders with Strava, and skipping riders an admin placed by hand;
-- reasons (any ticked one is enough): no vELO, no max30 vELO, few Zwift rides, no division.
+- reasons (any ticked one is enough): no vELO, no max30 vELO, few Zwift rides, no division,
+  and "struggling": the rider keeps finishing at the back of their division in league races
+  (off by default; thresholds `strugglingMinRaces`, `strugglingPercentile`, `strugglingShare`).
 """
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from services import league_performance as lp
 from services import velo_predictor as vp
 
 NO_VELO = "no_velo"
 NO_MAX30 = "no_max30"
 FEW_RIDES = "few_rides"
 NO_DIVISION = "no_division"
-REASONS = (NO_VELO, NO_MAX30, FEW_RIDES, NO_DIVISION)
+STRUGGLING = "struggling"
+REASONS = (NO_VELO, NO_MAX30, FEW_RIDES, NO_DIVISION, STRUGGLING)
 
 DEFAULT_FILTER: dict[str, Any] = {
     # limits
@@ -26,7 +30,19 @@ DEFAULT_FILTER: dict[str, Any] = {
     "skipAdminPlaced": False,
     # reasons (any one is enough)
     "reasons": [NO_VELO, NO_MAX30, FEW_RIDES],
+    # "struggling": at least `strugglingShare` of the rider's recent races in the current
+    # division (at least `strugglingMinRaces`) ended at or behind `strugglingPercentile` of
+    # the field (0.8 = the last 20%). DNFs count as last place.
+    "strugglingMinRaces": 3,
+    "strugglingPercentile": 0.8,
+    "strugglingShare": 0.75,
 }
+
+
+def _number(value: Any, low: float, high: float, default: float) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return default
+    return float(value) if low <= value <= high else default
 
 
 def normalize_filter(raw: Any) -> dict:
@@ -45,7 +61,18 @@ def normalize_filter(raw: Any) -> dict:
         "onlyWithStrava": raw.get("onlyWithStrava") is True,
         "skipAdminPlaced": raw.get("skipAdminPlaced") is True,
         "reasons": reasons,
+        "strugglingMinRaces": int(_number(raw.get("strugglingMinRaces"), 2, 20,
+                                          DEFAULT_FILTER["strugglingMinRaces"])),
+        "strugglingPercentile": _number(raw.get("strugglingPercentile"), 0.5, 1.0,
+                                        DEFAULT_FILTER["strugglingPercentile"]),
+        "strugglingShare": _number(raw.get("strugglingShare"), 0.5, 1.0, DEFAULT_FILTER["strugglingShare"]),
     }
+
+
+def is_struggling(row: dict, flt: dict) -> bool:
+    """The rider keeps finishing at the back of their current division (by the filter's thresholds)."""
+    return lp.is_struggling(row.get("league"), min_races=flt["strugglingMinRaces"],
+                            percentile=flt["strugglingPercentile"], share=flt["strugglingShare"])
 
 
 def _positive(value: Any) -> bool:
@@ -97,6 +124,8 @@ def reasons_for(row: dict, flt: dict, min_rides: int) -> list[str]:
         cat = row.get("category")
         if not cat or cat == "N/A":
             out.append(NO_DIVISION)
+    if STRUGGLING in ticked and is_struggling(row, normalize_filter(flt)):
+        out.append(STRUGGLING)
     return out
 
 

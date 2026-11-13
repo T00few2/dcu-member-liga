@@ -111,6 +111,15 @@ Files (uploaded to your sandbox):
   their `fold`, realVelo, realDivision, and the current production model's out-of-fold prediction
   (baselinePredVelo, baselinePredDivision).
 - divisions.csv — division name and lower bound (inclusive) of the vELO range, top division first.
+- league.csv — optional extra ground truth from the league's own races, one row per rider per race:
+  `performanceVelo` (the typical pre-race vELO of the riders they finished among), `percentile` (0 = winner,
+  1 = last), and the Strava power known BEFORE that race started (league{days}_indoor_*, _outdoor_*,
+  _outdoorRace_*, _activities), weight and `weightSource` ("snapshot" = recorded before the race, "current" =
+  today's weight). `trustedVelo` is 1 for riders who also have a reliable vELO. Rows share the rider's `fold`
+  (empty = always training). Use it to train on riders whose vELO is unreliable; never use a row to predict
+  the same rider. performanceVelo is capped by the division the race was ridden in.
+  eval.csv also has strava{days}_outdoorRace_* (outdoor rides the rider marked as a race on Strava; they are
+  part of the outdoor columns too) and strava{days}_outdoorRaceActivities.
 
 Evaluation protocol (must match production exactly):
 1. For each fold k: train on training.csv rows whose fold != k (rows with empty fold are always training),
@@ -178,6 +187,8 @@ def build_dataset(
     folds: int = pt.DEFAULT_FOLDS,
     categories: Any = None,
     salt: str | None = None,
+    observations: list[dict] | None = None,
+    min_rides: int = vp.LEAGUE_MIN_RIDES,
 ) -> dict:
     """Anonymized CSVs for the sandbox plus the private hash -> zwiftId map."""
     salt = salt or secrets.token_hex(8)
@@ -223,6 +234,8 @@ def build_dataset(
         strava_cols += [f"strava{days}_indoor_{k}" for k in CURVE_KEYS]
         strava_cols += [f"strava{days}_outdoor_{k}" for k in CURVE_KEYS]
         strava_cols += [f"strava{days}_indoorActivities", f"strava{days}_outdoorActivities"]
+        strava_cols += [f"strava{days}_outdoorRace_{k}" for k in CURVE_KEYS]
+        strava_cols += [f"strava{days}_outdoorRaceActivities"]
     for r in riders:
         p = by_zid.get(r.zwiftId) or {}
         row = {
@@ -247,6 +260,10 @@ def build_dataset(
             row[f"strava{days}_activities"] = (entry or {}).get("activityCount", "") if entry else ""
             row[f"strava{days}_indoorActivities"] = (entry or {}).get("indoorCount", "") if split else ""
             row[f"strava{days}_outdoorActivities"] = (entry or {}).get("outdoorCount", "") if split else ""
+            race = (entry or {}).get("curveOutdoorRace") or {}
+            for k in CURVE_KEYS:
+                row[f"strava{days}_outdoorRace_{k}"] = race.get(k, "")
+            row[f"strava{days}_outdoorRaceActivities"] = (entry or {}).get("outdoorRaceCount", "")
         base = baseline_per_rider.get(r.zwiftId) or {}
         row["baselinePredVelo"] = base.get("predictedVelo", "")
         row["baselinePredDivision"] = base.get("predictedCategory", "")
@@ -257,14 +274,50 @@ def build_dataset(
     cats = categories or ZR_CATEGORIES
     division_rows = [{"division": name, "lowerVelo": lower} for name, lower, _upper in cats]
 
+    # League races: power known before each race against the performance vELO of that race.
+    trusted = {str(p.get("zwiftId")) for p in participants if pt.reliable_velo(p, min_rides) is not None}
+    league_keys = [k for k in CURVE_KEYS if k in vp.STRAVA_CURVE_KEYS.values()]
+    league_cols = ["rider", "fold", "race", "division", "weightKg", "weightSource", "trustedVelo",
+                   "percentile", "performanceVelo"]
+    for days in vp.STRAVA_WINDOWS:
+        for part in ("indoor", "outdoor", "outdoorRace"):
+            league_cols += [f"league{days}_{part}_{k}" for k in league_keys]
+        league_cols.append(f"league{days}_activities")
+    race_names: dict[str, str] = {}
+    league_rows = []
+    for o in observations or []:
+        zid = str(o.get("zwiftId") or "")
+        if not zid or not o.get("performanceVelo") or not o.get("strava"):
+            continue
+        row = {
+            "rider": anon(zid),
+            "fold": fold_of.get(zid, ""),
+            "race": race_names.setdefault(str(o.get("raceId")), f"race{len(race_names) + 1}"),
+            "division": o.get("division"),
+            "weightKg": o.get("weightKg"),
+            "weightSource": o.get("weightSource"),
+            "trustedVelo": 1 if zid in trusted else 0,
+            "percentile": o.get("percentile"),
+            "performanceVelo": o.get("performanceVelo"),
+        }
+        for days in vp.STRAVA_WINDOWS:
+            entry = (o.get("strava") or {}).get(str(days)) or {}
+            for part, key in (("indoor", "curveIndoor"), ("outdoor", "curveOutdoor"),
+                              ("outdoorRace", "curveOutdoorRace")):
+                for k in league_keys:
+                    row[f"league{days}_{part}_{k}"] = (entry.get(key) or {}).get(k, "")
+            row[f"league{days}_activities"] = entry.get("activityCount", "")
+        league_rows.append(row)
+
     return {
         "files": {
             "training.csv": _csv(training, training_cols),
             "eval.csv": _csv(eval_rows, eval_cols),
             "divisions.csv": _csv(division_rows, ["division", "lowerVelo"]),
+            "league.csv": _csv(league_rows, league_cols),
         },
         "idMap": id_map,
-        "counts": {"training": len(training), "eval": len(eval_rows)},
+        "counts": {"training": len(training), "eval": len(eval_rows), "league": len(league_rows)},
     }
 
 
@@ -293,7 +346,7 @@ def run_claude(
     content: list[dict] = [{
         "type": "text",
         "text": (
-            "The three data files are in your sandbox. " + baseline_note +
+            "The data files are in your sandbox. " + baseline_note +
             " Reproduce the baseline first, then explore, then call submit_findings."
         ),
     }]
@@ -553,11 +606,14 @@ def _execute(db: Any, *, client_factory, deadline: float, clock) -> dict:
         return {"status": "failed", "error": (
             f"Only {len(riders)} riders have a reliable vELO and a cached {config.stravaWindowDays}-day "
             f"Strava curve (need {pt.MIN_EVAL_RIDERS}). Let the Strava cache fill first.")}
-    baseline, per_rider = pt.cross_validate(participants, riders, config, categories=categories)
+    observations = ps.observations(db)
+    baseline, per_rider = pt.cross_validate(participants, riders, config, categories=categories,
+                                            observations=observations)
     if baseline is None:
         return {"status": "failed", "error": "Could not measure the current settings (no model)."}
 
-    dataset = build_dataset(participants, riders, per_rider, read_curve, categories=categories)
+    dataset = build_dataset(participants, riders, per_rider, read_curve, categories=categories,
+                            observations=observations, min_rides=min_rides)
     model = _research_model(db)
     client = client_factory()
     file_ids = []

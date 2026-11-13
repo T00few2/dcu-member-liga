@@ -94,7 +94,8 @@ def test_only_a_stored_completion_date_counts_as_a_signup_date():
 def test_bad_filter_values_fall_back_to_defaults():
     flt = triage.normalize_filter({"newSignupsDays": "30", "onlyUnlocked": "yes", "reasons": ["no_velo", "x"]})
     assert flt == {"newSignupsDays": None, "onlyUnlocked": False, "onlyWithStrava": False,
-                   "skipAdminPlaced": False, "reasons": ["no_velo"]}
+                   "skipAdminPlaced": False, "reasons": ["no_velo"],
+                   "strugglingMinRaces": 3, "strugglingPercentile": 0.8, "strugglingShare": 0.75}
     assert triage.normalize_filter(None)["reasons"] == [triage.NO_VELO, triage.NO_MAX30, triage.FEW_RIDES]
 
 
@@ -258,7 +259,8 @@ def test_filter_preview_counts_reasons():
     settings = {**SETTINGS, "reviewFilter": {"reasons": ["no_max30", "few_rides", "no_division"]}}
     out = runner.filter_preview(rows, settings, [])
     assert out["total"] == 3 and out["inGroup"] == 3 and out["matching"] == 2
-    assert out["byReason"] == {"no_velo": 0, "no_max30": 1, "few_rides": 1, "no_division": 1}
+    assert out["byReason"] == {"no_velo": 0, "no_max30": 1, "few_rides": 1, "no_division": 1,
+                              "struggling": 0}
 
 
 def test_rejected_proposal_is_not_repeated_until_the_evidence_changes(agent_db, monkeypatch):
@@ -432,7 +434,8 @@ def test_routes_save_the_review_filter_and_preview_it(client, monkeypatch):
         "minZwiftRides": 10})
     assert res.status_code == 200
     assert res.get_json()["reviewFilter"] == {"newSignupsDays": 14, "onlyUnlocked": True, "onlyWithStrava": False,
-                                              "skipAdminPlaced": False, "reasons": ["no_max30"]}
+                                              "skipAdminPlaced": False, "reasons": ["no_max30"],
+                                              "strugglingMinRaces": 3, "strugglingPercentile": 0.8, "strugglingShare": 0.75}
     status = http.get("/admin/division-agent/status").get_json()
     assert status["minZwiftRides"] == 10 and status["reviewFilter"]["newSignupsDays"] == 14
     assert http.post("/admin/division-agent/settings", json={"minZwiftRides": 0}).status_code == 400
