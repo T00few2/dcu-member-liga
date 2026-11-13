@@ -40,7 +40,7 @@ beforeEach(() => {
         days: 90, eligible: 70, cached: 12, others: 30, othersCached: 4, remaining: 84, minEvalRiders: 40,
         league: { racesFinalized: 6, racesBuilt: 5, observations: 400, withStrava: 120, weightBeforeRace: 0,
           ridersWaitingForStrava: 35, usable: 48, usableRiders: 19 },
-        stravaUsage: { usage15: 40, limit15: 300, usageDay: 900, limitDay: 3000, appRequestsDay: 2400, known: true, cacheBudgetFraction: 0.5 },
+        stravaUsage: { usage15: 40, limit15: 300, usageDay: 900, limitDay: 3000, appRequestsDay: 2400, overallLimit15: 600, overallLimitDay: 6000, overallUsage15: 45, overallUsageDay: 2300, refusedDay: 3, known: true, cacheBudgetFraction: 0.5 },
       }), { status: 200 });
     }
     if (String(url).endsWith('/admin/predictor/tune')) {
@@ -105,6 +105,13 @@ describe('CategoryPredictorTuning', () => {
     expect(line).toHaveTextContent('5 of 6 finalized races processed');
     expect(line).toHaveTextContent('120 of 400 results have Strava power from before the race');
     expect(line).toHaveTextContent('35 riders still wait for their Strava history');
+  });
+
+  it("shows Strava's overall count and how many requests it refused", async () => {
+    renderPanel();
+    const line = await screen.findByText(/Strava reads today/);
+    expect(line).toHaveTextContent('all requests as counted by Strava: 2,300 of 6,000 today');
+    expect(line).toHaveTextContent('Strava refused 3 requests today');
   });
 
   it('starts tuning and asks the server to process it', async () => {

@@ -26,6 +26,12 @@ COLLECTION = "strava_activity_efforts"
 VERSION = 2
 
 
+class StreamUnavailable(Exception):
+    """A ride's stream could not be downloaded right now (Strava refused the request, had
+    a server error, or the network failed). The ride must be tried again later: it is
+    **not** a ride without power, and must never be stored as one."""
+
+
 def parse_iso(value: Any) -> datetime | None:
     if isinstance(value, datetime):
         return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
