@@ -15,10 +15,12 @@ the budget stops background work as soon as Strava refuses anything.
 
 Strava documents two limits per app, each with a 15-minute and a daily window: an
 overall one (`X-RateLimit-*`, every request) and a "non-upload" one (`X-ReadRateLimit-*`,
-every request except uploads). Both are kept, and the budget respects both, because the
-documentation says ride-stream downloads count against both while the read header has
-reported far fewer. Refused requests (HTTP 429) are counted too (`count_refused`), which
-shows directly whether Strava is turning the app away.
+every request except uploads). Both are kept and shown on the admin page. The budget
+still follows the read header only: the documentation says ride-stream downloads count
+against both limits, but the read header has reported far fewer, and until the overall
+numbers have been seen for this app it is not known which one Strava enforces. Refused
+requests (HTTP 429) are counted (`count_refused`), which shows directly whether Strava
+is turning the app away, and a warm-up run stops as soon as a ride download is refused.
 
 The app still counts its own requests (`count_request()` for every Strava GET,
 shared through `persist()`) for information: `current_usage()` reports them as
@@ -298,16 +300,11 @@ def within_budget(
     if not u["known"]:
         return True
     day_ok = u["usageDay"] + cost <= u["limitDay"] * fraction
-    # The overall limit (every request) holds as well, when Strava reports it.
-    if u.get("overallLimitDay"):
-        day_ok = day_ok and u["overallUsageDay"] + cost <= u["overallLimitDay"] * fraction
     share15 = u["limit15"] * fraction
     used_before = u["usage15"] if window_used_before is None else window_used_before
     if u["usage15"] + cost > share15 and used_before == 0:
         return day_ok  # too big for the share, but alone in an empty quarter hour
-    overall15_ok = (not u.get("overallLimit15")
-                    or u["overallUsage15"] + cost <= u["overallLimit15"] * fraction)
-    return u["usage15"] + cost <= share15 and overall15_ok and day_ok
+    return u["usage15"] + cost <= share15 and day_ok
 
 
 def share15(snap: dict, fraction: float) -> float:

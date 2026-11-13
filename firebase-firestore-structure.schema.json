@@ -152,7 +152,7 @@
           "ownRefusedDay": { "type": "integer", "description": "Requests Strava refused (HTTP 429) on ownDay" },
           "overallLimit15": { "type": "integer", "description": "Strava's overall limit (every request, X-RateLimit-*), 15-minute window; only when Strava also sends the read limit" },
           "overallLimitDay": { "type": "integer" },
-          "overallUsage15": { "type": "integer", "description": "All requests in the 15-minute window containing 'at', as reported by Strava (the background budget respects this too)" },
+          "overallUsage15": { "type": "integer", "description": "All requests in the 15-minute window containing 'at', as reported by Strava (shown on the admin page; the budget follows the read numbers)" },
           "overallUsageDay": { "type": "integer" }
         }
       }
