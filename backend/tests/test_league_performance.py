@@ -419,3 +419,58 @@ def test_idle_upkeep_reads_no_riders():
     future = [(_race("r9"), now + timedelta(days=1)), (_race("r8", phase="provisional"), RACE_START)]
     assert po.refresh_next(db, future, loader, now=now) is None
     loader.assert_not_called()
+
+
+# --- indoor-first rule ------------------------------------------------------------------------
+
+
+def _split(indoor_rides, indoor20=3.5, outdoor20=4.2):
+    def inputs(w20):
+        return {"weightKg": 70, "wkg5s": w20 * 3, "wkg1m": w20 * 1.6, "wkg5m": w20 * 1.2, "wkg20m": w20}
+    return {"indoor": inputs(indoor20), "outdoor": inputs(outdoor20), "race": None, "indoorRides": indoor_rides}
+
+
+def test_indoor_first_is_off_by_default_and_ignores_outdoor_when_enough_indoor_rides():
+    scale = {k: 1.0 for k in vp.POWER_FIELDS}
+    assert vp.strava_inputs(_split(20), scale)["wkg20m"] == 4.2                       # rule off: outdoor wins
+    assert vp.strava_inputs(_split(20), scale, indoor_first_min=5)["wkg20m"] == 3.5   # indoor alone
+    assert vp.strava_inputs(_split(4), scale, indoor_first_min=5)["wkg20m"] == 4.2    # too few indoor rides
+    assert set(vp.strava_sources(_split(20), scale, None, 5).values()) == {"indoor"}
+    assert vp.strava_sources(_split(4), scale, None, 5)["wkg20m"] == "outdoor"
+
+
+def test_indoor_first_keeps_outdoor_for_a_duration_without_an_indoor_best():
+    split = _split(20)
+    split["indoor"]["wkg5s"] = 0.0   # never sprinted indoors
+    out = vp.strava_inputs(split, None, indoor_first_min=5)
+    assert out["wkg5s"] == round(4.2 * 3, 2) and out["wkg20m"] == 3.5
+
+
+def test_indoor_first_reads_the_ride_count_from_the_curve_entry():
+    entry = {"split": True, "indoorCount": 8, "curveIndoor": {"w1200": 245.0}, "curveOutdoor": {"w1200": 294.0},
+             "curve": {"w1200": 294.0}}
+    assert vp.strava_split_inputs(entry, 70)["indoorRides"] == 8
+    assert vp.strava_prediction_curve(entry, None, None, 5) == {"w1200": 245.0}
+    assert vp.strava_prediction_curve(entry, None) == {"w1200": 294.0}
+    legacy = {"curve": {"w1200": 294.0}, "indoorCount": 8}      # before the split: no indoor curve to trust
+    assert vp.strava_split_inputs(legacy, 70)["indoorRides"] == 0
+    cfg = vp.PredictorConfig.from_dict({"indoorFirstMinRides": 5})
+    assert cfg.to_dict()["indoorFirstMinRides"] == 5 and vp.PredictorConfig().indoorFirstMinRides == 0
+    assert vp.PredictorConfig.from_dict({"indoorFirstMinRides": -1}).indoorFirstMinRides == 0
+
+
+def test_tuning_finds_indoor_first_when_outdoor_peaks_over_rate_riders():
+    participants = [_rider(i) for i in range(80)]
+    curves = {}
+    for i, p in enumerate(participants):
+        indoor = {"w5": p["cp5s"], "w60": p["cp1min"], "w300": p["cp5min"], "w1200": p["cp20min"]}
+        boost = 1.0 + (i % 4) * 0.08          # outdoor peaks 0-24% above indoor, different per rider
+        outdoor = {k: v * boost for k, v in indoor.items()}
+        curves[(p["userDocId"], 90)] = {"split": True, "curve": outdoor, "curveIndoor": indoor,
+                                        "curveOutdoor": outdoor, "activityCount": 30, "indoorCount": 15,
+                                        "outdoorCount": 15}
+    riders = pt.build_eval_set(participants, lambda d, w: curves.get((d, w)), min_rides=15)
+    result = pt.tune(participants, riders, vp.PredictorConfig(), folds=5, min_rides=15)
+    assert result.status == "improved"
+    assert result.best["config"]["indoorFirstMinRides"] == 5
+    assert result.best["score"]["divisionAccuracy"] > result.current["score"]["divisionAccuracy"]

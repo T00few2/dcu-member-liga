@@ -24,7 +24,9 @@ the same rider manages indoors, so the league scales outdoor efforts down by a l
 uses, per duration, the stronger of the indoor best and the corrected outdoor best (`strava.bestFrom`,
 `strava.indoorCount`, `strava.outdoorCount`). A prediction resting mainly on outdoor efforts is less
 certain for indoor racing; say so when it matters. `strava.bestFrom` may also say "outdoor_race": the best
-effort came from an outdoor ride the rider marked as a race on Strava.
+effort came from an outdoor ride the rider marked as a race on Strava. When `strava.indoorOnly` is true the
+rider has enough indoor rides to be rated on indoor power alone and outdoor efforts were left out; if those
+indoor rides look like easy sessions (indoor power far below outdoor), say that the prediction may be too low.
 
 Some riders are reviewed because they keep finishing at the back of their division in the league's own
 races (reason "struggling"). `league` then holds their results in the current division this season: per

@@ -538,3 +538,23 @@ def test_a_complete_curve_counts_whichever_window_the_predictor_uses():
     warmer.warm(db, service, [_rider(1)], min_rides=15, days=30, compute_curve=compute)
     status = warmer.cache_status(db, [_rider(1)], min_rides=15, days=30)
     assert status["cached"] == 1 and status["missing"] == []  # not refetched forever
+
+
+def test_league_riders_without_a_reliable_velo_come_first():
+    db = FakeDb()
+    tuning = [_rider(1), _rider(2)]          # reliable vELO
+    raced_new = _rider(3, rides=2)           # raced in the league, vELO not reliable
+    not_raced = _rider(4, rides=2)
+    # Rider 3 already has a complete curve, but the ride history is too short for past races.
+    db.store["strava_power_curves/doc3_90"] = {
+        "curve": {"w5": 1}, "split": True, "version": 2, "windows": [30, 60, 90], "computedAt": _fresh(),
+        "historyFrom": (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()}
+
+    status = warmer.cache_status(db, tuning + [raced_new, not_raced], min_rides=15, days=90,
+                                 history_days=200, league_ids={"1", "3"})
+
+    # Rider 1 raced too, but has a reliable vELO: the usual order applies to that rider.
+    assert [r["zwiftId"] for r in status["missing"]] == ["3", "1", "2", "4"]
+    # Without league riders nothing changes: rider 3 only lacks history and is last.
+    plain = warmer.cache_status(db, tuning + [raced_new, not_raced], min_rides=15, days=90, history_days=200)
+    assert [r["zwiftId"] for r in plain["missing"]] == ["1", "2", "4", "3"]

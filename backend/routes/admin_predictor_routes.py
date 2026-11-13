@@ -339,7 +339,8 @@ def predictor_strava_cache_status():
     try:
         participants, min_rides, days = _cache_context()
         status = warmer.cache_status(db, participants, min_rides=min_rides, days=days,
-                                     history_days=ps.strava_history_days(db))
+                                     history_days=ps.strava_history_days(db),
+                                     league_ids=set(ps.league_performances(db)))
         return jsonify({
             "days": status["days"],
             "eligible": status["eligible"],
@@ -379,6 +380,7 @@ def predictor_strava_cache_warm():
             db, strava_service, participants,
             min_rides=min_rides, days=days, compute_curve=_compute_strava_power_curve,
             history_days=ps.strava_history_days(db),
+            league_ids=set(ps.league_performances(db)),
         )
         if result.get("busy"):
             return jsonify({"busy": True, "warmed": 0, "rateLimited": False}), 200

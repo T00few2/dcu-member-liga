@@ -121,18 +121,36 @@ def strava_split_inputs(entry: dict | None, weight_kg: float) -> dict[str, dict 
         "indoor": inputs_from_strava_curve(indoor, weight_kg) if indoor else None,
         "outdoor": inputs_from_strava_curve(outdoor, weight_kg) if outdoor else None,
         "race": inputs_from_strava_curve(race, weight_kg) if race else None,
+        # Indoor rides behind the indoor curve (0 for entries from before the split).
+        "indoorRides": int(entry.get("indoorCount") or 0) if entry.get("split") else 0,
     }
+
+
+def indoor_first(indoor_rides: int, indoor_first_min: int) -> bool:
+    """With the indoor-first rule on (`indoor_first_min` > 0), a rider with at least that
+    many indoor rides in the window is rated on indoor power alone.
+
+    Why: league races are indoor. A rider with solid indoor data whose outdoor peaks are
+    higher was rated too high when the outdoor peak was allowed to win (measured on riders
+    with a reliable vELO). Riders with fewer indoor rides keep the old rule, because a few
+    easy trainer sessions say little about what they can do.
+    """
+    return indoor_first_min > 0 and indoor_rides >= indoor_first_min
 
 
 def _strava_candidates(
     split: dict, k: str, scale: dict[str, float] | None, race_scale: dict[str, float] | None,
+    indoor_first_min: int = 0,
 ) -> tuple[float, float, float]:
     """(indoor, corrected outdoor, corrected outdoor race) W/kg for one duration.
 
     Without a race correction, race efforts get the ordinary outdoor one, which makes
-    them no different from any other outdoor ride.
+    them no different from any other outdoor ride. When the indoor-first rule applies
+    and the rider has an indoor best for this duration, the outdoor values are 0.
     """
     indoor = (split.get("indoor") or {}).get(k, 0.0) or 0.0
+    if indoor > 0 and indoor_first(int(split.get("indoorRides") or 0), indoor_first_min):
+        return indoor, 0.0, 0.0
     outdoor = ((split.get("outdoor") or {}).get(k, 0.0) or 0.0) * (scale or {}).get(k, 1.0)
     race = ((split.get("race") or {}).get(k, 0.0) or 0.0) * (race_scale or scale or {}).get(k, 1.0)
     return indoor, outdoor, race
@@ -143,33 +161,40 @@ def strava_inputs(
     scale: dict[str, float] | None,
     racing_score: float = 0.0,
     race_scale: dict[str, float] | None = None,
+    indoor_first_min: int = 0,
 ) -> dict[str, float]:
     """Indoor-equivalent Strava inputs: per duration the strongest of the indoor best, the
     outdoor best times the outdoor→indoor correction, and the outdoor race best times its
-    own correction (`race_scale`, when the config has one)."""
+    own correction (`race_scale`, when the config has one). With `indoor_first_min`, a
+    rider with that many indoor rides is rated on the indoor best alone (`indoor_first`)."""
     first = split.get("indoor") or split.get("outdoor") or split.get("race") or {}
     out = {"weightKg": first.get("weightKg", 0.0), "racingScore": racing_score}
     for k in POWER_FIELDS:
-        out[k] = round2(max(_strava_candidates(split, k, scale, race_scale)))
+        out[k] = round2(max(_strava_candidates(split, k, scale, race_scale, indoor_first_min)))
     return out
 
 
 def strava_prediction_curve(
     entry: dict | None, scale: dict[str, float] | None, race_scale: dict[str, float] | None = None,
+    indoor_first_min: int = 0,
 ) -> dict[str, float]:
     """Indoor-equivalent peak watts (w5/w60/w300/w1200) for the predictor: per duration the
-    strongest of the indoor best and the corrected outdoor (and outdoor race) best."""
+    strongest of the indoor best and the corrected outdoor (and outdoor race) best, or the
+    indoor best alone when the indoor-first rule applies."""
     entry = entry or {}
     if entry.get("split"):
         indoor, outdoor = entry.get("curveIndoor") or {}, entry.get("curveOutdoor") or {}
     else:
         indoor, outdoor = {}, entry.get("curve") or {}
     race = entry.get("curveOutdoorRace") or {}
+    only_indoor = bool(entry.get("split")) and indoor_first(int(entry.get("indoorCount") or 0), indoor_first_min)
     out = {}
     for fld, key in STRAVA_CURVE_KEYS.items():
         i = to_float(indoor.get(key)) or 0.0
         o = (to_float(outdoor.get(key)) or 0.0) * (scale or {}).get(fld, 1.0)
         r = (to_float(race.get(key)) or 0.0) * (race_scale or scale or {}).get(fld, 1.0)
+        if only_indoor and i > 0:
+            o = r = 0.0
         if max(i, o, r) > 0:
             out[key] = round(max(i, o, r), 1)
     return out
@@ -177,11 +202,12 @@ def strava_prediction_curve(
 
 def strava_sources(
     split: dict, scale: dict[str, float] | None, race_scale: dict[str, float] | None = None,
+    indoor_first_min: int = 0,
 ) -> dict[str, str]:
     """Per duration, which best is used: `indoor`, `outdoor` or `outdoor_race`."""
     out = {}
     for k in POWER_FIELDS:
-        i, o, r = _strava_candidates(split, k, scale, race_scale)
+        i, o, r = _strava_candidates(split, k, scale, race_scale, indoor_first_min)
         if max(i, o, r) <= 0:
             continue
         if i >= o and i >= r:
@@ -339,6 +365,9 @@ class PredictorConfig:
     # Drop league training rows whose weight is today's value instead of one recorded
     # before the race.
     strictPointInTime: bool = False
+    # Indoor-first rule: a rider with at least this many indoor rides in the Strava window
+    # is rated on indoor power alone; outdoor bests no longer override it. 0 = off.
+    indoorFirstMinRides: int = 0
 
     @classmethod
     def from_settings(cls, settings: dict | None) -> "PredictorConfig":
@@ -382,6 +411,9 @@ class PredictorConfig:
         if raw.get("targetSource") in TARGET_SOURCES:
             cfg.targetSource = raw["targetSource"]
         cfg.strictPointInTime = raw.get("strictPointInTime") is True
+        indoor_min = raw.get("indoorFirstMinRides")
+        if isinstance(indoor_min, int) and not isinstance(indoor_min, bool) and 0 <= indoor_min <= 100:
+            cfg.indoorFirstMinRides = indoor_min
         return cfg
 
     def to_dict(self) -> dict:
@@ -396,6 +428,7 @@ class PredictorConfig:
             "outdoorRaceScale": dict(self.outdoorRaceScale) if self.outdoorRaceScale else None,
             "targetSource": self.targetSource,
             "strictPointInTime": self.strictPointInTime,
+            "indoorFirstMinRides": self.indoorFirstMinRides,
         }
 
     def active_features(self) -> list[FeatureDef]:
@@ -571,7 +604,8 @@ def observation_inputs(observation: dict, config: "PredictorConfig") -> tuple[di
     if kg <= 0 or not isinstance(entry, dict) or not entry.get("curve"):
         return None
     split = strava_split_inputs(entry, kg)
-    inputs = strava_inputs(split, config.stravaPowerScale, race_scale=config.outdoorRaceScale)
+    inputs = strava_inputs(split, config.stravaPowerScale, race_scale=config.outdoorRaceScale,
+                           indoor_first_min=config.indoorFirstMinRides)
     return inputs, int(entry.get("activityCount") or 0)
 
 

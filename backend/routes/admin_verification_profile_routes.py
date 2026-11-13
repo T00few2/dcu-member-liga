@@ -222,9 +222,11 @@ def strava_power_curve(rider_id):
         try:
             config = predictor_service.load_config(db)
             scale, race_scale = config.stravaPowerScale, config.outdoorRaceScale
+            indoor_min = config.indoorFirstMinRides
         except Exception as exc:  # the raw curve is still useful without the correction
             logger.warning("strava_power_curve: predictor config unavailable: %s", exc)
             scale = race_scale = None
+            indoor_min = 0
         return jsonify({
             "curve": entry["curve"],
             "curveIndoor": entry.get("curveIndoor"),
@@ -233,7 +235,7 @@ def strava_power_curve(rider_id):
             # Outdoor rides the rider marked as a race on Strava (also part of curveOutdoor).
             "curveOutdoorRace": entry.get("curveOutdoorRace"),
             "outdoorRaceCount": entry.get("outdoorRaceCount"),
-            "predictionCurve": velo_predictor.strava_prediction_curve(entry, scale, race_scale),
+            "predictionCurve": velo_predictor.strava_prediction_curve(entry, scale, race_scale, indoor_min),
             "activityCount": entry["activityCount"],
             "indoorCount": entry.get("indoorCount"),
             "outdoorCount": entry.get("outdoorCount"),
