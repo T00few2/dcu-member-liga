@@ -86,6 +86,7 @@ def cache_status(
     days: int,
     max_age_days: int = REFRESH_AFTER_DAYS,
     history_days: int | None = None,
+    league_ids: set[str] | None = None,
 ) -> dict:
     """Counts plus the riders still missing a usable curve (never-cached first, stale last).
 
@@ -144,6 +145,13 @@ def cache_status(
             reached = strava_efforts.parse_iso(entry.get("historyFrom"))
             if reached is None or reached > needed_from:
                 missing.append((5, p))
+
+    # First of all (-1): riders who have ridden a league race but have no reliable vELO.
+    # Their league results are the only ground truth for the riders the predictor is for,
+    # and they only count once their Strava history reaches back before those races.
+    if league_ids:
+        missing = [(-1 if str(p.get("zwiftId")) in league_ids and p["userDocId"] not in eligible_ids else rank, p)
+                   for rank, p in missing]
 
     missing.sort(key=lambda m: m[0])
     return {
@@ -222,18 +230,21 @@ def warm(
     limit: int = WARM_BATCH,
     now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     history_days: int | None = None,
+    league_ids: set[str] | None = None,
 ) -> dict:
     """Run one warm-up unless another is already running (then `busy` is true).
 
     With `history_days`, each rider's ride list (and stored per-ride efforts) reaches that
     far back, so curves can be rebuilt for past league races. Rides already stored are
-    not downloaded again."""
+    not downloaded again. `league_ids` (Zwift IDs of riders with a league result) puts
+    those of them without a reliable vELO first."""
     owner = uuid.uuid4().hex
     if not _acquire_lock(db, owner, now()):
         return {"days": days, "busy": True, "warmed": [], "failed": [], "rateLimited": False}
     try:
         return {**_warm(db, strava_service, participants, min_rides=min_rides, days=days,
-                        compute_curve=compute_curve, limit=limit, now=now, history_days=history_days),
+                        compute_curve=compute_curve, limit=limit, now=now, history_days=history_days,
+                        league_ids=league_ids),
                 "busy": False}
     finally:
         _release_lock(db, owner)
@@ -250,13 +261,15 @@ def _warm(
     limit: int = WARM_BATCH,
     now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     history_days: int | None = None,
+    league_ids: set[str] | None = None,
 ) -> dict:
     """Fetch Strava curves for up to `limit` eligible riders without a fresh cached curve.
 
     Stops early when the next rider would take Strava usage above `BUDGET_FRACTION` of
     either the 15-minute or the daily read limit (`rateLimited` is then true).
     """
-    status = cache_status(db, participants, min_rides=min_rides, days=days, history_days=history_days)
+    status = cache_status(db, participants, min_rides=min_rides, days=days, history_days=history_days,
+                          league_ids=league_ids)
     try:
         stored = strava_rate.load(db)
     except Exception:
