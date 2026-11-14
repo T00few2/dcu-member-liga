@@ -57,6 +57,9 @@ interface CacheStatus {
     withStrava: number;
     weightBeforeRace: number;
     ridersWaitingForStrava: number;
+    /** When the oldest race was last rebuilt: the counts are as of then. */
+    builtAt?: string | null;
+    rebuildAfterHours?: number;
     usable: number;
     usableRiders: number;
   } | null;
@@ -265,6 +268,11 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
             {cache.cached < cache.minEvalRiders
               ? ` · tuning needs ${cache.minEvalRiders}`
               : ' · enough to tune'}
+            <span className="block">
+              {cache.remaining > 0
+                ? `${cache.remaining} riders left to fetch from Strava (10 per run, every 15 minutes, or press Fill now)`
+                : 'Nothing left to fetch from Strava right now'}
+            </span>
             {(cache.others ?? 0) > 0 && (
               <span className="block text-xs">
                 Other riders with Strava (division agent): {cache.othersCached ?? 0} of {cache.others} cached
@@ -278,7 +286,11 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
                 {cache.league.withStrava} of {cache.league.observations} results have Strava power from before the
                 race ({cache.league.weightBeforeRace} also a weight recorded before it)
                 {cache.league.ridersWaitingForStrava > 0
-                  ? ` · ${cache.league.ridersWaitingForStrava} riders still wait for their Strava history`
+                  ? ` · ${cache.league.ridersWaitingForStrava} riders had no complete Strava history yet`
+                  : ''}
+                {cache.league.builtAt
+                  ? ` · counted ${new Date(cache.league.builtAt).toLocaleString([], { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+                    + `, recounted every ${cache.league.rebuildAfterHours ?? 6} hours while riders are missing`
                   : ''}
               </span>
             )}

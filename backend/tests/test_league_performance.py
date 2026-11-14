@@ -488,7 +488,8 @@ def test_progress_counts_what_is_stored_and_what_still_waits():
 
     out = po.progress(db, races, now)
     assert out == {"racesFinalized": 2, "racesBuilt": 1, "observations": 10, "withStrava": 1,
-                   "weightBeforeRace": 0, "ridersWaitingForStrava": 1}   # rider 6: Strava, no history yet
+                   "weightBeforeRace": 0, "ridersWaitingForStrava": 1,   # rider 6: Strava, no history yet
+                   "builtAt": now.isoformat(), "rebuildAfterHours": 6}
 
 
 # --- refused ride downloads -------------------------------------------------------------------

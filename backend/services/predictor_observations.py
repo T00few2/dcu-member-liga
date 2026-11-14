@@ -137,6 +137,9 @@ def progress(db: Any, races: list[tuple[dict, datetime | None]], now: datetime |
         "withStrava": sum(1 for r in riders if r.get("strava")),
         "weightBeforeRace": sum(1 for r in riders if r.get("strava") and r.get("weightSource") == "snapshot"),
         "ridersWaitingForStrava": len(waiting),
+        # The counts above are as of each race's last build; this is the oldest of them.
+        "builtAt": min((str(d.get("builtAt")) for d in docs if d.get("builtAt")), default=None),
+        "rebuildAfterHours": REBUILD_AFTER_HOURS,
     }
 
 
