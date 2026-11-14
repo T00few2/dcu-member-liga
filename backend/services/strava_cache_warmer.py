@@ -70,6 +70,14 @@ def _complete(entry: dict) -> bool:
             and set(vp.STRAVA_WINDOWS) <= set(entry.get("windows") or ()))
 
 
+def _empty_without_history(entry: dict) -> bool:
+    """An empty curve written before per-ride efforts were stored. The rider has no stored
+    ride history, so league races keep counting the rider as "waiting for Strava history"
+    until the weekly retry. One fetch (the activity list only, there are no rides to
+    download) settles it."""
+    return int(entry.get("version") or 0) < strava_efforts.VERSION
+
+
 def eligible_riders(participants: list[dict], min_rides: int) -> list[dict]:
     """Riders that would be in the tuning eval set if they had a Strava curve."""
     return [
@@ -111,6 +119,8 @@ def cache_status(
                 missing.append((2, p))
         elif entry and not has_power and _is_fresh(entry, now, RETRY_EMPTY_AFTER_DAYS):
             no_power += 1
+            if _empty_without_history(entry):
+                missing.append((2, p))
         else:
             # 0 = never cached, 1 = stale or empty curve due for a retry (2 = incomplete, above)
             missing.append((0 if entry is None else 1, p))
@@ -129,7 +139,9 @@ def cache_status(
         if has_power and _complete(entry) and _is_fresh(entry, now, max_age_days):
             others_cached += 1
         elif entry and not has_power and _is_fresh(entry, now, RETRY_EMPTY_AFTER_DAYS):
-            pass  # no power rides; retried after a week
+            # No power rides; retried after a week (once right away if it has no stored history).
+            if _empty_without_history(entry):
+                missing.append((4, p))
         else:
             missing.append((3 if entry is None else 4, p))
 

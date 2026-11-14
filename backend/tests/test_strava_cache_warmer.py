@@ -598,3 +598,16 @@ def test_a_run_stops_when_ride_downloads_fail():
     assert result["rateLimited"] is True and len(result["warmed"]) == 1   # stopped after the first rider
     assert db.store["strava_cache_warm/last"]["failedDownloads"] == 2
     assert db.store["strava_activity_efforts/doc0"]["rides"] == {}        # nothing stored as "no power"
+
+
+def test_an_empty_curve_from_before_ride_history_was_stored_is_fetched_once_more():
+    db = FakeDb()
+    old_empty, new_empty, other_old_empty = _rider(1), _rider(2), _rider(3, rides=2)
+    db.store["strava_power_curves/doc1_90"] = {"curve": {}, "split": True, "computedAt": _fresh()}
+    db.store["strava_power_curves/doc2_90"] = {"curve": {}, "split": True, "version": 2, "computedAt": _fresh()}
+    db.store["strava_power_curves/doc3_90"] = {"curve": {}, "split": True, "computedAt": _fresh()}
+
+    status = warmer.cache_status(db, [old_empty, new_empty, other_old_empty], min_rides=15, days=90)
+
+    assert status["noPowerData"] == 2                                     # still counted as no power data
+    assert [r["zwiftId"] for r in status["missing"]] == ["1", "3"]        # but fetched once for the history
