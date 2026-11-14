@@ -37,6 +37,7 @@ def _run_dr_verification_background(
             db, user_doc_id, activity_id, event_start_iso,
             sw_thresholds=sw_thresholds,
             gw_thresholds=gw_thresholds,
+            race_id=race_id,
         )
         source = resolve_dr_source(db, zwift_id_canonical, race_id=race_id)
         doc_payload = _persist_dr_verification_result(

@@ -145,6 +145,7 @@ def test_news_reads_only_published_posts(db):
 
 def test_my_status_is_only_about_the_asking_rider(db):
     user = {"registration": {"status": "complete"}, "connections": {"zwift": {"connected": True}},
+            "equipment": {"trainer": "Kickr"}, "dualRecordingMethod": "direct", "dualRecordingOptIn": True,
             "verification": {"status": "pending", "currentRequest": {"type": "weight", "status": "pending",
                                                                      "deadline": "2026-11-20"}}}
     out = lt.my_status(db, "1", user, now=NOW)
@@ -152,6 +153,9 @@ def test_my_status_is_only_about_the_asking_rider(db):
     assert [s["race"] for s in out["upcomingSignups"]] == ["Classic 1"]  # past race and other riders left out
     assert out["standing"] == {"division": "Gold", "rank": 1, "of": 2, "points": 45, "races": 2}
     assert out["verification"]["openRequest"]["deadline"] == "2026-11-20"
+    assert out["dualRecording"]["method"] == "direct"
+    assert "Optag dual" in out["dualRecording"]["where"]
+    assert out["trainer"] == "Kickr"
 
 
 def test_unanswered_questions_are_logged_once_and_resolved(db):

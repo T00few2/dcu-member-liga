@@ -17,6 +17,7 @@ from .time_series import (
     analyze_ghost_watts,
     analyze_sticky_watts,
 )
+from .submitted import load_submitted_recording, recording_method
 from .verdict import _build_cp_comparison, _compute_similarity_metrics
 from .zwift import _extract_zwift_activity_fields, _fetch_zwift_streams
 
@@ -35,6 +36,7 @@ def _compute_dual_recording_for_rider(
     strava_activity_id: str | None = None,
     sw_thresholds: dict | None = None,
     gw_thresholds: dict | None = None,
+    race_id: str | None = None,
 ) -> dict:
     """Run the full dual-recording comparison for one rider/activity."""
     access_token = get_valid_access_token(user_doc_id, get_zwift_service())
@@ -93,46 +95,73 @@ def _compute_dual_recording_for_rider(
         except Exception as exc:
             logger.warning("_compute_dual_recording_for_rider: cp curve: %s", exc)
 
-    matched_strava, resolved_strava_id, matching_debug = _match_strava_activity(
-        user_doc_id,
-        strava_activity_id,
-        zwift_started_at,
-        zwift_duration_sec,
-        zwift_streams.get("time") or [],
-        zwift_streams.get("watts") or [],
-        event_start_iso,
-    )
-    if not matched_strava:
-        candidate_count = len((matching_debug or {}).get("candidates") or [])
-        warning = (
-            "No matching Strava activities found."
-            if candidate_count > 0
-            else "No Strava activities found."
+    submitted = load_submitted_recording(db, str(race_id), str(user_doc_id)) if race_id else None
+    trainer_meta = None
+    if submitted and submitted.get("broken"):
+        return _zwift_only_result(
+            zwift_activity_id, zwift_started_at, zwift_duration_sec, zwift_avg_watts,
+            zwift_cp_curve, zwift_streams, sticky_watts, ghost_watts,
+            recording_source=submitted.get("source") or "upload",
+            warning="recording_unreadable",
         )
-        return {
-            "zwift": {
-                "activityId": zwift_activity_id,
-                "startedAt": zwift_started_at,
-                "durationSec": zwift_duration_sec,
-                "avgWatts": zwift_avg_watts,
-                "cpCurve": zwift_cp_curve,
-                "streams": zwift_streams or None,
-                "stickyWatts": sticky_watts,
-                "ghostWatts": ghost_watts,
-            },
-            "strava": None,
-            "sync": None,
-            "comparison": None,
-            "matchingDebug": matching_debug,
-            "warning": warning,
+    if submitted and submitted.get("streams"):
+        recording_source = submitted.get("source") if submitted.get("source") in {"direct", "upload"} else "upload"
+        streams = submitted["streams"]
+        matched_strava = {
+            "name": "Direkte optagelse" if recording_source == "direct" else "Uploadet FIT",
+            "startDate": submitted.get("startedAt") or streams.get("startedAt") or "",
+            "durationSec": submitted.get("durationSec"),
+            "averageWatts": submitted.get("avgPower"),
         }
+        resolved_strava_id = None
+        matching_debug = {"selectionReason": "submitted_file"}
+        s_times = streams.get("time") or []
+        s_watts = streams.get("watts") or []
+        s_cadence = streams.get("cadence") or []
+        s_hr = streams.get("heartrate") or []
+        s_alt = streams.get("altitude") or []
+        trainer_meta = submitted.get("trainer")
+    else:
+        method = recording_method(db, str(user_doc_id)) if race_id else "strava"
+        if race_id and method != "strava":
+            return _zwift_only_result(
+                zwift_activity_id, zwift_started_at, zwift_duration_sec, zwift_avg_watts,
+                zwift_cp_curve, zwift_streams, sticky_watts, ghost_watts,
+                recording_source=method,
+                warning="awaiting_file",
+                awaiting_file=True,
+            )
+        recording_source = "strava"
+        matched_strava, resolved_strava_id, matching_debug = _match_strava_activity(
+            user_doc_id,
+            strava_activity_id,
+            zwift_started_at,
+            zwift_duration_sec,
+            zwift_streams.get("time") or [],
+            zwift_streams.get("watts") or [],
+            event_start_iso,
+        )
+        if not matched_strava:
+            candidate_count = len((matching_debug or {}).get("candidates") or [])
+            warning = (
+                "No matching Strava activities found."
+                if candidate_count > 0
+                else "No Strava activities found."
+            )
+            return _zwift_only_result(
+                zwift_activity_id, zwift_started_at, zwift_duration_sec, zwift_avg_watts,
+                zwift_cp_curve, zwift_streams, sticky_watts, ghost_watts,
+                recording_source="strava",
+                warning=warning,
+                matching_debug=matching_debug,
+            )
 
-    raw_streams = strava_service.get_activity_streams(user_doc_id, resolved_strava_id)
-    s_times = _extract_stream(raw_streams, "time")
-    s_watts = _extract_stream(raw_streams, "watts")
-    s_cadence = _extract_stream(raw_streams, "cadence")
-    s_hr = _extract_stream(raw_streams, "heartrate")
-    s_alt = _extract_stream(raw_streams, "altitude")
+        raw_streams = strava_service.get_activity_streams(user_doc_id, resolved_strava_id)
+        s_times = _extract_stream(raw_streams, "time")
+        s_watts = _extract_stream(raw_streams, "watts")
+        s_cadence = _extract_stream(raw_streams, "cadence")
+        s_hr = _extract_stream(raw_streams, "heartrate")
+        s_alt = _extract_stream(raw_streams, "altitude")
 
     strava_started_at = matched_strava.get("startDate", "")
     trimmed, strava_offset, sync_method, ts_offset = _trim_strava_streams(
@@ -258,4 +287,44 @@ def _compute_dual_recording_for_rider(
             "similarity": similarity_metrics,
         },
         "matchingDebug": matching_debug,
+        "recordingSource": recording_source,
+        "trainer": trainer_meta,
     }
+
+
+def _zwift_only_result(
+    zwift_activity_id: str,
+    zwift_started_at: str | None,
+    zwift_duration_sec: int | None,
+    zwift_avg_watts: float | None,
+    zwift_cp_curve: dict,
+    zwift_streams: dict,
+    sticky_watts: dict | None,
+    ghost_watts: dict | None,
+    *,
+    recording_source: str,
+    warning: str,
+    matching_debug: dict | None = None,
+    awaiting_file: bool = False,
+) -> dict:
+    result = {
+        "zwift": {
+            "activityId": zwift_activity_id,
+            "startedAt": zwift_started_at,
+            "durationSec": zwift_duration_sec,
+            "avgWatts": zwift_avg_watts,
+            "cpCurve": zwift_cp_curve,
+            "streams": zwift_streams or None,
+            "stickyWatts": sticky_watts,
+            "ghostWatts": ghost_watts,
+        },
+        "strava": None,
+        "sync": None,
+        "comparison": None,
+        "matchingDebug": matching_debug,
+        "warning": warning,
+        "recordingSource": recording_source,
+    }
+    if awaiting_file:
+        result["awaitingFile"] = True
+    return result

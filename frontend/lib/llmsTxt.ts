@@ -6,7 +6,7 @@ import {
     type SeasonPointTableKey,
 } from '@/lib/seasonPointsDefaults';
 import { isOneDaySeasonClass, tourEvents, tourGcCountingSentence } from '@/lib/seasonUi';
-import { verificationRuleLines } from '@/lib/verificationCopy';
+import { dualRecordingGuideLines, verificationRuleLines } from '@/lib/verificationCopy';
 import type { SeasonRankPointTable, SeasonRankPoints, StageRace } from '@/types/admin';
 
 export type LlmsLeagueSettings = {
@@ -130,6 +130,8 @@ export function buildLlmsTxt(input: {
 
     const rule = verificationRuleLines(settings);
     if (rule) lines.push(...rule);
+    lines.push('', '### Dual recording', '');
+    lines.push(...dualRecordingGuideLines());
 
     lines.push(
         '',

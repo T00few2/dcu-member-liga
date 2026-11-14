@@ -225,7 +225,7 @@ export interface CpDiffRow {
     diffPct: number | null;
 }
 
-export type DualRecordingStatus = 'passed' | 'failed' | 'missing_strava' | 'missing_activity' | 'error' | 'sw_only';
+export type DualRecordingStatus = 'passed' | 'failed' | 'missing_strava' | 'missing_activity' | 'error' | 'sw_only' | 'awaiting_file';
 export type WeightVerificationStatus = 'pending' | 'submitted' | 'approved' | 'rejected' | 'revoked' | 'none';
 
 export interface DualRecordingVerification {
@@ -239,6 +239,8 @@ export interface DualRecordingVerification {
     stravaActivityId?: number | null;
     failingMetrics?: string[];
     source?: 'mandatory' | 'opt_in' | string;
+    recordingSource?: 'direct' | 'upload' | 'strava' | string;
+    trainerRecording?: { name?: string | null; avgWatts?: number | null } | null;
     raceId?: string;
     raceName?: string;
     archiveId?: string;

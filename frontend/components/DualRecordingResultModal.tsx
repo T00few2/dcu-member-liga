@@ -7,6 +7,7 @@ import { ExtendedPeakProfileChart } from '@/components/shared/ExtendedPeakProfil
 import type { CpDiffRow } from '@/types/admin';
 import { explainDrFailureMetrics } from '@/lib/drFailureLabels';
 import { dualRecordingSourceCopy, isVoluntaryDualRecording } from '@/lib/drSource';
+import { dualSideLabel } from '@/lib/dualRecording/copy';
 import { DualRecordingProvider, useDualRecordingContext } from '@/lib/dr-context';
 
 // ─── Public props (minimal — caller only needs to supply these) ───────────────
@@ -60,6 +61,12 @@ function StatusHeader({ status, source }: { status: string; source?: string }) {
         statusChip = (
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-100 text-red-800 font-semibold text-sm">
                 ✗ Underkendtes
+            </span>
+        );
+    } else if (status === 'awaiting_file') {
+        statusChip = (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-yellow-100 text-yellow-800 font-semibold text-sm">
+                … Afventer fil
             </span>
         );
     } else if (status === 'missing_strava') {
@@ -157,7 +164,9 @@ function DualRecordingModalContent({
 
     if (!open) return null;
 
-    const { status, verifiedAt, comparison, failingMetrics = [], stravaActivityId, zwiftActivityId, source } = verification;
+    const { status, verifiedAt, comparison, failingMetrics = [], stravaActivityId, zwiftActivityId, source, trainerRecording } = verification;
+    const sideLabel = dualSideLabel(streamResult?.recordingSource || verification.recordingSource);
+    const trainer = streamResult?.trainer || trainerRecording;
     const cpDiffRows = streamResult?.comparison?.cpDiff ?? comparison?.cpDiff ?? [];
     const failureReasons = explainDrFailureMetrics(failingMetrics);
     const matchingDebug = streamResult?.matchingDebug;
@@ -357,14 +366,19 @@ function DualRecordingModalContent({
                         <div className="space-y-4">
                             {comparison && comparison.cpDiff && comparison.cpDiff.length > 0 && (
                                 <div>
-                                    <h3 className="text-sm font-semibold text-foreground mb-2">CP-sammenligning (Zwift vs Strava)</h3>
+                                    <h3 className="text-sm font-semibold text-foreground mb-2">CP-sammenligning (Zwift vs {sideLabel})</h3>
+                                    {trainer?.avgWatts != null && (
+                                        <p className="text-xs text-muted-foreground mb-2">
+                                            Træner{trainer.name ? ` (${trainer.name})` : ''}: {Math.round(trainer.avgWatts)} W. Det er den watt, Zwift var parret til, og indgår ikke i sammenligningen.
+                                        </p>
+                                    )}
                                     <div className="overflow-x-auto rounded-lg border border-border">
                                         <table className="w-full text-sm text-left">
                                             <thead className="bg-muted/20 text-xs text-muted-foreground">
                                                 <tr>
                                                     <th className="px-3 py-2">Varighed</th>
                                                     <th className="px-3 py-2 text-right">Zwift (W)</th>
-                                                    <th className="px-3 py-2 text-right">Strava (W)</th>
+                                                    <th className="px-3 py-2 text-right">{sideLabel} (W)</th>
                                                     <th className="px-3 py-2 text-right">Afvigelse</th>
                                                     <th className="px-3 py-2 text-center w-16">Grænse</th>
                                                 </tr>
@@ -428,7 +442,7 @@ function DualRecordingModalContent({
                             )}
 
                             <div className="text-xs text-muted-foreground border-t border-border pt-3">
-                                <p className="font-semibold mb-1">Grænseværdier (Zwift vs Strava):</p>
+                                <p className="font-semibold mb-1">Grænseværdier (Zwift vs {sideLabel}):</p>
                                 <p>20 min: max 5% · 5 min: max 5,5% · 1 min: max 6% · 15 sek: max 6,5%</p>
                             </div>
                         </div>

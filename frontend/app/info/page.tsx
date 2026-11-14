@@ -19,7 +19,7 @@ import {
 import type { Race } from '@/types/live';
 import type { StageRace } from '@/types/admin';
 import { DEFAULT_DIVISION_LEADER_JERSEY } from '@/lib/seasonJerseys';
-import { verificationRuleLines } from '@/lib/verificationCopy';
+import { dualRecordingGuideLines, verificationRuleLines } from '@/lib/verificationCopy';
 import VerificationRuleNotice from '@/components/public/VerificationRuleNotice';
 
 function useVerificationCategoryNames(): { names: string[]; ready: boolean } {
@@ -742,20 +742,19 @@ function ReglerSection() {
                         <p key={line} className="text-slate-600 dark:text-slate-400 mb-2">{line}</p>
                     ))}
                     {verificationLabel ? (
-                        <>
-                            <p className="text-slate-600 dark:text-slate-400 mb-2">
-                                Ryttere i <strong>{verificationLabel}</strong> skal enten benytte en <strong>godkendt hometrainer</strong> eller foretage <strong>dual recording</strong> med en separat wattmåler.
-                            </p>
-                            <p className="text-slate-600 dark:text-slate-400 mb-2">
-                                Ved dual recording skal aktiviteten uploades til <strong>Strava</strong>, og din Strava-konto skal være forbundet med din profil her på siden. Strava-data bruges kun til admin kontrol af wattdata.
-                            </p>
-                            <p className="text-slate-600 dark:text-slate-400">
-                                Ryttere med godkendt hometrainer — og ryttere uden for verifikationskategorierne — kan tilmelde sig dual recording-tjek under{' '}
-                                <Link href="/verification" className="text-primary underline hover:no-underline">Verifikation</Link>.
-                                Et godkendt tjek kan vises på resultater. Et underkendt tjek ses kun af rytteren og administratorer og deklassificerer ikke automatisk.
-                            </p>
-                        </>
+                        <p className="text-slate-600 dark:text-slate-400 mb-2">
+                            Ryttere i <strong>{verificationLabel}</strong> skal enten benytte en <strong>godkendt hometrainer</strong> eller foretage <strong>dual recording</strong> med en separat wattmåler.
+                        </p>
                     ) : null}
+                    {dualRecordingGuideLines().map((line) => (
+                        <p key={line} className="text-slate-600 dark:text-slate-400 mb-2 last:mb-0">
+                            {line}
+                        </p>
+                    ))}
+                    <p className="text-slate-600 dark:text-slate-400">
+                        Metode og resultater står under{' '}
+                        <Link href="/verification" className="text-primary underline hover:no-underline">Verifikation</Link>.
+                    </p>
                 </div>
                 <div className="pl-4 border-l-4 border-slate-400">
                     <h4 className="font-bold text-slate-900 dark:text-white mb-1">Yderligere regler</h4>

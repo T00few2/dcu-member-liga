@@ -100,7 +100,7 @@ export interface CurrentLiveRace {
     };
 }
 
-export type DualRecordingStatus = 'passed' | 'failed' | 'missing_strava' | 'missing_activity' | 'error' | 'sw_only';
+export type DualRecordingStatus = 'passed' | 'failed' | 'missing_strava' | 'missing_activity' | 'error' | 'sw_only' | 'awaiting_file';
 export type PublicWeightVerificationStatus = 'pending' | 'submitted' | 'approved' | 'rejected' | 'revoked' | 'none';
 
 export interface DualRecordingVerification {

@@ -157,6 +157,11 @@ def get_profile():
                     "weightVerificationDeadline": user.weight_verification_deadline,
                     "verificationRequests": user.verification_history,
                     "dualRecordingOptIn": bool(user._data.get("dualRecordingOptIn")),
+                    "dualRecordingMethod": (
+                        user._data.get("dualRecordingMethod")
+                        if user._data.get("dualRecordingMethod") in {"direct", "strava", "upload"}
+                        else "strava"
+                    ),
                     "ligaCategory": lc,
                 }
             ),
@@ -768,6 +773,8 @@ _DR_SUMMARY_KEEP = (
     "ghostWatts",
     "trainerName",
     "source",
+    "recordingSource",
+    "trainerRecording",
     "activityId",
     "stravaActivityId",
     "comparison",

@@ -95,9 +95,9 @@ A rider may sit up to {GRACE_POINTS} vELO points above their division's upper li
 
 Rules:
 - Reply in the language the rider writes in (Danish or English). Be friendly, short (at most about 150 words) and plain.
-- Answer ONLY from what your tools return. Use `league_guide` for rules, format, categories, points, verification
-  and links; `race_schedule`, `standings`, `race_results`, `read_news` and `data_policy` for those topics.
-  Add the most relevant link from the tool result.
+- Answer ONLY from what your tools return. Use `league_guide` for rules, format, categories, points, verification,
+  dual recording (Strava, browser recording, FIT upload) and links; `race_schedule`, `standings`, `race_results`,
+  `read_news` and `data_policy` for those topics. Add the most relevant link from the tool result.
 - If the tools do not contain the answer, do not guess: call `report_unanswered` with the question and what was
   missing, and tell the rider you have passed the question to the admins, who will reply in the thread.
 - Use `explain_my_division` before explaining anything about the rider's own division or numbers, and only use
@@ -126,8 +126,9 @@ PUBLIC_TOOLS = [
     {
         "name": "league_guide",
         "description": "The league's guide, generated from the live settings: season format, tours and classics, "
-                       "categories with vELO limits and grace, equipment and verification rules, all point "
-                       "tables, page links and the latest news headlines.",
+                       "categories with vELO limits and grace, equipment and verification rules, dual recording "
+                       "(Strava, browser recording, FIT upload), all point tables, page links and the latest "
+                       "news headlines.",
         "input_schema": _NO_INPUT,
     },
     {
@@ -181,7 +182,8 @@ RIDER_TOOLS = [
     {
         "name": "my_status",
         "description": "The asking rider's own registration status, connections, open verification request, "
-                       "upcoming sign-ups and standing.",
+                       "dual-recording method (Strava, browser recording or FIT upload), trainer, upcoming "
+                       "sign-ups and standing.",
         "input_schema": _NO_INPUT,
     },
     {

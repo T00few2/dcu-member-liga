@@ -281,6 +281,9 @@ def my_status(db: Any, zwift_id: str, user: dict, *, now: datetime | None = None
     except Exception as exc:
         logger.warning("my_status: could not read standings: %s", exc)
     from services.category_engine import effective_liga_category_name
+    from services.dual_recording.submitted import normalize_method
+
+    method = normalize_method(user.get("dualRecordingMethod"))
     return {
         "registered": reg.get("status") == "complete",
         "registrationStatus": reg.get("status"),
@@ -295,6 +298,22 @@ def my_status(db: Any, zwift_id: str, user: dict, *, now: datetime | None = None
             "openRequest": {k: req.get(k) for k in ("type", "status", "deadline", "raceName")}
             if req and req.get("status") not in (None, "approved", "rejected") else None,
         },
+        "dualRecording": {
+            "optIn": user.get("dualRecordingOptIn") is True,
+            "method": method,
+            "methodLabel": {
+                "strava": "Strava",
+                "direct": "browser recording (experimental)",
+                "upload": "FIT upload (experimental)",
+            }.get(method, "Strava"),
+            "where": {
+                "strava": "No race-card action; the league matches the Strava activity after the race.",
+                "direct": "From 48 hours before the heat, open Optag dual on the race card "
+                          "(Chrome on Android or a computer). FIT upload remains available under Verifikation.",
+                "upload": "Upload the FIT file under Verifikation on the row for that race.",
+            }.get(method),
+        },
+        "trainer": ((user.get("equipment") or {}).get("trainer") or None),
         "upcomingSignups": signups[:TOP_N],
         "standing": position,
         "links": {"profile": f"{site_url()}/register", "verification": f"{site_url()}/verification"},

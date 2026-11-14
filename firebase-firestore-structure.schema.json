@@ -442,6 +442,13 @@
         "$ref": "#/$defs/weightHistoryDoc"
       }
     },
+    "dualRecordings": {
+      "type": "array",
+      "description": "Collection-group view of races/{raceId}/dual_recordings/{zwiftId}. The sample streams live in Storage at the streamBlobPath.",
+      "items": {
+        "$ref": "#/$defs/dualRecordingDoc"
+      }
+    },
     "signups": {
       "type": "array",
       "description": "Collection-group view of races/{raceId}/signups documents.",
@@ -1413,6 +1420,45 @@
         }
       }
     },
+    "dualRecordingDoc": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Stored at races/{raceId}/dual_recordings/{zwiftId}",
+      "properties": {
+        "_id": { "type": "string", "description": "canonicalZwiftId" },
+        "zwiftId": { "type": "string" },
+        "raceId": { "type": "string" },
+        "source": { "type": "string", "enum": ["direct", "upload"] },
+        "status": { "type": "string", "enum": ["awaiting_results", "compared"] },
+        "startedAt": { "$ref": "#/$defs/timestampString" },
+        "uploadedAt": { "$ref": "#/$defs/timestampString" },
+        "durationSec": { "type": "integer" },
+        "avgPower": { "type": "number" },
+        "avgCadence": { "type": "number" },
+        "avgHr": { "type": "number" },
+        "powerCoveragePct": { "type": "number" },
+        "sampleCount": { "type": "integer" },
+        "streamBlobPath": { "type": "string" },
+        "streamHash": { "type": "string" },
+        "devices": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "powerMeter": { "type": "string" },
+            "heartRate": { "type": "string" },
+            "trainer": { "type": "string" }
+          }
+        },
+        "trainer": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "name": { "type": "string" },
+            "avgWatts": { "type": "number" }
+          }
+        }
+      }
+    },
     "drVerificationDoc": {
       "type": "object",
       "additionalProperties": true,
@@ -1433,7 +1479,21 @@
         },
         "status": {
           "type": "string",
-          "enum": ["passed", "failed", "missing_strava", "missing_activity", "error", "sw_only"]
+          "enum": ["passed", "failed", "missing_strava", "missing_activity", "error", "sw_only", "awaiting_file"]
+        },
+        "recordingSource": {
+          "type": "string",
+          "enum": ["direct", "upload", "strava"],
+          "description": "Where the dual file came from. direct is the browser recorder, upload is a FIT file, strava is the existing match."
+        },
+        "trainerRecording": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Optional trainer power captured beside the power meter. It is not the file the check compares.",
+          "properties": {
+            "name": { "type": "string" },
+            "avgWatts": { "type": "number" }
+          }
         },
         "swVerifiedAt": {
           "$ref": "#/$defs/timestampString"
@@ -1847,6 +1907,11 @@
         "dualRecordingOptIn": {
           "type": "boolean",
           "description": "When true, rider is included in dual-recording checks even without a mandatory trainer/category"
+        },
+        "dualRecordingMethod": {
+          "type": "string",
+          "enum": ["direct", "strava", "upload"],
+          "description": "How the rider supplies the dual file. Missing means strava. direct and upload are experimental."
         },
         "drReportSeenAt": {
           "$ref": "#/$defs/timestampString"

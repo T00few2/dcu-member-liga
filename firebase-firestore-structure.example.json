@@ -552,6 +552,7 @@
       "club": "Danish Zwift Racers",
       "welcomeSeen": true,
       "dualRecordingOptIn": false,
+      "dualRecordingMethod": "strava",
       "drReportSeenAt": "2026-05-24T14:54:08+00:00",
       "swReportSeenAt": "2026-05-24T14:54:08+00:00",
       "gwReportSeenAt": "2026-05-24T14:54:08+00:00",
@@ -717,6 +718,34 @@
           "version": "2026-02-03",
           "acceptedAt": "2026-03-04T22:21:43+00:00"
         }
+      }
+    }
+  ],
+  "dualRecordings": [
+    {
+      "_id": "100001",
+      "zwiftId": "100001",
+      "raceId": "race_doc_example_001",
+      "source": "direct",
+      "status": "awaiting_results",
+      "startedAt": "2026-05-20T17:00:00+00:00",
+      "uploadedAt": "2026-05-20T17:40:00+00:00",
+      "durationSec": 2400,
+      "avgPower": 214.5,
+      "avgCadence": 88.0,
+      "avgHr": 152.0,
+      "powerCoveragePct": 99.2,
+      "sampleCount": 2400,
+      "streamBlobPath": "dual-recordings/race_doc_example_001/100001/20260520T174000Z.json.gz",
+      "streamHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "devices": {
+        "powerMeter": "Power meter",
+        "heartRate": "Heart rate strap",
+        "trainer": "Trainer"
+      },
+      "trainer": {
+        "name": "Trainer",
+        "avgWatts": 210.0
       }
     }
   ],

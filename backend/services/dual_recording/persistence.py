@@ -66,11 +66,22 @@ def _persist_dr_verification_result(
 ) -> dict:
     comparison = result.get("comparison")
     strava_data = result.get("strava")
+    recording_source = result.get("recordingSource") or "strava"
+    if recording_source not in {"direct", "upload", "strava"}:
+        recording_source = "strava"
 
-    if not strava_data:
-        status = "missing_strava"
+    if result.get("awaitingFile"):
+        status = "awaiting_file"
         passed = None
         failing: list[str] = []
+    elif result.get("warning") == "recording_unreadable":
+        status = "error"
+        passed = None
+        failing = ["recording_unreadable"]
+    elif not strava_data:
+        status = "missing_strava"
+        passed = None
+        failing = []
     else:
         passed, failing = _check_dr_pass(comparison or {})
         status = "passed" if passed else "failed"
@@ -100,6 +111,9 @@ def _persist_dr_verification_result(
         doc_payload["passed"] = passed
     if strava_id is not None:
         doc_payload["stravaActivityId"] = strava_id
+    doc_payload["recordingSource"] = recording_source
+    if result.get("trainer"):
+        doc_payload["trainerRecording"] = result.get("trainer")
 
     if trainer_name:
         doc_payload["trainerName"] = trainer_name
@@ -134,4 +148,8 @@ def _persist_dr_verification_result(
         .document(zwift_id_canonical)
         .set(doc_payload)
     )
+    if recording_source in {"direct", "upload"} and status in {"passed", "failed"}:
+        from .submitted import mark_recording_compared
+
+        mark_recording_compared(db, race_id, zwift_id_canonical)
     return doc_payload

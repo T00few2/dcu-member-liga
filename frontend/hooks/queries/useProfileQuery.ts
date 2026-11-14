@@ -26,6 +26,7 @@ export interface ProfileData {
     club?: string | null;
     ligaCategory?: LigaCategory;
     dropLevel?: number | null;
+    dualRecordingMethod?: 'direct' | 'strava' | 'upload';
     clubKit?: {
         jerseyName: string;
         imageUrl?: string | null;

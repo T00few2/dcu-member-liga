@@ -12,6 +12,7 @@ function VerificationContent() {
         weightVerificationDeadline,
         verificationRequests,
         dualRecordingOptIn,
+        dualRecordingMethod,
         ligaCategory,
         refreshProfile,
         trainer,
@@ -32,6 +33,7 @@ function VerificationContent() {
                 refreshProfile={refreshProfile}
                 trainerRequiresDualRecording={trainerRequiresDualRecording}
                 dualRecordingOptIn={dualRecordingOptIn}
+                dualRecordingMethod={dualRecordingMethod}
                 ligaCategory={ligaCategory}
             />
             )}

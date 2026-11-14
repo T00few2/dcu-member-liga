@@ -32,6 +32,10 @@ export default function DualRecordingStatusBadge({ verification, onClick }: Prop
         title = reasons.length > 0
             ? `Dual recording: Underkendtes\n- ${reasons.join('\n- ')}`
             : 'Dual recording: Underkendtes';
+    } else if (status === 'awaiting_file') {
+        icon = '…';
+        colorClass = 'bg-yellow-100 text-yellow-700 border-yellow-300 hover:bg-yellow-200';
+        title = 'Dual recording: Afventer fil';
     } else if (status === 'missing_strava') {
         icon = '?';
         colorClass = 'bg-yellow-100 text-yellow-700 border-yellow-300 hover:bg-yellow-200';

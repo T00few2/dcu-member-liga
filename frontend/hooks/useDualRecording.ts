@@ -122,6 +122,8 @@ export interface DualRecordingResult {
         }>;
     };
     warning?: string;
+    recordingSource?: 'direct' | 'upload' | 'strava' | string;
+    trainer?: { name?: string | null; avgWatts?: number | null } | null;
 }
 
 export interface EventActivityResult {

@@ -33,6 +33,11 @@ describe('buildLlmsTxt', () => {
         expect(text).toContain('verifikation kræves');
         expect(text).toContain('Verifikation er obligatorisk i 1. Division.');
         expect(text).toContain('Ryttere i 1. Division skal bruge en godkendt hometrainer eller dual recording');
+        expect(text).toContain('### Dual recording');
+        expect(text).toContain('Under Verifikation vælger rytteren, hvordan filen normalt leveres');
+        expect(text).toContain('Optag i browseren (eksperimentelt)');
+        expect(text).toContain('Upload en FIT-fil (eksperimentelt)');
+        expect(text).toContain('du kan stadig blive bedt om at uploade turen til Strava');
         expect(text).not.toContain('ikke for nogen kategorier');
         expect(text).not.toContain('A, B, C, D');
         expect(text).not.toContain('Zwift Racing Score');

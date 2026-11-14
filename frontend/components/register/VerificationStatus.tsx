@@ -15,6 +15,9 @@ import GhostWattsStatusBadge from '@/components/GhostWattsStatusBadge';
 import WeightVideoSubmitForm from '@/components/WeightVideoSubmitForm';
 import { useLeagueSettingsQuery } from '@/hooks/queries/useLeagueSettingsQuery';
 import type { ProfileDrVerification } from '@/hooks/queries/useProfileDrVerificationsQuery';
+import FitUploadControl from '@/components/dual-record/FitUploadControl';
+import { DUAL_EXPERIMENTAL_DA } from '@/lib/dualRecording/copy';
+import { useQuery } from '@tanstack/react-query';
 
 interface VerificationRequest {
     requestId: string;
@@ -35,7 +38,16 @@ interface VerificationStatusProps {
     refreshProfile: () => void;
     trainerRequiresDualRecording?: boolean;
     dualRecordingOptIn?: boolean;
+    dualRecordingMethod?: 'direct' | 'strava' | 'upload';
     ligaCategory?: string | null;
+}
+
+interface FileRow {
+    raceId: string;
+    raceName?: string;
+    offerUpload?: boolean;
+    verificationStatus?: string | null;
+    recording?: { source?: string; powerCoveragePct?: number; avgPower?: number | null } | null;
 }
 
 type Tab = 'vægt' | 'dual-recording' | 'sticky-watts' | 'ghost-watts';
@@ -44,6 +56,7 @@ export default function VerificationStatus({
     status, deadline, requests = [], refreshProfile,
     trainerRequiresDualRecording = false,
     dualRecordingOptIn = false,
+    dualRecordingMethod = 'strava',
     ligaCategory = null,
 }: VerificationStatusProps) {
     const { user } = useAuth();
@@ -55,10 +68,15 @@ export default function VerificationStatus({
     const [selectedDr, setSelectedDr] = useState<ProfileDrVerification | null>(null);
     const [optInBusy, setOptInBusy] = useState(false);
     const [optedIn, setOptedIn] = useState(dualRecordingOptIn);
+    const [method, setMethod] = useState(dualRecordingMethod);
+    const [methodBusy, setMethodBusy] = useState(false);
 
     useEffect(() => {
         setOptedIn(dualRecordingOptIn);
     }, [dualRecordingOptIn]);
+    useEffect(() => {
+        setMethod(dualRecordingMethod);
+    }, [dualRecordingMethod]);
 
     const validDays = Number(leagueSettings?.weightVerificationValidDays) > 0
         ? Number(leagueSettings?.weightVerificationValidDays)
@@ -70,6 +88,19 @@ export default function VerificationStatus({
         [leagueSettings?.ligaCategories],
     );
     const isMandatoryDr = trainerRequiresDualRecording && !!ligaCategory && verificationCats.includes(ligaCategory);
+    const inDualScope = isMandatoryDr || optedIn;
+    const fileQuery = useQuery<{ rows: FileRow[] }>({
+        queryKey: ['dual-recording-files', user?.uid],
+        enabled: !!user && inDualScope,
+        queryFn: async () => {
+            const token = await user!.getIdToken();
+            const res = await fetch(`${API_URL}/profile/dual-recording-files`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!res.ok) throw new Error('Kunne ikke hente løb');
+            return res.json();
+        },
+    });
 
     const hasUnseenDr = !!(
         notifState?.latestDrFailedAt &&
@@ -123,6 +154,28 @@ export default function VerificationStatus({
     const latestDr = drVerifications.find(v => v.status && v.status !== 'sw_only');
     const latestSw = drVerifications.find(v => v.stickyWatts != null);
     const latestGw = drVerifications.find(v => v.ghostWatts != null);
+
+    const saveMethod = async (next: 'direct' | 'strava' | 'upload') => {
+        if (!user) return;
+        setMethodBusy(true);
+        try {
+            const token = await user.getIdToken();
+            const res = await fetch(`${API_URL}/profile/dual-recording-method`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ method: next }),
+            });
+            if (!res.ok) throw new Error('Kunne ikke gemme valg');
+            setMethod(next);
+            await refreshProfile();
+            queryClient.invalidateQueries({ queryKey: ['profile'] });
+            queryClient.invalidateQueries({ queryKey: ['dual-recording-files', user.uid] });
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setMethodBusy(false);
+        }
+    };
 
     const setOptIn = async (enabled: boolean) => {
         if (!user || isMandatoryDr) return;
@@ -312,6 +365,52 @@ export default function VerificationStatus({
                             </>
                         )}
                     </div>
+
+                    {inDualScope && (
+                        <div className="space-y-3 rounded-lg border border-border p-4">
+                            <h3 className="font-semibold">Sådan sender du dual</h3>
+                            {([
+                                ['direct', 'Optag i browseren'],
+                                ['strava', 'Strava'],
+                                ['upload', 'Upload en FIT-fil'],
+                            ] as const).map(([value, label]) => (
+                                <label key={value} className="flex items-start gap-2 text-sm">
+                                    <input
+                                        type="radio"
+                                        name="dual-method"
+                                        className="mt-1"
+                                        checked={method === value}
+                                        disabled={methodBusy}
+                                        onChange={() => void saveMethod(value)}
+                                    />
+                                    <span>
+                                        <span className="font-medium">{label}</span>
+                                        {value !== 'strava' && (
+                                            <span className="block text-amber-800 dark:text-amber-200">{DUAL_EXPERIMENTAL_DA}</span>
+                                        )}
+                                    </span>
+                                </label>
+                            ))}
+                            {method === 'direct' && (
+                                <p className="text-sm text-muted-foreground">
+                                    Optagelsen åbner på løbskortet fra 48 timer før dit heat, i Chrome på Android eller en computer.
+                                    iPhone og iPad kan uploade FIT-filen her.
+                                </p>
+                            )}
+                        </div>
+                    )}
+
+                    {inDualScope && (fileQuery.data?.rows || []).filter((row) => row.offerUpload).map((row) => (
+                        <FitUploadControl
+                            key={row.raceId}
+                            raceId={row.raceId}
+                            raceName={row.raceName}
+                            onUploaded={() => {
+                                queryClient.invalidateQueries({ queryKey: ['dual-recording-files', user?.uid] });
+                                queryClient.invalidateQueries({ queryKey: ['profile-dr-verifications', user?.uid] });
+                            }}
+                        />
+                    ))}
 
                     {drLoading ? (
                         <div className="p-8 text-center text-muted-foreground">Indlæser...</div>

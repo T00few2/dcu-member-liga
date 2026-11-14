@@ -276,6 +276,19 @@ class DualRecordingOptInRequest(BaseModel):
     model_config = ConfigDict(extra='ignore')
 
 
+class DualRecordingMethodRequest(BaseModel):
+    method: str
+
+    @field_validator('method')
+    @classmethod
+    def _method_known(cls, value: str) -> str:
+        if value not in {'direct', 'strava', 'upload'}:
+            raise ValueError('method must be direct, strava, or upload')
+        return value
+
+    model_config = ConfigDict(extra='ignore')
+
+
 class WeightValidDaysRequest(BaseModel):
     days: int = 30
 

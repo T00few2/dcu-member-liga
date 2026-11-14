@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
 import { getZwiftInsiderUrl, API_URL } from '@/lib/api';
@@ -15,6 +15,8 @@ import SprintsByLap, {
 import type { Race, Sprint, EventCategoryConfig, CategoryConfig } from '@/types/live';
 import type { LeagueSettings, RaceGroup } from '@/types/admin';
 import { useRouteElevationQuery, useRaceSegmentsQuery, useMyRaceSignupsQuery, useRaceSignupCountsQuery } from '@/hooks/queries';
+import { useProfileQuery } from '@/hooks/queries/useProfileQuery';
+import { browserCanRecord, recorderWindowOpen, slotStartMs } from '@/lib/dualRecording/window';
 import { useAuth } from '@/lib/auth-context';
 import { scaleRaceDistanceKm } from '@/hooks/useLeagueData';
 import { formatOmgangeDisplay } from '@/lib/raceLaps';
@@ -142,6 +144,7 @@ export default function RaceCard({
     const { user, isRegistered } = useAuth();
     const queryClient = useQueryClient();
     const mySignupsQuery = useMyRaceSignupsQuery();
+    const profileQuery = useProfileQuery();
     const signupCountsQuery = useRaceSignupCountsQuery();
     const persistedStatus = mySignupsQuery.data?.[race.id]?.status;
     const signupCount = signupCountsQuery.data?.[race.id] ?? 0;
@@ -149,6 +152,15 @@ export default function RaceCard({
     const [signupMessage, setSignupMessage] = useState('');
     const [showUnsignupConfirm, setShowUnsignupConfirm] = useState(false);
     const isSignedUp = persistedStatus === 'pending' || persistedStatus === 'registered';
+    const slotStart = slotStartMs(race, userCategory);
+    const [canRecordHere, setCanRecordHere] = useState(false);
+    useEffect(() => { setCanRecordHere(browserCanRecord()); }, []);
+    const showDualRecorder = !isPublicVariant
+        && isSignedUp
+        && profileQuery.data?.dualRecordingMethod === 'direct'
+        && slotStart != null
+        && recorderWindowOpen(slotStart)
+        && canRecordHere;
     const userConfig = race.eventMode === 'multi' ? getUserEventConfig(race, userCategory) : null;
     const userSingleConfig = (race.eventMode !== 'multi' && race.eventMode !== 'grouped') ? getUserSingleConfig(race, userCategory) : null;
     const userGroupConfig = race.eventMode === 'grouped' ? getUserGroupConfig(race, userCategory) : null;
@@ -467,6 +479,15 @@ export default function RaceCard({
                             nameHeading={showingSplits ? 'Split' : 'Sprint'}
                         />
                     </div>
+                )}
+
+                {showDualRecorder && (
+                    <Link
+                        href={`/dual-record/${race.id}`}
+                        className="mb-3 block w-full rounded-lg bg-primary py-3 px-4 text-center font-bold text-primary-foreground"
+                    >
+                        Optag dual
+                    </Link>
                 )}
 
                 {!isPublicVariant && (race.preRegisterAllowed || racePassHref) ? (

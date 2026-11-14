@@ -10,6 +10,8 @@ import NotificationPermissionBanner from '@/components/NotificationPermissionBan
 import WeightVerificationModal from '@/components/WeightVerificationModal';
 import AppBadgeSync from '@/components/AppBadgeSync';
 import DiscordButton from '@/components/DiscordButton';
+import DualRecordProvider from '@/components/dual-record/DualRecordProvider';
+import DualRecordBar from '@/components/dual-record/DualRecordBar';
 import { Analytics } from '@vercel/analytics/next';
 
 export default function SiteShell({ children }: { children: React.ReactNode }) {
@@ -18,6 +20,7 @@ export default function SiteShell({ children }: { children: React.ReactNode }) {
             <ReactQueryProvider>
                 <ToastProvider>
                     <AuthProvider>
+                        <DualRecordProvider>
                         <InAppBrowserBanner />
                         <MobileInstallBanner />
                         <NotificationPermissionBanner />
@@ -28,6 +31,7 @@ export default function SiteShell({ children }: { children: React.ReactNode }) {
                         <main className="min-h-screen">
                             {children}
                         </main>
+                        <DualRecordBar />
                         <footer className="site-footer bg-[#0e2029] relative overflow-hidden text-slate-300 text-sm py-5 mt-0">
                             <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/4 w-[200px] h-[150px] bg-[#142d3a] rounded-[50px] pointer-events-none z-0 -rotate-12"></div>
                             <div className="absolute bottom-0 left-0 translate-y-1/3 -translate-x-1/4 w-[200px] h-[150px] bg-[#142d3a] rounded-full pointer-events-none z-0 rotate-12"></div>
@@ -48,6 +52,7 @@ export default function SiteShell({ children }: { children: React.ReactNode }) {
                                 </div>
                             </div>
                         </footer>
+                        </DualRecordProvider>
                     </AuthProvider>
                 </ToastProvider>
             </ReactQueryProvider>

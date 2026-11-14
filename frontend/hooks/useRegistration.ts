@@ -49,6 +49,7 @@ export function useRegistration() {
         source?: string;
     }[]>([]);
     const [dualRecordingOptIn, setDualRecordingOptIn] = useState(false);
+    const [dualRecordingMethod, setDualRecordingMethod] = useState<'direct' | 'strava' | 'upload'>('strava');
     const [ligaCategory, setLigaCategory] = useState<string | null>(null);
     const [clubKit, setClubKit] = useState<ClubKitPayload | null>(null);
     const [dropLevel, setDropLevel] = useState<number | null>(null);
@@ -143,6 +144,11 @@ export function useRegistration() {
                         setWeightVerificationDeadline(data.weightVerificationDeadline || null);
                         setVerificationRequests(data.verificationRequests || []);
                         setDualRecordingOptIn(!!data.dualRecordingOptIn);
+                        setDualRecordingMethod(
+                            data.dualRecordingMethod === 'direct' || data.dualRecordingMethod === 'upload'
+                                ? data.dualRecordingMethod
+                                : 'strava',
+                        );
                         setLigaCategory(data.ligaCategory?.category || null);
                         setClubKit(data.clubKit || null);
                         setDropLevel(typeof data.dropLevel === 'number' ? data.dropLevel : null);
@@ -450,6 +456,7 @@ export function useRegistration() {
         weightVerificationDeadline,
         verificationRequests,
         dualRecordingOptIn,
+        dualRecordingMethod,
         ligaCategory,
         clubKit,
         dropLevel,

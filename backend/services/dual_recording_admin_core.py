@@ -235,6 +235,7 @@ def get_dual_recording_result(
         str(zwift_activity_id),
         event_start_iso,
         strava_activity_id,
+        race_id=str(race_id) if race_id else None,
     )
     if race_id:
         try:
