@@ -48,7 +48,7 @@ export function dualRecordingGuideLines(): string[] {
     return [
         'Dual recording sammenligner watt fra Zwift med en anden wattfil fra samme løb.',
         'Under Verifikation vælger rytteren, hvordan filen normalt leveres: Strava (standard), optagelse i browseren, eller upload af en FIT-fil.',
-        'Strava: forbind Strava på profilen. Efter løbet henter ligaen selv den rigtige dual-aktivitet. Der er ingen ekstra knap på løbskortet.',
+        'Strava: forbind Strava på profilen. Par wattmåleren til dual recording med en cykelcomputer (fx Wahoo eller Garmin) eller Strava-appen, og upload aktiviteten til Strava efter løbet. Ligaen henter derefter selv den rigtige aktivitet.',
         'Optag i browseren (eksperimentelt): fra 48 timer før dit heat viser løbskortet «Optag dual» i Chrome på Android eller en computer. Forbind wattmåler og pulsmåler, start lidt før starten, og når du er færdig, hold knappen Færdig inde i 2 sekunder og upload. Optagelsen gemmes på enheden undervejs. iPhone og iPad kan ikke forbinde wattmålere i browseren.',
         'Upload en FIT-fil (eksperimentelt): send filen fra Verifikation på rækken for det konkrete løb, ved siden af verifikationsresultatet. Samme sted bruges, hvis en optagelse eller et Strava-match mangler eller skal erstattes.',
         'Eksperimentelt: du kan stadig blive bedt om at uploade turen til Strava. En fil, rytteren har sendt (optagelse eller FIT), er den, der sammenlignes for det løb.',

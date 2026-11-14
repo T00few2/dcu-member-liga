@@ -307,7 +307,9 @@ def my_status(db: Any, zwift_id: str, user: dict, *, now: datetime | None = None
                 "upload": "FIT upload (experimental)",
             }.get(method, "Strava"),
             "where": {
-                "strava": "No race-card action; the league matches the Strava activity after the race.",
+                "strava": "Connect Strava on the profile. Pair the dual-recording power meter with a head unit "
+                          "(Wahoo, Garmin, or the Strava app) and upload that activity to Strava after the race. "
+                          "The league then matches it.",
                 "direct": "From 48 hours before the heat, open Optag dual on the race card "
                           "(Chrome on Android or a computer). FIT upload remains available under Verifikation.",
                 "upload": "Upload the FIT file under Verifikation on the row for that race.",

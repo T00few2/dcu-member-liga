@@ -397,6 +397,11 @@ export default function VerificationStatus({
                                     iPhone og iPad kan uploade FIT-filen her.
                                 </p>
                             )}
+                            {method === 'strava' && (
+                                <p className="text-sm text-muted-foreground">
+                                    Forbind Strava på din profil. Par wattmåleren til dual recording med en cykelcomputer (fx Wahoo eller Garmin) eller Strava-appen, og upload aktiviteten til Strava efter løbet. Ligaen henter derefter selv den rigtige aktivitet.
+                                </p>
+                            )}
                         </div>
                     )}
 
