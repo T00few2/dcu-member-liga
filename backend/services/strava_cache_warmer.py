@@ -132,7 +132,7 @@ def cache_status(
     eligible_ids = {p["userDocId"] for p in eligible}
     others = [p for p in participants
               if p.get("hasStrava") and p.get("userDocId") and p["userDocId"] not in eligible_ids]
-    others_cached = 0
+    others_cached = others_no_power = 0
     for p in others:
         entry = read_curve(p["userDocId"], days)
         has_power = bool(entry and entry.get("curve"))
@@ -140,6 +140,7 @@ def cache_status(
             others_cached += 1
         elif entry and not has_power and _is_fresh(entry, now, RETRY_EMPTY_AFTER_DAYS):
             # No power rides; retried after a week (once right away if it has no stored history).
+            others_no_power += 1
             if _empty_without_history(entry):
                 missing.append((4, p))
         else:
@@ -173,6 +174,13 @@ def cache_status(
         "noPowerData": no_power,
         "others": len(others),
         "othersCached": others_cached,
+        "othersNoPower": others_no_power,
+        # Riders queued for a fetch, per group (a rider with a usable curve can be queued
+        # too: weekly refresh, or ride history that does not reach back far enough yet).
+        "toFetchEligible": sum(1 for _, p in missing if p["userDocId"] in eligible_ids),
+        "toFetchOthers": sum(1 for _, p in missing if p["userDocId"] not in eligible_ids),
+        "missingIds": {p["userDocId"] for _, p in missing},
+        "noStrava": sum(1 for p in participants if not p.get("hasStrava")),
         "uncounted": uncounted,
         "eligibleIds": eligible_ids,
         "missing": [p for _, p in missing],

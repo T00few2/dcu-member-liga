@@ -166,7 +166,8 @@ def test_status_endpoint(client, monkeypatch):
     assert body.pop("lastWarm") is None
     body.pop("league")  # league progress has its own test (test_league_performance)
     assert body == {"days": 90, "eligible": 3, "cached": 0, "noPowerData": 0, "others": 0, "othersCached": 0,
-                    "remaining": 3, "minEvalRiders": 40}
+                    "remaining": 3, "minEvalRiders": 40, "othersNoPower": 0, "toFetchEligible": 3,
+                    "toFetchOthers": 0, "noStrava": 0}
     assert usage["cacheBudgetFraction"] == 0.75 and usage["known"] is False
 
 

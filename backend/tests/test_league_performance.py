@@ -487,6 +487,11 @@ def test_progress_counts_what_is_stored_and_what_still_waits():
     assert po.refresh_next(db, races, rows, now=now) == "r1"
 
     out = po.progress(db, races, now)
+    per_rider = out.pop("perRider")
+    assert per_rider["5"] == {"ready": True, "pending": False}      # has power from before the race
+    assert per_rider["6"] == {"ready": False, "pending": True}      # Strava, history not fetched yet
+    assert per_rider["1"] == {"ready": False, "pending": False}     # no Strava
+    assert out.pop("nextRecountAt") == (now + timedelta(hours=6)).isoformat()
     assert out == {"racesFinalized": 2, "racesBuilt": 1, "observations": 10, "withStrava": 1,
                    "weightBeforeRace": 0, "ridersWaitingForStrava": 1,   # rider 6: Strava, no history yet
                    "builtAt": now.isoformat(), "rebuildAfterHours": 6}
@@ -564,3 +569,37 @@ def test_streams_tell_try_again_later_from_no_streams(monkeypatch):
     assert service.get_activity_streams("u1", 1, raise_if_unavailable=True) is None
     status["code"] = 200
     assert service.get_activity_streams("u1", 1, raise_if_unavailable=True) == [{"type": "watts"}]
+
+
+def test_every_league_rider_lands_in_exactly_one_group():
+    from services import predictor_service as ps
+
+    per_rider = {
+        "1": {"ready": True, "pending": False},
+        "2": {"ready": False, "pending": False},    # no Strava
+        "3": {"ready": False, "pending": True},     # queued for a fetch
+        "4": {"ready": False, "pending": True},     # Strava without power rides
+        "5": {"ready": False, "pending": True},     # fetched since the last count
+        "6": {"ready": False, "pending": False},    # rides, but none before the races
+        "7": {"ready": False, "pending": False},    # not registered any more
+    }
+    rows = [{"zwiftId": str(i), "userDocId": f"d{i}", "hasStrava": i != 2} for i in range(1, 7)]
+    curves = {"d3": {"curve": {"w5": 1}}, "d4": {"curve": {}}, "d5": {"curve": {"w5": 1}}, "d6": {"curve": {"w5": 1}}}
+    out = ps.classify_league_riders(per_rider, rows, lambda doc_id, _days: curves.get(doc_id), {"d3"}, 90)
+    assert out == {"total": 7, "ready": 1, "noStrava": 2, "toFetch": 1, "noPower": 1, "awaitingRecount": 1,
+                   "noRidesBeforeRace": 1}
+    assert sum(v for k, v in out.items() if k != "total") == out["total"]
+
+
+def test_the_count_time_ignores_races_that_are_complete():
+    db = FakeDb()
+    now = RACE_START + timedelta(days=30)
+    old, recent = (now - timedelta(hours=20)).isoformat(), (now - timedelta(hours=2)).isoformat()
+    db.store["predictor_observations/a"] = {"raceId": "a", "builtAt": old, "pending": 0, "riders": {}}
+    db.store["predictor_observations/b"] = {"raceId": "b", "builtAt": recent, "pending": 3, "riders": {}}
+    out = po.progress(db, [], now)
+    assert out["builtAt"] == recent                                   # not the complete race from 20 hours ago
+    assert out["nextRecountAt"] == (now + timedelta(hours=4)).isoformat()
+    db.store["predictor_observations/b"]["pending"] = 0
+    out = po.progress(db, [], now)
+    assert out["builtAt"] is None and out["nextRecountAt"] is None    # nothing waits: nothing is recounted

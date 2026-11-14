@@ -40,6 +40,7 @@ import {
 import CategoryPredictorResults from './category-predictor/CategoryPredictorResults';
 import CategoryPredictorForm from './category-predictor/CategoryPredictorForm';
 import CategoryPredictorRoster from './category-predictor/CategoryPredictorRoster';
+import CategoryPredictorData from './category-predictor/CategoryPredictorData';
 import CategoryPredictorTuning from './category-predictor/CategoryPredictorTuning';
 
 interface CategoryPredictorProps {
@@ -462,6 +463,8 @@ export default function CategoryPredictor({ user }: CategoryPredictorProps) {
           if (modelData?.defaultFeatures) setSelectedFeatures({ ...modelData.defaultFeatures });
         }}
       />
+
+      <CategoryPredictorData user={user} />
 
       <CategoryPredictorTuning user={user} config={predictorConfig} />
 

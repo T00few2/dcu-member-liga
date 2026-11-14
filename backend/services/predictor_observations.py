@@ -129,7 +129,18 @@ def progress(db: Any, races: list[tuple[dict, datetime | None]], now: datetime |
     docs = [snap.to_dict() or {} for snap in db.collection(COLLECTION).stream()]
     riders = [r for d in docs for r in (d.get("riders") or {}).values() if isinstance(r, dict)]
     waiting = {r.get("zwiftId") for r in riders if r.get("stravaPending")}
+    # Per rider: any result with Strava power from before the race, any still waiting.
+    per_rider: dict[str, dict] = {}
+    for r in riders:
+        entry = per_rider.setdefault(str(r.get("zwiftId")), {"ready": False, "pending": False})
+        entry["ready"] = entry["ready"] or bool(r.get("strava"))
+        entry["pending"] = entry["pending"] or bool(r.get("stravaPending"))
+    # Only races with riders still waiting are counted again; the oldest of them is next.
+    waiting_builds = sorted(str(d.get("builtAt")) for d in docs if d.get("pending") and d.get("builtAt"))
+    oldest = strava_efforts.parse_iso(waiting_builds[0]) if waiting_builds else None
     return {
+        "perRider": per_rider,
+        "nextRecountAt": (oldest + timedelta(hours=REBUILD_AFTER_HOURS)).isoformat() if oldest else None,
         "racesFinalized": sum(1 for race, start in races
                               if start is not None and start < now and lp.is_finalized(race)),
         "racesBuilt": len(docs),
@@ -137,8 +148,9 @@ def progress(db: Any, races: list[tuple[dict, datetime | None]], now: datetime |
         "withStrava": sum(1 for r in riders if r.get("strava")),
         "weightBeforeRace": sum(1 for r in riders if r.get("strava") and r.get("weightSource") == "snapshot"),
         "ridersWaitingForStrava": len(waiting),
-        # The counts above are as of each race's last build; this is the oldest of them.
-        "builtAt": min((str(d.get("builtAt")) for d in docs if d.get("builtAt")), default=None),
+        # The counts above are as of each race's last count; this is the oldest among the
+        # races that are still counted again (None when no race has riders waiting).
+        "builtAt": waiting_builds[0] if waiting_builds else None,
         "rebuildAfterHours": REBUILD_AFTER_HOURS,
     }
 

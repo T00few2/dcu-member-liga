@@ -166,14 +166,60 @@ def observations(db: Any) -> list[dict]:
     return _cached("observations", lambda: po.read_all(db))
 
 
-def league_progress(db: Any, participants: list[dict]) -> dict:
-    """Counts for the Tuning panel: how much league ground truth exists and how much of it
-    tuning can score today (cached 10 minutes)."""
+def classify_league_riders(
+    per_rider: dict[str, dict],
+    participants: list[dict],
+    read_curve: Any,
+    missing_ids: set[str],
+    days: int,
+) -> dict[str, int]:
+    """Why each rider with a league result has, or lacks, Strava power from before a race.
+
+    Every rider lands in exactly one group, so the groups add up to `total`:
+    - ready: at least one result has Strava power from before that race
+    - noStrava: Strava is not connected
+    - toFetch: queued for a Strava fetch
+    - noPower: Strava is connected but has no rides with a power meter
+    - awaitingRecount: fetched since the races were last counted; counted at the next recount
+    - noRidesBeforeRace: rides exist, but none in the 90 days before any of the rider's races
+    """
+    by_id = {str(p.get("zwiftId")): p for p in participants if p.get("zwiftId")}
+    out = {k: 0 for k in ("total", "ready", "noStrava", "toFetch", "noPower", "awaitingRecount",
+                          "noRidesBeforeRace")}
+    for zid, state in per_rider.items():
+        out["total"] += 1
+        row = by_id.get(zid) or {}
+        doc_id = row.get("userDocId")
+        if state.get("ready"):
+            group = "ready"
+        elif not row.get("hasStrava") or not doc_id:
+            group = "noStrava"
+        elif doc_id in missing_ids:
+            group = "toFetch"
+        elif not ((read_curve(str(doc_id), days) or {}).get("curve")):
+            group = "noPower"
+        elif state.get("pending"):
+            group = "awaitingRecount"
+        else:
+            group = "noRidesBeforeRace"
+        out[group] += 1
+    return out
+
+
+def league_progress(db: Any, participants: list[dict], cache: dict | None = None) -> dict:
+    """Counts for the data status on the predictor page: how much league ground truth
+    exists and how much of it tuning can score today (cached 10 minutes). With `cache`
+    (a `strava_cache_warmer.cache_status` result), also why riders lack power (`riders`)."""
     from services import predictor_observations as po
     from services import predictor_tuning as pt
+    from services.strava_power_curve import cached_reader
 
     def load() -> dict:
         out = po.progress(db, league_races(db))
+        per_rider = out.pop("perRider")
+        if cache is not None:
+            out["riders"] = classify_league_riders(per_rider, participants, cached_reader(db),
+                                                   cache["missingIds"], cache["days"])
         usable = pt.build_league_eval(observations(db), participants,
                                       min_rides=division_agent_settings(db)["minZwiftRides"])
         out["usable"] = len(usable)
