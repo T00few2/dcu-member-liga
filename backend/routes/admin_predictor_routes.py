@@ -321,9 +321,9 @@ def predictor_tune_decision(run_id: str):
 # --- Strava curve cache for tuning ----------------------------------------------
 
 
-def _league_progress(participants: list[dict]) -> dict | None:
+def _league_progress(participants: list[dict], cache: dict) -> dict | None:
     try:
-        return ps.league_progress(db, participants)
+        return ps.league_progress(db, participants, cache)
     except Exception as e:  # the cache status is still useful without it
         logger.warning("league progress unavailable: %s", e)
         return None
@@ -360,7 +360,11 @@ def predictor_strava_cache_status():
             "minEvalRiders": MIN_EVAL_RIDERS,
             "stravaUsage": warmer.strava_usage(db),
             "lastWarm": warmer.last_warm(db),
-            "league": _league_progress(participants),
+            "othersNoPower": status["othersNoPower"],
+            "toFetchEligible": status["toFetchEligible"],
+            "toFetchOthers": status["toFetchOthers"],
+            "noStrava": status["noStrava"],
+            "league": _league_progress(participants, status),
         }), 200
     except Exception as e:
         logger.error("predictor_strava_cache_status error: %s", e)

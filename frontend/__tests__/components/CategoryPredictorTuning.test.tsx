@@ -85,38 +85,6 @@ describe('CategoryPredictorTuning', () => {
     });
   });
 
-  it('shows Strava cache progress and can fill it now', async () => {
-    const u = userEvent.setup();
-    renderPanel();
-    expect(await screen.findByText(/of 70 eligible riders/)).toBeInTheDocument();
-    expect(screen.getByText(/tuning needs 40/)).toBeInTheDocument();
-    expect(screen.getByText(/Other riders with Strava \(division agent\): 4 of 30 cached/)).toBeInTheDocument();
-    expect(screen.getByText(/Strava reads today \(as reported by Strava\): 900 of 3,000/)).toBeInTheDocument();
-    expect(screen.getByText(/the app made 2,400 requests today/)).toBeInTheDocument();
-    await u.click(screen.getByRole('button', { name: 'Fill now' }));
-    await waitFor(() => {
-      expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/admin/predictor/strava-cache/warm'))).toBe(true);
-    });
-  });
-
-  it('shows how much league data is ready for tuning', async () => {
-    renderPanel();
-    const line = await screen.findByText(/League data:/);
-    expect(line).toHaveTextContent('48 results from 19 riders without a reliable vELO are ready for tuning');
-    expect(line).toHaveTextContent('5 of 6 finalized races processed');
-    expect(line).toHaveTextContent('120 of 400 results have Strava power from before the race');
-    expect(line).toHaveTextContent('35 riders had no complete Strava history yet');
-    expect(line).toHaveTextContent('recounted every 6 hours while riders are missing');
-    expect(screen.getByText(/84 riders left to fetch from Strava/)).toBeInTheDocument();
-  });
-
-  it("shows Strava's overall count and how many requests it refused", async () => {
-    renderPanel();
-    const line = await screen.findByText(/Strava reads today/);
-    expect(line).toHaveTextContent('all requests as counted by Strava: 2,300 of 6,000 today');
-    expect(line).toHaveTextContent('Strava refused 3 requests today');
-  });
-
   it('starts tuning and asks the server to process it', async () => {
     const u = userEvent.setup();
     renderPanel();
@@ -133,11 +101,5 @@ describe('CategoryPredictorTuning', () => {
     renderPanel();
     expect(await screen.findByText(/Running in the background/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Running…' })).toBeDisabled();
-  });
-
-  it('shows what the last Strava fetch did', async () => {
-    renderPanel();
-    expect(await screen.findByText(/of 70 eligible riders/)).toBeInTheDocument();
-    expect(screen.queryByText(/riders an hour/)).not.toBeInTheDocument();
   });
 });

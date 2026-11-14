@@ -41,57 +41,6 @@ interface TuningRun {
   };
 }
 
-interface CacheStatus {
-  days: number;
-  eligible: number;
-  cached: number;
-  noPowerData?: number;
-  /** Riders with Strava outside the tuning set (mostly the division agent's riders). */
-  others?: number;
-  othersCached?: number;
-  /** League races as ground truth: how much exists and how much tuning can score today. */
-  league?: {
-    racesFinalized: number;
-    racesBuilt: number;
-    observations: number;
-    withStrava: number;
-    weightBeforeRace: number;
-    ridersWaitingForStrava: number;
-    /** When the oldest race was last rebuilt: the counts are as of then. */
-    builtAt?: string | null;
-    rebuildAfterHours?: number;
-    usable: number;
-    usableRiders: number;
-  } | null;
-  remaining: number;
-  minEvalRiders: number;
-  lastWarm?: {
-    at: string;
-    warmed: number;
-    noPowerData: number;
-    failed: number;
-    /** Ride downloads Strava refused or failed in that run; they are fetched again later. */
-    failedDownloads?: number;
-    rateLimited: boolean;
-  } | null;
-  stravaUsage?: {
-    usage15: number;
-    limit15: number;
-    usageDay: number;
-    limitDay: number;
-    appRequestsDay?: number;
-    /** Strava's overall limit (every request); null until Strava has reported it. */
-    overallLimit15?: number | null;
-    overallLimitDay?: number | null;
-    overallUsage15?: number;
-    overallUsageDay?: number;
-    /** Requests Strava refused today (HTTP 429). */
-    refusedDay?: number;
-    known: boolean;
-    cacheBudgetFraction: number;
-  };
-}
-
 export interface CategoryPredictorTuningProps {
   user: User | null;
   config?: PredictorConfigResponse;
@@ -138,22 +87,6 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
   });
   const latest = runs?.[0];
   const r = latest?.result;
-  const [warmPollUntil, setWarmPollUntil] = useState(0);
-
-  const { data: cache } = useQuery<CacheStatus>({
-    queryKey: ['predictor', 'strava-cache'],
-    queryFn: async () => {
-      const token = await user!.getIdToken();
-      const res = await fetch(`${API_URL}/admin/predictor/strava-cache/status`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!res.ok) throw new Error('Failed to load Strava cache status');
-      return res.json();
-    },
-    enabled: !!user,
-    staleTime: 60_000,
-    // After Fill now, refresh every 10 s for a few minutes to show progress.
-    refetchInterval: () => (Date.now() < warmPollUntil ? 10_000 : false),
-  });
-
   async function call(path: string, body: unknown, label: string) {
     if (!user) return;
     setBusy(label);
@@ -176,17 +109,6 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
   }
 
   /** Start a long backend job without waiting for it (the page polls for progress). */
-  async function fireAndForget(path: string): Promise<void> {
-    const token = await user!.getIdToken();
-    void fetch(`${API_URL}${path}`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: '{}',
-    })
-      .catch(() => undefined)
-      .finally(() => { void queryClient.invalidateQueries({ queryKey: ['predictor'] }); });
-  }
-
   async function startTuning() {
     if (!user) return;
     setBusy('tune');
@@ -220,21 +142,8 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
     }
   }
 
-  async function startWarm() {
-    if (!user) return;
-    setError('');
-    setWarmPollUntil(Date.now() + 4 * 60_000);
-    try {
-      await fireAndForget('/admin/predictor/strava-cache/warm');
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Could not start the Strava fetch');
-    }
-    void queryClient.invalidateQueries({ queryKey: ['predictor', 'strava-cache'] });
-  }
-
   const metrics = config?.metrics as Score | null | undefined;
   const tuningRunning = latest?.status === 'running';
-  const warming = Date.now() < warmPollUntil;
 
   return (
     <div className="bg-card border border-border rounded-lg p-6 space-y-4">
@@ -244,7 +153,8 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
           <p className="text-sm text-muted-foreground">
             Checks how often a <strong>Strava</strong>-based prediction lands in the right division for riders whose
             real vELO is reliable (enough Zwift rides, stable rating), using cross-validation and only cached Strava
-            curves. Better settings are proposed only with enough data and a clear improvement.
+            curves. Better settings are proposed only with enough data and a clear improvement. What data is
+            available is shown under “Data for the predictor” above.
           </p>
         </div>
         <button
@@ -258,84 +168,6 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
-
-      {cache && (
-        <div className="flex items-center justify-between gap-3 flex-wrap text-sm">
-          <span className="text-muted-foreground">
-            Strava cache ({cache.days}d): <span className="font-semibold text-foreground">{cache.cached}</span> of{' '}
-            {cache.eligible} eligible riders
-            {(cache.noPowerData ?? 0) > 0 ? ` · ${cache.noPowerData} without Strava power data` : ''}
-            {cache.cached < cache.minEvalRiders
-              ? ` · tuning needs ${cache.minEvalRiders}`
-              : ' · enough to tune'}
-            <span className="block">
-              {cache.remaining > 0
-                ? `${cache.remaining} riders left to fetch from Strava (10 per run, every 15 minutes, or press Fill now)`
-                : 'Nothing left to fetch from Strava right now'}
-            </span>
-            {(cache.others ?? 0) > 0 && (
-              <span className="block text-xs">
-                Other riders with Strava (division agent): {cache.othersCached ?? 0} of {cache.others} cached
-              </span>
-            )}
-            {cache.league && (
-              <span className="block">
-                League data: <span className="font-semibold text-foreground">{cache.league.usable}</span> results
-                from {cache.league.usableRiders} riders without a reliable vELO are ready for tuning ·{' '}
-                {cache.league.racesBuilt} of {cache.league.racesFinalized} finalized races processed ·{' '}
-                {cache.league.withStrava} of {cache.league.observations} results have Strava power from before the
-                race ({cache.league.weightBeforeRace} also a weight recorded before it)
-                {cache.league.ridersWaitingForStrava > 0
-                  ? ` · ${cache.league.ridersWaitingForStrava} riders had no complete Strava history yet`
-                  : ''}
-                {cache.league.builtAt
-                  ? ` · counted ${new Date(cache.league.builtAt).toLocaleString([], { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}`
-                    + `, recounted every ${cache.league.rebuildAfterHours ?? 6} hours while riders are missing`
-                  : ''}
-              </span>
-            )}
-            {cache.lastWarm && (
-              <span className="block text-xs">
-                Last fetch {new Date(cache.lastWarm.at).toLocaleTimeString()}: +{cache.lastWarm.warmed} riders
-                {cache.lastWarm.noPowerData > 0 ? ` (${cache.lastWarm.noPowerData} without power data)` : ''}
-                {cache.lastWarm.failed > 0 ? `, ${cache.lastWarm.failed} failed` : ''}
-                {(cache.lastWarm.failedDownloads ?? 0) > 0
-                  ? `, ${cache.lastWarm.failedDownloads} ride downloads failed (fetched again later)`
-                  : ''}
-                {cache.lastWarm.rateLimited ? ' · paused: Strava budget reached, continues in the next window' : ''}
-              </span>
-            )}
-            {cache.stravaUsage?.known && (
-              <span className="block text-xs">
-                Strava reads today (as reported by Strava): {cache.stravaUsage.usageDay.toLocaleString()} of{' '}
-                {cache.stravaUsage.limitDay.toLocaleString()} (this {cache.stravaUsage.usage15} of{' '}
-                {cache.stravaUsage.limit15} per 15 min)
-                {cache.stravaUsage.appRequestsDay != null
-                  ? `; the app made ${cache.stravaUsage.appRequestsDay.toLocaleString()} requests today`
-                  : ''}
-                {cache.stravaUsage.overallLimitDay
-                  ? `; all requests as counted by Strava: ${(cache.stravaUsage.overallUsageDay ?? 0).toLocaleString()} of ${cache.stravaUsage.overallLimitDay.toLocaleString()} today`
-                  : ''}
-                {`; Strava refused ${(cache.stravaUsage.refusedDay ?? 0).toLocaleString()} requests today`}
-                . The cache uses at most{' '}
-                {Math.round(cache.stravaUsage.cacheBudgetFraction * 100)}% and pauses when that is reached, so the rest
-                of the app always has room.
-              </span>
-            )}
-          </span>
-          {cache.remaining > 0 && (
-            <button
-              type="button"
-              onClick={() => void startWarm()}
-              disabled={!user || warming}
-              className="px-2.5 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground disabled:opacity-50"
-              title="Fetches up to 10 riders now, within the Strava budget"
-            >
-              {warming ? 'Fetching…' : 'Fill now'}
-            </button>
-          )}
-        </div>
-      )}
 
       {metrics && <ScoreLine label="Active settings (last measured)" score={metrics} />}
 
