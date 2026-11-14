@@ -96,6 +96,10 @@ export type PowerScale = Partial<Record<PowerField, number>>;
 export interface StravaCurves {
   indoor: Record<string, number>;
   outdoor: Record<string, number>;
+  /** Outdoor rides marked as a race on Strava (also part of `outdoor`). */
+  race?: Record<string, number>;
+  /** Indoor rides behind the indoor curve (for the indoor-first rule). */
+  indoorRides?: number;
 }
 
 const CURVE_KEY_FOR: Record<PowerField, string> = { wkg5s: 'w5', wkg1m: 'w60', wkg5m: 'w300', wkg20m: 'w1200' };
@@ -105,21 +109,41 @@ export function stravaCurvesFromResponse(data: {
   curve?: Record<string, number> | null;
   curveIndoor?: Record<string, number> | null;
   curveOutdoor?: Record<string, number> | null;
+  curveOutdoorRace?: Record<string, number> | null;
+  indoorCount?: number | null;
 }): StravaCurves {
   if (data.curveIndoor || data.curveOutdoor) {
-    return { indoor: data.curveIndoor ?? {}, outdoor: data.curveOutdoor ?? {} };
+    return {
+      indoor: data.curveIndoor ?? {}, outdoor: data.curveOutdoor ?? {}, race: data.curveOutdoorRace ?? {},
+      indoorRides: data.indoorCount ?? 0,
+    };
   }
   return { indoor: {}, outdoor: data.curve ?? {} };
 }
 
-/** Indoor-equivalent peak watts: per duration the stronger of the indoor best and the
- *  outdoor best times the outdoor→indoor correction (same rule as the backend). */
-export function correctedStravaCurve(curves: StravaCurves, scale: PowerScale | undefined): Record<string, number> {
+/** Indoor-equivalent peak watts: per duration the strongest of the indoor best, the
+ *  outdoor best times the outdoor→indoor correction, and the outdoor race best times its
+ *  own correction when the settings have one. With the indoor-first rule on
+ *  (`indoorFirstMinRides` > 0), a rider with that many indoor rides is rated on the indoor
+ *  best alone (same rules as the backend). */
+export function correctedStravaCurve(
+  curves: StravaCurves,
+  scale: PowerScale | undefined,
+  raceScale?: PowerScale | null,
+  indoorFirstMinRides = 0,
+): Record<string, number> {
   const out: Record<string, number> = {};
+  const indoorOnly = indoorFirstMinRides > 0 && (curves.indoorRides ?? 0) >= indoorFirstMinRides;
   for (const [field, key] of Object.entries(CURVE_KEY_FOR) as [PowerField, string][]) {
     const indoor = curves.indoor[key] ?? 0;
+    if (indoorOnly && indoor > 0) {
+      out[key] = indoor;
+      continue;
+    }
     const outdoor = (curves.outdoor[key] ?? 0) * (scale?.[field] ?? 1);
-    if (Math.max(indoor, outdoor) > 0) out[key] = Math.max(indoor, outdoor);
+    const race = (curves.race?.[key] ?? 0) * ((raceScale ?? scale)?.[field] ?? 1);
+    const best = Math.max(indoor, outdoor, race);
+    if (best > 0) out[key] = best;
   }
   return out;
 }

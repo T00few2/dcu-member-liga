@@ -105,60 +105,115 @@ def inputs_from_strava_curve(curve: dict, weight_kg: float, racing_score: float 
 
 
 def strava_split_inputs(entry: dict | None, weight_kg: float) -> dict[str, dict | None]:
-    """Indoor and outdoor W/kg inputs from a cached Strava curve entry.
+    """Indoor, outdoor and outdoor-race W/kg inputs from a cached Strava curve entry.
 
-    Entries written before the indoor/outdoor split (no `split`) are treated as all
-    outdoor, which is how they were used before.
+    Outdoor races (rides the rider marked as a race on Strava) are also part of
+    `outdoor`; `race` holds them alone. Entries written before the indoor/outdoor split
+    (no `split`) are treated as all outdoor, which is how they were used before.
     """
     entry = entry or {}
     if entry.get("split"):
         indoor, outdoor = entry.get("curveIndoor") or {}, entry.get("curveOutdoor") or {}
     else:
         indoor, outdoor = {}, entry.get("curve") or {}
+    race = entry.get("curveOutdoorRace") or {}
     return {
         "indoor": inputs_from_strava_curve(indoor, weight_kg) if indoor else None,
         "outdoor": inputs_from_strava_curve(outdoor, weight_kg) if outdoor else None,
+        "race": inputs_from_strava_curve(race, weight_kg) if race else None,
+        # Indoor rides behind the indoor curve (0 for entries from before the split).
+        "indoorRides": int(entry.get("indoorCount") or 0) if entry.get("split") else 0,
     }
 
 
-def strava_inputs(split: dict, scale: dict[str, float] | None, racing_score: float = 0.0) -> dict[str, float]:
-    """Indoor-equivalent Strava inputs: per duration the stronger of the indoor best and
-    the outdoor best times the outdoor→indoor correction."""
-    indoor = split.get("indoor") or {}
-    outdoor = split.get("outdoor") or {}
-    out = {"weightKg": (indoor or outdoor).get("weightKg", 0.0), "racingScore": racing_score}
+def indoor_first(indoor_rides: int, indoor_first_min: int) -> bool:
+    """With the indoor-first rule on (`indoor_first_min` > 0), a rider with at least that
+    many indoor rides in the window is rated on indoor power alone.
+
+    Why: league races are indoor. A rider with solid indoor data whose outdoor peaks are
+    higher was rated too high when the outdoor peak was allowed to win (measured on riders
+    with a reliable vELO). Riders with fewer indoor rides keep the old rule, because a few
+    easy trainer sessions say little about what they can do.
+    """
+    return indoor_first_min > 0 and indoor_rides >= indoor_first_min
+
+
+def _strava_candidates(
+    split: dict, k: str, scale: dict[str, float] | None, race_scale: dict[str, float] | None,
+    indoor_first_min: int = 0,
+) -> tuple[float, float, float]:
+    """(indoor, corrected outdoor, corrected outdoor race) W/kg for one duration.
+
+    Without a race correction, race efforts get the ordinary outdoor one, which makes
+    them no different from any other outdoor ride. When the indoor-first rule applies
+    and the rider has an indoor best for this duration, the outdoor values are 0.
+    """
+    indoor = (split.get("indoor") or {}).get(k, 0.0) or 0.0
+    if indoor > 0 and indoor_first(int(split.get("indoorRides") or 0), indoor_first_min):
+        return indoor, 0.0, 0.0
+    outdoor = ((split.get("outdoor") or {}).get(k, 0.0) or 0.0) * (scale or {}).get(k, 1.0)
+    race = ((split.get("race") or {}).get(k, 0.0) or 0.0) * (race_scale or scale or {}).get(k, 1.0)
+    return indoor, outdoor, race
+
+
+def strava_inputs(
+    split: dict,
+    scale: dict[str, float] | None,
+    racing_score: float = 0.0,
+    race_scale: dict[str, float] | None = None,
+    indoor_first_min: int = 0,
+) -> dict[str, float]:
+    """Indoor-equivalent Strava inputs: per duration the strongest of the indoor best, the
+    outdoor best times the outdoor→indoor correction, and the outdoor race best times its
+    own correction (`race_scale`, when the config has one). With `indoor_first_min`, a
+    rider with that many indoor rides is rated on the indoor best alone (`indoor_first`)."""
+    first = split.get("indoor") or split.get("outdoor") or split.get("race") or {}
+    out = {"weightKg": first.get("weightKg", 0.0), "racingScore": racing_score}
     for k in POWER_FIELDS:
-        out[k] = round2(max(indoor.get(k, 0.0) or 0.0, (outdoor.get(k, 0.0) or 0.0) * (scale or {}).get(k, 1.0)))
+        out[k] = round2(max(_strava_candidates(split, k, scale, race_scale, indoor_first_min)))
     return out
 
 
-def strava_prediction_curve(entry: dict | None, scale: dict[str, float] | None) -> dict[str, float]:
+def strava_prediction_curve(
+    entry: dict | None, scale: dict[str, float] | None, race_scale: dict[str, float] | None = None,
+    indoor_first_min: int = 0,
+) -> dict[str, float]:
     """Indoor-equivalent peak watts (w5/w60/w300/w1200) for the predictor: per duration the
-    stronger of the indoor best and the corrected outdoor best."""
+    strongest of the indoor best and the corrected outdoor (and outdoor race) best, or the
+    indoor best alone when the indoor-first rule applies."""
     entry = entry or {}
     if entry.get("split"):
         indoor, outdoor = entry.get("curveIndoor") or {}, entry.get("curveOutdoor") or {}
     else:
         indoor, outdoor = {}, entry.get("curve") or {}
+    race = entry.get("curveOutdoorRace") or {}
+    only_indoor = bool(entry.get("split")) and indoor_first(int(entry.get("indoorCount") or 0), indoor_first_min)
     out = {}
     for fld, key in STRAVA_CURVE_KEYS.items():
         i = to_float(indoor.get(key)) or 0.0
         o = (to_float(outdoor.get(key)) or 0.0) * (scale or {}).get(fld, 1.0)
-        if max(i, o) > 0:
-            out[key] = round(max(i, o), 1)
+        r = (to_float(race.get(key)) or 0.0) * (race_scale or scale or {}).get(fld, 1.0)
+        if only_indoor and i > 0:
+            o = r = 0.0
+        if max(i, o, r) > 0:
+            out[key] = round(max(i, o, r), 1)
     return out
 
 
-def strava_sources(split: dict, scale: dict[str, float] | None) -> dict[str, str]:
-    """Per duration, whether the indoor or the (corrected) outdoor best is used."""
-    indoor = split.get("indoor") or {}
-    outdoor = split.get("outdoor") or {}
+def strava_sources(
+    split: dict, scale: dict[str, float] | None, race_scale: dict[str, float] | None = None,
+    indoor_first_min: int = 0,
+) -> dict[str, str]:
+    """Per duration, which best is used: `indoor`, `outdoor` or `outdoor_race`."""
     out = {}
     for k in POWER_FIELDS:
-        i = indoor.get(k, 0.0) or 0.0
-        o = (outdoor.get(k, 0.0) or 0.0) * (scale or {}).get(k, 1.0)
-        if i > 0 or o > 0:
-            out[k] = "indoor" if i >= o else "outdoor"
+        i, o, r = _strava_candidates(split, k, scale, race_scale, indoor_first_min)
+        if max(i, o, r) <= 0:
+            continue
+        if i >= o and i >= r:
+            out[k] = "indoor"
+        else:
+            out[k] = "outdoor_race" if r > 0 and r >= o else "outdoor"
     return out
 
 
@@ -281,6 +336,13 @@ def merge_features(saved: dict | None) -> dict[str, bool]:
 # the power lines up in time with the 30-day vELO used as the right answer.
 STRAVA_WINDOWS = (30, 60, 90)
 REGRESSIONS = ("ols", "ridge")
+# What counts as the right answer when training. "velo": the 30-day max vELO (always the
+# case before league results were used). "velo_or_league": riders whose vELO cannot be
+# trusted are trained on how they did in league races instead (`league_training_rows`).
+TARGET_SOURCES = ("velo", "velo_or_league")
+# With "velo_or_league", a rider's vELO is replaced by league results below this many
+# Zwift rides (or the config's `trainingMinRides`, when that is higher).
+LEAGUE_MIN_RIDES = 15
 
 
 @dataclass
@@ -296,6 +358,16 @@ class PredictorConfig:
     # Train only on riders whose vELO is reliable (at least this many Zwift rides in
     # 90 days and a stable rating); 0 = every rider with a vELO.
     trainingMinRides: int = 0
+    # Own outdoor→indoor correction for outdoor rides marked as a race on Strava;
+    # None = they get `stravaPowerScale` like any other outdoor ride.
+    outdoorRaceScale: dict[str, float] | None = None
+    targetSource: str = "velo"
+    # Drop league training rows whose weight is today's value instead of one recorded
+    # before the race.
+    strictPointInTime: bool = False
+    # Indoor-first rule: a rider with at least this many indoor rides in the Strava window
+    # is rated on indoor power alone; outdoor bests no longer override it. 0 = off.
+    indoorFirstMinRides: int = 0
 
     @classmethod
     def from_settings(cls, settings: dict | None) -> "PredictorConfig":
@@ -331,6 +403,17 @@ class PredictorConfig:
         min_train = raw.get("trainingMinRides")
         if isinstance(min_train, int) and not isinstance(min_train, bool) and 0 <= min_train <= 200:
             cfg.trainingMinRides = min_train
+        race_scale = raw.get("outdoorRaceScale")
+        if isinstance(race_scale, dict):
+            parsed = {k: to_float(race_scale.get(k)) for k in POWER_FIELDS}
+            if all(v is not None and 0.5 <= v <= 1.5 for v in parsed.values()):
+                cfg.outdoorRaceScale = parsed
+        if raw.get("targetSource") in TARGET_SOURCES:
+            cfg.targetSource = raw["targetSource"]
+        cfg.strictPointInTime = raw.get("strictPointInTime") is True
+        indoor_min = raw.get("indoorFirstMinRides")
+        if isinstance(indoor_min, int) and not isinstance(indoor_min, bool) and 0 <= indoor_min <= 100:
+            cfg.indoorFirstMinRides = indoor_min
         return cfg
 
     def to_dict(self) -> dict:
@@ -342,6 +425,10 @@ class PredictorConfig:
             "stravaPowerScale": dict(self.stravaPowerScale),
             "minStravaActivities": self.minStravaActivities,
             "trainingMinRides": self.trainingMinRides,
+            "outdoorRaceScale": dict(self.outdoorRaceScale) if self.outdoorRaceScale else None,
+            "targetSource": self.targetSource,
+            "strictPointInTime": self.strictPointInTime,
+            "indoorFirstMinRides": self.indoorFirstMinRides,
         }
 
     def active_features(self) -> list[FeatureDef]:
@@ -509,6 +596,68 @@ def training_rows(participants: list[dict], needed: set[str], min_rides: int = 0
     return rows
 
 
+def observation_inputs(observation: dict, config: "PredictorConfig") -> tuple[dict, int] | None:
+    """Indoor-equivalent Strava inputs a rider had **before** a league race, with the ride
+    count behind them; None when no curve for the config's window was known then."""
+    kg = to_float(observation.get("weightKg")) or 0.0
+    entry = (observation.get("strava") or {}).get(str(config.stravaWindowDays))
+    if kg <= 0 or not isinstance(entry, dict) or not entry.get("curve"):
+        return None
+    split = strava_split_inputs(entry, kg)
+    inputs = strava_inputs(split, config.stravaPowerScale, race_scale=config.outdoorRaceScale,
+                           indoor_first_min=config.indoorFirstMinRides)
+    return inputs, int(entry.get("activityCount") or 0)
+
+
+def league_training_rows(observations: list[dict], config: "PredictorConfig", needed: set[str]) -> list[TrainingRow]:
+    """One row per rider per league race: the power known before the race (from Strava,
+    indoor-equivalent) against the performance vELO of that race.
+
+    Never built from today's power: an observation only holds what existed before the
+    race started (see `services/predictor_observations.py`). ZRS has no point-in-time
+    value, so a model that needs it gets no league rows.
+    """
+    if "racingScore" in needed:
+        return []
+    key_of = {"cp5s": "wkg5s", "cp1min": "wkg1m", "cp5min": "wkg5m", "cp20min": "wkg20m"}
+    rows: list[TrainingRow] = []
+    for o in observations or []:
+        target = _positive(o.get("performanceVelo"))
+        if target is None:
+            continue
+        if config.strictPointInTime and o.get("weightSource") != "snapshot":
+            continue
+        found = observation_inputs(o, config)
+        if found is None or found[1] < config.minStravaActivities:
+            continue
+        inputs = found[0]
+        kg = inputs["weightKg"]
+        watts = {cp: inputs[wkg] * kg for cp, wkg in key_of.items()}
+        if any(cp in needed and watts[cp] <= 0 for cp in watts):
+            continue
+        rows.append(TrainingRow(
+            name="", zwiftId=str(o.get("zwiftId") or ""), kg=kg,
+            cp5s=watts["cp5s"], cp1min=watts["cp1min"], cp5min=watts["cp5min"], cp20min=watts["cp20min"],
+            zrs=0.0, velo=target, category=None,
+        ))
+    return rows
+
+
+def all_training_rows(
+    participants: list[dict], config: "PredictorConfig", needed: set[str], observations: list[dict] | None,
+) -> list[TrainingRow]:
+    """vELO rows, and with `targetSource="velo_or_league"` league rows in place of the
+    vELO row of every rider whose vELO cannot be trusted and who has league rows."""
+    rows = training_rows(participants, needed, config.trainingMinRides)
+    if config.targetSource != "velo_or_league" or not observations:
+        return rows
+    threshold = max(config.trainingMinRides, LEAGUE_MIN_RIDES)
+    trusted = {str(p.get("zwiftId")) for p in participants if reliable_velo(p, threshold) is not None}
+    league = [r for r in league_training_rows(observations, config, needed) if r.zwiftId not in trusted]
+    replaced = {r.zwiftId for r in league}
+    return [r for r in rows if r.zwiftId not in replaced] + league
+
+
 # ---------------------------------------------------------------------------
 # Model
 # ---------------------------------------------------------------------------
@@ -551,13 +700,16 @@ def build_model(
     participants: list[dict],
     config: PredictorConfig,
     categories: Any = None,
+    observations: list[dict] | None = None,
 ) -> Model | None:
-    """Fit the model on every rider with a real vELO. None when there is not enough data."""
+    """Fit the model on every rider with a real vELO (and, with
+    `targetSource="velo_or_league"`, on league-race `observations`). None when there is
+    not enough data."""
     active = config.active_features()
     if not active:
         return None
     needed = {req for f in active for req in f.requires}
-    rows = training_rows(participants, needed, config.trainingMinRides)
+    rows = all_training_rows(participants, config, needed, observations)
     if len(rows) < len(active) + 2:
         return None
     try:

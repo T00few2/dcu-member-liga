@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 from services import predictor_service as ps
+from services import velo_predictor as vp
 from services.division_agent import assess as assess_mod
 from services.division_agent import decide, evidence, proposals, queue, triage
 
@@ -79,13 +80,19 @@ def process_rider(
     client_factory: Callable[[], Any] = assess_mod.client_from_env,
     dry_run: bool = False,
     existing: list[dict] | None = None,
+    force_reasons: list[str] | None = None,
+    requested_by: str | None = None,
 ) -> dict:
     """Review one rider. Returns `{outcome, proposal?, evidence?}` (outcome: proposed |
-    no_change | not_needed | handled). Raises `evidence.WaitingForStrava`."""
+    no_change | not_needed | handled). Raises `evidence.WaitingForStrava`.
+
+    `force_reasons` reviews the rider for those reasons whatever the filter says (an admin
+    pressed "Check now" in the struggling list). A proposal from it is the admin's request
+    (`requested_by`), so a later scan does not close it as outside the filter."""
     model, _rows, categories = model_bundle
     known = existing if existing is not None else proposals.all_proposals(db)
     zid = str(row["zwiftId"])
-    reasons = triage.needs_review(row, settings)
+    reasons = list(force_reasons) if force_reasons else triage.needs_review(row, settings)
     if not reasons:
         if not dry_run:
             proposals.supersede_pending(db, zid, known)
@@ -94,7 +101,8 @@ def process_rider(
     user_data = (snap.to_dict() or {}) if getattr(snap, "exists", False) else {}
     days = model.config.stravaWindowDays if model is not None else 90
     curve = evidence.strava_curve(db, row, days, strava_service=strava_service, compute_curve=compute_curve)
-    ev = evidence.gather(row, user_data, model=model, categories=categories, curve_entry=curve, reasons=reasons)
+    ev = evidence.gather(row, user_data, model=model, categories=categories, curve_entry=curve, reasons=reasons,
+                         min_rides=settings["minZwiftRides"])
     fp = evidence.fingerprint(ev)
     if not dry_run and proposals.already_handled(known, zid, fp):
         return {"outcome": "handled", "evidence": ev}
@@ -111,7 +119,7 @@ def process_rider(
     data = {
         "zwiftId": str(row["zwiftId"]),
         "name": row.get("name") or "",
-        "origin": "agent",
+        "origin": "admin" if force_reasons else "agent",
         "reasons": reasons,
         "currentCategory": ev["currentCategory"],
         "proposedCategory": result["proposedCategory"],
@@ -130,6 +138,8 @@ def process_rider(
         "movePreview": None,
         "evidenceFingerprint": fp,
     }
+    if force_reasons:
+        data["requestedBy"] = requested_by or "an admin"
     if ev["locked"] and result["proposedCategory"] and result["proposedCategory"] != ev["currentCategory"]:
         data["movePreview"] = _move_preview(db, row, user_data, result["proposedCategory"])
     if dry_run:
@@ -164,7 +174,37 @@ def rider_evidence(db: Any, row: dict, user_data: dict, bundle: tuple, settings:
         logger.warning("division agent: cached curve read failed for %s: %s", row.get("zwiftId"), exc)
         curve = None
     reasons = triage.needs_review(row, settings) or ["appeal"]
-    return evidence.gather(row, user_data, model=model, categories=categories, curve_entry=curve, reasons=reasons)
+    return evidence.gather(row, user_data, model=model, categories=categories, curve_entry=curve, reasons=reasons,
+                           min_rides=settings["minZwiftRides"])
+
+
+def struggling_riders(rows: list[dict], settings: dict, categories: Any, existing: list[dict]) -> list[dict]:
+    """Every rider who keeps finishing at the back of their division, by the filter's
+    thresholds, whether or not the "struggling" reason is ticked. For the admin list."""
+    flt = triage.normalize_filter(settings.get("reviewFilter"))
+    out = []
+    for row in rows:
+        zid = str(row.get("zwiftId") or "")
+        if not zid or not triage.is_struggling(row, flt):
+            continue
+        league = row["league"]
+        division = (league.get("divisions") or [None])[0]
+        pending = next((p for p in proposals.for_rider(existing, zid) if p.get("status") == "pending"), None)
+        out.append({
+            "zwiftId": zid,
+            "name": row.get("name") or "",
+            "club": row.get("club") or "",
+            "division": division,
+            "league": league,
+            "velo": {"current": vp.to_float(row.get("rating")),
+                     "max30": vp.to_float(row.get("max30Rating"))},
+            "zwiftActivityCount": row.get("zwiftActivityCount"),
+            **evidence.held_up(row, division, categories, settings["minZwiftRides"]),
+            "pendingProposal": {"id": pending.get("id"), "proposedCategory": pending.get("proposedCategory")}
+            if pending else None,
+        })
+    out.sort(key=lambda r: (not r["heldUp"], -(r["league"].get("medianPercentile") or 0)))
+    return out
 
 
 def file_appeal(

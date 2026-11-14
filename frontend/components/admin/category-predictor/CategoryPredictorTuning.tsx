@@ -13,7 +13,15 @@ interface Score {
   adjacentAccuracy: number;
   maeVelo: number;
   zwiftDivisionAccuracy: number;
+  /** Per kind of right answer: the rider's own reliable vELO, or league results (riders without one). */
+  bySource?: Record<string, { n: number; divisionAccuracy: number; maeVelo: number }>;
 }
+
+const SOURCE_LABEL: Record<string, string> = {
+  velo: 'riders with a reliable vELO',
+  league: 'league races of riders without one',
+  leaguePointInTimeWeight: 'of those, weight recorded before the race',
+};
 
 interface TuningRun {
   runId: string;
@@ -41,6 +49,17 @@ interface CacheStatus {
   /** Riders with Strava outside the tuning set (mostly the division agent's riders). */
   others?: number;
   othersCached?: number;
+  /** League races as ground truth: how much exists and how much tuning can score today. */
+  league?: {
+    racesFinalized: number;
+    racesBuilt: number;
+    observations: number;
+    withStrava: number;
+    weightBeforeRace: number;
+    ridersWaitingForStrava: number;
+    usable: number;
+    usableRiders: number;
+  } | null;
   remaining: number;
   minEvalRiders: number;
   lastWarm?: {
@@ -48,6 +67,8 @@ interface CacheStatus {
     warmed: number;
     noPowerData: number;
     failed: number;
+    /** Ride downloads Strava refused or failed in that run; they are fetched again later. */
+    failedDownloads?: number;
     rateLimited: boolean;
   } | null;
   stravaUsage?: {
@@ -56,6 +77,13 @@ interface CacheStatus {
     usageDay: number;
     limitDay: number;
     appRequestsDay?: number;
+    /** Strava's overall limit (every request); null until Strava has reported it. */
+    overallLimit15?: number | null;
+    overallLimitDay?: number | null;
+    overallUsage15?: number;
+    overallUsageDay?: number;
+    /** Requests Strava refused today (HTTP 429). */
+    refusedDay?: number;
     known: boolean;
     cacheBudgetFraction: number;
   };
@@ -73,6 +101,15 @@ function ScoreLine({ label, score }: { label: string; score: Score | null | unde
       <span className="text-muted-foreground">{label}: </span>
       <span className="font-semibold text-foreground">{score.divisionAccuracy}%</span>
       <span className="text-muted-foreground"> right division · {score.adjacentAccuracy}% within one · MAE {score.maeVelo} pts · n={score.n}</span>
+      {score.bySource && Object.keys(score.bySource).length > 1 && (
+        <ul className="text-xs text-muted-foreground list-disc pl-5">
+          {Object.entries(score.bySource).map(([key, s]) => (
+            <li key={key}>
+              {SOURCE_LABEL[key] ?? key}: {s.divisionAccuracy}% right division · MAE {s.maeVelo} pts · n={s.n}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -233,11 +270,26 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
                 Other riders with Strava (division agent): {cache.othersCached ?? 0} of {cache.others} cached
               </span>
             )}
+            {cache.league && (
+              <span className="block">
+                League data: <span className="font-semibold text-foreground">{cache.league.usable}</span> results
+                from {cache.league.usableRiders} riders without a reliable vELO are ready for tuning ·{' '}
+                {cache.league.racesBuilt} of {cache.league.racesFinalized} finalized races processed ·{' '}
+                {cache.league.withStrava} of {cache.league.observations} results have Strava power from before the
+                race ({cache.league.weightBeforeRace} also a weight recorded before it)
+                {cache.league.ridersWaitingForStrava > 0
+                  ? ` · ${cache.league.ridersWaitingForStrava} riders still wait for their Strava history`
+                  : ''}
+              </span>
+            )}
             {cache.lastWarm && (
               <span className="block text-xs">
                 Last fetch {new Date(cache.lastWarm.at).toLocaleTimeString()}: +{cache.lastWarm.warmed} riders
                 {cache.lastWarm.noPowerData > 0 ? ` (${cache.lastWarm.noPowerData} without power data)` : ''}
                 {cache.lastWarm.failed > 0 ? `, ${cache.lastWarm.failed} failed` : ''}
+                {(cache.lastWarm.failedDownloads ?? 0) > 0
+                  ? `, ${cache.lastWarm.failedDownloads} ride downloads failed (fetched again later)`
+                  : ''}
                 {cache.lastWarm.rateLimited ? ' · paused: Strava budget reached, continues in the next window' : ''}
               </span>
             )}
@@ -249,6 +301,10 @@ export default function CategoryPredictorTuning({ user, config }: CategoryPredic
                 {cache.stravaUsage.appRequestsDay != null
                   ? `; the app made ${cache.stravaUsage.appRequestsDay.toLocaleString()} requests today`
                   : ''}
+                {cache.stravaUsage.overallLimitDay
+                  ? `; all requests as counted by Strava: ${(cache.stravaUsage.overallUsageDay ?? 0).toLocaleString()} of ${cache.stravaUsage.overallLimitDay.toLocaleString()} today`
+                  : ''}
+                {`; Strava refused ${(cache.stravaUsage.refusedDay ?? 0).toLocaleString()} requests today`}
                 . The cache uses at most{' '}
                 {Math.round(cache.stravaUsage.cacheBudgetFraction * 100)}% and pauses when that is reached, so the rest
                 of the app always has room.

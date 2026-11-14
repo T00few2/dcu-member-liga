@@ -125,7 +125,7 @@
         "watts5s": false, "watts1m": false, "watts5m": false, "watts20m": false,
         "compound5s": false, "compound1m": false, "compound5m": true, "compound20m": false
       },
-      "divisionAgent": { "minZwiftRides": 15, "enabled": true, "assessModel": "claude-haiku-5-5", "maxPerRun": 8, "chatModel": "claude-haiku-5-5", "autoReply": false, "reviewFilter": { "newSignupsDays": 30, "onlyUnlocked": true, "onlyWithStrava": false, "skipAdminPlaced": true, "reasons": ["no_velo", "no_max30", "few_rides"] } },
+      "divisionAgent": { "minZwiftRides": 15, "enabled": true, "assessModel": "claude-haiku-5-5", "maxPerRun": 8, "chatModel": "claude-haiku-5-5", "autoReply": false, "reviewFilter": { "newSignupsDays": 30, "onlyUnlocked": true, "onlyWithStrava": false, "skipAdminPlaced": true, "reasons": ["no_velo", "no_max30", "few_rides", "struggling"], "strugglingMinRaces": 3, "strugglingPercentile": 0.8, "strugglingShare": 0.75 } },
       "ligaCategories": [
         { "name": "Diamond", "upper": null, "requiresVerification": true, "color": "#b9f2ff" },
         { "name": "Ruby", "upper": 2200, "requiresVerification": true, "color": "#ff4e6a" },
@@ -858,9 +858,74 @@
       "activityCount": 23,
       "indoorCount": 9,
       "outdoorCount": 14,
+      "curveOutdoorRace": { "w5": 880.0, "w15": 770.0, "w30": 610.0, "w60": 465.0, "w120": 388.0, "w300": 329.0, "w1200": 281.0 },
+      "outdoorRaceCount": 2,
+      "version": 2,
+      "historyFrom": "2026-06-01T18:20:00+00:00",
       "split": true,
       "windows": [30, 60, 90],
       "computedAt": "2026-11-02T18:20:00+00:00"
+    }
+  ],
+  "strava_activity_efforts": [
+    {
+      "_id": "100001",
+      "userDocId": "100001",
+      "historyFrom": "2026-06-01T18:20:00+00:00",
+      "updatedAt": "2026-11-02T18:20:00+00:00",
+      "version": 2,
+      "rides": {
+        "9000000001": {
+          "startDate": "2026-10-28T17:00:00Z", "indoor": true, "race": false,
+          "efforts": { "w5": 860.0, "w15": 760.0, "w30": 640.0, "w60": 455.0, "w120": 380.0, "w300": 318.0, "w1200": 268.0 }
+        },
+        "9000000002": {
+          "startDate": "2026-09-13T08:00:00Z", "indoor": false, "race": true,
+          "efforts": { "w5": 905.0, "w15": 780.0, "w30": 620.0, "w60": 470.0, "w120": 390.0, "w300": 330.0, "w1200": 281.0 }
+        }
+      }
+    }
+  ],
+  "predictor_snapshots": [
+    {
+      "_id": "2026-10-19",
+      "capturedAt": "2026-10-19T04:05:00+00:00",
+      "riders": {
+        "100001": { "weightInGrams": 75000.0, "cp5s": 880.0, "cp1min": 460.0, "cp5min": 320.0, "cp20min": 270.0, "rating": 1630.2, "max30Rating": 1640.0, "zwiftActivityCount": 22.0 }
+      }
+    }
+  ],
+  "predictor_observations": [
+    {
+      "_id": "race_doc_example_001",
+      "raceId": "race_doc_example_001",
+      "raceStart": "2026-10-21T17:00:00+00:00",
+      "builtAt": "2026-10-22T06:10:00+00:00",
+      "pending": 0,
+      "riders": {
+        "100001": {
+          "zwiftId": "100001",
+          "division": "Sapphire",
+          "rank": 4,
+          "fieldSize": 18,
+          "percentile": 0.176,
+          "performanceVelo": 1612.5,
+          "veloBefore": 1630.2,
+          "weightKg": 75.0,
+          "weightSource": "snapshot",
+          "zwift": { "weightKg": 75.0, "wkg5s": 11.73, "wkg1m": 6.13, "wkg5m": 4.27, "wkg20m": 3.6, "racingScore": 0.0 },
+          "strava": {
+            "90": {
+              "curve": { "w5": 905.0, "w60": 470.0, "w300": 330.0, "w1200": 281.0 },
+              "curveIndoor": { "w5": 860.0, "w60": 455.0, "w300": 318.0, "w1200": 268.0 },
+              "curveOutdoor": { "w5": 905.0, "w60": 470.0, "w300": 330.0, "w1200": 281.0 },
+              "curveOutdoorRace": { "w5": 905.0, "w60": 470.0, "w300": 330.0, "w1200": 281.0 },
+              "activityCount": 21, "indoorCount": 8, "outdoorCount": 13, "outdoorRaceCount": 2, "split": true
+            }
+          },
+          "stravaPending": false
+        }
+      }
     }
   ],
   "predictor_tuning_runs": [
@@ -1044,7 +1109,12 @@
         "ridgeLambda": 0.1,
         "stravaWindowDays": 60,
         "stravaPowerScale": { "wkg5s": 1.0, "wkg1m": 1.02, "wkg5m": 1.04, "wkg20m": 1.05 },
-        "minStravaActivities": 3
+        "minStravaActivities": 3,
+        "trainingMinRides": 0,
+        "outdoorRaceScale": { "wkg5s": 1.0, "wkg1m": 1.0, "wkg5m": 1.01, "wkg20m": 1.02 },
+        "targetSource": "velo_or_league",
+        "strictPointInTime": false,
+        "indoorFirstMinRides": 5
       },
       "history": [
         {

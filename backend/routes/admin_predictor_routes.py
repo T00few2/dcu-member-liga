@@ -237,6 +237,7 @@ def predictor_worker():
     if not db:
         return jsonify({"error": "DB not available"}), 500
     try:
+        _keep_point_in_time_data()
         tuned = runs.process_waiting(db)
         # One job per call: research needs nearly the whole request time limit, so after
         # a tuning run it waits for the next call (5 minutes later) instead of being cut off.
@@ -255,6 +256,27 @@ def predictor_worker():
     except Exception as e:
         logger.error("predictor_worker error: %s", e)
         return jsonify({"message": str(e)}), 500
+
+
+def _keep_point_in_time_data() -> None:
+    """Light upkeep on every worker call: a dated snapshot of weight, Zwift power and vELO
+    when one is due, and the point-in-time observations of one league race.
+
+    Never stops the worker: these only feed later tuning."""
+    try:
+        from services import predictor_observations as po
+        from services import predictor_snapshots as snapshots
+
+        races = ps.league_races(db)
+
+        def participants():  # read only when a snapshot or a race is actually due
+            return ps.cached_participants(db)
+
+        snapshots.take_if_due(db, participants, [start for _race, start in races])
+        if po.refresh_next(db, races, participants):
+            ps.clear_league_cache()
+    except Exception as e:
+        logger.warning("predictor_worker: point-in-time upkeep failed: %s", e)
 
 
 @admin_bp.route("/admin/predictor/tune/runs", methods=["GET"])
@@ -299,6 +321,14 @@ def predictor_tune_decision(run_id: str):
 # --- Strava curve cache for tuning ----------------------------------------------
 
 
+def _league_progress(participants: list[dict]) -> dict | None:
+    try:
+        return ps.league_progress(db, participants)
+    except Exception as e:  # the cache status is still useful without it
+        logger.warning("league progress unavailable: %s", e)
+        return None
+
+
 def _cache_context():
     participants = ps.load_participants(db)
     min_rides = ps.division_agent_settings(db)["minZwiftRides"]
@@ -316,7 +346,9 @@ def predictor_strava_cache_status():
         return jsonify({"error": "DB not available"}), 500
     try:
         participants, min_rides, days = _cache_context()
-        status = warmer.cache_status(db, participants, min_rides=min_rides, days=days)
+        status = warmer.cache_status(db, participants, min_rides=min_rides, days=days,
+                                     history_days=ps.strava_history_days(db),
+                                     league_ids=set(ps.league_performances(db)))
         return jsonify({
             "days": status["days"],
             "eligible": status["eligible"],
@@ -328,6 +360,7 @@ def predictor_strava_cache_status():
             "minEvalRiders": MIN_EVAL_RIDERS,
             "stravaUsage": warmer.strava_usage(db),
             "lastWarm": warmer.last_warm(db),
+            "league": _league_progress(participants),
         }), 200
     except Exception as e:
         logger.error("predictor_strava_cache_status error: %s", e)
@@ -355,6 +388,8 @@ def predictor_strava_cache_warm():
         result = warmer.warm(
             db, strava_service, participants,
             min_rides=min_rides, days=days, compute_curve=_compute_strava_power_curve,
+            history_days=ps.strava_history_days(db),
+            league_ids=set(ps.league_performances(db)),
         )
         if result.get("busy"):
             return jsonify({"busy": True, "warmed": 0, "rateLimited": False}), 200

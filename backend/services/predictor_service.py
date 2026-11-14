@@ -18,7 +18,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
-from services.category_engine import serialize_liga_category
+from services.category_engine import effective_liga_category_name, serialize_liga_category
 from services.liga_categories_core import _load_liga_settings, _resolve_categories
 from services.participant_rows import build_participant_row
 from services.user_service import UserService
@@ -79,11 +79,22 @@ def _agent_fields(data: dict) -> dict:
 
 def load_participants(db: Any) -> list[dict]:
     """Participant rows for every registered rider (same rows as `/participants`)."""
+    from services import league_performance as lp
+
     rank_cats = load_categories(db)
+    try:
+        performances = league_performances(db)
+    except Exception as exc:  # league results are extra; the predictor works without them
+        logger.warning("predictor: league results unavailable: %s", exc)
+        performances = {}
     rows = []
     for user in UserService.get_all_participants(limit=PARTICIPANT_LIMIT):
         try:
             row, _ = build_participant_row(user, serialize_liga_category, rank_cats)
+            # Internal only: results in the rider's current division (for the "struggling" check).
+            division = effective_liga_category_name(user._data.get("ligaCategory") or {}, rank_cats) or None
+            raced = performances.get(str(row.get("zwiftId")))
+            row["league"] = lp.rider_summary(raced, division=division) if raced and division else None
             # Internal only (Strava curve cache key); never sent to the browser by these routes.
             row["userDocId"] = str(user.id)
             row["hasStrava"] = bool((user._data.get("connections") or {}).get("strava"))
@@ -110,8 +121,87 @@ def cached_participants(db: Any) -> list[dict]:
     return rows
 
 
+LEAGUE_CACHE_TTL_SECONDS = 600
+MAX_HISTORY_DAYS = 400
+_league_cache: dict[str, tuple[float, Any]] = {}
+
+
+def _cached(key: str, load) -> Any:
+    now = time.monotonic()
+    hit = _league_cache.get(key)
+    if hit and now - hit[0] < LEAGUE_CACHE_TTL_SECONDS:
+        return hit[1]
+    value = load()
+    _league_cache[key] = (now, value)
+    return value
+
+
+def load_league_races(db: Any) -> list[tuple[dict, Any]]:
+    """`(race, start)` for every race document (start in UTC, None when unparseable)."""
+    from services.race_signups import parse_race_date  # imported lazily: it pulls in the app's db
+
+    out = []
+    for snap in db.collection("races").stream():
+        data = snap.to_dict() or {}
+        data["id"] = str(snap.id)
+        out.append((data, parse_race_date(data.get("date"))))
+    return out
+
+
+def league_races(db: Any) -> list[tuple[dict, Any]]:
+    return _cached("races", lambda: load_league_races(db))
+
+
+def league_performances(db: Any) -> dict[str, list[dict]]:
+    """Every rider's finalized league results this season, keyed by zwiftId (cached 10 minutes)."""
+    from services import league_performance as lp
+
+    return _cached("performances", lambda: lp.by_rider(lp.all_performances(league_races(db))))
+
+
+def observations(db: Any) -> list[dict]:
+    """Stored point-in-time league observations (cached 10 minutes)."""
+    from services import predictor_observations as po
+
+    return _cached("observations", lambda: po.read_all(db))
+
+
+def league_progress(db: Any, participants: list[dict]) -> dict:
+    """Counts for the Tuning panel: how much league ground truth exists and how much of it
+    tuning can score today (cached 10 minutes)."""
+    from services import predictor_observations as po
+    from services import predictor_tuning as pt
+
+    def load() -> dict:
+        out = po.progress(db, league_races(db))
+        usable = pt.build_league_eval(observations(db), participants,
+                                      min_rides=division_agent_settings(db)["minZwiftRides"])
+        out["usable"] = len(usable)
+        out["usableRiders"] = len({r.zwiftId for r in usable})
+        return out
+
+    return _cached("progress", load)
+
+
+def strava_history_days(db: Any, now: datetime | None = None) -> int | None:
+    """How far back Strava ride lists must reach so a curve can be rebuilt for the first
+    finalized race of the season: back to its start, plus the longest tuning window."""
+    from services import league_performance as lp
+
+    starts = [s for r, s in league_races(db) if s is not None and lp.is_finalized(r)]
+    if not starts:
+        return None
+    age = ((now or datetime.now(timezone.utc)) - min(starts)).days + 1
+    return min(MAX_HISTORY_DAYS, max(0, age) + max(vp.STRAVA_WINDOWS))
+
+
+def clear_league_cache() -> None:
+    _league_cache.clear()
+
+
 def clear_caches() -> None:
     _participants_cache.clear()
+    _league_cache.clear()
     vp.clear_model_cache()
 
 
@@ -123,10 +213,12 @@ def get_model(
     """Return (model, participants, categories). The model is cached per config for 10 minutes."""
     cfg = config or load_config(db)
     cats = load_categories(db)
+    # League observations are only read when the config trains on them.
+    obs = observations(db) if cfg.targetSource != "velo" else None
     if participants is not None:
-        return vp.build_model(participants, cfg, cats), participants, cats
+        return vp.build_model(participants, cfg, cats, obs), participants, cats
     rows = cached_participants(db)
-    model = vp.cached_model(cfg.fingerprint(), lambda: vp.build_model(rows, cfg, cats))
+    model = vp.cached_model(cfg.fingerprint(), lambda: vp.build_model(rows, cfg, cats, obs))
     return model, rows, cats
 
 

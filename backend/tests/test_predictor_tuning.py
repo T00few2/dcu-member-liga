@@ -213,9 +213,9 @@ def test_tuning_tries_reliable_only_training():
     seen = set()
     original = pt._evaluate
 
-    def spy(parts, rs, cfg, *a):
+    def spy(parts, rs, cfg, *a, **k):
         seen.add(cfg.trainingMinRides)
-        return original(parts, rs, cfg, *a)
+        return original(parts, rs, cfg, *a, **k)
 
     pt._evaluate = spy
     try:

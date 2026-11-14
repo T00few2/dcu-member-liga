@@ -7,6 +7,7 @@ import { API_URL } from '@/lib/api';
 import { PreviewBlock, type Preview } from '@/components/admin/category-manager/TransferPreview';
 import UnansweredQuestions from '@/components/admin/UnansweredQuestions';
 import ReviewFilterPanel, { type ReviewFilter } from '@/components/admin/ReviewFilterPanel';
+import StrugglingRiders, { leagueLine, type LeagueSummary } from '@/components/admin/StrugglingRiders';
 
 type Prediction = { velo: number | null; category: string | null; confidence?: string };
 
@@ -48,10 +49,17 @@ export interface DivisionProposal {
       activityCount?: number;
       indoorCount?: number | null;
       outdoorCount?: number | null;
+      outdoorRaceCount?: number | null;
       days?: number;
       prediction?: Prediction;
     } | null;
     zwift?: { prediction?: Prediction } | null;
+    /** Results in the current division this season (league races). */
+    league?: LeagueSummary | null;
+    /** The division is harder than the rider's own vELO says, or that vELO is unreliable. */
+    heldUp?: boolean;
+    veloDivision?: string | null;
+    veloReliable?: boolean;
   };
 }
 
@@ -72,6 +80,7 @@ const REASON_TEXT: Record<string, string> = {
   no_max30: 'no max30 vELO',
   few_rides: 'few Zwift rides',
   no_division: 'no division',
+  struggling: 'at the back of the division',
 };
 
 const FLAG_TEXT: Record<string, string> = {
@@ -84,14 +93,20 @@ const FLAG_TEXT: Record<string, string> = {
   appeal_not_supported: 'the numbers do not support the request',
 };
 
-function stravaRides(s: { activityCount?: number; indoorCount?: number | null; outdoorCount?: number | null; days?: number }) {
+function stravaRides(s: {
+  activityCount?: number; indoorCount?: number | null; outdoorCount?: number | null;
+  outdoorRaceCount?: number | null; days?: number;
+}) {
   const total = `${s.activityCount ?? 0} rides in ${s.days ?? '?'} days`;
+  const races = s.outdoorRaceCount ? `, ${s.outdoorRaceCount} of them races` : '';
   return s.indoorCount != null && s.outdoorCount != null
-    ? `${total} (${s.indoorCount} indoor, ${s.outdoorCount} outdoor; outdoor efforts corrected)`
+    ? `${total} (${s.indoorCount} indoor, ${s.outdoorCount} outdoor${races}; outdoor efforts corrected)`
     : total;
 }
 
-const SOURCE_TEXT: Record<string, string> = { strava: 'Strava', zwift: 'Zwift power', velo: 'vELO' };
+const SOURCE_TEXT: Record<string, string> = {
+  strava: 'Strava', zwift: 'Zwift power', velo: 'vELO', league: 'league results and power',
+};
 
 async function authed(user: User, path: string, init?: RequestInit) {
   const token = await user.getIdToken();
@@ -172,6 +187,16 @@ function ProposalCard({
           vELO {ev.velo?.current ?? '—'} (max30 {ev.velo?.max30 ?? '—'}) · {ev.zwiftActivityCount ?? 0} Zwift rides
           {ev.weightKg ? ` · ${ev.weightKg} kg` : ''}
         </li>
+        {ev.league && (
+          <li>
+            League: {leagueLine(ev.league)}
+            {ev.heldUp != null && (
+              ev.heldUp
+                ? ` · placed above own vELO division${ev.veloDivision ? ` (${ev.veloDivision})` : ''}${ev.veloReliable === false ? ', vELO unreliable' : ''}`
+                : ' · reliable vELO belongs in this division'
+            )}
+          </li>
+        )}
       </ul>
       {proposal.origin === 'appeal' && (
         <blockquote className="text-sm border-l-4 border-indigo-300 pl-3">
@@ -259,7 +284,7 @@ function ProposalCard({
 
 export default function DivisionAgent({ user }: { user: User | null }) {
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<'pending' | 'history' | 'unanswered'>('pending');
+  const [tab, setTab] = useState<'pending' | 'history' | 'struggling' | 'unanswered'>('pending');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
@@ -278,7 +303,7 @@ export default function DivisionAgent({ user }: { user: User | null }) {
   const { data: list, isLoading } = useQuery<{ proposals: DivisionProposal[] }>({
     queryKey: ['division-agent', 'proposals', tab],
     queryFn: () => authed(user!, `/admin/division-agent/proposals?status=${tab}`),
-    enabled: !!user && tab !== 'unanswered',
+    enabled: !!user && (tab === 'pending' || tab === 'history'),
     // A callback, so the 10-minute fast window after a scan ends on its own.
     refetchInterval: () => {
       if (tab !== 'pending') return false;
@@ -387,19 +412,21 @@ export default function DivisionAgent({ user }: { user: User | null }) {
       {info && <p className="text-sm text-green-700">{info}</p>}
       <ReviewFilterPanel user={user} saved={status?.reviewFilter} savedMinRides={status?.minZwiftRides} />
       <div className="flex border-b border-border">
-        {(['pending', 'history', 'unanswered'] as const).map(t => (
+        {(['pending', 'history', 'struggling', 'unanswered'] as const).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={`cursor-pointer pb-2 px-4 text-sm font-medium ${tab === t ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground'}`}
           >
-            {t === 'pending' ? 'Pending' : t === 'history' ? 'History' : 'Unanswered questions'}
+            {t === 'pending' ? 'Pending' : t === 'history' ? 'History'
+              : t === 'struggling' ? 'Struggling riders' : 'Unanswered questions'}
           </button>
         ))}
       </div>
       {tab === 'unanswered' && <UnansweredQuestions user={user} />}
-      {tab !== 'unanswered' && isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
-      {tab !== 'unanswered' && !isLoading && proposals.length === 0 && (
+      {tab === 'struggling' && <StrugglingRiders user={user} />}
+      {(tab === 'pending' || tab === 'history') && isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+      {(tab === 'pending' || tab === 'history') && !isLoading && proposals.length === 0 && (
         <p className="text-sm text-muted-foreground">
           {tab === 'pending' ? 'No proposals waiting.' : 'No decisions yet.'}
         </p>
