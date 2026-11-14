@@ -11,7 +11,7 @@ describe('FinishHoldButton', () => {
         vi.useFakeTimers();
         const onFinish = vi.fn();
         render(<FinishHoldButton onFinish={onFinish} />);
-        fireEvent.pointerDown(screen.getByRole('button', { name: 'Mål' }));
+        fireEvent.pointerDown(screen.getByRole('button', { name: 'Færdig' }));
         vi.advanceTimersByTime(1999);
         expect(onFinish).not.toHaveBeenCalled();
         vi.advanceTimersByTime(1);
@@ -22,7 +22,7 @@ describe('FinishHoldButton', () => {
         vi.useFakeTimers();
         const onFinish = vi.fn();
         render(<FinishHoldButton onFinish={onFinish} />);
-        const button = screen.getByRole('button', { name: 'Mål' });
+        const button = screen.getByRole('button', { name: 'Færdig' });
         fireEvent.pointerDown(button);
         vi.advanceTimersByTime(500);
         fireEvent.pointerUp(button);

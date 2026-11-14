@@ -33,7 +33,7 @@ export default function FinishHoldButton({ onFinish, holdMs = 2000 }: Props) {
             onPointerUp={cancel}
             onPointerLeave={cancel}
         >
-            {holding ? 'Hold…' : 'Mål'}
+            {holding ? 'Hold…' : 'Færdig'}
         </button>
     );
 }
