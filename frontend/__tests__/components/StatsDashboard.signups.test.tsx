@@ -82,4 +82,31 @@ describe('StatsDashboard signup growth', () => {
         expect(screen.queryByText(/signups ·/)).not.toBeInTheDocument();
         expect(screen.queryByText('No signups for this race yet.')).not.toBeInTheDocument();
     });
+
+    it('lines every race with signup history up on days before the start', async () => {
+        const user = userEvent.setup();
+        useAdminStatsQuery.mockReturnValue({ isLoading: false, isError: false, data: STATS });
+        useRacesQuery.mockReturnValue({
+            data: [
+                race({ id: 'r1', name: 'Race One' }),
+                race({ id: 'r2', name: 'Race Two' }),
+            ],
+            isLoading: false,
+        });
+
+        render(<StatsDashboard />);
+
+        expect(screen.getByRole('heading', { name: 'Signups by days before the race' })).toBeInTheDocument();
+        const raceOne = screen.getByRole('button', { name: 'Race One' });
+        expect(raceOne).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.queryByRole('button', { name: 'Race Two' })).not.toBeInTheDocument();
+
+        await user.click(raceOne);
+        expect(raceOne).toHaveAttribute('aria-pressed', 'false');
+        expect(screen.getByText('Every race is hidden.')).toBeInTheDocument();
+
+        await user.click(screen.getByRole('button', { name: 'Show all races' }));
+        expect(raceOne).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.queryByText('Every race is hidden.')).not.toBeInTheDocument();
+    });
 });

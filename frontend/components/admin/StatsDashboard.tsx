@@ -4,6 +4,11 @@ import { useMemo, useState } from 'react';
 import { useAdminStatsQuery, useRacesQuery } from '@/hooks/queries';
 import type { DualRecordingBucket, SexFilter, StatsData } from '@/hooks/queries';
 import RaceSignupSelect from '@/components/RaceSignupSelect';
+import {
+    buildRaceSignupComparison,
+    calendarToday,
+    formatDaysBeforeLabel,
+} from '@/lib/raceSignupCompare';
 import type { Race } from '@/types/live';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -292,6 +297,7 @@ export default function StatsDashboard() {
             </div>
 
             <SignupGrowth stats={stats} />
+            <RaceSignupCompare stats={stats} />
 
             {/* ── Kategori Distribution ── */}
             <div className="bg-card rounded-xl border border-border p-6 shadow-sm">
@@ -556,6 +562,186 @@ function SignupGrowth({ stats }: { stats: StatsData }) {
                         />
                     </LineChart>
                 </ResponsiveContainer>
+            )}
+        </div>
+    );
+}
+
+// ── Signup comparison, lined up on each race's start ─────────────────────────
+
+function RaceSignupCompare({ stats }: { stats: StatsData }) {
+    const racesQuery = useRacesQuery();
+    const races = (racesQuery.data ?? []) as Race[];
+    const today = useMemo(() => calendarToday(), []);
+    const series = useMemo(
+        () => buildRaceSignupComparison(stats.raceGrowth ?? [], races, today),
+        [stats.raceGrowth, races, today],
+    );
+    const [hidden, setHidden] = useState<Set<string>>(() => new Set());
+
+    const historyMissing = stats.raceGrowth == null;
+    const visible = series.filter(item => !hidden.has(item.raceId));
+    const axisData = useMemo(() => {
+        const days = new Set<number>();
+        for (const item of series) {
+            for (const point of item.points) days.add(point.daysBefore);
+        }
+        return [...days].sort((a, b) => a - b).map(daysBefore => ({ daysBefore }));
+    }, [series]);
+    const xValues = series.flatMap(item => item.points.map(point => point.daysBefore));
+    const xMin = xValues.length > 0 ? Math.min(...xValues) : 0;
+    const xMax = xValues.length > 0 ? Math.max(...xValues) : 0;
+    const xLo = xMin === xMax ? xMin - 1 : xMin;
+    const xHi = xMin === xMax ? xMax + 1 : xMax;
+
+    const toggle = (raceId: string) => {
+        setHidden(prev => {
+            const next = new Set(prev);
+            if (next.has(raceId)) next.delete(raceId);
+            else next.add(raceId);
+            return next;
+        });
+    };
+
+    return (
+        <div className="bg-card rounded-xl border border-border p-6 shadow-sm">
+            <div className="mb-4">
+                <h2 className="text-lg font-semibold text-foreground">Signups by days before the race</h2>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                    Cumulative signups for each race, lined up so 0 is race day. Click a race to hide it.
+                </p>
+            </div>
+            {historyMissing ? (
+                <p className="text-muted-foreground text-sm">
+                    Race signup history is not in this stats response yet — hit Refresh to reload it.
+                </p>
+            ) : racesQuery.isLoading && races.length === 0 ? (
+                <p className="text-muted-foreground text-sm">Loading races…</p>
+            ) : racesQuery.isError ? (
+                <p className="text-muted-foreground text-sm">
+                    Race dates could not be loaded, so the curves cannot be lined up.
+                </p>
+            ) : series.length === 0 ? (
+                <p className="text-muted-foreground text-sm">No race signup history to compare yet.</p>
+            ) : (
+                <>
+                    {visible.length === 0 ? (
+                        <p className="text-muted-foreground text-sm mb-4">Every race is hidden.</p>
+                    ) : (
+                        <ResponsiveContainer width="100%" height={320}>
+                            <LineChart data={axisData} margin={{ top: 4, right: 16, left: 0, bottom: 16 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+                                <XAxis
+                                    type="number"
+                                    dataKey="daysBefore"
+                                    domain={[xLo, xHi]}
+                                    reversed
+                                    allowDecimals={false}
+                                    height={48}
+                                    tick={{ fill: 'var(--color-muted-foreground)', fontSize: 11 }}
+                                    label={{
+                                        value: 'Days before race',
+                                        position: 'insideBottom',
+                                        offset: 0,
+                                        style: { fill: 'var(--color-muted-foreground)', fontSize: 11 },
+                                    }}
+                                />
+                                <YAxis
+                                    allowDecimals={false}
+                                    domain={[0, 'auto']}
+                                    tick={{ fill: 'var(--color-muted-foreground)', fontSize: 11 }}
+                                    label={{
+                                        value: 'Signups',
+                                        angle: -90,
+                                        position: 'insideLeft',
+                                        offset: 10,
+                                        style: { fill: 'var(--color-muted-foreground)', fontSize: 11 },
+                                    }}
+                                />
+                                <Tooltip
+                                    content={({ active, payload, label }) => {
+                                        if (!active) return null;
+                                        const fromLabel = Number(label);
+                                        const fromPoint = Number(payload?.[0]?.payload?.daysBefore);
+                                        const daysBefore = Number.isFinite(fromLabel) ? fromLabel : fromPoint;
+                                        if (!Number.isFinite(daysBefore)) return null;
+                                        const rows = visible
+                                            .map(item => {
+                                                const point = item.points.find(entry => entry.daysBefore === daysBefore);
+                                                return point ? { ...item, signups: point.signups } : null;
+                                            })
+                                            .filter((row): row is NonNullable<typeof row> => row != null)
+                                            .sort((a, b) => b.signups - a.signups || a.name.localeCompare(b.name));
+                                        if (rows.length === 0) return null;
+                                        return (
+                                            <div className="bg-card border border-border rounded-lg px-3 py-2 shadow text-sm text-foreground max-h-64 overflow-y-auto">
+                                                <p className="font-medium mb-1">{formatDaysBeforeLabel(daysBefore)}</p>
+                                                {rows.map(row => (
+                                                    <p key={row.raceId} className="flex items-center gap-2">
+                                                        <span
+                                                            className="inline-block h-2 w-2 shrink-0 rounded-full"
+                                                            style={{ background: CHART_PALETTE[series.findIndex(item => item.raceId === row.raceId) % CHART_PALETTE.length] }}
+                                                        />
+                                                        <span>{row.name}</span>
+                                                        <strong>{row.signups}</strong>
+                                                    </p>
+                                                ))}
+                                            </div>
+                                        );
+                                    }}
+                                />
+                                {visible.map(item => {
+                                    const color = CHART_PALETTE[series.findIndex(entry => entry.raceId === item.raceId) % CHART_PALETTE.length];
+                                    return (
+                                        <Line
+                                            key={item.raceId}
+                                            data={item.points}
+                                            type="monotone"
+                                            dataKey="signups"
+                                            name={item.name}
+                                            stroke={color}
+                                            strokeWidth={2}
+                                            dot={item.points.length === 1 ? { r: 3, fill: color, stroke: color } : false}
+                                            activeDot={{ r: 4 }}
+                                            isAnimationActive={false}
+                                        />
+                                    );
+                                })}
+                            </LineChart>
+                        </ResponsiveContainer>
+                    )}
+                    <div className="flex flex-wrap items-center gap-2 mt-3">
+                        {series.map((item, index) => {
+                            const isShown = !hidden.has(item.raceId);
+                            return (
+                                <button
+                                    key={item.raceId}
+                                    type="button"
+                                    aria-pressed={isShown}
+                                    onClick={() => toggle(item.raceId)}
+                                    className={`inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs transition ${
+                                        isShown ? 'text-foreground' : 'text-muted-foreground opacity-50'
+                                    }`}
+                                >
+                                    <span
+                                        className="h-2 w-2 rounded-full"
+                                        style={{ background: CHART_PALETTE[index % CHART_PALETTE.length] }}
+                                    />
+                                    {item.name}
+                                </button>
+                            );
+                        })}
+                        {hidden.size > 0 && (
+                            <button
+                                type="button"
+                                onClick={() => setHidden(new Set())}
+                                className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                            >
+                                Show all races
+                            </button>
+                        )}
+                    </div>
+                </>
             )}
         </div>
     );
