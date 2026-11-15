@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { buildRaceSignupComparison, formatDaysBeforeLabel } from '@/lib/raceSignupCompare';
+import {
+    buildRaceSignupComparison,
+    formatDaysBeforeLabel,
+    signupTotalsInWindow,
+    sliceSignupWindow,
+} from '@/lib/raceSignupCompare';
 
 describe('buildRaceSignupComparison', () => {
     it('lines races up on their own start and holds the total across quiet days', () => {
@@ -104,6 +109,28 @@ describe('buildRaceSignupComparison', () => {
         );
 
         expect(series.map(row => row.name)).toEqual(['Finale (01/09)', 'Finale (08/09)']);
+    });
+});
+
+describe('signup axis window', () => {
+    const points = [
+        { daysBefore: 8, signups: 2 },
+        { daysBefore: 5, signups: 4 },
+        { daysBefore: 0, signups: 9 },
+    ];
+
+    it('keeps the days inside the window and one point on either side so the line meets the frame', () => {
+        expect(sliceSignupWindow(points, 6, 1)).toEqual([
+            { daysBefore: 8, signups: 2 },
+            { daysBefore: 5, signups: 4 },
+            { daysBefore: 0, signups: 9 },
+        ]);
+        expect(sliceSignupWindow(points, 4, 1)).toEqual([]);
+    });
+
+    it('counts the total carried into the window from earlier days', () => {
+        expect(signupTotalsInWindow(points, 6, 1)).toEqual([4, 2]);
+        expect(signupTotalsInWindow(points, 3, 0)).toEqual([9, 4]);
     });
 });
 

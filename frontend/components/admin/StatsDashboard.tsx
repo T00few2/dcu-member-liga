@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAdminStatsQuery, useRacesQuery } from '@/hooks/queries';
 import type { DualRecordingBucket, SexFilter, StatsData } from '@/hooks/queries';
 import RaceSignupSelect from '@/components/RaceSignupSelect';
@@ -8,6 +8,9 @@ import {
     buildRaceSignupComparison,
     calendarToday,
     formatDaysBeforeLabel,
+    normalizeDaysBeforeRange,
+    signupTotalsInWindow,
+    sliceSignupWindow,
 } from '@/lib/raceSignupCompare';
 import type { Race } from '@/types/live';
 import {
@@ -569,6 +572,126 @@ function SignupGrowth({ stats }: { stats: StatsData }) {
 
 // ── Signup comparison, lined up on each race's start ─────────────────────────
 
+const SIGNUP_WINDOW_PRESETS = [14, 30, 60, 90] as const;
+
+function parseDaysBeforeInput(text: string): number | null {
+    if (!/^-?\d+$/.test(text.trim())) return null;
+    return Number(text.trim());
+}
+
+function signupAxisYMax(totals: number[]): number {
+    const max = totals.reduce((highest, value) => Math.max(highest, value), 0);
+    if (max <= 0) return 1;
+    const padded = max * 1.1;
+    const step = 10 ** Math.floor(Math.log10(padded));
+    return Math.ceil(padded / step) * step;
+}
+
+function SignupAxisRange({
+    dataLeft,
+    dataRight,
+    left,
+    right,
+    onChange,
+}: {
+    dataLeft: number;
+    dataRight: number;
+    left: number;
+    right: number;
+    onChange: (left: number, right: number) => void;
+}) {
+    const [leftText, setLeftText] = useState(String(left));
+    const [rightText, setRightText] = useState(String(right));
+
+    useEffect(() => {
+        setLeftText(String(left));
+        setRightText(String(right));
+    }, [left, right]);
+
+    const commit = (nextLeftText: string, nextRightText: string) => {
+        const parsedLeft = parseDaysBeforeInput(nextLeftText);
+        const parsedRight = parseDaysBeforeInput(nextRightText);
+        if (parsedLeft == null || parsedRight == null) return;
+        onChange(parsedLeft, parsedRight);
+    };
+
+    const isAll = left === dataLeft && right === dataRight;
+
+    return (
+        <div className="flex flex-col gap-2 sm:items-end">
+            <div role="group" aria-label="Days before the race" className="inline-flex self-start rounded-lg border border-border overflow-hidden text-sm sm:self-auto">
+                {SIGNUP_WINDOW_PRESETS.map(days => {
+                    const active = left === days && right === 0;
+                    return (
+                        <button
+                            key={days}
+                            type="button"
+                            aria-pressed={active}
+                            onClick={() => onChange(days, 0)}
+                            className={`px-3 py-1.5 transition ${
+                                active
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                        >
+                            {days}d
+                        </button>
+                    );
+                })}
+                <button
+                    type="button"
+                    aria-pressed={isAll}
+                    onClick={() => onChange(dataLeft, dataRight)}
+                    className={`px-3 py-1.5 transition ${
+                        isAll
+                            ? 'bg-primary text-primary-foreground'
+                            : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                >
+                    All
+                </button>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <label className="flex items-center gap-1.5">
+                    <span>From</span>
+                    <input
+                        aria-label="From days before"
+                        inputMode="numeric"
+                        value={leftText}
+                        onChange={event => {
+                            const next = event.target.value;
+                            setLeftText(next);
+                            commit(next, rightText);
+                        }}
+                        onBlur={() => {
+                            if (parseDaysBeforeInput(leftText) == null) setLeftText(String(left));
+                        }}
+                        className="w-16 px-2 py-1.5 border border-input rounded-lg text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                </label>
+                <span>to</span>
+                <label className="flex items-center gap-1.5">
+                    <input
+                        aria-label="To days before"
+                        inputMode="numeric"
+                        value={rightText}
+                        onChange={event => {
+                            const next = event.target.value;
+                            setRightText(next);
+                            commit(leftText, next);
+                        }}
+                        onBlur={() => {
+                            if (parseDaysBeforeInput(rightText) == null) setRightText(String(right));
+                        }}
+                        className="w-16 px-2 py-1.5 border border-input rounded-lg text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                    <span>days before</span>
+                </label>
+            </div>
+        </div>
+    );
+}
+
 function RaceSignupCompare({ stats }: { stats: StatsData }) {
     const racesQuery = useRacesQuery();
     const races = (racesQuery.data ?? []) as Race[];
@@ -578,21 +701,55 @@ function RaceSignupCompare({ stats }: { stats: StatsData }) {
         [stats.raceGrowth, races, today],
     );
     const [hidden, setHidden] = useState<Set<string>>(() => new Set());
+    const [axisRange, setAxisRange] = useState<{ left: number; right: number } | null>(null);
 
     const historyMissing = stats.raceGrowth == null;
     const visible = series.filter(item => !hidden.has(item.raceId));
+    const extent = useMemo(() => {
+        let left = 0;
+        let right = 0;
+        let seen = false;
+        for (const item of series) {
+            for (const point of item.points) {
+                if (!seen) {
+                    left = point.daysBefore;
+                    right = point.daysBefore;
+                    seen = true;
+                } else {
+                    left = Math.max(left, point.daysBefore);
+                    right = Math.min(right, point.daysBefore);
+                }
+            }
+        }
+        return { left, right };
+    }, [series]);
+    const axis = axisRange ?? extent;
+    const xLo = axis.left === axis.right ? axis.right - 1 : axis.right;
+    const xHi = axis.left === axis.right ? axis.left + 1 : axis.left;
+    const windowed = useMemo(
+        () => series
+            .filter(item => !hidden.has(item.raceId))
+            .map(item => ({
+                ...item,
+                points: sliceSignupWindow(item.points, axis.left, axis.right),
+            }))
+            .filter(item => item.points.length > 0),
+        [series, hidden, axis.left, axis.right],
+    );
     const axisData = useMemo(() => {
         const days = new Set<number>();
-        for (const item of series) {
-            for (const point of item.points) days.add(point.daysBefore);
+        for (const item of windowed) {
+            for (const point of item.points) {
+                if (point.daysBefore >= axis.right && point.daysBefore <= axis.left) days.add(point.daysBefore);
+            }
+        }
+        if (days.size === 0) {
+            days.add(axis.right);
+            days.add(axis.left);
         }
         return [...days].sort((a, b) => a - b).map(daysBefore => ({ daysBefore }));
-    }, [series]);
-    const xValues = series.flatMap(item => item.points.map(point => point.daysBefore));
-    const xMin = xValues.length > 0 ? Math.min(...xValues) : 0;
-    const xMax = xValues.length > 0 ? Math.max(...xValues) : 0;
-    const xLo = xMin === xMax ? xMin - 1 : xMin;
-    const xHi = xMin === xMax ? xMax + 1 : xMax;
+    }, [windowed, axis.left, axis.right]);
+    const yMax = signupAxisYMax(windowed.flatMap(item => signupTotalsInWindow(item.points, axis.left, axis.right)));
 
     const toggle = (raceId: string) => {
         setHidden(prev => {
@@ -605,11 +762,26 @@ function RaceSignupCompare({ stats }: { stats: StatsData }) {
 
     return (
         <div className="bg-card rounded-xl border border-border p-6 shadow-sm">
-            <div className="mb-4">
-                <h2 className="text-lg font-semibold text-foreground">Signups by days before the race</h2>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                    Cumulative signups for each race, lined up so 0 is race day. Click a race to hide it.
-                </p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-4">
+                <div>
+                    <h2 className="text-lg font-semibold text-foreground">Signups by days before the race</h2>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                        Cumulative signups for each race, lined up so 0 is race day. Click a race to hide it.
+                    </p>
+                </div>
+                {series.length > 0 && (
+                    <SignupAxisRange
+                        dataLeft={extent.left}
+                        dataRight={extent.right}
+                        left={axis.left}
+                        right={axis.right}
+                        onChange={(left, right) => {
+                            const next = normalizeDaysBeforeRange(left, right);
+                            if (next.left === extent.left && next.right === extent.right) setAxisRange(null);
+                            else setAxisRange(next);
+                        }}
+                    />
+                )}
             </div>
             {historyMissing ? (
                 <p className="text-muted-foreground text-sm">
@@ -627,15 +799,18 @@ function RaceSignupCompare({ stats }: { stats: StatsData }) {
                 <>
                     {visible.length === 0 ? (
                         <p className="text-muted-foreground text-sm mb-4">Every race is hidden.</p>
+                    ) : windowed.length === 0 ? (
+                        <p className="text-muted-foreground text-sm mb-4">No signups in this range.</p>
                     ) : (
                         <ResponsiveContainer width="100%" height={320}>
-                            <LineChart data={axisData} margin={{ top: 4, right: 16, left: 0, bottom: 16 }}>
+                            <LineChart key={`${axis.left}:${axis.right}`} data={axisData} margin={{ top: 4, right: 16, left: 0, bottom: 16 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                                 <XAxis
                                     type="number"
                                     dataKey="daysBefore"
                                     domain={[xLo, xHi]}
                                     reversed
+                                    allowDataOverflow
                                     allowDecimals={false}
                                     height={48}
                                     tick={{ fill: 'var(--color-muted-foreground)', fontSize: 11 }}
@@ -648,7 +823,8 @@ function RaceSignupCompare({ stats }: { stats: StatsData }) {
                                 />
                                 <YAxis
                                     allowDecimals={false}
-                                    domain={[0, 'auto']}
+                                    domain={[0, yMax]}
+                                    allowDataOverflow
                                     tick={{ fill: 'var(--color-muted-foreground)', fontSize: 11 }}
                                     label={{
                                         value: 'Signups',
@@ -664,7 +840,7 @@ function RaceSignupCompare({ stats }: { stats: StatsData }) {
                                         const fromLabel = Number(label);
                                         const fromPoint = Number(payload?.[0]?.payload?.daysBefore);
                                         const daysBefore = Number.isFinite(fromLabel) ? fromLabel : fromPoint;
-                                        if (!Number.isFinite(daysBefore)) return null;
+                                        if (!Number.isFinite(daysBefore) || daysBefore > axis.left || daysBefore < axis.right) return null;
                                         const rows = visible
                                             .map(item => {
                                                 const point = item.points.find(entry => entry.daysBefore === daysBefore);
@@ -690,7 +866,7 @@ function RaceSignupCompare({ stats }: { stats: StatsData }) {
                                         );
                                     }}
                                 />
-                                {visible.map(item => {
+                                {windowed.map(item => {
                                     const color = CHART_PALETTE[series.findIndex(entry => entry.raceId === item.raceId) % CHART_PALETTE.length];
                                     return (
                                         <Line

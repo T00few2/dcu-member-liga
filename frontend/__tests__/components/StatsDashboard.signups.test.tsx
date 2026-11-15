@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Race } from '@/types/live';
 
@@ -108,5 +108,37 @@ describe('StatsDashboard signup growth', () => {
         await user.click(screen.getByRole('button', { name: 'Show all races' }));
         expect(raceOne).toHaveAttribute('aria-pressed', 'true');
         expect(screen.queryByText('Every race is hidden.')).not.toBeInTheDocument();
+    });
+
+    it('lets the days-before axis be narrowed and restored', async () => {
+        const user = userEvent.setup();
+        useAdminStatsQuery.mockReturnValue({ isLoading: false, isError: false, data: STATS });
+        useRacesQuery.mockReturnValue({
+            data: [race({ id: 'r1', name: 'Race One' })],
+            isLoading: false,
+        });
+
+        render(<StatsDashboard />);
+
+        const range = screen.getByRole('group', { name: 'Days before the race' });
+        const from = screen.getByLabelText('From days before');
+        const to = screen.getByLabelText('To days before');
+        const fullFrom = (from as HTMLInputElement).value;
+        expect(within(range).getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
+
+        await user.click(within(range).getByRole('button', { name: '30d' }));
+        expect(from).toHaveValue('30');
+        expect(to).toHaveValue('0');
+        expect(within(range).getByRole('button', { name: '30d' })).toHaveAttribute('aria-pressed', 'true');
+        expect(within(range).getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'false');
+
+        await user.clear(from);
+        await user.type(from, '45');
+        expect(from).toHaveValue('45');
+        expect(within(range).getByRole('button', { name: '30d' })).toHaveAttribute('aria-pressed', 'false');
+
+        await user.click(within(range).getByRole('button', { name: 'All' }));
+        expect(from).toHaveValue(fullFrom);
+        expect(within(range).getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
     });
 });

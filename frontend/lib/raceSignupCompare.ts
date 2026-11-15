@@ -145,3 +145,56 @@ export function buildRaceSignupComparison(
         points: row.points,
     }));
 }
+
+/** Left edge is further from the race (more days before); right edge is closer to it. */
+export function normalizeDaysBeforeRange(left: number, right: number): { left: number; right: number } {
+    const hi = Math.max(left, right);
+    const lo = Math.min(left, right);
+    return { left: hi, right: lo };
+}
+
+/**
+ * Points to draw for a chosen window. One point just outside each edge is kept
+ * so the line meets the frame, and a race with no days inside the window is omitted.
+ */
+export function sliceSignupWindow(
+    points: AlignedSignupPoint[],
+    left: number,
+    right: number,
+): AlignedSignupPoint[] {
+    const { left: hi, right: lo } = normalizeDaysBeforeRange(left, right);
+    let outsideLeft: AlignedSignupPoint | null = null;
+    let outsideRight: AlignedSignupPoint | null = null;
+    const inside: AlignedSignupPoint[] = [];
+    for (const point of points) {
+        if (point.daysBefore > hi) {
+            if (!outsideLeft || point.daysBefore < outsideLeft.daysBefore) outsideLeft = point;
+        } else if (point.daysBefore < lo) {
+            if (!outsideRight || point.daysBefore > outsideRight.daysBefore) outsideRight = point;
+        } else {
+            inside.push(point);
+        }
+    }
+    if (inside.length === 0) return [];
+    const sliced = [...inside];
+    if (outsideLeft) sliced.push(outsideLeft);
+    if (outsideRight) sliced.push(outsideRight);
+    sliced.sort((a, b) => b.daysBefore - a.daysBefore);
+    return sliced;
+}
+
+/** Signup totals that fall inside the window, including the count carried in from earlier days. */
+export function signupTotalsInWindow(points: AlignedSignupPoint[], left: number, right: number): number[] {
+    const { left: hi, right: lo } = normalizeDaysBeforeRange(left, right);
+    const inside = points.filter(point => point.daysBefore >= lo && point.daysBefore <= hi);
+    if (inside.length === 0) return [];
+    let carried: AlignedSignupPoint | null = null;
+    for (const point of points) {
+        if (point.daysBefore >= hi && (!carried || point.daysBefore < carried.daysBefore)) {
+            carried = point;
+        }
+    }
+    const totals = inside.map(point => point.signups);
+    if (carried) totals.push(carried.signups);
+    return totals;
+}
