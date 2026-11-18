@@ -17,6 +17,7 @@ interface LandingPageProps {
     showUnregisteredModal: boolean;
     isRegistered: boolean;
     onSignInWithGoogle: () => void;
+    onSignInWithZwift: () => void | Promise<void>;
     onCloseUnregisteredModal: () => void;
     onStartRegistration: () => Promise<void>;
     nextRace?: Race | null;
@@ -26,6 +27,7 @@ export default function LandingPage({
     showUnregisteredModal,
     isRegistered,
     onSignInWithGoogle,
+    onSignInWithZwift,
     onCloseUnregisteredModal,
     onStartRegistration,
     nextRace = null,
@@ -135,7 +137,7 @@ export default function LandingPage({
                         <div className="absolute -right-10 -top-10 w-32 h-32 bg-primary/20 rounded-full blur-3xl"></div>
                         <h2 className="text-2xl font-bold mb-3 text-foreground">Allerede medlem af DCU-klub?</h2>
                         <p className="text-muted-foreground mb-8 flex-grow">
-                            Log ind med din Google-konto og registrer for at deltage.
+                            Log ind med din Zwift-konto og registrer for at deltage.
                         </p>
                         <button
                             onClick={() => setShowRegIntroModal(true)}
@@ -156,6 +158,7 @@ export default function LandingPage({
                 isOpen={showRegIntroModal}
                 onClose={() => setShowRegIntroModal(false)}
                 onContinue={onSignInWithGoogle}
+                onContinueWithZwift={onSignInWithZwift}
             />
             <UnregisteredLoginModal
                 isOpen={showUnregisteredModal}

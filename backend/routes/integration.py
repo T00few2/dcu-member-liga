@@ -26,6 +26,7 @@ from services.zwift_tokens import (
     upsert_from_token_response,
 )
 from services.weight_history import append_weight_history_entry
+from services import zwift_signin
 from utils.rate_limit import allow, client_ip
 import secrets
 import requests
@@ -253,6 +254,14 @@ def strava_deauthorize():
 
 # --- ZWIFT OAUTH ---
 
+ZWIFT_SIGNIN_MODE = 'signin'
+
+
+def _zwift_signin_redirect(**params):
+    from urllib.parse import urlencode
+    return redirect(f"{FRONTEND_URL}/auth/zwift?{urlencode(params)}")
+
+
 @integration_bp.route('/zwift/login', methods=['GET'])
 def zwift_login_get():
     return jsonify({'message': 'Use POST /zwift/login with Authorization header'}), 405
@@ -283,25 +292,168 @@ def zwift_login_post():
     return jsonify({'url': url}), 200
 
 
+@integration_bp.route('/auth/zwift/start', methods=['POST'])
+def zwift_signin_start():
+    """Start "Log ind med Zwift" for a visitor who is not signed in."""
+    if not allow(f"zwift-signin-start:{client_ip()}", limit=20, window_seconds=60):
+        return jsonify({'message': 'Too many requests'}), 429
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    body = request.get_json(silent=True) or {}
+    intent = body.get('intent') if body.get('intent') in ('login', 'register') else 'login'
+    state = secrets.token_urlsafe(32)
+    db.collection('zwift_oauth_states').document(state).set({
+        'mode': ZWIFT_SIGNIN_MODE,
+        'intent': intent,
+        'createdAt': firestore.SERVER_TIMESTAMP,
+    })
+    url = get_zwift_service().build_authorize_url(state=state)
+    return jsonify({'url': url}), 200
+
+
+@integration_bp.route('/auth/zwift/exchange', methods=['POST'])
+def zwift_signin_exchange():
+    """Swap the one-time code from the callback redirect for a Firebase custom token."""
+    if not allow(f"zwift-signin-exchange:{client_ip()}", limit=30, window_seconds=60):
+        return jsonify({'message': 'Too many requests'}), 429
+    if not db:
+        return jsonify({'error': 'DB not available'}), 500
+
+    body = request.get_json(silent=True) or {}
+    try:
+        login = zwift_signin.consume_login_code(db, body.get('code'))
+        custom_token = zwift_signin.mint_custom_token(login['uid'])
+    except zwift_signin.ZwiftSigninError as exc:
+        return jsonify({'message': 'Login-linket er udløbet eller allerede brugt. Prøv igen.', 'code': exc.code}), 400
+    except Exception as exc:
+        logger.error("Failed to mint Firebase custom token: %s", exc)
+        return jsonify({'message': 'Login fejlede. Prøv igen.', 'code': 'token_error'}), 500
+    return jsonify({'customToken': custom_token, 'intent': login.get('intent')}), 200
+
+
+def _exchange_and_fetch_profile(zwift_service, code: str) -> tuple[dict, dict] | None:
+    status_code, token_data = zwift_service.exchange_code_for_tokens(code)
+    if status_code != 200:
+        logger.warning("Zwift token exchange failed with status %s", status_code)
+        return None
+    profile = zwift_service.get_profile(
+        user_access_token=token_data.get('access_token'),
+        include_competition_metrics=True,
+        include_achievements=True,
+    ) or {}
+    return token_data, profile
+
+
+def _persist_zwift_connection(zwift_service, user_doc_ref, auth_uid: str, token_data: dict, profile: dict) -> None:
+    """Store tokens, profile, power curve and webhook subscriptions for a connected rider."""
+    access_token = token_data.get('access_token')
+    competition = profile.get('competitionMetrics') or {}
+    zwift_user_id = profile.get('userId')
+    profile_numeric_id = profile.get('id')
+    upsert_from_token_response(
+        user_doc_ref.id,
+        token_data,
+        scopes=token_data.get('scope'),
+        zwift_user_id=zwift_user_id,
+    )
+
+    power_profile = zwift_service.get_power_profile(access_token)
+    existing_user = user_doc_ref.get().to_dict() or {}
+    existing_zwift_profile = existing_user.get('zwiftProfile') if isinstance(existing_user.get('zwiftProfile'), dict) else {}
+    zwift_profile = _competition_metrics_to_profile(
+        competition, profile, existing_zwift_profile
+    )
+    zwift_profile = ensure_drop_level_fields(profile_numeric_id, zwift_profile)
+
+    callback_update: dict = {
+        'authUid': auth_uid,
+        'zwiftUserId': zwift_user_id,
+        'zwiftProfile': zwift_profile,
+        'connections': {
+            'zwift': {
+                'connected': True,
+                'connectedAt': firestore.SERVER_TIMESTAMP,
+                'scope': token_data.get('scope'),
+                'userId': zwift_user_id,
+                'profileId': profile_numeric_id,
+            }
+        },
+        'updatedAt': firestore.SERVER_TIMESTAMP,
+    }
+    if profile_numeric_id is not None:
+        callback_update['zwiftId'] = str(profile_numeric_id)
+    if power_profile:
+        callback_update['zwiftPowerCurve'] = _power_profile_to_firestore(power_profile)
+
+    user_doc_ref.set(with_schema_version(callback_update), merge=True)
+    try:
+        append_weight_history_entry(
+            db=db,
+            user_doc_id=user_doc_ref.id,
+            profile_payload=profile,
+            source="racing_profile",
+            trigger="oauth_callback",
+        )
+    except Exception as exc:
+        logger.warning("Failed to append weight history after OAuth callback for %s: %s", user_doc_ref.id, exc)
+
+    try:
+        zwift_service.subscribe_activity(access_token)
+        zwift_service.subscribe_racing_score(access_token)
+        zwift_service.subscribe_power_curve(access_token)
+    except Exception as exc:
+        logger.warning(f"Failed to subscribe to Zwift webhooks for {zwift_user_id}: {exc}")
+
+
+def _complete_zwift_signin(zwift_service, token_data: dict, profile: dict, intent: str | None):
+    try:
+        account = zwift_signin.resolve_signin_account(db, profile)
+    except zwift_signin.ZwiftSigninError as exc:
+        logger.warning("Zwift sign-in failed: %s", exc)
+        return _zwift_signin_redirect(error=exc.code)
+
+    _persist_zwift_connection(zwift_service, account.user_doc_ref, account.uid, token_data, profile)
+
+    mapping = {'lastLogin': firestore.SERVER_TIMESTAMP}
+    # Only map to the Zwift ID when the rider's doc is keyed by it; a Google-era
+    # draft doc keyed by uid is found via the authUid query instead.
+    if account.user_doc_ref.id == account.zwift_id:
+        mapping['zwiftId'] = account.zwift_id
+    db.collection('auth_mappings').document(account.uid).set(mapping, merge=True)
+
+    code = zwift_signin.create_login_code(db, account.uid, intent)
+    return _zwift_signin_redirect(code=code)
+
+
 @integration_bp.route('/zwift/callback', methods=['GET'])
 def zwift_callback():
     code = request.args.get('code')
     state = request.args.get('state')
     error = request.args.get('error')
-    if error:
-        return jsonify({'message': f'Zwift Error: {error}'}), 400
-    if not code or not state:
-        return jsonify({'message': 'Missing code or state'}), 400
 
     if not db:
         return jsonify({'error': 'DB not available'}), 500
 
-    state_ref = db.collection('zwift_oauth_states').document(state)
-    state_doc = state_ref.get()
-    if not state_doc.exists:
+    state_ref = db.collection('zwift_oauth_states').document(state) if state else None
+    state_doc = state_ref.get() if state_ref else None
+    state_data = (state_doc.to_dict() or {}) if state_doc is not None and state_doc.exists else None
+    is_signin = bool(state_data) and state_data.get('mode') == ZWIFT_SIGNIN_MODE
+
+    if error:
+        if state_ref is not None and state_data is not None:
+            try:
+                state_ref.delete()
+            except Exception:
+                pass
+        if is_signin:
+            return _zwift_signin_redirect(error='access_denied' if error == 'access_denied' else 'zwift_error')
+        return jsonify({'message': f'Zwift Error: {error}'}), 400
+    if not code or not state:
+        return jsonify({'message': 'Missing code or state'}), 400
+    if state_data is None:
         return jsonify({'message': 'Invalid or expired state'}), 400
 
-    state_data = state_doc.to_dict() or {}
     uid = state_data.get('uid')
 
     created_at = state_data.get('createdAt')
@@ -309,80 +461,29 @@ def zwift_callback():
         age = datetime.datetime.now(datetime.timezone.utc) - created_at
         if age.total_seconds() > 600:
             state_ref.delete()
+            if is_signin:
+                return _zwift_signin_redirect(error='expired_state')
             return jsonify({'message': 'OAuth state expired, please try again'}), 400
 
-    user_doc_ref = _resolve_user_doc_ref_from_uid(uid)
-    if not user_doc_ref:
-        return jsonify({'message': 'Could not resolve user document'}), 400
+    user_doc_ref = None
+    if not is_signin:
+        user_doc_ref = _resolve_user_doc_ref_from_uid(uid)
+        if not user_doc_ref:
+            return jsonify({'message': 'Could not resolve user document'}), 400
 
     zwift_service = get_zwift_service()
     try:
-        status_code, token_data = zwift_service.exchange_code_for_tokens(code)
-        if status_code != 200:
+        fetched = _exchange_and_fetch_profile(zwift_service, code)
+        if fetched is None:
+            if is_signin:
+                return _zwift_signin_redirect(error='token_exchange_failed')
             return jsonify({'message': 'Failed to get Zwift tokens'}), 500
+        token_data, profile = fetched
 
-        access_token = token_data.get('access_token')
-        profile = zwift_service.get_profile(
-            user_access_token=access_token,
-            include_competition_metrics=True,
-            include_achievements=True,
-        ) or {}
-        competition = profile.get('competitionMetrics') or {}
-        zwift_user_id = profile.get('userId')
-        profile_numeric_id = profile.get('id')
-        upsert_from_token_response(
-            user_doc_ref.id,
-            token_data,
-            scopes=token_data.get('scope'),
-            zwift_user_id=zwift_user_id,
-        )
+        if is_signin:
+            return _complete_zwift_signin(zwift_service, token_data, profile, state_data.get('intent'))
 
-        power_profile = zwift_service.get_power_profile(access_token)
-        existing_user = user_doc_ref.get().to_dict() or {}
-        existing_zwift_profile = existing_user.get('zwiftProfile') if isinstance(existing_user.get('zwiftProfile'), dict) else {}
-        zwift_profile = _competition_metrics_to_profile(
-            competition, profile, existing_zwift_profile
-        )
-        zwift_profile = ensure_drop_level_fields(profile_numeric_id, zwift_profile)
-
-        callback_update: dict = {
-            'authUid': uid,
-            'zwiftUserId': zwift_user_id,
-            'zwiftProfile': zwift_profile,
-            'connections': {
-                'zwift': {
-                    'connected': True,
-                    'connectedAt': firestore.SERVER_TIMESTAMP,
-                    'scope': token_data.get('scope'),
-                    'userId': zwift_user_id,
-                    'profileId': profile_numeric_id,
-                }
-            },
-            'updatedAt': firestore.SERVER_TIMESTAMP,
-        }
-        if profile_numeric_id is not None:
-            callback_update['zwiftId'] = str(profile_numeric_id)
-        if power_profile:
-            callback_update['zwiftPowerCurve'] = _power_profile_to_firestore(power_profile)
-
-        user_doc_ref.set(with_schema_version(callback_update), merge=True)
-        try:
-            append_weight_history_entry(
-                db=db,
-                user_doc_id=user_doc_ref.id,
-                profile_payload=profile,
-                source="racing_profile",
-                trigger="oauth_callback",
-            )
-        except Exception as exc:
-            logger.warning("Failed to append weight history after OAuth callback for %s: %s", user_doc_ref.id, exc)
-
-        try:
-            zwift_service.subscribe_activity(access_token)
-            zwift_service.subscribe_racing_score(access_token)
-            zwift_service.subscribe_power_curve(access_token)
-        except Exception as exc:
-            logger.warning(f"Failed to subscribe to Zwift webhooks for {zwift_user_id}: {exc}")
+        _persist_zwift_connection(zwift_service, user_doc_ref, uid, token_data, profile)
     finally:
         try:
             state_ref.delete()
@@ -403,6 +504,12 @@ def zwift_deauthorize():
         return jsonify({'error': 'DB not available'}), 500
 
     uid = decoded['uid']
+    if not zwift_signin.has_non_zwift_login(uid):
+        return jsonify({
+            'message': 'Zwift er din login-metode, så den kan ikke afbrydes.',
+            'code': 'zwift_is_login_method',
+        }), 409
+
     user_doc_ref = _resolve_user_doc_ref_from_uid(uid)
     if not user_doc_ref:
         return jsonify({'message': 'User not found'}), 404

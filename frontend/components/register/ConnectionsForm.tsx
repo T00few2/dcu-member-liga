@@ -13,6 +13,8 @@ interface ConnectionsFormProps {
     handleDisconnectStrava: () => void;
     handleConnectZwift: () => void | Promise<void>;
     handleDisconnectZwift: () => void;
+    /** False when Zwift is the rider's only way to log in (then it can't be disconnected). */
+    canDisconnectZwift?: boolean;
     /** Linked Discord username, or null. The Discord section shows when the handlers are given. */
     discordUsername?: string | null;
     handleConnectDiscord?: () => void | Promise<void>;
@@ -35,6 +37,7 @@ export default function ConnectionsForm({
     handleDisconnectStrava,
     handleConnectZwift,
     handleDisconnectZwift,
+    canDisconnectZwift = true,
     discordUsername = null,
     handleConnectDiscord,
     handleDisconnectDiscord,
@@ -91,12 +94,16 @@ export default function ConnectionsForm({
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
                                 Forbundet til Zwift Link
                             </div>
-                            <button
-                                onClick={handleDisconnectZwift}
-                                className="cursor-pointer text-sm text-red-600 hover:text-red-700 hover:underline"
-                            >
-                                Frakobl
-                            </button>
+                            {canDisconnectZwift ? (
+                                <button
+                                    onClick={handleDisconnectZwift}
+                                    className="cursor-pointer text-sm text-red-600 hover:text-red-700 hover:underline"
+                                >
+                                    Frakobl
+                                </button>
+                            ) : (
+                                <span className="text-xs text-muted-foreground">Din login-metode</span>
+                            )}
                         </div>
                     ) : (
                         <button

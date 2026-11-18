@@ -414,6 +414,20 @@
         "$ref": "#/$defs/zwiftOAuthStateDoc"
       }
     },
+    "zwift_login_codes": {
+      "type": "array",
+      "description": "One-time codes from the Zwift sign-in callback, exchanged by the frontend for a Firebase custom token (POST /auth/zwift/exchange). Deleted on use; valid for 2 minutes.",
+      "items": {
+        "$ref": "#/$defs/zwiftLoginCodeDoc"
+      }
+    },
+    "email_verifications": {
+      "type": "array",
+      "description": "Pending email verification code per Firebase uid (riders who sign in with Zwift confirm a contact email). Deleted when verified.",
+      "items": {
+        "$ref": "#/$defs/emailVerificationDoc"
+      }
+    },
     "zwift_tokens": {
       "type": "array",
       "items": {
@@ -1728,10 +1742,76 @@
           "type": "string"
         },
         "uid": {
-          "type": "string"
+          "type": "string",
+          "description": "Firebase uid of the logged-in user connecting Zwift. Absent for mode=signin."
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["signin"],
+          "description": "Set to 'signin' for 'Log ind med Zwift' (no logged-in user yet); absent for connecting Zwift to an existing login."
+        },
+        "intent": {
+          "type": "string",
+          "enum": ["login", "register"]
         },
         "createdAt": {
           "$ref": "#/$defs/timestampString"
+        }
+      }
+    },
+    "zwiftLoginCodeDoc": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "_id": {
+          "type": "string",
+          "description": "The one-time code (random, URL-safe)"
+        },
+        "uid": {
+          "type": "string",
+          "description": "Firebase uid to sign in: an existing authUid, or zwift_<zwiftId> for Zwift-only riders"
+        },
+        "intent": {
+          "type": ["string", "null"],
+          "enum": ["login", "register", null]
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestampString"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/timestampString"
+        }
+      }
+    },
+    "emailVerificationDoc": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "_id": {
+          "type": "string",
+          "description": "Firebase uid"
+        },
+        "email": {
+          "type": "string"
+        },
+        "codeHash": {
+          "type": "string",
+          "description": "sha256 of uid:code; the code itself is never stored"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/timestampString"
+        },
+        "attempts": {
+          "type": "integer"
+        },
+        "lastSentAt": {
+          "$ref": "#/$defs/timestampString"
+        },
+        "sendWindowStart": {
+          "$ref": "#/$defs/timestampString"
+        },
+        "sendCount": {
+          "type": "integer"
         }
       }
     },
@@ -1921,7 +2001,15 @@
           "type": "string"
         },
         "email": {
-          "type": "string"
+          "type": "string",
+          "description": "Contact email. From the Google login, or entered and confirmed by code for riders who sign in with Zwift (Zwift does not share an email)."
+        },
+        "emailVerified": {
+          "type": "boolean",
+          "description": "True when the email was confirmed with a code (Zwift sign-in riders)"
+        },
+        "emailVerifiedAt": {
+          "$ref": "#/$defs/timestampString"
         },
         "club": {
           "type": "string"

@@ -44,6 +44,8 @@ from services.request_models import (
     parse_body,
 )
 from routes.users import users_bp
+from services import email_verification
+from utils.email_sender import EmailConfigError, EmailSendError, send_plain_email
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +87,8 @@ def get_profile():
                             "discordUsername": ((shell_data.get("connections") or {}).get("discord") or {}).get(
                                 "username"),
                             "zwiftConnected": bool(shell_conn.get("connected")),
+                            "email": shell_data.get("email"),
+                            "emailVerified": bool(shell_data.get("emailVerified")),
                             "requiredDataPolicyVersion": policy_meta.get(POLICY_DATA_POLICY, {}).get(
                                 "requiredVersion"
                             ),
@@ -140,6 +144,8 @@ def get_profile():
                     "trainer": user.trainer,
                     "stravaConnected": bool(user._data.get("connections", {}).get("strava")),
                     "zwiftConnected": bool(user._data.get("connections", {}).get("zwift")),
+                    "email": user._data.get("email"),
+                    "emailVerified": bool(user._data.get("emailVerified")),
                     # Linked Discord account (for the help-channel bot); username only.
                     "discordUsername": ((user._data.get("connections", {}) or {}).get("discord") or {}).get(
                         "username") if (user._data.get("connections", {}) or {}).get("discord") else None,
@@ -172,6 +178,76 @@ def get_profile():
         return jsonify({"message": str(e)}), 500
 
 
+def _signup_email(uid: str, decoded_token: dict) -> str | None:
+    """Email for the rider's profile.
+
+    A verified email on the user doc (Zwift sign-in riders confirm one by code)
+    wins; otherwise use the login provider's email from the ID token (Google).
+    """
+    if db:
+        try:
+            doc_id = resolve_user_doc_id_from_auth_uid(uid) or uid
+            data = db.collection("users").document(str(doc_id)).get().to_dict() or {}
+            if data.get("emailVerified") and data.get("email"):
+                return str(data["email"])
+        except Exception as exc:
+            logger.warning("Could not read user doc email for %s: %s", uid, exc)
+    token_email = decoded_token.get("email")
+    return str(token_email) if token_email else None
+
+
+@users_bp.route("/profile/email/send-code", methods=["POST"])
+def send_email_verification_code():
+    try:
+        decoded_token = verify_user_token(request)
+    except AuthzError as e:
+        return jsonify({"message": e.message}), e.status_code
+    if not db:
+        return jsonify({"message": "Database not available"}), 500
+
+    body = request.get_json(silent=True) or {}
+    try:
+        result = email_verification.send_code(db, decoded_token["uid"], body.get("email"), send_plain_email)
+    except email_verification.EmailVerificationError as e:
+        payload = {"message": e.message, "code": e.code}
+        if e.retry_after:
+            payload["retryAfter"] = e.retry_after
+        return jsonify(payload), e.status_code
+    except (EmailConfigError, EmailSendError) as e:
+        logger.error("Could not send verification email: %s", e)
+        return jsonify({"message": "Vi kunne ikke sende emailen lige nu. Prøv igen senere.", "code": "send_failed"}), 503
+    return jsonify(result), 200
+
+
+@users_bp.route("/profile/email/verify", methods=["POST"])
+def verify_email_code():
+    try:
+        decoded_token = verify_user_token(request)
+    except AuthzError as e:
+        return jsonify({"message": e.message}), e.status_code
+    if not db:
+        return jsonify({"message": "Database not available"}), 500
+
+    uid = decoded_token["uid"]
+    body = request.get_json(silent=True) or {}
+    try:
+        email = email_verification.verify_code(db, uid, body.get("code"))
+    except email_verification.EmailVerificationError as e:
+        return jsonify({"message": e.message, "code": e.code}), e.status_code
+
+    doc_id = resolve_user_doc_id_from_auth_uid(uid) or uid
+    db.collection("users").document(str(doc_id)).set(
+        {
+            "email": email,
+            "emailVerified": True,
+            "emailVerifiedAt": firestore.SERVER_TIMESTAMP,
+            "updatedAt": firestore.SERVER_TIMESTAMP,
+        },
+        merge=True,
+    )
+    return jsonify({"email": email, "emailVerified": True}), 200
+
+
 @users_bp.route("/signup", methods=["POST"])
 def signup():
     try:
@@ -180,7 +256,6 @@ def signup():
         except AuthzError as e:
             return jsonify({"message": e.message}), e.status_code
         uid = decoded_token["uid"]
-        email = decoded_token.get("email")
 
         body, err = parse_body(SignupRequest, request.get_json(silent=True) or {})
         if err:
@@ -197,6 +272,13 @@ def signup():
         accepted_public_results = body.acceptedPublicResults
         data_policy_version = body.dataPolicyVersion
         public_results_consent_version = body.publicResultsConsentVersion
+
+        email = _signup_email(uid, decoded_token)
+        if not is_draft and not email:
+            return (
+                jsonify({"message": "Bekræft din email for at fuldføre registreringen.", "code": "email_required"}),
+                400,
+            )
 
         if is_draft:
             if not name:
@@ -268,10 +350,11 @@ def signup():
         if db:
             user_data = {
                 "authUid": uid,
-                "email": email,
                 "updatedAt": firestore.SERVER_TIMESTAMP,
                 "zwiftId": zwift_id,
             }
+            if email:
+                user_data["email"] = email
             existing_user = UserService.get_user_by_auth_uid(uid)
             if existing_user:
                 existing_zwift_user_id = (existing_user.to_dict() or {}).get("zwiftUserId")

@@ -6,6 +6,7 @@ import {
   User,
   onAuthStateChanged,
   signInWithPopup,
+  signInWithCustomToken,
   GoogleAuthProvider,
   signOut as firebaseSignOut
 } from 'firebase/auth';
@@ -28,6 +29,10 @@ interface AuthContextType {
   authIntent: 'login' | 'register' | null;
   clearAuthIntent: () => void;
   signInWithGoogle: (intent?: 'login' | 'register') => void;
+  signInWithZwift: (intent?: 'login' | 'register') => Promise<void>;
+  completeZwiftSignIn: (customToken: string, intent?: 'login' | 'register' | null) => Promise<void>;
+  /** True when the user can only log in with Zwift (no Google or other provider linked). */
+  isZwiftOnlyLogin: boolean;
   logOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   refreshClaims: () => Promise<void>;
@@ -51,6 +56,9 @@ const AuthContext = createContext<AuthContextType>({
   authIntent: null,
   clearAuthIntent: () => { },
   signInWithGoogle: async () => { },
+  signInWithZwift: async () => { },
+  completeZwiftSignIn: async () => { },
+  isZwiftOnlyLogin: false,
   logOut: async () => { },
   refreshProfile: async () => { },
   refreshClaims: async () => { },
@@ -162,7 +170,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (loading) return;
 
-    const publicRoutes = ['/', '/info', '/historik', '/datapolitik', '/offentliggoerelse', '/register', '/schedule', '/point', '/routeplanner'];
+    const publicRoutes = ['/', '/auth/zwift', '/info', '/historik', '/datapolitik', '/offentliggoerelse', '/register', '/schedule', '/point', '/routeplanner'];
     const isPublicRoute = publicRoutes.includes(pathname) || pathname.startsWith('/live') || pathname.startsWith('/nyheder');
 
     // Unauthenticated users can only access public routes.
@@ -178,7 +186,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const allowedUnregistered = pathname === '/' || pathname === '/register' || pathname === '/info' || pathname === '/historik' || pathname === '/datapolitik' || pathname === '/offentliggoerelse' || pathname === '/schedule' || pathname === '/point' || pathname === '/routeplanner';
+      const allowedUnregistered = pathname === '/' || pathname === '/auth/zwift' || pathname === '/register' || pathname === '/info' || pathname === '/historik' || pathname === '/datapolitik' || pathname === '/offentliggoerelse' || pathname === '/schedule' || pathname === '/point' || pathname === '/routeplanner';
       if (!allowedUnregistered) {
         router.push('/register');
       }
@@ -236,6 +244,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  // "Log ind med Zwift": a full-page redirect (not a popup), so it also works in
+  // in-app browsers (Facebook / Messenger) where Google's popup is blocked.
+  const signInWithZwift = useCallback(async (intent?: 'login' | 'register') => {
+    try {
+      const res = await fetch(`${API_URL}/auth/zwift/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intent: intent || 'login' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) throw new Error(data.message || 'Kunne ikke starte Zwift-login');
+      window.location.href = data.url;
+    } catch (error) {
+      console.error('Error starting Zwift sign-in', error);
+      showToast('Kunne ikke starte login med Zwift. Prøv igen.', 'error');
+    }
+  }, [showToast]);
+
+  const completeZwiftSignIn = useCallback(async (customToken: string, intent?: 'login' | 'register' | null) => {
+    if (intent) setAuthIntent(intent);
+    await signInWithCustomToken(auth, customToken);
+  }, []);
+
+  const isZwiftOnlyLogin = !!user && user.providerData.length === 0;
+
   const logOut = useCallback(async () => {
     try {
       await firebaseSignOut(auth);
@@ -273,7 +306,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider value={{
       user, userCategory, loading, isRegistered, profileLoaded, isAdmin, needsConsentUpdate, hasSeenWelcomeModal,
       requiredDataPolicyVersion, requiredPublicResultsConsentVersion,
-      authIntent, clearAuthIntent, signInWithGoogle, logOut, refreshProfile, refreshClaims,
+      authIntent, clearAuthIntent, signInWithGoogle, signInWithZwift, completeZwiftSignIn, isZwiftOnlyLogin, logOut, refreshProfile, refreshClaims,
       isImpersonating, toggleImpersonation, weightVerificationStatus,
       requestNotificationPermission
     }}>
