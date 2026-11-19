@@ -21,6 +21,7 @@ from utils.email_sender import (
 )
 from services.dual_recording.activity_resolver import _iter_activities_for_user_ids
 from utils.zoho_campaigns import FirestoreCampaignContentStore, send_zoho_campaign
+from services import email_change
 
 import logging
 
@@ -784,6 +785,11 @@ def send_email_to_selected_users():
                     seen_campaign.add(key)
                     campaign_recipients.append({'email': addr, 'first_name': ''})
 
+                # Riders who changed email: take their old address off the
+                # standing list first, so it doesn't get this mailing too.
+                email_change.try_process_pending_unsubscribes(
+                    db, keep=[r['email'] for r in campaign_recipients]
+                )
                 campaign = send_zoho_campaign(
                     recipients=campaign_recipients,
                     subject=subject,

@@ -11,7 +11,7 @@ import { fromTimestamp } from '@/lib/formatDate';
 
 
 export default function Home() {
-    const { user, userCategory, signInWithGoogle, signInWithZwift, isZwiftOnlyLogin, isRegistered, profileLoaded, loading, logOut, authIntent, clearAuthIntent } = useAuth();
+    const { user, userCategory, signInWithZwift, isZwiftOnlyLogin, isRegistered, profileLoaded, loading, logOut, authIntent, clearAuthIntent } = useAuth();
     const router = useRouter();
     const [showUnregisteredModal, setShowUnregisteredModal] = useState(false);
 
@@ -76,7 +76,6 @@ export default function Home() {
                 showUnregisteredModal={showUnregisteredModal}
                 isRegistered={isRegistered}
                 nextRace={nextRace}
-                onSignInWithGoogle={() => signInWithGoogle('register')}
                 onSignInWithZwift={() => signInWithZwift('register')}
                 onCloseUnregisteredModal={() => { setShowUnregisteredModal(false); if (!isRegistered) logOut(); }}
                 onStartRegistration={async () => {

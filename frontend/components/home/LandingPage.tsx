@@ -16,7 +16,6 @@ import type { Race } from '@/types/live';
 interface LandingPageProps {
     showUnregisteredModal: boolean;
     isRegistered: boolean;
-    onSignInWithGoogle: () => void;
     onSignInWithZwift: () => void | Promise<void>;
     onCloseUnregisteredModal: () => void;
     onStartRegistration: () => Promise<void>;
@@ -26,7 +25,6 @@ interface LandingPageProps {
 export default function LandingPage({
     showUnregisteredModal,
     isRegistered,
-    onSignInWithGoogle,
     onSignInWithZwift,
     onCloseUnregisteredModal,
     onStartRegistration,
@@ -157,7 +155,6 @@ export default function LandingPage({
             <RegistrationIntroModal
                 isOpen={showRegIntroModal}
                 onClose={() => setShowRegIntroModal(false)}
-                onContinue={onSignInWithGoogle}
                 onContinueWithZwift={onSignInWithZwift}
             />
             <UnregisteredLoginModal

@@ -238,10 +238,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Safari blocks popups that are opened after any async/microtask boundary.
     if (intent) setAuthIntent(intent);
     const provider = new GoogleAuthProvider();
-    signInWithPopup(auth, provider).catch((error) => {
-      setAuthIntent(null);
-      console.error("Error signing in with Google", error);
-    });
+    signInWithPopup(auth, provider)
+      .then(() => {
+        // Google login is being phased out: tell each Google rider once that
+        // Zwift logs them into the same account.
+        try {
+          if (localStorage.getItem('zwiftLoginHintShown')) return;
+          localStorage.setItem('zwiftLoginHintShown', '1');
+        } catch {
+          // storage unavailable: show the hint anyway
+        }
+        showToast('Tip: Næste gang kan du logge ind med Zwift – det er den samme konto.', 'info');
+      })
+      .catch((error) => {
+        setAuthIntent(null);
+        console.error("Error signing in with Google", error);
+      });
   };
 
   // "Log ind med Zwift": a full-page redirect (not a popup), so it also works in

@@ -7,13 +7,24 @@ import { API_URL } from '@/lib/api';
 interface EmailVerificationStepProps {
     initialEmail?: string;
     onVerified: (email: string) => void;
+    /** Heading and intro; defaults suit riders who signed in with Zwift. */
+    title?: string;
+    description?: string;
+    /** Shows an "Annuller" button (used when changing an existing email). */
+    onCancel?: () => void;
 }
 
 /**
  * Email for riders who signed in with Zwift (Zwift doesn't share an email).
  * The rider enters an address, gets a 6-digit code by email and confirms it.
  */
-export default function EmailVerificationStep({ initialEmail = '', onVerified }: EmailVerificationStepProps) {
+export default function EmailVerificationStep({
+    initialEmail = '',
+    onVerified,
+    title = 'Email',
+    description = 'Zwift deler ikke din email med os. Vi bruger den til at kontakte dig om løb og din tilmelding.',
+    onCancel,
+}: EmailVerificationStepProps) {
     const { user } = useAuth();
     const [email, setEmail] = useState(initialEmail);
     const [code, setCode] = useState('');
@@ -79,10 +90,8 @@ export default function EmailVerificationStep({ initialEmail = '', onVerified }:
     return (
         <div className="rounded-lg border border-border p-4 space-y-3" data-testid="email-verification">
             <div>
-                <h3 className="font-semibold text-card-foreground">Email</h3>
-                <p className="text-sm text-muted-foreground">
-                    Zwift deler ikke din email med os. Vi bruger den til at kontakte dig om løb og din tilmelding.
-                </p>
+                <h3 className="font-semibold text-card-foreground">{title}</h3>
+                <p className="text-sm text-muted-foreground">{description}</p>
             </div>
 
             {!codeSentTo ? (
@@ -153,6 +162,15 @@ export default function EmailVerificationStep({ initialEmail = '', onVerified }:
             )}
 
             {error && <p className="text-sm text-red-600 dark:text-red-400" role="alert">{error}</p>}
+            {onCancel && (
+                <button
+                    type="button"
+                    onClick={onCancel}
+                    className="text-sm text-muted-foreground hover:text-foreground underline"
+                >
+                    Annuller
+                </button>
+            )}
         </div>
     );
 }

@@ -421,6 +421,13 @@
         "$ref": "#/$defs/zwiftLoginCodeDoc"
       }
     },
+    "zoho_pending_unsubscribes": {
+      "type": "array",
+      "description": "Old contact emails to remove from the Zoho Campaigns standing list after a rider changed email. Processed right after the change and before every campaign send; deleted when done, when the address is in use again, or after 5 failed attempts.",
+      "items": {
+        "$ref": "#/$defs/zohoPendingUnsubscribeDoc"
+      }
+    },
     "email_verifications": {
       "type": "array",
       "description": "Pending email verification code per Firebase uid (riders who sign in with Zwift confirm a contact email). Deleted when verified.",
@@ -1784,6 +1791,32 @@
           "$ref": "#/$defs/timestampString"
         },
         "expiresAt": {
+          "$ref": "#/$defs/timestampString"
+        }
+      }
+    },
+    "zohoPendingUnsubscribeDoc": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "_id": {
+          "type": "string",
+          "description": "sha256 of the lowercased email"
+        },
+        "email": {
+          "type": "string",
+          "description": "The old address to unsubscribe"
+        },
+        "userDocId": {
+          "type": "string"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestampString"
+        },
+        "attempts": {
+          "type": "integer"
+        },
+        "lastAttemptAt": {
           "$ref": "#/$defs/timestampString"
         }
       }

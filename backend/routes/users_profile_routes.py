@@ -44,7 +44,7 @@ from services.request_models import (
     parse_body,
 )
 from routes.users import users_bp
-from services import email_verification
+from services import email_change, email_verification
 from utils.email_sender import EmailConfigError, EmailSendError, send_plain_email
 
 logger = logging.getLogger(__name__)
@@ -235,8 +235,10 @@ def verify_email_code():
     except email_verification.EmailVerificationError as e:
         return jsonify({"message": e.message, "code": e.code}), e.status_code
 
-    doc_id = resolve_user_doc_id_from_auth_uid(uid) or uid
-    db.collection("users").document(str(doc_id)).set(
+    doc_id = str(resolve_user_doc_id_from_auth_uid(uid) or uid)
+    user_ref = db.collection("users").document(doc_id)
+    old_email = (user_ref.get().to_dict() or {}).get("email")
+    user_ref.set(
         {
             "email": email,
             "emailVerified": True,
@@ -245,6 +247,10 @@ def verify_email_code():
         },
         merge=True,
     )
+    # Large Zoho mailings go to a standing list that is only ever added to, so
+    # take the old address off it (now if possible, else before the next send).
+    if email_change.record_email_change(db, doc_id, old_email, email):
+        email_change.try_process_pending_unsubscribes(db, keep=[email])
     return jsonify({"email": email, "emailVerified": True}), 200
 
 

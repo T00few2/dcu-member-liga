@@ -6,8 +6,11 @@ import { isInAppBrowser } from '@/lib/browser-detection';
 interface SignInOptionsProps {
     /** Primary action: sign in with Zwift (full-page redirect). */
     onZwift: () => void | Promise<void>;
-    /** Secondary action: Google popup. Hidden in in-app browsers, where Google blocks it. */
-    onGoogle: () => void;
+    /**
+     * Google popup, kept for riders who used Google before (being phased out).
+     * Omit to offer Zwift only. Hidden in in-app browsers, where Google blocks it.
+     */
+    onGoogle?: () => void;
     zwiftLabel?: string;
     googleLabel?: string;
 }
@@ -48,18 +51,17 @@ export default function SignInOptions({
             <p className="text-xs text-center text-muted-foreground">
                 Brug din Zwift-konto. Du skal ikke oprette en ny adgangskode.
             </p>
-            {inAppBrowser ? (
-                <p className="text-xs text-center text-muted-foreground">
-                    Google-login virker ikke i Facebook / Messengers browser. Brug Zwift, eller åbn siden i Safari eller Chrome.
+            {onGoogle && !inAppBrowser && (
+                <p className="text-xs text-center text-muted-foreground pt-2 border-t border-border">
+                    Har du tidligere logget ind med Google?{' '}
+                    <button
+                        type="button"
+                        onClick={onGoogle}
+                        className="underline hover:text-foreground font-medium"
+                    >
+                        {googleLabel}
+                    </button>
                 </p>
-            ) : (
-                <button
-                    type="button"
-                    onClick={onGoogle}
-                    className="w-full border border-border text-foreground hover:bg-muted py-2.5 px-4 rounded-xl font-medium transition-all"
-                >
-                    {googleLabel}
-                </button>
             )}
         </div>
     );

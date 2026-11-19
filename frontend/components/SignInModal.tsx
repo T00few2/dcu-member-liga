@@ -9,7 +9,7 @@ interface SignInModalProps {
     onClose: () => void;
 }
 
-/** "Log ind" chooser: Zwift (primary) or Google (secondary). */
+/** "Log ind": Zwift, plus a small Google link for riders who used Google before. */
 export default function SignInModal({ isOpen, onClose }: SignInModalProps) {
     const { signInWithZwift, signInWithGoogle } = useAuth();
 

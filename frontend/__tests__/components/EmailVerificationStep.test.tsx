@@ -68,3 +68,21 @@ describe('EmailVerificationStep', () => {
         expect((screen.getByRole('button', { name: 'Send kode' }) as HTMLButtonElement).disabled).toBe(true);
     });
 });
+
+describe('EmailVerificationStep – changing an existing email', () => {
+    it('shows the change title and can be cancelled', async () => {
+        const onCancel = vi.fn();
+        render(
+            <EmailVerificationStep
+                title="Skift email"
+                description="Den nye email gælder først, når du har bekræftet den."
+                onVerified={vi.fn()}
+                onCancel={onCancel}
+            />,
+        );
+        expect(screen.getByText('Skift email')).toBeTruthy();
+        expect(screen.queryByText(/Zwift deler ikke/)).toBeNull();
+        await userEvent.click(screen.getByRole('button', { name: 'Annuller' }));
+        expect(onCancel).toHaveBeenCalled();
+    });
+});
