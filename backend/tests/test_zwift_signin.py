@@ -124,6 +124,13 @@ class _Collection:
         assert op == "=="
         return _Query(self._db, self._name, field, value)
 
+    def stream(self):
+        return [
+            _DocRef(self._db, coll, doc_id).get()
+            for (coll, doc_id), (data, _ts) in list(self._db.store.items())
+            if coll == self._name and data is not None
+        ]
+
 
 class FakeDB:
     def __init__(self):

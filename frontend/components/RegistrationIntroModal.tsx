@@ -6,12 +6,10 @@ import SignInOptions from '@/components/SignInOptions';
 interface RegistrationIntroModalProps {
     isOpen: boolean;
     onClose: () => void;
-    /** Google sign-in. */
-    onContinue: () => void;
     onContinueWithZwift: () => void | Promise<void>;
 }
 
-export default function RegistrationIntroModal({ isOpen, onClose, onContinue, onContinueWithZwift }: RegistrationIntroModalProps) {
+export default function RegistrationIntroModal({ isOpen, onClose, onContinueWithZwift }: RegistrationIntroModalProps) {
     const [isVisible, setIsVisible] = useState(false);
 
     useEffect(() => {
@@ -109,9 +107,7 @@ export default function RegistrationIntroModal({ isOpen, onClose, onContinue, on
                     <div className="mt-8 border-t border-border pt-6">
                         <SignInOptions
                             onZwift={onContinueWithZwift}
-                            onGoogle={onContinue}
                             zwiftLabel="Start tilmelding med Zwift"
-                            googleLabel="Start tilmelding med Google"
                         />
                     </div>
                 </div>

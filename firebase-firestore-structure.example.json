@@ -486,6 +486,16 @@
       "expiresAt": "2026-03-14T10:08:30+00:00"
     }
   ],
+  "zoho_pending_unsubscribes": [
+    {
+      "_id": "REDACTED_SHA256_OF_EMAIL",
+      "email": "old.address@example.com",
+      "userDocId": "100001",
+      "createdAt": "2026-03-14T10:08:00+00:00",
+      "attempts": 1,
+      "lastAttemptAt": "2026-03-14T10:08:01+00:00"
+    }
+  ],
   "email_verifications": [
     {
       "_id": "zwift_100002",

@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useMemo } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useRegistration } from '@/hooks/useRegistration';
 import { useLeagueSettingsQuery, useLeagueStandingsQuery, useRacesQuery, useStageRacesQuery } from '@/hooks/queries';
@@ -51,6 +51,7 @@ function RegisterContent() {
         zwiftId,
         email, needsEmail, handleEmailVerified, canDisconnectZwift,
     } = useRegistration();
+    const [changingEmail, setChangingEmail] = useState(false);
 
     const { data: leagueSettings } = useLeagueSettingsQuery();
     const standingsQuery = useLeagueStandingsQuery();
@@ -191,7 +192,31 @@ function RegisterContent() {
                     <div className="min-h-[300px]">
                         {activeTab === 'info' && (
                             <div className="space-y-6">
-                                {needsEmail && <EmailVerificationStep initialEmail={email} onVerified={handleEmailVerified} />}
+                                {needsEmail ? (
+                                    <EmailVerificationStep initialEmail={email} onVerified={handleEmailVerified} />
+                                ) : changingEmail ? (
+                                    <EmailVerificationStep
+                                        title="Skift email"
+                                        description="Indtast din nye email. Vi sender en kode, og den nye email gælder først, når du har bekræftet den."
+                                        onVerified={(newEmail) => { handleEmailVerified(newEmail); setChangingEmail(false); }}
+                                        onCancel={() => setChangingEmail(false)}
+                                    />
+                                ) : (
+                                    <div className="rounded-lg border border-border p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2" data-testid="registered-email">
+                                        <div className="min-w-0">
+                                            <div className="text-sm text-muted-foreground">Registreret email</div>
+                                            <div className="font-medium text-foreground break-all">{email || '–'}</div>
+                                            <div className="text-xs text-muted-foreground">Bruges når vi kontakter dig om løb og ligaen.</div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setChangingEmail(true)}
+                                            className="self-start sm:self-center px-4 py-2 border border-border rounded-lg text-sm font-medium hover:bg-secondary transition-colors"
+                                        >
+                                            Skift email
+                                        </button>
+                                    </div>
+                                )}
                                 <RiderInfoForm {...riderInfoProps} />
                             </div>
                         )}

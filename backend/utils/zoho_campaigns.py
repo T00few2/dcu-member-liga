@@ -314,6 +314,48 @@ def _subscribe_contact(listkey: str, address: str, first_name: str, topic_id: st
     _campaign_post("json/listsubscribe", fields, token, query=False)
 
 
+def _unsubscribe_contact(listkey: str, address: str, token: str) -> None:
+    _campaign_post(
+        "json/listunsubscribe",
+        {
+            "resfmt": "JSON",
+            "listkey": listkey,
+            "contactinfo": json.dumps({"Contact Email": address}),
+        },
+        token,
+        query=False,
+    )
+
+
+def unsubscribe_from_standing_list(addresses: list[str]) -> tuple[list[str], list[str]]:
+    """Unsubscribe addresses from the standing list. Returns (done, failed).
+
+    Used when a rider changes email: large mailings go to the whole standing
+    list, and contacts are never removed when a campaign syncs, so the old
+    address would otherwise keep receiving them. Without a standing list there
+    is nothing to clean up (small mailings use a temporary list built from the
+    current addresses), so every address counts as done.
+    """
+    wanted = [a.strip() for a in addresses if a and a.strip()]
+    standing_key = (ZOHO_CAMPAIGNS_LIST_KEY or "").strip()
+    if not wanted or not standing_key:
+        return wanted, []
+    if not re.fullmatch(r"[A-Za-z0-9]+", standing_key):
+        raise EmailSendError("Zoho Campaigns list key is not valid.")
+    _require_config()
+    token = _access_token_value()
+    done: list[str] = []
+    failed: list[str] = []
+    for address in wanted:
+        try:
+            _unsubscribe_contact(standing_key, address, token)
+            done.append(address)
+        except EmailSendError as exc:
+            logger.warning("Zoho unsubscribe failed for %s: %s", address, exc)
+            failed.append(address)
+    return done, failed
+
+
 def _associate_topic(listkey: str, rows: list[tuple[str, str]], topic_id: str, token: str) -> None:
     for address, first_name in rows:
         _subscribe_contact(listkey, address, first_name, topic_id, token)

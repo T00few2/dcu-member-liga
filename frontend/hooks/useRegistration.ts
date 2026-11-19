@@ -459,7 +459,8 @@ export function useRegistration() {
         trainer, setTrainer,
         stravaConnected,
         zwiftConnected,
-        email,
+        // Email on the profile (confirmed by code), else the Google login email.
+        email: email || user?.email || '',
         needsEmail,
         handleEmailVerified: (verifiedEmail: string) => {
             setEmail(verifiedEmail);
