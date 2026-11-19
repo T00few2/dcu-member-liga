@@ -70,9 +70,6 @@ class ResultsProcessor:
     def __init__(self, db: Any, zwift_service: ZwiftService, game_service: ZwiftGameService) -> None:
         self.db = db
         self.zwift_fetcher = ZwiftFetcher(zwift_service)
-        # We might still need game_service if used elsewhere, but not used in this file currently?
-        # Checked original file: game_service was imported but not seemingly used in the methods we refactored.
-        # It was passed to __init__. I'll keep it to maintain signature compatibility.
         self.game = game_service
         self._rank_cats = ZR_CATEGORIES
 
@@ -510,12 +507,18 @@ class ResultsProcessor:
         except Exception as e:
             logger.error(f"Error loading route profiles for sprint/KOM standings: {e}")
             catalogs = []
+        try:
+            markers_by_id = self.game.jersey_markers()
+        except Exception as e:
+            logger.error(f"Error loading jersey markers for sprint/KOM standings: {e}")
+            markers_by_id = {}
         return apply_classification_standings(
             standings,
             races_by_id,
             season_mode=season_mode,
             stage_race_ids={str(event.get("id") or "") for event in stage_races},
             catalogs=catalogs,
+            markers_by_id=markers_by_id,
         )
 
     def recalculate_season_standings(self) -> LeagueStandings:

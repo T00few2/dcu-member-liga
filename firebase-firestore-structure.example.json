@@ -440,7 +440,8 @@
               "name": "Mayan Mountainside KOM",
               "direction": "forward",
               "lap": 1,
-              "count": 1
+              "count": 1,
+              "marker": "climb"
             }
           ]
         }

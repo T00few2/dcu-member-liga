@@ -1673,6 +1673,11 @@
         },
         "count": {
           "type": "integer"
+        },
+        "marker": {
+          "type": "string",
+          "enum": ["sprint", "climb", "segment"],
+          "description": "Jersey marker for this banner. climb scores as a KOM. Scoring uses the live dictionary jersey for the segment id when this is absent."
         }
       }
     },

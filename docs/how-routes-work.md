@@ -61,7 +61,7 @@ Finish time is `activityData.durationInMilliseconds` from `race-results`. Segmen
 
 Fetch and points recalc do not rebuild the stored sprint list.
 
-Season sprint and KOM totals read `marker` when the ticked row has one. Rows saved before that field existed still match the stored name to `elevation_cache.profileSegments`, then to `backend/data/zwift_segment_types.json`. Finalized races are not reclassified by running their old names through the live jersey list.
+Season sprint and KOM totals use the game-dictionary jersey for the stored segment id, the same marker the race card draws. A marker stored on the ticked row is used when that id is not in the dictionary. Rows with neither still match the stored name to `elevation_cache.profileSegments`, then to `backend/data/zwift_segment_types.json`.
 
 ## What is not the route profile
 

@@ -51,6 +51,19 @@ def jersey_marker(icon_path: str | None) -> str:
     return "segment"
 
 
+def jersey_markers_by_id(rows) -> dict[str, str]:
+    """Segment signature to the marker the race card draws."""
+    markers: dict[str, str] = {}
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        signature = row.get("signature")
+        if signature is None:
+            continue
+        markers[str(signature)] = jersey_marker(row.get("jerseyIconPath"))
+    return markers
+
+
 def jersey_image_url(image_name: str | None) -> str | None:
     """First CDN template that returned an image, applied to imageName."""
     name = (image_name or "").strip()
@@ -184,6 +197,10 @@ class ZwiftGameService:
             if str(route.get("id")) == wanted:
                 return route
         return None
+
+    def jersey_markers(self) -> dict[str, str]:
+        """Segment id to jersey marker. Empty when the dictionary cannot be loaded."""
+        return jersey_markers_by_id(self._live_segment_rows())
 
     def _live_segment_rows(self) -> list:
         game_dict = self.get_game_dictionary()

@@ -245,6 +245,13 @@ def main() -> None:
     races_by_id = load_races_by_id(db)
     stage_races = load_stage_races(db)
     catalogs = [_slim_catalog(rows) for rows in load_profile_catalogs(db)]
+    try:
+        from services.zwift_game import ZwiftGameService
+
+        markers_by_id = ZwiftGameService().jersey_markers()
+    except Exception as exc:
+        print(f"Jersey dictionary unavailable, catalog fallback only: {exc}")
+        markers_by_id = {}
     races = [_slim_race(race) for race in races_by_id.values()]
     events = [_slim_event(event) for event in stage_races]
     kept_settings = {
@@ -266,6 +273,7 @@ def main() -> None:
         season_mode=season_mode,
         stage_race_ids={str(event.get("id") or "") for event in events},
         catalogs=catalogs,
+        markers_by_id=markers_by_id,
     )
     expected = _points_map(stored)
     fresh = _points_map(computed)

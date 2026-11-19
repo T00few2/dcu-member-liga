@@ -1,0 +1,75 @@
+{
+  "coeffs": [
+    301.4307613119662,
+    -22.79536474600035,
+    0.019371903024682696,
+    0.9241252410462483,
+    4.197651787339213,
+    3.72903223044031
+  ],
+  "activeFeatureKeys": [
+    "weight_kg",
+    "watts5s",
+    "watts1m",
+    "watts5m",
+    "watts20m"
+  ],
+  "r2": 0.7620116429908038,
+  "rmse": 272,
+  "n": 197,
+  "config": {
+    "features": {
+      "weight_kg": true,
+      "zrs": false,
+      "wkg5s": false,
+      "wkg1m": false,
+      "wkg5m": false,
+      "wkg20m": false,
+      "watts5s": true,
+      "watts1m": true,
+      "watts5m": true,
+      "watts20m": true,
+      "compound5s": false,
+      "compound1m": false,
+      "compound5m": false,
+      "compound20m": false
+    },
+    "regression": "ols",
+    "ridgeLambda": 0.0,
+    "stravaWindowDays": 90,
+    "stravaPowerScale": {
+      "wkg5s": 0.912,
+      "wkg1m": 0.956,
+      "wkg5m": 1.032,
+      "wkg20m": 1.057
+    },
+    "minStravaActivities": 3,
+    "trainingMinRides": 0,
+    "outdoorRaceScale": null,
+    "targetSource": "velo",
+    "strictPointInTime": false,
+    "indoorFirstMinRides": 0,
+    "solidIndoorMinRides": 15,
+    "solidOutdoorMinRides": 10,
+    "secondBestRatio": 1.158,
+    "veloOffset": -25.0
+  },
+  "lockedTest": {
+    "n": 52,
+    "divisionAccuracy": 30.8,
+    "maeVelo": 237.8,
+    "meanBias": -36.2
+  },
+  "postMove": {
+    "n": 21,
+    "divisionAccuracy": 23.8,
+    "maeVelo": 265.7,
+    "meanBias": 75.0
+  },
+  "ceiling": {
+    "n": 197,
+    "divisionAccuracy": 20.8,
+    "maeVelo": 320.8,
+    "meanBias": 14.2
+  }
+}

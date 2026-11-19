@@ -6,7 +6,7 @@ import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from services.zwift_game import ZwiftGameService, jersey_marker, on_route_ids
+from services.zwift_game import ZwiftGameService, jersey_marker, jersey_markers_by_id, on_route_ids
 from tests.dictionary_fixture import patch_game_dictionary
 
 LA_BOUCLE_ROUTE_ID = "870135081"
@@ -46,6 +46,14 @@ class JerseyMarkerTests(unittest.TestCase):
         self.assertEqual(jersey_marker("UI/WhiteOrangeTheme/HUD/OrangeJersey_Icon.tga"), "segment")
         self.assertEqual(jersey_marker("UI/WhiteOrangeTheme/HUD/Badge_Volcano.tga"), "segment")
         self.assertEqual(jersey_marker(None), "segment")
+
+    def test_jersey_markers_are_keyed_by_segment_id(self):
+        markers = jersey_markers_by_id([
+            {"signature": 18228230436, "jerseyIconPath": "UI/WhiteOrangeTheme/HUD/PolkaJersey_Icon.tga"},
+            {"signature": "7", "jerseyIconPath": "UI/WhiteOrangeTheme/HUD/GreenJersey_Icon.tga"},
+            {"jerseyIconPath": "UI/WhiteOrangeTheme/HUD/GreenJersey_Icon.tga"},
+        ])
+        self.assertEqual(markers, {"18228230436": "climb", "7": "sprint"})
 
 
 class EventSegmentFilterTests(unittest.TestCase):
