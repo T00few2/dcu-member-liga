@@ -76,6 +76,7 @@ def build_women_view(
     settings: dict[str, Any] | None,
     women_ids: set[str],
     catalogs: list | None = None,
+    markers_by_id: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Standings, per-race results, and event GC for the women's field."""
     settings = dict(settings or {})
@@ -109,6 +110,7 @@ def build_women_view(
         season_mode=season_mode,
         stage_race_ids={str(event.get("id") or "") for event in events},
         catalogs=list(catalogs or []),
+        markers_by_id=markers_by_id,
     )
     return {
         "standings": standings,
@@ -152,10 +154,17 @@ def load_women_view(db: Any) -> dict[str, Any]:
         catalogs = load_profile_catalogs(db)
     except Exception:
         catalogs = []
+    try:
+        from extensions import get_zwift_game_service
+
+        markers_by_id = get_zwift_game_service().jersey_markers()
+    except Exception:
+        markers_by_id = {}
     return build_women_view(
         races_by_id,
         stage_races,
         settings,
         load_women_ids(db),
         catalogs,
+        markers_by_id,
     )

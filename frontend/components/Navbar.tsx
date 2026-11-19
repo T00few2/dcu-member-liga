@@ -6,13 +6,15 @@ import { useAuth } from "@/lib/auth-context";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
+import SignInModal from "@/components/SignInModal";
 
 function NavLink(props: React.ComponentProps<typeof Link>) {
     return <Link prefetch={false} {...props} />;
 }
 
 export default function Navbar() {
-    const { user, signInWithGoogle, logOut, loading, isRegistered, needsConsentUpdate, isImpersonating, toggleImpersonation, isAdmin } = useAuth();
+    const [showSignIn, setShowSignIn] = useState(false);
+    const { user, logOut, loading, isRegistered, needsConsentUpdate, isImpersonating, toggleImpersonation, isAdmin } = useAuth();
     const { weightNeedsAction, dualRecordingFlagged, stickyWattsFlagged, ghostWattsFlagged, hasUnreadNews } = useNotifications();
     const profileHasNotification = weightNeedsAction || dualRecordingFlagged || stickyWattsFlagged || ghostWattsFlagged;
     const avatarHasNotification = profileHasNotification || hasUnreadNews;
@@ -206,7 +208,7 @@ export default function Navbar() {
                                             </NavLink>
                                         ))}
                                         <button
-                                            onClick={() => signInWithGoogle('login')}
+                                            onClick={() => setShowSignIn(true)}
                                             className="hidden md:inline cursor-pointer hover:bg-white/10 px-3 py-2 rounded-md text-base text-white/90 font-bold hover:text-white transition-colors"
                                         >
                                             Log ind
@@ -325,7 +327,7 @@ export default function Navbar() {
                                 ))}
                                 <button
                                     onClick={() => {
-                                        signInWithGoogle('login');
+                                        setShowSignIn(true);
                                         setIsDrawerOpen(false);
                                     }}
                                     className="w-full text-left px-4 py-3 text-white hover:bg-slate-800 rounded-lg font-bold"
@@ -337,6 +339,7 @@ export default function Navbar() {
                     </div>
                 </div>
             </>
+            <SignInModal isOpen={showSignIn} onClose={() => setShowSignIn(false)} />
         </>
     );
 }

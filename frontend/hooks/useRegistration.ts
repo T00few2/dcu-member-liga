@@ -9,7 +9,7 @@ import { API_URL } from '@/lib/api';
 import type { ClubKitPayload } from '@/lib/clubKitCopy';
 
 export function useRegistration() {
-    const { user, loading: authLoading, refreshProfile } = useAuth();
+    const { user, loading: authLoading, refreshProfile, isZwiftOnlyLogin } = useAuth();
     const { showToast } = useToast();
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -29,6 +29,10 @@ export function useRegistration() {
     const [zwiftConnected, setZwiftConnected] = useState(false);
     // Linked Discord username (null when not linked); used by the help-channel bot.
     const [discordUsername, setDiscordUsername] = useState<string | null>(null);
+    // Contact email. Google riders get it from their login; Zwift sign-in riders
+    // confirm one by code (Zwift does not share an email).
+    const [email, setEmail] = useState('');
+    const [emailVerified, setEmailVerified] = useState(false);
     const [acceptedCoC, setAcceptedCoC] = useState(false);
     const [acceptedDataPolicy, setAcceptedDataPolicy] = useState(false);
     const [acceptedPublicResults, setAcceptedPublicResults] = useState(false);
@@ -120,6 +124,8 @@ export function useRegistration() {
                     const data = await res.json();
                     setRequiredDataPolicyVersion(data.requiredDataPolicyVersion || null);
                     setRequiredPublicResultsConsentVersion(data.requiredPublicResultsConsentVersion || null);
+                    setEmail(data.email || '');
+                    setEmailVerified(!!data.emailVerified);
 
                     if (data.registered || data.hasDraft || data.zwiftConnected || data.zwiftId) {
                         const tempName = typeof window !== 'undefined' ? (localStorage.getItem('temp_reg_name') || '').trim() : '';
@@ -329,10 +335,14 @@ export function useRegistration() {
     const handleDisconnectZwift = async () => {
         try {
             const token = await user?.getIdToken();
-            await fetch(`${API_URL}/zwift/deauthorize`, {
+            const res = await fetch(`${API_URL}/zwift/deauthorize`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` },
             });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.message || 'Kunne ikke afbryde Zwift');
+            }
             setZwiftConnected(false);
             setZwiftId('');
             showToast('Zwift disconnected', 'success');
@@ -416,7 +426,8 @@ export function useRegistration() {
     // While clubs are still loading we treat a non-empty value as tentatively valid
     // so that drafts loaded from the server don't flash a false error.
     const clubValid = loadingClubs ? !!club : clubs.some(c => c.name === club);
-    const step0Valid = !!name && clubValid && !!trainer;
+    const needsEmail = !user?.email && !emailVerified;
+    const step0Valid = !!name && clubValid && !!trainer && !needsEmail;
     const step1Valid = !!zwiftConnected && !!stravaConnected;
     const step2Valid = acceptedCoC && acceptedDataPolicy && acceptedPublicResults;
     const step3Valid = step0Valid && step1Valid && step2Valid;
@@ -425,6 +436,7 @@ export function useRegistration() {
         ...(!name ? ['Angiv dit fulde navn'] : []),
         ...(!clubValid ? ['Vælg din DCU-klub fra listen'] : []),
         ...(!trainer ? ['Vælg hometrainer/wattmåler'] : []),
+        ...(needsEmail ? ['Bekræft din email'] : []),
     ];
     const step1MissingItems = [
         ...(!zwiftConnected ? ['Forbind din Zwift-konto'] : []),
@@ -447,6 +459,14 @@ export function useRegistration() {
         trainer, setTrainer,
         stravaConnected,
         zwiftConnected,
+        email,
+        needsEmail,
+        handleEmailVerified: (verifiedEmail: string) => {
+            setEmail(verifiedEmail);
+            setEmailVerified(true);
+            setMessage('Email bekræftet.');
+        },
+        canDisconnectZwift: !isZwiftOnlyLogin,
         acceptedCoC, setAcceptedCoC,
         acceptedDataPolicy, setAcceptedDataPolicy,
         acceptedPublicResults, setAcceptedPublicResults,

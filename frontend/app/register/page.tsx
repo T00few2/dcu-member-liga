@@ -7,6 +7,7 @@ import { useLeagueSettingsQuery, useLeagueStandingsQuery, useRacesQuery, useStag
 import RiderInfoForm from '@/components/register/RiderInfoForm';
 import ConnectionsForm from '@/components/register/ConnectionsForm';
 import AgreementsForm from '@/components/register/AgreementsForm';
+import EmailVerificationStep from '@/components/register/EmailVerificationStep';
 import CategoryTab from '@/components/register/CategoryTab';
 import { latestClassificationRaceId } from '@/lib/classificationTiebreak';
 import { wornSeasonJerseyForRider } from '@/lib/seasonJerseys';
@@ -48,6 +49,7 @@ function RegisterContent() {
         discordUsername, handleConnectDiscord, handleDisconnectDiscord,
         clubKit, dropLevel,
         zwiftId,
+        email, needsEmail, handleEmailVerified, canDisconnectZwift,
     } = useRegistration();
 
     const { data: leagueSettings } = useLeagueSettingsQuery();
@@ -187,7 +189,12 @@ function RegisterContent() {
                         <TabButton id="agreements" label="Aftaler" active={activeTab === 'agreements'} />
                     </div>
                     <div className="min-h-[300px]">
-                        {activeTab === 'info' && <RiderInfoForm {...riderInfoProps} />}
+                        {activeTab === 'info' && (
+                            <div className="space-y-6">
+                                {needsEmail && <EmailVerificationStep initialEmail={email} onVerified={handleEmailVerified} />}
+                                <RiderInfoForm {...riderInfoProps} />
+                            </div>
+                        )}
                         {activeTab === 'connections' && (
                             <ConnectionsForm
                                 stravaConnected={stravaConnected}
@@ -198,6 +205,7 @@ function RegisterContent() {
                                 handleDisconnectStrava={handleDisconnectStrava}
                                 handleConnectZwift={handleConnectZwift}
                                 handleDisconnectZwift={handleDisconnectZwift}
+                                canDisconnectZwift={canDisconnectZwift}
                                 discordUsername={discordUsername}
                                 handleConnectDiscord={handleConnectDiscord}
                                 handleDisconnectDiscord={handleDisconnectDiscord}
@@ -240,7 +248,10 @@ function RegisterContent() {
                         {currentStep === 0 && (
                             <div className="animate-in fade-in slide-in-from-right-4 duration-300">
                                 <h2 className="text-xl font-semibold mb-4 text-card-foreground">Rytterinformation</h2>
-                                <RiderInfoForm {...riderInfoProps} />
+                                <div className="space-y-6">
+                                    <RiderInfoForm {...riderInfoProps} />
+                                    {needsEmail && <EmailVerificationStep initialEmail={email} onVerified={handleEmailVerified} />}
+                                </div>
                             </div>
                         )}
                         {currentStep === 1 && (
@@ -255,6 +266,7 @@ function RegisterContent() {
                                     handleDisconnectStrava={handleDisconnectStrava}
                                     handleConnectZwift={handleConnectZwift}
                                     handleDisconnectZwift={handleDisconnectZwift}
+                                canDisconnectZwift={canDisconnectZwift}
                                     discordUsername={discordUsername}
                                     handleConnectDiscord={handleConnectDiscord}
                                     handleDisconnectDiscord={handleDisconnectDiscord}
@@ -282,6 +294,12 @@ function RegisterContent() {
                                         <span className="text-muted-foreground">Navn</span>
                                         <span className="font-medium text-foreground">{name}</span>
                                     </div>
+                                    {email && (
+                                        <div className="flex justify-between px-4 py-3 gap-4">
+                                            <span className="text-muted-foreground">Email</span>
+                                            <span className="font-medium text-foreground break-all">{email}</span>
+                                        </div>
+                                    )}
                                     <div className="flex justify-between px-4 py-3">
                                         <span className="text-muted-foreground">Klub</span>
                                         <span className="font-medium text-foreground">{club}</span>

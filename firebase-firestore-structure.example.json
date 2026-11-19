@@ -440,7 +440,8 @@
               "name": "Mayan Mountainside KOM",
               "direction": "forward",
               "lap": 1,
-              "count": 1
+              "count": 1,
+              "marker": "climb"
             }
           ]
         }
@@ -468,6 +469,33 @@
       "_id": "zwift_oauth_state_example_001",
       "uid": "auth_uid_example_001",
       "createdAt": "2026-03-14T10:05:00+00:00"
+    },
+    {
+      "_id": "zwift_oauth_state_example_002",
+      "mode": "signin",
+      "intent": "register",
+      "createdAt": "2026-03-14T10:06:00+00:00"
+    }
+  ],
+  "zwift_login_codes": [
+    {
+      "_id": "zwift_login_code_example_001",
+      "uid": "zwift_100002",
+      "intent": "register",
+      "createdAt": "2026-03-14T10:06:30+00:00",
+      "expiresAt": "2026-03-14T10:08:30+00:00"
+    }
+  ],
+  "email_verifications": [
+    {
+      "_id": "zwift_100002",
+      "email": "rider@example.com",
+      "codeHash": "REDACTED_SHA256_HASH",
+      "expiresAt": "2026-03-14T10:22:00+00:00",
+      "attempts": 0,
+      "lastSentAt": "2026-03-14T10:07:00+00:00",
+      "sendWindowStart": "2026-03-14T10:07:00+00:00",
+      "sendCount": 1
     }
   ],
   "zwift_tokens": [
@@ -549,6 +577,8 @@
       "zwiftUserId": "fdddaae1-1015-4bf4-8aaa-7d9e0d7e4ead",
       "name": "User Example",
       "email": "user@example.com",
+      "emailVerified": true,
+      "emailVerifiedAt": "2026-03-14T10:08:00+00:00",
       "club": "Danish Zwift Racers",
       "welcomeSeen": true,
       "dualRecordingOptIn": false,

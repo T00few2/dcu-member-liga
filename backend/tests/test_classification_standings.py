@@ -64,6 +64,38 @@ def test_stored_marker_wins_and_old_rows_keep_the_profile_lookup():
     ) is None
 
 
+def test_dictionary_jersey_wins_over_the_catalog():
+    index = index_profile_segments([
+        {"name": "Breakaway Brae", "type": "sprint", "direction": "forward"},
+        {"name": "Lutece Sprint", "type": "sprint", "direction": "forward"},
+    ])
+    brae = {
+        "id": 18228230436,
+        "name": "Breakaway Brae Reverse",
+        "direction": "forward",
+    }
+    markers = {"18228230436": "climb", "1": "sprint"}
+    assert banner_class(brae, index, markers) == "kom"
+    assert banner_class({**brae, "marker": "sprint"}, index, markers) == "kom"
+    assert banner_class(brae, index, {"18228230436": "segment"}) is None
+    assert banner_class(brae, index, {}) == "sprint"
+
+    standings = apply_classification_standings(
+        {"A": [{"zwiftId": "1", "name": "Ada", "totalPoints": 10, "results": []}]},
+        {"r1": _race("r1", {"A": [_rider(1, {"18228230436_1": 5, "1_1": 3})]}, sprints=[
+            brae | {"count": 1, "key": "18228230436_1"},
+            {"id": "1", "count": 1, "key": "1_1", "name": "Lutece Sprint", "direction": "forward"},
+        ])},
+        season_mode=True,
+        stage_race_ids={"event-1"},
+        catalogs=[],
+        markers_by_id=markers,
+    )
+    rider = standings["A"][0]
+    assert rider["komPoints"] == 5
+    assert rider["sprintPoints"] == 3
+
+
 def test_banner_class_uses_profile_type_not_the_name():
     index = index_profile_segments(PARIS)
     assert banner_class({"name": "Montmartre KOM", "direction": "forward"}, index) == "kom"

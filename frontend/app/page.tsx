@@ -2,6 +2,7 @@
 
 import { useAuth } from "@/lib/auth-context";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useRacesQuery, useLeagueSettingsQuery } from '@/hooks/queries';
 import type { Race } from '@/types/live';
 import LandingPage from '@/components/home/LandingPage';
@@ -10,7 +11,8 @@ import { fromTimestamp } from '@/lib/formatDate';
 
 
 export default function Home() {
-    const { user, userCategory, signInWithGoogle, isRegistered, profileLoaded, loading, logOut, authIntent, clearAuthIntent } = useAuth();
+    const { user, userCategory, signInWithGoogle, signInWithZwift, isZwiftOnlyLogin, isRegistered, profileLoaded, loading, logOut, authIntent, clearAuthIntent } = useAuth();
+    const router = useRouter();
     const [showUnregisteredModal, setShowUnregisteredModal] = useState(false);
 
     const racesQuery = useRacesQuery();
@@ -18,10 +20,14 @@ export default function Home() {
 
     useEffect(() => {
         if (profileLoaded && user && authIntent === 'login') {
-            if (!isRegistered) setShowUnregisteredModal(true);
+            if (!isRegistered) {
+                // Zwift sign-in already identifies the rider, so go straight to registration.
+                if (isZwiftOnlyLogin) router.push('/register');
+                else setShowUnregisteredModal(true);
+            }
             clearAuthIntent();
         }
-    }, [user, isRegistered, profileLoaded, authIntent, clearAuthIntent]);
+    }, [user, isRegistered, isZwiftOnlyLogin, profileLoaded, authIntent, clearAuthIntent, router]);
 
     useEffect(() => {
         if (isRegistered && showUnregisteredModal) setShowUnregisteredModal(false);
@@ -71,6 +77,7 @@ export default function Home() {
                 isRegistered={isRegistered}
                 nextRace={nextRace}
                 onSignInWithGoogle={() => signInWithGoogle('register')}
+                onSignInWithZwift={() => signInWithZwift('register')}
                 onCloseUnregisteredModal={() => { setShowUnregisteredModal(false); if (!isRegistered) logOut(); }}
                 onStartRegistration={async () => {
                     setShowUnregisteredModal(false);

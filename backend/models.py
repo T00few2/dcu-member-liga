@@ -37,6 +37,7 @@ class SprintConfig(TypedDict, total=False):
     type: SegmentType
     name: str
     lap: int
+    marker: str         # jersey marker: sprint, climb, or segment
 
 
 class SprintDataEntry(TypedDict, total=False):

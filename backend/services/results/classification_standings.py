@@ -2,8 +2,10 @@
 Season sprint and KOM totals.
 
 Scored banners keep a single points scale. Which competition they feed comes
-from the route profile segment type stored on elevation_cache (sprint or climb).
-Totals are the sum of every finalized season race, not best-X.
+from the game-dictionary jersey for the segment id, the same marker the race
+card draws. A stored marker is used when that id is missing, then the route
+profile, then the Zwift segment catalog. Totals are the sum of every finalized
+season race, not best-X.
 """
 from __future__ import annotations
 
@@ -115,19 +117,36 @@ def choose_profile_index(
     return best
 
 
-def banner_class(sprint: dict[str, Any], index: dict[tuple[str, str], str]) -> str | None:
+def _class_from_marker(marker: str) -> tuple[bool, str | None]:
+    """Return whether this marker decides the competition, and which one."""
+    if marker == "sprint":
+        return True, "sprint"
+    if marker == "climb":
+        return True, "kom"
+    if marker in {"segment", "interval"}:
+        return True, None
+    return False, None
+
+
+def banner_class(
+    sprint: dict[str, Any],
+    index: dict[tuple[str, str], str],
+    markers_by_id: dict[str, str] | None = None,
+) -> str | None:
     """Return 'sprint', 'kom', or None (segment / unmatched).
 
-    A marker stored on the ticked row wins. Rows saved before that field
-    existed keep the profile-name lookup.
+    The dictionary jersey for this segment id wins, the same marker the race
+    card draws. A marker stored on the row is used when that id is missing.
+    Rows with neither keep the profile-name lookup.
     """
-    marker = str(sprint.get("marker") or "").strip().lower()
-    if marker == "sprint":
-        return "sprint"
-    if marker == "climb":
-        return "kom"
-    if marker in {"segment", "interval"}:
-        return None
+    segment_id = str(sprint.get("id") or "").strip()
+    if markers_by_id and segment_id and segment_id in markers_by_id:
+        known, classified = _class_from_marker(str(markers_by_id[segment_id]).strip().lower())
+        if known:
+            return classified
+    known, classified = _class_from_marker(str(sprint.get("marker") or "").strip().lower())
+    if known:
+        return classified
     name = normalize_profile_name(sprint.get("name"))
     if not name or not index:
         return None
@@ -186,10 +205,11 @@ def points_for_rider(
     rider: dict[str, Any],
     sprints: list[dict[str, Any]],
     index: dict[tuple[str, str], str],
+    markers_by_id: dict[str, str] | None = None,
 ) -> tuple[int, int, int, int]:
     """Return sprint total, KOM total, and points on the last banner of each."""
     details = rider.get("sprintDetails") or {}
-    if not isinstance(details, dict) or not index:
+    if not isinstance(details, dict) or not (index or markers_by_id):
         return 0, 0, 0, 0
     key_class: dict[str, str | None] = {}
     last_sprint: dict[str, Any] | None = None
@@ -199,7 +219,7 @@ def points_for_rider(
     for position, sprint in enumerate(sprints):
         if not isinstance(sprint, dict):
             continue
-        cls = banner_class(sprint, index)
+        cls = banner_class(sprint, index, markers_by_id)
         for key in _sprint_keys(sprint):
             key_class.setdefault(key, cls)
         if cls not in ("sprint", "kom"):
@@ -277,6 +297,7 @@ def apply_classification_standings(
     season_mode: bool,
     stage_race_ids: set[str],
     catalogs: list[list[dict[str, Any]]],
+    markers_by_id: dict[str, str] | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     """Attach sprintPoints / komPoints onto a freshly built standings table.
 
@@ -316,7 +337,7 @@ def apply_classification_standings(
                 continue
             sprints = CategoryConfigResolver.get_sprints(race, str(category)) or []
             index = profile_index_for_race(sprints, catalogs)
-            if not index:
+            if not index and not markers_by_id:
                 continue
             if category not in riders_by_category:
                 riders_by_category[category] = {}
@@ -327,7 +348,9 @@ def apply_classification_standings(
                 zid = str(rider.get("zwiftId") or "")
                 if not zid or zid in skipped:
                     continue
-                sprint_points, kom_points, last_sprint, last_kom = points_for_rider(rider, sprints, index)
+                sprint_points, kom_points, last_sprint, last_kom = points_for_rider(
+                    rider, sprints, index, markers_by_id,
+                )
                 if sprint_points <= 0 and kom_points <= 0:
                     continue
                 entry = riders_by_category[category].get(zid)
